@@ -429,6 +429,9 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Report the window as fullscreen, which removes the macOS traffic-light
+     *  inset so the sidebar header sits exactly as in the design. */
+    windowFullscreen?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
     /** Override the current member role in reference client channels. */
@@ -22785,7 +22788,7 @@ export function maybeInstallE2eTauriMocks() {
       case "set_window_vibrancy":
         return null;
       case "plugin:window|is_fullscreen":
-        return false;
+        return activeConfig?.mock?.windowFullscreen ?? false;
       // Settings reads the app version through the app plugin. Without this the
       // bridge throws an unhandled page error on every Settings render, which
       // shows up as noise in unrelated specs.

@@ -1,11 +1,8 @@
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLocation } from "@tanstack/react-router";
 
-import { Button } from "@/shared/ui/button";
-import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
-import { cn } from "@/shared/lib/cn";
-import { topChromeBackdrop } from "@/shared/layout/chromeLayout";
-import { useOptionalSidebar } from "@/shared/ui/sidebar";
+import { breadcrumbForPath } from "@/app/topBarBreadcrumbs";
+import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui/colonyIcons";
 
 type AppTopChromeProps = {
   canGoBack: boolean;
@@ -15,41 +12,16 @@ type AppTopChromeProps = {
   hasCommunityRail?: boolean;
 };
 
-// Fixed px on purpose (button box + glyph): these controls sit beside the
-// native macOS traffic lights, which ignore the app's Cmd +/- text zoom, so
-// the row must not grow or shrink with the rem scale. Deliberate exception
-// to the rem-first rule.
-const TOP_CHROME_ICON_BUTTON_CLASS =
-  "h-[28px] w-[28px] rounded-[4px] text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
-const HISTORY_ICON_BUTTON_CLASS =
-  "h-[28px] w-[24px] rounded-[4px] text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&_svg]:size-[16px]";
-
 function preventTopChromeWheel(event: WheelEvent) {
   event.preventDefault();
 }
 
-function TopChromeSidebarTrigger() {
-  const sidebar = useOptionalSidebar();
-
-  return (
-    <Button
-      aria-label="Toggle Sidebar"
-      className={TOP_CHROME_ICON_BUTTON_CLASS}
-      data-sidebar="trigger"
-      disabled={!sidebar}
-      onClick={() => {
-        sidebar?.toggleSidebar();
-      }}
-      size="icon"
-      type="button"
-      variant="ghost"
-    >
-      <DrawerPanelIcon side={sidebar?.open ? "left" : "right"} />
-      <span className="sr-only">Toggle Sidebar</span>
-    </Button>
-  );
-}
-
+/**
+ * The shell top bar: 64px, history buttons, then the breadcrumb for the
+ * current page. Screens that know more than the route (a project, a person)
+ * portal their own trail into `#app-top-chrome-content`; the default
+ * breadcrumb steps aside while that slot has content.
+ */
 export function AppTopChrome({
   canGoBack,
   canGoForward,
@@ -57,30 +29,8 @@ export function AppTopChrome({
   onGoForward,
 }: AppTopChromeProps) {
   const topChromeRef = React.useRef<HTMLDivElement>(null);
-  const navRowPaddingClass = "pl-3";
-
-  React.useLayoutEffect(() => {
-    const topChrome = topChromeRef.current;
-    const portalTarget = topChrome?.querySelector<HTMLElement>(
-      "#app-top-chrome-content",
-    );
-    if (!topChrome || !portalTarget) return;
-
-    const updateCenterOffset = () => {
-      const portalBounds = portalTarget.getBoundingClientRect();
-      const portalCenter = portalBounds.left + portalBounds.width / 2;
-      topChrome.style.setProperty(
-        "--app-top-chrome-center-offset",
-        `${window.innerWidth / 2 - portalCenter}px`,
-      );
-    };
-
-    updateCenterOffset();
-    const observer = new ResizeObserver(updateCenterOffset);
-    observer.observe(topChrome);
-    observer.observe(portalTarget);
-    return () => observer.disconnect();
-  }, []);
+  const { pathname } = useLocation();
+  const breadcrumb = breadcrumbForPath(pathname);
 
   React.useEffect(() => {
     const topChrome = topChromeRef.current;
@@ -97,47 +47,55 @@ export function AppTopChrome({
 
   return (
     <div
-      ref={topChromeRef}
-      className={cn(
-        "relative z-45 flex shrink-0 cursor-default select-none items-center bg-sidebar pr-3 text-sidebar-foreground",
-        topChromeBackdrop.height,
-        navRowPaddingClass,
-      )}
+      className="colony-topbar"
       data-tauri-drag-region
       data-testid="app-top-chrome"
-      style={
-        {
-          "--app-top-chrome-center-offset": "0px",
-        } as React.CSSProperties
-      }
+      ref={topChromeRef}
     >
-      <div className="flex items-center gap-0.5">
-        <TopChromeSidebarTrigger />
-        <Button
-          aria-label="Go back"
-          className={HISTORY_ICON_BUTTON_CLASS}
-          data-testid="global-back"
-          disabled={!canGoBack}
-          onClick={onGoBack}
-          size="icon"
-          variant="ghost"
+      <button
+        aria-label="Go back"
+        className="colony-topbar-button"
+        data-testid="global-back"
+        disabled={!canGoBack}
+        onClick={onGoBack}
+        type="button"
+      >
+        <ChevronLeftIcon size={17} />
+      </button>
+      <button
+        aria-label="Go forward"
+        className="colony-topbar-button"
+        data-testid="global-forward"
+        disabled={!canGoForward}
+        onClick={onGoForward}
+        type="button"
+      >
+        <ChevronRightIcon size={17} />
+      </button>
+      {breadcrumb ? (
+        <nav
+          aria-label="Breadcrumb"
+          className="colony-breadcrumb"
+          data-testid="top-bar-breadcrumb"
         >
-          <ChevronLeft />
-        </Button>
-        <Button
-          aria-label="Go forward"
-          className={HISTORY_ICON_BUTTON_CLASS}
-          data-testid="global-forward"
-          disabled={!canGoForward}
-          onClick={onGoForward}
-          size="icon"
-          variant="ghost"
-        >
-          <ChevronRight />
-        </Button>
-      </div>
+          {breadcrumb.map((crumb, index) => {
+            const isLast = index === breadcrumb.length - 1;
+            return (
+              <React.Fragment key={crumb.label}>
+                {index > 0 ? <span aria-hidden="true">/</span> : null}
+                <span
+                  aria-current={isLast ? "page" : undefined}
+                  data-current={isLast ? "true" : undefined}
+                >
+                  {crumb.label}
+                </span>
+              </React.Fragment>
+            );
+          })}
+        </nav>
+      ) : null}
       <div
-        className="flex min-w-0 flex-1 items-center"
+        className="colony-topbar-content"
         data-tauri-drag-region
         id="app-top-chrome-content"
       />

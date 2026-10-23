@@ -1,6 +1,4 @@
 import * as React from "react";
-import { Factory } from "lucide-react";
-
 import { FactoryNavigator } from "@/features/factory/ui/FactoryNavigator";
 import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
 import {
@@ -10,6 +8,7 @@ import {
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import type { FactoryScope } from "@/shared/api/factoryRuntime";
+import { FactoryIcon } from "@/shared/ui/colonyIcons";
 
 /** App-shell entry for the existing factory and project routes. */
 export function SidebarSoftwareFactoryGroup({
@@ -43,14 +42,13 @@ export function SidebarSoftwareFactoryGroup({
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="text-xs data-[active=true]:font-normal"
             data-testid="open-factory-view"
             isActive={isActive}
             onClick={onSelectFactory}
             tooltip="Software Factory"
             type="button"
           >
-            <Factory className="h-4 w-4" />
+            <FactoryIcon />
             <SidebarMenuLabel>Software Factory</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>

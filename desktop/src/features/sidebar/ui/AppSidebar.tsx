@@ -1,18 +1,12 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
-import { useLocation } from "@tanstack/react-router";
-import {
-  BriefcaseBusiness,
-  CircleDollarSign,
-  Search,
-  Settings as SettingsIcon,
-  Zap,
-} from "lucide-react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
 import { AddCommunityDialog } from "@/features/communities/ui/AddCommunityDialog";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { ColonyField } from "@/shared/ui/ColonyField";
+import { PowerIcon, SettingsIcon } from "@/shared/ui/colonyIcons";
 import { useDeferredLoad } from "@/shared/hooks/useDeferredStartup";
 import {
   useChannelSections,
@@ -51,13 +45,14 @@ import {
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
 import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
-import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
+import { SidebarBusinessGroup } from "@/features/sidebar/ui/SidebarBusinessGroup";
 import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
 import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
 import {
   ChannelGroupSection,
   CustomChannelSection,
   SectionActionsMenu,
+  SectionQuickAction,
 } from "@/features/sidebar/ui/CustomChannelSection";
 import { CreateChannelDialog } from "@/features/sidebar/ui/CreateChannelDialog";
 import { SidebarProfileCard } from "@/features/sidebar/ui/SidebarProfileCard";
@@ -84,12 +79,9 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarRail,
   useSidebar,
 } from "@/shared/ui/sidebar";
-import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import {
   ProtectedBestieSidebarEntry,
   useProtectedVisibleDirectMessages,
@@ -140,6 +132,7 @@ export function AppSidebar({
   onSelectToday,
   onSelectSavedForLater,
   onSelectFactory,
+  onSelectAgents,
   onSelectGoals,
   onSelectTeam,
   onSelectClients,
@@ -175,7 +168,6 @@ export function AppSidebar({
   onClearChannelTemplateRequest,
   onOpenTemplatePicker,
 }: AppSidebarProps) {
-  const { pathname } = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
@@ -574,12 +566,11 @@ export function AppSidebar({
       variant="sidebar"
     >
       <div
-        className={`relative flex min-h-0 flex-1 flex-col overflow-hidden ${
-          communities.length > 1 ? "md:-ml-[11px] md:w-[calc(100%+11px)]" : ""
-        }`}
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         data-sidebar-background
         data-testid="app-sidebar-scroll-anchor"
       >
+        <ColonyField />
         <AppSidebarPinnedHeader
           activeCommunityName={activeCommunity?.name ?? ""}
           factoryView={selectedView === "factory"}
@@ -644,10 +635,40 @@ export function AppSidebar({
 
               {!isLoading ? (
                 <>
-                  <SidebarNavigationGroup
-                    defaultExpanded
-                    label="Conversations"
-                    testId="sidebar-nav-conversations"
+                  <div
+                    className="colony-sidebar-nav"
+                    data-testid="sidebar-nav-destinations"
+                  >
+                    <SidebarCompanyGroup
+                      onSelectAgents={onSelectAgents}
+                      onSelectGoals={onSelectGoals}
+                      onSelectTeam={onSelectTeam}
+                      onSelectWork={onSelectWork}
+                      onSelectWorkflows={onSelectWorkflows}
+                      selectedView={selectedView}
+                    />
+
+                    <SidebarBusinessGroup
+                      onSelectClients={onSelectClients}
+                      selectedView={selectedView}
+                    />
+
+                    <SidebarSoftwareFactoryGroup
+                      isActive={selectedView === "factory"}
+                      isProjectsActive={selectedView === "projects"}
+                      selectedChannelId={
+                        selectedView === "channel" ? selectedChannelId : null
+                      }
+                      onSelectFactory={onSelectFactory}
+                      scope={factoryScope}
+                    />
+
+                    <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
+                  </div>
+
+                  <div
+                    className="colony-sidebar-conversations"
+                    data-testid="sidebar-nav-conversations"
                   >
                     <SidebarDndContext
                       channels={channels}
@@ -741,6 +762,11 @@ export function AppSidebar({
                         actionsTestId="section-actions-channels"
                         listTestId="stream-list"
                         onBrowseClick={() => onBrowseChannels?.()}
+                        onCreateClick={() => openCreateDialog("forum")}
+                        createLabel="New forum"
+                        onQuickCreateClick={() => onBrowseChannels?.()}
+                        quickCreateLabel="Browse channels"
+                        showQuickCreate={Boolean(onBrowseChannels)}
                         browseLabel="Browse channels"
                         onMarkAllRead={onMarkAllChannelsRead}
                         onMarkChannelRead={onMarkChannelRead}
@@ -829,7 +855,10 @@ export function AppSidebar({
                         }
                         actionsTestId="section-actions-forums"
                         listTestId="forum-list"
+                        hideWhenEmpty
                         onCreateClick={() => openCreateDialog("forum")}
+                        quickCreateLabel="New forum"
+                        showQuickCreate
                         onMarkAllRead={onMarkAllChannelsRead}
                         onMarkChannelRead={onMarkChannelRead}
                         onMarkChannelUnread={onMarkChannelUnread}
@@ -849,6 +878,11 @@ export function AppSidebar({
                     <SidebarSection
                       action={
                         <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
+                          <SectionQuickAction
+                            label="New message"
+                            onClick={onNewMessage}
+                            testId="section-actions-dms-quick-create"
+                          />
                           <SectionActionsMenu
                             sectionLabel="direct messages"
                             testId="section-actions-dms"
@@ -888,104 +922,7 @@ export function AppSidebar({
                     <SidebarMenu>
                       <ProtectedBestieSidebarEntry />
                     </SidebarMenu>
-                  </SidebarNavigationGroup>
-
-                  <SidebarCompanyGroup
-                    onSelectGoals={onSelectGoals}
-                    onSelectTeam={onSelectTeam}
-                    onSelectWork={onSelectWork}
-                    onSelectWorkflows={onSelectWorkflows}
-                    selectedView={selectedView}
-                  />
-
-                  <SidebarNavigationGroup
-                    defaultExpanded={false}
-                    expandForActiveRoute={
-                      selectedView === "business" || selectedView === "clients"
-                    }
-                    label="Business"
-                    testId="sidebar-nav-business"
-                  >
-                    <SidebarMenu>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-business-discovery"
-                          isActive={
-                            pathname === "/discovery" ||
-                            pathname === "/campaign"
-                          }
-                          tooltip="Discovery"
-                        >
-                          <a
-                            aria-current={
-                              pathname === "/discovery" ||
-                              pathname === "/campaign"
-                                ? "page"
-                                : undefined
-                            }
-                            href="#/discovery"
-                          >
-                            <Search className="h-4 w-4" />
-                            <SidebarMenuLabel>Discovery</SidebarMenuLabel>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      {onSelectClients ? (
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="sidebar-navigation-child pl-7"
-                            data-testid="sidebar-business-clients"
-                            isActive={selectedView === "clients"}
-                            onClick={onSelectClients}
-                            tooltip="Clients"
-                            type="button"
-                          >
-                            <BriefcaseBusiness className="h-4 w-4" />
-                            <SidebarMenuLabel>Clients</SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ) : null}
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-business-money"
-                          isActive={
-                            pathname === "/money" ||
-                            pathname.startsWith("/money/")
-                          }
-                          tooltip="Money"
-                        >
-                          <a
-                            aria-current={
-                              pathname === "/money" ||
-                              pathname.startsWith("/money/")
-                                ? "page"
-                                : undefined
-                            }
-                            href="#/money"
-                          >
-                            <CircleDollarSign className="h-4 w-4" />
-                            <SidebarMenuLabel>Money</SidebarMenuLabel>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                  </SidebarNavigationGroup>
-
-                  <SidebarSoftwareFactoryGroup
-                    isActive={selectedView === "factory"}
-                    isProjectsActive={selectedView === "projects"}
-                    selectedChannelId={
-                      selectedView === "channel" ? selectedChannelId : null
-                    }
-                    onSelectFactory={onSelectFactory}
-                    scope={factoryScope}
-                  />
-
-                  <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
+                  </div>
 
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
@@ -1042,56 +979,47 @@ export function AppSidebar({
               onHuddleEnded={onHuddleEnded}
               visible={isHuddleCompanionOpen}
             />
-            <SidebarMenu className="sidebar-navigation-utility">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="text-xs"
-                  data-testid="sidebar-ai-spend-power"
-                  isActive={isPowerActive}
-                  onClick={onSelectPower}
-                  tooltip="AI spend & power"
-                  type="button"
-                >
-                  <Zap className="h-4 w-4" />
-                  <SidebarMenuLabel>AI spend &amp; power</SidebarMenuLabel>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="text-xs"
-                  data-testid="sidebar-settings"
-                  isActive={false}
-                  onClick={() => onSelectSettings()}
-                  tooltip="Settings"
-                  type="button"
-                >
-                  <SettingsIcon className="h-4 w-4" />
-                  <SidebarMenuLabel>Settings</SidebarMenuLabel>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-            <SidebarMenu className="sidebar-navigation-profile">
-              <SidebarMenuItem>
-                <SidebarProfileCard
-                  activeCommunity={activeCommunity}
-                  isPresencePending={isPresencePending}
-                  onOpenAddCommunity={onOpenAddCommunity}
-                  onOpenSettings={onSelectSettings}
-                  onSendFeedback={onSendFeedback}
-                  onRemoveCommunity={onRemoveCommunity}
-                  onSetPresenceStatus={onSetPresenceStatus}
-                  onSetUserStatus={onSetUserStatus}
-                  onClearUserStatus={onClearUserStatus}
-                  onSwitchCommunity={onSwitchCommunity}
-                  onUpdateCommunity={onUpdateCommunity}
-                  profile={profile}
-                  resolvedDisplayName={resolvedDisplayName}
-                  selfPresenceStatus={selfPresenceStatus}
-                  selfUserStatus={selfUserStatus}
-                  communities={communities}
-                />
-              </SidebarMenuItem>
-            </SidebarMenu>
+            <div className="colony-sidebar-footer-row">
+              <SidebarProfileCard
+                activeCommunity={activeCommunity}
+                isPresencePending={isPresencePending}
+                onOpenAddCommunity={onOpenAddCommunity}
+                onOpenSettings={onSelectSettings}
+                onSendFeedback={onSendFeedback}
+                onRemoveCommunity={onRemoveCommunity}
+                onSetPresenceStatus={onSetPresenceStatus}
+                onSetUserStatus={onSetUserStatus}
+                onClearUserStatus={onClearUserStatus}
+                onSwitchCommunity={onSwitchCommunity}
+                onUpdateCommunity={onUpdateCommunity}
+                profile={profile}
+                resolvedDisplayName={resolvedDisplayName}
+                selfPresenceStatus={selfPresenceStatus}
+                selfUserStatus={selfUserStatus}
+                communities={communities}
+              />
+              <button
+                aria-label="AI spend and power"
+                className="colony-sidebar-footer-icon"
+                data-active={isPowerActive || undefined}
+                data-testid="sidebar-ai-spend-power"
+                onClick={onSelectPower}
+                title="AI spend & power"
+                type="button"
+              >
+                <PowerIcon size={18} />
+              </button>
+              <button
+                aria-label="Settings"
+                className="colony-sidebar-footer-icon"
+                data-testid="sidebar-settings"
+                onClick={() => onSelectSettings()}
+                title="Settings"
+                type="button"
+              >
+                <SettingsIcon size={18} />
+              </button>
+            </div>
           </SidebarFooter>
         </div>
       </div>

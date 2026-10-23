@@ -1,8 +1,6 @@
-import { LayoutTemplate } from "lucide-react";
-
-import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
 import type { AppSidebarProps } from "@/features/sidebar/ui/AppSidebar.types";
 import { FeatureGate } from "@/shared/features";
+import { LibraryIcon } from "@/shared/ui/colonyIcons";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -10,33 +8,34 @@ import {
 } from "@/shared/ui/sidebar";
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 
+/**
+ * Library is one row that opens Blocks & templates. It used to be a
+ * collapsed group with that single child; the Colony 3.0 sidebar shows it as
+ * a destination of its own.
+ */
 export function SidebarLibraryGroup({
+  isActive = false,
   onSelectSettings,
 }: {
+  isActive?: boolean;
   onSelectSettings: AppSidebarProps["onSelectSettings"];
 }) {
   return (
-    <SidebarNavigationGroup
-      defaultExpanded={false}
-      label="Library"
-      testId="sidebar-nav-library"
-    >
-      <FeatureGate feature="channel-templates">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="text-xs pl-7"
-              data-testid="sidebar-blocks-templates"
-              onClick={() => onSelectSettings("channel-templates")}
-              tooltip="Blocks & templates"
-              type="button"
-            >
-              <LayoutTemplate className="h-4 w-4" />
-              <SidebarMenuLabel>Blocks &amp; templates</SidebarMenuLabel>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </FeatureGate>
-    </SidebarNavigationGroup>
+    <FeatureGate feature="channel-templates">
+      <SidebarMenu data-testid="sidebar-nav-library">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="sidebar-blocks-templates"
+            isActive={isActive}
+            onClick={() => onSelectSettings("channel-templates")}
+            tooltip="Library"
+            type="button"
+          >
+            <LibraryIcon />
+            <SidebarMenuLabel>Library</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </FeatureGate>
   );
 }

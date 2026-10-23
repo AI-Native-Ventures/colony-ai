@@ -1,23 +1,34 @@
 @layer base {
   :root {
     /* Colony workspace palette, stored as HSL channels for Tailwind alpha utilities. */
-    --colony-fg: 253.85 14.94% 17.06%;
-    --colony-muted: 267.27 4.53% 47.65%;
-    --colony-faint: 266.67 4.97% 64.51%;
-    --colony-border: 285 9.09% 91.37%;
-    --colony-surface: 30 100% 99.61%;
-    --colony-surface-raised: 300 6.67% 97.06%;
-    --colony-hover: 274.29 30.43% 95.49%;
-    --colony-accent: 270 18.64% 46.27%;
-    --colony-accent-soft: 272.31 37.14% 93.14%;
-    --colony-info: 218.46 33.33% 54.12%;
-    --colony-success: 153.33 21.95% 40.2%;
-    --colony-danger: 344.44 33.89% 46.86%;
-    --colony-canvas: 270 16.67% 95.29%;
-    --colony-focus: 264 27.27% 56.86%;
+    --colony-fg: 258 12.821% 15.294%;
+    --colony-fg-secondary: 261.429 9.091% 30.196%;
+    --colony-muted: 267.692 6.22% 40.98%;
+    --colony-faint: 267.692 7.104% 64.118%;
+    --colony-border: 285 20% 92.157%;
+    --colony-border-strong: 276.923 20% 87.255%;
+    --colony-surface: 36 100% 99.02%;
+    --colony-surface-raised: 30 30% 96.078%;
+    --colony-wash: 274.286 33.333% 95.882%;
+    --colony-track: 288 18.519% 94.706%;
+    --colony-hover: 288 18.519% 94.706%;
+    --colony-accent: 250.909 48.207% 50.784%;
+    --colony-accent-ink: 250.714 50.909% 43.137%;
+    --colony-accent-soft: 257.647 68% 95.098%;
+    --colony-info: 215.455 56.122% 38.431%;
+    --colony-info-bg: 214.737 61.29% 93.922%;
+    --colony-success: 150.833 45.57% 30.98%;
+    --colony-success-bg: 144 36.585% 91.961%;
+    --colony-danger: 344 56.604% 41.569%;
+    --colony-danger-bg: 342.857 72.414% 94.314%;
+    --colony-need: 36.087 100% 27.059%;
+    --colony-need-bg: 39.07 100% 91.569%;
+    --colony-idle-bg: 285 13.333% 94.118%;
+    --colony-canvas: 36 100% 99.02%;
+    --colony-focus: 250.909 48.207% 50.784%;
     --colony-field: var(--colony-surface);
-    --colony-sidebar-foreground: 276 14.12% 34.71%;
-    --colony-sidebar-selected-foreground: 272.14 29.79% 18.43%;
+    --colony-sidebar-foreground: 264 9.934% 29.608%;
+    --colony-sidebar-selected-foreground: 258 12.821% 15.294%;
     --colony-sidebar-active-indicator: #9c7cb5;
     --colony-sidebar-active-surface: rgb(255 255 255 / 53.3%);
     --colony-sidebar-hover-surface: rgb(255 255 255 / 53.3%);
@@ -84,7 +95,7 @@
     );
 
     /* Preserve the semantic slots used throughout existing features. */
-    --radius: 0.875rem;
+    --radius: 1rem;
     --background: var(--colony-canvas);
     --foreground: var(--colony-fg);
     --card: var(--colony-surface);
@@ -130,22 +141,22 @@
     --sidebar-accent-foreground: var(--colony-sidebar-selected-foreground);
     --sidebar-border: var(--colony-border);
     --sidebar-ring: var(--colony-focus);
-    --colony-radius-control: 0.4375rem;
-    --colony-radius-control-medium: 0.625rem;
-    --colony-radius-toast: 0.5625rem;
-    --colony-radius-frame: 0.75rem;
-    --colony-radius-card: 0.875rem;
-    --colony-radius-dialog: 0.9375rem;
+    --colony-radius-control: 0.625rem;
+    --colony-radius-control-medium: 0.75rem;
+    --colony-radius-toast: 1rem;
+    --colony-radius-frame: 1rem;
+    --colony-radius-card: 1rem;
+    --colony-radius-dialog: 1.5rem;
     --colony-radius-onboarding-control: 0.625rem;
     --colony-radius-onboarding-dialog: 1.125rem;
     --colony-border-width: 1px;
     --colony-focus-width: 2px;
     --colony-focus-offset: 3px;
-    --colony-sidebar-width: 13.75rem;
-    --colony-sidebar-width-min: 13.75rem;
+    --colony-sidebar-width: 17.5rem;
+    --colony-sidebar-width-min: 15rem;
     --colony-sidebar-width-max: 21.25rem;
     --colony-sidebar-width-step: 1.25rem;
-    --colony-sidebar-width-collapsed: 3.625rem;
+    --colony-sidebar-width-collapsed: 4.75rem;
     --colony-thread-width: 32.5rem;
     --colony-thread-width-min: 20rem;
     --colony-thread-width-max: 40.625rem;
@@ -194,10 +205,11 @@
     --colony-inbox-row-padding: var(--colony-inbox-row-padding-block)
       var(--colony-inbox-row-padding-inline);
     --colony-line-height-body: 1.5;
-    --colony-shadow-menu: 0 16px 50px #30203815;
-    --colony-shadow-dialog: 0 25px 100px #25183535;
+    --colony-shadow-menu:
+      0 0 0 1px #ede7ef, 0 30px 70px -28px rgb(40 20 60 / 45%);
+    --colony-shadow-dialog: 0 30px 80px -30px rgb(40 20 60 / 45%);
     --colony-shadow-drawer: -15px 0 45px #3824420d;
-    --colony-shadow-frame: 0 5px 35px #7660890b;
+    --colony-shadow-frame: 0 0 0 1px #ede7ef, 0 1px 2px rgb(40 20 60 / 4%);
     --colony-shadow-onboarding-card: 0 15px 25px -20px #5d447c35;
     --colony-shadow-cta: 0 5px 10px -5px #4b2b6340;
     --colony-shadow-field: 0 1px 2px #30103d03;
@@ -230,6 +242,17 @@
     --colony-canvas: 260 11.54% 10.2%;
     --colony-focus: 264 27.27% 56.86%;
     --colony-field: 263.08 15.29% 16.67%;
+    --colony-fg-secondary: 270 15% 78%;
+    --colony-border-strong: 270 10% 30%;
+    --colony-wash: 264 12% 18.5%;
+    --colony-track: 264 12% 20%;
+    --colony-accent-ink: 270 60% 82%;
+    --colony-info-bg: 215 30% 20%;
+    --colony-success-bg: 150 25% 18%;
+    --colony-danger-bg: 345 30% 20%;
+    --colony-need: 38 90% 72%;
+    --colony-need-bg: 36 40% 19%;
+    --colony-idle-bg: 264 8% 22%;
     --colony-sidebar-foreground: 275.17 25.22% 77.45%;
     --colony-sidebar-selected-foreground: 273.75 61.54% 94.9%;
     --colony-sidebar-active-indicator: #9c7cb5;
@@ -397,70 +420,12 @@
 }
 
 /*
- * Buzz theme - sidebar gradient.
- *
- * Buzz reuses the GitHub Light palette for every base color; its one
- * distinguishing feature is this gradient painted across the sidebar/nav
- * canvas, replacing GitHub Light's flat grey. ThemeProvider toggles the
- * `data-buzz-sidebar` attribute on <html> when the Buzz theme is active.
- *
- * These rules are intentionally UNLAYERED: the `bg-sidebar` background-color
- * lives in Tailwind's `utilities` layer, and unlayered declarations win over
- * any layered ones, so this reliably overrides it without an `!important`.
- *
- * The gradient is painted once on the full app surface. Child chrome canvases
- * stay transparent so the sidebar, rail, top chrome, inset margin, and Settings
- * all reveal the same continuous ramp. Keeping one non-fixed background avoids
- * WKWebView's stale fixed-background raster when the app changes appearance
- * without a page reload. The portaled mobile sidebar is the sole separate
- * paint because it lives outside the app surface.
- *
- * Small transient `bg-sidebar` chips inside the shell that are NOT canvas
- * surfaces (the drag-overlay pills) opt out via `[data-buzz-flat]` - a
- * floating chip should retain its own fill rather than becoming transparent
- * over the full-app gradient.
- *
- * Shared row state colors are applied below so Buzz and flat themes use the
- * same hover/selection hierarchy.
+ * The sidebar field (three colours, veil, grain) is painted by `ColonyField`
+ * inside the sidebar, settings sidebar and community rail; see
+ * `colony3-shell.css`. Branded themes (`data-buzz-sidebar`) show it, every
+ * other named theme keeps its flat sidebar colour. The gradient tokens above
+ * stay for the Appearance previews.
  */
-:root[data-buzz-sidebar] {
-  --buzz-gradient-top: var(--buzz-gradient-light-top);
-  --buzz-gradient-middle: var(--buzz-gradient-light-middle);
-  --buzz-gradient-bottom: var(--buzz-gradient-light-bottom);
-  --colony-field-base-active: var(--colony-field-base-light);
-  --buzz-muted-foreground: hsl(var(--colony-muted));
-  --buzz-search-surface: var(--colony-sidebar-hover-surface);
-  --buzz-chrome-foreground: hsl(var(--colony-sidebar-foreground));
-  --buzz-channel-fg: hsl(var(--colony-fg));
-  --buzz-dm-fg: hsl(var(--colony-fg));
-  --buzz-nav-fg: hsl(var(--colony-sidebar-foreground));
-  --buzz-hover-surface: var(--colony-sidebar-hover-surface);
-  --buzz-sidebar-scrollbar-thumb: var(--buzz-hover-surface);
-  --buzz-active-fill: var(--colony-accent-soft);
-  --buzz-active-foreground: var(--colony-sidebar-selected-foreground);
-}
-
-/*
- * Dark variant (Buzz Dark). Reuses the GitHub Dark base palette; only the
- * Buzz color tokens change, so every downstream rule (gradient fill, hover,
- * search box, muted labels, active pill) adapts automatically. The `.dark`
- * class is set on the document root whenever a dark theme is active.
- */
-:root[data-buzz-sidebar].dark {
-  --buzz-gradient-top: var(--buzz-gradient-dark-top);
-  --buzz-gradient-middle: var(--buzz-gradient-dark-middle);
-  --buzz-gradient-bottom: var(--buzz-gradient-dark-bottom);
-  --colony-field-base-active: var(--colony-field-base-dark);
-  --buzz-muted-foreground: hsl(var(--colony-muted));
-  --buzz-search-surface: var(--colony-sidebar-hover-surface);
-  --buzz-chrome-foreground: hsl(var(--colony-sidebar-foreground));
-  --buzz-channel-fg: hsl(var(--colony-fg));
-  --buzz-dm-fg: hsl(var(--colony-fg));
-  --buzz-nav-fg: hsl(var(--colony-sidebar-foreground));
-  --buzz-hover-surface: var(--colony-sidebar-hover-surface);
-  --buzz-active-fill: var(--colony-accent-soft);
-  --buzz-active-foreground: var(--colony-sidebar-selected-foreground);
-}
 
 /*
  * Use the Buzz primary color for the floating selection-formatting tray.
@@ -484,201 +449,6 @@
   color: hsl(var(--primary-foreground));
 }
 
-:root[data-buzz-sidebar]
-  [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
-  --background: var(--colony-surface);
-  background-color: hsl(var(--background));
-  border: var(--colony-border-width) solid hsl(var(--colony-border));
-  border-radius: var(--colony-radius-dialog);
-  box-shadow: var(--colony-shadow-frame);
-}
-
-/* Let the content card's shadow feather into the surrounding gradient. */
-:root[data-buzz-sidebar]:not(.dark) [data-buzz-shadow-viewport] {
-  overflow: visible;
-}
-
-:root[data-buzz-sidebar] .buzz-huddle-app-surface {
-  background-color: transparent;
-  background-image: none;
-  isolation: isolate;
-}
-
-/* The Buzz theme uses a translucent color wash. Back it with an opaque copy
- * of the same gradient by default so its color remains stable over every app
- * surface, including a lifted huddle. */
-:root[data-buzz-sidebar] .buzz-theme-gradient-underlay {
-  background-image: var(--colony-field-base-active);
-  background-repeat: no-repeat;
-  background-size: 100vw 100vh;
-}
-
-/*
- * Keep both Buzz gradients painted and switch only which layer is visible.
- * WKWebView can retain the old raster when `background-image` is replaced on
- * a translucent surface. The center content already follows `.dark`, so using
- * that same state for layer visibility keeps both surfaces in lockstep.
- */
-:root[data-buzz-sidebar] .buzz-theme-gradient-layer-light {
-  background-image: var(--colony-field-base-light);
-  background-size: 100vw 100vh;
-  background-repeat: no-repeat;
-}
-
-:root[data-buzz-sidebar] .buzz-theme-gradient-layer-dark {
-  background-image: var(--colony-field-base-dark);
-  background-size: 100vw 100vh;
-  background-repeat: no-repeat;
-}
-
-:root[data-buzz-sidebar]:not(.dark) .buzz-theme-gradient-layer-light,
-:root[data-buzz-sidebar].dark .buzz-theme-gradient-layer-dark {
-  opacity: 1;
-}
-
-/*
- * The Colony field artwork uses SVG noise and blur filters. Give each layer
- * its own compositing layer so scrolling content and the backdrop blurs
- * above it (channel header, composer) do not re-rasterize the artwork every
- * frame; without this, software-rendered hosts drop to about 20 fps.
- */
-.buzz-theme-gradient-underlay,
-.buzz-theme-gradient-layer-light,
-.buzz-theme-gradient-layer-dark {
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* The mobile sidebar is portaled outside the app surface. */
-:root[data-buzz-sidebar]:not(.dark)
-  [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
-  background-color: transparent;
-  background-image: var(--colony-field-base-light);
-  background-size: 100vw 100vh;
-  background-repeat: no-repeat;
-}
-
-:root[data-buzz-sidebar].dark
-  [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
-  background-color: transparent;
-  background-image: var(--colony-field-base-dark);
-  background-size: 100vw 100vh;
-  background-repeat: no-repeat;
-}
-
-/* All in-shell chrome reveals the single gradient painted above. */
-:root[data-buzz-sidebar] .group\/sidebar-wrapper,
-:root[data-buzz-sidebar] [data-testid="app-sidebar"],
-:root[data-buzz-sidebar] [data-buzz-glass-inset],
-:root[data-buzz-sidebar] [data-buzz-glass-footer-wrap],
-:root[data-buzz-sidebar]
-  .group\/sidebar-wrapper
-  .bg-sidebar:not([data-buzz-flat]),
-:root[data-buzz-sidebar] [data-testid="community-rail"].bg-sidebar,
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-pinned-header"],
-:root[data-buzz-sidebar] [data-testid="app-sidebar"] [data-sidebar="footer"] {
-  background-color: transparent;
-  background-image: none;
-}
-
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-pinned-header"]::before,
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-sidebar="footer"]::before {
-  background: none;
-}
-
-/*
- * Active nav item. The accent system (`applyAccentColor` in ThemeProvider)
- * sets `--sidebar-active` to the theme foreground as an INLINE style on
- * :root, which renders the selected page as a solid black pill under GitHub
- * Light. For the Buzz theme we want a subtle theme-specific tint instead.
- * Override the two active tokens on the sidebar element itself; element-local
- * custom properties win over the inherited inline values from :root. Text
- * uses the theme foreground, and the derived
- * `bg-sidebar-active-foreground/20` badge follows automatically.
- *
- * SCOPED to the app sidebar container, NOT :root - the `bg-sidebar-active` /
- * `text-sidebar-active-foreground` tokens are also consumed by non-sidebar
- * controls (avatar edit buttons in ProfileSettingsCard / AgentCreationPreview,
- * the selected row in CommunityCatalogDialog). A root-level override
- * turned those white (white-on-white under Buzz Dark); scoping keeps them on
- * the normal accent-driven active colors.
- */
-:root[data-buzz-sidebar] [data-testid="app-sidebar"],
-:root[data-buzz-sidebar] [data-testid="settings-sidebar"] {
-  --sidebar-active: var(--buzz-active-fill);
-  --sidebar-active-foreground: var(--buzz-active-foreground);
-}
-
-/*
- * Dark variant: keep the active-pill foreground white on the dark gradient.
- * (The pill itself is repainted to a translucent tint by the rule below.)
- */
-:root[data-buzz-sidebar].dark [data-testid="app-sidebar"],
-:root[data-buzz-sidebar].dark [data-testid="settings-sidebar"] {
-  --sidebar-active: var(--buzz-active-fill);
-  --sidebar-active-foreground: var(--buzz-active-foreground);
-}
-
-/*
- * Hover and selected navigation use the same translucent field tint from the
- * reference. The prominent preference uses the accent-soft selected surface.
- */
-:root[data-buzz-sidebar] [data-testid="app-sidebar"] [data-active="true"],
-:root[data-buzz-sidebar] [data-testid="settings-sidebar"] [data-active="true"] {
-  background-color: var(--sidebar-row-subtle-active-surface);
-  box-shadow: none;
-}
-
-:root[data-buzz-sidebar][data-prominent-active-tab]
-  [data-testid="app-sidebar"]
-  [data-active="true"],
-:root[data-buzz-sidebar][data-prominent-active-tab]
-  [data-testid="settings-sidebar"]
-  [data-active="true"] {
-  --sidebar-active-foreground: var(--colony-sidebar-selected-foreground);
-  background-color: var(--sidebar-row-active-surface);
-  box-shadow: none;
-}
-
-/*
- * Hover on non-active Buzz nav items uses the reference field tint. Active
- * items are excluded so they retain the selected surface. Covers
- * both top-level menu buttons and channel sub-buttons in app and Settings nav.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-sidebar="menu-button"]:not([data-active="true"]):hover,
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-sidebar="menu-sub-button"]:not([data-active="true"]):hover,
-:root[data-buzz-sidebar]
-  [data-testid="settings-sidebar"]
-  [data-sidebar="menu-button"]:not([data-active="true"]):hover,
-:root[data-buzz-sidebar]
-  [data-testid="settings-sidebar"]
-  [data-sidebar="menu-sub-button"]:not([data-active="true"]):hover {
-  background-color: var(--buzz-hover-surface);
-}
-
-/*
- * Row actions such as the DM close button are siblings of the menu button.
- * Hovering them still activates the row's Tailwind `group-hover` treatment,
- * so cover the whole menu item to keep that sibling-hover path on the same
- * neutral surface instead of falling back to the legacy accent.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  :where([data-sidebar="menu-item"]:hover)
-  > [data-sidebar="menu-button"]:not([data-active="true"]) {
-  background-color: var(--buzz-hover-surface);
-}
-
 /*
  * Navigation clicks stay spatially still. The subtle compression begins only
  * after the sidebar's drag sensor crosses its reorder threshold and is removed
@@ -690,140 +460,6 @@
   }
 }
 
-/*
- * Search box: use a neutral 7% tint instead of the grey
- * `bg-sidebar-border/35` fill. Its label, shortcut, and magnifying glass share
- * the 40% muted foreground at rest and on hover/focus.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="open-search"],
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="open-search"]:hover,
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="open-search"]:focus-visible {
-  background-color: var(--buzz-search-surface);
-  color: var(--buzz-muted-foreground);
-}
-
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="open-search"]
-  > * {
-  color: var(--buzz-muted-foreground);
-}
-
-/* Match the hover treatment used by inactive channel rows. */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-profile-card"]:hover {
-  background-color: var(--buzz-hover-surface);
-}
-
-/*
- * App and settings sidebar section headings plus secondary footer text use the
- * same tint. Navigation rows keep their normal foreground in both sidebars.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-sidebar="group-label"],
-:root[data-buzz-sidebar]
-  [data-testid="settings-sidebar"]
-  [data-sidebar="group-label"],
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-buzz-sidebar-secondary],
-:root[data-buzz-sidebar]
-  [data-testid="settings-sidebar"]
-  [data-buzz-sidebar-secondary] {
-  color: var(--buzz-muted-foreground);
-}
-
-/* Sidebar toggle plus back/forward navigation controls in the top chrome. */
-:root[data-buzz-sidebar]
-  [data-testid="app-top-chrome"]
-  :is(
-    [data-sidebar="trigger"],
-    [data-testid="global-back"],
-    [data-testid="global-forward"]
-  ) {
-  color: var(--buzz-chrome-foreground);
-}
-
-/*
- * Section action buttons (the "+" and "..." at the right edge of each sidebar
- * section header): match the same translucent white fill (see
- * `--buzz-hover-surface`) on hover/focus instead of the grey
- * `bg-sidebar-border/35` fill. Unlayered + `[data-buzz-sidebar]` prefix beats
- * the Tailwind utility so it only applies under the Buzz theme.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  .sidebar-section-action:hover,
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  .sidebar-section-action:focus-visible {
-  background-color: var(--buzz-hover-surface);
-}
-
-/*
- * Per-row-type text colors (Buzz theme).
- *
- * By default the whole sidebar inherits a single `--sidebar-foreground`, so
- * channels, direct messages, and the Inbox/Agents nav rows all share one text
- * color. These variables let each row type carry its own foreground while
- * keeping the default value unchanged.
- *
- * Each var defaults to `inherit`, so with nothing set the sidebar looks
- * exactly as before. Scoped to the Buzz sidebar container so other themes are
- * untouched.
- */
-/* Channels: rows live inside the `stream-list` / `starred-list` menus. */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="stream-list"]
-  [data-sidebar="menu-button"]:not([data-active="true"]),
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="stream-list"]
-  [data-sidebar="menu-sub-button"]:not([data-active="true"]),
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="starred-list"]
-  [data-sidebar="menu-button"]:not([data-active="true"]),
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="starred-list"]
-  [data-sidebar="menu-sub-button"]:not([data-active="true"]) {
-  color: var(--buzz-channel-fg);
-}
-
-/* Direct messages: rows live inside the `dm-list` menu. */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="dm-list"]
-  [data-sidebar="menu-button"]:not([data-active="true"]),
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="dm-list"]
-  [data-sidebar="menu-sub-button"]:not([data-active="true"]) {
-  color: var(--buzz-dm-fg);
-}
-
-/*
- * Inbox + Agents nav rows: the primary app nav buttons (Inbox, Pulse,
- * Projects, Agents, Workflows). Excludes the active row so the active-pill
- * foreground still wins.
- */
-:root[data-buzz-sidebar]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-primary-menu"]
-  [data-sidebar="menu-button"]:not([data-active="true"]) {
-  color: var(--buzz-nav-fg);
-}
-
 /* Follow Buzz's selected appearance, independent of the OS color scheme. */
 .dark .sidebar-muted-content {
   opacity: 0.45;
@@ -833,236 +469,10 @@
  * Glass background.
  *
  * ThemeProvider installs native macOS vibrancy before toggling
- * `data-glass-background`. Keep the frosted layer on the outer canvases only;
- * nested sidebar/header/footer surfaces pass through so the navigation reads
- * as one continuous pane while the center content surface remains opaque.
+ * `data-glass-background`. The page canvas goes clear and the sidebar field
+ * fades to the glass opacity (`colony3-shell.css`); the main area stays
+ * opaque.
  */
-:root[data-glass-background] {
-  --glass-sidebar-surface: hsl(
-    var(--sidebar-background) /
-    var(--glass-background-opacity, 65%)
-  );
-  --buzz-translucency-gradient-alpha: var(--glass-background-opacity, 65%);
-  --buzz-translucency-wash-alpha: 2.4%;
-}
-
-/* The regular Buzz theme keeps an opaque copy of the gradient beneath its
- * color layers. Remove that backing while glass is enabled so the translucent
- * wash can reveal the native macOS vibrancy view. */
-:root[data-glass-background] .buzz-theme-gradient-underlay {
-  background: transparent;
-}
-
-/* Non-Buzz themes use their existing sidebar color as the glass tint. */
-:root[data-glass-background]:not([data-buzz-sidebar])
-  .buzz-theme-gradient-layer {
-  background-color: var(--glass-sidebar-surface);
-}
-
-:root[data-glass-background] .buzz-theme-gradient-layer-light {
-  /* Buzz color wash above a neutral frost wash. */
-  background-image:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-light-top)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-light-bottom)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      )
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        #ffffff var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        #ffffff var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      )
-    );
-  background-size:
-    100vw 100vh,
-    100vw 100vh;
-  background-repeat: no-repeat, no-repeat;
-}
-
-:root[data-glass-background] .buzz-theme-gradient-layer-dark {
-  background-image:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-dark-top)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-dark-bottom)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      )
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        #12161d var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        #12161d var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      )
-    );
-  background-size:
-    100vw 100vh,
-    100vw 100vh;
-  background-repeat: no-repeat, no-repeat;
-}
-
-:root[data-glass-background][data-buzz-sidebar]:not(.dark)
-  [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
-  background-color: transparent;
-  background-image:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-light-top)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-light-bottom)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      )
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        #ffffff var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        #ffffff var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      )
-    );
-  background-size:
-    100vw 100vh,
-    100vw 100vh;
-  background-repeat: no-repeat, no-repeat;
-}
-
-:root[data-glass-background][data-buzz-sidebar].dark
-  [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
-  background-color: transparent;
-  background-image:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-dark-top)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        var(--buzz-gradient-dark-bottom)
-          var(--buzz-translucency-gradient-alpha, 70%),
-        transparent
-      )
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in srgb,
-        #12161d var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      ),
-      color-mix(
-        in srgb,
-        #12161d var(--buzz-translucency-wash-alpha, 2.4%),
-        transparent
-      )
-    );
-  background-size:
-    100vw 100vh,
-    100vw 100vh;
-  background-repeat: no-repeat, no-repeat;
-}
-
-:root[data-glass-background]:not([data-buzz-sidebar])
-  [data-sidebar="sidebar"][data-mobile="true"].bg-sidebar {
-  background-color: var(--glass-sidebar-surface);
-  background-image: none;
-}
-
-:root[data-glass-background] .group\/sidebar-wrapper,
-:root[data-glass-background] [data-testid="app-sidebar"],
-:root[data-glass-background] [data-testid="settings-sidebar"],
-:root[data-glass-background] [data-buzz-glass-inset],
-:root[data-glass-background] [data-buzz-glass-footer-wrap],
-:root[data-glass-background]
-  .group\/sidebar-wrapper
-  .bg-sidebar:not([data-buzz-flat]),
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-pinned-header"],
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-sidebar="footer"] {
-  background-color: transparent;
-  background-image: none;
-}
-
-:root[data-glass-background]
-  [data-testid="settings-sidebar"]
-  [data-sidebar="sidebar"] {
-  background-color: transparent;
-  background-image: none;
-}
-
-/* Remove edge fades and stacking contexts that made header/footer look separate. */
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-pinned-header"],
-:root[data-glass-background] [data-buzz-glass-inset],
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-buzz-glass-footer-wrap],
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-sidebar="footer"] {
-  isolation: auto;
-  z-index: auto;
-}
-
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-testid="sidebar-pinned-header"]::before,
-:root[data-glass-background]
-  [data-testid="app-sidebar"]
-  [data-sidebar="footer"]::before {
-  background: none;
-}
-
 /* Let the native transparent window show through behind the sidebar glass. */
 :root[data-glass-background],
 :root[data-glass-background] body,

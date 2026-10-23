@@ -338,6 +338,7 @@ export function ChannelGroupSection({
   draggable,
   groupClassName,
   hasUnread,
+  hideWhenEmpty = false,
   isCollapsed,
   isActiveChannel,
   activeWorkingByChannelId,
@@ -378,6 +379,8 @@ export function ChannelGroupSection({
   createLabel?: string;
   draggable?: boolean;
   groupClassName?: string;
+  /** Render nothing while the group has no channels (the Forums group). */
+  hideWhenEmpty?: boolean;
   isCollapsed: boolean;
   isActiveChannel: boolean;
   activeWorkingByChannelId?: ReadonlyMap<string, ActiveChannelTurnSummary>;
@@ -426,6 +429,10 @@ export function ChannelGroupSection({
 }) {
   const contentId = `sidebar-${listTestId}`;
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+
+  if (hideWhenEmpty && items.length === 0) {
+    return null;
+  }
 
   const channelList =
     items.length > 0 ? (

@@ -14,8 +14,8 @@ export default {
           "calc(var(--buzz-type-rem) * 1.625)",
           { lineHeight: "1.35" },
         ],
-        "2xs": "calc(var(--buzz-type-rem) * 0.6875)", // 11px at 16px type rem
-        "3xs": "calc(var(--buzz-type-rem) * 0.5)", // 8px at 16px type rem
+        "2xs": "var(--text-2xs)", // 13px label (Colony 3.0 ramp)
+        "3xs": "var(--text-3xs)", // 11px tiny count and glyph text
         "update-author": "calc(var(--buzz-type-rem) * 0.83)",
         "update-body": "calc(var(--buzz-type-rem) * 0.89)",
         "update-meta": "calc(var(--buzz-type-rem) * 0.72)",

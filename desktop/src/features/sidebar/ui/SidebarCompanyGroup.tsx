@@ -1,5 +1,3 @@
-import { CalendarCheck2, Target, UsersRound, Workflow } from "lucide-react";
-
 import { useCompanyTeamCountQuery } from "@/features/company-team/teamRelay";
 import { FeatureGate } from "@/shared/features";
 import {
@@ -11,9 +9,11 @@ import {
 import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
 import type { AppSidebarProps } from "@/features/sidebar/ui/AppSidebar.types";
+import { CompanyIcon } from "@/shared/ui/colonyIcons";
 
 type SidebarCompanyGroupProps = Pick<
   AppSidebarProps,
+  | "onSelectAgents"
   | "onSelectGoals"
   | "onSelectTeam"
   | "onSelectWork"
@@ -22,6 +22,7 @@ type SidebarCompanyGroupProps = Pick<
 >;
 
 export function SidebarCompanyGroup({
+  onSelectAgents,
   onSelectGoals,
   onSelectTeam,
   onSelectWork,
@@ -35,27 +36,28 @@ export function SidebarCompanyGroup({
 
   return (
     <SidebarNavigationGroup
-      defaultExpanded
+      defaultExpanded={false}
       expandForActiveRoute={
+        selectedView === "agents" ||
         selectedView === "goals" ||
         selectedView === "team" ||
         selectedView === "work" ||
         selectedView === "workflows"
       }
+      icon={<CompanyIcon />}
       label="Company"
       testId="sidebar-nav-company"
     >
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="sidebar-navigation-child pl-7"
+            className="sidebar-navigation-child"
             data-testid="sidebar-company-team"
             isActive={selectedView === "team"}
             onClick={onSelectTeam}
             tooltip="Team"
             type="button"
           >
-            <UsersRound className="h-4 w-4" />
             <SidebarMenuLabel>Team</SidebarMenuLabel>
           </SidebarMenuButton>
           {teamCount !== null ? (
@@ -68,14 +70,27 @@ export function SidebarCompanyGroup({
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="sidebar-navigation-child pl-7"
+            className="sidebar-navigation-child"
+            data-testid="sidebar-company-agents"
+            isActive={selectedView === "agents"}
+            onClick={onSelectAgents}
+            tooltip="Agents"
+            type="button"
+          >
+            <SidebarMenuLabel>Agents</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="sidebar-navigation-child"
             data-testid="sidebar-company-goals"
             isActive={selectedView === "goals"}
             onClick={onSelectGoals}
             tooltip="Goals"
             type="button"
           >
-            <Target className="h-4 w-4" />
             <SidebarMenuLabel>Goals</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -83,14 +98,13 @@ export function SidebarCompanyGroup({
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="sidebar-navigation-child pl-7"
+            className="sidebar-navigation-child"
             data-testid="sidebar-company-work"
             isActive={selectedView === "work"}
             onClick={onSelectWork}
             tooltip="Work"
             type="button"
           >
-            <CalendarCheck2 className="h-4 w-4" />
             <SidebarMenuLabel>Work</SidebarMenuLabel>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -99,14 +113,13 @@ export function SidebarCompanyGroup({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="text-xs pl-7"
+              className="sidebar-navigation-child"
               data-testid="open-workflows-view"
               isActive={selectedView === "workflows"}
               onClick={onSelectWorkflows}
               tooltip="Workflows"
               type="button"
             >
-              <Workflow className="h-4 w-4" />
               <SidebarMenuLabel>Workflows</SidebarMenuLabel>
             </SidebarMenuButton>
           </SidebarMenuItem>
