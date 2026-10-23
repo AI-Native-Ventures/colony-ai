@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -16,6 +17,11 @@ import {
   TEST_IDENTITIES,
 } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
+import {
+  createSampleWorkspace,
+  FILE_AGENT,
+  installWorkspaceFileHost,
+} from "../e2e/helpers/workspaceFileHost";
 
 /**
  * Proof captures for the office restyle (docs/superpowers/specs/
@@ -635,6 +641,53 @@ for (const variant of VARIANTS) {
       await page.waitForTimeout(1400);
       await waitForAnimations(page);
       await page.screenshot({ path: `${OUT}/tooltip--${variant.id}.png` });
+    }
+  });
+
+  test(`office restyle proof: work area ${variant.id}`, async ({ page }) => {
+    test.skip(!["work-area", "work-area-empty"].some(wants));
+    test.setTimeout(120_000);
+    mkdirSync(OUT, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await seedAppearance(page, variant);
+    const root = await createSampleWorkspace();
+    try {
+      await installWorkspaceFileHost(page, root);
+      await installMockBridge(page, {
+        managedAgents: [
+          { pubkey: FILE_AGENT, name: "Scout", status: "running" },
+        ],
+      });
+      await page.goto("/");
+      await openChannel(page, "general");
+      await emit(page, {
+        channelName: "general",
+        content:
+          "# Scout deliverables\n\n- Read `RESEARCH/GROKBOT_FILM_TEARDOWN_2026-09-04.md`\n- Day one: `DAY1_VIDEO_PACK.md`",
+        pubkey: FILE_AGENT,
+      });
+      const row = page
+        .getByTestId("message-row")
+        .filter({ hasText: "Scout deliverables" });
+      await row
+        .getByRole("link", {
+          name: "RESEARCH/GROKBOT_FILM_TEARDOWN_2026-09-04.md",
+          exact: true,
+        })
+        .click();
+      const dock = page.getByTestId("work-area-panel");
+      await expect(
+        dock.getByRole("heading", { name: "Film teardown" }),
+      ).toBeVisible();
+      if (wants("work-area")) await shot(page, variant, "work-area");
+      if (wants("work-area-empty")) {
+        await dock.getByRole("button", { name: "Close Files" }).click();
+        await page.getByTestId("channel-work-area-trigger").click();
+        await expect(page.getByTestId("work-area-empty")).toBeVisible();
+        await shot(page, variant, "work-area-empty");
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 }

@@ -9,11 +9,16 @@
  * dialogs and menus keep their own treatment (office-overlays.css).
  */
 
-/* Page titles: the office title block, one step below the conversation title. */
+/*
+ * Page titles: the office title block, one step below the conversation
+ * title. Settings keeps its own r19 type scale.
+ */
 :root[data-colony-office]
   #root
   [data-buzz-content-surface]
-  :is(h1.text-2xl.tracking-tight, h1.text-company-title) {
+  :is(h1.text-2xl.tracking-tight, h1.text-company-title):not(
+    .w20-settings-shell *
+  ) {
   color: hsl(var(--office-ink));
   font-size: var(--office-text-page);
   font-weight: 800;
