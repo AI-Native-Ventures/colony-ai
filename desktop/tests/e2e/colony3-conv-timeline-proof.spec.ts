@@ -19,6 +19,7 @@ import { installWorkspaceFileHost } from "./helpers/workspaceFileHost";
 import {
   actionsBoardMessages,
   AYA_DM_CHANNEL,
+  eid,
   ayaDirectMessages,
   marketingMessages,
   oliveChannelBoardMessages,
@@ -264,7 +265,15 @@ test("Thread focus board", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("The Olive House");
   await page.getByTestId("message-thread-summary").first().click();
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
-  await page.waitForTimeout(1500);
+  // The board shows every reply open: expand the nested ones.
+  const panel = page.getByTestId("message-thread-panel");
+  for (let step = 0; step < 6; step += 1) {
+    const summary = panel.getByTestId("message-thread-summary").first();
+    if (!(await summary.isVisible().catch(() => false))) break;
+    await summary.click();
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(1000);
   await shot(page, {
     name: "ThreadFocus",
     board: "ThreadFocus",
@@ -288,7 +297,7 @@ test("Message actions board", async ({ page }) => {
     .filter({ hasText: "Lovely. Could the caption" })
     .first();
   await row.hover();
-  await page.getByTestId("more-actions-c3-actions-nandi").click();
+  await page.getByTestId(`more-actions-${eid("c3-actions-nandi")}`).click();
   // Moderation items need an owner membership the mock relay does not give
   // this fixture yet, so the menu is captured without its Moderation group.
   await expect(page.getByRole("menu")).toBeVisible();

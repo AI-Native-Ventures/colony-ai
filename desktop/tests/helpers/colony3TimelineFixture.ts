@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Page } from "@playwright/test";
 
 import type { Colony3Extras } from "../../src/testing/e2eBridge";
@@ -18,6 +20,11 @@ import {
  */
 
 type Message = NonNullable<Colony3Extras["messages"]>[number];
+
+/** Event ids are 64 hex characters, as on the relay (reactions need it). */
+export function eid(label: string): string {
+  return createHash("sha256").update(label).digest("hex");
+}
 
 const olive = REFERENCE_CHANNEL_IDS.oliveHouse;
 const { mina, theo, aya } = REFERENCE_AGENTS;
@@ -78,7 +85,7 @@ export async function routeColony3Tiles(page: Page) {
 export function oliveChannelBoardMessages(
   selfPubkey = COLONY3_SELF,
 ): Message[] {
-  const root = "c3-olive-lerato-0912";
+  const root = eid("c3-olive-lerato-0912");
   return [
     {
       channelId: olive,
@@ -89,16 +96,16 @@ export function oliveChannelBoardMessages(
       content:
         "Let’s keep a slower spring focused on the people behind the produce. Fewer posts, better stories. @Mina can you take the October plan from here?",
     },
-    heart("c3-olive-heart-1", root, selfPubkey, colony3At(9, 20, 1)),
+    heart(eid("c3-olive-heart-1"), root, selfPubkey, colony3At(9, 20, 1)),
     heart(
-      "c3-olive-heart-2",
+      eid("c3-olive-heart-2"),
       root,
       COLONY3_PEOPLE.noluthando.pubkey,
       colony3At(9, 25, 1),
     ),
     {
       channelId: olive,
-      id: "c3-olive-reply-1",
+      id: eid("c3-olive-reply-1"),
       pubkey: mina.pubkey,
       createdAt: colony3At(15, 20, 1),
       tags: threadTags(root),
@@ -106,7 +113,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-reply-2",
+      id: eid("c3-olive-reply-2"),
       pubkey: COLONY3_PEOPLE.noluthando.pubkey,
       createdAt: colony3At(16, 10, 1),
       tags: threadTags(root),
@@ -114,7 +121,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-reply-3",
+      id: eid("c3-olive-reply-3"),
       pubkey: mina.pubkey,
       createdAt: colony3At(16, 40, 1),
       tags: threadTags(root),
@@ -122,7 +129,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-mina-1358",
+      id: eid("c3-olive-mina-1358"),
       pubkey: mina.pubkey,
       createdAt: colony3At(13, 58),
       tags: [
@@ -134,7 +141,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-lerato-1401",
+      id: eid("c3-olive-lerato-1401"),
       pubkey: selfPubkey,
       createdAt: colony3At(14, 1),
       tags: [
@@ -151,7 +158,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-mina-1405",
+      id: eid("c3-olive-mina-1405"),
       pubkey: mina.pubkey,
       createdAt: colony3At(14, 5),
       tags: [["p", selfPubkey]],
@@ -160,7 +167,7 @@ export function oliveChannelBoardMessages(
     },
     {
       channelId: olive,
-      id: "c3-olive-theo-1412",
+      id: eid("c3-olive-theo-1412"),
       pubkey: theo.pubkey,
       createdAt: colony3At(14, 12),
       tags: [],
@@ -177,7 +184,7 @@ export function ayaDirectMessages(selfPubkey = COLONY3_SELF): Message[] {
   return [
     {
       channelId: dmAya,
-      id: "c3-dm-lerato-1240",
+      id: eid("c3-dm-lerato-1240"),
       pubkey: selfPubkey,
       createdAt: colony3At(12, 40),
       content:
@@ -185,7 +192,7 @@ export function ayaDirectMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: dmAya,
-      id: "c3-dm-aya-1252",
+      id: eid("c3-dm-aya-1252"),
       pubkey: aya.pubkey,
       createdAt: colony3At(12, 52),
       tags: [["p", REFERENCE_AGENTS.scout.pubkey]],
@@ -194,7 +201,7 @@ export function ayaDirectMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: dmAya,
-      id: "c3-dm-lerato-1305",
+      id: eid("c3-dm-lerato-1305"),
       pubkey: selfPubkey,
       createdAt: colony3At(13, 5),
       content:
@@ -202,7 +209,7 @@ export function ayaDirectMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: dmAya,
-      id: "c3-dm-aya-1320",
+      id: eid("c3-dm-aya-1320"),
       pubkey: aya.pubkey,
       createdAt: colony3At(13, 20),
       content: "Version 1 is ready for your review.",
@@ -221,7 +228,7 @@ export const AYA_DM_CHANNEL = {
 
 /** The Thread board: "Spring content campaign" with six replies. */
 export function springThreadMessages(selfPubkey = COLONY3_SELF): Message[] {
-  const root = "c3-thread-root";
+  const root = eid("c3-thread-root");
   return [
     {
       channelId: olive,
@@ -233,7 +240,7 @@ export function springThreadMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-thread-r1",
+      id: eid("c3-thread-r1"),
       pubkey: mina.pubkey,
       createdAt: colony3At(13, 58),
       tags: threadTags(root),
@@ -242,40 +249,40 @@ export function springThreadMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-thread-r2",
+      id: eid("c3-thread-r2"),
       pubkey: selfPubkey,
       createdAt: colony3At(14, 1),
-      tags: threadTags(root, "c3-thread-r1"),
+      tags: threadTags(root, eid("c3-thread-r1")),
       content: "Post two should lead with the Saturday market.",
     },
     {
       channelId: olive,
-      id: "c3-thread-r3",
+      id: eid("c3-thread-r3"),
       pubkey: mina.pubkey,
       createdAt: colony3At(14, 5),
-      tags: threadTags(root, "c3-thread-r2"),
+      tags: threadTags(root, eid("c3-thread-r2")),
       content:
         "Updated. Version 2 is up with the Saturday market line on slide two.",
     },
     {
       channelId: olive,
-      id: "c3-thread-r4",
+      id: eid("c3-thread-r4"),
       pubkey: theo.pubkey,
       createdAt: colony3At(14, 9),
-      tags: threadTags(root, "c3-thread-r1"),
+      tags: threadTags(root, eid("c3-thread-r1")),
       content: "Publishing check passed. Ready to queue when you say so.",
     },
     {
       channelId: olive,
-      id: "c3-thread-r5",
+      id: eid("c3-thread-r5"),
       pubkey: selfPubkey,
       createdAt: colony3At(14, 12),
-      tags: threadTags(root, "c3-thread-r4"),
+      tags: threadTags(root, eid("c3-thread-r4")),
       content: "Thank you. Hold it until Nandi confirms.",
     },
     {
       channelId: olive,
-      id: "c3-thread-r6",
+      id: eid("c3-thread-r6"),
       pubkey: COLONY3_PEOPLE.nandi.pubkey,
       createdAt: colony3At(14, 20),
       tags: threadTags(root),
@@ -286,7 +293,7 @@ export function springThreadMessages(selfPubkey = COLONY3_SELF): Message[] {
 
 /** The Message actions board: three messages on top of a short thread. */
 export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
-  const root = "c3-actions-root";
+  const root = eid("c3-actions-root");
   return [
     {
       channelId: olive,
@@ -298,7 +305,7 @@ export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-actions-reply-1",
+      id: eid("c3-actions-reply-1"),
       pubkey: COLONY3_PEOPLE.noluthando.pubkey,
       createdAt: colony3At(14, 2),
       tags: threadTags(root),
@@ -306,7 +313,7 @@ export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-actions-reply-2",
+      id: eid("c3-actions-reply-2"),
       pubkey: selfPubkey,
       createdAt: colony3At(14, 5),
       tags: threadTags(root),
@@ -315,7 +322,7 @@ export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-actions-nandi",
+      id: eid("c3-actions-nandi"),
       pubkey: COLONY3_PEOPLE.nandi.pubkey,
       createdAt: colony3At(14, 16),
       content:
@@ -323,7 +330,7 @@ export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-actions-theo",
+      id: eid("c3-actions-theo"),
       pubkey: theo.pubkey,
       createdAt: colony3At(14, 18),
       content:
@@ -331,7 +338,7 @@ export function actionsBoardMessages(selfPubkey = COLONY3_SELF): Message[] {
     },
     {
       channelId: olive,
-      id: "c3-actions-mina",
+      id: eid("c3-actions-mina"),
       pubkey: mina.pubkey,
       createdAt: colony3At(14, 20),
       content:
@@ -344,11 +351,11 @@ const marketing = REFERENCE_CHANNEL_IDS.marketing;
 
 /** The Channel join board: #Marketing, an open channel the person has not joined. */
 export function marketingMessages(): Message[] {
-  const root = "c3-marketing-aya-0946";
+  const root = eid("c3-marketing-aya-0946");
   return [
     {
       channelId: marketing,
-      id: "c3-marketing-sam-0940",
+      id: eid("c3-marketing-sam-0940"),
       pubkey: COLONY3_PEOPLE.sam.pubkey,
       createdAt: colony3At(9, 40),
       tags: [["p", aya.pubkey]],
@@ -365,7 +372,7 @@ export function marketingMessages(): Message[] {
     },
     {
       channelId: marketing,
-      id: "c3-marketing-reply-1",
+      id: eid("c3-marketing-reply-1"),
       pubkey: COLONY3_PEOPLE.sam.pubkey,
       createdAt: colony3At(10, 5),
       tags: threadTags(root),
@@ -373,7 +380,7 @@ export function marketingMessages(): Message[] {
     },
     {
       channelId: marketing,
-      id: "c3-marketing-reply-2",
+      id: eid("c3-marketing-reply-2"),
       pubkey: mina.pubkey,
       createdAt: colony3At(10, 15),
       tags: threadTags(root),
@@ -381,7 +388,7 @@ export function marketingMessages(): Message[] {
     },
     {
       channelId: marketing,
-      id: "c3-marketing-mina-1022",
+      id: eid("c3-marketing-mina-1022"),
       pubkey: mina.pubkey,
       createdAt: colony3At(10, 22),
       content:
@@ -389,7 +396,7 @@ export function marketingMessages(): Message[] {
     },
     {
       channelId: marketing,
-      id: "c3-marketing-sam-1031",
+      id: eid("c3-marketing-sam-1031"),
       pubkey: COLONY3_PEOPLE.sam.pubkey,
       createdAt: colony3At(10, 31),
       content:
@@ -413,14 +420,14 @@ export function winterMenuMessages(selfPubkey = COLONY3_SELF): Message[] {
   return [
     {
       channelId: WINTER_MENU_CHANNEL.id,
-      id: "c3-winter-scout",
+      id: eid("c3-winter-scout"),
       pubkey: REFERENCE_AGENTS.scout.pubkey,
       createdAt: colony3At(16, 40),
       content: "Launch wrapped. The final recap is saved in the Work tab.",
     },
     {
       channelId: WINTER_MENU_CHANNEL.id,
-      id: "c3-winter-lerato",
+      id: eid("c3-winter-lerato"),
       pubkey: selfPubkey,
       createdAt: colony3At(16, 52),
       content: "Thanks everyone. Archiving this one.",
