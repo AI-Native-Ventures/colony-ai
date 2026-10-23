@@ -12,6 +12,11 @@ import {
 } from "../helpers/colony3Conversations";
 import { COLONY3_NOW, seedColony3Activity } from "../helpers/colony3Fixture";
 import {
+  colony3WorkAreaBridgeOptions,
+  createColony3WorkAreaWorkspace,
+} from "../helpers/colony3WorkAreaFixture";
+import { installWorkspaceFileHost } from "./helpers/workspaceFileHost";
+import {
   actionsBoardMessages,
   AYA_DM_CHANNEL,
   ayaDirectMessages,
@@ -44,7 +49,7 @@ type Capture = {
 };
 const captures: Capture[] = [];
 
-test.describe.configure({ mode: "serial", timeout: 120_000 });
+test.describe.configure({ timeout: 120_000 });
 
 const mina = "b1b1".repeat(16);
 const theo = "c7c7".repeat(16);
