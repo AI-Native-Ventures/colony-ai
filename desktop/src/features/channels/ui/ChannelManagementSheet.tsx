@@ -441,7 +441,7 @@ export function ChannelManagementSheet({
             }}
           >
             <div className="flex max-h-[calc(100vh-2rem)] flex-col">
-              <div className="flex shrink-0 items-center gap-3 border-b border-colony-border py-5 pl-6 pr-5">
+              <div className="flex shrink-0 items-center gap-3 border-b border-colony-border pb-[18px] pl-6 pr-5 pt-5">
                 <DialogTitle className="flex-1 leading-[normal]">
                   Edit {nextVisibility === "private" ? "private" : "public"}{" "}
                   channel

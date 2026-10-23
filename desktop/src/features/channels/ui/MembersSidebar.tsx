@@ -745,7 +745,7 @@ export function MembersSidebar({
           </div>
           <div className="shrink-0">
             <label
-              className="flex h-11.5 cursor-text items-center gap-2.5 rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3.5 text-colony-muted transition-colors focus-within:border-colony-accent"
+              className="flex h-12 cursor-text items-center gap-2.5 rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3.5 text-colony-muted transition-colors focus-within:border-colony-accent"
               htmlFor="channel-management-search-users"
             >
               <SearchGlyph className="shrink-0" size={18} strokeWidth={2.2} />
