@@ -74,11 +74,19 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(page.getByTestId("sidebar-settings")).toBeVisible();
   await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
 
-  // Company and Business open and close.
-  for (const group of ["company", "business"])
-    await expect(
-      sidebar.getByTestId(`sidebar-nav-${group}-toggle`),
-    ).toBeVisible();
+  // Company and Business open and close, each with a 16px caret and no frame.
+  for (const group of ["company", "business"]) {
+    const toggle = sidebar.getByTestId(`sidebar-nav-${group}-toggle`);
+    await expect(toggle).toBeVisible();
+    const chevron = toggle.locator("svg").last();
+    await expect(chevron).toHaveCSS("width", "16px");
+    await expect(chevron).toHaveCSS("border-top-width", "0px");
+  }
+  // The profile row sits under a hairline at the foot of the sidebar.
+  await expect(sidebar.locator("[data-buzz-glass-footer-wrap]")).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
 
   await expect(sidebar.getByTestId("sidebar-company-team")).toBeVisible();
   await sidebar.getByTestId("sidebar-company-team").click();

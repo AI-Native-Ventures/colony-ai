@@ -179,7 +179,6 @@ export function WorkingAgentRows({
   profiles?: UserProfileLookup;
 }) {
   const now = useNow(1000);
-  const elapsed = formatElapsedClock(now - activeWorking.anchorAt);
   const alignedAgentNames =
     activeWorking.agentNames?.length === activeWorking.agentPubkeys.length
       ? activeWorking.agentNames
@@ -191,10 +190,14 @@ export function WorkingAgentRows({
       profile?.displayName?.trim() || alignedAgentNames?.[index];
     const keyLabel = truncateNpub(pubkey);
     const name = authoredName || `Agent ${keyLabel}`;
+    // Each agent counts from its own start; the channel anchor is the fallback.
+    const agentAnchor =
+      activeWorking.agentAnchors?.[normalizePubkey(pubkey)] ??
+      activeWorking.anchorAt;
     return (
       <WorkingAgentRow
         avatarUrl={profile?.avatarUrl ?? null}
-        elapsed={elapsed}
+        elapsed={formatElapsedClock(now - agentAnchor)}
         initialsLabel={authoredName || keyLabel}
         key={pubkey}
         name={name}

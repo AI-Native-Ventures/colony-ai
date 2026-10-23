@@ -183,7 +183,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
           elements.map((element) => getComputedStyle(element).fontSize),
         ),
     )
-    .toEqual(["17.1429px", "17.1429px"]);
+    .toEqual(["17px", "17px"]);
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
@@ -208,8 +208,8 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     });
 
   expect(titleFontSize).toBe("29.1429px");
-  expect(breadcrumbLineHeights).toEqual(["22.5px", "22.5px"]);
-  expect(breadcrumbFontSizes).toEqual(["15px", "15px"]);
+  expect(breadcrumbLineHeights).toEqual(["23.9999px", "23.9999px"]);
+  expect(breadcrumbFontSizes).toEqual(["16px", "16px"]);
   expect(topbarPadding).toBe("0px 25px");
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
@@ -235,45 +235,45 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
         height: 900,
       },
       fieldLayer: {
-        x: 1,
-        y: 1,
-        width: 1438,
-        height: 898,
+        x: 0,
+        y: 0,
+        width: 240,
+        height: 900,
       },
       settingsSurface: {
-        x: 246,
+        x: 248,
         y: 60,
-        width: 1186,
+        width: 1184,
         height: 832,
       },
       title: {
-        x: 320,
-        y: 170.234375,
+        x: 322,
+        y: 175.234375,
         width: titleWidth,
         height: 35.546875,
       },
       profileCard: {
-        x: 320,
-        y: 266.015625,
-        width: 628.859375,
-        height: 527.453125,
+        x: 322,
+        y: 276.015625,
+        width: 627.609375,
+        height: 544.5625,
       },
       businessCard: {
-        x: 976.859375,
-        y: 266.015625,
-        width: 381.125,
-        height: 203.265625,
+        x: 977.609375,
+        y: 276.015625,
+        width: 380.375,
+        height: 206.5,
       },
       nameField: {
-        x: 345,
-        y: 331.71875,
-        width: 578.859375,
-        height: 74.0625,
+        x: 347,
+        y: 341.515625,
+        width: 577.609375,
+        height: 75.890625,
       },
       nameInput: {
-        x: 345,
-        y: 365.78125,
-        width: 578.859375,
+        x: 347,
+        y: 377.40625,
+        width: 577.609375,
         height: 40,
       },
     },
@@ -283,45 +283,45 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
         height: 1117,
       },
       fieldLayer: {
-        x: 1,
-        y: 1,
-        width: 1726,
-        height: 1115,
+        x: 0,
+        y: 0,
+        width: 240,
+        height: 1117,
       },
       settingsSurface: {
-        x: 246,
+        x: 248,
         y: 60,
-        width: 1474,
+        width: 1472,
         height: 1049,
       },
       title: {
-        x: 328,
-        y: 173.859375,
+        x: 330,
+        y: 178.859375,
         width: titleWidth,
         height: 35.546875,
       },
       profileCard: {
-        x: 328,
-        y: 274.1875,
-        width: 798.21875,
-        height: 527.453125,
+        x: 330,
+        y: 284.1875,
+        width: 796.96875,
+        height: 544.5625,
       },
       businessCard: {
-        x: 1154.21875,
-        y: 274.1875,
-        width: 483.765625,
-        height: 203.265625,
+        x: 1154.96875,
+        y: 284.1875,
+        width: 483.015625,
+        height: 206.5,
       },
       nameField: {
-        x: 353,
-        y: 339.890625,
-        width: 748.21875,
-        height: 74.0625,
+        x: 355,
+        y: 349.6875,
+        width: 746.96875,
+        height: 75.890625,
       },
       nameInput: {
-        x: 353,
-        y: 373.953125,
-        width: 748.21875,
+        x: 355,
+        y: 385.578125,
+        width: 746.96875,
         height: 40,
       },
     },
@@ -346,21 +346,20 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
         throw new Error("Missing first account profile field");
       }
       return {
-        fieldLayer: bounds(".buzz-theme-gradient-underlay"),
+        fieldLayer: bounds('[data-testid="settings-sidebar"] .colony-field'),
         settingsSurface: bounds(".w20-settings-surface"),
         fieldFrame: (() => {
-          const layer = document.querySelector(".buzz-theme-gradient-layer");
-          if (!layer) throw new Error("Missing settings field frame");
+          const layer = document.querySelector(
+            '[data-testid="settings-sidebar"] .colony-field',
+          );
+          if (!layer) throw new Error("Missing settings field");
           const style = getComputedStyle(layer);
-          const border = getComputedStyle(layer, "::after");
           return {
             rootBackground: getComputedStyle(document.documentElement)
               .backgroundColor,
-            borderRadius: style.borderRadius,
+            display: style.display,
             overflow: style.overflow,
-            frameRadius: border.borderTopLeftRadius,
-            borderWidth: border.borderTopWidth,
-            borderColor: border.borderTopColor,
+            position: style.position,
           };
         })(),
         title: bounds('[data-testid="settings-profile"] h1'),
@@ -395,13 +394,12 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       geometry.settingsSurface.height,
       expected.settingsSurface.height,
     );
+    // The settings sidebar paints the field, edge to edge.
     expect(geometry.fieldFrame).toEqual({
       rootBackground: "rgba(0, 0, 0, 0)",
-      borderRadius: "12px",
+      display: "block",
       overflow: "hidden",
-      frameRadius: "12px",
-      borderWidth: "1px",
-      borderColor: "rgb(220, 212, 226)",
+      position: "absolute",
     });
     expectCoordinate(geometry.title.x, expected.title.x);
     expectCoordinate(geometry.title.y, expected.title.y);

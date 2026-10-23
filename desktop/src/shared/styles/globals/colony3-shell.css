@@ -9,12 +9,15 @@
   position: relative;
   z-index: 45;
   display: flex;
-  height: 4rem;
+  /* Fixed px on purpose: the bar's height and buttons do not follow Cmd +/-
+     text zoom, so the chrome stays one size beside the native window buttons. */
+  height: 64px;
   flex: none;
   align-items: center;
-  gap: 0.375rem;
-  box-sizing: border-box;
-  padding: 0 1.5rem;
+  gap: 6px;
+  /* The design's bar is 64px of content plus its 1px bottom border. */
+  box-sizing: content-box;
+  padding: 0 24px;
   border-bottom: 1px solid hsl(var(--colony-border));
   background: hsl(var(--colony-surface));
   color: hsl(var(--colony-fg));
@@ -24,8 +27,8 @@
 
 .colony-topbar-button {
   display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 36px;
+  height: 36px;
   flex: none;
   place-items: center;
   padding: 0;
@@ -82,13 +85,6 @@
 
 /* -------------------------------------------------------------- main area -- */
 
-[data-buzz-content-surface] {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
 :root[data-buzz-sidebar] [data-buzz-content-surface] {
   --background: var(--colony-surface);
 }
@@ -105,6 +101,32 @@
     var(--sidebar-background) /
     var(--glass-background-opacity, 65%)
   );
+}
+
+/* On the field the section labels use the sidebar's soft ink; the pale grey
+   they had on a flat sidebar does not read on the pink. */
+:root[data-buzz-sidebar]:not(.dark) .w20-settings-sidebar .w20-nav-heading {
+  color: var(--colony-sidebar-ink-soft);
+}
+
+/* The Settings sidebar is the same field as the app sidebar, edge to edge. */
+.w20-settings-sidebar.w20-settings-sidebar.w20-settings-sidebar {
+  top: 0;
+  bottom: 0;
+  transform: none;
+}
+
+.w20-settings-sidebar [data-sidebar="sidebar"] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The field is the first child of the sidebar's content wrapper; everything
+   after it sits above it. */
+.w20-settings-sidebar .colony-field ~ * {
+  position: relative;
+  z-index: 1;
 }
 
 /* The app surface is a fixed frame. `hidden` still lets a focus or
