@@ -117,7 +117,7 @@ export function BoardIcon(props: IconProps) {
 }
 
 const AVATAR_CLASS = {
-  16: "size-[calc(16*var(--b3u))] text-[calc(8*var(--colony-px))]",
+  16: "size-[calc(16*var(--b3u))] text-[calc(1*var(--colony-px))] text-transparent",
   24: "size-[calc(24*var(--b3u))] text-[calc(10*var(--colony-px))]",
   26: "size-[calc(26*var(--b3u))] text-[calc(11*var(--colony-px))]",
   30: "size-[calc(30*var(--b3u))] text-[calc(12*var(--colony-px))]",

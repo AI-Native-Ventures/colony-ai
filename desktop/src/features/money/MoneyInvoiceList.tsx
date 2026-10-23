@@ -308,7 +308,7 @@ export function MoneyInvoiceList({
                               {value.status !== "draft" && issuer ? (
                                 <span className="b3-issuer">
                                   <PersonAvatar person={issuer} size={16} />
-                                  Issued by {issuer.name}
+                                  Issued by {issuerName(issuer)}
                                 </span>
                               ) : null}
                             </span>
@@ -329,6 +329,13 @@ export function MoneyInvoiceList({
       )}
     </section>
   );
+}
+
+/** Agents keep their name; people read as a first name. */
+function issuerName(issuer: { isAgent: boolean; name: string }) {
+  return issuer.isAgent
+    ? issuer.name
+    : (issuer.name.split(" ")[0] ?? issuer.name);
 }
 
 function MoneyAmountCell({

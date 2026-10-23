@@ -69,8 +69,8 @@ export function MoneyOverview({
   ] as const;
 
   return (
-    <>
-      <div className="b3-kpis" data-testid="money-overview">
+    <div className="b3-overview-root" data-testid="money-overview">
+      <div className="b3-kpis">
         {metrics.map(([label, amounts, href, sub]) => (
           <a className="b3-card b3-kpi" href={`#${href}`} key={label}>
             <span className="b3-kpi-label">
@@ -183,6 +183,6 @@ export function MoneyOverview({
           </p>
         </section>
       </div>
-    </>
+    </div>
   );
 }

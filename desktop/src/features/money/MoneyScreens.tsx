@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Navigate } from "@tanstack/react-router";
 
+import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { useMoneyRecordsQuery } from "@/features/clients/useBusinessRecords";
 import {
   StateButton,
@@ -8,14 +9,17 @@ import {
   StateIcons,
   RetryIcon,
 } from "@/features/clients/ui/BusinessStates";
+import { PlusIcon } from "@/features/clients/ui/BusinessBits";
 import { ClientWorkspace } from "@/features/clients/ui/ClientWorkspace";
 import { RecordMessage } from "@/features/clients/ui/ClientWorkspace";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { MoneyInvoiceDetail } from "./MoneyInvoiceDetail";
+import { InvoiceCreateDialog } from "./MoneyInvoiceCreateDialog";
 import { MoneyInvoiceList, MoneyStatusChips } from "./MoneyInvoiceList";
 import { MoneyOverview } from "./MoneyOverview";
 import {
   deriveMoneyTotals,
+  type MoneyInvoiceHead,
   type MoneyWorkspaceRecords,
 } from "./lib/moneyRecords";
 import {
@@ -24,6 +28,8 @@ import {
   filterInvoiceRecords,
   formatPeriod,
   invoiceChips,
+  invoiceNumber,
+  navigateMoney,
   periodForTimestamp,
   periodRange,
   type InvoiceChip,
@@ -74,6 +80,7 @@ export function MoneyRouteScreen({
   const [statusFilter, setStatusFilter] = React.useState<InvoiceChip | "all">(
     "all",
   );
+  const [createOpen, setCreateOpen] = React.useState(false);
   const records = query.data;
 
   if (section === "adjustments" || section === "follow-ups") {
@@ -156,12 +163,7 @@ export function MoneyRouteScreen({
     records.invoiceHeads,
     period,
     clientId,
-  ).sort(
-    (left, right) =>
-      (right.value.issuedAt ?? right.event.created_at) -
-        (left.value.issuedAt ?? left.event.created_at) ||
-      right.value.invoiceId.localeCompare(left.value.invoiceId),
-  );
+  ).sort(compareInvoices);
   const selectedClientId = clientId === "all" ? null : clientId;
   const singleMonth = period.includes("..") ? currentPeriod() : period;
   const totals = deriveMoneyTotals(
@@ -173,6 +175,19 @@ export function MoneyRouteScreen({
 
   return (
     <ClientWorkspace
+      action={
+        listSection === "invoices" && canManage && clients.length > 0 ? (
+          <button
+            className="b3-btn"
+            data-variant="primary"
+            onClick={() => setCreateOpen(true)}
+            type="button"
+          >
+            <PlusIcon />
+            New invoice
+          </button>
+        ) : undefined
+      }
       gap={24}
       subtitle={SUBTITLES[listSection]}
       title={TITLES[listSection]}
@@ -216,7 +231,37 @@ export function MoneyRouteScreen({
           records={records}
         />
       )}
+      <InvoiceCreateDialog
+        canManage={canManage}
+        clients={clients
+          .filter(({ value }) => value.status !== "archived")
+          .map(({ value }) => ({
+            clientId: value.clientId,
+            displayName: value.displayName,
+          }))}
+        currency={records.invoiceHeads[0]?.value.currency}
+        onCreated={(invoiceId) => navigateMoney(`/money/invoice/${invoiceId}`)}
+        onOpenChange={setCreateOpen}
+        open={createOpen}
+      />
     </ClientWorkspace>
+  );
+}
+
+/** Drafts first, then newest issue date; ties fall to the invoice reference. */
+function compareInvoices(
+  left: EventRecord<MoneyInvoiceHead>,
+  right: EventRecord<MoneyInvoiceHead>,
+) {
+  const draft = (record: EventRecord<MoneyInvoiceHead>) =>
+    record.value.status === "draft" ? 1 : 0;
+  return (
+    draft(right) - draft(left) ||
+    (right.value.issuedAt ?? right.event.created_at) -
+      (left.value.issuedAt ?? left.event.created_at) ||
+    invoiceNumber(right.value.invoiceId).localeCompare(
+      invoiceNumber(left.value.invoiceId),
+    )
   );
 }
 

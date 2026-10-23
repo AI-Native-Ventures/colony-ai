@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   finalizeEvent,
@@ -41,28 +41,52 @@ type Capture = {
   /** Part of the board the capture covers; the whole board when omitted. */
   refRect?: Rect;
 };
-const captures: Capture[] = [];
 
-test.describe.configure({ mode: "serial", timeout: 120_000 });
+/** Appends to captures.json on disk: a failed test restarts the worker. */
+function recordCapture(capture: Capture) {
+  const path = `${OUT}/captures.json`;
+  const all: Capture[] = existsSync(path)
+    ? JSON.parse(readFileSync(path, "utf8"))
+    : [];
+  writeFileSync(
+    path,
+    JSON.stringify(
+      [...all.filter((entry) => entry.name !== capture.name), capture],
+      null,
+      2,
+    ),
+  );
+}
 
-const TITLES: Array<{ pubkey: string; title: string; kind: "employee" }> = [
+test.describe.configure({ timeout: 120_000 });
+
+const TITLES: Array<{
+  pubkey: string;
+  name: string;
+  title: string;
+  kind: "employee";
+}> = [
   {
     pubkey: REFERENCE_AGENTS.mina.pubkey,
+    name: "Mina",
     title: "Social Media Manager",
     kind: "employee",
   },
   {
     pubkey: COLONY3_BUSINESS_PEOPLE.noor.pubkey,
+    name: "Noor",
     title: "Bookkeeper",
     kind: "employee",
   },
   {
     pubkey: REFERENCE_AGENTS.aya.pubkey,
+    name: "Aya",
     title: "Business Development",
     kind: "employee",
   },
   {
     pubkey: REFERENCE_AGENTS.theo.pubkey,
+    name: "Theo",
     title: "Software Engineer",
     kind: "employee",
   },
@@ -83,7 +107,15 @@ async function openBoard(
     colony3Sidebar: true,
     colony3Business: true,
     windowFullscreen: true,
+    relayRequiresMembership: true,
+    relayRole: "owner",
     relaySelf: getPublicKey(relaySecret),
+    relayAgents: TITLES.map((person) => ({
+      pubkey: person.pubkey,
+      ownerPubkey: "a".repeat(64),
+      name: person.name,
+      agentType: "agent",
+    })),
     companyMemberPositionEvents: TITLES.map((person) =>
       finalizeEvent(
         {
@@ -106,7 +138,7 @@ async function openBoard(
   });
   await page.goto(route);
   if (options.activity !== false) await seedColony3Activity(page);
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect.soft(page.getByTestId("app-sidebar")).toBeVisible();
   await page.waitForTimeout(1200);
   await waitForAnimations(page);
 }
@@ -134,29 +166,26 @@ async function shot(page: Page, capture: Capture, target?: Locator) {
       path,
     });
   }
-  captures.push(capture);
+  recordCapture(capture);
 }
-
-test.afterAll(() => {
-  mkdirSync(OUT, { recursive: true });
-  writeFileSync(`${OUT}/captures.json`, JSON.stringify(captures, null, 2));
-});
 
 test("Clients board", async ({ page }) => {
   await openBoard(page, "/#/clients");
-  await expect(page.getByRole("table", { name: "Clients" })).toContainText(
-    "Northline Interiors",
-  );
+  await expect
+    .soft(page.getByRole("table", { name: "Clients" }))
+    .toContainText("Northline Interiors");
   await shot(page, { name: "Clients", board: "Clients", title: "Clients" });
 });
 
 test("ClientDetail board", async ({ page }) => {
   await openBoard(page, `/#/clients/${OLIVE_ID}`);
-  await expect(
-    page.getByRole("heading", { name: "The Olive House" }),
-  ).toBeVisible();
-  await expect(page.getByText("Working on this client")).toBeVisible();
-  await expect(page.getByText("Social Media Manager").first()).toBeVisible();
+  await expect
+    .soft(page.getByRole("heading", { name: "The Olive House" }))
+    .toBeVisible();
+  await expect.soft(page.getByText("Working on this client")).toBeVisible();
+  await expect
+    .soft(page.getByText("Social Media Manager").first())
+    .toBeVisible();
   await shot(page, {
     name: "ClientDetail",
     board: "ClientDetail",
@@ -167,13 +196,13 @@ test("ClientDetail board", async ({ page }) => {
 test("Work board", async ({ page }) => {
   await openBoard(page, "/#/work");
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await expect(page.getByText("No work here.").first()).toBeVisible();
+  await expect.soft(page.getByText("No work here.").first()).toBeVisible();
   await shot(page, { name: "Work", board: "Work", title: "Work, board" });
 });
 
 test("WorkList board", async ({ page }) => {
   await openBoard(page, "/#/work");
-  await expect(page.getByRole("table")).toContainText("Mina");
+  await expect.soft(page.getByRole("table")).toContainText("Mina");
   await shot(page, {
     name: "WorkList",
     board: "WorkList",
@@ -183,13 +212,17 @@ test("WorkList board", async ({ page }) => {
 
 test("WorkDetail board", async ({ page }) => {
   await openBoard(page, `/#/work/${OLIVE_WORK_ID}?client=${OLIVE_ID}`);
-  await expect(
-    page.getByRole("heading", { name: "Produce the spring content campaign" }),
-  ).toBeVisible();
-  await expect(page.getByText("Move the work forward")).toBeVisible();
-  await expect(
-    page.getByText("October carousel concepts").first(),
-  ).toBeVisible();
+  await expect
+    .soft(
+      page.getByRole("heading", {
+        name: "Produce the spring content campaign",
+      }),
+    )
+    .toBeVisible();
+  await expect.soft(page.getByText("Move the work forward")).toBeVisible();
+  await expect
+    .soft(page.getByText("October carousel concepts").first())
+    .toBeVisible();
   await shot(page, {
     name: "WorkDetail",
     board: "WorkDetail",
@@ -200,17 +233,17 @@ test("WorkDetail board", async ({ page }) => {
 test("Money board", async ({ page }) => {
   await openBoard(page, "/#/money");
   await page.getByLabel("Money period").selectOption("2026-09");
-  await expect(page.getByTestId("money-overview")).toContainText(
-    /R\s*14\s*200/,
-  );
+  await expect
+    .soft(page.getByTestId("money-overview"))
+    .toContainText(/R\s*14\s*200/);
   await shot(page, { name: "Money", board: "Money", title: "Money, overview" });
 });
 
 test("Invoices board", async ({ page }) => {
   await openBoard(page, "/#/money/invoices");
-  await expect(page.getByTestId("money-invoice-list")).toContainText(
-    "Invoice 0030",
-  );
+  await expect
+    .soft(page.getByTestId("money-invoice-list"))
+    .toContainText("Invoice 0030");
   await shot(page, {
     name: "Invoices",
     board: "Invoices",
@@ -220,9 +253,9 @@ test("Invoices board", async ({ page }) => {
 
 test("Invoice board", async ({ page }) => {
   await openBoard(page, `/#/money/invoice/${INVOICE_0027}`);
-  await expect(page.getByTestId("money-invoice-detail")).toContainText(
-    "Recorded by Noor",
-  );
+  await expect
+    .soft(page.getByTestId("money-invoice-detail"))
+    .toContainText("Recorded by Noor");
   await shot(page, {
     name: "Invoice",
     board: "Invoice",
@@ -234,7 +267,7 @@ test("Issue and record payment dialogs", async ({ page }) => {
   await openBoard(page, `/#/money/invoice/${INVOICE_0030}`);
   await page.getByRole("button", { name: "Review & issue" }).click();
   const issue = page.getByRole("dialog", { name: /Issue Invoice 0030/ });
-  await expect(issue).toBeVisible();
+  await expect.soft(issue).toBeVisible();
   await shot(
     page,
     {
@@ -249,7 +282,7 @@ test("Issue and record payment dialogs", async ({ page }) => {
   await page.goto(`/#/money/invoice/${INVOICE_0027}`);
   await page.getByRole("button", { name: "Record payment" }).click();
   const payment = page.getByRole("dialog", { name: /Record payment/ });
-  await expect(payment).toBeVisible();
+  await expect.soft(payment).toBeVisible();
   await shot(
     page,
     {
@@ -266,7 +299,7 @@ test("Edit and void dialogs", async ({ page }) => {
   await openBoard(page, `/#/money/invoice/${INVOICE_0030}`);
   await page.getByRole("button", { name: "Edit invoice" }).click();
   const edit = page.getByRole("dialog", { name: /Edit Invoice 0030/ });
-  await expect(edit).toBeVisible();
+  await expect.soft(edit).toBeVisible();
   await shot(
     page,
     {
@@ -281,7 +314,7 @@ test("Edit and void dialogs", async ({ page }) => {
   await page.goto(`/#/money/invoice/${INVOICE_0029}`);
   await page.getByRole("button", { name: "Void invoice" }).click();
   const voidDialog = page.getByRole("dialog", { name: /Void invoice 0029/ });
-  await expect(voidDialog).toBeVisible();
+  await expect.soft(voidDialog).toBeVisible();
   await voidDialog
     .getByLabel("Reason")
     .fill(
@@ -313,7 +346,7 @@ test("BusinessStates board", async ({ page }) => {
   });
   await page.goto("/");
   const board = page.getByTestId("colony3-business-states");
-  await expect(board).toBeVisible();
+  await expect.soft(board).toBeVisible();
   await shot(
     page,
     {

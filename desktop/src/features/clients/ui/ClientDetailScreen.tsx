@@ -11,6 +11,7 @@ import {
   ClientStatusPill,
   formatStatus,
   LockIcon,
+  PlusIcon,
   PersonAvatar,
   WorkStatusPill,
 } from "@/features/clients/ui/BusinessBits";
@@ -20,6 +21,9 @@ import {
   ClientWorkspace,
   RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { InvoiceCreateDialog } from "@/features/money/MoneyInvoiceCreateDialog";
+import { navigateMoney } from "@/features/money/moneyUtils";
 import { useIdentityQuery } from "@/shared/api/hooks";
 
 function personLine(person: PersonInfo): string {
@@ -31,6 +35,10 @@ function personLine(person: PersonInfo): string {
 export function ClientDetailScreen({ clientId }: { clientId: string }) {
   const clientRecords = useClientRecordsQuery(clientId);
   const identityQuery = useIdentityQuery();
+  const membership = useMyRelayMembershipQuery();
+  const [invoiceOpen, setInvoiceOpen] = React.useState(false);
+  const canManageMoney =
+    membership.data?.role === "owner" || membership.data?.role === "admin";
   const { goChannel, goClients, goWork, goWorkItem } = useAppNavigation();
   const headRecord = clientRecords.clientQuery.data ?? null;
   const head = headRecord?.value;
@@ -151,6 +159,16 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
               <ArrowLeftIcon />
               All clients
             </button>
+            {canManageMoney && head.status !== "archived" ? (
+              <button
+                className="b3-btn"
+                onClick={() => setInvoiceOpen(true)}
+                type="button"
+              >
+                <PlusIcon size={16} />
+                New invoice
+              </button>
+            ) : null}
             <button
               className="b3-btn"
               data-variant="primary"
@@ -305,6 +323,14 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
           ) : null}
         </div>
       </div>
+      <InvoiceCreateDialog
+        canManage={canManageMoney}
+        clients={[{ clientId: head.clientId, displayName: head.displayName }]}
+        initialClientId={head.clientId}
+        onCreated={(invoiceId) => navigateMoney(`/money/invoice/${invoiceId}`)}
+        onOpenChange={setInvoiceOpen}
+        open={invoiceOpen}
+      />
     </ClientWorkspace>
   );
 }

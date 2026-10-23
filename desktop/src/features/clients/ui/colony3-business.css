@@ -7,9 +7,6 @@
  */
 :root {
   --b3u: 0.0625rem;
-}
-
-.b3-page {
   --b3-fg: hsl(var(--colony-fg));
   --b3-fg2: hsl(var(--colony-fg-secondary));
   --b3-muted: hsl(var(--colony-muted));
@@ -33,7 +30,9 @@
   --b3-card-shadow:
     0 0 0 calc(1 * var(--b3u)) var(--b3-line),
     0 calc(1 * var(--b3u)) calc(2 * var(--b3u)) rgba(40, 20, 60, 0.04);
+}
 
+.b3-page {
   display: block;
   min-height: 0;
   min-width: 0;
@@ -512,6 +511,7 @@
 }
 
 .b3-detail-main {
+  box-sizing: content-box;
   display: flex;
   min-width: 0;
   flex: 999 1 calc(520 * var(--b3u));

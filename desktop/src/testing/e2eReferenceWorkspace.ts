@@ -192,7 +192,10 @@ export function referenceBusinessRecordEvents(
         clientId: entry.clientId,
         partyId: entry.partyId,
         displayName: entry.displayName,
-        approverPubkeys: [selfPubkey.toLowerCase()],
+        approverPubkeys:
+          colony3 && entry.clientId === REFERENCE_CHANNEL_IDS.oliveHouse
+            ? [COLONY3_BUSINESS_PEOPLE.nandi.pubkey]
+            : [selfPubkey.toLowerCase()],
         status: overrides.clientStatus ?? entry.clientStatus,
         sourceActionEventId: clientSourceId,
       }),
@@ -539,6 +542,7 @@ function referenceMoneyRecordEvents(
       dueAt: at("2026-08-15T12:00:00+02:00"),
     },
     [REFERENCE_MONEY_INVOICE_IDS.olivePaid]: {
+      invoiceId: "3e3a7000-0000-4000-8000-000000000025",
       dueAt: at("2026-09-15T12:00:00+02:00"),
       paymentDate: at("2026-09-12T12:00:00+02:00"),
       issuer: noor,

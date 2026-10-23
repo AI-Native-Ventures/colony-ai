@@ -1017,6 +1017,66 @@ pub async fn handle(
                 event_id: head_event.event.id.to_bytes().to_vec(),
             });
         }
+        BusinessCommand::InvoiceVersion(version)
+            if version.action == InvoiceVersionAction::Create =>
+        {
+            validate_invoice_version(&version)?;
+            let client_d = client_d_tag(version.client_id, "client", version.client_id);
+            let client_event = current_head_in_channel::<ClientHead>(
+                state,
+                tenant.community(),
+                channel_id,
+                KIND_CLIENT_HEAD,
+                &client_d,
+            )
+            .await?
+            .ok_or_else(|| conflict("an invoice needs an existing client record"))?;
+            let client: ClientHead = parse_content(&client_event.event)?;
+            if client.client_id != version.client_id || client.status == "archived" {
+                return Err(conflict("an invoice needs an active client record"));
+            }
+            let invoice_d = invoice_head_d_tag(version.client_id, version.invoice_id);
+            ensure_new_record_coordinate(
+                state,
+                tenant.community(),
+                channel_id,
+                KIND_INVOICE_HEAD,
+                &invoice_d,
+            )
+            .await?;
+            let version_event_id = event.id.to_hex();
+            let head = InvoiceHead {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                client_id: version.client_id,
+                invoice_id: version.invoice_id,
+                // A direct invoice is its own source: later edits quote this id.
+                proposal_id: version.invoice_id,
+                proposal_version_event_id: version_event_id.clone(),
+                currency: version.currency.clone(),
+                lines: version.lines.clone(),
+                tax_lines: version.tax_lines.clone(),
+                seller_tax_number: version.seller_tax_number.clone(),
+                customer_tax_number: version.customer_tax_number.clone(),
+                total_minor: version.total_minor,
+                credited_minor: 0,
+                written_off_minor: 0,
+                collected_minor: 0,
+                outstanding_minor: 0,
+                payment_evidence_count: 0,
+                version: version.version,
+                current_version_event_id: version_event_id.clone(),
+                status: InvoiceStatus::Draft,
+                due_at: version.due_at,
+                issued_at: None,
+                source_event_id: version_event_id,
+            };
+            heads.push(HeadWrite {
+                event: relay_event(KIND_INVOICE_HEAD, channel_id, &invoice_d, &head, state)?,
+                channel_id,
+                d_tag: invoice_d,
+                expected_event_id: None,
+            });
+        }
         BusinessCommand::InvoiceVersion(version) => {
             validate_invoice_version(&version)?;
             let (head_event, current) = current_invoice_head(
@@ -3938,6 +3998,14 @@ fn validate_invoice_version(version: &InvoiceVersion) -> Result<(), IngestError>
                 && version.status == InvoiceStatus::Draft
                 && version.void_reason.is_none()
         }
+        InvoiceVersionAction::Create => {
+            version.version == 1
+                && version.previous_version_event_id.is_none()
+                && version.expected_head_event_id.is_none()
+                && version.proposal_version_event_id.is_none()
+                && version.status == InvoiceStatus::Draft
+                && version.void_reason.is_none()
+        }
         InvoiceVersionAction::DraftEdit => {
             version.previous_version_event_id.is_some()
                 && version.expected_head_event_id.is_some()
@@ -4245,6 +4313,62 @@ mod tests {
             ..version
         })
         .is_ok());
+    }
+
+    fn direct_invoice_version() -> InvoiceVersion {
+        InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id: Uuid::from_u128(1),
+            invoice_id: Uuid::from_u128(2),
+            version: 1,
+            previous_version_event_id: None,
+            proposal_version_event_id: None,
+            expected_head_event_id: None,
+            action: InvoiceVersionAction::Create,
+            currency: "ZAR".into(),
+            lines: vec![buzz_core::business_records::ProposalLine {
+                service_id: None,
+                description: "First monthly retainer".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 850_000,
+            }],
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor: 850_000,
+            status: InvoiceStatus::Draft,
+            due_at: None,
+            void_reason: None,
+        }
+    }
+
+    #[test]
+    fn a_direct_invoice_is_a_first_draft_without_a_proposal() {
+        assert!(validate_invoice_version(&direct_invoice_version()).is_ok());
+        for broken in [
+            InvoiceVersion {
+                version: 2,
+                ..direct_invoice_version()
+            },
+            InvoiceVersion {
+                proposal_version_event_id: Some("a".repeat(64)),
+                ..direct_invoice_version()
+            },
+            InvoiceVersion {
+                previous_version_event_id: Some("a".repeat(64)),
+                ..direct_invoice_version()
+            },
+            InvoiceVersion {
+                expected_head_event_id: Some("a".repeat(64)),
+                ..direct_invoice_version()
+            },
+            InvoiceVersion {
+                status: InvoiceStatus::Issued,
+                ..direct_invoice_version()
+            },
+        ] {
+            assert!(validate_invoice_version(&broken).is_err());
+        }
     }
 
     fn prospect_action() -> ProspectAction {

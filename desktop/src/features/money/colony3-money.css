@@ -239,6 +239,7 @@
 }
 
 .b3-cash {
+  box-sizing: content-box;
   display: flex;
   min-width: 0;
   flex: 2 1 calc(300 * var(--b3u));
@@ -542,6 +543,7 @@
 }
 
 .b3-document {
+  box-sizing: content-box;
   display: flex;
   min-width: 0;
   flex: 3 1 calc(500 * var(--b3u));
@@ -1065,4 +1067,10 @@
 
 .b3-invoice-empty {
   padding: 0 calc(22 * var(--b3u)) calc(22 * var(--b3u));
+}
+
+.b3-overview-root {
+  display: flex;
+  flex-direction: column;
+  gap: calc(24 * var(--b3u));
 }

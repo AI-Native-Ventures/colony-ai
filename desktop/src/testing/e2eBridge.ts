@@ -143,6 +143,7 @@ import {
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
   KIND_HUDDLE_STARTED,
+  KIND_CLIENT_HEAD,
   KIND_INVOICE_HEAD,
   KIND_INVOICE_VERSION,
   KIND_MONEY_ADJUSTMENT,
@@ -8903,6 +8904,134 @@ function parseMockBusinessContent<T>(event: RelayEvent): T | null {
   }
 }
 
+/**
+ * A directly created invoice draft: version 1 with no proposal behind it. The
+ * relay answers with the invoice head, whose source is the invoice itself.
+ * Returns the reason when the command is refused.
+ */
+function createReferenceInvoice(
+  event: RelayEvent,
+  channelId: string,
+  dTag: string,
+): string | null {
+  const version = parseMockBusinessContent<{
+    clientId?: string;
+    invoiceId?: string;
+    version?: number;
+    previousVersionEventId?: string | null;
+    proposalVersionEventId?: string | null;
+    expectedHeadEventId?: string | null;
+    currency?: string;
+    lines?: Array<{
+      description?: string;
+      quantityHundredths: number;
+      unitAmountMinor: number;
+    }>;
+    totalMinor?: number;
+    status?: string;
+    dueAt?: number | null;
+    voidReason?: string | null;
+  }>(event);
+  if (!version?.clientId || !version.invoiceId) {
+    return "invoice create must name its client and invoice";
+  }
+  const invoiceDTag = `client:${version.clientId}:invoice:${version.invoiceId}`;
+  const store = getMockMessageStore(channelId);
+  const clientHead = store.find(
+    (candidate) =>
+      candidate.kind === KIND_CLIENT_HEAD &&
+      businessDTagOf(candidate) ===
+        `client:${version.clientId}:client:${version.clientId}`,
+  );
+  if (version.clientId !== channelId || !clientHead) {
+    return "invoice create requires an existing client channel";
+  }
+  if (
+    store.some(
+      (candidate) =>
+        candidate.kind === KIND_INVOICE_HEAD &&
+        businessDTagOf(candidate) === invoiceDTag,
+    )
+  ) {
+    return "invoice already exists";
+  }
+  const lines = version.lines;
+  if (
+    dTag !== `${invoiceDTag}:version:1` ||
+    version.version !== 1 ||
+    version.previousVersionEventId !== null ||
+    version.proposalVersionEventId !== null ||
+    version.expectedHeadEventId !== null ||
+    version.status !== "draft" ||
+    version.voidReason !== null ||
+    !/^[A-Z]{3}$/.test(version.currency ?? "") ||
+    !Array.isArray(lines) ||
+    lines.length === 0 ||
+    lines.length > 100 ||
+    !lines.every(
+      (line) =>
+        typeof line.description === "string" &&
+        line.description.trim().length > 0 &&
+        Number.isSafeInteger(line.quantityHundredths) &&
+        line.quantityHundredths > 0 &&
+        Number.isSafeInteger(line.unitAmountMinor) &&
+        line.unitAmountMinor >= 0,
+    ) ||
+    (version.dueAt !== null &&
+      version.dueAt !== undefined &&
+      !(Number.isSafeInteger(version.dueAt) && version.dueAt > 0))
+  ) {
+    return "invoice create must be a valid first draft version";
+  }
+  const total = lines.reduce(
+    (sum, line) =>
+      sum +
+      (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n,
+    0n,
+  );
+  if (
+    total > BigInt(Number.MAX_SAFE_INTEGER) ||
+    version.totalMinor !== Number(total)
+  ) {
+    return "invoice total does not match its integer line amounts";
+  }
+  storeReferenceBusinessEvent(channelId, event, false, false);
+  const head = referenceRecordEvent(
+    KIND_INVOICE_HEAD,
+    channelId,
+    invoiceDTag,
+    {
+      schemaVersion: 1,
+      clientId: version.clientId,
+      invoiceId: version.invoiceId,
+      proposalId: version.invoiceId,
+      proposalVersionEventId: event.id,
+      currency: version.currency,
+      lines,
+      taxLines: [],
+      sellerTaxNumber: null,
+      customerTaxNumber: null,
+      totalMinor: Number(total),
+      creditedMinor: 0,
+      writtenOffMinor: 0,
+      collectedMinor: 0,
+      outstandingMinor: 0,
+      paymentEvidenceCount: 0,
+      version: 1,
+      currentVersionEventId: event.id,
+      status: "draft",
+      dueAt: version.dueAt ?? null,
+      issuedAt: null,
+      sourceEventId: event.id,
+    },
+    event,
+  );
+  store.push(head);
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, head);
+  return null;
+}
+
 function publishReferenceBusinessCommand(
   event: RelayEvent,
   socket: MockSocket,
@@ -8945,7 +9074,16 @@ function publishReferenceBusinessCommand(
     return prior ? parseMockBusinessContent<T>(prior) : null;
   };
 
-  if (event.kind === KIND_INVOICE_VERSION) {
+  if (
+    event.kind === KIND_INVOICE_VERSION &&
+    parseMockBusinessContent<{ action?: string }>(event)?.action === "create"
+  ) {
+    const refusal = createReferenceInvoice(event, channelId, dTag);
+    if (refusal) {
+      fail(refusal);
+      return true;
+    }
+  } else if (event.kind === KIND_INVOICE_VERSION) {
     const version = parseMockBusinessContent<{
       clientId?: string;
       invoiceId?: string;
