@@ -8,7 +8,7 @@ import { SidebarMenuBadge } from "@/shared/ui/sidebar";
 /**
  * The sidebar's destinations, as data.
  *
- * Every row under Today, Activity and Saved for later, and every icon on the
+ * Every row under Today and Activity, and every icon on the
  * collapsed rail that opens a part of the app, is one entry in
  * `SIDEBAR_DESTINATIONS`. `SidebarDestinationList` and `SidebarCollapsedNav`
  * only render this list, so a destination is added, moved or dropped by
