@@ -841,7 +841,7 @@ export const SystemMessageRow = React.memo(function SystemMessageRow({
           </Tooltip>
           <PopoverContent
             align="end"
-            className="max-h-(--radix-popover-content-available-height) w-auto p-0 rounded-2xl overflow-hidden border-0 bg-transparent shadow-none"
+            className="w-auto p-0 rounded-2xl overflow-hidden border-0 bg-transparent shadow-none"
             side="top"
             sideOffset={10}
           >
