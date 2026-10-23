@@ -48,13 +48,6 @@ test("ChannelWorkArea board", async ({ page }) => {
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
     await page.getByTestId("channel-The Olive House").click();
     await expect(page.getByTestId("message-input")).toBeVisible();
-    // The board has no bar above the channel header; the header restyle
-    // (C3-CONV timeline) removes it. Until that is merged, hide it here so the
-    // dock lines up with the board and this proof judges the dock alone.
-    await page.addStyleTag({
-      content: ".colony-channel-topbar{display:none !important}",
-    });
-
     // Canvas, Work, the file, then Terminal: the board's tab order.
     await requestTab(page, "canvas");
     await requestTab(page, "work");

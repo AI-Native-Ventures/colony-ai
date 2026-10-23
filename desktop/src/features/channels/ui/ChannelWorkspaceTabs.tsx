@@ -1,4 +1,4 @@
-import { useChannelWorkCount } from "@/features/channels/lib/useChannelWorkCount";
+import { useChannelOpenWorkCount } from "@/features/workarea/dock/tabs/WorkAreaWorkCountBadge";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { showWorkspaceFiles } from "@/features/workarea/workspaceFiles";
 import { cn } from "@/shared/lib/cn";
@@ -12,7 +12,7 @@ export function ChannelWorkspaceTabs({
 }: {
   channelId?: string | null;
 }) {
-  const workCount = useChannelWorkCount(channelId);
+  const workCount = useChannelOpenWorkCount(channelId ?? "");
   return (
     <nav
       aria-label="Channel views"

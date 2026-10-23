@@ -239,7 +239,10 @@ export function ChannelScreenHeader({
       statusBadge={
         <>
           {activeChannel?.archivedAt ? (
-            <span className="c3c-archived-badge" data-testid="chat-archived-badge">
+            <span
+              className="c3c-archived-badge"
+              data-testid="chat-archived-badge"
+            >
               Archived
             </span>
           ) : null}
