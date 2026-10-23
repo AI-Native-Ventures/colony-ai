@@ -24,8 +24,7 @@ export type { ChannelSearchKey } from "./channelSearchKeys";
  *
  * Params: `thread` (open thread head id), `profile` (profile panel pubkey),
  * `profileView` (profile panel focused view), `profileTab` (profile summary
- * tab), `agentSession` (agent session panel pubkey), `agentSessionChannel`
- * (optional channel scope for the agent session panel), `channelManagement`
+ * tab), `channelManagement`
  * (presence flag for the channel-management panel — open/closed only, so it
  * carries a sentinel `"1"` rather than an id), `autoSend` (draft auto-submit
  * trigger — cleared surgically after the auto-submit fires so `thread` and
@@ -82,20 +81,6 @@ export function useChannelPanelHistoryState() {
     [applyPatch],
   );
 
-  const setOpenAgentSessionPubkey = React.useCallback<PanelValueSetter>(
-    (value, options) =>
-      applyPatch(
-        { agentSession: value, agentSessionChannel: value ? undefined : null },
-        options,
-      ),
-    [applyPatch],
-  );
-
-  const setOpenAgentSessionChannelId = React.useCallback<PanelValueSetter>(
-    (value, options) => applyPatch({ agentSessionChannel: value }, options),
-    [applyPatch],
-  );
-
   const setChannelManagementOpen = React.useCallback(
     (open: boolean, options?: PanelSetterOptions) =>
       applyPatch(
@@ -125,16 +110,12 @@ export function useChannelPanelHistoryState() {
     channelManagementOpen: values.channelManagement != null,
     clearAutoSend,
     clearMessageRouteTarget,
-    openAgentSessionChannelId: values.agentSessionChannel,
-    openAgentSessionPubkey: values.agentSession,
     openProfilePanel,
     openThreadHeadId: values.thread,
     profilePanelPubkey: values.profile,
     profilePanelTab: profilePanelTabFromSearch(values.profileTab),
     profilePanelView: profilePanelViewFromSearch(values.profileView),
     setChannelManagementOpen,
-    setOpenAgentSessionChannelId,
-    setOpenAgentSessionPubkey,
     setOpenThreadHeadId,
     setProfilePanelTab,
     setProfilePanelPubkey,

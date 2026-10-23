@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings, selectSettingsSection } from "../helpers/settings";
 
-test("settings use nine groups, inner search, remembered sections, and return navigation", async ({
+test("settings use six groups, inner search, remembered sections, and return navigation", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -18,26 +18,24 @@ test("settings use nine groups, inner search, remembered sections, and return na
     "preferences",
     "business",
     "agents-group",
-    "blocks-templates",
-    "administration",
     "app-devices",
-    "storage-group",
   ]) {
     await expect(page.getByTestId(`settings-group-${group}`)).toBeVisible();
   }
-  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(9);
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(6);
   await expect(page.getByRole("tablist")).toHaveCount(1);
 
-  await page.getByTestId("settings-search").fill("Channel templates");
+  await page.getByTestId("settings-search").fill("Keyboard shortcuts");
   const result = page.getByRole("option", {
-    name: "Channel templates, Blocks & templates",
+    name: "Keyboard shortcuts, Preferences",
   });
   await expect(result).toBeVisible();
   await result.click();
-  await expect(page.getByTestId("settings-channel-templates")).toBeVisible();
-  await expect(
-    page.getByTestId("settings-group-blocks-templates"),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("settings-shortcuts")).toBeVisible();
+  await expect(page.getByTestId("settings-group-preferences")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   await selectSettingsSection(page, "harnesses");
   await expect(page.getByTestId("settings-harnesses")).toBeVisible();
@@ -53,11 +51,6 @@ test("settings use nine groups, inner search, remembered sections, and return na
   await expect(page.getByTestId("settings-inner-ai-connections")).toHaveCount(
     0,
   );
-  await page.getByTestId("settings-group-blocks-templates").click();
-  await expect(page.getByTestId("settings-inner-blocks")).toHaveCount(0);
-  await page.getByTestId("settings-group-app-devices").click();
-  await selectSettingsSection(page, "compute");
-  await expect(page.getByTestId("settings-mesh-share-compute")).toBeVisible();
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(page.getByTestId("settings-view")).toHaveCount(0);
@@ -98,6 +91,17 @@ test("routes without a data-backed design fall back to Account profile", async (
     "business-connections",
     "ai-connections",
     "provider-connections",
+    "voice",
+    "channel-templates",
+    "compute",
+    "moderation",
+    "audit",
+    "settings/admin",
+    "local-archive",
+    "storage",
+    "settings/themes",
+    "settings/theme-preview",
+    "settings/theme-applied",
   ]) {
     await page.goto(`/#/settings?section=${section}`);
 
@@ -420,135 +424,6 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   }
 });
 
-test("workspace appearance saves the named theme and preserves density", async ({
-  page,
-}) => {
-  await installMockBridge(page);
-  await page.goto("/");
-  await openSettings(page, "appearance");
-
-  await expect(page.getByTestId("appearance-density")).toHaveCount(0);
-  const innerTabIndicatorColor = () =>
-    page
-      .getByTestId("settings-inner-appearance")
-      .evaluate(
-        (element) => getComputedStyle(element, "::after").backgroundColor,
-      );
-  const sharedChrome = () =>
-    page.evaluate(() => {
-      const read = (selector: string) => {
-        const element = document.querySelector(selector);
-        if (!element) throw new Error(`Missing settings chrome: ${selector}`);
-        return getComputedStyle(element);
-      };
-      const avatar = read('[data-testid="settings-profile-avatar"]');
-      return {
-        sectionLabelTracking: read(".w20-nav-heading").letterSpacing,
-        searchTextColor: read(".w20-nav-search input").color,
-        breadcrumbColor: read(".w20-topbar-title > span").color,
-        avatar: {
-          backgroundColor: avatar.backgroundColor,
-          color: avatar.color,
-          fontSize: avatar.fontSize,
-          fontWeight: avatar.fontWeight,
-          borderRadius: avatar.borderRadius,
-        },
-      };
-    });
-  expect(await sharedChrome()).toEqual({
-    sectionLabelTracking: "-0.235714px",
-    searchTextColor: "rgb(40, 37, 50)",
-    breadcrumbColor: "rgb(121, 116, 127)",
-    avatar: {
-      backgroundColor: "rgb(236, 229, 237)",
-      color: "rgb(121, 103, 130)",
-      fontSize: "10.1143px",
-      fontWeight: "600",
-      borderRadius: "7px",
-    },
-  });
-  await expect.poll(innerTabIndicatorColor).toBe("rgb(137, 90, 246)");
-
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-buzz-dark").click();
-
-  await page.getByTestId("theme-use").click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.classList.contains("dark")),
-    )
-    .toBe(true);
-  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
-    "aria-selected",
-    "false",
-  );
-  await page.getByRole("button", { name: "Back to themes" }).click();
-  await page.getByRole("button", { name: "Back to appearance" }).click();
-  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await expect.poll(innerTabIndicatorColor).toBe("rgb(137, 90, 246)");
-  await expect.poll(sharedChrome).toEqual({
-    sectionLabelTracking: "-0.235714px",
-    searchTextColor: "rgb(236, 230, 239)",
-    breadcrumbColor: "rgb(163, 154, 169)",
-    avatar: {
-      backgroundColor: "rgb(69, 58, 74)",
-      color: "rgb(209, 191, 216)",
-      fontSize: "10.1143px",
-      fontWeight: "600",
-      borderRadius: "7px",
-    },
-  });
-  const fieldBorderColor = await page
-    .locator(".buzz-theme-gradient-layer")
-    .evaluate((element) => getComputedStyle(element, "::after").borderTopColor);
-  expect(fieldBorderColor).toBe("rgb(73, 57, 81)");
-  const rootBackground = await page.evaluate(() => {
-    const root = getComputedStyle(document.documentElement).backgroundColor;
-    const layer = document.querySelector(".buzz-theme-gradient-layer");
-    if (!layer) throw new Error("Missing settings field frame");
-    return {
-      root,
-      border: getComputedStyle(layer, "::after").borderTopColor,
-    };
-  });
-  expect(rootBackground).toEqual({
-    root: "rgba(0, 0, 0, 0)",
-    border: "rgb(73, 57, 81)",
-  });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          Object.keys(localStorage).filter(
-            (key) =>
-              key.startsWith("colony.appearance.v1:") &&
-              !key.endsWith(":last-business"),
-          ).length,
-      ),
-    )
-    .toBe(1);
-  const businessSnapshot = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(
-      (candidate) =>
-        candidate.startsWith("colony.appearance.v1:") &&
-        !candidate.endsWith(":last-business") &&
-        !candidate.endsWith(":global-conversations"),
-    );
-    return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
-  });
-  expect(businessSnapshot).toMatchObject({
-    followSystem: false,
-    glassBackground: false,
-    prominentActiveTab: false,
-    theme: "buzz-dark",
-    density: "comfortable",
-  });
-});
-
 test("device privacy preferences save with closed defaults", async ({
   page,
 }) => {
@@ -656,13 +531,6 @@ test("Accessibility saves the referenced controls and restores motion and keyboa
   await expect(hint).toHaveCount(1);
   await expect(hint).toBeHidden();
   await page.keyboard.press("Escape");
-  await openSettings(page, "appearance");
-  await page.getByTestId("appearance-open-themes").click();
-  const tile = page.getByTestId("theme-catalog-buzz");
-  await tile.hover();
-  expect(
-    await tile.evaluate((element) => getComputedStyle(element).transform),
-  ).toBe("none");
 });
 
 test("Accessibility save failure preserves the durable and live preference", async ({

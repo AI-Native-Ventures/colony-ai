@@ -2,18 +2,14 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings, selectSettingsSection } from "../helpers/settings";
-import {
-  createPlainWorkflow,
-  installWorkflowAdminBridge,
-} from "../helpers/workflows";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
-const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
-const FORUM_POST_ID = "mock-forum-release-thread";
-const FORUM_REPLY_ID = "mock-forum-release-reply";
 
 test.beforeEach(async ({ page }) => {
-  await installWorkflowAdminBridge(page);
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    relayRole: "owner",
+  });
 });
 
 /**
@@ -53,13 +49,6 @@ async function pressHistoryChord(
       : "Alt+ArrowRight";
 
   await page.keyboard.press(key);
-}
-
-async function navigateToWorkflows(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await page.getByTestId("open-workflows-view").click();
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
 
 test("back and forward move across channel routes", async ({ page }) => {
@@ -107,75 +96,6 @@ test("back/forward keyboard chords work while the composer has focus", async ({
 
   // preventDefault kept the chord out of the editor — no stray characters.
   await expect(page.getByTestId("message-input")).toHaveText("");
-});
-
-// FIXME: the forum post "Back to posts" header renders under the fixed top
-// chrome drag region, which intercepts the click. Pre-existing breakage —
-// this spec file was never registered in playwright.config.ts until now.
-// The header-chrome rework (PR #941) covers this overlap class.
-test.fixme("direct forum thread links close back to the forum route", async ({
-  page,
-}) => {
-  await page.goto(
-    `/#/channels/${WATERCOLOR_CHANNEL_ID}/posts/${FORUM_POST_ID}`,
-  );
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByRole("button", { name: "Back to posts" }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Back to posts" }).click();
-
-  await expect(page).toHaveURL(
-    /#\/channels\/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11$/,
-  );
-  await expect(
-    page.getByText("Release checklist: async feedback thread."),
-  ).toBeVisible();
-});
-
-test("direct workflow detail links return to workflows", async ({ page }) => {
-  const workflowName = `workflow_nav_${Date.now()}`;
-
-  await navigateToWorkflows(page);
-  const { workflowId } = await createPlainWorkflow(page, workflowName);
-  await page.getByRole("button", { name: "Back to workflows" }).click();
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await page.getByTestId(`workflow-card-${workflowId}`).click();
-
-  const detail = page.getByTestId("plain-workflow-detail");
-  await expect(page).toHaveURL(
-    new RegExp(`#\\/workflows\\/${workflowId}(?:\\?pane=trigger)?$`),
-  );
-  await expect(
-    page
-      .getByTestId("plain-workflow-builder")
-      .getByRole("heading", { name: workflowName }),
-  ).toBeVisible();
-  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Back to workflows" }).click();
-
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await expect(page.getByTestId("workflows-view")).toBeVisible();
-});
-
-test("forum reply deep links survive reload", async ({ page }) => {
-  await page.goto(
-    `/#/channels/${WATERCOLOR_CHANNEL_ID}/posts/${FORUM_POST_ID}?replyId=${FORUM_REPLY_ID}`,
-  );
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByText("Looks good to me. We should ship it."),
-  ).toBeVisible();
-
-  await page.reload();
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByText("Looks good to me. We should ship it."),
-  ).toBeVisible();
 });
 
 test("back and forward restore open thread panels", async ({ page }) => {
@@ -1061,16 +981,16 @@ test("cold-start message deep link preserves its thread target", async ({
       {
         id: "navigation-message-1",
         kind: "message",
-        channelId: WATERCOLOR_CHANNEL_ID,
-        messageId: "mock-forum-release-reply",
-        threadRootId: "mock-forum-release-thread",
+        channelId: ENGINEERING_CHANNEL_ID,
+        messageId: "mock-thread-reply",
+        threadRootId: "mock-thread-root",
       },
     ],
   });
 
   await page.goto("/");
 
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(page).toHaveURL(/messageId=mock-forum-release-reply/);
-  await expect(page).toHaveURL(/threadRootId=mock-forum-release-thread/);
+  await expect(page.getByTestId("chat-title")).toHaveText("engineering");
+  await expect(page).toHaveURL(/messageId=mock-thread-reply/);
+  await expect(page).toHaveURL(/threadRootId=mock-thread-root/);
 });

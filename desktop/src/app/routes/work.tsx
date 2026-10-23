@@ -8,17 +8,9 @@ const WorkScreen = React.lazy(async () => {
   return { default: module.WorkScreen };
 });
 
-const CompanyWorkScreen = React.lazy(async () => {
-  const module = await import("@/features/company-work/ui/CompanyWorkScreen");
-  return { default: module.CompanyWorkScreen };
-});
-
 export const Route = createFileRoute("/$workSurface")({
   beforeLoad: ({ params }) => {
-    if (
-      params.workSurface !== "work" &&
-      params.workSurface !== "company-work"
-    ) {
+    if (params.workSurface !== "work") {
       throw notFound();
     }
   },
@@ -29,26 +21,7 @@ export const Route = createFileRoute("/$workSurface")({
 });
 
 function WorkRouteComponent() {
-  const { workSurface } = Route.useParams();
   const { client } = Route.useSearch();
-
-  if (workSurface === "company-work") {
-    return (
-      <React.Suspense
-        fallback={
-          <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
-            Loading work
-          </div>
-        }
-      >
-        <CompanyWorkScreen />
-      </React.Suspense>
-    );
-  }
-
-  if (workSurface !== "work") {
-    throw notFound();
-  }
 
   return (
     <React.Suspense fallback={<ViewLoadingFallback kind="projects" />}>

@@ -533,14 +533,6 @@ test.describe("channel activity hover preview", () => {
     await firstRow.getByRole("button", { name: "Mark as read" }).click();
     await expect(popover.getByTestId(/^channel-activity-item-/)).toHaveCount(1);
 
-    const remainingRow = popover.getByTestId(/^channel-activity-item-/).first();
-    await remainingRow.hover();
-    await remainingRow.getByRole("button", { name: "Remind me later" }).click();
-    await expect(
-      page.getByRole("dialog").getByText("Remind me later"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Cancel" }).click();
-
     popover = await openActivityPopover(page);
     await popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`).click();
 

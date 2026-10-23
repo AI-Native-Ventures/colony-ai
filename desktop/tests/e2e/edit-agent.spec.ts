@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const BAKED_DEFAULTS = [
@@ -39,22 +42,13 @@ const PERSONA_ID = "persona-edit-e2e";
 
 /**
  * Open the Edit Agent dialog for the seeded managed agent via the profile
- * panel (agents view → agent card → Edit quick action) — EditAgentDialog's
- * only mount path.
+ * panel (agents route profile deep link → Edit quick action) —
+ * EditAgentDialog's only mount path.
  */
 async function openEditDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-
-  const agentButton = page.getByRole("button", {
-    name: `${AGENT_NAME} agent profile`,
-  });
-  await expect(agentButton).toBeVisible({ timeout: 10_000 });
-  await agentButton.click();
-
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, AGENT_PUBKEY);
   await page.getByTestId("user-profile-edit-agent").click();
 
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible({
@@ -88,8 +82,8 @@ test.describe("agent definition dialog", () => {
       bakedBuildEnv: BAKED_DEFAULTS,
     });
     await page.goto("/");
-    await openAgentTemplatesView(page);
-    await page.getByTestId("new-agent-card").click();
+    await openAgentsDirectoryView(page);
+    await page.getByTestId("agent-add-button").click();
 
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
@@ -383,18 +377,8 @@ test.describe("edit agent dialog", () => {
     });
 
     await page.goto("/");
-    await openAgentTemplatesView(page);
-
-    // Persona-linked agents render grouped under the persona's card name.
-    const agentButton = page.getByRole("button", {
-      name: "Edit E2E Persona agent profile",
-    });
-    await expect(agentButton).toBeVisible({ timeout: 10_000 });
-    await agentButton.click();
-
-    await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-      timeout: 10_000,
-    });
+    await openAgentsDirectoryView(page);
+    await openAgentProfilePanel(page, AGENT_PUBKEY);
     await page.getByTestId("user-profile-edit-agent").click();
 
     // Definition editor opens; the instance editor does not.

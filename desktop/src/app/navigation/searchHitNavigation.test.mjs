@@ -13,20 +13,20 @@ const { openSearchHitWithNavigation } = await import(
   "./searchHitNavigation.ts"
 );
 
-const forumComment = {
+const channelReply = {
   eventId: "comment",
   content: "reply",
-  kind: 45003,
+  kind: 9,
   pubkey: "author",
   channelId: "old-community-channel",
-  channelName: "forum",
+  channelName: "general",
   createdAt: 1,
   score: 0,
   threadRootId: null,
 };
 
 const plainMessage = {
-  ...forumComment,
+  ...channelReply,
   eventId: "message",
   kind: 9,
   threadRootId: "thread-root",
@@ -41,7 +41,6 @@ test("search-hit navigation preserves forced message routing while active", asyn
       calls.push({ channelId, options });
       return true;
     },
-    goForumPost: async () => false,
   });
 
   assert.equal(result, true);
@@ -68,33 +67,12 @@ test("search-hit navigation carries trimmed highlight state and forces repeated 
       calls.push({ channelId, options });
       return true;
     },
-    goForumPost: async () => false,
     query: "  Mentions  ",
   });
 
   assert.equal(calls[0].options.force, true);
   assert.equal(calls[0].options.searchHighlight.messageId, "message");
   assert.equal(calls[0].options.searchHighlight.query, "Mentions");
-  assert.match(calls[0].options.searchHighlight.activationId, /.+/);
-});
-
-test("forum-post search navigation carries transient same-route activation state", async () => {
-  clearSearchHitEventCache();
-  const forumPost = { ...forumComment, eventId: "post", kind: 45001 };
-  const calls = [];
-
-  await openSearchHitWithNavigation(forumPost, {
-    goChannel: async () => false,
-    goForumPost: async (channelId, postId, options) => {
-      calls.push({ channelId, postId, options });
-      return true;
-    },
-    query: "mentions",
-  });
-
-  assert.equal(calls[0].options.force, true);
-  assert.equal(calls[0].options.searchHighlight.messageId, "post");
-  assert.equal(calls[0].options.searchHighlight.query, "mentions");
   assert.match(calls[0].options.searchHighlight.activationId, /.+/);
 });
 
@@ -107,10 +85,9 @@ test("cancelled search-hit navigation cannot repopulate cache or route", async (
   const calls = [];
   const controller = new AbortController();
   const navigation = openSearchHitWithNavigation(
-    forumComment,
+    channelReply,
     {
       goChannel: async () => calls.push("channel"),
-      goForumPost: async () => calls.push("forum"),
       signal: controller.signal,
     },
     () => destination,
@@ -119,10 +96,9 @@ test("cancelled search-hit navigation cannot repopulate cache or route", async (
   controller.abort();
   clearSearchHitEventCache();
   resolveLookup({
-    kind: "forum-post",
+    kind: "channel",
     channelId: "old-community-channel",
-    postId: "old-community-post",
-    replyId: "comment",
+    messageId: "comment",
   });
   await navigation;
 
@@ -130,7 +106,7 @@ test("cancelled search-hit navigation cannot repopulate cache or route", async (
   assert.equal(getCachedSearchHitEvent("comment"), null);
 });
 
-test("queue cancellation fences an in-flight forum-comment activation", async () => {
+test("queue cancellation fences an in-flight channel-message activation", async () => {
   clearSearchHitEventCache();
   let resolveLookup;
   const destination = new Promise((resolve) => {
@@ -149,8 +125,7 @@ test("queue cancellation fences an in-flight forum-comment activation", async ()
             {
               force: behavior?.force,
               goChannel: async () => calls.push("channel"),
-              goForumPost: async () => calls.push("forum"),
-              signal: behavior?.signal,
+                      signal: behavior?.signal,
             },
             () => destination,
           ),
@@ -163,16 +138,15 @@ test("queue cancellation fences an in-flight forum-comment activation", async ()
   queue.enqueue({
     channelId: "old-community-channel",
     eventId: "comment",
-    kind: 45003,
+    kind: 9,
   });
   await new Promise((resolve) => setImmediate(resolve));
   queue.cancel();
   clearSearchHitEventCache();
   resolveLookup({
-    kind: "forum-post",
+    kind: "channel",
     channelId: "old-community-channel",
-    postId: "old-community-post",
-    replyId: "comment",
+    messageId: "comment",
   });
   await new Promise((resolve) => setImmediate(resolve));
 

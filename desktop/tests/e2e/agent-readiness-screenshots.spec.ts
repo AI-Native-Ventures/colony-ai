@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/agent-readiness";
 
@@ -13,12 +16,12 @@ const EDIT_AGENT_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 
 /**
  * Navigate to the agents view and open the unified agent-create dialog via
- * the "New agent" menu item, then fill a placeholder name.
+ * the "Add agent" button, then fill a placeholder name.
  */
 async function openCreateDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
   await page.locator("#persona-display-name").fill("Test Agent");
 }
 
@@ -79,24 +82,13 @@ async function setCustomModel(
 
 /**
  * Open the Edit Agent dialog for a seeded managed agent.
- * Opens the agents view, clicks the agent card to open the profile panel,
- * then clicks the Edit quick-action button.
+ * Opens the agents route, deep-links the agent's profile panel, then clicks
+ * the Edit quick-action button.
  */
-async function openEditDialog(
-  page: import("@playwright/test").Page,
-  agentName: string,
-) {
+async function openEditDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-
-  const agentButton = page.getByRole("button", {
-    name: `${agentName} agent profile`,
-  });
-  await expect(agentButton).toBeVisible({ timeout: 10_000 });
-  await agentButton.click();
-
-  const panel = page.getByTestId("user-profile-panel");
-  await expect(panel).toBeVisible({ timeout: 10_000 });
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, EDIT_AGENT_PUBKEY);
 
   await page.getByTestId("user-profile-edit-agent").click();
 
@@ -302,7 +294,7 @@ test.describe("agent readiness gate screenshots", () => {
       ],
     });
 
-    await openEditDialog(page, "Tyler Agent");
+    await openEditDialog(page);
     await settleAnimations(page);
 
     const dialog = page.getByRole("dialog");

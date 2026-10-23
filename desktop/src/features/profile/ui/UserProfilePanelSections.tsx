@@ -3,7 +3,6 @@ import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
 
 import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { useIsOtherSetupAgent } from "@/features/agents/useKnownAgentPubkeys";
-import { useAgentWorking } from "@/features/agents/agentWorkingSignal";
 import { agentPresenceStartBlockReason } from "@/features/agents/lib/useAgentAvailability";
 import {
   getManagedAgentPrimaryActionLabel,
@@ -14,7 +13,6 @@ import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
 import type { IdentityArchiveActions } from "@/features/identity-archive/hooks";
 import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
-import type { ProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
 import type {
   useFollowMutation,
   useUnfollowMutation,
@@ -32,10 +30,7 @@ import {
   STATUS_DOT_MASK_CURVE,
 } from "@/features/profile/ui/MaskedAvatarBadgeFrame";
 import { ProfileTabContentTransition } from "@/features/profile/ui/ProfileTabContentTransition";
-import {
-  ChannelsFocusedView,
-  MemoryFocusedView,
-} from "@/features/profile/ui/UserProfilePanelFocusedViews";
+import { ChannelsFocusedView } from "@/features/profile/ui/UserProfilePanelFocusedViews";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   ProfilePersonaPrimaryActions,
@@ -58,14 +53,11 @@ export { AgentInstructionsFocusedView } from "@/features/profile/ui/UserProfileP
 // ── Summary view ─────────────────────────────────────────────────────────────
 
 export type ProfileSummaryViewProps = {
-  activityAgent: ProfileActivityAgent | null;
   canAddToChannel: boolean;
   canDeleteAgent: boolean;
   canEditAgent: boolean;
   canOpenAgentLogs: boolean;
-  canViewActivity: boolean;
   channelCount: number;
-  channelIdToName: Record<string, string>;
   channels: ProfileChannelLink[];
   channelsLoading: boolean;
   displayName: string;
@@ -77,12 +69,10 @@ export type ProfileSummaryViewProps = {
   handleEditAgent: () => void;
   handleToggleAgentAutoStart: () => void;
   handleEditPersona?: () => void;
-  handleHuddle?: () => void;
   handleInstantiateAgent: () => void;
   handleMessage?: () => void;
   handleWave?: () => void;
   isArchived: boolean;
-  isHuddlePending: boolean;
   isMessagePending: boolean;
   isWavePending: boolean;
   isBot: boolean;
@@ -103,7 +93,6 @@ export type ProfileSummaryViewProps = {
   onDuplicateAgent?: () => void;
   onExportAgent?: () => void;
   onOpenInstance: (pubkey: string) => void;
-  onOpenActivity: (channelId?: string | null) => void;
   onOpenChannel: (channelId: string) => void;
   onOpenDiagnostics: () => void;
   onStickyChromeChange: (state: { active: boolean; height: number }) => void;
@@ -134,14 +123,11 @@ const PROFILE_HERO_PRESENCE_BADGE = {
 } as const;
 
 export function ProfileSummaryView({
-  activityAgent,
   canAddToChannel,
   canDeleteAgent,
   canEditAgent,
   canOpenAgentLogs,
-  canViewActivity,
   channelCount,
-  channelIdToName,
   channels,
   channelsLoading,
   displayName,
@@ -153,12 +139,10 @@ export function ProfileSummaryView({
   handleEditAgent,
   handleToggleAgentAutoStart,
   handleEditPersona,
-  handleHuddle,
   handleInstantiateAgent,
   handleMessage,
   handleWave,
   isArchived,
-  isHuddlePending,
   isMessagePending,
   isWavePending,
   isBot,
@@ -178,7 +162,6 @@ export function ProfileSummaryView({
   onDuplicateAgent,
   onExportAgent,
   onOpenInstance,
-  onOpenActivity,
   onOpenChannel,
   onOpenDiagnostics,
   onStickyChromeChange,
@@ -192,7 +175,6 @@ export function ProfileSummaryView({
   userStatus,
 }: ProfileSummaryViewProps) {
   const notManagedOnDevice = useIsOtherSetupAgent(pubkey, profile?.ownerPubkey);
-  const activeTurns = useAgentWorking(isBot ? pubkey : null).channels;
   const stickyLayoutRef = React.useRef<HTMLDivElement>(null);
   const [primaryActionsConcealed, setPrimaryActionsConcealed] =
     React.useState(false);
@@ -208,7 +190,6 @@ export function ProfileSummaryView({
     targetRef: stickyLayoutRef,
   });
 
-  const showMemoriesTab = isOwner === true && Boolean(pubkey);
   const showInstructionBlock =
     isOwner === true &&
     (agentInstruction !== null || handleEditPersona !== undefined);
@@ -237,12 +218,10 @@ export function ProfileSummaryView({
   const showDiagnosticsIngress =
     diagnosticsFields.some((field) => field.label !== "Status") ||
     canOpenAgentLogs;
-  const showActivityIngress = canViewActivity;
   const showInfoTab =
     agentInfoFields.length > 0 ||
     runtimeFields.length > 0 ||
     isArchived ||
-    showActivityIngress ||
     showInstructionBlock ||
     managedAgent !== undefined ||
     !showRuntimeTab;
@@ -275,14 +254,8 @@ export function ProfileSummaryView({
     if (showChannelsTab) {
       items.push({ id: "channels", label: "Channels" });
     }
-    if (showMemoriesTab) {
-      items.push({
-        id: "memories",
-        label: "Memories",
-      });
-    }
     return items;
-  }, [showChannelsTab, showInfoTab, showMemoriesTab, showRuntimeTab]);
+  }, [showChannelsTab, showInfoTab, showRuntimeTab]);
 
   const showTabSection = tabs.length > 0;
   const showTabBar = !(tabs.length === 1 && tabs[0]?.id === "info");
@@ -456,9 +429,7 @@ export function ProfileSummaryView({
               : undefined
           }
           isFollowing={isFollowing}
-          huddlePending={isBot ? undefined : isHuddlePending}
           messagePending={isMessagePending}
-          onHuddle={isBot ? undefined : handleHuddle}
           onMessage={handleMessage}
           onWave={handleWave}
           pubkey={pubkey}
@@ -511,13 +482,10 @@ export function ProfileSummaryView({
           >
             {activeTab === "info" ? (
               <ProfileInfoTabContent
-                activeTurns={activeTurns}
-                activityAgent={activityAgent}
                 agentInfoFields={agentInfoFields}
                 archiveActions={archiveActions}
                 canArchiveAgent={isBot && archiveActions.canArchive}
                 canDeleteAgent={canDeleteAgent}
-                channelIdToName={channelIdToName}
                 isArchived={isArchived}
                 isDeleteAgentPending={isAgentActionPending}
                 managedAgent={managedAgent}
@@ -526,9 +494,6 @@ export function ProfileSummaryView({
                 onDeleteAgent={onDeleteAgent}
                 onDuplicateAgent={onDuplicateAgent}
                 onExportAgent={onExportAgent}
-                onOpenActivity={onOpenActivity}
-                pubkey={pubkey}
-                showActivityIngress={showActivityIngress}
                 showInstructionBlock={showInstructionBlock}
               />
             ) : null}
@@ -585,13 +550,6 @@ export function ProfileSummaryView({
                 onAddToChannel={onAddToChannel}
                 onOpenChannel={onOpenChannel}
                 variant="embedded"
-              />
-            ) : null}
-            {activeTab === "memories" && pubkey ? (
-              <MemoryFocusedView
-                agentPubkey={pubkey}
-                variant="embedded"
-                viewerIsOwner={isOwner}
               />
             ) : null}
           </ProfileTabContentTransition>

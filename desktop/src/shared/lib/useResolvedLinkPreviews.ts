@@ -3,19 +3,6 @@ import * as React from "react";
 import { invokeTauri } from "@/shared/api/tauri";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
-import {
-  eventToExplicitProject,
-  eventToRepository,
-} from "@/features/projects/projectModels";
-import { eventToProjectIssue } from "@/features/projects/projectIssues.mjs";
-import { eventToProjectPullRequest } from "@/features/projects/projectPullRequests.mjs";
-import {
-  KIND_GIT_ISSUE,
-  KIND_GIT_PULL_REQUEST,
-  KIND_PROJECT_ANNOUNCEMENT,
-  KIND_REPO_ANNOUNCEMENT,
-} from "@/shared/constants/kinds";
-
 import { isEntityLink, parseEntityLink } from "./entityLink";
 import {
   buzzEntityFallbackTitle,
@@ -425,108 +412,16 @@ type EntityEventFetcher = (
   filter: Parameters<typeof relayClient.fetchEvents>[0],
 ) => Promise<RelayEvent[]>;
 
-function compactMetadata(
-  parts: Array<string | null | undefined>,
-): string | null {
-  const values = parts.filter((part): part is string => Boolean(part));
-  return values.length > 0 ? values.join(" · ") : null;
-}
-
-/** Resolve builder-focused metadata only from the active relay. */
+/**
+ * Relay-native entity links (repositories, projects, pull requests, issues,
+ * goals) no longer resolve to cards: those features are not in the app, so
+ * their links stay plain.
+ */
 export async function fetchBuzzEntityMetadata(
-  href: string,
-  fetchEvents: EntityEventFetcher = (filter) => relayClient.fetchEvents(filter),
+  _href: string,
+  _fetchEvents: EntityEventFetcher = (filter) => relayClient.fetchEvents(filter),
 ): Promise<LinkPreviewMetadata | null> {
-  const parsed = parseEntityLink(href);
-  if (!parsed.ok) return null;
-  if (parsed.value.type === "goal") return null;
-
-  const { owner, dtag } = parsed.value;
-  if (parsed.value.type === "project") {
-    const projectAddress = `${KIND_PROJECT_ANNOUNCEMENT}:${owner}:${dtag}`;
-    const projectEvents = await fetchEvents({
-      kinds: [KIND_PROJECT_ANNOUNCEMENT],
-      authors: [owner],
-      "#d": [dtag],
-      limit: 1,
-    });
-    const project = projectEvents
-      .map((event) => eventToExplicitProject(event, new Map(), new Map()))
-      .find((candidate) => candidate?.projectAddress === projectAddress);
-    if (!project) return null;
-
-    const repositoryCount = project.repositoryAddresses.length;
-    return {
-      siteName: project.name,
-      faviconDataUrl: null,
-      imageDataUrl: null,
-      imageDomain: null,
-      title: project.description || project.name,
-      description: compactMetadata([
-        repositoryCount > 0
-          ? `${repositoryCount} ${repositoryCount === 1 ? "repository" : "repositories"}`
-          : null,
-      ]),
-    };
-  }
-
-  const repoAddress = `${KIND_REPO_ANNOUNCEMENT}:${owner}:${dtag}`;
-  const repoEvents = await fetchEvents({
-    kinds: [KIND_REPO_ANNOUNCEMENT],
-    authors: [owner],
-    "#d": [dtag],
-    limit: 1,
-  });
-  const repository = repoEvents
-    .map((event) => eventToRepository(event))
-    .find((candidate) => candidate?.repoAddress === repoAddress);
-  if (!repository) return null;
-
-  const base = {
-    siteName: repository.name,
-    faviconDataUrl: null,
-    imageDataUrl: null,
-    imageDomain: null,
-  };
-  if (parsed.value.type === "repo") {
-    return {
-      ...base,
-      title: repository.description || repository.name,
-      description: compactMetadata([
-        repository.status,
-        `default: ${repository.defaultBranch}`,
-      ]),
-    };
-  }
-
-  const { id, type } = parsed.value;
-  const rootEvents = await fetchEvents({
-    kinds: [type === "pr" ? KIND_GIT_PULL_REQUEST : KIND_GIT_ISSUE],
-    ids: [id],
-    limit: 1,
-  });
-  const root = rootEvents.find((event) => {
-    const repositoryTags = event.tags.filter((tag) => tag[0] === "a");
-    return (
-      event.id === id &&
-      repositoryTags.length === 1 &&
-      repositoryTags[0][1] === repoAddress
-    );
-  });
-  if (!root) return null;
-
-  const title =
-    type === "issue"
-      ? eventToProjectIssue(root).title
-      : eventToProjectPullRequest(root).title;
-  return {
-    ...base,
-    title,
-    // Issue and PR bodies are markdown and often begin with headings. Keep
-    // their fetched subject as tooltip/card context without fetching or
-    // flattening body/status metadata into an unrendered description string.
-    description: null,
-  };
+  return null;
 }
 
 const entityMetadataLoader = createMetadataLoader({

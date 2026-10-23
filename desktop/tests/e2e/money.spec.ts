@@ -122,20 +122,6 @@ test("invoice detail records payment evidence and keeps typed values after a rej
   await expect(dialog).toContainText("No money moves in Colony.");
 });
 
-test("invoice detail opens a credit note scoped to the current invoice", async ({
-  page,
-}) => {
-  await openMoney(page, `/#/money/invoice/${CEDAR_PARTIAL_INVOICE_ID}`);
-
-  await page.getByRole("button", { name: "Create credit note" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create credit note" });
-  await expect(dialog.getByLabel("Invoice")).toHaveValue(
-    CEDAR_PARTIAL_INVOICE_ID,
-  );
-  await expect(dialog.getByLabel("Credit amount · ZAR")).toBeVisible();
-  await expect(dialog.getByLabel("Evidence reference")).toBeVisible();
-});
-
 test("client members can read invoice records without payment controls", async ({
   page,
 }) => {
@@ -151,14 +137,7 @@ test("client members can read invoice records without payment controls", async (
   await expect(
     page.getByRole("button", { name: "Record payment" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Prepare reminder" }),
-  ).toHaveCount(0);
   await expect(page.getByLabel("Money client")).toHaveCount(0);
-  await page.goto("/#/money/adjustments");
-  await expect(
-    page.getByRole("heading", { name: "Credit notes & refunds" }),
-  ).toBeVisible();
 });
 
 test("client channel ownership does not grant community money write authority", async ({
@@ -177,29 +156,4 @@ test("client channel ownership does not grant community money write authority", 
   await expect(
     page.getByRole("button", { name: "Record payment" }),
   ).toHaveCount(0);
-  await page.goto("/#/money/adjustments");
-  await expect(
-    page.getByRole("button", { name: "Create credit note" }),
-  ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Record refund" })).toHaveCount(
-    0,
-  );
-});
-
-test("refund recording requires real client credit evidence", async ({
-  page,
-}) => {
-  await openMoney(page, "/#/money/adjustments");
-
-  await page.getByRole("button", { name: "Record refund" }).click();
-  const dialog = page.getByRole("dialog", { name: "No refundable balance" });
-  await expect(dialog).toContainText(
-    "A refund cannot exceed the client credit balance.",
-  );
-  await dialog.getByRole("button", { name: "Create credit note" }).click();
-  const creditDialog = page.getByRole("dialog", { name: "Create credit note" });
-  await expect(creditDialog).toBeVisible();
-  await expect(
-    creditDialog.getByRole("button", { name: "Create credit note" }),
-  ).toBeEnabled();
 });

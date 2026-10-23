@@ -1,113 +1,45 @@
 import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
-import { ArrowLeft, CreditCard, History } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { CreditCheckout } from "@/features/credits/CreditCheckout";
 import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
-import {
-  readCredits,
-  type CreditIntent,
-} from "@/features/credits/accountPayments";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
-import type { TeamMember } from "@/features/company-team/teamModels";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { useIdentityQuery } from "@/shared/api/hooks";
+import { readCredits } from "@/features/credits/accountPayments";
 import type {
   AgentUsageSeries,
   AgentUsageSeriesBucket,
 } from "@/shared/api/tauriArchive";
 import type { ManagedAgent } from "@/shared/api/types";
 import { truncateNpub } from "@/shared/lib/pubkey";
-import { Button } from "@/shared/ui/button";
 import { PageHeader } from "@/shared/ui/PageHeader";
 import type { UsagePeriodDays } from "./usageBoundaries";
 import { useAgentUsageSeries } from "./useAgentUsageSeries";
-import {
-  AiSpendEmployeeScreen,
-  AiSpendOverview,
-  ExternalAiCostDetail,
-  ExternalAiCostEditor,
-  ExternalAiCostRemoveConfirmation,
-  type PowerEmployee,
-} from "./AiSpendScreens";
-import {
-  useAiSpendHeadsQuery,
-  useEmployeeAllowanceHeadsQuery,
-  useSyncAgentTurnSpendRecords,
-} from "./spendRelay";
 
-export type PowerPanel =
-  | "employee"
-  | "new-cost"
-  | "edit-cost"
-  | "source"
-  | "remove-cost";
-
-export type PowerSection =
-  | "overview"
-  | "usage"
-  | "connections"
-  | "history"
-  | "checkout";
+export type PowerSection = "usage" | "credits";
 
 const POWER_TABS: Array<{ id: PowerSection; label: string }> = [
-  { id: "overview", label: "Overview" },
   { id: "usage", label: "Usage" },
-  { id: "connections", label: "Connections" },
-  { id: "history", label: "Billing history" },
+  { id: "credits", label: "Credits" },
 ];
 
 export function parsePowerSection(
   value: string | null | undefined,
 ): PowerSection {
-  return value === "usage" ||
-    value === "connections" ||
-    value === "history" ||
-    value === "checkout"
-    ? value
-    : "overview";
+  return value === "credits" ? "credits" : "usage";
 }
 
 export function PowerScreen({
-  section: requestedSection,
-  panel,
-  employeePubkey,
-  recordId,
+  section,
   onSectionChange,
-  onOpenEmployee,
-  onOpenNewCost,
-  onOpenCost,
-  onEditCost,
-  onRemoveCost,
-  onClosePanel,
 }: {
   section: PowerSection;
-  panel?: PowerPanel;
-  employeePubkey?: string;
-  recordId?: string;
   onSectionChange: (section: PowerSection) => void;
-  onOpenEmployee: (pubkey: string) => void;
-  onOpenNewCost: () => void;
-  onOpenCost: (recordId: string) => void;
-  onEditCost: (recordId: string) => void;
-  onRemoveCost: (recordId: string) => void;
-  onClosePanel: () => void;
 }) {
-  // Until credits launch, checkout is not offered and its link shows history.
   const creditsLaunched = useColonyCreditsLaunched();
-  const section =
-    requestedSection === "checkout" && !creditsLaunched
-      ? "history"
-      : requestedSection;
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? "";
-  const { goSettings } = useAppNavigation();
   const creditsQuery = useQuery({
     enabled: Boolean(communityId),
     queryKey: ["account-credits", communityId],
@@ -117,26 +49,6 @@ export function PowerScreen({
   const usageQuery = useAgentUsageSeries(30);
   const agentsQuery = useCompanyManagedAgentsQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
-  const spendEnabled = section === "overview" || panel !== undefined;
-  const teamQuery = useCompanyTeamQuery(spendEnabled);
-  const identityQuery = useIdentityQuery();
-  const employees = (teamQuery.data?.members ?? []).filter(
-    (member): member is TeamMember => member.kind === "employee",
-  );
-  const activeEmployees = employees.filter(
-    (employee) => employee.position?.head.status !== "terminated",
-  );
-  const profilesQuery = useUsersBatchQuery(
-    employees.map((member) => member.pubkey),
-    { enabled: spendEnabled && employees.length > 0 },
-  );
-  const allowancesQuery = useEmployeeAllowanceHeadsQuery(spendEnabled);
-  const spendQuery = useAiSpendHeadsQuery(spendEnabled);
-  const sync = useSyncAgentTurnSpendRecords(
-    employees,
-    spendQuery,
-    spendEnabled,
-  );
   const credits = creditsQuery.data
     ? {
         status: "available",
@@ -145,215 +57,30 @@ export function PowerScreen({
     : { status: "unavailable" };
   const agents = agentsQuery.data ?? [];
   const runtimes = runtimesQuery.data ?? [];
-  const profileRecords = profilesQuery.data?.profiles ?? {};
-  const powerEmployees: PowerEmployee[] = employees.map((member) => ({
-    member,
-    name:
-      profileRecords[member.pubkey]?.displayName?.trim() ||
-      member.fallbackName?.trim() ||
-      truncateNpub(member.pubkey),
-    title:
-      member.position?.head.title ||
-      (member.kind === "employee" ? "Employee" : "Human"),
-  }));
-  const allowanceRecords = allowancesQuery.data?.records ?? [];
-  const spendRecords = spendQuery.data?.records ?? [];
-  const selfPubkey = identityQuery.data?.pubkey.toLowerCase();
-  const currentRole = teamQuery.data?.relayMembers.find(
-    (member) => member.pubkey.toLowerCase() === selfPubkey,
-  )?.role;
-  const canManage = currentRole === "owner" || currentRole === "admin";
-  const spendError =
-    (teamQuery.error instanceof Error ? teamQuery.error : null) ??
-    (profilesQuery.error instanceof Error ? profilesQuery.error : null) ??
-    (allowancesQuery.error instanceof Error ? allowancesQuery.error : null) ??
-    (spendQuery.error instanceof Error ? spendQuery.error : null) ??
-    sync.error;
-  const spendLoading =
-    teamQuery.isLoading ||
-    profilesQuery.isLoading ||
-    allowancesQuery.isLoading ||
-    spendQuery.isLoading;
-  const selectedEmployee = powerEmployees.find(
-    (item) =>
-      item.member.pubkey.toLowerCase() === employeePubkey?.toLowerCase(),
-  );
-  const selectedAllowance = allowanceRecords.find(
-    (item) =>
-      item.head.employeePubkey.toLowerCase() ===
-      selectedEmployee?.member.pubkey.toLowerCase(),
-  );
-  const selectedCost = spendRecords.find(
-    (item) => item.head.recordId === recordId,
-  );
-  const showCostEditor =
-    (panel === "new-cost" && (teamQuery.isLoading || canManage)) ||
-    (panel === "edit-cost" &&
-      (teamQuery.isLoading ||
-        (canManage && (spendQuery.isLoading || selectedCost !== undefined))));
-  const showCostRemoval =
-    panel === "remove-cost" && (teamQuery.isLoading || canManage);
-  const showSpendPanel =
-    (panel === "employee" && selectedEmployee !== undefined) ||
-    panel === "source" ||
-    showCostRemoval ||
-    showCostEditor;
 
   return (
     <div
       className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8"
       data-testid="power-screen"
     >
-      {showSpendPanel && panel === "employee" && selectedEmployee ? (
-        <AiSpendEmployeeScreen
-          allowance={selectedAllowance}
-          employee={selectedEmployee}
-          onBack={onClosePanel}
-          records={spendRecords}
-        />
-      ) : showSpendPanel && panel === "source" ? (
-        <ExternalAiCostDetail
-          canManage={canManage}
-          onBack={onClosePanel}
-          onEdit={() => recordId && onEditCost(recordId)}
-          onRemove={() => recordId && onRemoveCost(recordId)}
-          record={selectedCost}
-        />
-      ) : showSpendPanel && panel === "remove-cost" ? (
-        teamQuery.isLoading ? (
-          <p
-            className="py-12 text-center text-sm text-muted-foreground"
-            role="status"
-          >
-            Loading cost record
-          </p>
-        ) : (
-          <ExternalAiCostRemoveConfirmation
-            canManage={canManage}
-            onCancel={() => (recordId ? onOpenCost(recordId) : onClosePanel())}
-            onRemoved={onClosePanel}
-            record={selectedCost}
-          />
-        )
-      ) : showSpendPanel && (panel === "new-cost" || panel === "edit-cost") ? (
-        teamQuery.isLoading ||
-        (panel === "edit-cost" && spendQuery.isLoading) ? (
-          <p
-            className="py-12 text-center text-sm text-muted-foreground"
-            role="status"
-          >
-            Loading cost record
-          </p>
-        ) : canManage ? (
-          <ExternalAiCostEditor
-            canManage={canManage}
-            onBack={
-              panel === "edit-cost" && recordId
-                ? () => onOpenCost(recordId)
-                : onClosePanel
-            }
-            onSaved={
-              panel === "edit-cost" && recordId
-                ? () => onOpenCost(recordId)
-                : onClosePanel
-            }
-            record={panel === "edit-cost" ? selectedCost : undefined}
-          />
-        ) : null
-      ) : section === "checkout" ? (
-        <CheckoutScreen
-          communityId={communityId}
-          onBack={() => onSectionChange("overview")}
+      <PageHeader
+        title={section === "credits" ? "Colony credits" : "Agent usage"}
+      />
+      <PowerNavigation section={section} onSectionChange={onSectionChange} />
+      {section === "usage" ? (
+        <PowerUsage
+          agents={agents}
+          runtimes={runtimes}
+          isLoading={usageQuery.isLoading}
+          error={usageQuery.error instanceof Error ? usageQuery.error : null}
+          series={usageQuery.data}
         />
       ) : (
-        <>
-          <PageHeader
-            action={
-              section === "overview" &&
-              (canManage || activeEmployees.length > 0) ? (
-                <div className="flex flex-wrap justify-end gap-2">
-                  {activeEmployees.length > 0 ? (
-                    <Button asChild size="sm" type="button" variant="outline">
-                      <Link
-                        search={{
-                          channelId: null,
-                          threadRootEventId: null,
-                          type: "money",
-                        }}
-                        to="/asks/new"
-                      >
-                        Request allowance change
-                      </Link>
-                    </Button>
-                  ) : null}
-                  {canManage ? (
-                    <Button onClick={onOpenNewCost} size="sm" type="button">
-                      Record external AI cost
-                    </Button>
-                  ) : null}
-                </div>
-              ) : section === "history" && creditsLaunched ? (
-                <Button
-                  onClick={() => onSectionChange("checkout")}
-                  size="sm"
-                  type="button"
-                >
-                  <CreditCard />
-                  Add credits
-                </Button>
-              ) : null
-            }
-            title={
-              section === "usage"
-                ? "Agent usage"
-                : section === "connections"
-                  ? "Agent connections"
-                  : section === "history"
-                    ? "Billing history"
-                    : "AI spend & power"
-            }
-          />
-          <PowerNavigation
-            section={section}
-            onSectionChange={onSectionChange}
-          />
-          {section === "overview" ? (
-            <AiSpendOverview
-              allowances={allowanceRecords}
-              employees={powerEmployees}
-              error={spendError}
-              isLoading={spendLoading}
-              onOpenCost={onOpenCost}
-              onOpenEmployee={onOpenEmployee}
-              records={spendRecords}
-            />
-          ) : section === "usage" ? (
-            <PowerUsage
-              agents={agents}
-              runtimes={runtimes}
-              isLoading={usageQuery.isLoading}
-              error={
-                usageQuery.error instanceof Error ? usageQuery.error : null
-              }
-              series={usageQuery.data}
-            />
-          ) : section === "connections" ? (
-            <PowerConnections
-              credits={credits}
-              creditsLaunched={creditsLaunched}
-              isCreditsLoading={creditsQuery.isLoading}
-              onManage={() => void goSettings("agents")}
-            />
-          ) : (
-            <BillingHistory
-              intents={creditsQuery.data?.intents ?? []}
-              creditsUnavailable={credits.status === "unavailable"}
-              onAddCredits={
-                creditsLaunched ? () => onSectionChange("checkout") : undefined
-              }
-            />
-          )}
-        </>
+        <PowerCredits
+          credits={credits}
+          creditsLaunched={creditsLaunched}
+          isCreditsLoading={creditsQuery.isLoading}
+        />
       )}
     </div>
   );
@@ -388,80 +115,36 @@ function PowerNavigation({
   );
 }
 
-function PowerConnections({
+function PowerCredits({
   credits,
   creditsLaunched,
   isCreditsLoading,
-  onManage,
 }: {
   credits: { status: string; balanceUsdCents?: number };
   creditsLaunched: boolean;
   isCreditsLoading: boolean;
-  onManage: () => void;
 }) {
   return (
-    <div className="divide-y divide-border/70" data-testid="power-connections">
-      <ConnectionRow
-        detail="Harness-reported allowance unavailable"
-        onManage={onManage}
-        status="Unavailable"
-        title="Existing subscriptions"
-      />
-      <ConnectionRow
-        detail="Pay for supported agent work"
-        onManage={onManage}
-        status={
-          !creditsLaunched
+    <div className="divide-y divide-border/70" data-testid="power-credits">
+      <section className="flex flex-wrap items-center justify-between gap-4 py-5">
+        <div className="min-w-0 space-y-1">
+          <h2 className="text-base font-semibold">Colony credits</h2>
+          <p className="text-sm text-muted-foreground">
+            Pay for supported agent work
+          </p>
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {!creditsLaunched
             ? "Coming soon"
             : isCreditsLoading
               ? "Loading"
               : credits.status === "available" &&
                   credits.balanceUsdCents !== undefined
                 ? moneyFromCents(credits.balanceUsdCents)
-                : "Unavailable"
-        }
-        title="Colony credits"
-      />
-      <ConnectionRow
-        detail="Provider balance not synced"
-        onManage={onManage}
-        status="Unavailable"
-        title="OpenRouter"
-      />
-      <ConnectionRow
-        detail="Provider key connection status unavailable"
-        onManage={onManage}
-        status="Unavailable"
-        title="Provider keys"
-      />
+                : "Unavailable"}
+        </span>
+      </section>
     </div>
-  );
-}
-
-function ConnectionRow({
-  title,
-  detail,
-  status,
-  onManage,
-}: {
-  title: string;
-  detail: string;
-  status: string;
-  onManage: () => void;
-}) {
-  return (
-    <section className="flex flex-wrap items-center justify-between gap-4 py-5">
-      <div className="min-w-0 space-y-1">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">{detail}</p>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className="text-sm text-muted-foreground">{status}</span>
-        <Button onClick={onManage} size="sm" type="button" variant="outline">
-          Manage
-        </Button>
-      </div>
-    </section>
   );
 }
 
@@ -646,121 +329,6 @@ function UsageRow({
       <td className="px-3 py-3 text-muted-foreground">{source}</td>
       <td className="px-4 py-3 text-right font-medium">{costLabel}</td>
     </tr>
-  );
-}
-
-function BillingHistory({
-  intents,
-  creditsUnavailable,
-  onAddCredits,
-}: {
-  intents: CreditIntent[];
-  creditsUnavailable: boolean;
-  /** Absent until Colony credits launch: no purchase action, Coming soon. */
-  onAddCredits?: () => void;
-}) {
-  return (
-    <section className="space-y-4" data-testid="power-history">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <History aria-hidden="true" className="size-4" />
-        <span>Credit purchases and payment records</span>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-border/70 bg-background/70">
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="bg-muted/35 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3">Reference</th>
-              <th className="px-3 py-3">Date</th>
-              <th className="px-3 py-3">Credits</th>
-              <th className="px-3 py-3">State</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {intents.map((intent) => (
-              <tr key={intent.reference}>
-                <td className="break-all px-4 py-3">{intent.reference}</td>
-                <td className="px-3 py-3">
-                  {new Date(intent.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-3 py-3">
-                  {money(
-                    Number(BigInt(intent.grantNanousd) / 10_000_000n) / 100,
-                  )}
-                </td>
-                <td className="px-3 py-3">
-                  {intent.status === "paid" ? "Confirmed" : intent.status}
-                </td>
-                <td />
-              </tr>
-            ))}
-            {!onAddCredits && intents.length === 0 ? (
-              <tr>
-                <td
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  colSpan={5}
-                >
-                  Colony credits are coming soon.
-                </td>
-              </tr>
-            ) : null}
-            {onAddCredits && !creditsUnavailable && intents.length === 0 ? (
-              <tr>
-                <td
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  colSpan={5}
-                >
-                  No credit purchases yet.
-                </td>
-              </tr>
-            ) : null}
-            {onAddCredits && creditsUnavailable ? (
-              <tr>
-                <td
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  colSpan={5}
-                >
-                  Billing history is unavailable while the payment service is
-                  disconnected.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-      {onAddCredits ? (
-        <div className="flex justify-end">
-          <Button onClick={onAddCredits} size="sm" type="button">
-            Add credits
-          </Button>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function CheckoutScreen({
-  communityId,
-  onBack,
-}: {
-  communityId: string;
-  onBack: () => void;
-}) {
-  return (
-    <div
-      className="mx-auto w-full max-w-3xl space-y-6"
-      data-testid="power-checkout"
-    >
-      <Button onClick={onBack} size="sm" type="button" variant="ghost">
-        <ArrowLeft />
-        Power & usage
-      </Button>
-      <PageHeader
-        description="Review a credit purchase before payment."
-        title="Add credits"
-      />
-      <CreditCheckout communityId={communityId} />
-    </div>
   );
 }
 

@@ -51,8 +51,6 @@ type TimelineMessageListProps = {
   channelName?: string;
   channelType?: ChannelType | null;
   currentPubkey?: string;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
   /** Event id of the oldest unread top-level message; renders a "New" divider above it. */
   firstUnreadMessageId?: string | null;
   followThreadById?: (rootId: string) => void;
@@ -106,13 +104,13 @@ type TimelineMessageListProps = {
   threadUnreadCounts?: ReadonlyMap<string, number>;
   /** Content rendered as the first virtual row before channel history. */
   leadingContent?: React.ReactNode;
-  /** Hide date boundaries for a huddle's live transcript. */
+  /** Hide date boundaries between message groups. */
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
   /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
-  /** Hide agent access-policy badges in the purpose-built Huddle chat. */
+  /** Hide agent access-policy badges. */
   hideAgentAccessBadges?: boolean;
   /**
    * True when the loaded window provably starts at the channel's beginning.
@@ -137,8 +135,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   firstUnreadMessageId = null,
   followThreadById,
   highlightedMessageId = null,
-  huddleMemberPubkeys,
-  huddleMemberPubkeysPending = false,
   isFollowingThreadById,
   isMessageUnreadById,
   entranceMessageId = null,
@@ -260,8 +256,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               followThreadById={followThreadById}
               footer={messageFooters?.[item.entry.message.id] ?? null}
               highlightedMessageId={highlightedMessageId}
-              huddleMemberPubkeys={huddleMemberPubkeys}
-              huddleMemberPubkeysPending={huddleMemberPubkeysPending}
               hideAgentAccessBadges={hideAgentAccessBadges}
               isContinuation={
                 alwaysShowMessageIdentity ? false : item.isContinuation
@@ -303,8 +297,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       currentPubkey,
       followThreadById,
       highlightedMessageId,
-      huddleMemberPubkeys,
-      huddleMemberPubkeysPending,
       hideAgentAccessBadges,
       isFollowingThreadById,
       isMessageUnreadById,

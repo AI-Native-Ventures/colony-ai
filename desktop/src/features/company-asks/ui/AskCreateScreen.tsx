@@ -42,9 +42,9 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import {
-  GoalRouteBackLink,
-  GoalRouteHeader,
-} from "@/features/goals/ui/GoalRouteHeader";
+  AskRouteBackLink,
+  AskRouteHeader,
+} from "@/features/company-asks/ui/AskRouteChrome";
 
 import {
   buildAskCreateAction,
@@ -705,7 +705,7 @@ export function AskCreateScreen({
 
   return (
     <div className="colony-ask-detail-screen">
-      <GoalRouteHeader
+      <AskRouteHeader
         title={
           isHireProposal
             ? "Propose a hire"
@@ -721,7 +721,7 @@ export function AskCreateScreen({
           aria-labelledby="ask-create-title"
           className={`colony-ask-create-content${isHireProposal ? " colony-ask-create-content--hire" : ""}${hireProposalReview ? " colony-ask-create-content--hire-review" : ""}${isMoneyProposal ? " colony-ask-create-content--money" : ""}${moneyProposalReview ? " colony-ask-create-content--money-review" : ""}`}
         >
-          <GoalRouteBackLink
+          <AskRouteBackLink
             label={
               step !== "compose"
                 ? "Back"

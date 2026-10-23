@@ -37,7 +37,6 @@ import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { HarnessesSettingsPanel } from "./HarnessesSettingsPanel";
 import { PreventSleepSettingsCard } from "./PreventSleepSettingsCard";
 import { KeepAddressedAgentsSettingsCard } from "./KeepAddressedAgentsSettingsCard";
-import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
 
 export function BusinessProfileSettingsPanel() {
@@ -75,10 +74,6 @@ export function BusinessProfileSettingsPanel() {
 
 export function HarnessLifecycleSettingsPanel() {
   return <HarnessesSettingsPanel />;
-}
-
-export function AuditSettingsPanel() {
-  return <ModerationQueueCard initialTab="audit" title="Audit trail" />;
 }
 
 export function AppPreferencesSettingsPanel() {

@@ -7,9 +7,7 @@ import {
 import {
   formatMoneyMinor,
   type InvoiceLine,
-  type MoneyAdjustment as MoneyAdjustmentPayload,
   type MoneyInvoiceHead,
-  type MoneyWorkspaceRecords,
 } from "./lib/moneyRecords";
 
 export type InvoiceLineDraft = Omit<
@@ -47,25 +45,6 @@ export function formatCurrencyTotals(
       ))}
     </span>
   );
-}
-
-export function sumAdjustments(
-  adjustments: MoneyWorkspaceRecords["adjustments"],
-  type: MoneyAdjustmentPayload["adjustmentType"],
-) {
-  return adjustments.reduce(
-    (total, { value }) =>
-      total + (value.adjustmentType === type ? value.amountMinor : 0),
-    0,
-  );
-}
-
-export function creditAvailableForRefund(invoice: MoneyInvoiceHead) {
-  const remainingObligation = Math.max(
-    0,
-    invoice.totalMinor - invoice.creditedMinor - invoice.writtenOffMinor,
-  );
-  return Math.max(0, invoice.collectedMinor - remainingObligation);
 }
 
 export function lineTotalMinor(line: InvoiceLine) {

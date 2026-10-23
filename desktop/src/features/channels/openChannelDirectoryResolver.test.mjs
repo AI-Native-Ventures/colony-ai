@@ -27,16 +27,6 @@ Object.defineProperty(globalThis, "navigator", {
   configurable: true,
   value: dom.window.navigator,
 });
-// The discussion facepile renders UserProfilePopover, which mounts HuddleProvider;
-// its audio-device effects touch navigator.mediaDevices, absent in jsdom.
-Object.defineProperty(dom.window.navigator, "mediaDevices", {
-  configurable: true,
-  value: {
-    addEventListener: () => {},
-    enumerateDevices: async () => [],
-    removeEventListener: () => {},
-  },
-});
 dom.window.requestAnimationFrame = (callback) => setTimeout(callback, 0);
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame;
 
@@ -69,10 +59,7 @@ const ipc = {
     }
     if (command === "search_messages") return this.search(args);
     if (command === "get_users_batch") return this.users(args);
-    // HuddleProvider (mounted transitively via the discussion facepile's
-    // profile popover) registers Tauri event listeners. Absorb them so the
-    // panel can render; its audio probes are all best-effort and swallow the
-    // unmocked-command throw below.
+    // Absorb Tauri event listener registrations from mounted providers.
     if (command.startsWith("plugin:event|")) return 0;
     throw new Error(`unmocked Tauri command: ${command}`);
   },
@@ -93,7 +80,6 @@ let createRoot;
 let QueryClient;
 let QueryClientProvider;
 let CommunitiesProvider;
-let HuddleProvider;
 let useChannelReference;
 let useSearchResults;
 let channelReferenceQueryKey;
@@ -101,13 +87,9 @@ let channelsQueryKey;
 let openChannelDirectoryQueryKey;
 let isChannelReferenceOpenable;
 let useChannelReferences;
-let useOpenAgentActivity;
-let useReminderSources;
-let DiscussionChannelsPanel;
 let createMarkdownComponents;
 let renderCachedMarkdown;
 let MarkdownRuntimeContext;
-let relayAgentsQueryKey;
 let createMemoryHistory;
 let createRootRoute;
 let createRoute;
@@ -248,7 +230,6 @@ before(async () => {
   ({ CommunitiesProvider } = await import(
     "@/features/communities/useCommunities.tsx"
   ));
-  ({ HuddleProvider } = await import("@/features/huddle"));
   ({
     channelReferenceQueryKey,
     openChannelDirectoryQueryKey,
@@ -256,16 +237,6 @@ before(async () => {
     useChannelReferences,
   } = await import("./openChannelDirectory.ts"));
   ({ channelsQueryKey } = await import("./hooks.ts"));
-  ({ relayAgentsQueryKey } = await import("@/features/agents/hooks.ts"));
-  ({ useOpenAgentActivity } = await import(
-    "@/features/agents/useOpenAgentActivity.ts"
-  ));
-  ({ useReminderSources } = await import(
-    "@/features/reminders/ui/RemindersPanel.tsx"
-  ));
-  ({ DiscussionChannelsPanel } = await import(
-    "@/features/projects/ui/DiscussionChannels.tsx"
-  ));
   ({ createMarkdownComponents } = await import("@/shared/ui/markdown.tsx"));
   ({ renderCachedMarkdown } = await import(
     "@/shared/ui/markdown/nodeCache.ts"
@@ -431,11 +402,7 @@ async function mountWithRouter(client, Component) {
         React.createElement(
           CommunitiesProvider,
           null,
-          React.createElement(
-            HuddleProvider,
-            null,
-            React.createElement(RouterProvider, { router }),
-          ),
+          React.createElement(RouterProvider, { router }),
         ),
       ),
     );
@@ -610,107 +577,6 @@ test("multi-id references dedupe cold ids and share the single-id query cache", 
 
   assert.deepEqual(ipc.detailCalls.sort(), ["cold", "other"]);
   assert.equal(references.channelsById.get("cold")?.name, "#cold");
-  assert.equal(ipc.directoryCalls, 0);
-  await mounted.unmount();
-});
-
-test("agent activity opens a cold readable channel without a directory scan", async () => {
-  const client = createClient();
-  const agentPubkey = "b".repeat(64);
-  client.setQueryData(relayAgentsQueryKey, [
-    {
-      pubkey: agentPubkey,
-      ownerPubkey: VIEWER,
-      name: "Agent",
-      agentType: "agent",
-      channels: [],
-      channelIds: ["cold-agent-channel"],
-      capabilities: [],
-      status: "online",
-      respondTo: null,
-      respondToAllowlist: [],
-    },
-  ]);
-  ipc.detail = async (channelId) =>
-    rawDetail(rawChannel({ id: channelId, name: "cold-agent" }));
-  let activity;
-  function Probe() {
-    activity = useOpenAgentActivity();
-    return null;
-  }
-  const mounted = await mountWithRouter(client, Probe);
-  await mounted.settle();
-
-  assert.equal(activity.canOpenAgentActivity(agentPubkey), true);
-  assert.equal(activity.openAgentActivity(agentPubkey), true);
-  assert.deepEqual(ipc.detailCalls, ["cold-agent-channel"]);
-  assert.equal(ipc.directoryCalls, 0);
-  await mounted.unmount();
-});
-
-test("reminder sources label a cold readable channel without a directory scan", async () => {
-  const client = createClient();
-  const reminder = {
-    id: "reminder",
-    eventId: "event",
-    createdAt: 1,
-    content: {
-      status: "pending",
-      target: {
-        eventId: "message",
-        channelId: "cold-reminder-channel",
-        preview: "Reminder source",
-        authorPubkey: "c".repeat(64),
-      },
-    },
-  };
-  ipc.detail = async (channelId) =>
-    rawDetail(rawChannel({ id: channelId, name: "cold-reminder" }));
-  let sources;
-  function Probe() {
-    sources = useReminderSources([reminder]);
-    return null;
-  }
-  const mounted = await mountWithRouter(client, Probe);
-  await mounted.settle();
-
-  assert.equal(sources.get("reminder")?.channelLabel, "cold-reminder");
-  assert.deepEqual(ipc.detailCalls, ["cold-reminder-channel"]);
-  assert.equal(ipc.directoryCalls, 0);
-  await mounted.unmount();
-});
-
-test("discussion rows label a cold readable channel without a directory scan", async () => {
-  const client = createClient();
-  ipc.search = async () => ({
-    found: 1,
-    hits: [
-      {
-        event_id: "event",
-        content: "discussion",
-        kind: 9,
-        pubkey: "d".repeat(64),
-        channel_id: "abc12345-cold-discussion-channel",
-        channel_name: null,
-        created_at: 1,
-        score: 1,
-      },
-    ],
-  });
-  ipc.detail = async (channelId) =>
-    rawDetail(rawChannel({ id: channelId, name: "cold-discussion" }));
-  const mounted = await mountWithRouter(client, () =>
-    React.createElement(DiscussionChannelsPanel, {
-      query: "discussion query",
-      repositoryName: "repo",
-    }),
-  );
-  await mounted.settle();
-  await mounted.settle();
-
-  assert.match(mounted.container.textContent, /#cold-discussion/);
-  assert.doesNotMatch(mounted.container.textContent, /#abc12345/);
-  assert.deepEqual(ipc.detailCalls, ["abc12345-cold-discussion-channel"]);
   assert.equal(ipc.directoryCalls, 0);
   await mounted.unmount();
 });

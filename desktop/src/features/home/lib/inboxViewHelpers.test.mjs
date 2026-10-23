@@ -15,10 +15,11 @@ import {
   toTimelineMessage,
 } from "./inboxViewHelpers.ts";
 
-test("Inbox uses the dedicated reminder list instead of feed reminder rows", () => {
+test("Inbox drops feed reminder and repository work rows", () => {
   const message = { item: { kind: 9 } };
   const reminder = { item: { kind: 40007 } };
-  const items = [message, reminder];
+  const pullRequest = { item: { kind: 1618 } };
+  const items = [message, reminder, pullRequest];
 
   assert.deepEqual(filterInboxItems(items), [message]);
 });
@@ -116,16 +117,6 @@ test("Inbox All includes each personally relevant message source", () => {
     {
       categories: ["activity"],
       item: { channelType: "stream", pubkey: "OWNED-AGENT", tags: [] },
-    },
-    {
-      categories: ["activity"],
-      item: {
-        channelType: null,
-        id: "project-pull-request",
-        kind: 1618,
-        pubkey: "human",
-        tags: [["a", `30617:${"a".repeat(64)}:buzz`]],
-      },
     },
   ];
 

@@ -206,7 +206,7 @@ test.describe("inbox refactor screenshots", () => {
     });
   });
 
-  test("01 - filter menu with Reminders/Drafts divider and counts", async ({
+  test("01 - filter menu with Drafts divider and counts", async ({
     page,
   }) => {
     await patchCommunityPubkey(page);
@@ -222,7 +222,7 @@ test.describe("inbox refactor screenshots", () => {
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
     await expect(
-      menu.getByRole("menuitemradio", { name: "Projects" }),
+      menu.getByRole("menuitemradio", { name: "Drafts" }),
     ).toBeVisible();
     await waitForAnimations(page);
 

@@ -56,7 +56,6 @@ import { ACCENTS, LiveAppearancePreview } from "./AppearanceLivePreview";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
-  onOpenThemeCatalog: () => void;
   onBackToWorkspace?: () => void;
 };
 
@@ -252,7 +251,6 @@ function SwitchControl({
 }
 
 export function AppearanceSettingsPanel({
-  onOpenThemeCatalog,
   onBackToWorkspace,
 }: AppearanceSettingsPanelProps) {
   const theme = useTheme();
@@ -559,18 +557,6 @@ export function AppearanceSettingsPanel({
           aria-label="Appearance controls"
           className="ap-controls-scroll"
         >
-          <button
-            className="ap-named-themes"
-            data-testid="appearance-open-themes"
-            onClick={onOpenThemeCatalog}
-            type="button"
-          >
-            <span>
-              <strong>Named themes</strong>
-              <small>Browse 62 palettes. Preview before applying.</small>
-            </span>
-            <span>Browse themes →</span>
-          </button>
           <section className="ap-section">
             <h2>Appearance</h2>
             <AppearanceRow title="Colour mode">

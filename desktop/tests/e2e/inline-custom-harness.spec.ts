@@ -17,7 +17,11 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+  openPersonaProfilePanel,
+} from "../helpers/agentWorkspace";
 
 const ADD_ENTRY = "Add custom harness…";
 const HARNESS_LABEL = "My Weird Agent";
@@ -49,8 +53,8 @@ async function registerHarness(page: Page) {
 /** Open the create-agent dialog (AgentDefinitionDialog, create mode). */
 async function openCreateDialog(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await openAgentTemplatesView(page);
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await dialog.getByRole("tab", { name: "Customize for this agent" }).click();
@@ -58,11 +62,11 @@ async function openCreateDialog(page: Page) {
 }
 
 /** Open the edit dialog for a saved definition (same dialog, edit mode). */
-async function openDefinitionEditDialog(page: Page, name: string) {
+async function openDefinitionEditDialog(page: Page, personaId: string) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await openAgentTemplatesView(page);
-  await page.getByRole("button", { name: `Open actions for ${name}` }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await openAgentsDirectoryView(page);
+  await openPersonaProfilePanel(page, personaId);
+  await page.getByTestId("user-profile-edit-agent").click();
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await dialog.getByRole("tab", { name: "Customize for this agent" }).click();
@@ -123,12 +127,16 @@ test.describe("inline add custom harness", () => {
     await installMockBridge(page, {
       personas: [
         {
+          id: "persona-editable-e2e",
           displayName: "Editable Agent",
           systemPrompt: "An agent whose harness gets replaced.",
         },
       ],
     });
-    const dialog = await openDefinitionEditDialog(page, "Editable Agent");
+    const dialog = await openDefinitionEditDialog(
+      page,
+      "persona-editable-e2e",
+    );
 
     const harness = dialog.locator("#persona-runtime");
     await openDropdown(harness);
@@ -145,11 +153,12 @@ test.describe("inline add custom harness", () => {
   test("instance edit dialog registers a harness inline and keeps Custom command", async ({
     page,
   }) => {
+    const instancePubkey =
+      "npub1e2e00000000000000000000000000000000000000000000000000000000";
     await installMockBridge(page, {
       managedAgents: [
         {
-          pubkey:
-            "npub1e2e00000000000000000000000000000000000000000000000000000000",
+          pubkey: instancePubkey,
           name: "Instance Agent",
           status: "stopped",
           channelNames: ["agents"],
@@ -158,13 +167,8 @@ test.describe("inline add custom harness", () => {
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await openAgentTemplatesView(page);
-    await page
-      .getByRole("button", { name: "Instance Agent agent profile" })
-      .click();
-    await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-      timeout: 10_000,
-    });
+    await openAgentsDirectoryView(page);
+    await openAgentProfilePanel(page, instancePubkey);
     await page.getByTestId("user-profile-edit-agent").click();
     await expect(page.getByTestId("edit-agent-dialog")).toBeVisible({
       timeout: 10_000,

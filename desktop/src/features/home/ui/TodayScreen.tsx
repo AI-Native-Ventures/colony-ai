@@ -4,11 +4,9 @@ import * as React from "react";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useHomeFeedQuery } from "@/features/home/hooks";
 import { useNeedsMeQuery } from "@/features/home/needsMeHooks";
-import { useApprovalMutation } from "@/features/workflows/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { getThreadReference } from "@/features/messages/lib/threading";
 import type { AskHeadRecord } from "@/features/company-asks/askRecords";
-import type { PendingWorkflowApproval } from "@/features/home/needsMe";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import type { FeedItem } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
@@ -48,34 +46,6 @@ function movingForwardItems(
       return true;
     })
     .sort((first, second) => second.createdAt - first.createdAt);
-}
-
-function deadlineLabel(deadline: string | null | undefined) {
-  if (!deadline) return "No deadline";
-  const timestamp = Date.parse(deadline);
-  if (!Number.isFinite(timestamp)) return "Deadline unavailable";
-  const date = new Date(timestamp);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const sameDay = (first: Date, second: Date) =>
-    first.getFullYear() === second.getFullYear() &&
-    first.getMonth() === second.getMonth() &&
-    first.getDate() === second.getDate();
-  const day = sameDay(date, today)
-    ? "Today"
-    : sameDay(date, tomorrow)
-      ? "Tomorrow"
-      : new Intl.DateTimeFormat("en-GB", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-        }).format(date);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-  return `${day}, ${time}`;
 }
 
 function needsMeDateLabel(deadline: string | null | undefined) {
@@ -136,74 +106,6 @@ function AskNeedsMeRow({
         ›
       </span>
     </button>
-  );
-}
-
-function WorkflowApprovalRow({
-  record,
-  channelName,
-  onChanged,
-}: {
-  record: PendingWorkflowApproval;
-  channelName: string;
-  onChanged: () => void;
-}) {
-  const approvalMutation = useApprovalMutation();
-  const [error, setError] = React.useState<string | null>(null);
-  const runAction = async (action: "grant" | "deny") => {
-    setError(null);
-    try {
-      await approvalMutation.mutateAsync({
-        token: record.approval.approvalRef,
-        action,
-      });
-      onChanged();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "The workflow approval was not recorded.",
-      );
-    }
-  };
-  return (
-    <article
-      className="colony-needs-me-row colony-needs-me-workflow-row"
-      data-testid={`today-workflow-approval-${record.approval.approvalRef}`}
-    >
-      <span className="colony-needs-me-copy">
-        <strong>{record.workflow.name}</strong>
-        <small>
-          {record.approval.stepId} · #{channelName} · Expires{" "}
-          {deadlineLabel(record.approval.expiresAt)}
-        </small>
-        {error ? (
-          <small className="colony-needs-me-error" role="alert">
-            {error}
-          </small>
-        ) : null}
-      </span>
-      <span className="colony-needs-me-type">approval</span>
-      <span className="colony-needs-me-workflow-actions">
-        <Button
-          disabled={approvalMutation.isPending}
-          onClick={() => void runAction("grant")}
-          size="sm"
-          type="button"
-        >
-          Approve
-        </Button>
-        <Button
-          disabled={approvalMutation.isPending}
-          onClick={() => void runAction("deny")}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          Deny
-        </Button>
-      </span>
-    </article>
   );
 }
 
@@ -290,11 +192,7 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
   );
 }
 
-export function TodayScreen({
-  showUpdatesAction = false,
-}: {
-  showUpdatesAction?: boolean;
-}) {
+export function TodayScreen() {
   const feedQuery = useHomeFeedQuery();
   const needsMe = useNeedsMeQuery();
   const channelsQuery = useChannelsQuery();
@@ -316,13 +214,12 @@ export function TodayScreen({
     enabled: needsMeProfilePubkeys.length > 0,
   });
   const needsMeProfiles = needsMeProfilesQuery.data?.profiles;
-  const { goAskDetail, goChannel, goHome, goPulse } = useAppNavigation();
+  const { goAskDetail, goChannel, goHome } = useAppNavigation();
   const needsMeErrors = [
     ...new Set(
-      [
-        needsMe.asksError?.message,
-        needsMe.workflowApprovalsError?.message,
-      ].filter((message): message is string => Boolean(message)),
+      [needsMe.asksError?.message].filter((message): message is string =>
+        Boolean(message),
+      ),
     ),
   ];
   const needItems = React.useMemo(
@@ -376,34 +273,18 @@ export function TodayScreen({
     channelLabel: (channelId) => `#${channelName(channelId)}`,
   });
 
-  const renderNeedsMeItem = (item: NeedsMeItem) => {
-    if (item.kind === "ask") {
-      return (
-        <AskNeedsMeRow
-          channelName={channelName(item.record.channelId)}
-          currentPubkey={identityQuery.data?.pubkey}
-          profiles={needsMeProfiles}
-          key={needsMeItemKey(item)}
-          onOpen={openAsk}
-          record={item.record}
-        />
-      );
-    }
-    return (
-      <WorkflowApprovalRow
-        channelName={channelName(item.record.channelId)}
-        key={needsMeItemKey(item)}
-        onChanged={refreshNeedsMe}
-        record={item.record}
-      />
-    );
-  };
+  const renderNeedsMeItem = (item: NeedsMeItem) => (
+    <AskNeedsMeRow
+      channelName={channelName(item.record.channelId)}
+      currentPubkey={identityQuery.data?.pubkey}
+      profiles={needsMeProfiles}
+      key={needsMeItemKey(item)}
+      onOpen={openAsk}
+      record={item.record}
+    />
+  );
 
   const retryNeedsMe = React.useCallback(() => {
-    void needsMe.refetch();
-  }, [needsMe.refetch]);
-
-  const refreshNeedsMe = React.useCallback(() => {
     void needsMe.refetch();
   }, [needsMe.refetch]);
 
@@ -413,17 +294,6 @@ export function TodayScreen({
       <div className="colony-today-scroll">
         <div className="colony-today-heading">
           <h1>Today</h1>
-          {showUpdatesAction ? (
-            <Button
-              className="colony-secondary-button"
-              onClick={() => void goPulse()}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Team updates
-            </Button>
-          ) : null}
         </div>
 
         <section aria-label="Needs me" className="colony-today-needs-me">

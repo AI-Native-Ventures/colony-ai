@@ -1827,7 +1827,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
   await expect(page.getByTestId("profile-bot-indicator")).toBeVisible();
 });
 
-test("renders the nine settings groups with one internal account bar", async ({
+test("renders the six settings groups with one internal account bar", async ({
   page,
 }) => {
   await page.goto("/");
@@ -1841,7 +1841,7 @@ test("renders the nine settings groups with one internal account bar", async ({
   await expect(page.getByTestId("settings-sidebar")).toBeVisible();
   await expect(page.getByTestId("settings-back-to-app")).toBeVisible();
   await expect(page.getByTestId("settings-search")).toBeVisible();
-  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(9);
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(6);
   await expect(page.getByRole("tablist")).toHaveCount(1);
   await expect(page.getByTestId("settings-group-account")).toHaveAttribute(
     "aria-pressed",
@@ -1860,10 +1860,7 @@ test("renders the nine settings groups with one internal account bar", async ({
     "settings-group-preferences",
     "settings-group-business",
     "settings-group-agents-group",
-    "settings-group-blocks-templates",
-    "settings-group-administration",
     "settings-group-app-devices",
-    "settings-group-storage-group",
   ]) {
     await expect(page.getByTestId(group)).toBeVisible();
   }
@@ -2109,7 +2106,7 @@ test("desktop notification clicks open the matching forum thread", async ({
   ).toBeVisible();
 });
 
-test("opens settings with the keyboard shortcut and applies a named theme", async ({
+test("opens and closes settings with the keyboard shortcut", async ({
   page,
 }) => {
   await page.goto("/");
@@ -2134,24 +2131,6 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
       page.evaluate(() => document.documentElement.classList.contains("light")),
     )
     .toBe(true);
-
-  await page.getByTestId("appearance-open-themes").click();
-  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
-  await page.getByTestId("theme-catalog-github-light").click();
-  await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
-  const themePreview = page.getByTestId("theme-workspace-preview");
-  await expect(themePreview).toContainText(
-    "The September designs are ready for feedback.",
-  );
-  await page.getByTestId("theme-use").click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
-    "Your personal appearance is updated.",
-  );
-
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("github-light");
 
   await page.keyboard.press(
     process.platform === "darwin" ? "Meta+," : "Control+,",
@@ -2368,11 +2347,8 @@ test("settings subtitles share the Appearance secondary color", async ({
     "profile",
     "appearance",
     "notifications",
-    "voice",
     "shortcuts",
     "custom-emoji",
-    "local-archive",
-    "channel-templates",
     "agents",
     "experimental",
     "mobile",
@@ -2401,22 +2377,4 @@ test("settings subtitles share the Appearance secondary color", async ({
       new Set([secondaryColor]),
     );
   }
-
-  await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
-  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
-  await expect(blocksAndTemplates).toBeVisible();
-  await expect(blocksAndTemplates).toHaveCount(1);
-  await blocksAndTemplates.click();
-  const templatePanel = page.getByTestId("settings-panel-channel-templates");
-  await expect(templatePanel).toBeVisible();
-  const templateSubtitles = templatePanel.locator("[data-settings-subcopy]");
-  await expect(templateSubtitles.first()).toBeVisible();
-  await expect
-    .poll(async () =>
-      templateSubtitles.evaluateAll((elements) => [
-        ...new Set(elements.map((element) => getComputedStyle(element).color)),
-      ]),
-    )
-    .toEqual([secondaryColor]);
 });

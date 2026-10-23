@@ -662,7 +662,7 @@ async function inspectManagedAgent(page: Page, needsApi: string[]) {
   );
   if ((await managedAgentRow.count()) === 0) {
     needsApi.push(
-      "The managed agent identity has no real employee or position record on canary, so its profile, duties, and lessons are not reachable.",
+      "The managed agent identity has no real employee or position record on canary, so its profile is not reachable.",
     );
     await capture(page, "08-team-managed-agent-unavailable-no-employee-record");
     return;
@@ -672,27 +672,10 @@ async function inspectManagedAgent(page: Page, needsApi: string[]) {
   await expect(
     page.getByText("Canary QA agent", { exact: true }),
   ).toBeVisible();
-  for (const tabName of [
-    "Overview",
-    "Instructions",
-    "Model & runtime",
-    "Tools & access",
-    "Activity",
-    "Salary",
-    "Workers",
-    "Duties",
-    "Lessons",
-    "History",
-  ]) {
+  for (const tabName of ["Overview", "Instructions", "Model & runtime"]) {
     await expect(page.getByRole("tab", { name: tabName })).toBeVisible();
   }
   await capture(page, "08-team-managed-agent-overview");
-  for (const tabName of ["Duties", "Lessons"]) {
-    const tab = page.getByRole("tab", { name: tabName });
-    await tab.click();
-    await expect(tab).toHaveAttribute("aria-selected", "true");
-    await capture(page, `08-team-managed-agent-${tabName.toLowerCase()}`);
-  }
 }
 
 async function createGoal(page: Page, title: string) {
@@ -1137,39 +1120,9 @@ test.describe("signed-in canary company UI", () => {
 
     await page.goto(`/#/team/detail/${identity.pubkey}`);
     await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
     await capture(page, "05-team-human-owner-profile");
 
-    await page.goto("/#/team/org");
-    await expect(
-      page.getByRole("tree", { name: "Reporting lines" }),
-    ).toBeVisible();
-    await expect(
-      page.getByTestId(`company-team-member-${identity.pubkey}`),
-    ).toBeVisible();
-    await capture(page, "05-team-org-chart");
-
-    await page.goto(`/#/team/detail/${identity.pubkey}`);
-    await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-    await capture(page, "08-owner-profile-overview-and-history");
-
     await inspectManagedAgent(page, needsApi);
-
-    needsApi.push(
-      "Secret binding and revocation need a real pending request authored by the managed agent. No such server-side record is available on canary, so the suite does not synthesize one.",
-    );
-    await page.goto("/#/secrets?state=empty");
-    await expect(page.getByTestId("secret-bindings-screen")).toBeVisible();
-    await expect(page.getByText("No secrets bound")).toBeVisible();
-    await capture(page, "06-secrets-empty-no-pending-request");
-
-    await page.goto("/#/today");
-    await openSettings(page, "compute");
-    await expect(page.getByTestId("settings-mesh-share-compute")).toBeVisible();
-    await capture(page, "07-settings-mesh-compute");
 
     await page.goto("/#/money/invoices");
     await expect(page.getByTestId("money-invoices-page")).toBeVisible();
@@ -1181,7 +1134,7 @@ test.describe("signed-in canary company UI", () => {
         .count()) === 0
     ) {
       unproven.push(
-        "Invoice entry and configured tax behavior remain unproven because the canary has no invoice record or draft entry action.",
+        "Invoice entry remains unproven because the canary has no invoice record or draft entry action.",
       );
     }
 
@@ -1377,7 +1330,7 @@ test.describe("signed-in canary company UI", () => {
     await capture(page, "10-money-allowance-empty-fields-not-submitted");
   });
 
-  test("inspects company, AI spend, hiring, permissions, factory, and settings surfaces", async ({
+  test("inspects company, AI spend, hiring, factory, and settings surfaces", async ({
     page,
   }) => {
     test.setTimeout(900_000);
@@ -1503,26 +1456,12 @@ test.describe("signed-in canary company UI", () => {
       "11-workflows-list-read-only",
     );
 
-    for (const section of ["overview", "usage", "connections", "history"]) {
+    for (const section of ["usage", "credits"]) {
       await inspectRoute(
         `Power ${section}`,
-        `/#/power${section === "overview" ? "" : `?section=${section}`}`,
+        `/#/power${section === "usage" ? "" : `?section=${section}`}`,
         "power-screen",
         `12-power-${section}-read-only`,
-      );
-    }
-    if (managedAgentPubkey) {
-      await page.goto(`/#/power?panel=employee&employee=${managedAgentPubkey}`);
-      await expect(page.getByTestId("power-screen")).toBeVisible();
-      if ((await page.getByTestId("power-employee-spend").count()) === 0) {
-        needsApi.push(
-          "The managed agent has no AI spend or allowance record on canary, so employee spend details are unavailable.",
-        );
-      }
-      await capture(page, "12-power-managed-agent-spend-read-only");
-    } else {
-      unproven.push(
-        "Managed agent AI spend needs BUZZ_E2E_CANARY_AGENT_FILE and a real canary employee record.",
       );
     }
 
@@ -1544,7 +1483,7 @@ test.describe("signed-in canary company UI", () => {
     });
     if ((await createInvoice.count()) === 0) {
       needsApi.push(
-        "Canary exposes no invoice draft entry action or invoice record, so invoice creation and the configured zero-tax state cannot be inspected safely.",
+        "Canary exposes no invoice draft entry action or invoice record, so invoice creation cannot be inspected safely.",
       );
     }
 
@@ -1559,77 +1498,6 @@ test.describe("signed-in canary company UI", () => {
         ).toBeVisible();
       },
       "13-hire-role-catalog-read-only",
-    );
-    await captureReadOnlyRoute(
-      page,
-      findings,
-      "Role-pack draft",
-      async () => {
-        await page.goto("/#/hire/roles");
-        await page
-          .getByRole("button", { name: "Create role pack", exact: true })
-          .click();
-        await expect
-          .poll(async () => {
-            if ((await page.getByTestId("company-role-editor").count()) > 0) {
-              return "editor";
-            }
-            for (const kind of ["runtime", "provider", "model"]) {
-              if (
-                (await page
-                  .getByTestId(`company-role-${kind}-recovery`)
-                  .count()) > 0
-              ) {
-                return kind;
-              }
-            }
-            return "loading";
-          })
-          .not.toBe("loading");
-
-        const editor = page.getByTestId("company-role-editor");
-        if ((await editor.count()) > 0) {
-          await expect(
-            page.getByTestId("company-role-pack-page"),
-          ).toBeVisible();
-          await expect(
-            page.getByTestId("community-catalog-dialog"),
-          ).toHaveCount(0);
-          await expect(
-            page.getByRole("heading", { name: "Role catalog", exact: true }),
-          ).toBeVisible();
-          await expect(
-            page.getByRole("button", { name: "Back", exact: true }),
-          ).toBeVisible();
-          await expect(page.locator("#company-role-title")).toHaveValue("");
-          await expect(page.locator("#company-role-job")).toHaveValue("");
-          await expect(page.locator("#company-role-skills")).toHaveValue("");
-          const toolScope = editor.locator("#company-role-tool-scope");
-          await expect(toolScope).toBeDisabled();
-          await expect(toolScope).toHaveValue("");
-          await expect(toolScope.locator("option")).toHaveCount(1);
-          const workerModel = editor.locator("#company-role-worker-model");
-          await expect(workerModel).toHaveValue("");
-          await expect(workerModel.locator("option").first()).toHaveText(
-            "Choose worker model",
-          );
-          await expect(
-            editor.getByText(
-              "No model, tool or allowance is preselected. The real picker is populated by configured runtimes.",
-              { exact: true },
-            ),
-          ).toBeVisible();
-          return;
-        }
-
-        needsApi.push(
-          "The role-pack editor is in runtime recovery on canary, so its configured worker choices are unavailable. No role pack was saved.",
-        );
-      },
-      "13-hire-role-pack-draft-or-runtime-recovery",
-    );
-    needsApi.push(
-      "Role tool-scope choices have no real catalog API or records, so the designed selector stays unavailable and no scope is added.",
     );
     needsApi.push(
       "Founder handoff requires a real canary hire proposal and authorized founder-review record; none was available for this run, and no proposal was submitted to create one.",
@@ -1676,62 +1544,9 @@ test.describe("signed-in canary company UI", () => {
       );
     }
 
-    if (managedAgentPubkey) {
-      await page.goto(`/#/permission/new?agent=${managedAgentPubkey}`);
-      await expect(page.getByTestId("permission-screen")).toBeVisible();
-      const permissionForm = page.getByTestId("permission-form");
-      const authorityMessage = page.getByText(
-        "Only company owners and admins can manage standing permissions.",
-        { exact: true },
-      );
-      const unavailableMessage = page.getByText(
-        "Permission details or authority could not be verified. Try again after the relay is available.",
-        { exact: true },
-      );
-      await expect
-        .poll(
-          async () => {
-            if (await permissionForm.isVisible().catch(() => false)) {
-              return "form";
-            }
-            if (await authorityMessage.isVisible().catch(() => false)) {
-              return "authority";
-            }
-            if (await unavailableMessage.isVisible().catch(() => false)) {
-              return "unavailable";
-            }
-            return "loading";
-          },
-          { timeout: 15_000 },
-        )
-        .not.toBe("loading");
-      if ((await permissionForm.count()) > 0) {
-        await expect(page.locator("#permission-action")).toHaveValue("");
-        await expect(page.locator("#permission-scope")).toHaveValue("");
-        await expect(page.locator("#permission-expires")).toHaveValue("");
-        await expect(page.locator("#permission-confirm")).not.toBeChecked();
-        await expect(
-          permissionForm.getByRole("button", { name: "Confirm permission" }),
-        ).toBeDisabled();
-      } else {
-        needsApi.push(
-          `The managed-agent permission route settled in the ${await authorityMessage.isVisible().then((visible) => (visible ? "unauthorized" : "unavailable"))} state, so the empty-scope and empty-expiry guard could not be checked.`,
-        );
-      }
-      await capture(page, "15-existing-standing-grant-explicit-fields");
-      needsApi.push(
-        "The canary has no real pending tool-consent request for the frozen B2 scope-and-expiry flow. The existing Tools & access grant page is a separate standing-grant entry and cannot stand in for that context-bound request.",
-      );
-    } else {
-      unproven.push(
-        "Permission grant scope and expiry checks need BUZZ_E2E_CANARY_AGENT_FILE.",
-      );
-    }
-
     for (const section of [
       "privacy",
       "appearance",
-      "compute",
       "profile",
       "security",
     ] as const) {
@@ -1742,11 +1557,9 @@ test.describe("signed-in canary company UI", () => {
           ? "settings-privacy"
           : section === "appearance"
             ? "settings-appearance"
-            : section === "compute"
-              ? "settings-mesh-share-compute"
-              : section === "profile"
-                ? "settings-profile"
-                : "settings-account-security";
+            : section === "profile"
+              ? "settings-profile"
+              : "settings-account-security";
       await expect(page.getByTestId(marker)).toBeVisible();
       if (section === "privacy") {
         await expect(
@@ -1761,24 +1574,6 @@ test.describe("signed-in canary company UI", () => {
         ).toBeVisible();
       }
       await capture(page, `16-settings-${section}-read-only`);
-      if (section === "appearance") {
-        await page.getByTestId("appearance-open-themes").click();
-        const themeCatalog = page.getByTestId("settings-theme-catalog");
-        await expect(themeCatalog).toHaveAttribute(
-          "data-theme-catalog-ready",
-          "true",
-        );
-        await capture(page, "16-settings-appearance-named-theme-catalog");
-        await page.getByTestId("theme-catalog-buzz").click();
-        const themePreview = page.getByTestId("settings-theme-preview");
-        await expect(themePreview).toBeVisible();
-        await expect(page.getByTestId("theme-use")).toBeEnabled();
-        await expect(
-          page.getByRole("button", { name: "Back to themes" }),
-        ).toBeEnabled();
-        await capture(page, "16-settings-appearance-buzz-preview-not-applied");
-        await page.getByRole("button", { name: "Back to themes" }).click();
-      }
     }
 
     unproven.push(
@@ -1949,62 +1744,8 @@ test.describe("signed-in canary company UI", () => {
         await expect(
           page.getByTestId("company-team-member-profile"),
         ).toBeVisible();
-        await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-        await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-        for (const tabName of [
-          "Instructions",
-          "Model & runtime",
-          "Tools & access",
-          "Salary",
-          "Workers",
-          "Duties",
-          "Lessons",
-        ]) {
-          await expect(page.getByRole("tab", { name: tabName })).toHaveCount(0);
-        }
       },
       "05-team-human-owner-profile-read-only",
-    );
-
-    await captureReadOnlyRoute(
-      page,
-      findings,
-      "Team org chart",
-      async () => {
-        await page.goto("/#/team/org");
-        await expect(
-          page.getByRole("tree", { name: "Reporting lines" }),
-        ).toBeVisible();
-        await expect(
-          page.getByTestId(`company-team-member-${identity.pubkey}`),
-        ).toBeVisible();
-      },
-      "05-team-org-chart-read-only",
-    );
-
-    await captureReadOnlyRoute(
-      page,
-      findings,
-      "Secrets list",
-      async () => {
-        await page.goto("/#/secrets?state=empty");
-        await expect(page.getByTestId("secret-bindings-screen")).toBeVisible();
-      },
-      "06-secrets-list-read-only",
-    );
-
-    await captureReadOnlyRoute(
-      page,
-      findings,
-      "Settings Mesh compute",
-      async () => {
-        await page.goto("/#/today");
-        await openSettings(page, "compute");
-        await expect(
-          page.getByTestId("settings-mesh-share-compute"),
-        ).toBeVisible();
-      },
-      "07-settings-mesh-compute-read-only",
     );
 
     await captureReadOnlyRoute(
@@ -2017,21 +1758,6 @@ test.describe("signed-in canary company UI", () => {
         await expect(page.getByTestId("money-invoice-list")).toBeVisible();
       },
       "09-money-invoice-list-read-only",
-    );
-
-    await captureReadOnlyRoute(
-      page,
-      findings,
-      "Money tax route",
-      async () => {
-        await page.goto(
-          "/#/money/tax/settings?invoiceId=00000000-0000-4000-8000-000000000001",
-        );
-        await expect(
-          page.getByTestId("money-tax-unavailable-page"),
-        ).toBeVisible();
-      },
-      "09-money-tax-no-invoice-record-read-only",
     );
 
     console.log(`CANARY_READ_ONLY_FINDINGS ${JSON.stringify(findings)}`);

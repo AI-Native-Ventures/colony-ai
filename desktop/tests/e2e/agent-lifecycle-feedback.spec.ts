@@ -13,12 +13,15 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentsDirectoryView,
+  openPersonaProfilePanel,
+} from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/screenshots-lifecycle";
 
 // Persona ID used across the cascade-delete test. Must be a custom (non-builtin)
-// persona so the actions menu renders the Delete path.
+// persona so the profile panel renders the Delete path.
 const CASCADE_PERSONA_ID = "custom:test-cascade";
 
 // Stable fake pubkeys for the two seeded managed agents. 64 lowercase hex chars
@@ -27,14 +30,14 @@ const CASCADE_AGENT_A_PUBKEY = "aa".repeat(32);
 const CASCADE_AGENT_B_PUBKEY = "bb".repeat(32);
 
 /**
- * Navigate to the Agents view and wait for its unified list to mount.
+ * Open the persona's profile panel on the Agents route and trigger its Delete
+ * row, which opens the persona delete confirm dialog.
  */
-async function openAgentsView(page: import("@playwright/test").Page) {
+async function openPersonaDeleteDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-  await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentsDirectoryView(page);
+  await openPersonaProfilePanel(page, CASCADE_PERSONA_ID);
+  await page.getByTestId("user-profile-delete-agent-row").click();
 }
 
 async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
@@ -78,7 +81,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
 
   // Shot 01: persona delete confirm dialog  -  "Also deletes 2 agent instance(s)."
   // Seeds a custom persona with two linked managed agents so instanceCount = 2.
-  // Triggers the delete confirm from the persona's "..." actions menu.
+  // Triggers the delete confirm from the persona's profile panel.
   test("01-delete-cascade-copy", async ({ page }) => {
     await installMockBridge(page, {
       personas: [
@@ -105,21 +108,8 @@ test.describe("agent lifecycle feedback screenshots", () => {
       ],
     });
 
-    await openAgentsView(page);
-
-    // The custom persona card appears in the library.
-    await expect(
-      page.getByText("Cascade Test Agent", { exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Open the actions menu for the custom persona. The trigger button carries
-    // an aria-label derived from the persona displayName.
-    await page
-      .getByRole("button", { name: "Open actions for Cascade Test Agent" })
-      .click();
-
     // For a custom (non-builtin) persona, Delete opens PersonaDeleteDialog.
-    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await openPersonaDeleteDialog(page);
 
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -238,16 +228,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
       ],
     });
 
-    await openAgentsView(page);
-
-    await expect(
-      page.getByText("Cascade Test Agent", { exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    await page
-      .getByRole("button", { name: "Open actions for Cascade Test Agent" })
-      .click();
-    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await openPersonaDeleteDialog(page);
 
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -278,16 +259,7 @@ test.describe("agent lifecycle feedback screenshots", () => {
       managedAgents: [],
     });
 
-    await openAgentsView(page);
-
-    await expect(
-      page.getByText("Cascade Test Agent", { exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    await page
-      .getByRole("button", { name: "Open actions for Cascade Test Agent" })
-      .click();
-    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await openPersonaDeleteDialog(page);
 
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible({ timeout: 5_000 });

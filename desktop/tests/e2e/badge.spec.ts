@@ -137,8 +137,6 @@ test("primary navigation rows share the same inactive emphasis", async ({
   const inactiveRows = [
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
     page.getByTestId("sidebar-activity-button"),
-    page.getByTestId("open-workflows-view"),
-    page.getByTestId("open-factory-view"),
   ];
 
   for (const row of inactiveRows) {
@@ -150,14 +148,14 @@ test("primary navigation rows share the same inactive emphasis", async ({
     await expect(row.locator("svg")).toHaveCSS("opacity", "0.8");
   }
 
-  const work = page.getByTestId("open-workflows-view");
-  await work.click();
-  await expect(work).toHaveAttribute("data-active", "true");
-  await expect(work.locator("[data-sidebar=menu-label]")).toHaveCSS(
+  const activity = page.getByTestId("sidebar-activity-button");
+  await activity.click();
+  await expect(activity).toHaveAttribute("data-active", "true");
+  await expect(activity.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
     "1",
   );
-  await expect(work.locator("svg")).toHaveCSS("opacity", "0.8");
+  await expect(activity.locator("svg")).toHaveCSS("opacity", "0.8");
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {

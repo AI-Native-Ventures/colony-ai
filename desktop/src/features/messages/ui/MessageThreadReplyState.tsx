@@ -86,8 +86,8 @@ export function ThreadRepliesEmptyDivider() {
  * the surface selection (`selectThreadRepliesSurface`, keyed off the same raw
  * query/render state the panel already holds) AND the surface→content dispatch.
  * Fusing them here removes the last falsifiable seam: the panel passes only its
- * raw state — pending/error flags, the deferred vs. live reply counts, and the
- * huddle-transcript flag — so there is no precomputed `surface` prop at the
+ * raw state — pending/error flags and the deferred vs. live reply counts — so
+ * there is no precomputed `surface` prop at the
  * panel boundary to statically mis-set (e.g. a stray `surface="empty"` that would
  * silently restore the false-empty bug on every fetch failure). The load-bearing
  * invariant holds by construction: a terminal fetch "error" renders the retry
@@ -105,7 +105,6 @@ export function ThreadReplyRegion({
   isError,
   deferredCount,
   liveCount,
-  isHuddleTranscript = false,
   onRetry,
   renderSkeleton,
   renderList,
@@ -114,7 +113,6 @@ export function ThreadReplyRegion({
   isError: boolean;
   deferredCount: number;
   liveCount: number;
-  isHuddleTranscript?: boolean;
   onRetry?: () => void;
   renderSkeleton: () => ReactNode;
   renderList: () => ReactNode;
@@ -123,7 +121,6 @@ export function ThreadReplyRegion({
     isPending,
     isError,
     renderState: selectDeferredListRenderState(deferredCount, liveCount),
-    isHuddleTranscript,
   });
   if (surface === "skeleton") return <>{renderSkeleton()}</>;
   if (surface === "list") return <>{renderList()}</>;

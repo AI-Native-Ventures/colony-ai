@@ -18,10 +18,8 @@ import {
   type MoneyWorkspaceRecords,
 } from "./lib/moneyRecords";
 import {
-  FollowUpDraftDialog,
   InvoiceEditDialog,
   IssueInvoiceDialog,
-  MoneyAdjustmentDialog,
   RecordPaymentDialog,
   VoidInvoiceDialog,
 } from "./MoneyDialogs";
@@ -37,7 +35,6 @@ import {
   lineTotalMinor,
   navigateMoney,
   periodForTimestamp,
-  sumAdjustments,
   totalLinesMinor,
 } from "./moneyUtils";
 import "@/features/discovery/business-records.css";
@@ -48,9 +45,7 @@ export type MoneySection =
   | "revenue"
   | "revenue-invoice"
   | "invoices"
-  | "invoice"
-  | "adjustments"
-  | "follow-ups";
+  | "invoice";
 
 export function MoneyRouteScreen({
   section,
@@ -134,9 +129,7 @@ export function MoneyRouteScreen({
             title="Invoice unavailable"
           />
         )
-      ) : section === "overview" ||
-        section === "revenue" ||
-        section === "invoices" ? (
+      ) : (
         <>
           <header className="w10-page-heading money-page-heading">
             <div>
@@ -169,18 +162,6 @@ export function MoneyRouteScreen({
             />
           )}
         </>
-      ) : section === "adjustments" ? (
-        <AdjustmentsScreen
-          canManage={canManage}
-          clientNames={clientNames}
-          records={records}
-        />
-      ) : (
-        <FollowUpsScreen
-          canManage={canManage}
-          clientNames={clientNames}
-          records={records}
-        />
       )}
     </W10Page>
   );
@@ -192,34 +173,19 @@ function MoneyNavigation({ section }: { section: MoneySection }) {
     ["revenue", "Revenue", "/money/revenue"],
     ["invoices", "Invoices", "/money/invoices"],
   ] as const;
-  const operations = [
-    ["adjustments", "Credit notes & refunds", "/money/adjustments"],
-    ["follow-ups", "Follow-ups", "/money/follow-ups"],
-  ] as const;
   return (
-    <>
-      <nav aria-label="Money" className="w10-tabs money-tabs">
-        {primary.map(([id, label, href]) => (
-          <a
-            aria-current={section === id ? "page" : undefined}
-            className={section === id ? "is-active" : ""}
-            href={`#${href}`}
-            key={id}
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
-      <nav aria-label="Money operations" className="money-operation-tabs">
-        {operations.map(([id, label, href]) => (
-          <a href={`#${href}`} key={id}>
-            {label}
-          </a>
-        ))}
-        <a href="#/money/costs/unavailable">Costs</a>
-        <a href="#/money/profitability/unavailable">Profitability</a>
-      </nav>
-    </>
+    <nav aria-label="Money" className="w10-tabs money-tabs">
+      {primary.map(([id, label, href]) => (
+        <a
+          aria-current={section === id ? "page" : undefined}
+          className={section === id ? "is-active" : ""}
+          href={`#${href}`}
+          key={id}
+        >
+          {label}
+        </a>
+      ))}
+    </nav>
   );
 }
 
@@ -326,9 +292,6 @@ function MoneyOverview({
         <section className="money-panel">
           <header className="money-panel-heading">
             <h2>Needs attention</h2>
-            <a href="#/money/follow-ups">
-              All follow-ups <ArrowRight aria-hidden="true" />
-            </a>
           </header>
           {overdue.length ? (
             <div className="money-attention-list">
@@ -355,9 +318,7 @@ function MoneyOverview({
           ) : (
             <div className="money-empty money-empty-compact">
               <span>No overdue balances</span>
-              <small>
-                A follow-up is prepared only for an outstanding invoice.
-              </small>
+              <small>Overdue invoices appear here.</small>
             </div>
           )}
         </section>
@@ -475,21 +436,11 @@ function InvoiceDetail({
 }) {
   const { value: head } = invoice;
   const [dialog, setDialog] = React.useState<
-    "edit" | "issue" | "void" | "payment" | "follow-up" | "credit-note" | null
+    "edit" | "issue" | "void" | "payment" | null
   >(null);
-  const adjustments = records.adjustments.filter(
-    ({ value }) => value.invoiceId === head.invoiceId,
-  );
   const payments = records.payments
     .filter(({ value }) => value.invoiceId === head.invoiceId)
     .sort((left, right) => right.value.occurredAt - left.value.occurredAt);
-  const credits = sumAdjustments(adjustments, "credit_note");
-  const refunds = sumAdjustments(adjustments, "refund");
-  const creditAvailable = Math.max(
-    0,
-    head.collectedMinor -
-      Math.max(0, head.totalMinor - head.creditedMinor - head.writtenOffMinor),
-  );
   const hasPaymentEvidence =
     payments.length > 0 || head.paymentEvidenceCount > 0;
 
@@ -511,18 +462,6 @@ function InvoiceDetail({
           {canManage && head.status === "draft" ? (
             <W10Button onClick={() => setDialog("edit")} variant="secondary">
               Edit invoice
-            </W10Button>
-          ) : null}
-          {canManage && head.status === "draft" ? (
-            <W10Button
-              onClick={() =>
-                navigateMoney(
-                  `/money/tax/settings?invoiceId=${encodeURIComponent(head.invoiceId)}`,
-                )
-              }
-              variant="secondary"
-            >
-              View tax settings
             </W10Button>
           ) : null}
         </div>
@@ -651,20 +590,9 @@ function InvoiceDetail({
             {canManage &&
             head.status === "issued" &&
             head.outstandingMinor > 0 ? (
-              <>
-                <W10Button
-                  onClick={() => setDialog("payment")}
-                  variant="primary"
-                >
-                  Record payment
-                </W10Button>
-                <W10Button
-                  onClick={() => setDialog("follow-up")}
-                  variant="secondary"
-                >
-                  Prepare reminder
-                </W10Button>
-              </>
+              <W10Button onClick={() => setDialog("payment")} variant="primary">
+                Record payment
+              </W10Button>
             ) : null}
             {canManage && head.status !== "void" && !hasPaymentEvidence ? (
               <W10Button onClick={() => setDialog("void")} variant="quiet">
@@ -673,8 +601,8 @@ function InvoiceDetail({
             ) : null}
             {canManage && head.status !== "void" && hasPaymentEvidence ? (
               <p className="money-note" role="note">
-                Payments are recorded against this invoice. Review the payment
-                record and create an adjustment before voiding.
+                Payments are recorded against this invoice, so it cannot be
+                voided.
               </p>
             ) : null}
             {!canManage ? <p className="money-note">Read only</p> : null}
@@ -701,33 +629,6 @@ function InvoiceDetail({
             ) : (
               <p>No payments recorded.</p>
             )}
-          </section>
-          <section className="money-panel">
-            <h2>Source</h2>
-            <p>Accepted proposal</p>
-            <p>{head.proposalId}</p>
-          </section>
-          <section className="money-panel">
-            <h2>Adjustments</h2>
-            <dl className="money-facts">
-              <dt>Credit notes</dt>
-              <dd>{formatMoneyMinor(credits, head.currency)}</dd>
-              <dt>Refunds recorded</dt>
-              <dd>{formatMoneyMinor(refunds, head.currency)}</dd>
-              <dt>Credit available</dt>
-              <dd>{formatMoneyMinor(creditAvailable, head.currency)}</dd>
-            </dl>
-            {canManage && head.status === "issued" ? (
-              <W10Button
-                onClick={() => setDialog("credit-note")}
-                variant="primary"
-              >
-                Create credit note
-              </W10Button>
-            ) : null}
-            <a className="money-text-link" href="#/money/adjustments">
-              All adjustments <ArrowRight aria-hidden="true" />
-            </a>
           </section>
           {records.invoiceVersions.filter(
             ({ value }) => value.invoiceId === head.invoiceId,
@@ -767,246 +668,7 @@ function InvoiceDetail({
         onOpenChange={(open) => setDialog(open ? "payment" : null)}
         open={dialog === "payment"}
       />
-      <FollowUpDraftDialog
-        canManage={canManage}
-        invoice={invoice}
-        records={records}
-        onOpenChange={(open) => setDialog(open ? "follow-up" : null)}
-        open={dialog === "follow-up"}
-      />
-      <MoneyAdjustmentDialog
-        key={dialog === "credit-note" ? "credit-note" : "closed"}
-        action={dialog === "credit-note" ? "credit_note" : null}
-        canManage={canManage}
-        clientNames={clientNames}
-        invoices={[invoice]}
-        onActionChange={(action) =>
-          setDialog(action === "credit_note" ? "credit-note" : null)
-        }
-        onOpenChange={(open) => setDialog(open ? "credit-note" : null)}
-        open={dialog === "credit-note"}
-      />
     </>
-  );
-}
-
-function AdjustmentsScreen({
-  canManage,
-  clientNames,
-  records,
-}: {
-  canManage: boolean;
-  clientNames: ReadonlyMap<string, string>;
-  records: MoneyWorkspaceRecords;
-}) {
-  const [action, setAction] = React.useState<"credit_note" | "refund" | null>(
-    null,
-  );
-  const invoiceHeads = records.invoiceHeads.filter(
-    ({ value }) => value.status === "issued",
-  );
-  const credits = records.adjustments
-    .filter(({ value }) => value.adjustmentType === "credit_note")
-    .sort((left, right) => right.value.occurredAt - left.value.occurredAt);
-  const refunds = records.adjustments
-    .filter(({ value }) => value.adjustmentType === "refund")
-    .sort((left, right) => right.value.occurredAt - left.value.occurredAt);
-  return (
-    <>
-      <header className="w10-page-heading money-page-heading">
-        <div>
-          <h1>Credit notes &amp; refunds</h1>
-        </div>
-        <div className="w10-heading-actions">
-          {canManage && invoiceHeads.length ? (
-            <>
-              <W10Button
-                onClick={() => setAction("credit_note")}
-                variant="primary"
-              >
-                Create credit note
-              </W10Button>
-              <W10Button
-                onClick={() => setAction("refund")}
-                variant="secondary"
-              >
-                Record refund
-              </W10Button>
-            </>
-          ) : null}
-        </div>
-      </header>
-      <MoneyNavigation section="adjustments" />
-      <section className="money-panel money-adjustments-section">
-        <h2>Credit notes</h2>
-        <MoneyRecordTable
-          headings={["Reference", "Invoice", "Date", "Amount", "Reason"]}
-          rows={credits.map(({ value }) => ({
-            key: value.adjustmentId,
-            cells: [
-              value.adjustmentId,
-              <a
-                href={`#/money/invoice/${value.invoiceId}`}
-                key={`${value.adjustmentId}:invoice`}
-              >
-                {value.invoiceId}
-              </a>,
-              formatTimestamp(value.occurredAt),
-              formatMoneyMinor(value.amountMinor, value.currency),
-              value.reason,
-            ],
-          }))}
-          testId="money-credit-notes"
-        />
-      </section>
-      <section className="money-panel money-adjustments-section">
-        <h2>Refund records</h2>
-        <MoneyRecordTable
-          headings={["Invoice", "Date", "Amount", "Payment evidence"]}
-          rows={refunds.map(({ value }) => ({
-            key: value.adjustmentId,
-            cells: [
-              <a
-                href={`#/money/invoice/${value.invoiceId}`}
-                key={`${value.adjustmentId}:invoice`}
-              >
-                {value.invoiceId}
-              </a>,
-              formatTimestamp(value.occurredAt),
-              formatMoneyMinor(value.amountMinor, value.currency),
-              value.evidenceRef,
-            ],
-          }))}
-          testId="money-refunds"
-        />
-      </section>
-      <p className="money-page-note">
-        Credit notes reduce invoiced revenue. Refund records reduce collected
-        cash on their recorded payment date. This interface records evidence; it
-        does not move money.
-      </p>
-      <MoneyAdjustmentDialog
-        key={action ?? "closed"}
-        action={action}
-        canManage={canManage}
-        clientNames={clientNames}
-        invoices={invoiceHeads}
-        onActionChange={setAction}
-        onOpenChange={(open) => setAction(open ? action : null)}
-        open={action !== null}
-      />
-    </>
-  );
-}
-
-function FollowUpsScreen({
-  canManage,
-  clientNames,
-  records,
-}: {
-  canManage: boolean;
-  clientNames: ReadonlyMap<string, string>;
-  records: MoneyWorkspaceRecords;
-}) {
-  const [invoiceId, setInvoiceId] = React.useState<string | null>(null);
-  const overdueInvoices = records.invoiceHeads
-    .filter(({ value }) => isOverdue(value))
-    .sort((left, right) => (left.value.dueAt ?? 0) - (right.value.dueAt ?? 0));
-  const selectedInvoice = invoiceId
-    ? (records.invoiceHeads.find(
-        ({ value }) => value.invoiceId === invoiceId,
-      ) ?? null)
-    : null;
-  return (
-    <>
-      <header className="w10-page-heading money-page-heading">
-        <div>
-          <h1>Invoice follow-ups</h1>
-        </div>
-      </header>
-      <MoneyNavigation section="follow-ups" />
-      {overdueInvoices.length ? (
-        <div className="money-follow-up-list" data-testid="money-follow-ups">
-          {overdueInvoices.map(({ value }) => (
-            <div className="money-follow-up-row" key={value.invoiceId}>
-              <span className="money-follow-up-icon">
-                <FileText aria-hidden="true" />
-              </span>
-              <a href={`#/money/invoice/${value.invoiceId}`}>
-                <strong>
-                  {clientNames.get(value.clientId) ?? value.clientId} ·{" "}
-                  {value.invoiceId}
-                </strong>
-                <small>
-                  {formatMoneyMinor(value.outstandingMinor, value.currency)}{" "}
-                  outstanding · due {formatTimestamp(value.dueAt)}
-                </small>
-              </a>
-              {canManage ? (
-                <W10Button
-                  onClick={() => setInvoiceId(value.invoiceId)}
-                  variant="secondary"
-                >
-                  Prepare reminder
-                </W10Button>
-              ) : null}
-              <a
-                aria-label={`Open invoice ${value.invoiceId}`}
-                href={`#/money/invoice/${value.invoiceId}`}
-              >
-                <ArrowRight aria-hidden="true" />
-              </a>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="money-empty" data-testid="money-follow-ups-empty">
-          <Clock3 aria-hidden="true" />
-          <h2>No overdue balances</h2>
-          <p>A reminder is prepared only for an outstanding invoice.</p>
-        </div>
-      )}
-      <FollowUpDraftDialog
-        canManage={canManage}
-        invoice={selectedInvoice}
-        records={records}
-        onOpenChange={(open) => setInvoiceId(open ? invoiceId : null)}
-        open={selectedInvoice !== null}
-      />
-    </>
-  );
-}
-
-function MoneyRecordTable({
-  headings,
-  rows,
-  testId,
-}: {
-  headings: string[];
-  rows: { key: string; cells: React.ReactNode[] }[];
-  testId: string;
-}) {
-  return (
-    <div className="w10-table-wrap">
-      <table className="w10-table money-table" data-testid={testId}>
-        <thead>
-          <tr>
-            {headings.map((heading) => (
-              <th key={heading}>{heading}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ cells, key }) => (
-            <tr key={key}>
-              {cells.map((cell, cellIndex) => (
-                <td key={`${key}:${headings[cellIndex]}`}>{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 

@@ -55,7 +55,6 @@ function getRouteMainTimelineTargetId(
 export function useChannelRouteTarget({
   activeChannel,
   activeChannelId,
-  closeAgentSession,
   requireThreadEditResolution,
   setEditTargetId,
   setExpandedThreadReplyIds,
@@ -68,7 +67,6 @@ export function useChannelRouteTarget({
 }: {
   activeChannel: Channel | null;
   activeChannelId: string | null;
-  closeAgentSession: () => void;
   requireThreadEditResolution: () => boolean;
   setEditTargetId: React.Dispatch<React.SetStateAction<string | null>>;
   setExpandedThreadReplyIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -105,8 +103,7 @@ export function useChannelRouteTarget({
 
     if (
       handledThreadRouteTargetRef.current === targetKey ||
-      !activeChannel ||
-      activeChannel.channelType === "forum"
+      !activeChannel
     ) {
       return;
     }
@@ -120,7 +117,6 @@ export function useChannelRouteTarget({
       if (!requireThreadEditResolution()) {
         return;
       }
-      closeAgentSession();
       setProfilePanelPubkey(null, { replace: true });
       setEditTargetId(null);
       // Root message links open the reply panel. Navigation is refused before
@@ -148,7 +144,6 @@ export function useChannelRouteTarget({
       return;
     }
 
-    closeAgentSession();
     // Replace so the deep-link entry itself carries the opened thread —
     // back should leave the deep link, not strip the panel from it.
     setProfilePanelPubkey(null, { replace: true });
@@ -161,7 +156,6 @@ export function useChannelRouteTarget({
   }, [
     activeChannel,
     activeChannelId,
-    closeAgentSession,
     requireThreadEditResolution,
     setEditTargetId,
     setExpandedThreadReplyIds,

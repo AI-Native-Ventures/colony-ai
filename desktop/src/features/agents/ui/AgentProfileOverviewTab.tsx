@@ -4,9 +4,7 @@ import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastE
 import type { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
 import type { ManagedAgent } from "@/shared/api/types";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
 import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
-import type { AgentProfileTab } from "./AgentProfileView";
 
 export function OverviewTab({
   activeTurns,
@@ -17,7 +15,6 @@ export function OverviewTab({
   description,
   harnessLabel,
   onOpenChannel,
-  onTabChange,
   providerLabel,
 }: {
   activeTurns: ReturnType<typeof useActiveAgentTurns>;
@@ -28,7 +25,6 @@ export function OverviewTab({
   description: string | null;
   harnessLabel: string;
   onOpenChannel: (channelId: string) => void;
-  onTabChange: (tab: AgentProfileTab) => void;
   providerLabel: string;
 }) {
   return (
@@ -61,16 +57,6 @@ export function OverviewTab({
               value={formatActivityTime(agent.lastStartedAt)}
             />
           </div>
-          <Button
-            className="mt-3 px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
-            onClick={() => onTabChange("model-runtime")}
-            size="sm"
-            type="button"
-            variant="link"
-          >
-            Inspect configuration{" "}
-            <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Button>
         </section>
 
         <section
@@ -128,16 +114,6 @@ export function OverviewTab({
               ? ` · ${agent.respondToAllowlist.length} selected people`
               : ""}
           </p>
-          <Button
-            className="mt-2 px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
-            onClick={() => onTabChange("tools-access")}
-            size="sm"
-            type="button"
-            variant="link"
-          >
-            Tools & access{" "}
-            <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Button>
         </section>
       </div>
 
@@ -149,15 +125,6 @@ export function OverviewTab({
           >
             Current work
           </h3>
-          <Button
-            className="px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
-            onClick={() => onTabChange("activity")}
-            size="sm"
-            type="button"
-            variant="link"
-          >
-            Activity log <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Button>
         </div>
         {activeTurns.length === 0 ? (
           <p className="mt-2 min-h-[3.875rem] rounded-lg border border-dashed border-border/70 px-0 py-5 text-sm text-muted-foreground">

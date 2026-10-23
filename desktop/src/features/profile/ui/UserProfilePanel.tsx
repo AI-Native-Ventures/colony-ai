@@ -2,7 +2,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
+import { useIsManagedAgent } from "@/features/agents/useIsManagedAgent";
 import {
   type AttachManagedAgentToChannelResult,
   useAcpRuntimesQuery,
@@ -48,7 +48,6 @@ import {
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
 import { ownsAuthorAgent } from "@/features/profile/lib/identity";
-import { resolveProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
 import { useCanonicalManagedAgentProfile } from "@/features/profile/lib/useCanonicalManagedAgentProfile";
 import {
   AgentInstructionsFocusedView,
@@ -58,7 +57,6 @@ import {
   AgentInfoFocusedView,
   ChannelsFocusedView,
   DiagnosticsFocusedView,
-  MemoryFocusedView,
 } from "@/features/profile/ui/UserProfilePanelFocusedViews";
 import { AgentConfigurationFocusedView } from "@/features/profile/ui/UserProfilePanelAgentDetails";
 import { UserProfileAgentSettingsMenuSlot } from "@/features/profile/ui/UserProfileAgentActions";
@@ -83,7 +81,6 @@ import {
 } from "@/features/profile/ui/UserProfilePanelUtils";
 import { useProfileInteractionActions } from "@/features/profile/ui/useProfileInteractionActions";
 import { useUserStatusQuery } from "@/features/user-status/hooks";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
@@ -261,7 +258,6 @@ export function UserProfilePanel({
   const contactListQuery = useContactListQuery(currentPubkey);
   const followMutation = useFollowMutation(currentPubkey);
   const unfollowMutation = useUnfollowMutation(currentPubkey);
-  const { canOpenAgentActivity, openAgentActivity } = useOpenAgentActivity();
   const { goChannel } = useAppNavigation();
   const profile = resolvePanelProfile({
     managedAgent,
@@ -293,7 +289,7 @@ export function UserProfilePanel({
   // Gates edit (which needs the key) and grants owner access when managed locally.
   const isOwner = resolvedPersona ? true : managedAgentOwner;
   // Is the viewer the agent's declared owner (NIP-OA `ownerPubkey == me`)? This
-  // is the right signal for viewing owner-scoped data (activity feed, memory):
+  // is the right signal for viewing owner-scoped data:
   // the relay routes and the client decrypts those frames with the owner's OWN
   // key, so the agent's seckey is never needed. Computed here (before the gates
   // that consume it) so visibility keys off declared ownership, not key custody.
@@ -303,28 +299,11 @@ export function UserProfilePanel({
   // real boundary is server-side, so this only controls what UI we paint.
   const viewerIsOwner = isCurrentUserOwner || isOwner === true;
 
-  const activityAgent = React.useMemo(
-    () =>
-      resolveProfileActivityAgent({
-        effectivePubkey,
-        isBot,
-        managedAgent,
-        profile: profile ?? null,
-        relayAgent,
-        viewerIsOwner,
-      }),
-    [effectivePubkey, isBot, managedAgent, profile, relayAgent, viewerIsOwner],
-  );
-  // Observer ingestion is owner-global across local and declared-owned agents.
   const canEditAgent = Boolean(isOwner && (managedAgent ?? resolvedPersona));
   const isSelf =
     currentPubkey !== undefined &&
     pubkeyLower.length > 0 &&
     pubkeyLower === currentPubkey.toLowerCase();
-  const canViewActivity =
-    viewerIsOwner &&
-    Boolean(effectivePubkey) &&
-    canOpenAgentActivity(effectivePubkey);
   const canOpenAgentLogs =
     isOwner === true && managedAgent?.backend.type === "local";
   const canInstantiateAgent =
@@ -362,13 +341,6 @@ export function UserProfilePanel({
     [pubkeyLower, relayAgent, managedAgent, channelsQuery.data],
   );
 
-  const channelIdToName = React.useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const channel of channelsQuery.data ?? []) {
-      map[channel.id] = channel.name;
-    }
-    return map;
-  }, [channelsQuery.data]);
   const targetKey = profilePanelTargetKey(pubkey, persona?.id);
   const prevTargetKeyRef = React.useRef(targetKey);
   React.useEffect(() => {
@@ -379,23 +351,15 @@ export function UserProfilePanel({
     setView("summary", { replace: true });
     setTab("info", { replace: true });
   }, [preserveRequestedInstance, setTab, setView, targetKey]);
-  const {
-    canHuddle,
-    canMessage,
-    canWave,
-    handleHuddle,
-    handleMessage,
-    handleWave,
-    isStartingHuddle,
-    pendingAction,
-  } = useProfileInteractionActions({
-    effectivePubkey,
-    enabled: onOpenDm !== undefined,
-    isBot,
-    isSelf,
-    onClose,
-    viewerIsOwner,
-  });
+  const { canMessage, canWave, handleMessage, handleWave, pendingAction } =
+    useProfileInteractionActions({
+      effectivePubkey,
+      enabled: onOpenDm !== undefined,
+      isBot,
+      isSelf,
+      onClose,
+      viewerIsOwner,
+    });
   const openResolvedPersonaEditor = React.useCallback(() => {
     if (!resolvedPersona) return false;
     setPersonaDialogState(
@@ -649,14 +613,6 @@ export function UserProfilePanel({
     ],
   );
 
-  const handleOpenActivity = React.useCallback(
-    (channelId?: string | null) => {
-      if (!effectivePubkey) return;
-      openAgentActivity(effectivePubkey, { channelId: channelId ?? null });
-    },
-    [effectivePubkey, openAgentActivity],
-  );
-
   const handleOpenChannel = React.useCallback(
     (channelId: string) => {
       void goChannel(channelId);
@@ -765,7 +721,6 @@ export function UserProfilePanel({
       onBack: () => setView("summary"),
       onEditAgent: canEditAgent ? handleEditAgent : undefined,
       view,
-      viewerIsOwner,
     },
   );
 
@@ -786,9 +741,7 @@ export function UserProfilePanel({
           canEditAgent={canEditAgent}
           canInstantiateAgent={canInstantiateAgent}
           canOpenAgentLogs={canOpenAgentLogs}
-          canViewActivity={canViewActivity}
           channelCount={profileChannels.length}
-          channelIdToName={channelIdToName}
           channels={profileChannels}
           channelsLoading={channelsQuery.isLoading}
           displayName={displayName}
@@ -799,12 +752,10 @@ export function UserProfilePanel({
           handleEditAgent={handleEditAgent}
           handleToggleAgentAutoStart={handleToggleAgentAutoStart}
           handleEditPersona={canManagePersona ? handleEditPersona : undefined}
-          handleHuddle={canHuddle ? handleHuddle : undefined}
           handleInstantiateAgent={handleInstantiateAgent}
           handleMessage={canMessage ? handleMessage : undefined}
           handleWave={canWave ? handleWave : undefined}
           isArchived={archiveActions.isArchived === true}
-          isHuddlePending={pendingAction === "huddle" || isStartingHuddle}
           isMessagePending={pendingAction === "message"}
           isWavePending={pendingAction === "wave"}
           isBot={isBot}
@@ -813,7 +764,6 @@ export function UserProfilePanel({
           isOwner={viewerIsOwner}
           isSelf={isSelf}
           instanceBuckets={instanceBuckets}
-          activityAgent={activityAgent}
           managedAgent={managedAgent}
           agentInfoFields={agentInfoFields}
           archiveActions={archiveActions}
@@ -833,7 +783,6 @@ export function UserProfilePanel({
             onOpenProfile?.(instancePubkey);
             setTab("runtime");
           }}
-          onOpenActivity={handleOpenActivity}
           onOpenChannel={handleOpenChannel}
           onOpenDiagnostics={() => setView("diagnostics")}
           onStickyChromeChange={handleStickyChromeChange}
@@ -845,12 +794,6 @@ export function UserProfilePanel({
           tab={tab}
           unfollowMutation={unfollowMutation}
           userStatus={userStatus}
-        />
-      ) : null}
-      {view === "memories" && effectivePubkey ? (
-        <MemoryFocusedView
-          agentPubkey={effectivePubkey}
-          viewerIsOwner={viewerIsOwner}
         />
       ) : null}
       {view === "info" ? (

@@ -1,7 +1,6 @@
 // biome-ignore format: keep compact to stay within file size limit
 import { useLocation } from "@tanstack/react-router";
 import * as React from "react";
-import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
 import { AddCommunityDialog } from "@/features/communities/ui/AddCommunityDialog";
@@ -56,7 +55,6 @@ import {
 } from "@/features/sidebar/ui/CustomChannelSection";
 import { CreateChannelDialog } from "@/features/sidebar/ui/CreateChannelDialog";
 import { SidebarProfileCard } from "@/features/sidebar/ui/SidebarProfileCard";
-import { HuddleProfileControl } from "@/features/huddle";
 import type {
   AppSidebarProps,
   CollapsibleSidebarGroup,
@@ -70,7 +68,6 @@ import {
 } from "@/features/sidebar/ui/sidebarLoadingSkeleton";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
 import { SidebarUpdateCard } from "@/features/settings/SidebarUpdateCard";
-import type { FactoryScope } from "@/shared/api/factoryRuntime";
 import { useUpdaterContext } from "@/features/settings/hooks/UpdaterProvider";
 import { shouldShowSidebarUpdateCard } from "@/features/settings/sidebarUpdateCardVisibility";
 import type { Channel, ChannelVisibility } from "@/shared/api/types";
@@ -95,12 +92,10 @@ export function AppSidebar({
   fallbackDisplayName,
   homeBadgeCount,
   isPowerActive,
-  isSavedForLaterActive,
   onBackgroundClick,
   isAddCommunityOpen,
   isLoading,
   isCreatingChannel,
-  isCreatingForum,
   profile,
   relayConnectionCard,
   selfPresenceStatus,
@@ -117,7 +112,6 @@ export function AppSidebar({
   onAddCommunity,
   onAddCommunityOpenChange,
   onCreateChannel,
-  onCreateForum,
   onOpenAddCommunity,
   onSendFeedback,
   onHideDm,
@@ -130,15 +124,11 @@ export function AppSidebar({
   onRemoveCommunity,
   onCreateAgent,
   onSelectToday,
-  onSelectSavedForLater,
-  onSelectFactory,
   onSelectAgents,
-  onSelectGoals,
   onSelectTeam,
   onSelectClients,
   onSelectWork,
   onSelectPower,
-  onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
   onOpenSearchResult,
@@ -153,8 +143,6 @@ export function AppSidebar({
   isPresencePending,
   onNewMessage,
   isCreateChannelOpen: isCreateChannelOpenProp,
-  isHuddleCompanionOpen = false,
-  onHuddleEnded,
   onCreateChannelOpenChange,
   mutedChannelIds,
   onMuteChannel,
@@ -162,11 +150,6 @@ export function AppSidebar({
   starredChannelIds,
   onStarChannel,
   onUnstarChannel,
-  createChannelTemplateDraft,
-  createChannelTemplateId,
-  createChannelTemplateKind,
-  onClearChannelTemplateRequest,
-  onOpenTemplatePicker,
 }: AppSidebarProps) {
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
@@ -179,51 +162,25 @@ export function AppSidebar({
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
   const { pathname } = useLocation();
-  const factoryScope = React.useMemo<FactoryScope>(
-    () => ({
-      relayUrl: activeCommunity?.relayUrl ?? "unavailable",
-      identityPubkey: currentPubkey ?? "unavailable",
-      businessCommunityId:
-        activeCommunity?.businessCommunityId ??
-        activeCommunity?.id ??
-        "unavailable",
-      clientChannelId: activeCommunity?.clientChannelId ?? null,
-    }),
-    [
-      activeCommunity?.businessCommunityId,
-      activeCommunity?.clientChannelId,
-      activeCommunity?.id,
-      activeCommunity?.relayUrl,
-      currentPubkey,
-    ],
-  );
   const destinationContext = React.useMemo<SidebarDestinationContext>(
     () => ({
-      factoryScope,
       handlers: {
         onSelectAgents,
         onSelectClients,
-        onSelectFactory,
-        onSelectGoals,
         onSelectSettings,
         onSelectTeam,
         onSelectWork,
-        onSelectWorkflows,
       },
       pathname,
       selectedChannelId: selectedView === "channel" ? selectedChannelId : null,
       selectedView,
     }),
     [
-      factoryScope,
       onSelectAgents,
       onSelectClients,
-      onSelectFactory,
-      onSelectGoals,
       onSelectSettings,
       onSelectTeam,
       onSelectWork,
-      onSelectWorkflows,
       pathname,
       selectedChannelId,
       selectedView,
@@ -309,15 +266,14 @@ export function AppSidebar({
   // dialog's `onOpenChange` below.
   React.useEffect(() => {
     if (isCreateChannelOpenProp) {
-      openCreateDialog(createChannelTemplateKind ?? "stream");
+      openCreateDialog("stream");
     }
-  }, [createChannelTemplateKind, isCreateChannelOpenProp, openCreateDialog]);
+  }, [isCreateChannelOpenProp, openCreateDialog]);
   const [collapsedGroups, setCollapsedGroups] = React.useState<
     Record<CollapsibleSidebarGroup, boolean>
   >({
     starred: false,
     channels: false,
-    forums: false,
     directMessages: false,
   });
 
@@ -458,14 +414,6 @@ export function AppSidebar({
     [createSection, assignChannel, createSectionState.pendingChannelId],
   );
 
-  const forumChannels = React.useMemo(
-    () =>
-      sortChannelsForSidebar(
-        channels.filter((channel) => channel.channelType === "forum"),
-        sortModeFor("forums"),
-      ),
-    [channels, sortModeFor],
-  );
   const isSelectedDirectMessage =
     selectedView === "channel" &&
     directMessages.some((channel) => channel.id === selectedChannelId);
@@ -545,12 +493,7 @@ export function AppSidebar({
     profile?.displayName?.trim() ||
     fallbackDisplayName?.trim() ||
     "Current identity";
-  const isCreatingAny =
-    createDialogKind === "stream"
-      ? isCreatingChannel
-      : createDialogKind === "forum"
-        ? isCreatingForum
-        : false;
+  const isCreatingAny = createDialogKind === "stream" && isCreatingChannel;
 
   const handleCreateFromDialog = React.useCallback(
     async (input: {
@@ -558,15 +501,12 @@ export function AppSidebar({
       description?: string;
       visibility: ChannelVisibility;
       ttlSeconds?: number;
-      templateId?: string;
     }) => {
       if (createDialogKind === "stream") {
         await onCreateChannel(input);
-      } else if (createDialogKind === "forum") {
-        await onCreateForum(input);
       }
     },
-    [createDialogKind, onCreateChannel, onCreateForum],
+    [createDialogKind, onCreateChannel],
   );
 
   const handleOpenCreateChannel = React.useCallback(() => {
@@ -589,7 +529,6 @@ export function AppSidebar({
           ? "true"
           : undefined
       }
-      data-colony-factory={selectedView === "factory" ? "true" : undefined}
       data-colony-full-app-shell="true"
       data-testid="app-sidebar"
       onClick={(event) => {
@@ -607,7 +546,6 @@ export function AppSidebar({
         <ColonyField />
         <AppSidebarPinnedHeader
           activeCommunityName={activeCommunity?.name ?? ""}
-          factoryView={selectedView === "factory"}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
@@ -619,7 +557,6 @@ export function AppSidebar({
           onOpenDm={onOpenDm}
           onOpenSearchResult={onOpenSearchResult}
           onSelectChannel={onSelectChannel}
-          onReturnToWorkspace={onSelectToday}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
           showSidebarCollapseButton={showSidebarCollapseButton}
@@ -656,9 +593,7 @@ export function AppSidebar({
               {!isCollapsedRail ? (
                 <AppSidebarPrimaryMenu
                   homeBadgeCount={homeBadgeCount}
-                  isSavedForLaterActive={isSavedForLaterActive}
                   onSelectToday={onSelectToday}
-                  onSelectSavedForLater={onSelectSavedForLater}
                   onSelectHome={onSelectHome}
                   suppressTodaySelection={suppressTodaySelection}
                   selectedView={selectedView}
@@ -684,14 +619,12 @@ export function AppSidebar({
                   )}
                   homeBadgeCount={homeBadgeCount}
                   isActivityActive={selectedView === "home"}
-                  isSavedForLaterActive={isSavedForLaterActive}
                   isTodayActive={
                     selectedView === "today" && !suppressTodaySelection
                   }
                   onExpand={toggleSidebar}
                   onSelectChannel={onSelectChannel}
                   onSelectHome={onSelectHome}
-                  onSelectSavedForLater={onSelectSavedForLater}
                   onSelectToday={onSelectToday}
                 />
               ) : null}
@@ -806,8 +739,6 @@ export function AppSidebar({
                         actionsTestId="section-actions-channels"
                         listTestId="stream-list"
                         onBrowseClick={() => onBrowseChannels?.()}
-                        onCreateClick={() => openCreateDialog("forum")}
-                        createLabel="New forum"
                         onQuickCreateClick={() => onBrowseChannels?.()}
                         quickCreateLabel="Browse channels"
                         showQuickCreate={Boolean(onBrowseChannels)}
@@ -884,40 +815,6 @@ export function AppSidebar({
                         onLeaveChannel={requestLeaveChannel}
                       />
                     ) : null}
-
-                    <FeatureGate feature="forum">
-                      <ChannelGroupSection
-                        createLabel="New forum"
-                        hasUnread={unreadChannelIds.size > 0}
-                        isCollapsed={collapsedGroups.forums}
-                        isActiveChannel={selectedView === "channel"}
-                        activeWorkingByChannelId={activeWorkingByChannelId}
-                        items={forumChannels}
-                        sortMode={sortModeFor("forums")}
-                        onSortModeChange={(mode) =>
-                          setSortModeFor("forums", mode)
-                        }
-                        actionsTestId="section-actions-forums"
-                        listTestId="forum-list"
-                        hideWhenEmpty
-                        onCreateClick={() => openCreateDialog("forum")}
-                        quickCreateLabel="New forum"
-                        showQuickCreate
-                        onMarkAllRead={onMarkAllChannelsRead}
-                        onMarkChannelRead={onMarkChannelRead}
-                        onMarkChannelUnread={onMarkChannelUnread}
-                        onSelectChannel={onSelectChannel}
-                        onToggleCollapsed={() => toggleCollapsedGroup("forums")}
-                        selectedChannelId={selectedChannelId}
-                        title="Forums"
-                        unreadChannelIds={unreadChannelIds}
-                        unreadChannelCounts={unreadChannelCounts}
-                        mutedChannelIds={mutedChannelIds}
-                        onMuteChannel={onMuteChannel}
-                        onUnmuteChannel={onUnmuteChannel}
-                        onDeleteChannel={requestDeleteChannel}
-                      />
-                    </FeatureGate>
 
                     <SidebarSection
                       action={
@@ -1018,11 +915,6 @@ export function AppSidebar({
                 />
               </div>
             ) : null}
-            <HuddleProfileControl
-              channels={channels}
-              onHuddleEnded={onHuddleEnded}
-              visible={isHuddleCompanionOpen}
-            />
             <div className="colony-sidebar-footer-row">
               <SidebarProfileCard
                 activeCommunity={activeCommunity}
@@ -1070,8 +962,6 @@ export function AppSidebar({
 
       <CreateChannelDialog
         channelKind={createDialogKind}
-        initialDraft={createChannelTemplateDraft}
-        initialTemplateId={createChannelTemplateId}
         isCreating={isCreatingAny}
         onOpenChange={(open) => {
           if (!open) {
@@ -1080,19 +970,9 @@ export function AppSidebar({
             if (createDialogKind === "stream") {
               onCreateChannelOpenChange?.(false);
             }
-            onClearChannelTemplateRequest?.();
             setCreateDialogKind(null);
           }
         }}
-        onBrowseTemplates={
-          onOpenTemplatePicker
-            ? (draft) => {
-                setCreateDialogKind(null);
-                onCreateChannelOpenChange?.(false);
-                onOpenTemplatePicker(draft);
-              }
-            : undefined
-        }
         onCreate={handleCreateFromDialog}
       />
 

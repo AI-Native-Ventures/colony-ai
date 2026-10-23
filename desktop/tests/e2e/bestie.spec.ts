@@ -2,7 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 const BESTIE_PUBKEY = TEST_IDENTITIES.alice.pubkey;
 const RELAY_URL = "ws://localhost:3000";
@@ -80,8 +83,8 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
   });
   await page.keyboard.press("Escape");
 
-  await openAgentTemplatesView(page);
-  await page.getByRole("button", { name: "Mochi agent profile" }).click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, BESTIE_PUBKEY);
   const bestieAction = page.getByTestId("user-profile-bestie-action");
   await expect(bestieAction).toContainText("Make Bestie");
   await bestieAction.click();
