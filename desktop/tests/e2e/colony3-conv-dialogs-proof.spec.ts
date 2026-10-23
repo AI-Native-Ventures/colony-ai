@@ -37,7 +37,7 @@ type Capture = {
 };
 const captures: Capture[] = [];
 
-test.describe.configure({ mode: "serial", timeout: 120_000 });
+test.describe.configure({ timeout: 120_000 });
 
 async function openLerato(
   page: Page,

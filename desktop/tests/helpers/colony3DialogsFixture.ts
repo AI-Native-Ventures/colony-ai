@@ -4,6 +4,7 @@ import {
   REFERENCE_CHANNEL_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
 import {
+  COLONY3_EXTRA_AGENTS,
   COLONY3_PEOPLE,
   colony3At,
   colony3Extras,
