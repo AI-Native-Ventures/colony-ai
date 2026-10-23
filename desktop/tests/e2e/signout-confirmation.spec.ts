@@ -5,7 +5,7 @@ import { openSettings } from "../helpers/settings";
 
 async function openConfirmation(page: Parameters<typeof openSettings>[0]) {
   await openSettings(page, "security");
-  await page.getByTestId("signout-open-dialog-remove-data").click();
+  await page.getByTestId("signout-open-dialog").click();
   await expect(page.getByTestId("signout-dialog")).toBeVisible();
 }
 
@@ -78,9 +78,7 @@ test("Cancel closes the confirmation and nothing is removed", async ({
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await expect(page.getByTestId("signout-dialog")).toHaveCount(0);
-  await expect(
-    page.getByTestId("signout-open-dialog-remove-data"),
-  ).toBeVisible();
+  await expect(page.getByTestId("signout-open-dialog")).toBeVisible();
   await expect(
     page.evaluate(
       () => window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,

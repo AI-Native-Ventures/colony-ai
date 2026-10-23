@@ -178,7 +178,11 @@ test("Buzz Git pull request renders and stays actionable in Inbox", async ({
       const style = getComputedStyle(phrase);
       return {
         height: phrase.getBoundingClientRect().height,
-        lineHeight: Number.parseFloat(style.lineHeight),
+        // The Activity detail leaves `line-height` at its `normal` default.
+        lineHeight:
+          style.lineHeight === "normal"
+            ? Number.parseFloat(style.fontSize) * 1.2
+            : Number.parseFloat(style.lineHeight),
       };
     }),
   );

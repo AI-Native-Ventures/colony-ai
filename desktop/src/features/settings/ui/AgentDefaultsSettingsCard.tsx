@@ -32,6 +32,9 @@ export function AgentDefaultsSettingsCard({
   onOpenHarnesses,
 }: SettingsAgentsPageProps) {
   const [revision, setRevision] = React.useState(0);
+  // Remounting the editor drops its "Saved" message, so only a new
+  // connection (which can change the provider under it) does that.
+  const [editorKey, setEditorKey] = React.useState(0);
   const [connecting, setConnecting] = React.useState(false);
   const [connectError, setConnectError] = React.useState<string | null>(null);
   const config = useQuery({
@@ -73,7 +76,11 @@ export function AgentDefaultsSettingsCard({
         result.status === "limit" ||
         result.status === "linked"
       ) {
+        // Connecting saves the provider, so read it back before the editor
+        // and the "In use" badges are drawn again.
+        await config.refetch();
         setRevision((value) => value + 1);
+        setEditorKey((value) => value + 1);
       } else if (result.status === "error") {
         setConnectError(result.message);
       }
@@ -138,7 +145,7 @@ export function AgentDefaultsSettingsCard({
         </p>
         <div className="cs-defaults-editor">
           <AgentDefaultsEditor
-            key={revision}
+            key={editorKey}
             layout="flat"
             onSaveSuccess={() => setRevision((value) => value + 1)}
           />

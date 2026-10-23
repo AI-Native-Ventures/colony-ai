@@ -677,7 +677,7 @@ function InboxMessageDetailPane({
                   }
                   type="button"
                 >
-                  {openContextLabel}
+                  <span className="ca-open-label">{openContextLabel}</span>
                   <ExternalIcon size={15} strokeWidth={2.4} />
                 </button>
               ) : null}

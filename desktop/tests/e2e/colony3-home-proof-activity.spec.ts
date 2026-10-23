@@ -28,10 +28,9 @@ test("Activity board", async ({ page }) => {
   await openLerato(page, { route: "/#/", mock: colony3ActivityMockOptions() });
   await waitForShell(page);
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
-  // The design shows Scout, Zinhle and Noor as read: open them first, so
-  // Mina's thread is the one left open.
+  // The design shows Scout and Zinhle as read (Noor's row sits below the
+  // fold): open them first, so Mina's thread is the one left open.
   for (const id of [
-    COLONY3_ACTIVITY_ITEMS.noor,
     COLONY3_ACTIVITY_ITEMS.zinhle,
     COLONY3_ACTIVITY_ITEMS.scout,
     COLONY3_ACTIVITY_ITEMS.mina,

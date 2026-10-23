@@ -334,6 +334,12 @@
   margin: 0;
 }
 
+/* The preview takes the row's own size, not the conversation message size. */
+.ca-row-preview .message-markdown.inbox-preview-markdown {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 /* The design lets a preview run to four lines; the shared markdown clamp is two. */
 .ca-row-preview .message-markdown.inbox-preview-markdown > :first-child {
   -webkit-line-clamp: 4;
@@ -479,9 +485,11 @@
   gap: 0.75rem;
 }
 
-/* A narrow pane keeps the title and the open button; the avatars give way. */
+/* A narrow pane keeps the title and the open button's arrow; the avatars and
+   the button's words give way so the title always has room to truncate in. */
 @container ca-detail (max-width: 36rem) {
-  .ca-participants {
+  .ca-participants,
+  .ca-open-label {
     display: none;
   }
 }

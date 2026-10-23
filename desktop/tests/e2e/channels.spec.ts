@@ -3424,6 +3424,15 @@ test("channel workflow entries open a plain workflow and keep channel context", 
   await expect(sheet.getByTestId("channel-workflows-new")).toBeVisible();
 });
 
+/** The Activity header keeps channel settings in its overflow menu. */
+async function openHomeChannelSettings(page: import("@playwright/test").Page) {
+  await page
+    .getByTestId("home-inbox-detail")
+    .locator(".ca-more-button")
+    .click();
+  await page.getByRole("menuitem", { name: "Channel settings" }).click();
+}
+
 async function seedHomeInboxMention(
   page: import("@playwright/test").Page,
   itemId: string,
@@ -3624,12 +3633,10 @@ test("Inbox type labels keep the same height with and without a channel chip", a
   const mentionLabel = page
     .getByTestId(`home-inbox-item-${mentionId}`)
     .locator('[data-inbox-type-label=""]');
+  // The design draws the kind and the channel as one line of text.
   await expect(dmLabel).toContainText("DM from alice");
-  await expect(dmLabel.locator('[data-channel-link=""]')).toHaveCount(0);
-  await expect(mentionLabel).toContainText("Mentioned in");
-  await expect(mentionLabel.locator('[data-channel-link=""]')).toHaveText(
-    "#general",
-  );
+  await expect(dmLabel).not.toContainText("#");
+  await expect(mentionLabel).toHaveText("Mentioned in #general");
 
   const [dmBox, mentionBox] = await Promise.all([
     dmLabel.boundingBox(),
@@ -3914,10 +3921,8 @@ test("Inbox keeps the unread boundary for replies from multiple agents", async (
   await expect(inboxAvatar).toBeFocused();
   await expect(inboxAvatar).toHaveCSS("clip-path", "none");
   await expect(inboxAvatar).not.toHaveClass(/rounded-squircle/);
-  await expect(inboxAvatar.locator("[data-avatar-shape='squircle']")).toHaveCSS(
-    "clip-path",
-    /url\(["']?#rounded-squircle-clip["']?\)/,
-  );
+  // Agents keep their squircle avatar (owner decision A2).
+  await expect(inboxAvatar.locator(".rounded-squircle")).toHaveCount(1);
   await firstUnreadRow.click();
 
   const detail = page.getByTestId("home-inbox-detail");
@@ -4018,10 +4023,7 @@ test("home inbox manage affordance opens management without leaving home", async
 }) => {
   await seedHomeInboxMention(page, "mock-feed-home-channel-panel");
 
-  await page
-    .getByTestId("home-inbox-detail")
-    .getByTestId("channel-management-trigger")
-    .click();
+  await openHomeChannelSettings(page);
 
   await expect(page.getByTestId("channel-management-sheet")).toBeVisible();
   await expect(page.getByTestId("channel-management-name-row")).toContainText(
@@ -4087,10 +4089,7 @@ test("home channel settings keeps agent lifecycle actions scoped to the active c
     undefined,
     { navigate: false },
   );
-  await page
-    .getByTestId("home-inbox-detail")
-    .getByTestId("channel-management-trigger")
-    .click();
+  await openHomeChannelSettings(page);
   await page.getByTestId("channel-management-member-count").click();
   await expect(page.getByTestId("members-sidebar")).toBeVisible();
 

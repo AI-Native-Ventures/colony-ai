@@ -301,7 +301,6 @@ export default defineConfig({
         "**/edit-agent-run-on.spec.ts",
         "**/inbox-live-update.spec.ts",
         "**/mesh-compute.spec.ts",
-        "**/observer-archive-policy.spec.ts",
         "**/harness-management.spec.ts",
         "**/harness-catalog-screenshots.spec.ts",
         "**/inline-custom-harness.spec.ts",

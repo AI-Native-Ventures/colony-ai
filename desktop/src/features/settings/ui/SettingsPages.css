@@ -839,6 +839,7 @@
 .cs-harness-actions {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .cs-button.cs-harness-action {
@@ -1178,6 +1179,10 @@
 
 .cs-pairing-index {
   display: grid;
+  transition:
+    background-color 250ms ease-in-out,
+    border-color 250ms ease-in-out,
+    color 250ms ease-in-out;
   width: 1.875rem;
   height: 1.875rem;
   box-sizing: border-box;
@@ -1200,6 +1205,12 @@
   border-color: transparent;
   background: hsl(var(--colony-success-bg));
   color: hsl(var(--colony-success));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-pairing-index {
+    transition: none;
+  }
 }
 
 /* The editor of the agent defaults, drawn as the design's three columns. */

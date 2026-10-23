@@ -136,11 +136,7 @@ export function ProfilePopover({
         >
           <Popover onOpenChange={setPresenceMenuOpen} open={presenceMenuOpen}>
             <PopoverAnchor asChild>
-              <div
-                aria-label="Profile menu"
-                className="pm-list"
-                role="menu"
-              >
+              <div aria-label="Profile menu" className="pm-list" role="menu">
                 {/* Identity: photo with presence dot, name, presence chip. */}
                 <div className="pm-identity">
                   <span className="pm-avatar">

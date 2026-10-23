@@ -30,6 +30,9 @@ type AskSpec = {
   decideInMinutes: number | null;
 };
 
+/** The signed-in member's pubkey in the mock bridge: asks are addressed to it. */
+const SELF = "deadbeef".repeat(8);
+
 const MINUTE = 60_000;
 const NOW = new Date(COLONY3_NOW).getTime();
 
@@ -168,7 +171,7 @@ function askHead(spec: AskSpec, relaySecret: Uint8Array): RelayEvent {
           category: spec.category,
           title: spec.title,
           threadRootEventId,
-          addresseePubkey: null,
+          addresseePubkey: SELF,
           decideBy,
           options,
           ...funding,

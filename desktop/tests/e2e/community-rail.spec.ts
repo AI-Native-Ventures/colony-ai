@@ -1370,7 +1370,9 @@ test.describe("community rail", () => {
     });
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
-    await page.goto("/");
+    // Activity draws its own header per the design, so the shell's history
+    // controls are checked on Today.
+    await page.goto("/#/today");
 
     // The first community button must start below the traffic-light band
     // (native controls sit around y<=31 with trafficLightPosition y:24).
@@ -1395,9 +1397,9 @@ test.describe("community rail", () => {
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
     // 2.75rem below the rail's top: clear of the window buttons.
-    expect(
-      Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44),
-    ).toBeLessThan(0.5);
+    expect(Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44)).toBeLessThan(
+      0.5,
+    );
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
     );

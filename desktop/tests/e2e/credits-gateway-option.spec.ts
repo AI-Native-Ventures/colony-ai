@@ -207,19 +207,49 @@ test("onboarding: flag OFF leaves Colony credits out of the Colony Agent path", 
   expect(state.capabilities()).toBe(0);
 });
 
-for (const surface of ["onboarding", "settings"] as const) {
-  for (const gate of ["flag", "gateway", "stripe"] as const) {
-    // Onboarding hides the option entirely while the flag is off (above).
-    if (surface === "onboarding" && gate === "flag") continue;
+// Settings > Agents shows Colony credits as a disabled "Coming soon" card on the
+// Colony 3.0 design; the paid flows below are checked on the onboarding surface.
+for (const gate of ["flag", "gateway", "stripe"] as const) {
+  test(`settings: ${gate} OFF keeps Coming soon with no paid action`, async ({
+    page,
+  }) => {
+    const state = await setup(page, "settings", { [gate]: false });
+    const option = page.getByTestId("agent-way-credits");
+    await expect(option).toContainText("Coming soon");
+    await expect(
+      option.getByRole("button", { name: "Buy credits" }),
+    ).toBeDisabled();
+    await expect(page.getByTestId("colony-credits-option")).toHaveCount(0);
+    expect(await saveCount(page)).toBe(0);
+    if (gate === "flag") expect(state.capabilities()).toBe(0);
+  });
+}
+
+test("settings: Colony credits stay Coming soon even with every gate on", async ({
+  page,
+}) => {
+  const state = await setup(page, "settings");
+  const option = page.getByTestId("agent-way-credits");
+  await expect(option).toContainText("Coming soon");
+  await expect(
+    option.getByRole("button", { name: "Buy credits" }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("colony-credits-option")).toHaveCount(0);
+  await expect(option).not.toContainText("Current balance");
+  expect(await saveCount(page)).toBe(0);
+  expect(state.capabilities()).toBe(0);
+});
+
+for (const surface of ["onboarding"] as const) {
+  for (const gate of ["gateway", "stripe"] as const) {
     test(`${surface}: ${gate} OFF keeps Coming soon with no paid action`, async ({
       page,
     }) => {
-      const state = await setup(page, surface, { [gate]: false });
+      await setup(page, surface, { [gate]: false });
       const option = page.getByTestId("onboarding-credits-coming-soon");
       await expect(option).toContainText("Coming soon");
       await expect(option.getByRole("button")).toHaveCount(0);
       expect(await saveCount(page)).toBe(0);
-      if (gate === "flag") expect(state.capabilities()).toBe(0);
     });
   }
   test(`${surface}: failed capability check retains retry and restores the real balance`, async ({
@@ -301,20 +331,8 @@ for (const surface of ["onboarding", "settings"] as const) {
       )
       .toBe(1);
     expect(await saveCount(page)).toBe(0);
-    if (surface === "settings")
-      await expect(page.getByTestId("agent-defaults-editing")).toHaveAttribute(
-        "disabled",
-        "",
-      );
     expect(await savedConfig(page)).toMatchObject(original);
-    if (surface === "onboarding")
-      await expect(
-        page.getByTestId("onboarding-scene-connected"),
-      ).toBeVisible();
-    else
-      await expect(page.getByTestId("agent-defaults-connection")).toContainText(
-        "Colony credits selected",
-      );
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     expect(await savedConfig(page)).toEqual({
       env_vars: {},
       provider: "colony-credits",
@@ -322,17 +340,6 @@ for (const surface of ["onboarding", "settings"] as const) {
       preferred_runtime: "buzz-agent",
     });
     expect(await saveCount(page)).toBe(1);
-    if (surface === "settings") {
-      await expect(
-        page.getByTestId("agent-defaults-editing"),
-      ).not.toHaveAttribute("disabled", "");
-      await page
-        .getByTestId("settings-global-agent-config")
-        .locator("summary")
-        .filter({ hasText: "Bring your own key" })
-        .click();
-      await expect(page.getByTestId("global-agent-model")).toHaveCount(0);
-    }
     const call = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
         (entry) => entry.command === "test_onboarding_connection",
@@ -376,12 +383,6 @@ for (const surface of ["onboarding", "settings"] as const) {
       await expect(page.getByTestId("onboarding-scene-connected")).toHaveCount(
         0,
       );
-      if (surface === "settings")
-        await expect(
-          page
-            .getByTestId("colony-credits-option")
-            .getByRole("button", { name: "Use Colony credits" }),
-        ).toBeEnabled();
     });
   }
   test(`${surface}: refreshed capability revocation hides paid actions without losing alternatives`, async ({
@@ -395,10 +396,9 @@ for (const surface of ["onboarding", "settings"] as const) {
     await expect(
       page.getByTestId("onboarding-credits-coming-soon"),
     ).toContainText("Coming soon");
-    if (surface === "onboarding")
-      await expect(
-        page.getByRole("button", { name: "Skip for now", exact: true }),
-      ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Skip for now", exact: true }),
+    ).toBeEnabled();
   });
   for (const width of [1440, 390]) {
     test(`${surface}: configured credits at ${width}`, async ({

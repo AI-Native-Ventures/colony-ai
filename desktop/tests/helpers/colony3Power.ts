@@ -100,6 +100,10 @@ function positionHeads() {
         title: employee.title,
         kind: "employee",
         status: employee.status,
+        // A position that is not active must say why.
+        ...(employee.status === "paused"
+          ? { reason: "Paused until the October budget is agreed." }
+          : {}),
         sourceActionEventId: SOURCE_ACTION,
         updatedAt: now.toISOString(),
       },

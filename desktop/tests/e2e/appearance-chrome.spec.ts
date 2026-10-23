@@ -131,7 +131,9 @@ for (const width of [1728, 1440]) {
         const primary = await page
           .getByTestId("appearance-apply")
           .evaluate((element) => getComputedStyle(element).backgroundColor);
-        expect(primary).toBe("rgb(31, 122, 112)");
+        // The design's Apply is the dark primary; the accent colours pills
+        // and the preview, not this button.
+        expect(primary).toBe("rgb(37, 34, 44)");
       }
       await page.getByTestId("settings-back-to-app").click();
       await capture("workspace");

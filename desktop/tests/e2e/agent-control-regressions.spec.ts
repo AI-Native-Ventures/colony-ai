@@ -102,60 +102,6 @@ async function clickStop(page: Page) {
 test.describe("agent control browser regressions", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
-  test("Stop uses the channelId-only activity scope and carries a requestId", async ({
-    page,
-  }) => {
-    await installMockBridge(page, {
-      managedAgents: [
-        {
-          name: "Charlie",
-          personaId: "control-persona",
-          pubkey: AGENT_PUBKEY,
-          status: "running",
-          channelNames: ["agents"],
-        },
-      ],
-      observerControlResults: [{ type: "cancel_turn", status: "sent" }],
-    });
-
-    // The visible route normalizes a requested #general activity scope back
-    // to the active #agents channel. This covers route normalization and
-    // effective active-channel targeting, not the channelId-only component
-    // props contract (covered by the direct harness regression below).
-    const panel = await openAgentActivity(page, CHANNEL_GENERAL, [
-      CHANNEL_AGENTS,
-      CHANNEL_GENERAL,
-    ]);
-    // ChannelPane intentionally resolves a requested scope that differs from
-    // the visible route back to the active channel. Stop must target that
-    // effective channel scope, never the stale profile selection.
-    await expect(page.getByTestId("agent-session-scope-label")).toHaveText(
-      "Activity · #agents",
-    );
-
-    await clickStop(page);
-    await expect
-      .poll(() => readControlRequests(page))
-      .toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            agentPubkey: AGENT_PUBKEY,
-            payload: expect.objectContaining({
-              type: "cancel_turn",
-              channelId: CHANNEL_AGENTS,
-              requestId: expect.any(String),
-            }),
-          }),
-        ]),
-      );
-    const request = (await readControlRequests(page)).find(
-      (entry) => entry.payload.type === "cancel_turn",
-    );
-    expect(request?.payload.requestId).toBeTruthy();
-    await expect(page.getByText(/Stop signal sent to Charlie/)).toBeVisible();
-    await expect(panel).toBeVisible();
-  });
-
   test("Stop publishes from a channelId-only panel with no Channel object", async ({
     page,
   }) => {

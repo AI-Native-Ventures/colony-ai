@@ -315,7 +315,7 @@ test("OpenRouter cancellation enables a fresh retry", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("Settings provides OAuth and keeps manual configuration under Bring your own key", async ({
+test("Settings provides OAuth from the OpenRouter card and shows the saved provider in the defaults", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -329,31 +329,25 @@ test("Settings provides OAuth and keeps manual configuration under Bring your ow
   await page.getByTestId("profile-popover-settings").click();
   await page.getByTestId("settings-group-agents-group").click();
   const card = page.getByTestId("settings-global-agent-config");
-  // Agent Defaults is connection-first: with nothing connected, OpenRouter
-  // sign-in sits behind its own disclosure.
+  // The OpenRouter card is always on the page; with nothing connected it
+  // offers Connect, and the key form of the old disclosure is gone.
   await expect(
     card.getByTestId("agent-defaults-connection"),
   ).not.toHaveAttribute("aria-busy", "true");
-  await card
-    .getByTestId("agent-defaults-openrouter-alternative")
-    .locator("summary")
-    .click();
-  await expect(
-    card.getByRole("button", { name: "Connect OpenRouter", exact: true }),
-  ).toBeEnabled();
-  await card
-    .getByRole("button", { name: "Connect OpenRouter", exact: true })
-    .click();
+  const way = card.getByTestId("agent-way-openrouter");
+  await expect(way).toContainText("Not connected");
+  await expect(way.getByTestId("openrouter-connect")).toBeEnabled();
+  await way.getByTestId("openrouter-connect").click();
   await expect(
     card
       .getByTestId("openrouter-connection")
       .getByText("Connected", { exact: true }),
   ).toBeVisible();
-  await expect(
-    card
-      .getByRole("region", { name: "Bring your own key" })
-      .getByTestId("global-agent-provider"),
-  ).toHaveAttribute("data-value", "openrouter");
+  await expect(way).toContainText("In use");
+  await expect(card.getByTestId("global-agent-provider")).toHaveAttribute(
+    "data-value",
+    "openrouter",
+  );
   await waitForAnimations(page);
   await page.screenshot({
     path: "test-results/openrouter-proof/settings-connected-1440.png",

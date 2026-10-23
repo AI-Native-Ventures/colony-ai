@@ -225,17 +225,30 @@ function RuntimeActions({
           />
         </div>
       ) : !isAvailable && canInstall ? (
-        // Rows needing multi-step setup render no action here: setup lives in
-        // the Add-harness catalog. Custom rows keep their menu instead.
-        <button
-          aria-label={`Install ${runtime.label}`}
-          className="cs-button cs-harness-action"
-          data-testid={`doctor-runtime-install-${runtime.id}`}
-          onClick={onInstall}
-          type="button"
-        >
-          {runtime.availability === "adapter_outdated" ? "Update" : "Install"}
-        </button>
+        // One-click installs get the button; the menu beside it keeps the
+        // setup guide reachable. Rows needing multi-step setup render no
+        // install here: that lives in the Add-harness catalog.
+        <>
+          <RuntimeOverflowMenu
+            authMethods={authMethods}
+            connectingMethodId={connectingMethodId}
+            isConnecting={isConnecting}
+            onConnect={onConnect}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            runtime={runtime}
+            triggerLabel={triggerLabel}
+          />
+          <button
+            aria-label={`Install ${runtime.label}`}
+            className="cs-button cs-harness-action"
+            data-testid={`doctor-runtime-install-${runtime.id}`}
+            onClick={onInstall}
+            type="button"
+          >
+            {runtime.availability === "adapter_outdated" ? "Update" : "Install"}
+          </button>
+        </>
       ) : (
         <RuntimeOverflowMenu
           authMethods={authMethods}
@@ -282,6 +295,9 @@ function RuntimeStatusChip({ runtime }: { runtime: AcpRuntimeCatalogEntry }) {
   const isSignedIn = isAvailable && runtime.authStatus.status === "logged_in";
   const isUnconfigured =
     isAvailable && runtime.authStatus.status === "not_applicable";
+  // Installed, and nothing to sign in to or check: the old Ready chip.
+  const isReadyWithoutSignIn =
+    isAvailable && runtime.authStatus.status === "unknown";
 
   if (isConfigError) {
     return (
@@ -316,7 +332,7 @@ function RuntimeStatusChip({ runtime }: { runtime: AcpRuntimeCatalogEntry }) {
       </span>
     );
   }
-  if (isUnconfigured) {
+  if (isUnconfigured || isReadyWithoutSignIn) {
     return (
       <span
         className="cs-badge cs-badge-large"

@@ -473,7 +473,7 @@ export function MobilePairingCard({
             >
               {step === "qr" && qrUri ? (
                 <button
-                  className="cs-text-button"
+                  className="cs-text-button animate-in fade-in-0 zoom-in-95 origin-top duration-[250ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
                   data-testid="copy-pairing-code"
                   onClick={handleCopy}
                   type="button"

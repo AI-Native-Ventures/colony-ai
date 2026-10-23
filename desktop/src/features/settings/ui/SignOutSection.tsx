@@ -105,7 +105,7 @@ export function SignOutSection() {
           </div>
           <button
             className="cs-button"
-            data-testid="signout-open-dialog-remove-data"
+            data-testid="signout-open-dialog"
             data-tone="danger"
             disabled={isPending !== null}
             onClick={() => {

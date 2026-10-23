@@ -37,10 +37,7 @@ test.describe("Pocket voice settings", () => {
     const card = page.getByTestId("settings-voice");
     await expect(card).toBeVisible();
     await expect(
-      card.getByRole("heading", { level: 1, name: "Voice & audio" }),
-    ).toBeVisible();
-    await expect(
-      card.getByText("Your input, playback and agent voices on this device."),
+      card.getByRole("heading", { level: 2, name: "Voice & audio" }),
     ).toBeVisible();
     const microphone = page.getByTestId("voice-microphone-select");
     await expect(microphone).toHaveValue("system-default");
@@ -55,7 +52,7 @@ test.describe("Pocket voice settings", () => {
     await expect(
       page.getByText("Read agent replies aloud", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("Voice", { exact: true })).toBeVisible();
+    await expect(page.getByText("Agent voice", { exact: true })).toBeVisible();
     await expect(card).not.toContainText("April INT8");
 
     await page.getByTestId("pocket-voice-selector").click();
@@ -281,17 +278,15 @@ test.describe("Pocket voice settings", () => {
     await expect(page.getByTestId("voice-library")).toContainText(
       "Voice library",
     );
-    await expect(page.getByTestId("settings-history-back")).toBeHidden();
-    await expect(page.getByTestId("settings-history-forward")).toBeHidden();
     await expect(page.getByTestId("settings-top-chrome")).toContainText(
       "Preferences",
     );
-    await expect(page.getByTestId("settings-inner-voice")).toBeHidden();
+    await expect(page.getByTestId("voice-library-tab-audio")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(
-      page.getByRole("tab", { name: "Voice & audio" }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(
-      page.getByRole("tab", { name: "Notifications" }),
+      page.getByTestId("voice-library-tab-notifications"),
     ).toHaveAttribute("aria-selected", "false");
     await expect(page.getByTestId(`voice-library-row-${key}`)).toContainText(
       "Studio narration",
@@ -327,11 +322,11 @@ test.describe("Pocket voice settings", () => {
       { command: "delete_pocket_voice", payload: { voiceKey: key } },
     ]);
 
-    await page.getByRole("tab", { name: "Voice & audio" }).click();
+    await page.getByTestId("voice-library-tab-audio").click();
     await expect(page.getByTestId("settings-voice")).toContainText(
-      "Audio devices",
+      "Microphone",
     );
-    await page.getByRole("tab", { name: "Notifications" }).click();
+    await page.getByTestId("settings-inner-notifications").click();
     await expect(page.getByTestId("settings-notifications")).toBeVisible();
   });
 });
