@@ -119,26 +119,29 @@ test.describe("work area Browser tab", () => {
     await expect(address(page)).toBeFocused();
   });
 
-  test("the globe on the conversation toolbar opens the browser, as in the reference", async ({
+  test("the browser opens from the dock's Add menu, and each choice is one more page", async ({
     page,
   }) => {
     await boot(page);
     await expect(dock(page)).toHaveCount(0);
-    const globe = page.getByRole("button", { name: "Open browser" });
-    await globe.focus();
-    await page.keyboard.press("Enter");
+    // The channel header has no globe (ChannelWorkArea board); the browser
+    // stays one choice away, in the dock's own Add menu.
+    await expect(
+      page.getByRole("button", { name: "Open browser" }),
+    ).toHaveCount(0);
+    await trigger(page).click();
+    await expect(dock(page)).toBeVisible();
+    await page.getByTestId("work-area-open-files").click();
+    await newBrowserTab(page);
     await expect(pageTab(page, "New tab")).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await expect(panelTid(page, "browser-start")).toBeVisible();
-    // Pressing it again focuses the browser tab that is open; it opens no more.
-    await globe.click();
-    await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
-    await expect(pageTab(page, "New tab")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await newBrowserTab(page);
+    await expect(
+      pageTabs(page).getByRole("tab", { name: "New tab" }),
+    ).toHaveCount(2);
   });
 
   test("navigates in this business's profile, shows the real address, and history drives the host", async ({
@@ -633,9 +636,6 @@ test.describe("work area Browser tab", () => {
     page,
   }) => {
     await boot(page, { fake: false });
-    await expect(
-      page.getByRole("button", { name: "Open browser" }),
-    ).toHaveCount(0);
     await trigger(page).click();
     await expect(page.getByTestId("work-area-open-browser")).toHaveCount(0);
     await expect(page.getByTestId("work-area-empty")).toContainText(

@@ -40,7 +40,7 @@ export function WorkAreaWorkCountBadge({
   return (
     <span
       className="colony-work-area-tab-count"
-      data-testid="work-area-work-count"
+      data-testid="work-area-work-badge"
       id={id}
     >
       {count}
