@@ -199,10 +199,8 @@ export function AppShell() {
     selectedView !== "pins" &&
     location.pathname !== "/team" &&
     location.pathname !== "/team/org" &&
-    location.pathname !== "/today" &&
-    !location.pathname.startsWith("/today/") &&
+    !location.pathname.startsWith("/today/updates") &&
     !location.pathname.startsWith("/asks/") &&
-    !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;

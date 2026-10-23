@@ -188,6 +188,14 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "Messages",
   },
   {
+    id: "open-terminal",
+    label: "Colony Term",
+    description: "Open or close Colony Term",
+    keys: "⌘J",
+    keysWindows: "Ctrl+J",
+    category: "Messages",
+  },
+  {
     id: "close-dialog",
     label: "Close dialog",
     description: "Close the current dialog or settings",

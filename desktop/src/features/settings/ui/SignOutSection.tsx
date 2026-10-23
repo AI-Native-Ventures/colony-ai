@@ -120,11 +120,10 @@ export function SignOutSection() {
       </div>
 
       {confirming ? (
-        <div
+        <fieldset
           aria-labelledby="remove-device-data-title"
           className="cs-confirm"
           data-testid="signout-dialog"
-          role="group"
         >
           <h3 id="remove-device-data-title">Remove this device’s data?</h3>
           <ul>
@@ -186,7 +185,7 @@ export function SignOutSection() {
               Cancel
             </button>
           </div>
-        </div>
+        </fieldset>
       ) : error ? (
         <p className="cs-notice" data-tone="bad" role="alert">
           {error}

@@ -1,29 +1,53 @@
-import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
-
 import type {
   DesktopNotificationPermissionState,
   NotificationSettings,
 } from "@/features/notifications/hooks";
 import {
   COMING_SOON_SLOTS,
+  playNotificationSound,
   RECOMMENDED_SOUND_BY_SLOT,
-  SLOT_DESCRIPTIONS,
   SLOT_LABELS,
+  SOUND_NAMES,
   SOUND_SLOTS,
   type SoundName,
   type SoundSlot,
 } from "@/features/notifications/lib/sound";
-import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
-import {
-  SettingsOptionGroup,
-  SettingsOptionGroupList,
-  SettingsOptionRow,
-} from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
-import { SoundPicker } from "./SoundPicker";
+import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./SettingsKit";
+
+/** What each agent-job sound will be, once agents report jobs. */
+const AGENT_JOB_LABELS = [
+  "Job requested",
+  "Job accepted",
+  "Job result",
+  "Job failed",
+] as const;
+
+const NO_SOUND = "none";
+
+function soundsFor(slot: SoundSlot): SoundName[] {
+  const recommended = RECOMMENDED_SOUND_BY_SLOT[slot];
+  return [
+    recommended,
+    ...SOUND_NAMES.filter((name) => name !== recommended)
+      .slice()
+      .sort(),
+  ];
+}
+
+function PlayIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="currentColor"
+      height="0.875rem"
+      viewBox="0 0 24 24"
+      width="0.875rem"
+    >
+      <path d="M7 4.5v15l12-7.5z" />
+    </svg>
+  );
+}
 
 export function NotificationSettingsCard({
   isUpdatingDesktopNotifications,
@@ -51,25 +75,26 @@ export function NotificationSettingsCard({
   const permissionBlocked =
     notificationPermission === "denied" ||
     notificationPermission === "unsupported";
-  // The parent Sound switch derives from its children: on when any live
-  // event row is on, and toggling it bulk-sets every live row.
-  const anyAlertsOn = SOUND_SLOTS.some(
-    (slot) =>
-      !COMING_SOON_SLOTS.has(slot) &&
-      notificationSettings.slotAlertsEnabled[slot],
+  // The Sounds switch derives from its rows: on when any live event is on,
+  // and toggling it sets every live row at once.
+  const liveSlots = SOUND_SLOTS.filter((slot) => !COMING_SOON_SLOTS.has(slot));
+  const anyAlertsOn = liveSlots.some(
+    (slot) => notificationSettings.slotAlertsEnabled[slot],
   );
-  const [showComingSoon, setShowComingSoon] = useState(false);
-  const visibleSlots = SOUND_SLOTS.filter(
-    (slot) => showComingSoon || !COMING_SOON_SLOTS.has(slot),
-  );
+
+  function chooseSound(slot: SoundSlot, value: string) {
+    if (value === NO_SOUND) {
+      onSetSlotAlertsEnabled(slot, false);
+      return;
+    }
+    onSetSoundForSlot(slot, value as SoundName);
+    if (!notificationSettings.slotAlertsEnabled[slot]) {
+      onSetSlotAlertsEnabled(slot, true);
+    }
+  }
 
   return (
-    <section className="min-w-0" data-testid="settings-notifications">
-      <SettingsSectionHeader
-        title="Notifications & sounds"
-        description="Choose what deserves your attention."
-      />
-
+    <div className="cs-stack" data-testid="settings-notifications">
       <span className="sr-only" data-testid="notifications-desktop-state">
         {notificationPermission === "unsupported"
           ? "Unavailable"
@@ -80,215 +105,118 @@ export function NotificationSettingsCard({
               : "Off"}
       </span>
 
-      <SettingsOptionGroupList>
-        <SettingsOptionGroup title="Desktop">
-          <SettingsOptionRow>
-            <div className="min-w-0">
-              <label
-                className="text-sm font-medium"
-                htmlFor="desktop-alerts-switch"
-              >
-                {isUpdatingDesktopNotifications
-                  ? "Requesting..."
-                  : "Desktop alerts"}
-              </label>
-              <p
-                className="text-sm font-normal text-muted-foreground/70"
-                data-settings-subcopy
-              >
-                {notificationSettings.desktopEnabled
-                  ? "Native desktop alerts are enabled for the categories you have armed below."
-                  : "Request OS permission and surface new mentions or needs-action items outside the app."}
-              </p>
-            </div>
-            <Switch
-              checked={notificationSettings.desktopEnabled}
-              data-testid="notifications-desktop-toggle"
-              disabled={isUpdatingDesktopNotifications}
-              id="desktop-alerts-switch"
-              onCheckedChange={(checked) => {
-                void onSetDesktopNotificationsEnabled(checked);
-              }}
-            />
-          </SettingsOptionRow>
+      <SettingsCard title="Notifications" titleId="notifications-title">
+        <SettingsSwitchRow
+          checked={notificationSettings.desktopEnabled}
+          disabled={isUpdatingDesktopNotifications}
+          help="Show a notification when someone mentions you, messages you or needs a decision."
+          id="desktop-alerts-switch"
+          label={
+            isUpdatingDesktopNotifications ? "Requesting..." : "Desktop alerts"
+          }
+          onCheckedChange={(checked) => {
+            void onSetDesktopNotificationsEnabled(checked);
+          }}
+          testId="notifications-desktop-toggle"
+        />
+        <SettingsSwitchRow
+          checked={
+            notificationSettings.desktopEnabled &&
+            notificationSettings.notifyWhileViewing
+          }
+          disabled={!notificationSettings.desktopEnabled}
+          help="Also alert you about the conversation you have open."
+          id="notify-while-viewing-switch"
+          label="Notify while viewing"
+          onCheckedChange={onSetNotifyWhileViewing}
+          testId="notifications-notify-while-viewing-toggle"
+        />
+        <SettingsSwitchRow
+          checked={notificationSettings.homeBadgeEnabled}
+          help="Show your Activity count on the app icon."
+          id="home-badge-switch"
+          label="Home badge"
+          onCheckedChange={onSetHomeBadgeEnabled}
+          testId="notifications-home-badge-toggle"
+        />
+      </SettingsCard>
 
-          <SettingsOptionRow>
-            <div className="min-w-0">
-              <label
-                className="text-sm font-medium"
-                htmlFor="notify-while-viewing-switch"
-              >
-                Notify while viewing
-              </label>
-              <p
-                className="text-sm font-normal text-muted-foreground/70"
-                data-settings-subcopy
-              >
-                Also alert for direct messages in the conversation you have
-                open.
-              </p>
-            </div>
-            <Switch
-              checked={
-                notificationSettings.desktopEnabled &&
-                notificationSettings.notifyWhileViewing
-              }
-              data-testid="notifications-notify-while-viewing-toggle"
-              disabled={!notificationSettings.desktopEnabled}
-              id="notify-while-viewing-switch"
-              onCheckedChange={(checked) => {
-                onSetNotifyWhileViewing(checked);
-              }}
-            />
-          </SettingsOptionRow>
-        </SettingsOptionGroup>
-
-        {notificationSettings.desktopEnabled ? (
-          <>
-            <SettingsOptionGroup title="Sound">
-              <SettingsOptionRow>
-                <div className="min-w-0">
-                  <label
-                    className="text-sm font-medium"
-                    htmlFor="notification-sound-switch"
-                  >
-                    Sound
-                  </label>
-                  <p
-                    className="text-sm font-normal text-muted-foreground/70"
-                    data-settings-subcopy
-                  >
-                    Alert with a sound for the events below.
-                  </p>
-                </div>
-                <Switch
-                  checked={anyAlertsOn}
-                  data-testid="notifications-sound-toggle"
-                  id="notification-sound-switch"
-                  onCheckedChange={(checked) => {
-                    onSetAllSlotAlertsEnabled(checked);
-                  }}
-                />
-              </SettingsOptionRow>
-            </SettingsOptionGroup>
-
-            {anyAlertsOn ? (
-              <div className="space-y-4">
-                <SettingsOptionGroup title="Alert sounds">
-                  {visibleSlots.map((slot) => {
-                    const comingSoon = COMING_SOON_SLOTS.has(slot);
-                    const alertsOn =
-                      notificationSettings.slotAlertsEnabled[slot];
-                    return (
-                      <SettingsOptionRow
-                        aria-disabled={comingSoon || undefined}
-                        className={cn(
-                          comingSoon && "cursor-not-allowed opacity-40",
-                        )}
-                        key={slot}
-                      >
-                        <div className="min-w-0">
-                          <span className="flex items-center gap-2 text-sm font-medium">
-                            {SLOT_LABELS[slot]}
-                            {comingSoon ? (
-                              <span className="rounded-full bg-muted/70 px-2 py-0.5 text-2xs font-normal uppercase tracking-wide text-muted-foreground">
-                                Coming soon
-                              </span>
-                            ) : null}
-                          </span>
-                          <p
-                            className="text-sm font-normal text-muted-foreground/70"
-                            data-settings-subcopy
-                          >
-                            {SLOT_DESCRIPTIONS[slot]}
-                          </p>
-                        </div>
-                        <span className="flex items-center gap-3">
-                          <span
-                            className={cn(
-                              "transition-opacity duration-200",
-                              !alertsOn && "pointer-events-none opacity-40",
-                            )}
-                          >
-                            <SoundPicker
-                              disabled={comingSoon || !alertsOn}
-                              onChange={(next) => onSetSoundForSlot(slot, next)}
-                              recommended={RECOMMENDED_SOUND_BY_SLOT[slot]}
-                              value={notificationSettings.sounds[slot]}
-                            />
-                          </span>
-                          <Switch
-                            checked={alertsOn && !comingSoon}
-                            data-testid={`notifications-alerts-enabled-${slot}`}
-                            disabled={comingSoon}
-                            id={`alerts-enabled-${slot}-switch`}
-                            onCheckedChange={(checked) => {
-                              onSetSlotAlertsEnabled(slot, checked);
-                            }}
-                          />
-                        </span>
-                      </SettingsOptionRow>
-                    );
-                  })}
-                </SettingsOptionGroup>
-
-                <div className="flex justify-center">
-                  <Button
-                    data-testid="notifications-toggle-coming-soon"
-                    onClick={() => setShowComingSoon((current) => !current)}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    {showComingSoon ? (
-                      <>
-                        <ChevronUp className="h-4 w-4" />
-                        Show less
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown className="h-4 w-4" />
-                        View all
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
-        <SettingsOptionGroup title="Badges">
-          <SettingsOptionRow>
-            <div className="min-w-0">
-              <label
-                className="text-sm font-medium"
-                htmlFor="home-badge-switch"
-              >
-                Home badge
-              </label>
-              <p
-                className="text-sm font-normal text-muted-foreground/70"
-                data-settings-subcopy
-              >
-                Show a Home badge for mentions and needs-action items in the
-                sidebar.
-              </p>
-            </div>
-            <Switch
-              checked={notificationSettings.homeBadgeEnabled}
-              data-testid="notifications-home-badge-toggle"
-              id="home-badge-switch"
-              onCheckedChange={(checked) => {
-                onSetHomeBadgeEnabled(checked);
-              }}
-            />
-          </SettingsOptionRow>
-        </SettingsOptionGroup>
-      </SettingsOptionGroupList>
+      <section aria-labelledby="sounds-title" className="cs-card">
+        <div className="cs-row cs-sounds-head" data-switch="true">
+          <label className="cs-row-copy" htmlFor="notification-sound-switch">
+            <span className="cs-card-subtitle" id="sounds-title">
+              Sounds
+            </span>
+            <span className="cs-row-help">
+              Pick a sound for each kind of message.
+            </span>
+          </label>
+          <Switch
+            checked={anyAlertsOn}
+            data-testid="notifications-sound-toggle"
+            id="notification-sound-switch"
+            onCheckedChange={onSetAllSlotAlertsEnabled}
+          />
+        </div>
+        {liveSlots.map((slot) => {
+          const alertsOn = notificationSettings.slotAlertsEnabled[slot];
+          const selectId = `sound-select-${slot}`;
+          const value = alertsOn ? notificationSettings.sounds[slot] : NO_SOUND;
+          return (
+            <SettingsRow
+              className="cs-sound-row"
+              htmlFor={selectId}
+              key={slot}
+              label={SLOT_LABELS[slot]}
+            >
+              <span className="cs-sound-controls">
+                <select
+                  className="cs-select cs-select-sound"
+                  data-testid={`notifications-sound-select-${slot}`}
+                  id={selectId}
+                  onChange={(event) => chooseSound(slot, event.target.value)}
+                  value={value}
+                >
+                  {soundsFor(slot).map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  <option value={NO_SOUND}>No sound</option>
+                </select>
+                <button
+                  aria-label={`Play ${SLOT_LABELS[slot]} sound`}
+                  className="cs-icon-button"
+                  data-testid={`notifications-sound-play-${slot}`}
+                  disabled={!alertsOn}
+                  onClick={() =>
+                    playNotificationSound(notificationSettings.sounds[slot])
+                  }
+                  type="button"
+                >
+                  <PlayIcon />
+                </button>
+              </span>
+            </SettingsRow>
+          );
+        })}
+        <div className="cs-agent-jobs">
+          <div className="cs-agent-jobs-head">
+            <span className="cs-eyebrow">Agent jobs</span>
+            <span className="cs-badge" data-size="small">
+              Coming soon
+            </span>
+          </div>
+          <div className="cs-agent-jobs-grid">
+            {AGENT_JOB_LABELS.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {permissionBlocked && (
-        <p className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p className="cs-notice" data-tone="bad" role="alert">
           {notificationPermission === "unsupported"
             ? "Desktop notifications are not supported in this environment."
             : "Desktop notifications are blocked. Enable them in your system settings."}
@@ -296,10 +224,10 @@ export function NotificationSettingsCard({
       )}
 
       {notificationErrorMessage ? (
-        <p className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p className="cs-notice" data-tone="bad" role="alert">
           {notificationErrorMessage}
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }

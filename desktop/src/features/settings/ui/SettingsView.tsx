@@ -17,6 +17,7 @@ import {
   CloseIcon,
   SearchIcon,
 } from "@/shared/ui/colonyIcons";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
@@ -152,6 +153,7 @@ export function SettingsView({
   const [search, setSearch] = React.useState("");
   const [remembered, setRemembered] = React.useState(safeReadLastSections);
   const { activeCommunity } = useCommunities();
+  const { goTeam } = useAppNavigation();
   const profile = useProfileQuery();
   // Same source as the People panel, so the footer never claims a role the
   // person does not hold.
@@ -469,6 +471,7 @@ export function SettingsView({
                   onSetAllSlotAlertsEnabled,
                   onSetSoundForSlot,
                   onClose,
+                  onOpenTeam: () => void goTeam(),
                   onSectionChange: chooseSection,
                 })}
               </section>

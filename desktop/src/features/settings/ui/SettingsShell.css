@@ -746,3 +746,56 @@
   gap: 0.875rem;
   padding-top: 0.75rem;
 }
+
+.cs-narrow {
+  max-width: 42.5rem;
+}
+
+/* Groups are fieldsets for assistive tech; they draw nothing of their own. */
+fieldset.cs-choice,
+fieldset.cs-accents,
+fieldset.cs-confirm {
+  min-inline-size: 0;
+  margin: 0;
+}
+
+fieldset.cs-choice {
+  border: 0;
+}
+
+fieldset.cs-accents {
+  padding: 0;
+  border: 0;
+}
+
+/* Cards composed from the older group and header primitives. */
+.cs-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.cs-group-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.cs-group-head .cs-help {
+  margin-top: 0.125rem;
+}
+
+.cs-section-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.cs-section-head-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}

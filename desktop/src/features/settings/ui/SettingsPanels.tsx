@@ -90,12 +90,12 @@ import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
 import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
+import { AccessibilitySettingsPanel } from "./AccessibilitySettingsPanel";
+import { BusinessProfileSettingsPanel } from "./BusinessProfileSettingsPanel";
 import {
-  AccessibilitySettingsPanel,
   AppPreferencesSettingsPanel,
   ArchivedRecordsSettingsPanel,
   AuditSettingsPanel,
-  BusinessProfileSettingsPanel,
   DraftRecoverySettingsPanel,
   FeedbackSettingsPanel,
   HarnessLifecycleSettingsPanel,
@@ -363,9 +363,9 @@ export type SettingsPanelProps = {
   onSetNotifyWhileViewing: (enabled: boolean) => void;
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
-  onOpenThemeCatalog?: () => void;
-  onOpenDraftRecovery?: () => void;
   onEditAvatar?: () => void;
+  /** Opens the Team page, where AI employees are managed. */
+  onOpenTeam?: () => void;
 };
 
 export const settingsSections: SettingsSectionDescriptor[] = [
@@ -1055,7 +1055,11 @@ export function renderSettingsSection(
       return <ExperimentalFeaturesCard />;
     case "agents":
     case "agent-defaults":
-      return <AgentDefaultsSettingsCard />;
+      return (
+        <AgentDefaultsSettingsCard
+          onOpenHarnesses={() => props.onSectionChange?.("harnesses")}
+        />
+      );
     case "harnesses":
       return <HarnessLifecycleSettingsPanel />;
     case "channel-templates":
@@ -1063,20 +1067,11 @@ export function renderSettingsSection(
     case "compute":
       return <MeshComputeWorkspace />;
     case "appearance":
-      return (
-        <AppearanceSettingsPanel
-          onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
-          onBackToWorkspace={props.onClose}
-        />
-      );
+      return <AppearanceSettingsPanel />;
     case "privacy":
-      return (
-        <DevicePrivacySettingsPanel
-          onReviewDevices={() => props.onSectionChange?.("security")}
-        />
-      );
+      return <DevicePrivacySettingsPanel />;
     case "accessibility":
-      return <AccessibilitySettingsPanel onClose={props.onClose} />;
+      return <AccessibilitySettingsPanel />;
     case "business-profile":
       return <BusinessProfileSettingsPanel />;
     case "people":
@@ -1084,6 +1079,7 @@ export function renderSettingsSection(
         <CommunityMembersSettingsCard
           currentPubkey={props.currentPubkey}
           onBack={() => props.onSectionChange?.("business-profile")}
+          onOpenTeam={props.onOpenTeam}
         />
       );
     case "shortcuts":

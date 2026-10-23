@@ -1,9 +1,9 @@
-import { Crown, MoreHorizontal, Search, Shield } from "lucide-react";
 import { nip19 } from "nostr-tools";
 import * as React from "react";
 import { toast } from "sonner";
 
 import {
+  useAddRelayMemberMutation,
   useChangeRelayMemberRoleMutation,
   useMyRelayMembershipLookupQuery,
   useRelayMembersQuery,
@@ -12,28 +12,22 @@ import {
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import { SettingsOptionGroup } from "@/features/settings/ui/SettingsOptionGroup";
-import { SettingsSectionHeader } from "@/features/settings/ui/SettingsSectionHeader";
+import { mintInvite } from "@/shared/api/invites";
 import type {
   RelayMember,
   RelayMemberRole,
   UserProfileSummary,
 } from "@/shared/api/types";
-import {
-  normalizePubkey,
-  truncateNpub,
-  UNAVAILABLE_KEY_LABEL,
-} from "@/shared/lib/pubkey";
-import { Button } from "@/shared/ui/button";
+import { writeTextToClipboard } from "@/shared/lib/clipboard";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { VirtualizedList } from "@/shared/ui/VirtualizedList";
-import { CommunityInviteDialog } from "./CommunityInviteDialog";
+import { DEFAULT_INVITE_TTL_SECS } from "./InviteLinkSection";
 
 function formatDisplayName(member: RelayMember, displayName?: string | null) {
   const trimmedDisplayName = displayName?.trim();
@@ -54,37 +48,46 @@ function npubFromPubkey(pubkey: string): string | null {
   }
 }
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+/** A person's job title, when their profile carries one. */
+function jobTitleOf(profile: UserProfileSummary | undefined): string {
+  const title = (profile as { jobTitle?: string | null } | undefined)?.jobTitle;
+  return title?.trim() ?? "";
 }
 
-function HoverMemberIdentity({
-  displayName,
-  pubkey,
-}: {
-  displayName: string;
-  pubkey: string;
-}) {
-  const npub = npubFromPubkey(pubkey) ?? UNAVAILABLE_KEY_LABEL;
+function roleLabel(role: RelayMemberRole) {
+  return role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member";
+}
+
+/** Reads an npub or a 64-character hex key; anything else is not a key. */
+function pubkeyFromInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (trimmed.toLowerCase().startsWith("npub1")) {
+    try {
+      const decoded = nip19.decode(trimmed);
+      return decoded.type === "npub" ? decoded.data : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function MoreIcon() {
   return (
-    <span className="inline-grid min-w-0 max-w-full grid-cols-1" title={npub}>
-      <span
-        className="col-start-1 row-start-1 max-w-40 truncate opacity-100 blur-0 transition-[max-width,opacity,filter] duration-[250ms] ease-in-out group-hover/member:max-w-0 group-hover/member:opacity-0 group-hover/member:blur-[2px] group-focus-within/member:max-w-0 group-focus-within/member:opacity-0 group-focus-within/member:blur-[2px] motion-reduce:transition-none"
-        data-testid={`relay-member-name-${pubkey}`}
-      >
-        {displayName}
-      </span>
-      <span
-        className="col-start-1 row-start-1 max-w-0 truncate font-mono text-2xs opacity-0 blur-0 transition-[max-width,opacity,filter] duration-[250ms] ease-in-out group-hover/member:max-w-40 group-hover/member:opacity-100 group-hover/member:blur-0 group-focus-within/member:max-w-40 group-focus-within/member:opacity-100 group-focus-within/member:blur-0 motion-reduce:transition-none"
-        data-testid={`relay-member-npub-${pubkey}`}
-      >
-        {truncateNpub(npub)}
-      </span>
-    </span>
+    <svg
+      aria-hidden="true"
+      fill="currentColor"
+      height="1.125rem"
+      viewBox="0 0 24 24"
+      width="1.125rem"
+    >
+      <circle cx="5.5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="18.5" cy="12" r="1.8" />
+    </svg>
   );
 }
 
@@ -109,10 +112,9 @@ function RelayMemberRow({
     !isSelf &&
     member.role !== "owner" &&
     (currentRole === "owner" || member.role === "member");
-  const canPromote = currentRole === "owner" && member.role === "member";
-  const canDemote = currentRole === "owner" && member.role === "admin";
-  const hasActions = canRemove || canPromote || canDemote;
+  const canChangeRole = currentRole === "owner" && member.role !== "owner";
   const displayName = formatDisplayName(member, profile?.displayName);
+  const subtitle = jobTitleOf(profile) || roleLabel(member.role);
 
   async function mutateWithToast(
     action: () => Promise<unknown>,
@@ -132,7 +134,7 @@ function RelayMemberRow({
 
   return (
     <div
-      className="group/member flex min-h-14 items-center gap-3 px-1 py-2.5"
+      className="cs-member"
       data-testid={`relay-member-row-${member.pubkey}`}
     >
       <UserProfilePopover
@@ -142,118 +144,281 @@ function RelayMemberRow({
       >
         <ProfileAvatar
           avatarUrl={profile?.avatarUrl ?? null}
-          className="h-9 w-9 text-xs shadow-none"
+          className="cs-member-avatar"
           label={displayName}
           shape={profile?.isAgent === true ? "squircle" : "circle"}
         />
       </UserProfilePopover>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-          <HoverMemberIdentity
-            displayName={displayName}
-            pubkey={member.pubkey}
-          />
-          {member.role === "owner" ? (
-            <Crown className="h-4 w-4 text-amber-500" />
-          ) : null}
-          {member.role === "admin" ? (
-            <Shield className="h-4 w-4 text-blue-500" />
-          ) : null}
-        </div>
-        <div
-          className="flex items-center gap-1.5 text-xs text-muted-foreground/70"
-          data-settings-subcopy
-        >
-          <span className="shrink-0 capitalize">{member.role}</span>
-          <span aria-hidden="true" className="shrink-0">
-            ·
-          </span>
-          <span className="shrink-0">Added {formatDate(member.createdAt)}</span>
-          {isSelf ? (
-            <>
-              <span aria-hidden="true" className="shrink-0">
-                ·
-              </span>
-              <span className="shrink-0">You</span>
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      {hasActions ? (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Actions for ${displayName}`}
-              data-testid={`relay-member-actions-${member.pubkey}`}
-              disabled={isBusy}
-              size="icon"
-              variant="ghost"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {canPromote ? (
-              <DropdownMenuItem
-                onClick={() =>
-                  void mutateWithToast(
-                    () =>
-                      changeRoleMutation.mutateAsync({
-                        pubkey: member.pubkey,
-                        role: "admin",
-                      }),
-                    "Made community admin",
-                  )
-                }
-              >
-                Make admin
-              </DropdownMenuItem>
-            ) : null}
-            {canDemote ? (
-              <DropdownMenuItem
-                onClick={() =>
-                  void mutateWithToast(
-                    () =>
-                      changeRoleMutation.mutateAsync({
-                        pubkey: member.pubkey,
-                        role: "member",
-                      }),
-                    "Made community member",
-                  )
-                }
-              >
-                Make member
-              </DropdownMenuItem>
-            ) : null}
-            {canRemove && (canPromote || canDemote) ? (
-              <DropdownMenuSeparator />
-            ) : null}
-            {canRemove ? (
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() =>
-                  void mutateWithToast(
-                    () => removeMutation.mutateAsync(member.pubkey),
-                    "Removed community member",
-                  )
-                }
-              >
-                Remove from community
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
+      <span className="cs-member-copy">
+        <span className="cs-member-name" data-testid={`relay-member-name-${member.pubkey}`}>
+          {displayName}
+          {isSelf ? <em> · you</em> : null}
+        </span>
+        <span className="cs-member-title">{subtitle}</span>
+      </span>
+      {member.role === "owner" ? (
+        <span className="cs-badge cs-badge-large" data-tone="accent">
+          Owner
+        </span>
+      ) : (
+        <>
+          <label className="sr-only" htmlFor={`member-role-${member.pubkey}`}>
+            Role for {displayName}
+          </label>
+          <select
+            className="cs-select cs-select-member"
+            data-testid={`relay-member-role-${member.pubkey}`}
+            disabled={!canChangeRole || isBusy}
+            id={`member-role-${member.pubkey}`}
+            onChange={(event) =>
+              void mutateWithToast(
+                () =>
+                  changeRoleMutation.mutateAsync({
+                    pubkey: member.pubkey,
+                    role: event.target.value,
+                  }),
+                event.target.value === "admin"
+                  ? "Made community admin"
+                  : "Made community member",
+              )
+            }
+            value={member.role}
+          >
+            <option value="admin">Admin</option>
+            <option value="member">Member</option>
+          </select>
+          {canRemove ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label={`Actions for ${displayName}`}
+                  className="cs-icon-ghost"
+                  data-testid={`relay-member-actions-${member.pubkey}`}
+                  disabled={isBusy}
+                  type="button"
+                >
+                  <MoreIcon />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() =>
+                    void mutateWithToast(
+                      () => removeMutation.mutateAsync(member.pubkey),
+                      "Removed community member",
+                    )
+                  }
+                >
+                  Remove from community
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span aria-hidden="true" className="cs-icon-ghost" />
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * The invite form on the People & access page. A key (npub or hex) adds that
+ * person at once with the chosen role; an email address mints the community's
+ * invite link and copies it, because Colony does not send email yet.
+ */
+function InviteForm({ isOwner }: { isOwner: boolean }) {
+  const addMember = useAddRelayMemberMutation();
+  const [value, setValue] = React.useState("");
+  const [role, setRole] = React.useState<"member" | "admin">("member");
+  const [message, setMessage] = React.useState<{
+    tone: "ok" | "bad";
+    text: string;
+  } | null>(null);
+  const [pending, setPending] = React.useState(false);
+
+  async function copyInviteLink(): Promise<boolean> {
+    try {
+      const invite = await mintInvite({
+        ttlSecs: DEFAULT_INVITE_TTL_SECS,
+        maxUses: null,
+      });
+      await writeTextToClipboard(invite.url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const entry = value.trim();
+    setMessage(null);
+    if (!entry) {
+      setMessage({ tone: "bad", text: "Enter an email address to invite." });
+      return;
+    }
+    const pubkey = pubkeyFromInput(entry);
+    setPending(true);
+    try {
+      if (pubkey) {
+        await addMember.mutateAsync({ pubkey, role });
+        setValue("");
+        setMessage({ tone: "ok", text: "Added to the community." });
+        return;
+      }
+      if (!EMAIL.test(entry)) {
+        setMessage({ tone: "bad", text: "Enter a valid email address." });
+        return;
+      }
+      if (await copyInviteLink()) {
+        setMessage({
+          tone: "ok",
+          text: `Invite link copied. Colony does not email invites yet, so paste it into your message to ${entry}.`,
+        });
+        setValue("");
+      } else {
+        setMessage({ tone: "bad", text: "Couldn’t create an invite link." });
+      }
+    } catch (error) {
+      setMessage({
+        tone: "bad",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Couldn’t add this person to the community.",
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleCopy() {
+    setMessage(null);
+    setPending(true);
+    const copied = await copyInviteLink();
+    setPending(false);
+    if (copied) toast.success("Invite link copied");
+    else toast.error("Couldn’t create an invite link.");
+  }
+
+  return (
+    <>
+      <form
+        aria-label="Invite someone"
+        className="cs-card cs-invite"
+        data-testid="community-invite-form"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        <div className="cs-field cs-invite-email">
+          <label className="cs-label" htmlFor="invite-email">
+            Invite by email
+          </label>
+          <input
+            autoCapitalize="none"
+            autoCorrect="off"
+            className="cs-input"
+            data-testid="community-invite-input"
+            id="invite-email"
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="name@business.com"
+            spellCheck={false}
+            type="text"
+            value={value}
+          />
+        </div>
+        <div className="cs-field cs-invite-role">
+          <label className="cs-label" htmlFor="invite-role">
+            Role
+          </label>
+          <select
+            className="cs-select"
+            data-testid="community-invite-role"
+            id="invite-role"
+            onChange={(event) =>
+              setRole(event.target.value as "member" | "admin")
+            }
+            value={role}
+          >
+            <option value="member">Member</option>
+            {isOwner ? <option value="admin">Admin</option> : null}
+          </select>
+        </div>
+        <button
+          className="cs-primary"
+          data-testid="community-invite-send"
+          disabled={pending}
+          type="submit"
+        >
+          Send invite
+        </button>
+        <button
+          className="cs-button cs-button-large cs-button-copy"
+          data-testid="community-invite-copy-link"
+          disabled={pending}
+          onClick={() => void handleCopy()}
+          type="button"
+        >
+          Copy invite link
+        </button>
+      </form>
+      {message ? (
+        <p
+          className="cs-notice"
+          data-tone={message.tone}
+          role={message.tone === "bad" ? "alert" : "status"}
+        >
+          {message.text}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="1rem"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.2"
+      viewBox="0 0 24 24"
+      width="1rem"
+    >
+      <path d="M12 3.5 19 6v6c0 4.5-3 7.5-7 8.5-4-1-7-4-7-8.5V6z" />
+    </svg>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="0.9375rem"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="2.2"
+      viewBox="0 0 24 24"
+      width="0.9375rem"
+    >
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4-4" />
+    </svg>
   );
 }
 
 export function CommunityMembersSettingsCard({
   currentPubkey,
   onBack,
+  onOpenTeam,
 }: {
   onBack?: () => void;
+  onOpenTeam?: () => void;
   currentPubkey?: string;
 }) {
   const myMembershipQuery = useMyRelayMembershipLookupQuery();
@@ -271,7 +436,6 @@ export function CommunityMembersSettingsCard({
     },
   );
   const profiles = profilesQuery.data?.profiles;
-  const [inviteDialogOpen, setInviteDialogOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
 
   const filteredMembers = React.useMemo(() => {
@@ -282,10 +446,12 @@ export function CommunityMembersSettingsCard({
       const profile = profiles?.[normalizedPubkey];
       const displayName = profile?.displayName?.toLowerCase() ?? "";
       const nip05 = profile?.nip05Handle?.toLowerCase() ?? "";
+      const title = jobTitleOf(profile).toLowerCase();
       const npub = npubFromPubkey(member.pubkey)?.toLowerCase() ?? "";
       return (
         displayName.includes(q) ||
         nip05.includes(q) ||
+        title.includes(q) ||
         npub.includes(q) ||
         member.pubkey.toLowerCase().includes(q) ||
         member.role.includes(q)
@@ -293,135 +459,139 @@ export function CommunityMembersSettingsCard({
     });
   }, [members, profiles, search]);
 
+  const heading = (
+    <div className="cs-people-head">
+      <h2 className="cs-section-title" id="people-access-title">
+        People &amp; access
+      </h2>
+      <span className="cs-section-note">
+        Invite people and choose what they can manage. AI employees are
+        managed in{" "}
+        <button
+          className="cs-link"
+          data-testid="people-open-team"
+          onClick={onOpenTeam}
+          type="button"
+        >
+          Team
+        </button>
+        .
+      </span>
+    </div>
+  );
+
   if (myMembershipQuery.isLoading) {
     return (
-      <section className="min-w-0" data-testid="settings-community-members">
-        <SettingsSectionHeader title="People & access" />
+      <div className="cs-led" data-testid="settings-community-members">
+        {heading}
         <p
-          role="status"
           aria-busy="true"
-          className="text-sm text-muted-foreground"
+          className="cs-section-note"
+          role="status"
         >
           Checking permissions…
         </p>
-      </section>
+      </div>
     );
   }
 
   if (!canManageRelay || !currentRole) {
     return (
-      <section className="min-w-0" data-testid="settings-community-members">
-        <SettingsSectionHeader title="People & access" />
-        <div className="rounded-lg border border-border p-6 space-y-4">
+      <div className="cs-led" data-testid="settings-community-members">
+        {heading}
+        <div className="cs-card cs-card-body">
           <p
+            className="cs-section-note"
             role={myMembershipQuery.isError ? "alert" : undefined}
-            className="text-sm text-muted-foreground"
           >
             {myMembershipQuery.isError
               ? "Could not check your access. Try again."
               : "Only workspace owners and administrators can manage people and access."}
           </p>
-          <div className="flex gap-3">
+          <div className="cs-confirm-actions">
             {myMembershipQuery.isError ? (
-              <Button
-                variant="outline"
+              <button
+                className="cs-button"
                 onClick={() => void myMembershipQuery.refetch()}
+                type="button"
               >
                 Retry
-              </Button>
+              </button>
             ) : null}
-            <Button variant="outline" onClick={onBack}>
+            <button className="cs-button" onClick={onBack} type="button">
               Back to business
-            </Button>
+            </button>
           </div>
         </div>
-      </section>
+      </div>
     );
   }
 
   return (
-    <section className="min-w-0" data-testid="settings-community-members">
-      <SettingsSectionHeader
-        action={
-          <Button
-            data-testid="community-invite-dialog-trigger"
-            onClick={() => setInviteDialogOpen(true)}
-          >
-            Invite to community
-          </Button>
-        }
-        title="Invites"
-        description="Manage members and community access."
-      />
+    <div
+      className="cs-led cs-led-tight"
+      data-testid="settings-community-members"
+    >
+      {heading}
+      <InviteForm isOwner={currentRole === "owner"} />
 
-      <SettingsOptionGroup
-        title={
-          <>
+      <section aria-labelledby="members-title" className="cs-card">
+        <div className="cs-members-bar">
+          <h3 className="cs-eyebrow" id="members-title">
             Members
-            {members.length > 0 ? (
-              <span className="ml-1.5 font-normal">{members.length}</span>
-            ) : null}
-          </>
-        }
-      >
-        <div className="space-y-3 p-4 sm:p-5">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            {members.length > 0 ? ` · ${members.length}` : ""}
+          </h3>
+          <label className="cs-member-search">
+            <SearchGlyph />
             <input
+              aria-label="Find a member"
               autoCapitalize="none"
               autoCorrect="off"
-              className="w-full rounded-lg border border-border/70 bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="community-members-search"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search members"
+              placeholder="Find a member"
               spellCheck={false}
-              type="text"
+              type="search"
               value={search}
             />
-          </div>
-
-          {membersQuery.error instanceof Error ? (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {membersQuery.error.message}
-            </p>
-          ) : null}
-
-          {membersQuery.isLoading ? (
-            <p className="py-3 text-sm text-muted-foreground">
-              Loading community members…
-            </p>
-          ) : members.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/70 px-3 py-6 text-center text-sm text-muted-foreground">
-              No community members yet.
-            </p>
-          ) : filteredMembers.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/70 px-3 py-6 text-center text-sm text-muted-foreground">
-              No members match your search.
-            </p>
-          ) : (
-            <VirtualizedList
-              className="max-h-[28rem] divide-y divide-border/60"
-              estimateSize={60}
-              getItemKey={(member) => member.pubkey}
-              items={filteredMembers}
-              renderItem={(member) => (
-                <RelayMemberRow
-                  currentPubkey={currentPubkey}
-                  currentRole={currentRole}
-                  member={member}
-                  profile={profiles?.[normalizePubkey(member.pubkey)]}
-                />
-              )}
-            />
-          )}
+          </label>
         </div>
-      </SettingsOptionGroup>
 
-      <CommunityInviteDialog
-        isOwner={currentRole === "owner"}
-        onOpenChange={setInviteDialogOpen}
-        open={inviteDialogOpen}
-      />
-    </section>
+        {membersQuery.error instanceof Error ? (
+          <p className="cs-notice" data-tone="bad">
+            {membersQuery.error.message}
+          </p>
+        ) : null}
+
+        {membersQuery.isLoading ? (
+          <p className="cs-members-empty">Loading community members…</p>
+        ) : members.length === 0 ? (
+          <p className="cs-members-empty">No community members yet.</p>
+        ) : filteredMembers.length === 0 ? (
+          <p className="cs-members-empty">No members match your search.</p>
+        ) : (
+          <VirtualizedList
+            className="cs-members-list"
+            estimateSize={69}
+            getItemKey={(member) => member.pubkey}
+            items={filteredMembers}
+            renderItem={(member) => (
+              <RelayMemberRow
+                currentPubkey={currentPubkey}
+                currentRole={currentRole}
+                member={member}
+                profile={profiles?.[normalizePubkey(member.pubkey)]}
+              />
+            )}
+          />
+        )}
+      </section>
+
+      <p className="cs-people-foot">
+        <ShieldIcon />
+        Only workspace owners and administrators can invite people or change
+        roles.
+      </p>
+    </div>
   );
 }

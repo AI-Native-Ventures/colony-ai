@@ -4,10 +4,10 @@ import {
   Copy,
   LoaderCircle,
   RefreshCw,
+  Smartphone,
   TriangleAlert,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 
 import {
@@ -15,11 +15,7 @@ import {
   confirmPairingSas,
   startPairing,
 } from "@/shared/api/tauri";
-import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { StyledQrCode } from "@/shared/ui/styled-qr-code";
-import { SettingsOptionGroup, SettingsOptionRow } from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 type PairingStep =
@@ -55,50 +51,24 @@ function isPairingSessionTimeout(message: string) {
 
 function PairingStepIndicator({
   complete,
+  current,
   label,
   testId,
 }: {
   complete: boolean;
+  current: boolean;
   label: string;
   testId: string;
 }) {
-  const shouldReduceMotion = useReducedMotion() ?? false;
-  const hiddenState = shouldReduceMotion
-    ? { opacity: 0 }
-    : { filter: "blur(2px)", opacity: 0, scale: 0.25 };
-  const visibleState = shouldReduceMotion
-    ? { opacity: 1 }
-    : { filter: "blur(0px)", opacity: 1, scale: 1 };
-
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-semibold transition-[background-color,color] duration-[250ms] ease-in-out motion-reduce:transition-none",
-        complete
-          ? "bg-green-600 text-white"
-          : "bg-secondary text-secondary-foreground",
-      )}
+      className="cs-pairing-index"
       data-completed={complete ? "true" : "false"}
+      data-current={current ? "true" : undefined}
       data-testid={testId}
     >
-      <AnimatePresence initial={false}>
-        <motion.span
-          animate={visibleState}
-          className="absolute inset-0 flex items-center justify-center"
-          data-state={complete ? "complete" : "pending"}
-          exit={hiddenState}
-          initial={hiddenState}
-          key={complete ? "complete" : "pending"}
-          transition={
-            shouldReduceMotion
-              ? { duration: 0 }
-              : { duration: 0.25, ease: "easeInOut" }
-          }
-        >
-          {complete ? <Check className="h-6 w-6" /> : label}
-        </motion.span>
-      </AnimatePresence>
+      {complete ? <Check className="h-4 w-4" strokeWidth={3} /> : label}
     </span>
   );
 }
@@ -108,69 +78,63 @@ function PairingSteps({ step }: { step: PairingStep }) {
     step === "sas" || step === "transferring" || step === "done";
   const hasConfirmed = step === "transferring" || step === "done";
   const isPaired = step === "done";
+  const currentStep = isPaired ? 0 : hasConfirmed ? 3 : hasScanned ? 2 : 1;
 
   return (
     <ol
-      className="flex min-h-[266px] min-w-0 flex-1 flex-col justify-center gap-6 py-2"
+      aria-label="Pairing steps"
+      className="cs-pairing-steps"
       data-testid="mobile-pairing-steps"
     >
-      <li className="flex min-w-0 items-start gap-4">
+      <li aria-current={currentStep === 1 ? "step" : undefined}>
         <PairingStepIndicator
           complete={hasScanned}
+          current={currentStep === 1}
           label="1"
           testId="mobile-pairing-scan-step-indicator"
         />
-        <div className="min-w-0 pt-0.5">
-          <p className="text-base font-medium">Scan QR code</p>
-          <p
-            className="mt-1 text-sm text-muted-foreground/70"
-            data-settings-subcopy
-          >
+        <span>
+          <strong>Scan QR code</strong>
+          <span>
             Open Colony on your mobile device and scan the code shown here.
-          </p>
-        </div>
+          </span>
+        </span>
       </li>
 
-      <li className="flex min-w-0 items-start gap-4">
+      <li aria-current={currentStep === 2 ? "step" : undefined}>
         <PairingStepIndicator
           complete={hasConfirmed}
+          current={currentStep === 2}
           label="2"
           testId="mobile-pairing-confirm-step-indicator"
         />
-        <div className="min-w-0 pt-0.5">
-          <p className="text-base font-medium">Confirm mobile code</p>
-          <p
-            className="mt-1 text-sm text-muted-foreground/70"
-            data-settings-subcopy
-          >
+        <span>
+          <strong>Confirm mobile code</strong>
+          <span>
             Check that the six-digit code matches on both devices, then confirm
             it.
-          </p>
-        </div>
+          </span>
+        </span>
       </li>
 
       <li
-        className="flex min-w-0 items-start gap-4"
+        aria-current={currentStep === 3 ? "step" : undefined}
         data-testid="mobile-pairing-final-step"
       >
         <PairingStepIndicator
           complete={isPaired}
+          current={currentStep === 3}
           label="3"
           testId="mobile-pairing-final-step-indicator"
         />
-        <div aria-live="polite" className="min-w-0 pt-0.5">
-          <p className="text-base font-medium">
-            {isPaired ? "Paired" : "Pair your mobile app"}
-          </p>
-          <p
-            className="mt-1 text-sm text-muted-foreground/70"
-            data-settings-subcopy
-          >
+        <span aria-live="polite">
+          <strong>{isPaired ? "Paired" : "Pair your mobile app"}</strong>
+          <span>
             {isPaired
               ? "Your mobile app is now connected to this relay."
               : "Your mobile app will connect after you confirm the code."}
-          </p>
-        </div>
+          </span>
+        </span>
       </li>
     </ol>
   );
@@ -189,33 +153,18 @@ function PairingCodeConfirmation({
 
   return (
     <div
-      className="grid h-[266px] w-full grid-rows-[auto_1fr_auto] text-center"
+      className="cs-pairing-confirm"
       data-testid="mobile-pairing-code-confirmation"
     >
-      <p
-        className="self-start text-base font-medium"
-        data-testid="pairing-sas-title"
-      >
+      <p className="cs-pairing-confirm-title" data-testid="pairing-sas-title">
         Confirm mobile code
       </p>
-      <fieldset
-        className="flex w-full self-center justify-center gap-[6px]"
-        data-testid="pairing-sas-code"
-      >
+      <fieldset className="cs-pairing-code" data-testid="pairing-sas-code">
         <legend className="sr-only">Confirmation code {formattedCode}</legend>
         {PAIRING_CODE_DIGIT_POSITIONS.map((position) => (
           <span
             aria-hidden="true"
-            className={cn(
-              // The cell box is px-frozen on purpose. The digits stay
-              // rem-based (`text-2xl`) so they scale with Cmd +/- zoom, but a
-              // rem-sized cell (`w-10`) plus rem gaps grew the six cells past
-              // this fixed 266px column at 150% text scale and overlapped the
-              // step guidance. Freezing the box keeps the code block the same
-              // width at every zoom level; a zoomed digit still fits inside.
-              "flex w-[40px] shrink-0 items-center justify-center rounded-xl border border-input/60 bg-background py-3 font-mono text-2xl font-semibold text-foreground",
-              position === 3 && "ml-[8px]",
-            )}
+            data-gap={position === 3 ? "true" : undefined}
             data-testid={`pairing-sas-code-digit-${position + 1}`}
             key={position}
           >
@@ -223,26 +172,24 @@ function PairingCodeConfirmation({
           </span>
         ))}
       </fieldset>
-      <div
-        className="flex w-[240px] flex-col gap-2 self-end justify-self-center"
-        data-testid="pairing-sas-actions"
-      >
-        <Button
-          className="w-full"
+      <div className="cs-pairing-actions" data-testid="pairing-sas-actions">
+        <button
+          className="cs-accent-button"
           data-testid="confirm-sas"
           onClick={onConfirm}
+          type="button"
         >
-          <Check />
+          <Check className="h-4 w-4" strokeWidth={3} />
           Codes match
-        </Button>
-        <Button
-          className="w-full"
+        </button>
+        <button
+          className="cs-button"
           data-testid="deny-sas"
           onClick={onDeny}
-          variant="outline"
+          type="button"
         >
           Cancel
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -391,30 +338,27 @@ export function MobilePairingCard({
     setStep("error");
   }
 
+  const panelClass =
+    step === "sas" || step === "transferring" || step === "done"
+      ? "cs-pairing-panel"
+      : "cs-pairing-panel cs-pairing-panel-qr";
   return (
-    <section className="min-w-0" data-testid="settings-mobile">
-      <SettingsSectionHeader
-        title="Mobile"
-        description={
-          <>
-            Connect the Colony mobile app to this relay by scanning a QR code.
-            The connection is secured with end-to-end encryption and a
-            verification code.
-          </>
-        }
-      />
+    <div className="cs-led" data-testid="settings-mobile">
+      <div className="cs-pairing-head">
+        <h2 className="cs-section-title">Mobile</h2>
+        <p>
+          Connect the Colony mobile app to this relay by scanning a QR code.
+          The connection is secured with end-to-end encryption and a
+          verification code.
+        </p>
+      </div>
 
-      <SettingsOptionGroup
-        className="w-full [container-type:inline-size]"
-        data-testid="mobile-pairing-card"
-        surface="soft"
-      >
-        {/* Persistent polite live region. The pairing steps swap the QR view
+      <section className="cs-card cs-pairing" data-testid="mobile-pairing-card">
+        {/* Persistent polite live region: the pairing steps swap the QR view
             for the inline code confirmation asynchronously, and a screen
             reader would otherwise get no signal that a code is now waiting.
-            This stays mounted for every step so the announcement is reliable
-            (a region added at the same time as its text often isn't spoken)
-            and is visually hidden, so it changes nothing on screen. */}
+            It stays mounted for every step so the announcement is reliable,
+            and is visually hidden. */}
         <p aria-live="polite" className="sr-only" data-testid="pairing-status">
           {step === "sas" && sasCode
             ? `Verification code ${sasCode.slice(0, 3)} ${sasCode.slice(3, 6)} ready. Check that it matches on your mobile device, then confirm the codes match.`
@@ -424,24 +368,10 @@ export function MobilePairingCard({
                 ? "Your mobile app is now paired."
                 : ""}
         </p>
-        <SettingsOptionRow
-          // Side-by-side is gated on the *card's* own width, not the viewport.
-          // `sm:` fires at an 800px viewport, but the settings sidebar and
-          // content padding leave the card only ~443px there — the QR column
-          // and gap ate all of it, collapsing the step guidance to ~1px and
-          // stretching the card past 1000px tall. 46rem is the narrowest card
-          // width where the steps column still gets a readable ~294px.
-          className="flex-col items-stretch justify-start gap-14 px-6 pb-4 pt-15 [@container(min-width:46rem)]:flex-row [@container(min-width:46rem)]:items-start [@container(min-width:46rem)]:px-15"
-          data-testid="mobile-pairing-layout"
-        >
-          <div className="flex w-[266px] max-w-full shrink-0 flex-col gap-3">
+        <div className="cs-pairing-layout" data-testid="mobile-pairing-layout">
+          <div className="cs-pairing-side">
             <div
-              className={cn(
-                "flex min-h-[266px] w-[266px] max-w-full items-center justify-center rounded-lg border",
-                step === "sas" || step === "transferring" || step === "done"
-                  ? "border-transparent bg-transparent p-0"
-                  : "border-border/70 bg-background p-3",
-              )}
+              className={panelClass}
               data-testid="mobile-pairing-qr-container"
             >
               {step === "sas" && sasCode ? (
@@ -451,15 +381,13 @@ export function MobilePairingCard({
                   sasCode={sasCode}
                 />
               ) : step === "transferring" ? (
-                <div className="flex flex-col items-center justify-center gap-3 text-center">
+                <div className="cs-pairing-state">
                   <LoaderCircle
                     aria-hidden="true"
                     className="h-6 w-6 animate-spin text-muted-foreground"
                     data-testid="pairing-transfer-spinner"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Pairing mobile device...
-                  </p>
+                  <p>Pairing mobile device...</p>
                 </div>
               ) : step === "qr" && qrUri ? (
                 <StyledQrCode
@@ -471,91 +399,92 @@ export function MobilePairingCard({
                   value={qrUri}
                 />
               ) : step === "expired" ? (
-                <div className="flex max-w-52 origin-center animate-in flex-col items-center gap-3 text-center fade-in-0 zoom-in-95 duration-[250ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none">
-                  <p className="text-sm text-muted-foreground">
-                    Pairing code expired.
-                  </p>
-                  <Button
+                <div className="cs-pairing-state">
+                  <span className="cs-pairing-icon" data-tone="muted">
+                    <RefreshCw className="h-5 w-5" />
+                  </span>
+                  <p>Pairing code expired.</p>
+                  <button
+                    className="cs-button"
                     data-testid="regenerate-pairing-button"
                     onClick={beginPairing}
-                    size="sm"
                     type="button"
-                    variant="outline"
                   >
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     Generate new pairing code
-                  </Button>
+                  </button>
                 </div>
               ) : step === "error" ? (
-                <div className="flex max-w-52 flex-col items-center gap-3 text-center">
+                <div className="cs-pairing-state" role="alert">
                   <TriangleAlert className="h-6 w-6 text-destructive" />
-                  <p className="text-sm text-destructive">
-                    {error ?? "Pairing session ended."}
-                  </p>
-                  <Button
+                  <p data-tone="bad">{error ?? "Pairing session ended."}</p>
+                  <button
+                    className="cs-button"
                     data-testid="retry-pairing-button"
                     onClick={beginPairing}
-                    size="sm"
-                    variant="outline"
+                    type="button"
                   >
                     Try again
-                  </Button>
+                  </button>
                 </div>
               ) : step === "idle" ? (
                 currentPubkey ? (
-                  <Button
-                    data-testid="start-pairing-button"
-                    onClick={beginPairing}
-                    type="button"
-                  >
-                    Start pairing
-                  </Button>
+                  <div className="cs-pairing-state">
+                    <span className="cs-pairing-icon">
+                      <Smartphone className="h-5 w-5" />
+                    </span>
+                    <button
+                      className="cs-primary"
+                      data-testid="start-pairing-button"
+                      onClick={beginPairing}
+                      type="button"
+                    >
+                      Start pairing
+                    </button>
+                  </div>
                 ) : (
-                  <p className="max-w-44 text-center text-sm text-muted-foreground">
+                  <p className="cs-pairing-note">
                     Sign in to generate a mobile pairing code.
                   </p>
                 )
               ) : step === "done" ? (
-                <div className="flex flex-col items-center gap-3 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                    <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
-                  </div>
-                  <p className="text-base font-medium">Paired</p>
+                <div className="cs-pairing-state" role="status">
+                  <span className="cs-pairing-icon" data-tone="ok">
+                    <Check className="h-5 w-5" strokeWidth={3} />
+                  </span>
+                  <strong>Paired</strong>
+                  <p>Your mobile app is now paired.</p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-3">
+                <div className="cs-pairing-state">
                   <LoaderCircle
                     aria-hidden="true"
                     className="h-6 w-6 animate-spin text-muted-foreground"
                     data-testid="pairing-loading-spinner"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Starting pairing...
-                  </p>
+                  <p>Starting pairing...</p>
                 </div>
               )}
             </div>
 
-            <div className="h-8" data-testid="mobile-pairing-copy-slot">
+            <div className="cs-pairing-copy" data-testid="mobile-pairing-copy-slot">
               {step === "qr" && qrUri ? (
-                <Button
-                  className="h-8 w-full origin-top animate-in fade-in-0 zoom-in-95 duration-[250ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
+                <button
+                  className="cs-text-button"
                   data-testid="copy-pairing-code"
                   onClick={handleCopy}
-                  size="sm"
                   type="button"
-                  variant="outline"
                 >
-                  <Copy className="mr-1.5 h-4 w-4" />
+                  <Copy className="h-4 w-4" />
                   Copy pairing code
-                </Button>
+                </button>
               ) : null}
             </div>
           </div>
 
           <PairingSteps step={step} />
-        </SettingsOptionRow>
-      </SettingsOptionGroup>
-    </section>
+        </div>
+      </section>
+    </div>
   );
 }

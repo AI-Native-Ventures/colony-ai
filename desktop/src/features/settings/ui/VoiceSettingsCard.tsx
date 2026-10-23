@@ -22,13 +22,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { Switch } from "@/shared/ui/switch";
-import {
-  SettingsOptionGroup,
-  SettingsOptionGroupList,
-  SettingsOptionRow,
-} from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
+import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./SettingsKit";
 import {
   selectedVoiceForBackend,
   type VoiceRegistryEntry,
@@ -338,39 +332,36 @@ export function VoiceSettingsCard({
           data-voice-library-route
         >
           <div data-testid="voice-library-route">
-            <SettingsSectionHeader
-              action={
-                <span className="text-xs text-muted-foreground">
-                  This device
-                </span>
-              }
-              title={<span data-testid="voice-library">Voice library</span>}
-            />
-            <div
-              aria-label="Voice library sections"
-              className="w20-inner-tabs w20-voice-library-tabs"
-              role="tablist"
-            >
-              <button
-                aria-selected="true"
-                className="w20-inner-tab is-active"
-                data-testid="voice-library-tab-audio"
-                onClick={() => setShowLibrary(false)}
-                role="tab"
-                type="button"
+            <div className="cs-led">
+              <h2 className="cs-section-title" data-testid="voice-library">
+                Voice library
+              </h2>
+              <div
+                aria-label="Voice library sections"
+                className="cs-tabs"
+                role="tablist"
               >
-                Voice &amp; audio
-              </button>
-              <button
-                aria-selected="false"
-                className="w20-inner-tab"
-                data-testid="voice-library-tab-notifications"
-                onClick={() => onSectionChange?.("notifications")}
-                role="tab"
-                type="button"
-              >
-                Notifications
-              </button>
+                <button
+                  aria-selected="true"
+                  className="cs-tab"
+                  data-testid="voice-library-tab-audio"
+                  onClick={() => setShowLibrary(false)}
+                  role="tab"
+                  type="button"
+                >
+                  Voice &amp; audio
+                </button>
+                <button
+                  aria-selected="false"
+                  className="cs-tab"
+                  data-testid="voice-library-tab-notifications"
+                  onClick={() => onSectionChange?.("notifications")}
+                  role="tab"
+                  type="button"
+                >
+                  Notifications
+                </button>
+              </div>
             </div>
           </div>
 
@@ -470,230 +461,194 @@ export function VoiceSettingsCard({
   }
 
   return (
-    <section className="min-w-0" data-testid="settings-voice">
-      <SettingsSectionHeader
-        title="Voice & audio"
-        description="Your input, playback and agent voices on this device."
-      />
-
-      <SettingsOptionGroupList>
-        <SettingsOptionGroup title="Audio devices">
-          <SettingsOptionRow>
-            <label className="text-sm font-medium" htmlFor="voice-microphone">
-              Microphone
-            </label>
-            <select
-              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
-              data-testid="voice-microphone-select"
-              id="voice-microphone"
-              onChange={(event) => {
-                setSelectedDeviceId(
-                  event.currentTarget.value === "system-default"
-                    ? ""
-                    : event.currentTarget.value,
-                );
-              }}
-              value={
-                audioDevices.some(
-                  (device) => device.deviceId === selectedDeviceId,
-                )
-                  ? selectedDeviceId
-                  : "system-default"
-              }
-            >
-              <option value="system-default">System default</option>
-              {audioDevices
-                .filter(
-                  (device) => device.deviceId && device.deviceId !== "default",
-                )
-                .map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Mic ${device.deviceId.slice(0, 8)}`}
-                  </option>
-                ))}
-            </select>
-          </SettingsOptionRow>
-          <SettingsOptionRow>
-            <label className="text-sm font-medium" htmlFor="voice-output">
-              Output
-            </label>
-            <select
-              className="h-8 w-40 rounded-md border border-border bg-background px-2 text-xs"
-              data-testid="voice-output-select"
-              id="voice-output"
-              onChange={(event) => {
-                setSelectedOutputDevice(
-                  event.currentTarget.value === "system-default"
-                    ? ""
-                    : event.currentTarget.value,
-                );
-              }}
-              value={
-                (outputDevices ?? []).some(
-                  (device) => device.name === selectedOutputDevice,
-                )
-                  ? selectedOutputDevice
-                  : "system-default"
-              }
-            >
-              <option value="system-default">System default</option>
-              {(outputDevices ?? [])
-                .filter((device) => device.name)
-                .map((device) => (
-                  <option key={device.name} value={device.name}>
-                    {device.name}
-                  </option>
-                ))}
-            </select>
-          </SettingsOptionRow>
-        </SettingsOptionGroup>
-
-        <SettingsOptionGroup title="Agent voice">
-          <SettingsOptionRow>
-            <div className="min-w-0">
-              <label
-                className="text-sm font-medium"
-                htmlFor="agent-text-to-speech-switch"
-              >
-                Read agent replies aloud
-              </label>
-              <p
-                className="text-sm text-muted-foreground/70"
-                data-settings-subcopy
-              >
-                During an active huddle.
-              </p>
-            </div>
-            <Switch
-              checked={enabled}
-              data-testid="agent-text-to-speech-toggle"
-              disabled={!settings || busy}
-              id="agent-text-to-speech-switch"
-              onCheckedChange={(checked) => {
-                if (settings) void saveEnabled(checked);
-              }}
-            />
-          </SettingsOptionRow>
-          <div
-            aria-disabled={!enabled}
-            className={cn(
-              "transition-opacity",
-              !enabled && "pointer-events-none opacity-45",
-            )}
-            data-testid="pocket-voice-controls"
+    <div className="cs-led" data-testid="settings-voice">
+      <h2 className="cs-section-title">Voice &amp; audio</h2>
+      <SettingsCard>
+        <SettingsRow
+          help="Used for voice notes."
+          htmlFor="voice-microphone"
+          label="Microphone"
+        >
+          <select
+            className="cs-select cs-select-device"
+            data-testid="voice-microphone-select"
+            id="voice-microphone"
+            onChange={(event) => {
+              setSelectedDeviceId(
+                event.currentTarget.value === "system-default"
+                  ? ""
+                  : event.currentTarget.value,
+              );
+            }}
+            value={
+              audioDevices.some(
+                (device) => device.deviceId === selectedDeviceId,
+              )
+                ? selectedDeviceId
+                : "system-default"
+            }
           >
-            <SettingsOptionRow>
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Voice</p>
-                <p
-                  className="text-sm text-muted-foreground/70"
-                  data-settings-subcopy
-                >
-                  Local Pocket TTS voice library.
-                </p>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      aria-label={`Voice: ${selectedVoice?.displayName ?? "Mary"}`}
-                      className="min-w-32 justify-between"
-                      data-testid="pocket-voice-selector"
-                      disabled={controlsDisabled}
-                      variant="outline"
-                    >
+            <option value="system-default">System default</option>
+            {audioDevices
+              .filter(
+                (device) => device.deviceId && device.deviceId !== "default",
+              )
+              .map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Mic ${device.deviceId.slice(0, 8)}`}
+                </option>
+              ))}
+          </select>
+        </SettingsRow>
+        <SettingsRow htmlFor="voice-output" label="Speaker">
+          <select
+            className="cs-select cs-select-device"
+            data-testid="voice-output-select"
+            id="voice-output"
+            onChange={(event) => {
+              setSelectedOutputDevice(
+                event.currentTarget.value === "system-default"
+                  ? ""
+                  : event.currentTarget.value,
+              );
+            }}
+            value={
+              (outputDevices ?? []).some(
+                (device) => device.name === selectedOutputDevice,
+              )
+                ? selectedOutputDevice
+                : "system-default"
+            }
+          >
+            <option value="system-default">System default</option>
+            {(outputDevices ?? [])
+              .filter((device) => device.name)
+              .map((device) => (
+                <option key={device.name} value={device.name}>
+                  {device.name}
+                </option>
+              ))}
+          </select>
+        </SettingsRow>
+        <SettingsSwitchRow
+          checked={enabled}
+          disabled={!settings || busy}
+          help="Agents speak their replies aloud."
+          id="agent-text-to-speech-switch"
+          label="Read agent replies aloud"
+          onCheckedChange={(checked) => {
+            if (settings) void saveEnabled(checked);
+          }}
+          testId="agent-text-to-speech-toggle"
+        />
+        <div
+          aria-disabled={!enabled}
+          className={cn(!enabled && "pointer-events-none opacity-45")}
+          data-testid="pocket-voice-controls"
+        >
+          <SettingsRow
+            help="How agents sound when they speak."
+            label="Agent voice"
+          >
+            <span className="cs-voice-controls">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label={`Voice: ${selectedVoice?.displayName ?? "Mary"}`}
+                    className="cs-select cs-select-menu"
+                    data-testid="pocket-voice-selector"
+                    disabled={controlsDisabled}
+                    type="button"
+                  >
+                    <span>
                       {selectedVoice
                         ? voiceOptionLabel(selectedVoice, voices)
                         : "Mary"}
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="max-h-80 overflow-y-auto"
-                  >
-                    <DropdownMenuRadioGroup
-                      onValueChange={(voiceKey) => {
-                        if (settings) void savePocketVoice(voiceKey);
-                      }}
-                      value={selectedVoice?.key}
-                    >
-                      {voices.map((voice) => (
-                        <DropdownMenuRadioItem
-                          key={voice.key}
-                          value={voice.key}
-                        >
-                          {voiceOptionLabel(voice, voices)}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  aria-label={`Preview ${selectedVoice?.displayName ?? "Mary"}`}
-                  data-testid="pocket-voice-preview"
-                  disabled={controlsDisabled || previewing || !selectedVoice}
-                  onClick={() => {
-                    if (!selectedVoice) return;
-                    void previewVoice(selectedVoice.key);
-                  }}
-                  size="sm"
-                  variant="outline"
+                    </span>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="max-h-80 overflow-y-auto"
                 >
-                  {previewing ? (
-                    <Volume2 className="h-4 w-4 animate-pulse" />
-                  ) : (
-                    <Play className="h-4 w-4" />
-                  )}
-                  Preview
-                </Button>
-                <Button
-                  data-testid="pocket-voice-import"
-                  disabled={controlsDisabled}
-                  onClick={() => void importPocketVoice()}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Upload className="h-4 w-4" />
-                  Add voice
-                </Button>
-                {selectedVoice?.key.startsWith("pocket:imported:") && (
-                  <Button
-                    aria-label={`Delete ${selectedVoice.displayName}`}
-                    data-testid="pocket-voice-delete"
-                    disabled={controlsDisabled}
-                    onClick={() => setDeleteCandidate(selectedVoice)}
-                    size="icon"
-                    variant="ghost"
+                  <DropdownMenuRadioGroup
+                    onValueChange={(voiceKey) => {
+                      if (settings) void savePocketVoice(voiceKey);
+                    }}
+                    value={selectedVoice?.key}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    {voices.map((voice) => (
+                      <DropdownMenuRadioItem key={voice.key} value={voice.key}>
+                        {voiceOptionLabel(voice, voices)}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <button
+                aria-label={`Preview ${selectedVoice?.displayName ?? "Mary"}`}
+                className="cs-button"
+                data-testid="pocket-voice-preview"
+                disabled={controlsDisabled || previewing || !selectedVoice}
+                onClick={() => {
+                  if (!selectedVoice) return;
+                  void previewVoice(selectedVoice.key);
+                }}
+                type="button"
+              >
+                {previewing ? (
+                  <Volume2 className="h-4 w-4 animate-pulse" />
+                ) : (
+                  <Play className="h-4 w-4" />
                 )}
-              </div>
-            </SettingsOptionRow>
-          </div>
-          <Button
-            className="mt-3"
-            data-testid="voice-library-open"
-            onClick={() => setShowLibrary(true)}
-            size="sm"
-            variant="outline"
-          >
-            Preview voice library
-          </Button>
-        </SettingsOptionGroup>
-      </SettingsOptionGroupList>
+                Preview
+              </button>
+              <button
+                className="cs-button"
+                data-testid="pocket-voice-import"
+                disabled={controlsDisabled}
+                onClick={() => void importPocketVoice()}
+                type="button"
+              >
+                <Upload className="h-4 w-4" />
+                Add voice
+              </button>
+              {selectedVoice?.key.startsWith("pocket:imported:") && (
+                <button
+                  aria-label={`Delete ${selectedVoice.displayName}`}
+                  className="cs-button"
+                  data-testid="pocket-voice-delete"
+                  disabled={controlsDisabled}
+                  onClick={() => setDeleteCandidate(selectedVoice)}
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                className="cs-button"
+                data-testid="voice-library-open"
+                onClick={() => setShowLibrary(true)}
+                type="button"
+              >
+                Voice library
+              </button>
+            </span>
+          </SettingsRow>
+        </div>
+      </SettingsCard>
       {error && (
         <p
-          className="mt-4 text-sm text-destructive"
+          className="cs-notice"
           data-testid="voice-settings-error"
+          data-tone="bad"
           role="alert"
         >
           {error}
         </p>
       )}
       {deleteDialog}
-    </section>
+    </div>
   );
 }

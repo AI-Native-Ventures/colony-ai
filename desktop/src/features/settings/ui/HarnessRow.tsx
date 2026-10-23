@@ -1,5 +1,5 @@
 import * as React from "react";
-import { EllipsisVertical, ExternalLink, X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -68,10 +68,10 @@ function RuntimeLogo({ runtime }: { runtime: AcpRuntimeCatalogEntry }) {
   // and the catalog cannot drift apart.
   return (
     <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center"
+      className="cs-harness-tile"
       data-testid={`doctor-runtime-logo-${runtime.id}`}
     >
-      <RuntimeIcon className="h-9 w-9" runtime={runtime} />
+      <RuntimeIcon className="h-6 w-6" runtime={runtime} />
     </span>
   );
 }
@@ -84,7 +84,12 @@ function RuntimeOverflowMenu({
   onDelete,
   onEdit,
   runtime,
+  triggerLabel,
+  triggerTone,
 }: {
+  /** What the trigger reads: "Manage", "Sign in" or "Set up". */
+  triggerLabel: string;
+  triggerTone?: "primary";
   authMethods: AcpAuthMethod[];
   connectingMethodId: string | null;
   isConnecting: boolean;
@@ -114,11 +119,12 @@ function RuntimeOverflowMenu({
       <DropdownMenuTrigger asChild>
         <button
           aria-label={`Open actions for ${runtime.label}`}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="cs-button cs-harness-action"
           data-testid={`doctor-runtime-menu-${runtime.id}`}
+          data-tone={triggerTone}
           type="button"
         >
-          <EllipsisVertical className="h-4 w-4" />
+          {triggerLabel}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -203,89 +209,132 @@ function RuntimeActions({
   const canInstall = runtime.canAutoInstall && !runtime.nodeRequired;
   const isWorking = isInstalling || isConnecting;
 
+  const triggerLabel = isAuthNeeded
+    ? "Sign in"
+    : isAvailable && runtime.authStatus.status === "not_applicable"
+      ? "Set up"
+      : "Manage";
   return (
-    <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
-      <RuntimeOverflowMenu
-        authMethods={authMethods}
-        connectingMethodId={connectingMethodId}
-        isConnecting={isConnecting}
-        onConnect={onConnect}
-        onDelete={onDelete}
-        onEdit={onEdit}
-        runtime={runtime}
-      />
+    <div className="cs-harness-actions">
       {isWorking ? (
-        <div className="flex h-7 w-9 items-center justify-center text-muted-foreground">
+        <div className="flex h-10 w-9 items-center justify-center text-muted-foreground">
           <Spinner
             aria-label={`${runtime.label} ${isInstalling ? "installing" : "connecting"}`}
             className="h-4 w-4 border-2"
             data-testid={`doctor-runtime-loading-${runtime.id}`}
           />
         </div>
-      ) : isAvailable ? (
-        isAuthNeeded ? null : ( // Signed-out rows carry the amber status chip instead; never Install.
-          <span
-            className="inline-flex shrink-0 items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-            data-testid={`doctor-runtime-ready-${runtime.id}`}
-          >
-            Ready
-          </span>
-        )
-      ) : canInstall ? (
-        // Rows needing multi-step setup render no action here — setup lives in
-        // the Add-runtimes catalog. Custom rows keep their ••• menu instead.
-        <Button
+      ) : !isAvailable && canInstall ? (
+        // Rows needing multi-step setup render no action here: setup lives in
+        // the Add-harness catalog. Custom rows keep their menu instead.
+        <button
           aria-label={`Install ${runtime.label}`}
-          className="h-7 px-3 text-xs"
+          className="cs-button cs-harness-action"
           data-testid={`doctor-runtime-install-${runtime.id}`}
           onClick={onInstall}
-          size="sm"
           type="button"
-          variant="outline"
         >
           {runtime.availability === "adapter_outdated" ? "Update" : "Install"}
-        </Button>
-      ) : null}
+        </button>
+      ) : (
+        <RuntimeOverflowMenu
+          authMethods={authMethods}
+          connectingMethodId={connectingMethodId}
+          isConnecting={isConnecting}
+          onConnect={onConnect}
+          onDelete={onDelete}
+          onEdit={onEdit}
+          runtime={runtime}
+          triggerLabel={triggerLabel}
+          triggerTone={isAuthNeeded ? "primary" : undefined}
+        />
+      )}
     </div>
   );
 }
 
-function RuntimeStatusChip({ runtime }: { runtime: AcpRuntimeCatalogEntry }) {
-  // Single availability→label source: entryStatusLabel drives this row chip
-  // AND the catalog detail chip, so the two surfaces cannot drift. That
-  // includes "Sign-in needed" for installed-but-signed-out runtimes — an
-  // explicit auth-required state on the row face, not just a ••• menu item.
-  const label = entryStatusLabel(runtime);
-
-  if (!label) {
-    return null;
+/** The line under a harness name: what is installed and how it signs in. */
+function runtimeDescription(runtime: AcpRuntimeCatalogEntry): string {
+  if (runtime.availability !== "available") {
+    return entryStatusLabel(runtime) || "Not installed";
   }
+  switch (runtime.authStatus.status) {
+    case "logged_in":
+      return "Installed \u00b7 signed in";
+    case "logged_out":
+      return "Installed \u00b7 not signed in yet";
+    case "not_applicable":
+      return runtime.id === "buzz-agent"
+        ? "Built in \u00b7 runs on OpenRouter or Colony credits"
+        : "Installed";
+    default:
+      return "Installed";
+  }
+}
 
+function RuntimeStatusChip({ runtime }: { runtime: AcpRuntimeCatalogEntry }) {
+  // One availability to label source: entryStatusLabel drives this row chip
+  // and the catalog detail chip, so the two surfaces cannot drift.
   const isConfigError = runtime.authStatus.status === "config_invalid";
+  const isAvailable = runtime.availability === "available";
   const isAuthNeeded =
-    !isConfigError &&
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out";
+    !isConfigError && isAvailable && runtime.authStatus.status === "logged_out";
+  const isSignedIn = isAvailable && runtime.authStatus.status === "logged_in";
+  const isUnconfigured =
+    isAvailable && runtime.authStatus.status === "not_applicable";
 
-  return (
-    <>
-      <span aria-hidden="true" className="text-muted-foreground/50">
-        ·
-      </span>
+  if (isConfigError) {
+    return (
       <span
-        className={cn(
-          "inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium",
-          isConfigError
-            ? "bg-destructive/10 text-destructive"
-            : isAuthNeeded
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-              : "bg-muted text-muted-foreground",
-        )}
+        className="cs-badge cs-badge-large"
         data-testid={`doctor-runtime-status-${runtime.id}`}
+        data-tone="bad"
       >
-        {label}
+        Config error
       </span>
-    </>
+    );
+  }
+  if (isAuthNeeded) {
+    return (
+      <span
+        className="cs-badge cs-badge-large"
+        data-testid={`doctor-runtime-status-${runtime.id}`}
+        data-tone="need"
+      >
+        Sign-in needed
+      </span>
+    );
+  }
+  if (isSignedIn) {
+    return (
+      <span
+        className="cs-badge cs-badge-large"
+        data-testid={`doctor-runtime-ready-${runtime.id}`}
+        data-tone="ok"
+      >
+        Signed in
+      </span>
+    );
+  }
+  if (isUnconfigured) {
+    return (
+      <span
+        className="cs-badge cs-badge-large"
+        data-testid={`doctor-runtime-ready-${runtime.id}`}
+      >
+        Ready
+      </span>
+    );
+  }
+  const label = entryStatusLabel(runtime);
+  if (!label) return null;
+  return (
+    <span
+      className="cs-badge cs-badge-large"
+      data-testid={`doctor-runtime-status-${runtime.id}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -410,20 +459,19 @@ export function HarnessRow({
   return (
     <div
       className={cn(
-        "min-h-16 px-4 py-3.5 text-sm",
+        "cs-harness-row",
         !embedded && "rounded-2xl border border-border/60 bg-muted/20",
       )}
       data-testid={`doctor-runtime-${runtime.id}`}
     >
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <RuntimeLogo runtime={runtime} />
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="min-w-0 text-sm font-medium">{runtime.label}</p>
-              <RuntimeStatusChip runtime={runtime} />
-            </div>
-          </div>
+      <div className="min-w-0 flex-1">
+        <div className="cs-harness-main">
+          <RuntimeLogo runtime={runtime} />
+          <span className="cs-harness-copy">
+            <strong>{runtime.label}</strong>
+            <span>{runtimeDescription(runtime)}</span>
+          </span>
+          <RuntimeStatusChip runtime={runtime} />
           <RuntimeActions
             authMethods={authMethods}
             connectingMethodId={connectMutation.variables?.methodId ?? null}

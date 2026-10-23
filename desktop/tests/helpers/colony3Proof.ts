@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "./animations";
@@ -140,11 +140,25 @@ export async function dumpTexts(
   );
 }
 
-/** Writes captures.json; call from a test.afterAll. */
+/**
+ * Writes captures.json; call from a test.afterAll. Captures already on disk
+ * from another spec file in the same run directory are kept, so several proof
+ * specs can share one report.
+ */
 export function writeCaptures() {
   mkdirSync(PROOF_OUT, { recursive: true });
-  writeFileSync(
-    `${PROOF_OUT}/captures.json`,
-    JSON.stringify(captures, null, 2),
-  );
+  const path = `${PROOF_OUT}/captures.json`;
+  let previous: Capture[] = [];
+  try {
+    previous = JSON.parse(readFileSync(path, "utf8")) as Capture[];
+  } catch {
+    previous = [];
+  }
+  const merged = [
+    ...previous.filter(
+      (entry) => !captures.some((own) => own.name === entry.name),
+    ),
+    ...captures,
+  ];
+  writeFileSync(path, JSON.stringify(merged, null, 2));
 }
