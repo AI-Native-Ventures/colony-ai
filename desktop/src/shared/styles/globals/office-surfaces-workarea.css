@@ -1,0 +1,112 @@
+/*
+ * Office restyle, Phase 2: the conversation work area dock (Files, Canvas,
+ * Browser, Terminal, Work, Knowledge). The dock keeps its proportions; its
+ * frame, tabs, empty state and choices take the office paper, line and
+ * shapes, and the selected tab sits on paper like the selected sidebar row.
+ */
+
+:root[data-colony-office] #root .colony-work-area-panel {
+  background: hsl(var(--office-paper));
+}
+
+:root[data-colony-office] #root .colony-work-area-head {
+  border-bottom-color: hsl(var(--office-line));
+  background: hsl(var(--office-paper-2));
+}
+
+:root[data-colony-office] #root .colony-work-area-divider {
+  border-inline-color: hsl(var(--office-line));
+  background: hsl(var(--office-paper-2));
+}
+
+:root[data-colony-office]
+  #root
+  .colony-work-area-layout[data-overlay="true"]
+  > .colony-work-area-panel {
+  border-inline-start-color: hsl(var(--office-line));
+  box-shadow: var(--office-shadow-float);
+}
+
+/* Empty dock: the office heading, lede and outline choices. */
+:root[data-colony-office] #root .colony-work-area-empty h2 {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-heading);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:root[data-colony-office] #root .colony-work-area-empty p {
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+:root[data-colony-office] #root .colony-work-area-choice {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: 999px;
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+  padding: 0.4375rem 0.875rem;
+}
+
+:root[data-colony-office] #root .colony-work-area-choice:hover {
+  border-color: hsl(var(--primary) / 0.7);
+  background: hsl(var(--office-paper));
+}
+
+:root[data-colony-office] #root .colony-work-area-choice svg {
+  color: hsl(var(--primary));
+}
+
+/* Tabs: office rows; the selected tab rests on paper. */
+:root[data-colony-office] #root .colony-work-area-tab {
+  border-radius: var(--office-radius-row);
+}
+
+:root[data-colony-office] #root .colony-work-area-tab[data-selected="true"] {
+  border-color: hsl(var(--office-line));
+  background: hsl(var(--office-paper));
+  box-shadow: var(--office-shadow-row);
+}
+
+:root[data-colony-office] #root .colony-work-area-tab-select {
+  border-radius: var(--office-radius-row);
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office]
+  #root
+  .colony-work-area-tab[data-selected="true"]
+  .colony-work-area-tab-select {
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office]
+  #root
+  .colony-work-area-tab[data-selected="true"]
+  .colony-work-area-tab-select
+  svg {
+  color: hsl(var(--primary));
+}
+
+:root[data-colony-office] #root .colony-work-area-icon-button {
+  border-radius: 0.625rem;
+  color: hsl(var(--office-ink-3));
+}
+
+:root[data-colony-office]
+  #root
+  .colony-work-area-icon-button:is(:hover, :focus-visible) {
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+}
+
+/* The top bar's Work area toggle reads like the other office pills. */
+:root[data-colony-office] #root .colony-work-area-button {
+  border-radius: 999px;
+  font-weight: 750;
+}

@@ -39,6 +39,7 @@
 @import "./globals/office-settings.css";
 @import "./globals/office-surfaces.css";
 @import "./globals/office-surfaces-today.css";
+@import "./globals/office-surfaces-workarea.css";
 
 @config "../../../tailwind.config.js";
 

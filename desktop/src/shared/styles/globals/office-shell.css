@@ -201,6 +201,71 @@
   line-height: 2.5rem;
 }
 
+/*
+ * Narrow conversation columns (work area or thread open beside it): the
+ * header measures its own width, the title steps down and the actions move
+ * under the title instead of squeezing it.
+ */
+:root[data-colony-office]
+  #root
+  [data-testid="chat-header"][data-office-kicker="true"] {
+  container: office-chat-header / inline-size;
+}
+
+@container office-chat-header (max-width: 44rem) {
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    .colony-chat-header-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 0.75rem;
+  }
+
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    .colony-chat-header-row
+    > :first-child {
+    flex-basis: 100%;
+  }
+
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"],
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"].text-channel-title {
+    font-size: calc(var(--office-rem) * 2);
+    line-height: 2.5rem;
+  }
+}
+
+@container office-chat-header (max-width: 28rem) {
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"],
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"].text-channel-title {
+    font-size: calc(var(--office-rem) * 1.5);
+    line-height: 2rem;
+  }
+
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    .colony-channel-description {
+    font-size: var(--office-text-label);
+    line-height: 1.25rem;
+    -webkit-line-clamp: 1;
+  }
+}
+
 /* Short windows keep the conversation in view: the header steps down. */
 @media (max-height: 640px) {
   :root[data-colony-office]
@@ -242,8 +307,14 @@
 :root[data-colony-office] #root .colony-channel-view-tabs {
   gap: 0.375rem;
   height: 2.75rem;
+  overflow-x: auto;
   padding-inline: calc(var(--office-gutter) - 0.75rem);
   border-bottom-color: hsl(var(--office-line));
+  scrollbar-width: none;
+}
+
+:root[data-colony-office] #root .colony-channel-view-tabs > * {
+  flex: none;
 }
 
 :root[data-colony-office] #root .colony-channel-view-tabs > :is(span, button) {
