@@ -651,6 +651,7 @@
 
   .colony-file-card {
     display: flex;
+    width: fit-content;
     max-width: 100%;
     align-items: center;
     align-self: flex-start;

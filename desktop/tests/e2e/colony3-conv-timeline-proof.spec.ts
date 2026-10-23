@@ -70,14 +70,14 @@ const OWNED_AGENT_PROFILES: NonNullable<Colony3Extras["profiles"]> = [
 
 /** Agents managed on this device, so no "other setup" marker shows by a name. */
 const MANAGED_AGENTS = [
-  { pubkey: mina, name: "Mina" },
-  { pubkey: theo, name: "Theo" },
-  { pubkey: aya, name: "Aya" },
-].map((agent) => ({
-  ...agent,
-  status: "running" as const,
-  channelNames: ["The Olive House", "Marketing", "Sales"],
-}));
+  {
+    pubkey: mina,
+    name: "Mina",
+    channelNames: ["The Olive House", "Marketing"],
+  },
+  { pubkey: theo, name: "Theo", channelNames: ["The Olive House"] },
+  { pubkey: aya, name: "Aya", channelNames: ["Marketing", "Sales"] },
+].map((agent) => ({ ...agent, status: "running" as const }));
 
 /** Channels the boards read to the end, so no New divider shows by default. */
 const READ_CHANNELS = [
@@ -111,7 +111,7 @@ async function openLerato(
     ...colony3PositionOptions(),
     managedAgents: MANAGED_AGENTS,
     // The moderation items show to an owner.
-    relayMembers: [{ pubkey: "deadbeef".repeat(8), role: "owner" as const }],
+    relayRole: "owner" as const,
     ...options.bridge,
     colony3Extras: colony3Extras({
       readChannelIds: READ_CHANNELS,
@@ -221,7 +221,7 @@ test("Channel board", async ({ page }) => {
   await scrollTimelineTo(
     page,
     '[data-testid="message-timeline-day-divider"]',
-    24,
+    136,
   );
   await shot(page, {
     name: "Channel",
@@ -242,7 +242,7 @@ test("Direct message board", async ({ page }) => {
   await page.getByTestId("channel-Aya").click();
   await expect(page.getByTestId("chat-title")).toHaveText("Aya");
   await page.waitForTimeout(1500);
-  await scrollTimelineTo(page, '[data-testid="message-dm-intro"]', 32);
+  await scrollTimelineTo(page, '[data-testid="message-dm-intro"]', 104);
   await shot(page, {
     name: "DirectMessage",
     board: "DirectMessage",
@@ -321,7 +321,7 @@ test("Channel join board", async ({ page }) => {
   await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.marketing}`);
   await expect(page.getByTestId("chat-title")).toHaveText("Marketing");
   await page.waitForTimeout(1500);
-  await scrollTimelineTo(page, '[data-testid="message-channel-intro"]', 28);
+  await scrollTimelineTo(page, '[data-testid="message-channel-intro"]', 152);
   await shot(page, {
     name: "ChannelJoin",
     board: "ChannelJoin",

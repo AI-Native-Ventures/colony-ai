@@ -34,7 +34,7 @@ export function MessageAgentOwner({
     },
   );
   const resolvedSelfName =
-    selfName ??
+    selfName ||
     (selfPubkey
       ? selfQuery.data?.profiles[normalizePubkey(selfPubkey)]?.displayName
       : null);

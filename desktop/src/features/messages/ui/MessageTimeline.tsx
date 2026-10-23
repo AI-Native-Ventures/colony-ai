@@ -777,7 +777,7 @@ const MessageTimelineBase = React.forwardRef<
             "absolute inset-0 overflow-hidden",
             (!useTimelineVirtualizer || !showMessageList) &&
               cn(
-                "overflow-y-auto overflow-x-hidden overscroll-contain px-2 pt-1",
+                "overflow-y-auto overflow-x-hidden overscroll-contain pt-1",
                 hasComposerOverlay
                   ? "pb-[var(--composer-overlay-height,6rem)]"
                   : "pb-4",
@@ -806,7 +806,7 @@ const MessageTimelineBase = React.forwardRef<
           ) : (
             <div
               className={cn(
-                "flex w-full flex-col gap-2",
+                "c3c-timeline-column c3c-timeline-plain flex w-full flex-col gap-2",
                 showChannelIntroOnly
                   ? "pt-[var(--channel-top-chrome-height,4.5rem)]"
                   : channelChrome.contentPadding,

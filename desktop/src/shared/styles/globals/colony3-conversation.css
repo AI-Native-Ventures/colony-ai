@@ -457,3 +457,12 @@
 .message-markdown .mention-chip svg {
   display: none;
 }
+
+/* The same column when the list is short and renders without virtualising. */
+.c3c-timeline-plain {
+  padding-top: calc(
+    var(--buzz-channel-content-top-padding, 5.75rem) +
+    24 *
+    var(--colony-px)
+  );
+}
