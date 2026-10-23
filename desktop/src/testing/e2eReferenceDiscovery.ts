@@ -21,6 +21,9 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   status: "complete",
   prospectIds: Object.values(REFERENCE_PROSPECT_IDS),
   created: false,
+  runBy: { name: "Aya", pubkey: null },
+  simulated: true,
+  postedInSales: true,
 };
 
 const PROGRESS_INTERVAL_MS = 800;
@@ -102,6 +105,9 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
       status: prospectIds.length ? "running" : "complete",
       prospectIds,
       created: true,
+      runBy: { name: "Aya", pubkey: null },
+      simulated: true,
+      postedInSales: true,
     };
     update(campaign);
     if (campaign.status === "running") advanceProgress();

@@ -8,6 +8,11 @@ export type DiscoveryRunStatus =
   | "failed"
   | "complete";
 
+export type DiscoveryRunner = {
+  name: string;
+  pubkey: string | null;
+};
+
 export type DiscoveryCampaign = {
   id: string;
   name: string;
@@ -24,6 +29,19 @@ export type DiscoveryCampaign = {
   status: DiscoveryRunStatus;
   prospectIds: string[];
   created: boolean;
+  /** Who started the run; the screens say "Run by <name>". */
+  runBy?: DiscoveryRunner | null;
+  /**
+   * True only for the test-build stand-in runner. The screens then keep the
+   * design's "Example" wording; a real run never claims to be simulated.
+   */
+  simulated?: boolean;
+  /** Plain-words reason shown when `status` is "failed". */
+  failureReason?: string | null;
+  /** Whether the results were posted in the Sales channel. */
+  postedInSales?: boolean;
+  /** Unix seconds the campaign was approved. */
+  createdAt?: number;
 };
 
 export type DiscoveryCampaignInput = Omit<
