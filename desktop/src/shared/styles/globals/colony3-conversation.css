@@ -6,8 +6,8 @@
  */
 :root {
   --c3c-row-hover: #f7f3fa;
-  --c3c-content-max: 920px;
-  --c3c-gutter: 28px;
+  --c3c-content-max: 920;
+  --c3c-gutter: 28;
 }
 
 .c3c-title {
