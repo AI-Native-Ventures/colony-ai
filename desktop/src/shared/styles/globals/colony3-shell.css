@@ -82,13 +82,6 @@
 
 /* -------------------------------------------------------------- main area -- */
 
-[data-buzz-content-surface] {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
 :root[data-buzz-sidebar] [data-buzz-content-surface] {
   --background: var(--colony-surface);
 }
@@ -105,6 +98,26 @@
     var(--sidebar-background) /
     var(--glass-background-opacity, 65%)
   );
+}
+
+/* The Settings sidebar is the same field as the app sidebar, edge to edge. */
+.w20-settings-sidebar.w20-settings-sidebar.w20-settings-sidebar {
+  top: 0;
+  bottom: 0;
+  transform: none;
+}
+
+.w20-settings-sidebar [data-sidebar="sidebar"] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The field is the first child of the sidebar's content wrapper; everything
+   after it sits above it. */
+.w20-settings-sidebar .colony-field ~ * {
+  position: relative;
+  z-index: 1;
 }
 
 /* The app surface is a fixed frame. `hidden` still lets a focus or

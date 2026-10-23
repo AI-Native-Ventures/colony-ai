@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ColonyField } from "@/shared/ui/ColonyField";
 import { ArrowLeft, ArrowRight, Search, Settings, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
@@ -446,6 +447,7 @@ export function SettingsView({
         data-testid="settings-sidebar"
         variant="sidebar"
       >
+        <ColonyField />
         <SidebarHeader className="w20-nav-header">
           <Button
             className="w20-nav-back"

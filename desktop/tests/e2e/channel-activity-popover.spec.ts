@@ -607,7 +607,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "600",
+      "800",
     );
     for (const [index, itemId] of inboxItemIds.entries()) {
       const inboxRow = page.getByTestId(`home-inbox-item-${itemId}`);
@@ -616,7 +616,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "600",
+          "800",
         );
       }
     }
@@ -629,7 +629,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "600",
+      "800",
     );
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await page.getByTestId("channel-general").click();
@@ -753,9 +753,10 @@ test.describe("channel activity hover preview", () => {
     await groupedInboxRow.getByRole("button", { name: "Mark as read" }).click();
 
     await page.getByTestId("channel-random").click();
+    // The manual unread keeps the row bold, as the designed sidebar draws it.
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "600",
+      "800",
     );
   });
 
@@ -789,7 +790,7 @@ test.describe("channel activity hover preview", () => {
     }
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "600",
+      "800",
     );
     await expect.poll(() => getForcedUnreadSources(page)).toEqual(["inbox"]);
 
@@ -801,7 +802,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "600",
+          "800",
         );
         await expect
           .poll(() => getForcedUnreadSources(page))

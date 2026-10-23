@@ -32,10 +32,11 @@ test("feedback keeps its message after a relay rejection and accepts a retry", a
 
   await page.getByTestId("feedback-submit").click();
   await expect(page.getByTestId("feedback-sent")).toBeVisible();
-  const sentMessageBounds = await page
-    .getByText(/You can keep working/)
-    .boundingBox();
-  expect(sentMessageBounds?.width).toBe(440);
+  // The designed confirmation: a title and one line, with a Close button.
+  await expect(page.getByTestId("send-feedback-title")).toHaveText(
+    "Thank you for the feedback",
+  );
+  await expect(page.getByText("Your feedback was sent")).toBeVisible();
   await page.getByTestId("feedback-done").click();
   await expect(dialog).not.toBeVisible();
 });
