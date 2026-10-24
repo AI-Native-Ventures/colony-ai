@@ -230,7 +230,28 @@ test("ProfilePanel board: agent profile panel", async ({ page }) => {
     mock: {
       ...colony3PositionOptions(),
       oaOwnerIsMe: true,
-      colony3Extras: colony3Extras(),
+      managedAgents: [
+        {
+          name: "Mina",
+          personaId: "mina-persona",
+          pubkey: REFERENCE_AGENTS.mina.pubkey,
+          status: "running" as const,
+          channelNames: ["The Olive House"],
+        },
+      ],
+      colony3Extras: colony3Extras({
+        profiles: [
+          {
+            pubkey: REFERENCE_AGENTS.mina.pubkey,
+            displayName: "Mina",
+            isAgent: true,
+            ownerPubkey: SELF_PUBKEY,
+            presence: "online" as const,
+            about:
+              "Plans, drafts and schedules content for client channels, and asks before anything is published.",
+          },
+        ],
+      }),
     },
   });
   const panel = page.getByTestId("user-profile-panel");
@@ -255,7 +276,27 @@ test("ProfilePanel board: hover card", async ({ page }) => {
     mock: {
       ...colony3PositionOptions(),
       oaOwnerIsMe: true,
+      managedAgents: [
+        {
+          name: "Theo",
+          personaId: "theo-persona",
+          pubkey: REFERENCE_AGENTS.theo.pubkey,
+          status: "running" as const,
+          channelNames: ["The Olive House"],
+        },
+      ],
       colony3Extras: colony3Extras({
+        profiles: [
+          {
+            pubkey: REFERENCE_AGENTS.theo.pubkey,
+            displayName: "Theo",
+            isAgent: true,
+            ownerPubkey: SELF_PUBKEY,
+            presence: "online" as const,
+            about:
+              "Software Engineer. Keeps publishing and client integrations running.",
+          },
+        ],
         messages: [
           {
             channelId: REFERENCE_CHANNEL_IDS.oliveHouse,
@@ -290,7 +331,7 @@ test("ProfilePanel board: hover card", async ({ page }) => {
     {
       name: "ProfilePanel-hover",
       board: "ProfilePanel",
-      refRect: [56, 34, 360, 320],
+      refRect: [364, 386, 396, 346],
       title: "Hover card",
     },
     card,

@@ -4,6 +4,19 @@
  * text uses `--colony-px` so it follows the font-size preference and zoom.
  */
 
+.pw-screen {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.pw-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
 .pw-page {
   display: flex;
   box-sizing: content-box;

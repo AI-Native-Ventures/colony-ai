@@ -427,7 +427,6 @@ function ProfileHero({
           className="pp-avatar-image"
           iconClassName="h-8 w-8"
           label={displayName}
-          plain
           shape={isBot ? "squircle" : "circle"}
           testId="user-profile-avatar"
         />

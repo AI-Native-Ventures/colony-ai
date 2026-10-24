@@ -198,7 +198,9 @@ export function AiSpendOverview({
                     ? "Turn costs not reported"
                     : `${formatUsdCentsFixed(usage.totalNanoUsd / 10_000_000n).replace("USD ", "$")} estimated used`;
               const unpricedLabel =
-                usage && usage.unpricedTurnCount > 0
+                usage &&
+                usage.unpricedTurnCount > 0 &&
+                usage.pricedTurnCount > 0
                   ? ` · ${usage.unpricedTurnCount} turn costs not reported`
                   : "";
               const atAllowance = reachedAllowance(

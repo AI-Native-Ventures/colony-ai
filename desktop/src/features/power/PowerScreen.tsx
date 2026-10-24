@@ -166,65 +166,69 @@ export function PowerScreen({
       : "Unavailable";
 
   return (
-    <div className="pw-page" data-testid="power-screen">
-      <AppTopChromePortal>
-        <PowerBreadcrumb leaf={leaf} />
-      </AppTopChromePortal>
-      {showEmployee && selectedEmployee ? (
-        <AiSpendEmployeeScreen
-          allowance={selectedAllowance}
-          employee={selectedEmployee}
-          onBack={onClosePanel}
-          records={spendRecords}
-        />
-      ) : (
-        <>
-          <div className="pw-heading">
-            <div className="pw-heading-title">
-              <h1>{heading.title}</h1>
-              <span>{heading.subtitle}</span>
-            </div>
-            {section === "overview" && activeEmployees.length > 0 ? (
-              <div className="pw-heading-actions">
-                <Link
-                  className="pw-link-button"
-                  search={{
-                    channelId: null,
-                    threadRootEventId: null,
-                    type: "money",
-                  }}
-                  to="/asks/new"
-                >
-                  Request allowance change
-                </Link>
-              </div>
-            ) : null}
-          </div>
-          <PowerTabs
-            onSelect={onSectionChange}
-            selected={section}
-            tabs={POWER_TABS}
-          />
-          {section === "overview" ? (
-            <AiSpendOverview
-              allowances={allowanceRecords}
-              employees={powerEmployees}
-              error={spendError}
-              isLoading={spendLoading}
-              onOpenEmployee={onOpenEmployee}
+    <div className="pw-screen">
+      <div className="pw-scroll">
+        <div className="pw-page" data-testid="power-screen">
+          <AppTopChromePortal>
+            <PowerBreadcrumb leaf={leaf} />
+          </AppTopChromePortal>
+          {showEmployee && selectedEmployee ? (
+            <AiSpendEmployeeScreen
+              allowance={selectedAllowance}
+              employee={selectedEmployee}
+              onBack={onClosePanel}
               records={spendRecords}
             />
-          ) : section === "usage" ? (
-            <PowerUsageTab agents={agentsQuery.data ?? []} />
           ) : (
-            <PowerConnections
-              creditsLaunched={creditsLaunched}
-              creditsStatus={creditsStatus}
-              onManage={() => void goSettings("agents")}
-            />
+            <>
+              <div className="pw-heading">
+                <div className="pw-heading-title">
+                  <h1>{heading.title}</h1>
+                  <span>{heading.subtitle}</span>
+                </div>
+                {section === "overview" && activeEmployees.length > 0 ? (
+                  <div className="pw-heading-actions">
+                    <Link
+                      className="pw-link-button"
+                      search={{
+                        channelId: null,
+                        threadRootEventId: null,
+                        type: "money",
+                      }}
+                      to="/asks/new"
+                    >
+                      Request allowance change
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+              <PowerTabs
+                onSelect={onSectionChange}
+                selected={section}
+                tabs={POWER_TABS}
+              />
+              {section === "overview" ? (
+                <AiSpendOverview
+                  allowances={allowanceRecords}
+                  employees={powerEmployees}
+                  error={spendError}
+                  isLoading={spendLoading}
+                  onOpenEmployee={onOpenEmployee}
+                  records={spendRecords}
+                />
+              ) : section === "usage" ? (
+                <PowerUsageTab agents={agentsQuery.data ?? []} />
+              ) : (
+                <PowerConnections
+                  creditsLaunched={creditsLaunched}
+                  creditsStatus={creditsStatus}
+                  onManage={() => void goSettings("agents")}
+                />
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
