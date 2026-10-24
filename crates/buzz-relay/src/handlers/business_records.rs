@@ -215,10 +215,11 @@ pub async fn handle(
             | BusinessCommand::MoneyFollowUp(_)
     ) {
         match &command {
-            BusinessCommand::PartyAction(_)
-            | BusinessCommand::ProspectAction(_)
-            | BusinessCommand::ProposalVersion(_) => {
+            BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
                 require_member_or_admin(&role)?;
+            }
+            BusinessCommand::ProspectAction(action) => {
+                require_prospect_actor(&role, action.action)?;
             }
             BusinessCommand::ServiceAction(_) => require_admin(&role)?,
             BusinessCommand::ClientAction(_) => require_admin(&role)?,
@@ -362,7 +363,7 @@ pub async fn handle(
             });
         }
         BusinessCommand::ProspectAction(action) => {
-            require_member_or_admin(&role)?;
+            require_prospect_actor(&role, action.action)?;
             validate_prospect_action(&action)?;
             let d_tag = prospect_d_tag(*tenant.community().as_uuid(), action.prospect_id);
             let current =
@@ -4247,6 +4248,16 @@ fn require_member_or_admin(role: &str) -> Result<(), IngestError> {
     }
 }
 
+/// Members, admins and owners manage prospects. Agents hold the `bot` role in
+/// the business channel, so they may update an existing prospect (notes, stage,
+/// qualification, saved) but not create, archive or restore one.
+fn require_prospect_actor(role: &str, action: RecordAction) -> Result<(), IngestError> {
+    if role == "bot" && action == RecordAction::Update {
+        return Ok(());
+    }
+    require_member_or_admin(role)
+}
+
 fn require_acceptor_channel_role(role: &str) -> Result<(), IngestError> {
     if matches!(role, "owner" | "admin" | "member" | "guest") {
         Ok(())
@@ -4276,6 +4287,31 @@ pub(super) fn internal(error: impl std::fmt::Display) -> IngestError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prospect_actions_allow_agents_to_update_but_not_create_or_archive() {
+        for role in ["owner", "admin", "member"] {
+            for action in [
+                RecordAction::Create,
+                RecordAction::Update,
+                RecordAction::Archive,
+                RecordAction::Restore,
+            ] {
+                assert!(require_prospect_actor(role, action).is_ok(), "{role}");
+            }
+        }
+        assert!(require_prospect_actor("bot", RecordAction::Update).is_ok());
+        for action in [
+            RecordAction::Create,
+            RecordAction::Archive,
+            RecordAction::Restore,
+        ] {
+            assert!(require_prospect_actor("bot", action).is_err());
+        }
+        for action in [RecordAction::Create, RecordAction::Update] {
+            assert!(require_prospect_actor("guest", action).is_err());
+        }
+    }
 
     #[test]
     fn invoice_issue_requires_a_due_date() {

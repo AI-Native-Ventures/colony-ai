@@ -21,6 +21,9 @@ use crate::error::CliError;
 /// scheme that older clients still mint.
 const MESSAGE_LINK_SCHEMES: [&str; 2] = ["colony", "buzz"];
 
+/// Schemes accepted for lead links, same order as [`MESSAGE_LINK_SCHEMES`].
+const LEAD_LINK_SCHEMES: [&str; 2] = ["colony", "buzz"];
+
 /// A validated `colony://message` (or legacy `buzz://message`) deep link.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MessageLink {
@@ -148,6 +151,37 @@ pub fn issue_link(event_id: &str, owner: &str, repo_id: &str) -> String {
     format!("buzz://issue?id={event_id}&owner={owner}&d={repo_id}")
 }
 
+/// Build a `buzz://lead/<uuid>` link for a lead (a prospect record). The
+/// desktop renders it as a lead card and opens the lead when it is clicked;
+/// the format mirrors `buildLeadLink` in `desktop/src/shared/lib/entityLink.ts`.
+pub fn lead_link(lead_id: uuid::Uuid) -> String {
+    format!("buzz://lead/{}", lead_id.hyphenated())
+}
+
+/// Read a lead reference: a bare UUID, or a `buzz://lead/<uuid>` /
+/// `colony://lead/<uuid>` link. Anything with credentials, a port, a query or
+/// a fragment is rejected so a link cannot carry extra meaning.
+pub fn parse_lead_reference(input: &str) -> Result<uuid::Uuid, CliError> {
+    let input = input.trim();
+    if let Ok(lead_id) = uuid::Uuid::parse_str(input) {
+        return Ok(lead_id);
+    }
+    let invalid = || CliError::Usage("expected a lead UUID or a colony://lead/<uuid> link".into());
+    let url = url::Url::parse(input).map_err(|_| invalid())?;
+    if !LEAD_LINK_SCHEMES.contains(&url.scheme())
+        || url.host_str() != Some("lead")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid());
+    }
+    let id = url.path().strip_prefix('/').ok_or_else(invalid)?;
+    uuid::Uuid::parse_str(id).map_err(|_| invalid())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +218,60 @@ mod tests {
             project_link(owner, dtag),
             golden["links"]["project"].as_str().unwrap()
         );
+    }
+
+    const LEAD: &str = "5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f";
+
+    #[test]
+    fn lead_link_has_the_golden_format() {
+        let lead_id = uuid::Uuid::parse_str(LEAD).unwrap();
+        assert_eq!(lead_link(lead_id), format!("buzz://lead/{LEAD}"));
+        assert_eq!(
+            lead_link(uuid::Uuid::from_u128(0xAB)),
+            "buzz://lead/00000000-0000-0000-0000-0000000000ab"
+        );
+    }
+
+    #[test]
+    fn lead_reference_accepts_a_uuid_or_either_scheme() {
+        let expected = uuid::Uuid::parse_str(LEAD).unwrap();
+        for input in [
+            LEAD.to_string(),
+            format!("  {LEAD}  "),
+            LEAD.to_ascii_uppercase(),
+            format!("buzz://lead/{LEAD}"),
+            format!("colony://lead/{LEAD}"),
+            format!("colony://lead/{}", LEAD.to_ascii_uppercase()),
+        ] {
+            assert_eq!(parse_lead_reference(&input).unwrap(), expected, "{input}");
+        }
+        // A built link always parses back to its lead.
+        assert_eq!(
+            parse_lead_reference(&lead_link(expected)).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn lead_reference_rejects_other_links_and_extra_parts() {
+        for input in [
+            "",
+            "not a link",
+            "buzz://goal/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f",
+            "other://lead/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f",
+            "buzz://lead/not-a-uuid",
+            "buzz://lead/",
+            "buzz://lead",
+            "buzz://lead/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f?relay=other",
+            "buzz://lead/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f#fragment",
+            "buzz://user:secret@lead/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f",
+            "buzz://lead:99/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f",
+            "buzz://lead/5f0a7d2c-1b3e-4a6f-9c8d-2e4b6a8c0d1f/extra",
+        ] {
+            assert!(parse_lead_reference(input).is_err(), "accepted {input:?}");
+        }
+        let error = parse_lead_reference("nope").unwrap_err().to_string();
+        assert!(!error.to_ascii_lowercase().contains("buzz"), "{error}");
     }
 
     #[test]

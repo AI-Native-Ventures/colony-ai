@@ -452,6 +452,12 @@ type E2eConfig = {
     }>;
     /** Seed the r19 work-reference card in The Olive House client channel. */
     referenceWorkspaceWorkShare?: boolean;
+    /**
+     * The reference workspace installs the simulated discovery runner by
+     * default. Set false to run the real runner against the page's own
+     * `window.__BUZZ_E2E_DISCOVERY_SEARCH__` stub instead.
+     */
+    referenceWorkspaceDiscoveryStandIn?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -5384,7 +5390,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     channelId: REFERENCE_CHANNEL_IDS.sales,
     label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   };
-  installReferenceDiscoveryProvider();
+  if (config.mock?.referenceWorkspaceDiscoveryStandIn !== false) {
+    installReferenceDiscoveryProvider();
+  }
   const self = getMockMemberPubkey(config);
   const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);

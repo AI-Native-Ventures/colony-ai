@@ -249,6 +249,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goLead = React.useCallback(
+    (leadId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/sales/lead/$prospectId",
+          params: { prospectId: leadId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWork = React.useCallback(
     (clientId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -424,6 +436,7 @@ export function useAppNavigation() {
     goClient,
     goClients,
     goHome,
+    goLead,
     goTeam,
     goTeamMember,
     goTeamEdit,

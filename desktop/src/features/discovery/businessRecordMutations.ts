@@ -21,6 +21,8 @@ import { publishBusinessCommand } from "./businessRecordRelay";
 export type ProspectChanges = Omit<ProspectRecord, "party"> & {
   displayName: string;
   partyType: "person" | "organization";
+  /** Source links for a new record. An update keeps the record's own ids. */
+  externalIds?: string[];
 };
 
 export type ProposalTerms = {
@@ -114,7 +116,10 @@ export async function publishProspectAction(input: {
       partyId: prospectId,
       partyType: input.changes.partyType,
       displayName: input.changes.displayName.trim(),
-      externalIds: input.current?.record.prospect.party.externalIds ?? [],
+      externalIds:
+        input.current?.record.prospect.party.externalIds ??
+        input.changes.externalIds ??
+        [],
     },
     industry: input.changes.industry.trim(),
     vertical: input.changes.vertical.trim(),

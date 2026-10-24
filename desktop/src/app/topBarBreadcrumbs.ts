@@ -42,15 +42,13 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
     case "campaign":
       return trail("Business", "Discovery", "Campaign");
     case "leads":
-      return trail("Business", "Sales");
+      return trail("Business", "Sales", "Leads");
     case "pipeline":
       return trail("Business", "Sales", "Pipeline");
     case "sales":
-      return trail(
-        "Business",
-        "Sales",
-        SALES_PAGES[second ?? ""] ?? "Overview",
-      );
+      return second === "lead"
+        ? trail("Business", "Sales", "Leads", "Lead")
+        : trail("Business", "Sales", SALES_PAGES[second ?? ""] ?? "Overview");
     case "clients":
       return segments.length > 1
         ? trail("Business", "Clients", "Client")

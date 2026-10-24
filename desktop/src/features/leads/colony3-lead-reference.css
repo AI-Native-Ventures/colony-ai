@@ -1,0 +1,259 @@
+/*
+ * Lead references in chat: the card a message shows for `buzz://lead/<id>`,
+ * the stage pill it shares with the Leads table, the composer button and the
+ * picker dialog. Sizes follow the Leads board (38px mark, 28px pill, 16/800
+ * name, 14/500 meta); colours are the foundation tokens so dark themes follow.
+ */
+
+.c3r-card {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: 46.25rem;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 0.75rem 0;
+  padding: 0.875rem 1rem;
+  border: 0;
+  border-radius: 1rem;
+  background: var(--colony-pop);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.c3r-card {
+  cursor: pointer;
+  transition: box-shadow 120ms ease;
+}
+
+button.c3r-card:hover {
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border-strong)),
+    0 2px 6px rgb(40 20 60 / 8%);
+}
+
+button.c3r-card:focus-visible {
+  outline: 2px solid hsl(var(--colony-focus));
+  outline-offset: 2px;
+}
+
+.c3r-mark {
+  display: grid;
+  width: 2.375rem;
+  height: 2.375rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.6875rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3r-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.c3r-name {
+  overflow: hidden;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3r-meta {
+  overflow: hidden;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3r-fit {
+  flex: none;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3r-pill {
+  display: inline-flex;
+  height: 1.75rem;
+  flex: none;
+  align-items: center;
+  padding: 0 0.6875rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-idle-bg));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.c3r-pill[data-tone="green"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.c3r-pill[data-tone="blue"] {
+  background: hsl(var(--colony-info-bg));
+  color: hsl(var(--colony-info));
+}
+
+.c3r-pill[data-tone="amber"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.c3r-pill[data-tone="red"] {
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.c3r-note {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3r-retry {
+  flex: none;
+  height: 1.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.625rem;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3r-retry:focus-visible {
+  outline: 2px solid hsl(var(--colony-focus));
+  outline-offset: 2px;
+}
+
+.c3r-skeleton {
+  background: hsl(var(--colony-track));
+}
+
+/* ------------------------------------------------------ composer button -- */
+
+.c3r-composer-button {
+  display: inline-flex;
+  min-height: 1.25rem;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.c3r-composer-button:hover {
+  text-decoration: underline;
+}
+
+.c3r-composer-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------- picker --- */
+
+.c3r-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.c3r-picker-search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.c3r-picker-search:focus-visible {
+  outline: 2px solid hsl(var(--colony-focus));
+  outline-offset: 1px;
+}
+
+.c3r-picker-list {
+  display: flex;
+  max-height: 22rem;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-radius: 1rem;
+  box-shadow: 0 0 0 1px hsl(var(--colony-border));
+  list-style: none;
+}
+
+.c3r-picker-item {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.c3r-picker-list li:last-child .c3r-picker-item {
+  border-bottom: 0;
+}
+
+.c3r-picker-item:hover,
+.c3r-picker-item:focus-visible {
+  background: hsl(var(--colony-hover));
+  outline: none;
+}
+
+.c3r-picker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-surface-raised));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.c3r-picker-empty a {
+  color: hsl(var(--colony-accent-ink));
+  font-weight: 800;
+}

@@ -6,7 +6,7 @@
 use buzz_core::business_records::{
     business_d_tag, client_d_tag, company_work_d_tag, deliverable_approval_d_tag,
     deliverable_version_d_tag, invoice_version_d_tag, money_adjustment_d_tag,
-    money_follow_up_d_tag, payment_d_tag, proposal_version_d_tag,
+    money_follow_up_d_tag, payment_d_tag, proposal_version_d_tag, prospect_d_tag,
     validate_company_work_item_action,
 };
 pub use buzz_core::business_records::{
@@ -16,8 +16,11 @@ pub use buzz_core::business_records::{
     DeliverablePointer, DeliverableVersion, DraftInvoiceHead, InvoiceHead, InvoiceStatus,
     InvoiceVersion, InvoiceVersionAction, MoneyAdjustment, MoneyAdjustmentType,
     MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead, MoneyFollowUpStatus,
-    PartyAction, PaymentEvidence, ProposalAcceptance, ProposalConversionReceipt, ProposalHead,
-    ProposalLine, ProposalVersion, RecordAction, WorkItemAction, WorkItemHead, WorkItemHeadInput,
+    PartyAction, PartyRecord, PaymentEvidence, ProposalAcceptance, ProposalConversionReceipt,
+    ProposalHead, ProposalLine, ProposalVersion, ProspectAction, ProspectActivity,
+    ProspectActivityInput, ProspectActivityKind, ProspectEvidence, ProspectHead,
+    ProspectQualification, ProspectRecordInput, ProspectStage, RecordAction, WorkItemAction,
+    WorkItemHead, WorkItemHeadInput,
 };
 use buzz_core::kind::*;
 use nostr::{EventBuilder, Kind, Tag};
@@ -54,6 +57,20 @@ pub fn build_party_action(
         KIND_PARTY_ACTION,
         business_channel_id,
         business_d_tag(community_id, "party", action.party_id),
+        action,
+    )
+}
+
+/// Build a member-signed prospect (lead) action in the internal business channel.
+pub fn build_prospect_action(
+    community_id: Uuid,
+    business_channel_id: Uuid,
+    action: &ProspectAction,
+) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_PROSPECT_ACTION,
+        business_channel_id,
+        prospect_d_tag(community_id, action.prospect_id),
         action,
     )
 }
@@ -209,6 +226,75 @@ mod tests {
         assert_eq!(tags[1].kind().to_string(), "d");
         let expected_d_tag = client_d_tag(id, "client", id);
         assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+    }
+
+    #[test]
+    fn prospect_action_builder_binds_business_channel_and_prospect_coordinate() {
+        use buzz_core::business_records::{
+            parse_business_command, validate_business_command_scope, BusinessCommand,
+            BUSINESS_RECORD_SCHEMA_VERSION,
+        };
+
+        let community_id = Uuid::from_u128(1);
+        let channel_id = Uuid::from_u128(2);
+        let prospect_id = Uuid::from_u128(3);
+        let action = ProspectAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            prospect_id,
+            action: RecordAction::Update,
+            expected_head_event_id: Some("a".repeat(64)),
+            prospect: ProspectRecordInput {
+                prospect_id,
+                party: PartyRecord {
+                    party_id: prospect_id,
+                    party_type: "organization".into(),
+                    display_name: "Form & Field".into(),
+                    external_ids: Vec::new(),
+                },
+                industry: "Home & Living".into(),
+                vertical: "Home Decor & Gift Shops".into(),
+                fit_score: Some(91),
+                potential_monthly_value_minor: None,
+                website: None,
+                contact_name: None,
+                location: None,
+                email: None,
+                phone: None,
+                evidence: Vec::new(),
+                last_verified_at: None,
+                qualification: ProspectQualification::Qualified,
+                saved: true,
+                stage: ProspectStage::Qualified,
+                lost_reason: None,
+            },
+            activity: Some(ProspectActivityInput {
+                activity_id: Uuid::from_u128(4),
+                activity_kind: ProspectActivityKind::Note,
+                content: "Spoke to the owner".into(),
+                proposal_id: None,
+                proposal_version_event_id: None,
+            }),
+        };
+        let event = build_prospect_action(community_id, channel_id, &action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+
+        assert_eq!(event.kind, Kind::Custom(KIND_PROSPECT_ACTION as u16));
+        let tags = event.tags.iter().collect::<Vec<_>>();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].kind().to_string(), "h");
+        assert_eq!(tags[0].content(), Some(channel_id.to_string().as_str()));
+        assert_eq!(tags[1].kind().to_string(), "d");
+        let expected_d_tag = prospect_d_tag(community_id, prospect_id);
+        assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+        let command = parse_business_command(KIND_PROSPECT_ACTION, &event.content)
+            .expect("parse built prospect command");
+        assert!(matches!(command, BusinessCommand::ProspectAction(_)));
+        assert_eq!(
+            validate_business_command_scope(community_id, channel_id, &expected_d_tag, &command),
+            Ok(())
+        );
     }
 
     #[test]

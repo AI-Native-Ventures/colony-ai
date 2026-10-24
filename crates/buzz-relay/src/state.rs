@@ -733,6 +733,8 @@ pub struct AppState {
     /// Shared HTTP client for relay-proxied GIF provider requests. Reusing the
     /// connection pool avoids a fresh TLS handshake for every search/share.
     pub gif_http_client: reqwest::Client,
+    /// Shared HTTP client for relay-proxied prospect search requests.
+    pub discovery_http_client: reqwest::Client,
     /// Shared HTTP and Google verification clients for account routes.
     pub account_services: Arc<crate::api::accounts::AccountServices>,
     /// Shared Redis-backed admission limits for ordinary HTTP and WebSocket work.
@@ -866,6 +868,7 @@ impl AppState {
         let nip98_replay: Arc<dyn Nip98ReplayGuard> =
             Arc::new(RedisNip98ReplayGuard::new(redis_pool.clone()));
         let gif_http_client = crate::api::gifs::build_gif_http_client();
+        let discovery_http_client = crate::api::discovery::build_discovery_http_client();
         let account_services = Arc::new(crate::api::accounts::AccountServices::from_config(
             &config.accounts,
         ));
@@ -932,6 +935,7 @@ impl AppState {
             started_at: Instant::now(),
             nip98_replay,
             gif_http_client,
+            discovery_http_client,
             account_services,
             admission_rate_limiter,
             observer_rate_limiter: Arc::new(DashMap::new()),

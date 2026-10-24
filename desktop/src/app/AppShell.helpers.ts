@@ -245,6 +245,7 @@ export function deriveShellRoute(pathname: string): {
 
   if (
     pathname === "/discovery" ||
+    pathname === "/campaign" ||
     pathname === "/leads" ||
     pathname === "/pipeline" ||
     pathname === "/money" ||

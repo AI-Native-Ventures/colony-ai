@@ -67,6 +67,7 @@ import { useComposerLinkPreviews } from "./useComposerLinkPreviews";
 import { useAddressedAgentMentionRestore } from "./useAddressedAgentMentionRestore";
 import { scheduleSettleGatedAutoSubmit } from "./messageComposerAutoSubmit";
 import type { MessageComposerProps } from "./MessageComposer.types";
+import { LeadReferenceComposerButton } from "@/features/leads/LeadReferenceComposerButton";
 function MessageComposerImpl({
   audienceContext = null,
   channelId = null,
@@ -97,6 +98,7 @@ function MessageComposerImpl({
   replyTarget = null,
   mediaController,
   showBackgroundUploadProgress = true,
+  showLeadReference = true,
   showTopBorder = false,
   toolbarExtraActions,
   footerContent,
@@ -969,7 +971,17 @@ function MessageComposerImpl({
               workspaceChrome={workspaceChrome}
               composerDisabled={composerDisabled}
               editor={richText.editor}
-              extraActions={toolbarExtraActions}
+              extraActions={
+                <>
+                  {showLeadReference &&
+                  channelId &&
+                  channelType !== "forum" &&
+                  editTarget == null ? (
+                    <LeadReferenceComposerButton editor={richText.editor} />
+                  ) : null}
+                  {toolbarExtraActions}
+                </>
+              }
               formattingDisabled={composerDisabled}
               gifMediaController={media}
               isEmojiPickerOpen={isEmojiPickerOpen}
