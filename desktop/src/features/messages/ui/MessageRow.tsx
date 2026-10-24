@@ -623,7 +623,7 @@ export const MessageRow = React.memo(
         className={cn(
           "absolute right-4 top-1 z-10 sm:pointer-events-none",
           actionBarPlacement === "floating"
-            ? "sm:top-[calc(-32*var(--colony-px))]"
+            ? "sm:top-[calc(var(--c3c-bar-top)*var(--colony-px))]"
             : "sm:top-1 sm:translate-y-0",
         )}
       >

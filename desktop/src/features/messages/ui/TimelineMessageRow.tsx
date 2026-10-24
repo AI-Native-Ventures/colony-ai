@@ -139,59 +139,61 @@ export function MessageRowItem({
   if (summary && onOpenThread) {
     const isHighlighted = message.id === highlightedMessageId;
     return (
-      <div
-        className={cn(
-          "group/message c3c-row relative mb-6 flex flex-col gap-0 transition-colors",
-          isHighlighted && "c3c-row--highlighted",
-        )}
-        data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
-      >
-        <MessageRow
-          channelId={channelId}
-          highlighted={false}
-          hoverBackground={false}
-          huddleMemberPubkeys={huddleMemberPubkeys}
-          huddleMemberPubkeysPending={huddleMemberPubkeysPending}
-          hideAgentAccessBadge={hideAgentAccessBadges}
-          isFollowingThread={
-            isFollowingThreadById
-              ? isFollowingThreadById(message.id)
-              : undefined
-          }
-          isUnread={isUnread}
-          isContinuation={isContinuation}
-          playEntrance={playEntrance}
-          onEntranceComplete={onEntranceComplete}
-          message={message}
-          onDelete={canDelete}
-          onEdit={canEdit}
-          onFollowThread={
-            followThreadById ? () => followThreadById(message.id) : undefined
-          }
-          onMarkRead={onMarkRead}
-          onMarkUnread={onMarkUnread}
-          onToggleReaction={onToggleReaction}
-          onReply={onReply}
-          onUnfollowThread={
-            unfollowThreadById
-              ? () => unfollowThreadById(message.id)
-              : undefined
-          }
-          profiles={profiles}
-          showDepthGuides={false}
-          videoReviewContext={videoReviewContext}
-        />
-        <MessageThreadSummaryRow
-          compactTimelineAvatar={compactThreadSummaryAvatars}
-          depth={message.depth}
-          message={message}
-          onOpenThread={onOpenThread}
-          showDepthGuides={false}
-          summary={summary}
-          summaryIndentOffsetRem={-THREAD_REPLY_ROW_MARGIN_INLINE_REM}
-          unreadCount={threadUnreadCounts?.get(message.id)}
-        />
-        {footer}
+      <div className="pb-6">
+        <div
+          className={cn(
+            "group/message c3c-row relative flex flex-col gap-0 transition-colors",
+            isHighlighted && "c3c-row--highlighted",
+          )}
+          data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
+        >
+          <MessageRow
+            channelId={channelId}
+            highlighted={false}
+            hoverBackground={false}
+            huddleMemberPubkeys={huddleMemberPubkeys}
+            huddleMemberPubkeysPending={huddleMemberPubkeysPending}
+            hideAgentAccessBadge={hideAgentAccessBadges}
+            isFollowingThread={
+              isFollowingThreadById
+                ? isFollowingThreadById(message.id)
+                : undefined
+            }
+            isUnread={isUnread}
+            isContinuation={isContinuation}
+            playEntrance={playEntrance}
+            onEntranceComplete={onEntranceComplete}
+            message={message}
+            onDelete={canDelete}
+            onEdit={canEdit}
+            onFollowThread={
+              followThreadById ? () => followThreadById(message.id) : undefined
+            }
+            onMarkRead={onMarkRead}
+            onMarkUnread={onMarkUnread}
+            onToggleReaction={onToggleReaction}
+            onReply={onReply}
+            onUnfollowThread={
+              unfollowThreadById
+                ? () => unfollowThreadById(message.id)
+                : undefined
+            }
+            profiles={profiles}
+            showDepthGuides={false}
+            videoReviewContext={videoReviewContext}
+          />
+          <MessageThreadSummaryRow
+            compactTimelineAvatar={compactThreadSummaryAvatars}
+            depth={message.depth}
+            message={message}
+            onOpenThread={onOpenThread}
+            showDepthGuides={false}
+            summary={summary}
+            summaryIndentOffsetRem={-THREAD_REPLY_ROW_MARGIN_INLINE_REM}
+            unreadCount={threadUnreadCounts?.get(message.id)}
+          />
+          {footer}
+        </div>
       </div>
     );
   }

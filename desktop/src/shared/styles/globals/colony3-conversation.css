@@ -135,25 +135,16 @@
 }
 
 .c3c-row {
-  margin-inline: calc(-16 * var(--colony-px));
-  padding-inline: calc(16 * var(--colony-px));
-}
-
-.c3c-row::before {
-  content: "";
-  position: absolute;
-  inset: calc(-14 * var(--colony-px)) 0;
-  z-index: -1;
+  --c3c-bar-top: -18;
+  margin: calc(-14 * var(--colony-px)) calc(-16 * var(--colony-px));
   border-radius: calc(18 * var(--colony-px));
-  background-color: var(--c3c-row-hover);
-  opacity: 0;
-  transition: opacity 120ms ease;
-  pointer-events: none;
+  padding: calc(14 * var(--colony-px)) calc(16 * var(--colony-px));
+  transition: background-color 120ms ease;
 }
 
-.c3c-row:hover::before,
-.c3c-row:focus-within::before {
-  opacity: 1;
+.c3c-row:hover,
+.c3c-row:focus-within {
+  background-color: var(--c3c-row-hover);
 }
 
 .c3c-author {
@@ -178,27 +169,26 @@
   font-weight: 500;
 }
 
-.c3c-row--reminder::before {
+.c3c-row--reminder {
   background-color: hsl(var(--colony-info-bg));
-  opacity: 1;
 }
 
-.c3c-row--highlighted::before {
-  background-color: hsl(var(--colony-accent-soft));
+.c3c-row--highlighted {
   animation: route-target-highlight-fade 2s ease-out forwards;
-  opacity: 1;
+  background-color: hsl(var(--colony-accent-soft));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .c3c-row--highlighted::before {
+  .c3c-row--highlighted {
     animation: none;
   }
 }
 
 /* A row whose parent already draws the hover surface. */
 .c3c-row--inner {
-  margin-inline: 0;
-  padding-inline: 0;
+  --c3c-bar-top: -32;
+  margin: 0;
+  padding: 0;
 }
 
 /* The conversation column: 28px gutters, content at most 920px, left aligned. */
