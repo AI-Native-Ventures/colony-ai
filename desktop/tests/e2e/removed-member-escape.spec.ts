@@ -128,16 +128,6 @@ async function expectNoRawRelayText(page: Page) {
 // the first view and after every Retry.
 async function expectPlainDetails(page: Page) {
   const screen = page.getByTestId("community-apply-error");
-  const disclosure = screen.getByRole("button", {
-    name: "Technical details",
-  });
-  const isExpanded = await disclosure.getAttribute("aria-expanded");
-  expect(isExpanded).toMatch(/^(false|true)$/);
-  if (isExpanded === "false") {
-    await disclosure.focus();
-    await disclosure.press("Enter");
-  }
-  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   await expect(screen.getByTestId("community-apply-error-details")).toHaveText(
     PLAIN_REASON,
   );
@@ -164,7 +154,7 @@ test.describe("removed member escape", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "You don’t have access to Colony. Remove it from this device, or ask the owner for an invitation.",
+      "Ask an owner or admin of Colony to add you. Share this account code with them.",
     );
     await expect(screen.getByTestId("community-escape-switch")).toHaveCount(0);
     await expect(screen.getByRole("button", { name: "Retry" })).toBeFocused();
@@ -177,7 +167,7 @@ test.describe("removed member escape", () => {
 
     // Remove always works, by keyboard, and lands on first-run setup.
     const remove = screen.getByRole("button", {
-      name: /^Remove this community from this device/,
+      name: /^Remove community/,
     });
     await remove.focus();
     await page.keyboard.press("Enter");
@@ -211,13 +201,13 @@ test.describe("removed member escape", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "You don’t have access to Colony. Switch to another community or remove it from this device.",
+      "Ask an owner or admin of Colony to add you. Share this account code with them.",
     );
     await expect(page.locator("body")).not.toContainText(RAW_RELAY_TEXT);
 
     // The switch action is first and holds focus; Enter activates it.
     const switchButton = screen.getByRole("button", {
-      name: "Switch to Colony AI",
+      name: "Switch community to Colony AI",
     });
     await expect(switchButton).toBeFocused();
     await page.keyboard.press("Enter");
@@ -243,9 +233,7 @@ test.describe("removed member escape", () => {
     await openAsRemovedMember(page, [COLONY, COLONY_AI]);
     const screen = page.getByTestId("community-apply-error");
 
-    await screen
-      .getByRole("button", { name: /^Remove this community from this device/ })
-      .click();
+    await screen.getByRole("button", { name: /^Remove community/ }).click();
     await screen.getByTestId("community-escape-remove-confirm").click();
 
     await expect(page.getByTestId("community-apply-error")).toHaveCount(0);
@@ -279,7 +267,7 @@ test.describe("removed member escape", () => {
     await expect(screen).toBeVisible({ timeout: 15_000 });
     await expect(
       screen.getByTestId("community-apply-error-message"),
-    ).toContainText("You don’t have access to Colony");
+    ).toContainText("Ask an owner or admin of Colony");
     await expectPlainDetails(page);
 
     // Added back: Retry opens the workspace again.
@@ -312,7 +300,7 @@ test.describe("removed member escape", () => {
       await expect(
         screen.getByTestId("community-apply-error-message"),
       ).toHaveText(
-        "You don’t have access to Colony. Switch to another community or remove it from this device.",
+        "Ask an owner or admin of Colony to add you. Share this account code with them.",
       );
       await expectPlainDetails(page);
     }
@@ -355,8 +343,10 @@ test.describe("removed member escape", () => {
       "relay owned-agent query failed: relay unreachable: could not connect to relay",
     );
     await retryUntilApplyFails(page);
-    await expect(message).toHaveText("Can't reach the relay.");
-    await expect(details).toHaveCount(0);
+    await expect(message).toContainText(
+      "Colony couldn’t reach Colony at localhost:3000",
+    );
+    await expect(details).toHaveText("Can't reach the relay.");
     await expectNoRawRelayText(page);
 
     // Healthy again: Retry opens the workspace.

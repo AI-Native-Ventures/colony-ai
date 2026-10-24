@@ -2,8 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ensureOnboardingProfile } from "./onboardingProfile.ts";
 const key = "colony-signup-name.v1:owner@example.com";
-function setup({ existing = false, name = "Amina", failure = false } = {}) {
+const pendingKey = "colony-pending-profile.v1:identity";
+function setup({
+  existing = false,
+  name = "Amina",
+  failure = false,
+  pending = null,
+} = {}) {
   const values = new Map([[key, name]]);
+  if (pending) values.set(pendingKey, JSON.stringify(pending));
   const writes = [];
   const deps = {
     read: async () => ({ pubkey: "identity", hasProfileEvent: existing }),
@@ -14,7 +21,8 @@ function setup({ existing = false, name = "Amina", failure = false } = {}) {
       return input;
     },
     storage: {
-      getItem: (k) => values.get(k),
+      getItem: (k) => values.get(k) ?? null,
+      setItem: (k, v) => values.set(k, v),
       removeItem: (k) => values.delete(k),
     },
   };
@@ -25,6 +33,27 @@ test("first entry publishes the signup name through the production kind:0 seam",
   await ensureOnboardingProfile(() => true, s.deps);
   assert.deepEqual(s.writes, [{ displayName: "Amina" }]);
   assert.equal(s.values.get(key), "Amina");
+});
+test("a name and photo picked after an advanced sign-in are published, then cleared", async () => {
+  const s = setup({
+    pending: {
+      displayName: "Lerato Molefe",
+      avatarUrl: "data:image/webp;base64,AAAA",
+    },
+  });
+  await ensureOnboardingProfile(() => true, s.deps);
+  assert.deepEqual(s.writes, [
+    { displayName: "Lerato Molefe", avatarUrl: "data:image/webp;base64,AAAA" },
+  ]);
+  assert.equal(s.values.has(pendingKey), false);
+});
+test("a failed publish keeps the pending profile for retry", async () => {
+  const s = setup({ failure: true, pending: { displayName: "Lerato Molefe" } });
+  await assert.rejects(
+    ensureOnboardingProfile(() => true, s.deps),
+    /offline/,
+  );
+  assert.equal(s.values.has(pendingKey), true);
 });
 test("missing name falls back to email local part", async () => {
   const s = setup({ name: "" });

@@ -5,6 +5,7 @@ import { expect, test } from "@playwright/test";
 import {
   startR17AccountAuth,
   completeR17BusinessSetup,
+  r17Runtime,
 } from "../helpers/onboarding";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import {
@@ -165,14 +166,14 @@ test("membership denial retains invitation, identity and community recovery", as
     /business|Nostr|npub|nsec|private key|public key/i,
   );
   await captureReskinState(page, "membership-denied-embedded");
-  const technicalDetails = page
-    .getByTestId("membership-denied")
-    .getByRole("button", { name: "Technical details" });
-  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
-  await technicalDetails.click();
-  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
+  // The card shows the account code to share, with Copy beside it.
   await expect(
-    page.getByTestId("membership-denied").getByText("Your account code"),
+    page.getByTestId("membership-denied").getByLabel("Your account code"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("membership-denied").getByRole("button", {
+      name: "Copy account code",
+    }),
   ).toBeVisible();
   await captureReskinState(
     page,
@@ -188,6 +189,7 @@ test("signup name reaches the kind:0 profile through the rendered first-run path
   page,
 }) => {
   await startR17AccountAuth(page, {
+    runtimes: [r17Runtime("claude", "available", { status: "logged_in" })],
     mock: { accountEmail: "signup@example.com", profileHasEvent: false },
   });
   await page.goto("/");
@@ -205,7 +207,11 @@ test("signup name reaches the kind:0 profile through the rendered first-run path
   await page.getByTestId("otp-continue").click();
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await completeR17BusinessSetup(page);
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await page.getByTestId("onboarding-test-connection").click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   expect(
     await page.evaluate(() =>
@@ -253,11 +259,12 @@ for (const viewport of [
     await expect(
       page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
     ).toBeFocused();
+    // Account, Business and Connect are all done; only the card below is open.
     await expect(
       page
         .getByRole("list", { name: "Setup progress" })
-        .locator('[aria-current="step"]'),
-    ).toHaveText("3Connect");
+        .locator('li[data-state="done"]'),
+    ).toHaveCount(3);
     await expect(page.getByRole("button", { name: "Cancel test" })).toHaveCount(
       0,
     );

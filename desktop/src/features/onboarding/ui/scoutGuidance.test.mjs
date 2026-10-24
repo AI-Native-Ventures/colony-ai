@@ -37,7 +37,7 @@ test("first reply screen renders the supplied reply instead of a fixture", () =>
     }),
   );
   assert.match(html, /Hello Amina. Your reply arrived./);
-  assert.match(html, /First reply received/);
+  assert.match(html, /Connection verified/);
   assert.match(html, /Open my Colony/);
   assert.doesNotMatch(
     html,
@@ -45,9 +45,9 @@ test("first reply screen renders the supplied reply instead of a fixture", () =>
   );
 });
 test("guidance follows actual scene and supplied runtime state", () => {
-  assert.equal(scoutGuidance("business").status, "Your turn");
-  assert.equal(scoutGuidance("testing").status, "Checking the connection");
-  assert.equal(scoutGuidance("connected").status, "First reply received");
+  assert.equal(scoutGuidance("business").status, "Here to help");
+  assert.equal(scoutGuidance("testing").status, "Working");
+  assert.equal(scoutGuidance("connected").status, "Here to help");
   assert.equal(
     scoutGuidance("business", "Website unavailable").status,
     "Needs your attention",
@@ -72,9 +72,12 @@ test("frozen feedback and focused field copy remain distinct", () => {
     "subscription-exhausted",
   ])
     assert.equal(scoutGuidance(scene).status, "Needs your attention");
+  assert.equal(scoutGuidance("account").bubble, "What should I call you?");
   assert.equal(
-    scoutGuidance("account", null, undefined, "full-name").title,
-    "What should I call you?",
+    scoutGuidance("verify", null, undefined, undefined, false, {
+      firstName: "Lerato",
+    }).title,
+    "Nice to meet you, Lerato.",
   );
   assert.equal(
     scoutGuidance("connect", null, undefined, undefined, true).status,
@@ -97,7 +100,7 @@ test("frozen reset and discovery controls render the approved state", () => {
   assert.match(render("forgot"), /Reset your password/);
   assert.doesNotMatch(render("forgot"), /Forgot your password/);
   for (const scene of ["connect", "subscription-scan"]) {
-    assert.match(render(scene), /Finding your AI apps/);
+    assert.match(render(scene), /Connect your AI\./);
     assert.doesNotMatch(render(scene), /7 hours/);
   }
   assert.match(render("verify-verifying"), /Verifying…/);
@@ -116,26 +119,19 @@ test("connection controls keep one label owner and radio semantics", () => {
       },
     }),
   );
-  // Onboarding offers exactly two paths. Bring-your-own-key and the other
-  // harnesses live in Settings > Agents.
+  // Onboarding offers three paths in one radio group: Claude Code or Codex,
+  // Colony Agent and Start free. Other harnesses live in Settings > Agents.
   assert.equal((html.match(/role="radiogroup"/g) ?? []).length, 1);
-  assert.equal((html.match(/role="radio"/g) ?? []).length, 2);
+  assert.equal((html.match(/type="radio"/g) ?? []).length, 3);
   assert.deepEqual(
-    [
-      ...html.matchAll(
-        /role="radio"(?:(?!<\/button>)[\s\S])*<strong>([^<]+)<\/strong>/g,
-      ),
-    ].map((match) => match[1]),
-    ["Claude Code or Codex", "Colony Agent"],
+    [...html.matchAll(/class="c3fr-choice-title"[^>]*>([^<]+)</g)].map(
+      (match) => match[1],
+    ),
+    ["Claude Code or Codex", "Colony Agent", "Start free"],
   );
-  assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
-  assert.match(
-    html,
-    /aria-checked="true"[^>]*role="radio"[^>]*>(?:(?!<\/button>)[\s\S])*<strong>Claude Code or Codex</,
-  );
+  assert.equal((html.match(/checked=""/g) ?? []).length, 1);
   assert.doesNotMatch(html, /Bring your own key|More tools|Subscriptions</);
-  assert.match(html, /Choose AI app. Current: Claude Code/);
-  assert.doesNotMatch(html, /harness-row|aria-pressed/);
+  assert.doesNotMatch(html, /Skip for now/);
 });
 
 test("OpenRouter and credit scenes select the Colony Agent path", () => {
@@ -146,10 +142,10 @@ test("OpenRouter and credit scenes select the Colony Agent path", () => {
         data: { ...data, visualOnly: true },
       }),
     );
-    assert.equal((html.match(/role="radio"/g) ?? []).length, 2, scene);
+    assert.equal((html.match(/type="radio"/g) ?? []).length, 3, scene);
     assert.match(
       html,
-      /aria-checked="true"[^>]*role="radio"[^>]*>(?:(?!<\/button>)[\s\S])*<strong>Colony Agent</,
+      /name="c3fr-ai" checked=""\/><span class="c3fr-choice-copy"[^>]*><span class="c3fr-choice-title"[^>]*>Colony Agent</,
       scene,
     );
   }
@@ -169,8 +165,13 @@ test("community entry and recovery retain the Connect step", () => {
     const html = renderToStaticMarkup(
       React.createElement(OnboardingScenePresentation, { scene, data }),
     );
-    assert.match(html, /aria-current="step"[^>]*>[\s\S]*?Connect<\/li>/);
-    assert.doesNotMatch(html, /aria-current="step"[^>]*>[\s\S]*?Account<\/li>/);
-    assert.match(html, /wide power-content/);
+    // The three bars are done; the only current step is inside the card.
+    assert.equal(
+      (html.match(/data-state="done"[^>]*><span[^>]*c3fr-progress-bar/g) ?? [])
+        .length,
+      3,
+      scene,
+    );
+    assert.match(html, /Connect<\/span><\/li>/, scene);
   }
 });
