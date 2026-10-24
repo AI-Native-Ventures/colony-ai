@@ -439,7 +439,7 @@ for (const surface of ["agents", "members"] as const) {
       ).toHaveClass(/bg-colony-away/);
       await expect(
         page.getByTestId(`sidebar-member-presence-${keys[1]}`).locator("span"),
-      ).toHaveClass(/bg-muted-foreground/);
+      ).toHaveClass(/border-colony-fg-secondary/);
     }
   });
 }

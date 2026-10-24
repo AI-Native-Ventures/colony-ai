@@ -6,11 +6,11 @@
 :root.dark {
   --colony-field-wall: #2a2432;
   --colony-field-wall-fallback: #241f2b;
-  --colony-field-veil-top: rgb(20 16 28 / 30%);
-  --colony-field-veil-middle: rgb(20 16 28 / 22%);
-  --colony-field-veil-bottom: rgb(20 16 28 / 34%);
-  --colony-field-blob-opacity: 0.5;
-  --colony-field-blob-opacity-middle: 0.46;
+  --colony-field-veil-top: rgb(20 16 28 / 66%);
+  --colony-field-veil-middle: rgb(20 16 28 / 58%);
+  --colony-field-veil-bottom: rgb(20 16 28 / 68%);
+  --colony-field-blob-opacity: 0.3;
+  --colony-field-blob-opacity-middle: 0.27;
   --colony-field-grain-opacity: 0.1;
   --colony-rail-top: #3b2c46;
   --colony-rail-middle: #2c2a4c;
@@ -24,10 +24,18 @@
   --colony-sidebar-active: rgb(255 255 255 / 15%);
   --colony-sidebar-active-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   --colony-sidebar-pill: rgb(255 255 255 / 14%);
+  --colony-sidebar-kbd: rgb(0 0 0 / 24%);
+  --colony-sidebar-search-ring: rgb(255 255 255 / 16%);
   --colony-sidebar-avatar: #4a4152;
   --colony-sidebar-avatar-ring: #2a2432;
   --colony-notice-surface: rgb(255 255 255 / 10%);
   --colony-notice-shadow: 0 8px 20px -12px rgb(0 0 0 / 60%);
+}
+
+/* The branded dark field is a mid-tone, so its soft ink is lighter than the
+   foreground-secondary the named themes use; every label reaches 4.5:1. */
+:root.dark[data-buzz-sidebar] {
+  --colony-sidebar-ink-soft: #dcd6e2;
 }
 
 /* ---------------------------------------------------------------- field -- */
