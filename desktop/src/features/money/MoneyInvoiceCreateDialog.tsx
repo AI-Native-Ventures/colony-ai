@@ -3,13 +3,7 @@ import * as React from "react";
 import { BUSINESS_RECORD_SCHEMA_VERSION } from "@/features/clients/lib/businessRecords";
 import { useSubmitBusinessRecordMutation } from "@/features/clients/useBusinessRecords";
 import { KIND_INVOICE_VERSION } from "@/shared/constants/kinds";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { MoneyDialog } from "./MoneyDialogFrame";
 import {
   type InvoiceLine,
   type MoneyInvoiceVersion,
@@ -145,116 +139,114 @@ export function InvoiceCreateDialog({
   }
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent style={{ maxWidth: "calc(430 * var(--b3u))" }}>
-        <DialogHeader>
-          <DialogTitle>New invoice</DialogTitle>
-          <DialogDescription>
-            New invoices start as drafts. Review and issue separately.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="b3-dialog-fields"
-          onSubmit={(event) => void create(event)}
-        >
-          {lockedClient ? (
-            <div className="b3-dialog-summary">
-              <span className="b3-eyebrow">Client</span>
-              <span className="b3-dialog-summary-name">{clientName}</span>
-            </div>
-          ) : (
-            <label className="b3-dialog-field">
-              Client
-              <select
-                onChange={(event) => setClientId(event.currentTarget.value)}
-                required
-                value={clientId}
-              >
-                <option value="">Choose a client</option>
-                {clients.map((client) => (
-                  <option key={client.clientId} value={client.clientId}>
-                    {client.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <fieldset className="b3-dialog-line">
-            <legend>Line 1</legend>
-            <label className="b3-dialog-field">
-              Service / description
-              <input
-                autoComplete="off"
-                onChange={(event) => setDescription(event.currentTarget.value)}
-                placeholder="First monthly retainer"
-                required
-                value={description}
-              />
-            </label>
-            <div className="b3-dialog-row">
-              <label className="b3-dialog-field">
-                Quantity
-                <input
-                  inputMode="decimal"
-                  min="0.01"
-                  onChange={(event) => setQuantity(event.currentTarget.value)}
-                  step="0.01"
-                  type="number"
-                  value={quantity}
-                />
-              </label>
-              <label className="b3-dialog-field">
-                Unit amount · {currency}
-                <input
-                  inputMode="decimal"
-                  min="0"
-                  onChange={(event) => setAmount(event.currentTarget.value)}
-                  required
-                  step={moneyStep(currency)}
-                  type="number"
-                  value={amount}
-                />
-              </label>
-            </div>
-          </fieldset>
+    <MoneyDialog
+      onOpenChange={onOpenChange}
+      open={open}
+      subtitle="New invoices start as drafts. Review and issue separately."
+      title="New invoice"
+      width={430}
+    >
+      <form
+        className="b3-dialog-fields"
+        onSubmit={(event) => void create(event)}
+      >
+        {lockedClient ? (
+          <div className="b3-dialog-summary" data-kind="client">
+            <span className="b3-eyebrow">Client</span>
+            <span className="b3-dialog-summary-name">{clientName}</span>
+          </div>
+        ) : (
           <label className="b3-dialog-field">
-            Due date
+            Client
+            <select
+              onChange={(event) => setClientId(event.currentTarget.value)}
+              required
+              value={clientId}
+            >
+              <option value="">Choose a client</option>
+              {clients.map((client) => (
+                <option key={client.clientId} value={client.clientId}>
+                  {client.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <fieldset className="b3-dialog-line">
+          <legend>Line 1</legend>
+          <label className="b3-dialog-field">
+            Service / description
             <input
-              onChange={(event) => setDueDate(event.currentTarget.value)}
-              type="date"
-              value={dueDate}
+              autoComplete="off"
+              onChange={(event) => setDescription(event.currentTarget.value)}
+              placeholder="First monthly retainer"
+              required
+              value={description}
             />
           </label>
-          <div className="b3-dialog-total">
-            <span>Total</span>
-            <span>
-              {total === null ? "-" : formatMoneyMinor(total, currency)}
-            </span>
+          <div className="b3-dialog-row" data-split="line">
+            <label className="b3-dialog-field">
+              Quantity
+              <input
+                inputMode="decimal"
+                min="0.01"
+                onChange={(event) => setQuantity(event.currentTarget.value)}
+                step="0.01"
+                type="number"
+                value={quantity}
+              />
+            </label>
+            <label className="b3-dialog-field">
+              Unit amount · {currency}
+              <input
+                inputMode="decimal"
+                min="0"
+                onChange={(event) => setAmount(event.currentTarget.value)}
+                required
+                step={moneyStep(currency)}
+                type="number"
+                value={amount}
+              />
+            </label>
           </div>
-          {error ? (
-            <p className="b3-dialog-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <div className="b3-dialog-actions">
-            <button
-              className="b3-btn"
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="b3-btn"
-              data-variant="primary"
-              disabled={!canManage || submit.isPending}
-              type="submit"
-            >
-              Create invoice
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </fieldset>
+        <label className="b3-dialog-field">
+          Due date
+          <input
+            onChange={(event) => setDueDate(event.currentTarget.value)}
+            type="date"
+            value={dueDate}
+          />
+        </label>
+        <div className="b3-dialog-total">
+          <span>Total</span>
+          <span>
+            {total === null ? "-" : formatMoneyMinor(total, currency)}
+          </span>
+        </div>
+        {error ? (
+          <p className="b3-dialog-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="b3-dialog-actions">
+          <button
+            className="b3-btn"
+            onClick={() => onOpenChange(false)}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            className="b3-btn"
+            data-variant="primary"
+            disabled={!canManage || submit.isPending}
+            type="submit"
+          >
+            Create invoice
+          </button>
+        </div>
+      </form>
+    </MoneyDialog>
   );
 }

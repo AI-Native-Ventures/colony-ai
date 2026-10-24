@@ -181,12 +181,12 @@ export function MoneyInvoiceList({
           <div className="b3-invoice-scroll">
             <table aria-label="Invoices" className="b3-invoices">
               <colgroup>
-                <col style={{ width: "22.4%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
+                <col style={{ width: "22.65%" }} />
+                <col style={{ width: "14.15%" }} />
+                <col style={{ width: "14.15%" }} />
+                <col style={{ width: "10.14%" }} />
+                <col style={{ width: "10.14%" }} />
+                <col style={{ width: "10.14%" }} />
                 <col />
               </colgroup>
               <thead>

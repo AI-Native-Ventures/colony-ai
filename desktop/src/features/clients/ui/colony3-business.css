@@ -410,12 +410,12 @@
 }
 
 .b3-clients thead tr {
-  height: calc(48 * var(--b3u));
+  height: calc(49 * var(--b3u));
   border-bottom: calc(1 * var(--b3u)) solid var(--b3-line);
 }
 
 .b3-clients tbody tr {
-  height: calc(84 * var(--b3u));
+  height: calc(85 * var(--b3u));
   border-bottom: calc(1 * var(--b3u)) solid var(--b3-line);
   cursor: pointer;
 }

@@ -246,42 +246,51 @@ export function referenceBusinessRecordEvents(
         ? colony3
           ? colony3Seeds
           : [
-            {
-              deliverableId: "c1c17000-0000-4000-8000-000000000001",
-              title: "Make room for slow mornings",
-              content:
-                "A little space. A favourite cup. A slower start. Meet the pieces that make an ordinary morning feel like yours. Explore our spring edit at the link in our bio.",
-              version: 2,
-              previousContent: "First draft by Mina",
-              previousDecision: "changes_requested" as const,
-              previousNote:
-                "Let the first slide breathe. Keep the product detail on slide two.",
-            },
-            {
-              deliverableId: "c1c17000-0000-4000-8000-000000000002",
-              title: "Meet your everyday favourites",
-              content:
-                "Pieces you reach for, again and again. Discover our spring edit.",
-              version: 1,
-            },
-            {
-              deliverableId: "c1c17000-0000-4000-8000-000000000003",
-              title: "Small changes. Softer spaces.",
-              content:
-                "A new texture. A warmer corner. Small changes can make a space your own.",
-              version: 1,
-              approvalDecision: "approved" as const,
-            },
-            {
-              deliverableId: "c1c17000-0000-4000-8000-000000000004",
-              title: "An invitation to slow down",
-              content:
-                "A quieter weekend starts at home. Discover the spring edit.",
-              version: 1,
-              approvalDecision: "approved" as const,
-            },
-          ]
-        : [];
+              {
+                deliverableId: "c1c17000-0000-4000-8000-000000000001",
+                title: "Make room for slow mornings",
+                content:
+                  "A little space. A favourite cup. A slower start. Meet the pieces that make an ordinary morning feel like yours. Explore our spring edit at the link in our bio.",
+                version: 2,
+                previousContent: "First draft by Mina",
+                previousDecision: "changes_requested" as const,
+                previousNote:
+                  "Let the first slide breathe. Keep the product detail on slide two.",
+              },
+              {
+                deliverableId: "c1c17000-0000-4000-8000-000000000002",
+                title: "Meet your everyday favourites",
+                content:
+                  "Pieces you reach for, again and again. Discover our spring edit.",
+                version: 1,
+              },
+              {
+                deliverableId: "c1c17000-0000-4000-8000-000000000003",
+                title: "Small changes. Softer spaces.",
+                content:
+                  "A new texture. A warmer corner. Small changes can make a space your own.",
+                version: 1,
+                approvalDecision: "approved" as const,
+              },
+              {
+                deliverableId: "c1c17000-0000-4000-8000-000000000004",
+                title: "An invitation to slow down",
+                content:
+                  "A quieter weekend starts at home. Discover the spring edit.",
+                version: 1,
+                approvalDecision: "approved" as const,
+              },
+            ]
+        : colony3 && entry.clientId === REFERENCE_CHANNEL_IDS.northline
+          ? [
+              {
+                deliverableId: "c1c17000-0000-4000-8000-000000000011",
+                title: "Onboarding checklist",
+                content: "What we need from Northline Interiors to start.",
+                version: 1,
+              },
+            ]
+          : [];
     const deliverables = deliverableSeeds.map((seed) => {
       let previousVersionEventId: string | null = null;
       if (seed.previousContent && seed.previousDecision && seed.previousNote) {

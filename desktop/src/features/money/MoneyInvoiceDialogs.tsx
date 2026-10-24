@@ -7,13 +7,7 @@ import {
 import { InvoiceStatusPills } from "@/features/money/MoneyInvoiceList";
 import { useSubmitBusinessRecordMutation } from "@/features/clients/useBusinessRecords";
 import { KIND_INVOICE_VERSION, KIND_PAYMENT } from "@/shared/constants/kinds";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { MoneyDialog } from "./MoneyDialogFrame";
 import {
   type InvoiceLine,
   type MoneyInvoiceHead,
@@ -41,21 +35,19 @@ import {
 } from "./moneyUtils";
 import "./colony3-money.css";
 
-function dialogWidth(width: number): React.CSSProperties {
-  return { maxWidth: `calc(${width} * var(--b3u))` };
-}
-
 function Actions({
   cancel = "ghost",
   children,
   onCancel,
+  pad = false,
 }: {
   cancel?: "ghost" | "secondary";
   children: React.ReactNode;
   onCancel: () => void;
+  pad?: boolean;
 }) {
   return (
-    <div className="b3-dialog-actions">
+    <div className="b3-dialog-actions" data-pad={pad}>
       <button
         className="b3-btn"
         data-variant={cancel === "ghost" ? "ghost" : undefined}
@@ -199,104 +191,97 @@ export function InvoiceEditDialog({
   }
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent style={dialogWidth(430)}>
-        <DialogHeader>
-          <DialogTitle>
-            Edit Invoice {invoiceNumber(invoice.value.invoiceId)}
-          </DialogTitle>
-          <DialogDescription>
-            New invoices start as drafts. Review and issue separately.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="b3-dialog-fields"
-          onSubmit={(event) => void save(event)}
-        >
-          <div className="b3-dialog-summary">
-            <span className="b3-eyebrow">Client</span>
-            <span className="b3-dialog-summary-name">{clientName}</span>
-          </div>
-          {lines.map((line, index) => (
-            <fieldset className="b3-dialog-line" key={line.draftKey}>
-              <legend>Line {index + 1}</legend>
+    <MoneyDialog
+      onOpenChange={onOpenChange}
+      open={open}
+      title={<>Edit Invoice {invoiceNumber(invoice.value.invoiceId)}</>}
+      subtitle={<>New invoices start as drafts. Review and issue separately.</>}
+      width={430}
+    >
+      <form className="b3-dialog-fields" onSubmit={(event) => void save(event)}>
+        <div className="b3-dialog-summary">
+          <span className="b3-eyebrow">Client</span>
+          <span className="b3-dialog-summary-name">{clientName}</span>
+        </div>
+        {lines.map((line, index) => (
+          <fieldset className="b3-dialog-line" key={line.draftKey}>
+            <legend>Line {index + 1}</legend>
+            <label className="b3-dialog-field">
+              Service / description
+              <input
+                autoComplete="off"
+                onChange={(event) =>
+                  updateLine(setLines, index, {
+                    description: event.currentTarget.value,
+                  })
+                }
+                required
+                value={line.description}
+              />
+            </label>
+            <div className="b3-dialog-row">
               <label className="b3-dialog-field">
-                Service / description
+                Quantity
                 <input
-                  autoComplete="off"
+                  inputMode="decimal"
+                  min="0.01"
                   onChange={(event) =>
                     updateLine(setLines, index, {
-                      description: event.currentTarget.value,
+                      quantityInput: event.currentTarget.value,
                     })
                   }
-                  required
-                  value={line.description}
+                  step="0.01"
+                  type="number"
+                  value={line.quantityInput}
                 />
               </label>
-              <div className="b3-dialog-row">
-                <label className="b3-dialog-field">
-                  Quantity
-                  <input
-                    inputMode="decimal"
-                    min="0.01"
-                    onChange={(event) =>
-                      updateLine(setLines, index, {
-                        quantityInput: event.currentTarget.value,
-                      })
-                    }
-                    step="0.01"
-                    type="number"
-                    value={line.quantityInput}
-                  />
-                </label>
-                <label className="b3-dialog-field">
-                  Unit amount · {invoice.value.currency}
-                  <input
-                    inputMode="decimal"
-                    min="0"
-                    onChange={(event) =>
-                      updateLine(setLines, index, {
-                        amountInput: event.currentTarget.value,
-                      })
-                    }
-                    step={moneyStep(invoice.value.currency)}
-                    type="number"
-                    value={line.amountInput}
-                  />
-                </label>
-              </div>
-            </fieldset>
-          ))}
-          <label className="b3-dialog-field">
-            Due date
-            <input
-              onChange={(event) => setDueDate(event.currentTarget.value)}
-              type="date"
-              value={dueDate}
-            />
-          </label>
-          <div className="b3-dialog-total">
-            <span>Total</span>
-            <span>
-              {draftTotal === null
-                ? "-"
-                : formatMoneyMinor(draftTotal, invoice.value.currency)}
-            </span>
-          </div>
-          {error ? <ErrorLine>{error}</ErrorLine> : null}
-          <Actions cancel="secondary" onCancel={() => onOpenChange(false)}>
-            <button
-              className="b3-btn"
-              data-variant="primary"
-              disabled={!canManage || submit.isPending}
-              type="submit"
-            >
-              Save invoice
-            </button>
-          </Actions>
-        </form>
-      </DialogContent>
-    </Dialog>
+              <label className="b3-dialog-field">
+                Unit amount · {invoice.value.currency}
+                <input
+                  inputMode="decimal"
+                  min="0"
+                  onChange={(event) =>
+                    updateLine(setLines, index, {
+                      amountInput: event.currentTarget.value,
+                    })
+                  }
+                  step={moneyStep(invoice.value.currency)}
+                  type="number"
+                  value={line.amountInput}
+                />
+              </label>
+            </div>
+          </fieldset>
+        ))}
+        <label className="b3-dialog-field">
+          Due date
+          <input
+            onChange={(event) => setDueDate(event.currentTarget.value)}
+            type="date"
+            value={dueDate}
+          />
+        </label>
+        <div className="b3-dialog-total">
+          <span>Total</span>
+          <span>
+            {draftTotal === null
+              ? "-"
+              : formatMoneyMinor(draftTotal, invoice.value.currency)}
+          </span>
+        </div>
+        {error ? <ErrorLine>{error}</ErrorLine> : null}
+        <Actions cancel="secondary" onCancel={() => onOpenChange(false)}>
+          <button
+            className="b3-btn"
+            data-variant="primary"
+            disabled={!canManage || submit.isPending}
+            type="submit"
+          >
+            Save invoice
+          </button>
+        </Actions>
+      </form>
+    </MoneyDialog>
   );
 }
 
@@ -341,65 +326,60 @@ export function IssueInvoiceDialog({
     invoice.value.currency,
   );
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent style={dialogWidth(420)}>
-        <DialogHeader>
-          <DialogTitle>
-            Issue Invoice {invoiceNumber(invoice.value.invoiceId)}?
-          </DialogTitle>
-          <DialogDescription>
-            Confirm the agreed scope and <strong>{amount}</strong> amount.
-            Issuing includes this record in invoiced revenue; it does not send
-            an email.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="b3-dialog-summary">
-          <span className="b3-dialog-summary-name">{clientName}</span>
-          <span className="b3-dialog-summary-row">
-            <span className="b3-dialog-summary-text">
-              {invoice.value.lines.map((line) => line.description).join(" · ")}
-            </span>
-            <span className="b3-dialog-summary-amount">{amount}</span>
+    <MoneyDialog
+      onOpenChange={onOpenChange}
+      open={open}
+      title={<>Issue Invoice {invoiceNumber(invoice.value.invoiceId)}?</>}
+      intro={
+        <>
+          Confirm the agreed scope and <strong>{amount}</strong> amount. Issuing
+          includes this record in invoiced revenue; it does not send an email.
+        </>
+      }
+      width={420}
+    >
+      <div className="b3-dialog-summary">
+        <span className="b3-dialog-summary-name">{clientName}</span>
+        <span className="b3-dialog-summary-row">
+          <span>
+            {invoice.value.lines.map((line) => line.description).join(" · ")}
+          </span>
+          <span className="b3-dialog-summary-amount">{amount}</span>
+        </span>
+      </div>
+      {missingDetails.length ? (
+        <div className="b3-dialog-warning" role="alert">
+          <WarningCircle />
+          <span>
+            <strong>Details missing before issue:</strong>{" "}
+            {missingDetails.join(", ")}.
           </span>
         </div>
-        {missingDetails.length ? (
-          <div className="b3-dialog-warning" role="alert">
-            <WarningCircle />
-            <span>
-              <strong>Details missing before issue:</strong>{" "}
-              {missingDetails.join(", ")}.
-            </span>
-          </div>
-        ) : null}
-        {error && !missingDetails.length ? (
-          <ErrorLine>{error}</ErrorLine>
-        ) : null}
-        <div className="b3-dialog-actions">
-          <button
-            className="b3-btn"
-            disabled={!canManage}
-            onClick={() => {
-              onOpenChange(false);
-              onEdit();
-            }}
-            type="button"
-          >
-            Edit invoice
-          </button>
-          <button
-            className="b3-btn"
-            data-variant="primary"
-            disabled={
-              !canManage || submit.isPending || missingDetails.length > 0
-            }
-            onClick={() => void issue()}
-            type="button"
-          >
-            Issue invoice
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+      {error && !missingDetails.length ? <ErrorLine>{error}</ErrorLine> : null}
+      <div className="b3-dialog-actions" data-pad="true">
+        <button
+          className="b3-btn"
+          disabled={!canManage}
+          onClick={() => {
+            onOpenChange(false);
+            onEdit();
+          }}
+          type="button"
+        >
+          Edit invoice
+        </button>
+        <button
+          className="b3-btn"
+          data-variant="primary"
+          disabled={!canManage || submit.isPending || missingDetails.length > 0}
+          onClick={() => void issue()}
+          type="button"
+        >
+          Issue invoice
+        </button>
+      </div>
+    </MoneyDialog>
   );
 }
 
@@ -438,65 +418,65 @@ export function VoidInvoiceDialog({
   }
   const { value: head } = invoice;
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent style={dialogWidth(410)}>
-        <DialogHeader>
-          <DialogTitle>
-            Void invoice {invoiceNumber(head.invoiceId)}
-          </DialogTitle>
-          <DialogDescription>
-            The original record remains visible. Voided invoices are excluded
-            from revenue.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="b3-dialog-fields"
-          onSubmit={(event) => void voidInvoice(event)}
-        >
-          <div className="b3-dialog-summary">
-            <span className="b3-dialog-summary-row">
-              <span className="b3-dialog-summary-name">{clientName}</span>
-              <InvoiceStatusPills invoice={head} />
+    <MoneyDialog
+      onOpenChange={onOpenChange}
+      open={open}
+      title={<>Void invoice {invoiceNumber(head.invoiceId)}</>}
+      subtitle={
+        <>
+          The original record remains visible. Voided invoices are excluded from
+          revenue.
+        </>
+      }
+      width={410}
+    >
+      <form
+        className="b3-dialog-fields"
+        onSubmit={(event) => void voidInvoice(event)}
+      >
+        <div className="b3-dialog-summary" data-gap="8">
+          <span className="b3-dialog-summary-row">
+            <span className="b3-dialog-summary-name">{clientName}</span>
+            <InvoiceStatusPills invoice={head} />
+          </span>
+          <span className="b3-dialog-summary-row">
+            <span>
+              {head.lines.map((line) => line.description).join(" · ")}
             </span>
-            <span className="b3-dialog-summary-row">
-              <span className="b3-dialog-summary-text">
-                {head.lines.map((line) => line.description).join(" · ")}
-              </span>
-              <span className="b3-dialog-summary-amount">
-                {formatMoneyMinor(head.totalMinor, head.currency)}
-              </span>
+            <span className="b3-dialog-summary-amount">
+              {formatMoneyMinor(head.totalMinor, head.currency)}
             </span>
-            <span className="b3-dialog-summary-meta">
-              Issued {formatDisplayDate(head.issuedAt)} · due{" "}
-              {formatDisplayDate(head.dueAt)} ·{" "}
-              {head.collectedMinor > 0
-                ? `${formatMoneyMinor(head.collectedMinor, head.currency)} collected`
-                : "no payments recorded"}
-            </span>
-          </div>
-          <label className="b3-dialog-field">
-            Reason
-            <textarea
-              onChange={(event) => setReason(event.currentTarget.value)}
-              required
-              rows={4}
-              value={reason}
-            />
-          </label>
-          {error ? <ErrorLine>{error}</ErrorLine> : null}
-          <Actions cancel="secondary" onCancel={() => onOpenChange(false)}>
-            <button
-              className="b3-btn"
-              data-variant="danger"
-              disabled={!canManage || submit.isPending}
-              type="submit"
-            >
-              Void invoice
-            </button>
-          </Actions>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </span>
+          <span className="b3-dialog-summary-meta">
+            Issued {formatDisplayDate(head.issuedAt)} · due{" "}
+            {formatDisplayDate(head.dueAt)} ·{" "}
+            {head.collectedMinor > 0
+              ? `${formatMoneyMinor(head.collectedMinor, head.currency)} collected`
+              : "no payments recorded"}
+          </span>
+        </div>
+        <label className="b3-dialog-field">
+          Reason
+          <textarea
+            onChange={(event) => setReason(event.currentTarget.value)}
+            required
+            rows={4}
+            value={reason}
+          />
+        </label>
+        {error ? <ErrorLine>{error}</ErrorLine> : null}
+        <Actions cancel="secondary" onCancel={() => onOpenChange(false)}>
+          <button
+            className="b3-btn"
+            data-variant="danger"
+            disabled={!canManage || submit.isPending}
+            type="submit"
+          >
+            Void invoice
+          </button>
+        </Actions>
+      </form>
+    </MoneyDialog>
   );
 }
 
@@ -579,111 +559,111 @@ export function RecordPaymentDialog({
     }
   }
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent style={dialogWidth(420)}>
-        <DialogHeader>
-          <DialogTitle>
-            Record payment · Invoice {invoiceNumber(invoice.value.invoiceId)}
-          </DialogTitle>
-          <DialogDescription>
-            Outstanding:{" "}
-            <strong>
-              {formatMoneyMinor(
-                invoice.value.outstandingMinor,
-                invoice.value.currency,
-              )}
-            </strong>
-            . Recording payment evidence updates the balance. No money moves in
-            Colony.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="b3-dialog-fields"
-          onSubmit={(event) => void record(event)}
-        >
-          <div className="b3-dialog-row">
-            <label className="b3-dialog-field">
-              Amount received · {invoice.value.currency}
-              <input
-                inputMode="decimal"
-                onChange={(event) => setAmount(event.currentTarget.value)}
-                required
-                value={amount}
-              />
-            </label>
-            <label className="b3-dialog-field">
-              Payment date
-              <input
-                onChange={(event) => setOccurredAt(event.currentTarget.value)}
-                required
-                type="date"
-                value={occurredAt}
-              />
-            </label>
-          </div>
+    <MoneyDialog
+      onOpenChange={onOpenChange}
+      open={open}
+      title={
+        <>Record payment · Invoice {invoiceNumber(invoice.value.invoiceId)}</>
+      }
+      intro={
+        <>
+          Outstanding:{" "}
+          <strong>
+            {formatMoneyMinor(
+              invoice.value.outstandingMinor,
+              invoice.value.currency,
+            )}
+          </strong>
+          . Recording payment evidence updates the balance. No money moves in
+          Colony.
+        </>
+      }
+      width={420}
+    >
+      <form
+        className="b3-dialog-fields"
+        onSubmit={(event) => void record(event)}
+      >
+        <div className="b3-dialog-row">
           <label className="b3-dialog-field">
-            Provider
-            <select
-              onChange={(event) =>
-                setProviderKind(event.currentTarget.value as "manual" | "other")
-              }
-              value={providerKind}
-            >
-              <option value="manual">Manual</option>
-              <option value="other">Other provider</option>
-            </select>
-          </label>
-          {providerKind === "other" ? (
-            <>
-              <label className="b3-dialog-field">
-                Provider name
-                <input
-                  onChange={(event) =>
-                    setProviderName(event.currentTarget.value)
-                  }
-                  required
-                  value={providerName}
-                />
-              </label>
-              <label className="b3-dialog-field">
-                Provider transaction reference
-                <input
-                  onChange={(event) =>
-                    setProviderReference(event.currentTarget.value)
-                  }
-                  required
-                  value={providerReference}
-                />
-              </label>
-            </>
-          ) : null}
-          <label className="b3-dialog-field">
-            Payment reference / evidence
+            Amount received · {invoice.value.currency}
             <input
-              onChange={(event) => setEvidenceRef(event.currentTarget.value)}
-              placeholder="Receipt number or remittance reference"
+              inputMode="decimal"
+              onChange={(event) => setAmount(event.currentTarget.value)}
               required
-              value={evidenceRef}
+              value={amount}
             />
           </label>
-          <p className="b3-dialog-help">
+          <label className="b3-dialog-field">
+            Payment date
+            <input
+              onChange={(event) => setOccurredAt(event.currentTarget.value)}
+              required
+              type="date"
+              value={occurredAt}
+            />
+          </label>
+        </div>
+        <label className="b3-dialog-field">
+          Provider
+          <select
+            onChange={(event) =>
+              setProviderKind(event.currentTarget.value as "manual" | "other")
+            }
+            value={providerKind}
+          >
+            <option value="manual">Manual</option>
+            <option value="other">Other provider</option>
+          </select>
+        </label>
+        {providerKind === "other" ? (
+          <>
+            <label className="b3-dialog-field">
+              Provider name
+              <input
+                onChange={(event) => setProviderName(event.currentTarget.value)}
+                required
+                value={providerName}
+              />
+            </label>
+            <label className="b3-dialog-field">
+              Provider transaction reference
+              <input
+                onChange={(event) =>
+                  setProviderReference(event.currentTarget.value)
+                }
+                required
+                value={providerReference}
+              />
+            </label>
+          </>
+        ) : null}
+        <label className="b3-dialog-field">
+          Payment reference / evidence
+          <input
+            onChange={(event) => setEvidenceRef(event.currentTarget.value)}
+            placeholder="Receipt number or remittance reference"
+            required
+            value={evidenceRef}
+          />
+          <span className="b3-dialog-help">
             A provider transaction reference is asked for when the provider
             isn’t manual.
-          </p>
-          {error ? <ErrorLine>{error}</ErrorLine> : null}
-          <Actions onCancel={() => onOpenChange(false)}>
-            <button
-              className="b3-btn"
-              data-variant="primary"
-              disabled={!canManage || submit.isPending}
-              type="submit"
-            >
-              Record payment
-            </button>
-          </Actions>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </span>
+        </label>
+        {error ? <ErrorLine>{error}</ErrorLine> : null}
+        <Actions onCancel={() => onOpenChange(false)} pad>
+          <button
+            className="b3-btn"
+            data-variant="primary"
+            disabled={!canManage || submit.isPending}
+            type="submit"
+          >
+            Record payment
+          </button>
+        </Actions>
+      </form>
+    </MoneyDialog>
   );
 }
 
@@ -695,12 +675,12 @@ function WarningCircle() {
       height="18"
       stroke="currentColor"
       strokeLinecap="round"
-      strokeWidth="2.2"
+      strokeWidth="2.4"
       viewBox="0 0 24 24"
       width="18"
     >
       <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 8v5M12 16.5v.2" />
+      <path d="M12 8v4.5M12 16v.2" />
     </svg>
   );
 }

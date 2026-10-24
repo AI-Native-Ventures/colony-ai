@@ -38,6 +38,14 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15 6l-6 6 6 6" />
+    </Svg>
+  );
+}
+
 export function ArrowLeftIcon(props: IconProps) {
   return (
     <Svg size={16} {...props}>

@@ -3,7 +3,7 @@ import * as React from "react";
 import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { usePeople } from "@/features/clients/lib/usePeople";
 import {
-  ArrowLeftIcon,
+  ChevronLeftIcon,
   PersonAvatar,
 } from "@/features/clients/ui/BusinessBits";
 import { BusinessTrail } from "@/features/clients/ui/BusinessTrail";
@@ -90,7 +90,7 @@ export function MoneyInvoiceDetail({
               onClick={() => navigateMoney(listPath)}
               type="button"
             >
-              <ArrowLeftIcon size={17} />
+              <ChevronLeftIcon size={17} />
               All {fromRevenue ? "revenue" : "invoices"}
             </button>
           </div>
