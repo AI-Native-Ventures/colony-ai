@@ -1,8 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import {
-  KIND_TYPING_INDICATOR,
-} from "../../src/shared/constants/kinds";
+import { KIND_TYPING_INDICATOR } from "../../src/shared/constants/kinds";
 import {
   TEST_IDENTITIES,
   installMockBridge,
@@ -448,67 +446,6 @@ async function expectIntroSpacedAboveDayDivider(
   expect(Math.abs(gapAboveDivider - 8)).toBeLessThanOrEqual(2);
   expect(gapBelowDivider).toBeGreaterThanOrEqual(0);
 }
-
-async function expectIntroActionCardLayout(
-  page: import("@playwright/test").Page,
-  actionTestId: string,
-) {
-  const actionBox = await page.getByTestId(actionTestId).boundingBox();
-  const iconBox = await page.getByTestId(`${actionTestId}-icon`).boundingBox();
-
-  if (!actionBox || !iconBox) {
-    throw new Error(`Could not measure intro action card: ${actionTestId}`);
-  }
-
-  expect(actionBox.height).toBeGreaterThan(actionBox.width);
-  expect(Math.round(actionBox.width)).toBe(192);
-  expect(Math.round(iconBox.width)).toBe(40);
-  expect(Math.round(iconBox.height)).toBe(40);
-  const introIconRadius = await page
-    .getByTestId("message-channel-intro-icon")
-    .evaluate((element) => window.getComputedStyle(element).borderRadius);
-  const actionRadius = await page
-    .getByTestId(actionTestId)
-    .evaluate((element) => window.getComputedStyle(element).borderRadius);
-  expect(actionRadius).toBe(introIconRadius);
-  await expect(page.getByTestId(`${actionTestId}-title`)).toHaveCSS(
-    "white-space",
-    "normal",
-  );
-  await expect(page.getByTestId(`${actionTestId}-description`)).toHaveCSS(
-    "white-space",
-    "normal",
-  );
-}
-
-async function expectIntroActionsShareRow(
-  page: import("@playwright/test").Page,
-  actionTestIds: string[],
-) {
-  const boxes = await Promise.all(
-    actionTestIds.map((testId) => page.getByTestId(testId).boundingBox()),
-  );
-  const measuredBoxes = boxes.filter(
-    (box): box is NonNullable<typeof box> => box !== null,
-  );
-  const [firstBox] = measuredBoxes;
-  if (!firstBox || measuredBoxes.length !== actionTestIds.length) {
-    throw new Error("Could not measure intro action row");
-  }
-
-  for (const box of measuredBoxes.slice(1)) {
-    expect(Math.abs(firstBox.y - box.y)).toBeLessThanOrEqual(1);
-  }
-}
-
-test.beforeEach(async ({ page }, testInfo) => {
-  await installMockBridge(
-    page,
-    testInfo.tags.includes(CACHED_PROFILE_LABELS_TAG)
-      ? { usersBatchDelayMs: 10_000 }
-      : undefined,
-  );
-});
 
 test("sidebar shows all channel types", async ({ page }) => {
   await page.goto("/");
@@ -1866,56 +1803,24 @@ test("switch between channel types", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
 });
 
-test("empty channel shows intro actions", async ({ page }) => {
+test("empty channel shows the empty state", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
+  await expect(page.getByTestId("message-empty")).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toContainText(
+    "No messages yet",
   );
-  await expect(
-    page.getByTestId("channel-intro-action-create-channel"),
-  ).toHaveCount(0);
-  const addAgentsAction = page.getByTestId("channel-intro-action-create-agent");
-  await expect(addAgentsAction).toBeVisible();
-  await expect(
-    addAgentsAction.getByText("Add agent", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    addAgentsAction.getByText("Add an agent here.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toContainText(
+    "Send the first message to start the thread.",
+  );
   await expect(page.getByTestId("welcome-composer-guide-banner")).toHaveCount(
-    0,
-  );
-  await expectIntroActionCardLayout(page, "channel-intro-action-create-agent");
-  await expectIntroActionsShareRow(page, [
-    "channel-intro-action-create-agent",
-    "channel-intro-action-add-people",
-  ]);
-
-  await page.getByTestId("channel-intro-action-add-people").click();
-  await expect(page.getByTestId("members-sidebar")).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-
-  await addAgentsAction.click();
-  await expect(page.getByRole("heading", { name: "Add agents" })).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "Add agents" })).toHaveCount(
     0,
   );
 });
 
-test("short channel with messages shows intro actions on open", async ({
+test("short channel with messages shows the channel intro on open", async ({
   page,
 }) => {
   const channelName = `short-intro-${Date.now()}`;
@@ -1938,17 +1843,14 @@ test("short channel with messages shows intro actions on open", async ({
   await expect(page.getByTestId("message-timeline")).toContainText(message);
   await expect(page.getByTestId("message-channel-intro")).toBeVisible();
   await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
+    channelName,
   );
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
+  await expect(page.getByTestId("message-channel-intro")).toContainText(
+    "Open channel",
+  );
 });
 
-test("scrollable channel with recent messages hides intro actions until top", async ({
+test("scrollable channel with recent messages hides its intro until top", async ({
   page,
 }) => {
   const channelName = `long-intro-${Date.now()}`;
@@ -1974,12 +1876,6 @@ test("scrollable channel with recent messages hides intro actions until top", as
   await page.getByTestId(`channel-${channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelName);
   await expect(page.getByTestId("message-channel-intro")).not.toBeInViewport();
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).not.toBeInViewport();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).not.toBeInViewport();
   await expect(page.getByTestId("message-timeline")).toContainText(
     messages[messages.length - 1],
   );
@@ -1989,12 +1885,6 @@ test("scrollable channel with recent messages hides intro actions until top", as
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
 });
 
 test("channel with messages shows content", async ({ page }) => {

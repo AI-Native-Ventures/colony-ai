@@ -404,8 +404,9 @@ test("message agent avatar uses square initials and preserves its profile shortc
     .getByTestId("message-row")
     .filter({ hasText: "Hey team - checking in." });
   const avatar = agentMessage.getByTestId("message-avatar");
-  await expect(avatar).toHaveClass(/rounded-md/);
-  await expect(avatar).not.toHaveClass(/rounded-squircle/);
+  // Colony 3.0: agents keep their squircle, people are round (owner decision A2).
+  await expect(avatar).toHaveClass(/rounded-squircle/);
+  await expect(avatar).not.toHaveClass(/rounded-md/);
 
   const avatarButton = agentMessage.getByRole("button", {
     name: /^Open profile for .+$/,
@@ -459,11 +460,10 @@ test("agent owner label identifies the agent and owner", async ({ page }) => {
     .filter({ hasText: "Hey team - checking in." });
   const ownerTreatment = aliceMessage.getByTestId("message-agent-owner");
 
-  await expect(ownerTreatment.locator("svg")).toBeVisible();
   await expect(
     ownerTreatment.getByText("managed by", { exact: true }),
   ).toBeVisible();
-  await expect(ownerTreatment.locator(".font-semibold")).toHaveText("bob");
+  await expect(ownerTreatment).toContainText("managed by bob");
   await expect(ownerTreatment.getByRole("button")).toHaveAccessibleName("bob");
   await expect(ownerTreatment.locator(".sr-only")).toHaveText(
     "Agent managed by",
