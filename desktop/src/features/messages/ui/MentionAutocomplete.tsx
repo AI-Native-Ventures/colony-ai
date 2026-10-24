@@ -1,6 +1,5 @@
 import * as React from "react";
 import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
-import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
 import type { TeamMentionMember } from "@/features/messages/lib/mentionCandidates";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 
@@ -45,8 +44,12 @@ type MentionAutocompleteProps = {
   openOptionsRequest?: number;
   onOptionsRevealComplete?: (request: number) => void;
   onDismiss?: () => void;
+  /** Job title for a person or agent; the owning composer reads the team list. */
+  lookupJobTitle?: (pubkey: string | null | undefined) => string | null;
   position?: "above" | "below";
 };
+
+const NO_JOB_TITLE = () => null;
 
 export function showMentionAgentProvenanceMarker(
   suggestion: MentionSuggestion,
@@ -79,6 +82,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
   openOptionsRequest = 0,
   onOptionsRevealComplete,
   onDismiss,
+  lookupJobTitle = NO_JOB_TITLE,
   position = "above",
 }: MentionAutocompleteProps) {
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -87,7 +91,6 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
   const keepPinnedSwitchId = React.useId();
   const handledOptionsRequestRef = React.useRef(0);
   const alwaysAddressShortcut = getPlatformKeysById("always-address-agent");
-  const lookupJobTitle = useJobTitleLookup(suggestions.length > 0);
 
   React.useEffect(() => {
     const activeItem = listRef.current?.querySelector<HTMLElement>(
