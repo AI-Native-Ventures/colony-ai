@@ -57,6 +57,7 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { useFeedbackToasts } from "@/shared/hooks/useToastEffect";
+import { cn } from "@/shared/lib/cn";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 import { ChannelAddAgentsDialog } from "./ChannelAddAgentsDialog";
 import { ChevronRightGlyph, SearchGlyph } from "./dialogIcons";
@@ -75,9 +76,9 @@ import { useMembersSidebarActions } from "./useMembersSidebarActions";
 import { useMembersSidebarModeration } from "./useMembersSidebarModeration";
 const MEMBER_ADD_RESULT_LIMIT = 50;
 const MEMBER_SEARCH_MIN_QUERY_LENGTH = 2;
-const MEMBER_ROW_ESTIMATE_PX = 64;
-/** Up to this many rows the list renders plainly; beyond it, virtualized. */
-const MEMBER_PLAIN_LIST_LIMIT = 40;
+const MEMBER_ROW_ESTIMATE_PX = 60;
+/** The people list is as tall as its rows, up to this height. */
+const MEMBER_LIST_MAX_HEIGHT = "min(50vh, 24rem)";
 type AddMemberSearchCandidate = UserSearchResult & {
   isManagedAgent?: boolean;
   isMember?: boolean;
@@ -240,6 +241,11 @@ export function MembersSidebar({
     memberProfilesQuery.data?.profiles,
     normalizedSearchQuery,
   ]);
+  // Human rows are 60px and agent rows 64px (they carry a status line).
+  const peopleRowsHeightPx = filteredActiveMembers.reduce(
+    (total, member) => total + (isBot(member) ? 64 : 60),
+    0,
+  );
   const memberPubkeys = React.useMemo(
     () => new Set(rawMembers.map((member) => normalizePubkey(member.pubkey))),
     [rawMembers],
@@ -789,17 +795,25 @@ export function MembersSidebar({
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            <section className="flex min-h-0 flex-col gap-4">
-              <SearchResultSectionTitle>
-                {normalizedSearchQuery
-                  ? "Members"
-                  : `Members · ${activeMembers.length}`}
-              </SearchResultSectionTitle>
+            <section className="flex min-h-0 flex-col">
               <div
-                className="flex min-h-0 flex-col"
+                className={cn(
+                  "flex min-h-0 flex-col gap-4",
+                  normalizedSearchQuery && "overflow-y-auto",
+                )}
                 data-testid="members-sidebar-people"
                 onScroll={handlePeopleSearchScroll}
+                style={
+                  normalizedSearchQuery
+                    ? { maxHeight: MEMBER_LIST_MAX_HEIGHT }
+                    : undefined
+                }
               >
+                <SearchResultSectionTitle>
+                  {normalizedSearchQuery
+                    ? "Members"
+                    : `Members · ${activeMembers.length}`}
+                </SearchResultSectionTitle>
                 {normalizedSearchQuery ? (
                   <div>
                     {filteredActiveMembers.map((member) =>
@@ -844,20 +858,23 @@ export function MembersSidebar({
                       </p>
                     ) : null}
                   </div>
-                ) : filteredActiveMembers.length > MEMBER_PLAIN_LIST_LIMIT ? (
-                  <VirtualizedList
-                    className="h-[min(50vh,24rem)]"
-                    estimateSize={MEMBER_ROW_ESTIMATE_PX}
-                    getItemKey={(member) => member.pubkey}
-                    items={filteredActiveMembers}
-                    renderItem={(member) =>
-                      renderMemberCard(member, isBot(member))
-                    }
-                  />
                 ) : filteredActiveMembers.length > 0 ? (
-                  filteredActiveMembers.map((member) =>
-                    renderMemberCard(member, isBot(member)),
-                  )
+                  <div
+                    style={{
+                      height: `${peopleRowsHeightPx}px`,
+                      maxHeight: MEMBER_LIST_MAX_HEIGHT,
+                    }}
+                  >
+                    <VirtualizedList
+                      className="h-full"
+                      estimateSize={MEMBER_ROW_ESTIMATE_PX}
+                      getItemKey={(member) => member.pubkey}
+                      items={filteredActiveMembers}
+                      renderItem={(member) =>
+                        renderMemberCard(member, isBot(member))
+                      }
+                    />
+                  </div>
                 ) : (
                   <p className="py-3 text-xs font-medium text-colony-muted">
                     {membersQuery.isLoading
