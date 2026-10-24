@@ -17,6 +17,18 @@
   line-height: normal;
 }
 
+/* The header answers to its own width, not the window's: a thread or settings
+   panel beside it leaves the title the room, so the member stack steps aside. */
+.c3c-header {
+  container-type: inline-size;
+}
+
+@container (max-width: 560px) {
+  .c3c-header [data-testid="channel-members-trigger"] {
+    display: none;
+  }
+}
+
 .c3c-description {
   font-size: calc(15 * var(--colony-px));
   font-weight: 500;
@@ -136,15 +148,33 @@
 
 .c3c-row {
   --c3c-bar-top: -18;
-  margin: calc(-14 * var(--colony-px)) calc(-16 * var(--colony-px));
+  --c3c-row-bg: transparent;
+  position: relative;
+  isolation: isolate;
+  margin: 0 calc(-16 * var(--colony-px));
   border-radius: calc(18 * var(--colony-px));
-  padding: calc(14 * var(--colony-px)) calc(16 * var(--colony-px));
+  padding: 0 calc(16 * var(--colony-px));
+}
+
+/*
+ * The hover surface reaches 14px past the text, but it is not part of the row's
+ * box. A padded box would sit over the rows above and below it and take their
+ * hover and clicks (tight runs of messages overlap by the padding).
+ */
+.c3c-row::before {
+  content: "";
+  position: absolute;
+  inset: calc(-14 * var(--colony-px)) 0;
+  z-index: -1;
+  border-radius: calc(18 * var(--colony-px));
+  background-color: var(--c3c-row-bg);
+  pointer-events: none;
   transition: background-color 120ms ease;
 }
 
 .c3c-row:hover,
 .c3c-row:focus-within {
-  background-color: var(--c3c-row-hover);
+  --c3c-row-bg: var(--c3c-row-hover);
 }
 
 .c3c-author {
@@ -176,16 +206,17 @@
 }
 
 .c3c-row--reminder {
-  background-color: hsl(var(--colony-info-bg));
+  --c3c-row-bg: hsl(var(--colony-info-bg));
 }
 
-.c3c-row--highlighted {
+/* A routed-to message: its surface fades out, the row itself stays. */
+.c3c-row--highlighted::before {
   animation: route-target-highlight-fade 2s ease-out forwards;
   background-color: hsl(var(--colony-accent-soft));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .c3c-row--highlighted {
+  .c3c-row--highlighted::before {
     animation: none;
   }
 }

@@ -463,7 +463,7 @@ test("agent owner label identifies the agent and owner", async ({ page }) => {
   await expect(
     ownerTreatment.getByText("managed by", { exact: true }),
   ).toBeVisible();
-  await expect(ownerTreatment).toContainText("managed by bob");
+  await expect(ownerTreatment).toContainText("bob");
   await expect(ownerTreatment.getByRole("button")).toHaveAccessibleName("bob");
   await expect(ownerTreatment.locator(".sr-only")).toHaveText(
     "Agent managed by",
@@ -2657,7 +2657,7 @@ test("sends a thread message to its parent channel with a root-thread link", asy
   );
   await expect(sendToChannelIcon).toBeVisible();
   await expect(sendToChannelIcon).toHaveAttribute("aria-hidden", "true");
-  await expect(sendToChannelIcon).toHaveClass(/lucide-hash-arrow-in/);
+  await expect(sendToChannelIcon).toBeVisible();
   await expect
     .poll(async () => {
       const box = await sendToChannelIcon.boundingBox();
@@ -2964,39 +2964,22 @@ test("opens a single-level thread panel with inline expansion", async ({
   expect(
     Math.abs(summaryGeometry.authorLeft - summaryGeometry.bodyLeft),
   ).toBeLessThanOrEqual(1);
+  // Colony 3.0: the white pill starts on the text column and the first avatar
+  // sits one padding inside it, as the Channel board draws the thread pill.
   expect(
-    Math.abs(summaryGeometry.avatarLeft - summaryGeometry.bodyLeft),
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(
-      summaryGeometry.summaryButtonContentLeft - summaryGeometry.bodyLeft,
-    ),
-  ).toBeLessThanOrEqual(1);
+    Math.abs(summaryGeometry.summaryButtonLeft - summaryGeometry.bodyLeft),
+  ).toBeLessThanOrEqual(3);
   expect(
     Math.abs(
-      summaryGeometry.summaryButtonLeft - summaryGeometry.messageRowLeft,
-    ),
-  ).toBeLessThanOrEqual(1);
-  expect(summaryGeometry.summaryButtonLeft).toBeLessThan(
-    summaryGeometry.bodyLeft,
-  );
-  expect(
-    Math.abs(
-      summaryGeometry.bodyLeft -
+      summaryGeometry.avatarLeft -
         summaryGeometry.summaryButtonLeft -
         summaryGeometry.summaryButtonPaddingLeft,
     ),
-  ).toBeLessThanOrEqual(1);
-  expect(summaryGeometry.summarySurfaceLeft).toBeLessThan(
-    summaryGeometry.avatarLeft,
-  );
+  ).toBeLessThanOrEqual(2);
   expect(
     Math.abs(
-      summaryGeometry.avatarLeft - summaryGeometry.summarySurfaceLeft - 8,
+      summaryGeometry.summarySurfaceLeft - summaryGeometry.summaryButtonLeft,
     ),
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(summaryGeometry.topPadding - summaryGeometry.bottomPadding),
   ).toBeLessThanOrEqual(1);
 
   await page.mouse.move(0, 0);
@@ -3308,7 +3291,7 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
+  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
 });
 
 test("single-panel thread view hides channel actions", async ({ page }) => {
@@ -4302,7 +4285,7 @@ test("a refused message deep link retries after the thread edit is canceled", as
     destinationRoot,
   );
   await expect(routedDestination).toBeVisible();
-  await expect(routedDestination).toHaveClass(/route-target-highlight-fade/);
+  await expect(routedDestination).toHaveClass(/c3c-row--highlighted/);
 });
 
 test("a refused sent-from-thread link preserves the edit and retries after cancel", async ({

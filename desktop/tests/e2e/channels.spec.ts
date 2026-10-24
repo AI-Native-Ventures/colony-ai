@@ -2075,7 +2075,7 @@ test("channel date divider keeps the date sticky while the separator rule scroll
   expect(metrics.dividerPillShadow).toBe("none");
 });
 
-test("shows and clears activity indicators for active channel agents", async ({
+test("agent typing does not show a live activity strip above the composer", async ({
   page,
 }) => {
   await page.goto("/");
@@ -2091,67 +2091,13 @@ test("shows and clears activity indicators for active channel agents", async ({
     });
   }, TEST_IDENTITIES.alice.pubkey);
 
-  await expect(page.getByTestId("bot-activity-composer-trigger")).toBeVisible();
-  const activityAvatar = page.getByTestId(
-    `bot-activity-composer-avatar-${TEST_IDENTITIES.alice.pubkey}`,
-  );
-  await expect(activityAvatar).toHaveCSS("border-radius", "0px");
-  await expect(activityAvatar).toHaveCSS(
-    "clip-path",
-    'url("#rounded-squircle-clip")',
-  );
-  await expect(
-    page.getByTestId("bot-activity-composer-trigger"),
-  ).not.toContainText("View activity");
-  await page.getByTestId("bot-activity-composer-trigger").click();
-  const aliceActivityItem = page.getByTestId(
-    `bot-activity-composer-item-${TEST_IDENTITIES.alice.pubkey}`,
-  );
-  await expect(aliceActivityItem).toBeVisible();
-  await expect(aliceActivityItem).toContainText("View activity");
-  await aliceActivityItem.click({ force: true });
-  await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
-  await expect(page.getByTestId("agent-session-thread-panel")).toContainText(
-    "alice",
-  );
-  // Opened from the composer with no prior pane: there is nowhere to go
-  // "back" to, so the header shows only the close affordance.
-  await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
-  await expect(page.getByTestId("auxiliary-panel-close")).toBeVisible();
-  await expect(page.getByTestId("agent-transcript-now-summary")).toHaveCount(0);
-  await page.getByTestId("agent-session-settings-menu-trigger").click();
-  await expect(page.getByTestId("agent-session-stop-turn")).toBeVisible();
-  await expect(page.getByTestId("agent-session-stop-turn")).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("agent-session-thread-panel")).toContainText(
-    "No ACP activity yet",
-  );
-  await expect(page.getByTestId("message-typing-indicator")).toHaveCount(0);
-
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "agents",
-      content: "Done.",
-      pubkey,
-    });
-  }, TEST_IDENTITIES.alice.pubkey);
-
-  await expect(page.getByTestId("message-timeline")).toContainText("Done.");
+  // The Colony 3.0 conversation has no live agent activity panel; an agent that
+  // is working is not announced above the composer.
+  await page.waitForTimeout(600);
   await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
     0,
   );
-
-  await page.waitForTimeout(1_200);
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
-      channelName: "agents",
-      pubkey,
-    });
-  }, TEST_IDENTITIES.alice.pubkey);
-
-  await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
-    0,
-  );
+  await expect(page.getByTestId("message-composer")).toBeVisible();
 });
 
 test("members sidebar exposes view-activity for a viewer-owned relay agent", async ({
@@ -2503,7 +2449,8 @@ test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Unread update for the DM",
   );
-  await expectSameLeftInset(page, "message-dm-intro", "message-row");
+  // The row box carries its own 16px of hover padding, so compare with the avatar.
+  await expectSameLeftInset(page, "message-dm-intro", "message-avatar");
   await expectIntroSpacedAboveDayDivider(page, "message-dm-intro");
   await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveCount(0);
 });

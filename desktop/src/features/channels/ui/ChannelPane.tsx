@@ -88,7 +88,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   activityAgents = agentSessionAgents,
   autoSendDraftKey = null,
   onAutoSendComplete = null,
-  botTypingEntries,
   channelManagementOpen = false,
   currentPubkey,
   editTarget = null,

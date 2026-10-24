@@ -165,6 +165,11 @@ async function captureState(
 }
 
 test("Composer: mention picker in a thread reply", async ({ page }) => {
+  // The board draws the picker 476px wide over a 704px composer; the thread
+  // panel opens at its real 380px, so widen it for this capture only.
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("buzz.desktop.thread-panel-width", "760");
+  });
   await openOlive(page);
   await page
     .getByTestId(`message-row`)

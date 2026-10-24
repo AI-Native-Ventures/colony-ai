@@ -536,7 +536,18 @@ function VirtualizedTimelineRows({
         pinnedDayTranslateYRef.current;
       const [pinnedPill, incomingPinnedPill] =
         pinnedLabel.querySelectorAll<HTMLParagraphElement>("p");
-      const pinnedPillHeight = pinnedPill?.offsetHeight ?? 0;
+      // An empty floating pill has no height (the label is plain text), so
+      // measure a real divider pill, or fall back to one text line, or the
+      // label would never get its first value.
+      const pinnedPillHeight =
+        pinnedPill?.offsetHeight ||
+        scroller.querySelector<HTMLElement>(
+          '[data-testid="message-timeline-day-divider"] p',
+        )?.offsetHeight ||
+        Number.parseFloat(
+          getComputedStyle(pinnedPill ?? pinnedLabel).lineHeight,
+        ) ||
+        28;
       if (pinnedPillHeight === 0) return;
       const renderedDividerPillTop = (
         divider: (typeof dayDividerItems)[number],

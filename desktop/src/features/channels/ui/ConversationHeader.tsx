@@ -76,7 +76,7 @@ export function ConversationHeader({
               : "flex-1 items-baseline gap-2.5",
           )}
         >
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2.5">
             <h1
               className="c3c-title min-w-0 truncate"
               data-testid="chat-title"
@@ -110,7 +110,7 @@ export function ConversationHeader({
     >
       <header
         className={cn(
-          "pointer-events-auto relative z-30 flex min-w-0 shrink-0 cursor-default select-none border-b border-colony-border bg-colony-surface px-7",
+          "c3c-header pointer-events-auto relative z-30 flex min-w-0 shrink-0 cursor-default select-none border-b border-colony-border bg-colony-surface px-7",
           tabs
             ? "flex-col gap-3 pt-4"
             : "min-h-[calc(72*var(--colony-px))] flex-wrap items-center gap-3 py-3",

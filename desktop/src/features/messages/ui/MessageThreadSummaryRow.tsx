@@ -257,6 +257,12 @@ export function MessageThreadSummaryRow({
         }}
         type="button"
       >
+        {/* The pill's own surface (the button carries the white fill). */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-xl"
+          data-testid="message-thread-summary-surface"
+        />
         <div className="relative z-10 flex shrink-0 items-center">
           {summary.participants.map((participant, index) => (
             <ParticipantAvatar
