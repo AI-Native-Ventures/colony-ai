@@ -837,7 +837,6 @@ export function AppShell() {
                 !isHuddleRoom &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
-                  location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
                   selectedView === "pins" ||

@@ -231,7 +231,7 @@ fn profile_info_reads_job_title() {
     let blank = ev(0, r#"{"display_name":"Alice","job_title":"  "}"#, vec![]);
     assert!(profile_info_from_event(&blank).unwrap().job_title.is_none());
 
-    let batch = users_batch_from_events(&[e.clone()], &[e.pubkey.to_hex()]);
+    let batch = users_batch_from_events(std::slice::from_ref(&e), &[e.pubkey.to_hex()]);
     let summary = batch.profiles.get(&e.pubkey.to_hex()).unwrap();
     assert_eq!(summary.job_title.as_deref(), Some("Designer"));
 }
