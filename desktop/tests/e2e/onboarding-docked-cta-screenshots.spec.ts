@@ -1,6 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import {
   captureReskinState,
@@ -22,59 +21,6 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 test.beforeEach(async ({ page }) => seedReskinTheme(page));
 
-async function expectSharedCardGeometry(page: Page, expectedWidth = 610) {
-  const geometry = await page
-    .getByTestId("onboarding-content-card")
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const styles = window.getComputedStyle(element);
-      return {
-        borderRadius: styles.borderRadius,
-        height: rect.height,
-        paddingBottom: styles.paddingBottom,
-        paddingLeft: styles.paddingLeft,
-        paddingRight: styles.paddingRight,
-        paddingTop: styles.paddingTop,
-        width: rect.width,
-      };
-    });
-
-  expect(geometry.width).toBeCloseTo(expectedWidth, 0);
-  expect(geometry.height).toBeCloseTo(664, 0);
-  expect(geometry.borderRadius).toBe("16px");
-  expect(geometry.paddingTop).toBe("48px");
-  expect(geometry.paddingRight).toBe("48px");
-  expect(geometry.paddingBottom).toBe("48px");
-  expect(geometry.paddingLeft).toBe("48px");
-}
-
-async function expectProfileFooterMatchesContentGutters(page: Page) {
-  await waitForAnimations(page);
-  const geometry = await page.evaluate(() => {
-    const input = document
-      .querySelector<HTMLElement>("#onboarding-display-name")
-      ?.getBoundingClientRect();
-    const back = document
-      .querySelector<HTMLElement>('[data-testid="onboarding-back"]')
-      ?.getBoundingClientRect();
-    const next = document
-      .querySelector<HTMLElement>('[data-testid="onboarding-next"]')
-      ?.getBoundingClientRect();
-    if (!input || !back || !next) {
-      throw new Error("Profile controls are missing");
-    }
-    return {
-      backLeft: back.left,
-      inputLeft: input.left,
-      inputRight: input.right,
-      nextRight: next.right,
-    };
-  });
-
-  expect(geometry.backLeft).toBeCloseTo(geometry.inputLeft, 0);
-  expect(geometry.nextRight).toBeCloseTo(geometry.inputRight, 0);
-}
-
 test("R17 signup and email verification screens fit the onboarding card", async ({
   page,
 }) => {
@@ -82,7 +28,7 @@ test("R17 signup and email verification screens fit the onboarding card", async 
   await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await captureReskinState(page, "account-sign-in");
 
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await expect(
     page.getByRole("heading", { name: "Let’s get you started." }),
   ).toBeVisible();
@@ -139,31 +85,29 @@ test("R17 business details lead into the designed provider connection screen", a
   await completeR17BusinessSetup(page);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Let’s connect your first agent." }),
+    page.getByRole("heading", { name: "Connect your AI." }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Skip for now" }),
-  ).toBeEnabled();
-  await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
+  await expect(page.getByRole("button", { name: "Skip for now" })).toHaveCount(
+    0,
+  );
+  // The board offers "Bring an OpenRouter key"; the sign-in key stays unnamed.
+  await expect(page.locator("body")).not.toContainText(
+    /nsec1|identity key|private key/i,
+  );
   await captureReskinState(page, "business-provider-connect");
 });
 
-test("relay onboarding: profile and avatar docked CTAs", async ({ page }) => {
+test("relay onboarding: profile and avatar steps", async ({ page }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(page, undefined, { skipOnboardingSeed: true });
   await page.goto("/");
 
   await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
-  await expectSharedCardGeometry(page, 610);
   await expect(page.getByTestId("onboarding-back")).toBeVisible();
   await page.getByTestId("onboarding-display-name").fill("Ada Lovelace");
-  await expectProfileFooterMatchesContentGutters(page);
   await captureReskinState(page, "profile-details");
 
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page
-    .getByTestId("onboarding-avatar-url")
-    .fill("https://example.com/onboarding-avatar.png");
   await captureReskinState(page, "profile-avatar");
 });

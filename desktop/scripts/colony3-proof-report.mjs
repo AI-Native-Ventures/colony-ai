@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Builds the "Colony 3.0 foundation proof" page from the proof spec's captures.
+// Builds a Colony 3.0 proof page (title from notes.title, default "Colony 3.0
+// foundation proof") from the proof spec's captures.
 //
 //   node scripts/colony3-proof-report.mjs <proofDir> <outDir> [notes.json]
 //

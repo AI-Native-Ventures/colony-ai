@@ -1,4 +1,6 @@
-import { PrimaryButton } from "./OnboardingScenePrimitives";
+import type * as React from "react";
+import { FirstRunButton } from "./firstRunControls";
+import { FirstRunHead } from "./FirstRunFrame";
 
 /**
  * Failed invite claim, shown after setup when the workspace could not be
@@ -20,29 +22,38 @@ export function InviteClaimFailed({
 }) {
   const leaveLabel = hasWorkspace ? "Back to my workspace" : "Continue setup";
   return (
-    <div data-testid="invite-claim-failed">
-      <h2>
-        {canRetry ? "We couldn’t join just yet." : "That invite didn’t work."}
-      </h2>
-      <p className="lede">{message}</p>
+    <div
+      className="c3fr-form"
+      data-testid="invite-claim-failed"
+      style={{ "--c3fr-gap": 22 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        lede={message}
+        title={
+          canRetry ? "We couldn’t join just yet." : "That invite didn’t work."
+        }
+      />
       {canRetry ? (
         <>
-          <PrimaryButton onClick={onRetry} testId="invite-claim-retry">
-            Try again
-          </PrimaryButton>
-          <button
-            className="secondary full"
-            data-testid="invite-claim-leave"
-            onClick={onLeave}
-            type="button"
+          <FirstRunButton
+            data-testid="invite-claim-retry"
+            kind="primary"
+            onClick={onRetry}
           >
+            Try again
+          </FirstRunButton>
+          <FirstRunButton data-testid="invite-claim-leave" onClick={onLeave}>
             {leaveLabel}
-          </button>
+          </FirstRunButton>
         </>
       ) : (
-        <PrimaryButton onClick={onLeave} testId="invite-claim-leave">
+        <FirstRunButton
+          data-testid="invite-claim-leave"
+          kind="primary"
+          onClick={onLeave}
+        >
           {leaveLabel}
-        </PrimaryButton>
+        </FirstRunButton>
       )}
     </div>
   );

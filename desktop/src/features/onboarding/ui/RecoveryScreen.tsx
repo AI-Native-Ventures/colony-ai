@@ -1,54 +1,59 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
-import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
-import { Button } from "@/shared/ui/button";
-import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
+import { FirstRunButton } from "./firstRunControls";
+import { RestartIcon, SignOutIcon } from "./firstRunIcons";
+import { StartupProblem } from "./StartupProblem";
 
 export function RecoveryScreen({
   testId,
   title,
   body,
+  tone = "accent",
 }: {
   testId: string;
   title: string;
   body: string;
+  /** Restart screens are violet; a failed sign-out is amber. */
+  tone?: "accent" | "need";
 }) {
-  const systemColorScheme = useSystemColorScheme();
   const canRelaunch = supportsNativeCapability("identity-recovery");
 
   return (
-    <div
-      className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
-      data-system-color-scheme={systemColorScheme}
-      data-testid={testId}
-    >
-      <StartupWindowDragRegion />
-      <div className="relative flex w-full max-w-[500px] flex-col items-center text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">{body}</p>
-        {canRelaunch ? (
-          <Button
-            className="mt-8 h-10 w-full max-w-[300px]"
+    <StartupProblem
+      actions={
+        canRelaunch ? (
+          <FirstRunButton
             data-testid="relaunch-app"
+            kind="primary"
             onClick={() => {
               void relaunch();
             }}
+            size="small"
             type="button"
           >
             Relaunch Colony
-          </Button>
-        ) : (
-          <p
-            className="mt-8 rounded-xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground"
-            data-testid="identity-recovery-unsupported"
-            role="status"
-          >
-            Restoring your sign-in is not available in this version of Colony
-            yet. Open Colony on a supported desktop version and try again.
-          </p>
-        )}
-      </div>
-    </div>
+          </FirstRunButton>
+        ) : null
+      }
+      body={body}
+      icon={
+        tone === "need" ? <SignOutIcon size={22} /> : <RestartIcon size={22} />
+      }
+      testId={testId}
+      title={title}
+      tone={tone}
+    >
+      {canRelaunch ? null : (
+        <p
+          className="c3fr-note"
+          data-testid="identity-recovery-unsupported"
+          role="status"
+        >
+          Restoring your sign-in is not available in this version of Colony yet.
+          Open Colony on a supported desktop version and try again.
+        </p>
+      )}
+    </StartupProblem>
   );
 }
