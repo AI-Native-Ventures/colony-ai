@@ -1014,6 +1014,13 @@ export function AccountAuthFlow({
                 ? onHaveInviteLink
                 : undefined
             }
+            onAdvanced={
+              designedScene === "account" ||
+              designedScene === "account-error" ||
+              designedScene === "signin"
+                ? onAdvanced
+                : undefined
+            }
             onSubmit={submit}
             scene={designedScene}
             authCode={

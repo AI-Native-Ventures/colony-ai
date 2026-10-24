@@ -4961,6 +4961,18 @@ test("action bar stays within the timeline when the thread panel is open", async
   await input.fill(longUrl);
   await send.click();
   await expect(timeline).toContainText("example.com");
+  // The list scrolls itself to the new message, and while it scrolls its rows
+  // are not hit-testable. Start hovering once that scroll has gone idle, or
+  // each retry's own scroll-into-view keeps the rows unreachable.
+  await expect
+    .poll(async () => {
+      const before = await timeline.evaluate((element) => element.scrollTop);
+      await page.waitForTimeout(250);
+      return (
+        before === (await timeline.evaluate((element) => element.scrollTop))
+      );
+    })
+    .toBe(true);
 
   const rootMessage = timeline.getByTestId("message-row").first();
   await rootMessage.hover();
