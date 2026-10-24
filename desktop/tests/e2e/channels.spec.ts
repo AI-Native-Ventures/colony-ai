@@ -447,6 +447,15 @@ async function expectIntroSpacedAboveDayDivider(
   expect(gapBelowDivider).toBeGreaterThanOrEqual(0);
 }
 
+test.beforeEach(async ({ page }, testInfo) => {
+  await installMockBridge(
+    page,
+    testInfo.tags.includes(CACHED_PROFILE_LABELS_TAG)
+      ? { usersBatchDelayMs: 10_000 }
+      : undefined,
+  );
+});
+
 test("sidebar shows all channel types", async ({ page }) => {
   await page.goto("/");
 
