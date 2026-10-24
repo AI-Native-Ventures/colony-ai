@@ -4261,7 +4261,9 @@ test("a refused message deep link retries after the thread edit is canceled", as
   expect(threadUrl).toContain(
     `thread=${await source.getAttribute("data-message-id")}`,
   );
-  await destinationLink.click();
+  // The hover action bar floats over the right side of its row (as the Message
+  // actions board draws it), so press the link at its left edge.
+  await destinationLink.click({ position: { x: 4, y: 10 } });
   await expect(
     page.getByText("Finish or cancel your edit before leaving the thread."),
   ).toBeVisible();
@@ -4275,7 +4277,9 @@ test("a refused message deep link retries after the thread edit is canceled", as
   await threadInput.press("Escape");
   await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
   await expect(threadInput).toHaveText("");
-  await destinationLink.click();
+  // The hover action bar floats over the right side of its row (as the Message
+  // actions board draws it), so press the link at its left edge.
+  await destinationLink.click({ position: { x: 4, y: 10 } });
   await expect(page).not.toHaveURL(threadUrl);
   const routedDestination = page
     .getByTestId("message-timeline")
@@ -4592,7 +4596,9 @@ for (const targetKind of ["reply", "root"] as const) {
         ).length,
     );
 
-    await targetLink.click();
+    // The hover action bar floats over the right side of its row, so press the
+    // link at its left edge.
+    await targetLink.click({ position: { x: 4, y: 10 } });
 
     const refusal = page.getByText(
       "Finish or cancel your edit before leaving the thread.",
@@ -4617,7 +4623,9 @@ for (const targetKind of ["reply", "root"] as const) {
 
     await threadInput.press("Escape");
     await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-    await targetLink.click();
+    // The hover action bar floats over the right side of its row, so press the
+    // link at its left edge.
+    await targetLink.click({ position: { x: 4, y: 10 } });
     await expect
       .poll(() => page.evaluate(() => history.length))
       .toBeGreaterThan(navigationBefore.historyLength);
