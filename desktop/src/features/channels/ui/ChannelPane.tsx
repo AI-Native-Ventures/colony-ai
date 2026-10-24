@@ -678,7 +678,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                 profiles={profiles}
                 ownerProfiles={ownerProfiles}
                 unfollowThreadById={unfollowThreadById}
-                emptyDescription="Messages and sub-replies will appear here once the relay has history for this channel."
                 emptyTitle={
                   activeChannel ? "No messages yet" : "No channel selected"
                 }
