@@ -508,10 +508,15 @@ test("long autolink wraps without widening the timeline", async ({ page }) => {
     .toBeLessThanOrEqual(1);
 
   const row = page.getByTestId("message-row").last();
-  await row.hover();
-
   const actionBar = page.locator('[data-testid^="message-action-bar-"]').last();
-  await expect(actionBar).toHaveCSS("opacity", "1");
+  // The new row can still be settling at the bottom, so hover again until the
+  // bar shows.
+  await expect
+    .poll(async () => {
+      await row.hover();
+      return actionBar.evaluate((element) => getComputedStyle(element).opacity);
+    })
+    .toBe("1");
   await expect
     .poll(async () => {
       const [barBox, timelineBox] = await Promise.all([

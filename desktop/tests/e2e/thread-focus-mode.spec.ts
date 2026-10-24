@@ -156,6 +156,32 @@ async function expectChannelHeaderUnobscured(
     .toBe(true);
 }
 
+// The thread keeps re-pinning its reading row while rows realize their true
+// heights; read the position only once it has held still.
+async function expectAnchorSettled(
+  body: import("@playwright/test").Locator,
+  anchorId: string,
+) {
+  let previous: number | null = null;
+  let stableSamples = 0;
+  await expect
+    .poll(
+      async () => {
+        const top = await body
+          .locator(`[data-message-id="${anchorId}"]`)
+          .evaluate((element) => element.getBoundingClientRect().top);
+        stableSamples =
+          previous !== null && Math.abs(top - previous) < 1
+            ? stableSamples + 1
+            : 0;
+        previous = top;
+        return stableSamples;
+      },
+      { intervals: [100], timeout: 5_000 },
+    )
+    .toBeGreaterThanOrEqual(4);
+}
+
 test("focus and split preserve reading context and interaction ownership", async ({
   page,
 }) => {
@@ -223,6 +249,7 @@ test("focus and split preserve reading context and interaction ownership", async
   await expect(
     body.locator(`[data-message-id="${anchorId}"]`),
   ).not.toHaveAttribute("data-highlighted", "true");
+  await expectAnchorSettled(body, anchorId);
 
   // Sidebar background dismissal belongs to the overlay presentation only.
   await page
@@ -236,9 +263,38 @@ test("focus and split preserve reading context and interaction ownership", async
   await expect(drawer).toBeVisible();
   await expect(channel).toHaveAttribute("inert", "");
   await expect(page.getByTestId("thread-view-mode-toggle")).toBeFocused();
-  await expect(
-    body.locator(`[data-message-id="${anchorId}"]`),
-  ).toBeInViewport();
+  try {
+    await expect(
+      body.locator(`[data-message-id="${anchorId}"]`),
+    ).toBeInViewport();
+  } catch (error) {
+    // Leave the thread's state in the log: this check only fails on CI.
+    console.log(
+      `THREAD-FOCUS-DIAG ${JSON.stringify(
+        await body.evaluate((element, id) => {
+          const rows = Array.from(
+            element.querySelectorAll<HTMLElement>("[data-message-id]"),
+          );
+          const anchor = rows.find((row) => row.dataset.messageId === id);
+          const bounds = element.getBoundingClientRect();
+          return {
+            anchorIndex: anchor ? rows.indexOf(anchor) : -1,
+            anchorTop: anchor
+              ? anchor.getBoundingClientRect().top - bounds.top
+              : null,
+            clientHeight: element.clientHeight,
+            rowCount: rows.length,
+            scrollHeight: element.scrollHeight,
+            scrollTop: element.scrollTop,
+            topRow: rows
+              .find((row) => row.getBoundingClientRect().bottom > bounds.top)
+              ?.textContent?.slice(0, 40),
+          };
+        }, anchorId),
+      )}`,
+    );
+    throw error;
+  }
 
   // Focus mode owns Escape even while the rich-text composer and one of its
   // nested controls has focus: one press exits the focused thread.
