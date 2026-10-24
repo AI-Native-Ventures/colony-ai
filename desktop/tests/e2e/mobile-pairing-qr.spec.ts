@@ -333,8 +333,8 @@ test("pairing completion updates the final step and resets after leaving", async
         ((confirmationBox?.y ?? 0) + (confirmationBox?.height ?? 0)),
     ),
   ).toBeLessThan(0.5);
-  await expect(confirmButton).toHaveCSS("height", "36px");
-  await expect(cancelButton).toHaveCSS("height", "36px");
+  await expect(confirmButton).toHaveCSS("height", "46px");
+  await expect(cancelButton).toHaveCSS("height", "46px");
   await expect(confirmButton.locator("svg")).toHaveCount(1);
   await expect(cancelButton.locator("svg")).toHaveCount(0);
   const confirmBox = await confirmButton.boundingBox();
@@ -345,7 +345,7 @@ test("pairing completion updates the final step and resets after leaving", async
   await expect(
     confirmation.getByText(/Only confirm if you started this pairing/),
   ).toHaveCount(0);
-  await expect(confirmationTitle).toHaveCSS("font-size", "17.1429px");
+  await expect(confirmationTitle).toHaveCSS("font-size", "17px");
 
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
   await waitForAnimations(page);

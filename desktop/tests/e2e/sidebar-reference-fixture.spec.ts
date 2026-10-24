@@ -33,7 +33,7 @@ test("company shell fixture supplies the approved sidebar rows", async ({
   );
   await expect(sidebar.getByTestId("channel-unread-olive-studio")).toHaveCSS(
     "height",
-    "17px",
+    "22px",
   );
   await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-sales"), 3);
   await expectUnreadBadgeCount(
@@ -43,7 +43,7 @@ test("company shell fixture supplies the approved sidebar rows", async ({
   await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-Aya"), 1);
   await expect(sidebar.getByTestId("channel-avatar-Mina")).toHaveCSS(
     "width",
-    "18px",
+    "24px",
   );
   await expect(sidebar.getByTestId("channel-presence-Mina")).toBeVisible();
   const minaRow = sidebar.getByTestId("channel-Mina");

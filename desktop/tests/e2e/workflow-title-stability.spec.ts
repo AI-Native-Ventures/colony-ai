@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { invokeMockCommand } from "../helpers/welcomeTeam";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 import {
   createPlainWorkflow,
   installWorkflowAdminBridge,
@@ -10,6 +11,7 @@ import {
 
 async function openWorkflows(page: Page) {
   await page.goto("/");
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
@@ -17,6 +19,7 @@ async function openWorkflows(page: Page) {
 async function seedAndOpenWorkflows(page: Page, name: string) {
   await page.goto("/");
   const workflow = await seedWorkflow(page, name);
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();
   return workflow;

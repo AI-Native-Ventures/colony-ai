@@ -24,7 +24,7 @@ test("saved deployment with offline presence is not shown as online", async ({
     "aria-label",
     "Offline deployment: Offline",
   );
-  await expect(dot.locator("xpath=../..")).not.toHaveClass(/bg-emerald-500/);
+  await expect(dot.locator("xpath=../..")).not.toHaveClass(/bg-colony-online/);
   await page
     .getByRole("button", { name: "Offline deployment agent profile" })
     .click();
@@ -436,10 +436,10 @@ for (const surface of ["agents", "members"] as const) {
     } else {
       await expect(
         page.getByTestId(`sidebar-member-presence-${LOCAL}`).locator("span"),
-      ).toHaveClass(/bg-amber-500/);
+      ).toHaveClass(/bg-colony-away/);
       await expect(
         page.getByTestId(`sidebar-member-presence-${keys[1]}`).locator("span"),
-      ).toHaveClass(/bg-muted-foreground/);
+      ).toHaveClass(/border-colony-fg-secondary/);
     }
   });
 }

@@ -779,10 +779,10 @@ test("latest files commit opens its detail without a divider", async ({
   await expect(latestCommit).toHaveCSS("border-bottom-width", "0px");
   await expect(
     page.getByTestId("project-repository-latest-commit-summary"),
-  ).toHaveCSS("font-size", "12.8571px");
+  ).toHaveCSS("font-size", "14px");
   await expect(
     page.getByTestId("project-repository-entry-row").first(),
-  ).toHaveCSS("font-size", "12.8571px");
+  ).toHaveCSS("font-size", "14px");
   const repositoryEntryRow = page
     .getByTestId("project-repository-entry-row")
     .first();
@@ -791,11 +791,11 @@ test("latest files commit opens its detail without a divider", async ({
   await repositoryEntryRow.hover();
   await expect(repositoryEntryCells.first()).toHaveCSS(
     "border-top-left-radius",
-    "10px",
+    "12px",
   );
   await expect(repositoryEntryCells.last()).toHaveCSS(
     "border-top-right-radius",
-    "10px",
+    "12px",
   );
   await latestCommit.click();
   await expect(page.getByTestId("project-commit-detail")).toBeVisible();
@@ -1141,7 +1141,7 @@ test("commit detail opens from the commits feed with a diff", async ({
     commitDetail.getByRole("heading", {
       name: "Add Trello board workflow details",
     }),
-  ).toHaveCSS("font-size", "19.2857px");
+  ).toHaveCSS("font-size", "19px");
   await expect(
     page.getByRole("button", { name: "Copy commit hash" }),
   ).toBeVisible();
