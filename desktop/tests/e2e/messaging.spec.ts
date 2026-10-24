@@ -4046,6 +4046,7 @@ test("closing a thread while editing a reply preserves the typed edit", async ({
   await threadReply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, reply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(edited);
 
   await threadPanel.getByTestId("auxiliary-panel-close").click();
@@ -4136,6 +4137,7 @@ test("main ArrowUp refuses to replace a dirty thread edit", async ({
   await threadReply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, reply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(unsaved);
 
   await mainInput.click();
@@ -4255,6 +4257,7 @@ test("a refused message deep link retries after the thread edit is canceled", as
   await threadReply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, reply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(`${reply} unsaved`);
 
   const threadUrl = page.url();
@@ -4346,6 +4349,7 @@ test("a refused sent-from-thread link preserves the edit and retries after cance
   await reply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, sourceReply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(dirtyReply);
 
   const threadUrl = page.url();
@@ -4421,6 +4425,7 @@ test("a refused search result preserves the edit and retries after cancel", asyn
   await reply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, sourceReply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(dirtyReply);
 
   const threadUrl = page.url();
@@ -4496,6 +4501,7 @@ test("a refused forum search result preserves the edit and retries after cancel"
   await reply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, sourceReply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(dirtyReply);
 
   const threadUrl = page.url();
@@ -4581,6 +4587,7 @@ for (const targetKind of ["reply", "root"] as const) {
     await reply.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Edit message" }).click();
     await expectReplyEditReady(threadPanel, sourceReply);
+    await threadInput.press("ControlOrMeta+A");
     await threadInput.fill(dirtyReply);
 
     const targetLink = timeline
@@ -4682,6 +4689,7 @@ test("a refused channel switch preserves the reply edit and retries after cancel
   await reply.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Edit message" }).click();
   await expectReplyEditReady(threadPanel, sourceReply);
+  await threadInput.press("ControlOrMeta+A");
   await threadInput.fill(dirtyReply);
 
   const navigationBefore = await page.evaluate(() => ({
@@ -4767,6 +4775,7 @@ for (const backInput of ["button", "keyboard"] as const) {
     await reply.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Edit message" }).click();
     await expectReplyEditReady(threadPanel, sourceReply);
+    await threadInput.press("ControlOrMeta+A");
     await threadInput.fill(dirtyReply);
 
     const navigationBefore = await page.evaluate(() => ({

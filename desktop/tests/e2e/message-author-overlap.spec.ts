@@ -123,7 +123,13 @@ test.describe("message author name overflow", () => {
         (element) => element.scrollWidth > element.clientWidth,
       );
       expect(stillTruncated).toBe(true);
-      expect(authorBox.x + authorBox.width).toBeLessThanOrEqual(actionBarBox.x);
+      // Colony 3.0: the bar floats above the row (as the Message actions board
+      // draws it), so the name keeps the whole header row instead of stopping
+      // short of the bar; it must still stay inside the row.
+      const headerRight = headerBox.x + headerBox.width;
+      expect(authorBox.x + authorBox.width).toBeLessThanOrEqual(
+        headerRight + 1,
+      );
     };
 
     // Pointer hover.

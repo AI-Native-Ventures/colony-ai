@@ -99,7 +99,8 @@ test("message action rail copies the same canonical thread link as More", async 
   const pickerButton = actionBar.getByRole("button", {
     name: "Open reactions",
   });
-  await expect(pickerButton.locator("svg")).toHaveClass(/lucide-smile-plus/);
+  // Colony 3.0: the design's React glyph replaces the lucide icon.
+  await expect(pickerButton.locator("svg")).toBeVisible();
 
   const divider = actionBar.getByTestId("message-action-divider");
   await expect(divider).toBeVisible();
