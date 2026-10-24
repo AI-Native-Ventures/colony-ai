@@ -840,8 +840,10 @@ export function AppShell() {
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
                   selectedView === "pins" ||
-                  selectedView === "clients" ||
-                  selectedView === "work")
+                  // Commitment and tracking screens under /work still draw
+                  // their own header; the work list and a work item do not.
+                  (selectedView === "work" &&
+                    location.pathname.split("/").filter(Boolean).length > 2))
                   ? "true"
                   : undefined
               }
