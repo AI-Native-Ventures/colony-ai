@@ -471,28 +471,8 @@ test("company work keeps its chat source, review history, and goal link", async 
     "moved this work item to a new thread.",
   );
 
-  await page.goto(
-    `/#/channels/${GENERAL_CHANNEL_ID}?messageId=${sourceEventId}&threadRootId=${sourceEventId}`,
-  );
-  const movedReference = page.getByTestId(
-    `company-work-moved-reference-${workItemId}`,
-  );
-  await expect(movedReference).toBeVisible();
-  await expect(movedReference).toContainText(
-    "moved this work item to another thread.",
-  );
-  await movedReference
-    .getByRole("button", { name: "Open moved thread" })
-    .click();
-  await expect(
-    page.getByTestId(`company-work-current-card-${workItemId}`),
-  ).toBeVisible();
-  await captureCompanyWorkMatrix(page, "work-thread-panel");
-  await page.getByRole("button", { name: "Full timeline" }).click();
-  await expect(page.getByTestId("company-work-full-timeline")).toContainText(
-    "moved this work item to a new thread.",
-  );
-  await captureCompanyWorkMatrix(page, "work-full-timeline");
+  // The Colony 3.0 thread has no tracked work card, so the moved-thread
+  // reference, current card and full timeline links are no longer in the thread.
   await page.goto(`/#/work/detail/${workItemId}`);
   await expect(page.getByTestId("company-work-detail")).toBeVisible({
     timeout: 30_000,
