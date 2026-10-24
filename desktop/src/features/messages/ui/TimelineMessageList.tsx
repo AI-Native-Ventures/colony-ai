@@ -515,6 +515,20 @@ function VirtualizedTimelineRows({
       if (!list || !(scroller instanceof HTMLDivElement) || !pinnedLabel) {
         return;
       }
+      // Item offsets start below the scroller's top padding. The handoff maths
+      // below was written for the channel chrome inset; the conversation column
+      // pads further (header height plus a gutter), so shift by the difference.
+      const styles = getComputedStyle(scroller);
+      const rootFontPx = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      const chromeInsetPx =
+        Number.parseFloat(
+          styles.getPropertyValue("--channel-top-chrome-height"),
+        ) * rootFontPx;
+      const insetDelta = Number.isFinite(chromeInsetPx)
+        ? Number.parseFloat(styles.paddingTop) - chromeInsetPx
+        : 0;
 
       const pinnedTop =
         pinnedLabel.getBoundingClientRect().top -
@@ -552,7 +566,8 @@ function VirtualizedTimelineRows({
 
       let activeDividerIndex = -1;
       for (const [index, divider] of dayDividerItems.entries()) {
-        if (list.getItemOffset(divider.index) > offset + pinnedTop) break;
+        if (list.getItemOffset(divider.index) > offset + pinnedTop - insetDelta)
+          break;
         activeDividerIndex = index;
       }
       const candidateDivider = dayDividerItems[activeDividerIndex];
@@ -570,7 +585,7 @@ function VirtualizedTimelineRows({
       const nextDivider = dayDividerItems[activeDividerIndex + 1];
       const nextDividerTop = nextDivider
         ? (renderedDividerPillTop(nextDivider) ??
-          list.getItemOffset(nextDivider.index) - offset)
+          list.getItemOffset(nextDivider.index) - offset + insetDelta)
         : null;
       const nextTranslateY =
         nextDividerTop === null
