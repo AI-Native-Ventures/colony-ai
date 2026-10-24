@@ -837,11 +837,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                         {welcomeKickoffStage}
                       </WelcomeComposerGuidanceLayer>
                     ) : null}
-                    {timeoutState.active ? (
-                      <ComposerTimeoutBanner
-                        expiresAtMs={timeoutState.expiresAtMs}
-                      />
-                    ) : null}
                     <ComposerDockBackdrop gutterClassName="inset-x-5" />
                     <MessageComposer
                       channelId={activeChannel?.id ?? null}
@@ -869,8 +864,14 @@ export const ChannelPane = React.memo(function ChannelPane({
                       onSend={handleSendMessage}
                       {...{ profiles, recentMentionPubkeys: recentMentions }}
                       showBackgroundUploadProgress={false}
-                      footerContent={
-                        workspaceChrome &&
+                      statusBanner={
+                        timeoutState.active ? (
+                          <ComposerTimeoutBanner
+                            expiresAtMs={timeoutState.expiresAtMs}
+                          />
+                        ) : undefined
+                      }
+                      toolbarAskAction={
                         activeChannel?.channelType === "stream" ? (
                           <Button
                             className="colony-ask-entry-button"

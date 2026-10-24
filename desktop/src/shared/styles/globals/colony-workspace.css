@@ -42,24 +42,6 @@
 
 :root:has([data-colony-workspace-route="true"])
   [data-testid="channel-composer-overlay"]
-  .composer-dock
-  > footer
-  [data-testid="message-composer"] {
-  padding: 0;
-  border-color: hsl(var(--border));
-  border-radius: 10px;
-  background-color: hsl(var(--background));
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-composer-overlay"]
-  [data-testid="message-input-scroll"] {
-  min-height: 60px;
-  padding: 12px 12px 7px;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-composer-overlay"]
   .composer-dock-quiet-spacer {
   margin-bottom: -0.875rem;
 }
@@ -69,22 +51,6 @@
   .composer-dock--with-activity
   .composer-dock-quiet-spacer {
   margin-bottom: 0;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-composer-overlay"]
-  .composer-dock--with-activity
-  [data-testid="message-input-scroll"] {
-  height: calc(2 * var(--conversation-message-line-height) + 0.4375rem);
-  min-height: calc(2 * var(--conversation-message-line-height) + 0.4375rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-composer-overlay"]
-  [data-testid="message-composer-toolbar"] {
-  height: 39px;
-  margin-top: 0;
-  min-height: 39px;
 }
 
 :root:has([data-colony-workspace-route="true"])

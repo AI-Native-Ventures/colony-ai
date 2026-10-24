@@ -265,12 +265,8 @@ test("sends immediately and keeps upload progress across channels", async ({
   await expect(page.getByTestId("composer-upload-progress")).toHaveCount(0);
   await expect(page.getByTestId("composer-video-spoiler")).toHaveCount(0);
   const queuedSpoiler = page.getByTestId("composer-queued-video-spoiler");
-  // Revealed on hover rather than removed from the DOM: the control stays
-  // focusable so keyboard users can reach it, but is transparent and
-  // click-through until the thumbnail is hovered or focused.
-  await expect(queuedSpoiler).toHaveCSS("opacity", "0");
-  await expect(queuedSpoiler).toHaveCSS("pointer-events", "none");
-  await page.getByTestId("composer-queued-media-attachment").hover();
+  // The Colony 3.0 tile keeps its tool pill (spoiler, draw, remove) visible,
+  // as the Composer states board draws it.
   await expect(queuedSpoiler).toBeVisible();
   await expect(queuedSpoiler).toHaveCSS("opacity", "1");
   await page.getByTestId("send-message").click();

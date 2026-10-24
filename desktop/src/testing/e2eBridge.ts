@@ -418,6 +418,8 @@ export type Colony3Extras = {
   clearMessageChannelIds?: string[];
   /** Same as `clearMessageChannelIds` (kept for boards that already use it). */
   clearMessagesIn?: string[];
+  /** Overrides the last-activity time (unix seconds) of channels by id. */
+  lastMessageAt?: Record<string, number>;
   messages?: Array<{
     channelId: string;
     id: string;
@@ -5687,6 +5689,12 @@ function applyColony3Extras(extras: Colony3Extras, self: string): void {
       );
     }
     syncMockChannel(channel);
+  }
+  for (const [channelId, at] of Object.entries(extras.lastMessageAt ?? {})) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (channel) channel.last_message_at = new Date(at * 1_000).toISOString();
   }
   for (const channelId of extras.leaveChannelIds ?? []) {
     const channel = mockChannels.find(
@@ -16563,6 +16571,8 @@ async function handleSearchMessages(
         (candidate) => candidate.id === channelId,
       );
       for (const event of events) {
+        // The relay's NIP-50 search only covers message kinds (see below).
+        if (![9, 40002, 45001, 45003].includes(event.kind)) continue;
         mockHits.push({
           event_id: event.id,
           content: event.content,

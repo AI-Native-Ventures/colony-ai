@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Mail } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import {
@@ -8,6 +9,7 @@ import {
 import type { Channel } from "@/shared/api/types";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { getKeyboardSearchSelection } from "@/features/profile/lib/userCandidateSearch";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { SelectedRecipientChip } from "@/features/profile/ui/SelectedRecipientChip";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -26,6 +28,12 @@ import {
  * normal chat header becomes an inline "To:" field, while recipient discovery
  * lives in an attached popover instead of taking over the message area.
  */
+/** "Aya and Zinhle Dlamini", "A, B and C". */
+function joinRecipientNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export function NewMessageScreen() {
   const identityQuery = useIdentityQuery();
   const currentPubkey = identityQuery.data?.pubkey;
@@ -308,12 +316,16 @@ export function NewMessageScreen() {
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       data-testid="new-message-page"
     >
+      <div className="c3nm-title" data-testid="new-message-title">
+        <Mail aria-hidden="true" className="size-5" />
+        <h1>New message</h1>
+      </div>
       <header
-        className="relative z-40 shrink-0 cursor-default select-none border-b border-border/35 bg-background/80 px-5 py-2 backdrop-blur-md supports-backdrop-filter:bg-background/70 dark:bg-background/70 dark:backdrop-blur-xl dark:supports-backdrop-filter:bg-background/55"
+        className="c3nm-to-bar relative z-40 shrink-0 cursor-default select-none"
         data-testid="new-message-header"
         data-tauri-drag-region
       >
-        <div className="flex min-h-9 min-w-0 items-center">
+        <div className="flex min-w-0 items-center">
           <Popover
             onOpenChange={(open) => {
               setIsRecipientPickerOpen(
@@ -326,7 +338,7 @@ export function NewMessageScreen() {
               {/* biome-ignore lint/a11y/noStaticElementInteractions: clicking anywhere in the recipient field focuses its input */}
               {/* biome-ignore lint/a11y/useKeyWithClickEvents: the nested combobox is the keyboard-accessible focus target */}
               <div
-                className="group/to-field flex min-h-9 min-w-0 flex-1 cursor-text flex-wrap items-center gap-1.5 py-1"
+                className="group/to-field flex min-w-0 flex-1 cursor-text flex-wrap items-center gap-2"
                 data-testid="new-message-to-field"
                 onClick={(event) => {
                   // Portaled popovers (recipient inspection and its nested key
@@ -349,9 +361,7 @@ export function NewMessageScreen() {
                 }}
                 ref={toFieldRef}
               >
-                <span className="shrink-0 text-base font-semibold tracking-tight">
-                  To:
-                </span>
+                <span className="c3nm-to-label">To:</span>
                 {selectedUsers.map((user) => (
                   <SelectedRecipientChip
                     disabled={isPending}
@@ -364,6 +374,7 @@ export function NewMessageScreen() {
                       );
                     }}
                     onRemove={() => handleRemoveUser(user.pubkey)}
+                    variant="field"
                     testIds={{
                       chip: `new-dm-selected-${user.pubkey}`,
                       keyPopover: `new-dm-selected-key-popover-${user.pubkey}`,
@@ -384,7 +395,7 @@ export function NewMessageScreen() {
                   aria-label="To"
                   autoComplete="off"
                   autoCorrect="off"
-                  className="h-7 min-w-32 flex-1 bg-transparent text-base outline-hidden placeholder:text-muted-foreground"
+                  className="c3nm-to-input"
                   data-testid="new-dm-search"
                   disabled={isPending}
                   id="new-dm-search"
@@ -493,7 +504,8 @@ export function NewMessageScreen() {
             </PopoverAnchor>
             <PopoverContent
               align="start"
-              className="w-[min(36rem,calc(100vw-3rem))] overflow-hidden p-0"
+              alignOffset={48}
+              className="c3nm-popover"
               data-testid="new-message-recipient-popover"
               onCloseAutoFocus={(event) => event.preventDefault()}
               onInteractOutside={(event) => {
@@ -508,17 +520,17 @@ export function NewMessageScreen() {
               }}
               onOpenAutoFocus={(event) => event.preventDefault()}
               side="bottom"
-              sideOffset={6}
+              sideOffset={10}
             >
               <div
-                className="max-h-80 overflow-y-auto"
+                className="c3nm-results"
                 data-testid="new-dm-results"
                 id="new-dm-results"
                 onScroll={handleDirectoryScroll}
                 role="listbox"
               >
                 {visibleSearchResults.length > 0 ? (
-                  <div>
+                  <div className="c3nm-results-list">
                     {visibleSearchResults.map((user) => {
                       const isSelected = selectedUsers.some(
                         (selectedUser) => selectedUser.pubkey === user.pubkey,
@@ -546,7 +558,7 @@ export function NewMessageScreen() {
                   <div
                     aria-busy="true"
                     aria-label="Loading people and agents"
-                    className="space-y-3 px-4 py-3"
+                    className="c3nm-results-note space-y-3"
                     data-testid="new-dm-loading"
                     role="status"
                   >
@@ -561,10 +573,7 @@ export function NewMessageScreen() {
                     ))}
                   </div>
                 ) : (
-                  <p
-                    className="px-4 py-3 text-sm text-muted-foreground"
-                    data-testid="new-dm-empty"
-                  >
+                  <p className="c3nm-results-note" data-testid="new-dm-empty">
                     {deferredSearchQuery.length === 0
                       ? "No people or agents available to message."
                       : "No matching users."}
@@ -585,19 +594,30 @@ export function NewMessageScreen() {
         </div>
       </header>
 
-      <div
-        className="min-h-0 flex-1 bg-background"
-        data-testid="new-message-body"
-      />
+      <div className="c3nm-body" data-testid="new-message-body">
+        {selectedUsers.length > 0 ? (
+          <div className="c3nm-hero" data-testid="new-message-hero">
+            <span aria-hidden="true" className="c3nm-hero-avatars">
+              {selectedUsers.slice(0, 3).map((user) => (
+                <ProfileAvatar
+                  avatarUrl={user.avatarUrl}
+                  className="c3nm-hero-avatar"
+                  key={user.pubkey}
+                  label={formatRecipientName(user)}
+                  shape={user.isAgent ? "squircle" : "circle"}
+                />
+              ))}
+            </span>
+            <p className="c3nm-hero-names">
+              {joinRecipientNames(selectedUsers.map(formatRecipientName))}
+            </p>
+            <p className="c3nm-hero-hint" data-testid="new-dm-limit">
+              DMs support up to nine people, including you.
+            </p>
+          </div>
+        ) : null}
+      </div>
 
-      {hasReachedRecipientLimit ? (
-        <p
-          className="px-5 pb-2 text-sm text-muted-foreground"
-          data-testid="new-dm-limit"
-        >
-          DMs support up to nine people, including you.
-        </p>
-      ) : null}
       {searchError ? (
         <p className="px-5 pb-2 text-sm text-destructive">
           {searchError.message}
@@ -612,7 +632,8 @@ export function NewMessageScreen() {
       <MessageComposer
         channelName="new message"
         channelType="dm"
-        containerClassName="px-5"
+        containerClassName="c3nm-composer"
+        toolbarLayout="new-message"
         disabled={isPending || selectedUsers.length === 0}
         isSending={isPending}
         onPrepareSendChannel={prepareSendChannel}
@@ -621,7 +642,6 @@ export function NewMessageScreen() {
         placeholder={composerPlaceholder}
         showBackgroundUploadProgress
       />
-      <div aria-hidden="true" className="min-h-8 bg-background px-5 pb-1.5" />
     </div>
   );
 }

@@ -154,23 +154,23 @@ for (const [width, height] of [
       if (name === "thread") {
         const thread = page.getByTestId("message-thread-panel");
         const input = thread.getByTestId("message-input-scroll");
-        await expect(input).toHaveCSS("padding", "12px 12px 7px");
+        // The Colony 3.0 card pads the card; the editor keeps a 1px edge.
+        await expect(input).toHaveCSS("padding", "1px 0px");
         await expect(input).toHaveCSS("font-size", "17px");
         await expect(thread.locator(".composer-dock")).toHaveCSS(
           "padding",
           "10px 24px 15px",
         );
-        const inputTextLeft = await input.evaluate(
-          (el) =>
-            el.getBoundingClientRect().x +
-            parseFloat(getComputedStyle(el).paddingLeft),
-        );
+        // "Also send to" sits under the card, on the card's left edge.
+        const threadCardLeft = await thread
+          .getByTestId("message-composer")
+          .evaluate((el) => el.getBoundingClientRect().x);
         const checkbox = thread.getByRole("checkbox");
         if (width >= 1200) {
           const checkboxBox = await checkbox.boundingBox();
           expect(checkboxBox).not.toBeNull();
           expect(
-            Math.abs((checkboxBox?.x ?? 0) - inputTextLeft),
+            Math.abs((checkboxBox?.x ?? 0) - threadCardLeft),
           ).toBeLessThanOrEqual(1);
         }
         const channelComposer = page.getByTestId("channel-composer-overlay");
@@ -198,13 +198,10 @@ for (const [width, height] of [
             .evaluate((el) => el.scrollWidth - el.clientWidth),
         ).toBeLessThanOrEqual(1);
         const tools = await thread
-          .getByRole("button", { name: "Record voice note", exact: true })
+          .getByRole("button", { name: "Attach file", exact: true })
           .boundingBox();
         const send = await thread
-          .getByRole("button", {
-            name: "Reference goal or sub-goal",
-            exact: true,
-          })
+          .getByRole("button", { name: "Send message", exact: true })
           .boundingBox();
         expect(tools).not.toBeNull();
         expect(send).not.toBeNull();
