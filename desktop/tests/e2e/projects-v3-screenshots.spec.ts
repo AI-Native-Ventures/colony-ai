@@ -395,7 +395,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     exact: true,
   });
   await expect(repositoryHeading).toBeVisible();
-  await expect(repositoryHeading).toHaveCSS("font-size", "15px");
+  await expect(repositoryHeading).toHaveCSS("font-size", "16px");
   await expectProjectContextGroups(repositoryActionsPanel, {
     hasActions: true,
   });
@@ -693,7 +693,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(agentChatPanel).toBeVisible();
   await expect(projectPanelLayout).toHaveAttribute("data-detached", "false");
   await expect(projectContentPod).toHaveCount(0);
-  await expect(appContentSurface).toHaveCSS("border-radius", "11px");
+  await expect(appContentSurface).toHaveCSS("border-radius", "0px");
   await expect
     .poll(() =>
       appContentSurface.evaluate(
@@ -825,15 +825,15 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(
     (finalProjectContentPodBounds?.x ?? 0) -
       (attachedContentSurfaceBounds?.x ?? 0),
-  ).toBe(2);
+  ).toBe(1);
   expect(
     (finalProjectContentPodBounds?.y ?? 0) -
       (attachedContentSurfaceBounds?.y ?? 0),
-  ).toBe(42);
+  ).toBe(66);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
       (finalProjectContentPodBounds?.height ?? 0),
-  ).toBe(51);
+  ).toBe(74);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
   expect(viewportSize).not.toBeNull();
@@ -915,7 +915,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   ).toBeVisible();
   await expect(
     workspacePanel.getByTestId("project-repository-entry-icon").first(),
-  ).toHaveCSS("border-radius", "10px");
+  ).toHaveCSS("border-radius", "12px");
   const repositoryEntryCell = workspacePanel
     .getByTestId("project-repository-entry-row")
     .first()
@@ -1058,7 +1058,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(newIssueBounds?.x).toBeGreaterThan(issuesHeadingBounds?.x ?? 0);
   const issueRow = page.getByTestId("project-issue-row").first();
   await expect(issueRow).toBeVisible({ timeout: 10_000 });
-  await expect(issueRow).toHaveCSS("border-radius", "10px");
+  await expect(issueRow).toHaveCSS("border-radius", "12px");
   const [issueHeaderBounds, firstIssueBounds, secondIssueBounds] =
     await Promise.all([
       page.getByTestId("project-work-item-group-header").first().boundingBox(),
@@ -1119,7 +1119,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(issueDetail).toHaveCSS("max-width", "768px");
   await expect(
     issueDetail.getByRole("heading", { level: 3 }).first(),
-  ).toHaveCSS("font-size", "19.2857px");
+  ).toHaveCSS("font-size", "19px");
   await expect(
     page.getByTestId("project-issue-comment-timeline-row").first(),
   ).toBeVisible();

@@ -3,6 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 
 const ASK_ID = "request-budget-ask-0";
 const WINDOW_MS = 5_000;
@@ -223,11 +224,13 @@ test("primary route journey records bounded relay request windows", async ({
   windows.push(await captureWindow(page, "channel", startedAt));
 
   startedAt = await page.evaluate(() => Date.now());
+  await openSidebarGroup(page, "company");
   await page.getByTestId("sidebar-company-team").click();
   await expect(page).toHaveURL(/#\/team$/);
   windows.push(await captureWindow(page, "team", startedAt));
 
   startedAt = await page.evaluate(() => Date.now());
+  await openSidebarGroup(page, "company");
   await page.getByTestId("sidebar-company-work").click();
   await expect(page).toHaveURL(/#\/work$/);
   windows.push(await captureWindow(page, "work", startedAt));

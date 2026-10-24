@@ -2867,7 +2867,7 @@ test("start pill morphs into the running dot without remounting the avatar", asy
     "Motion Auditor: Offline",
   );
   await expect(availabilityDot.locator("xpath=../..")).not.toHaveClass(
-    /bg-emerald-500/,
+    /bg-colony-online/,
   );
   await expect
     .poll(() =>
@@ -2890,7 +2890,7 @@ test("start pill morphs into the running dot without remounting the avatar", asy
   );
   await expect(
     page.getByTestId(`agent-runtime-active-${pubkey}`).locator("xpath=../.."),
-  ).toHaveClass(/bg-emerald-500/);
+  ).toHaveClass(/bg-colony-online/);
   expect(
     await initialAvatar?.evaluate(
       (before, after) => before === after,

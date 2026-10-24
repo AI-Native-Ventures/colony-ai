@@ -25,6 +25,13 @@
   user-select: none;
 }
 
+/* Screens that still draw their own header and history buttons (the Colony
+   workspace routes) keep the bar hidden, as they did before the new shell, so
+   there is one set of history buttons and one breadcrumb on them. */
+:root:has([data-colony-workspace-route="true"]) [data-testid="app-top-chrome"] {
+  display: none;
+}
+
 .colony-topbar-button {
   display: grid;
   width: 36px;
@@ -80,6 +87,13 @@
 }
 
 .colony-topbar:has(.colony-topbar-content > *) .colony-breadcrumb {
+  display: none;
+}
+
+/* A screen that still draws its own breadcrumb keeps the only one. */
+:root:has(nav[aria-label="Breadcrumb"]:not([data-testid="top-bar-breadcrumb"]))
+  .colony-topbar
+  .colony-breadcrumb {
   display: none;
 }
 
