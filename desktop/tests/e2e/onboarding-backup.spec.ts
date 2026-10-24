@@ -11,7 +11,7 @@ test("R17 signup verifies the account with a six-digit email code", async ({
 }) => {
   await startR17AccountAuth(page);
   await expectNoKeyCopy(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("signup@example.com");
   await page
@@ -23,7 +23,7 @@ test("R17 signup verifies the account with a six-digit email code", async ({
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expect(
-    page.getByText("Enter the six-digit code sent to your email."),
+    page.getByText(/Enter the six-digit code we sent to/),
   ).toBeVisible();
   for (let index = 1; index <= 6; index += 1) {
     await expect(page.getByLabel(`Digit ${index} of 6`)).toBeVisible();

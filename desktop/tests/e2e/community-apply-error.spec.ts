@@ -43,13 +43,14 @@ async function seedCommunities(
 async function openWithFailingColony(
   page: Page,
   communities: Array<Record<string, unknown>>,
-  options: { autoConnectDefaultRelay?: boolean } = {},
+  options: { autoConnectDefaultRelay?: boolean; error?: string } = {},
 ) {
+  const { error = MEMBERSHIP_ERROR, ...bridgeOptions } = options;
   await seedCommunities(page, communities, COLONY.id);
   await installMockBridge(
     page,
-    { applyCommunityErrorByRelayUrl: { [COLONY.relayUrl]: MEMBERSHIP_ERROR } },
-    { skipCommunitySeed: true, ...options },
+    { applyCommunityErrorByRelayUrl: { [COLONY.relayUrl]: error } },
+    { skipCommunitySeed: true, ...bridgeOptions },
   );
   await page.goto("/");
   await expect(page.getByTestId("community-apply-error")).toBeVisible();
@@ -78,14 +79,6 @@ test.describe("community connection error screen", () => {
     await expect(screen).toBeVisible();
     await capture("retry-result");
 
-    const disclosure = screen.getByRole("button", {
-      name: "Technical details",
-    });
-    await disclosure.click();
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-    await capture("technical-details");
-    await disclosure.click();
-
     await screen.getByRole("button", { name: /^Edit this community/ }).click();
     await expect(page.getByTestId("community-change-overlay")).toBeVisible();
     await expect(
@@ -99,7 +92,7 @@ test.describe("community connection error screen", () => {
     await page.keyboard.press("Escape");
 
     const remove = screen.getByRole("button", {
-      name: /^Remove this community from this device/,
+      name: /^Remove community/,
     });
     await remove.focus();
     await page.keyboard.press("Space");
@@ -107,6 +100,36 @@ test.describe("community connection error screen", () => {
       screen.getByTestId("community-escape-remove-confirm-panel"),
     ).toBeVisible();
     await capture("remove-confirm");
+  });
+
+  test("a failed connection shows the host and opens or closes its technical details", async ({
+    page,
+  }) => {
+    await openWithFailingColony(page, [COLONY, COLONY_AI], {
+      error: "relay unreachable: connection refused",
+    });
+    const screen = page.getByTestId("community-apply-error");
+    await expect(
+      screen.getByRole("heading", { name: "Community connection failed" }),
+    ).toBeVisible();
+    await expect(
+      screen.getByTestId("community-apply-error-message"),
+    ).toContainText("Colony couldn’t reach Colony");
+    const disclosure = screen.getByRole("button", {
+      name: "Technical details",
+    });
+    // Open as the board draws it; the button closes and reopens it.
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      screen.getByTestId("community-apply-error-details"),
+    ).toContainText("Can't reach the relay.");
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      screen.getByTestId("community-apply-error-details"),
+    ).toHaveCount(0);
+    await disclosure.press("Enter");
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   });
 
   test("explains the membership error and switches to the other community by keyboard", async ({
@@ -119,19 +142,12 @@ test.describe("community connection error screen", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "You don’t have access to Colony. Switch to another community or remove it from this device.",
+      "Ask an owner or admin of Colony to add you. Share this account code with them.",
     );
     const switchButton = screen.getByRole("button", {
-      name: "Switch to Colony AI",
+      name: "Switch community to Colony AI",
     });
     await expect(switchButton).toBeFocused();
-    const disclosure = screen.getByRole("button", {
-      name: "Technical details",
-    });
-    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    await disclosure.focus();
-    await disclosure.press("Enter");
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.getByTestId("community-apply-error-details"),
     ).toContainText(MEMBERSHIP_ERROR);
@@ -140,7 +156,7 @@ test.describe("community connection error screen", () => {
     const retry = screen.getByRole("button", { name: "Retry" });
     const edit = screen.getByRole("button", { name: /^Edit this community/ });
     const remove = screen.getByRole("button", {
-      name: /^Remove this community from this device/,
+      name: /^Remove community/,
     });
 
     await switchButton.focus();
@@ -190,9 +206,11 @@ test.describe("community connection error screen", () => {
     await expect(screen).toBeVisible();
     await expect(
       screen.getByTestId("community-apply-error-message"),
-    ).toContainText("You don’t have access to Colony");
+    ).toContainText("Ask an owner or admin of Colony");
 
-    await screen.getByRole("button", { name: "Switch to Colony AI" }).click();
+    await screen
+      .getByRole("button", { name: "Switch community to Colony AI" })
+      .click();
     await expect(page.getByTestId("community-apply-error")).toHaveCount(0);
     await expect(
       page.getByTestId(`community-rail-button-${COLONY_AI.id}`),
@@ -205,7 +223,7 @@ test.describe("community connection error screen", () => {
     await openWithFailingColony(page, [COLONY, COLONY_AI]);
     const screen = page.getByTestId("community-apply-error");
     const remove = screen.getByRole("button", {
-      name: /^Remove this community from this device/,
+      name: /^Remove community/,
     });
 
     // Space opens the inline confirm, and focus moves to the safe choice.
@@ -263,13 +281,11 @@ test.describe("community connection error screen", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "You don’t have access to Colony. Remove it from this device, or ask the owner for an invitation.",
+      "Ask an owner or admin of Colony to add you. Share this account code with them.",
     );
     await expect(screen.getByRole("button", { name: "Retry" })).toBeFocused();
 
-    await screen
-      .getByRole("button", { name: /^Remove this community from this device/ })
-      .click();
+    await screen.getByRole("button", { name: /^Remove community/ }).click();
     await screen.getByTestId("community-escape-remove-confirm").click();
 
     await expect(page.getByText("Join or create a community")).toBeVisible();

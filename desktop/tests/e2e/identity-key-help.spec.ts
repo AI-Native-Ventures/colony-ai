@@ -12,7 +12,7 @@ test("R17 account access fits a compact desktop viewport", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   await expect(page.getByTestId("account-auth-submit-signin")).toBeInViewport();
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Let’s get you started." }),

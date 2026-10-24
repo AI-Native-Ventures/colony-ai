@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Builds the "Colony 3.0 foundation proof" page from the proof spec's captures.
+// Builds a Colony 3.0 proof page (title from notes.title, default "Colony 3.0
+// foundation proof") from the proof spec's captures.
 //
 //   node scripts/colony3-proof-report.mjs <proofDir> <outDir> [notes.json]
 //
@@ -129,7 +130,7 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${notes.title ?? "Colony 3.0 foundation proof"}</title>
+<title>${escapeHtml(notes.title ?? "Colony 3.0 foundation proof")}</title>
 <style>
   :root { --sp-measure: 78ch; }
   body { margin: 0; }
@@ -153,7 +154,7 @@ const html = `<!doctype html>
 </head>
 <body>
 <main>
-  <h1>${notes.title ?? "Colony 3.0 foundation proof"}</h1>
+  <h1>${escapeHtml(notes.title ?? "Colony 3.0 foundation proof")}</h1>
   <p class="lede">${notes.lede ?? `The Soft Field foundation, built into the desktop app on branch <code>feat/colony3-foundation</code>, set next to the owner's design. For each board: the design reference, the app captured at the same size with the Lerato Social sample data, a 50 percent overlay, and a difference map (brighter means further apart). The design is the authority: every visible difference is either fixed or listed below with its reason.`}</p>
 ${notes.summary?.length ? `<ul class="notes">${notes.summary.map((line) => `<li>${line}</li>`).join("")}</ul>` : ""}
 ${sections

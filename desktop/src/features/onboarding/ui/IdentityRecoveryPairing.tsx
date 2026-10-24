@@ -1,22 +1,20 @@
 import * as React from "react";
 import { listen } from "@tauri-apps/api/event";
-import {
-  Check,
-  Copy,
-  LoaderCircle,
-  RefreshCw,
-  ShieldCheck,
-  TriangleAlert,
-  X,
-} from "lucide-react";
-
 import { cancelPairing, confirmPairingSas } from "@/shared/api/tauri";
 import { startIdentityRecoveryPairing } from "@/shared/api/tauriPairing";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
-import { Button } from "@/shared/ui/button";
 import { StyledQrCode } from "@/shared/ui/styled-qr-code";
+import { FirstRunButton, FirstRunError } from "./firstRunControls";
+import { AlertIcon, CheckIcon, ShieldCheckIcon } from "./firstRunIcons";
+import "./firstRun.css";
 
-type Step = "loading" | "qr" | "sas" | "receiving" | "done" | "error";
+export type RecoveryPairingStep =
+  | "loading"
+  | "qr"
+  | "sas"
+  | "receiving"
+  | "done"
+  | "error";
 
 // Refresh before the pairing relay's two-minute connection cap so Desktop never
 // leaves a code on screen after its publishing channel has closed.
@@ -41,9 +39,9 @@ export function IdentityRecoveryPairing({
   onStepChange,
 }: {
   onRecovered: () => Promise<void>;
-  onStepChange?: (step: Step) => void;
+  onStepChange?: (step: RecoveryPairingStep) => void;
 }) {
-  const [step, setStep] = React.useState<Step>("loading");
+  const [step, setStep] = React.useState<RecoveryPairingStep>("loading");
   const [qrUri, setQrUri] = React.useState<string | null>(null);
   const [sas, setSas] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -155,118 +153,137 @@ export function IdentityRecoveryPairing({
     }
   }
 
+  // A short, readable stand-in for the long pairing link: its last characters.
+  const shortCode = qrUri
+    ? qrUri
+        .replace(/[^A-Za-z0-9]/g, "")
+        .slice(-8)
+        .toUpperCase()
+        .replace(/(.{4})(.{4})/, "$1 $2")
+    : "";
+  const waiting = step === "qr" && qrUri;
+
   return (
-    <div
-      className="flex w-[266px] max-w-full flex-col items-stretch gap-3"
-      data-testid="identity-recovery-pairing"
-    >
-      <div
-        className="flex min-h-[240px] w-full shrink-0 items-center justify-center"
-        data-testid="identity-recovery-qr-container"
-      >
-        {step === "qr" && qrUri ? (
-          <StyledQrCode
-            animate
-            centerImageSrc="/app-icon@2x.png"
-            data-testid="identity-recovery-qr"
-            size={240}
-            title="Desktop identity recovery QR code"
-            value={qrUri}
-          />
-        ) : step === "sas" && sas ? (
-          <div className="flex max-w-60 flex-col items-center gap-3 py-2 text-center text-foreground">
-            <ShieldCheck className="h-10 w-10 text-primary" />
-            <p className="text-sm font-medium">
-              Does this code match your phone?
-            </p>
-            <div className="rounded-xl border-2 border-primary/30 bg-primary/5 px-5 py-3">
-              <p
-                className="font-mono text-3xl font-bold tracking-[0.25em]"
-                data-testid="identity-recovery-sas"
-              >
-                {sas.slice(0, 3)} {sas.slice(3)}
-              </p>
+    <div className="c3fr-pairing" data-testid="identity-recovery-pairing">
+      {step === "sas" && sas ? (
+        <div className="c3fr-pairing-sas">
+          <span aria-hidden="true" className="c3fr-pairing-sas-icon">
+            <ShieldCheckIcon size={26} />
+          </span>
+          <p className="c3fr-pairing-sas-title">
+            Does this code match your phone?
+          </p>
+          <p
+            className="c3fr-pairing-sas-code"
+            data-testid="identity-recovery-sas"
+          >
+            {sas.slice(0, 3)} {sas.slice(3)}
+          </p>
+          <p className="c3fr-note">
+            This gives this desktop permanent access to your Colony identity.
+            Only continue if you trust it.
+          </p>
+          <div className="c3fr-actions">
+            <FirstRunButton
+              data-testid="confirm-identity-recovery-sas"
+              kind="primary"
+              onClick={() => void confirm()}
+              size="small"
+            >
+              <CheckIcon size={16} strokeWidth={2.6} />
+              Codes match
+            </FirstRunButton>
+            <FirstRunButton
+              data-testid="deny-identity-recovery-sas"
+              onClick={() => void deny()}
+              size="small"
+            >
+              Cancel
+            </FirstRunButton>
+          </div>
+        </div>
+      ) : step === "done" ? (
+        <div className="c3fr-pairing-state" role="status">
+          <span
+            aria-hidden="true"
+            className="c3fr-pairing-sas-icon"
+            data-tone="ok"
+          >
+            <CheckIcon size={22} strokeWidth={3} />
+          </span>
+          <p className="c3fr-pairing-sas-title">Identity received securely</p>
+        </div>
+      ) : step === "error" ? (
+        <div className="c3fr-pairing-state">
+          <span
+            aria-hidden="true"
+            className="c3fr-pairing-sas-icon"
+            data-tone="bad"
+          >
+            <AlertIcon size={22} />
+          </span>
+          <FirstRunError>{error}</FirstRunError>
+          <FirstRunButton onClick={() => void start()} size="small">
+            Try again
+          </FirstRunButton>
+        </div>
+      ) : (
+        <>
+          <div className="c3fr-pairing-code-row">
+            <div
+              className="c3fr-pairing-qr"
+              data-testid="identity-recovery-qr-container"
+            >
+              {step === "qr" && qrUri ? (
+                <StyledQrCode
+                  animate
+                  centerImageSrc="/app-icon@2x.png"
+                  data-testid="identity-recovery-qr"
+                  size={134}
+                  title="Desktop identity recovery QR code"
+                  value={qrUri}
+                />
+              ) : (
+                <span className="c3fr-pairing-qr-wait">
+                  {step === "receiving"
+                    ? "Receiving identity…"
+                    : "Starting pairing…"}
+                </span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              This gives this desktop permanent access to your Colony identity.
-              Only continue if you trust it.
-            </p>
-            <div className="flex w-full flex-col gap-2">
-              <Button
-                className="flex-1"
-                data-testid="confirm-identity-recovery-sas"
-                onClick={() => void confirm()}
+            <div className="c3fr-pairing-code">
+              <span className="c3fr-eyebrow c3fr-eyebrow-muted">
+                Pairing code
+              </span>
+              <span className="c3fr-pairing-code-text">{shortCode || "…"}</span>
+              <FirstRunButton
+                data-testid="copy-identity-recovery-code"
+                disabled={step === "loading"}
+                onClick={() => void copyPairingCode()}
+                size="small"
               >
-                <Check className="mr-1.5 h-4 w-4" />
-                Codes match
-              </Button>
-              <Button
-                className="flex-1"
-                data-testid="deny-identity-recovery-sas"
-                onClick={() => void deny()}
-                variant="outline"
-              >
-                <X className="mr-1.5 h-4 w-4" />
-                Cancel
-              </Button>
+                {step === "loading"
+                  ? "Generating pairing code…"
+                  : copied
+                    ? "Copied"
+                    : "Copy pairing code"}
+              </FirstRunButton>
             </div>
           </div>
-        ) : step === "done" ? (
-          <div className="flex flex-col items-center gap-3 text-foreground">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
-            </div>
-            <p className="text-sm font-medium">Identity received securely</p>
+          <div className="c3fr-banner c3fr-banner-left" role="status">
+            <span aria-hidden="true" className="c3fr-banner-dot c3fr-live" />
+            {step === "receiving"
+              ? "Receiving identity from your phone…"
+              : "Waiting for your phone to scan…"}
           </div>
-        ) : step === "error" ? (
-          <div className="flex max-w-52 flex-col items-center gap-3 text-center text-foreground">
-            <TriangleAlert className="h-6 w-6 text-destructive" />
-            <p className="text-sm text-destructive">{error}</p>
-            <Button onClick={() => void start()} size="sm" variant="outline">
-              <RefreshCw className="mr-1.5 h-4 w-4" />
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 text-foreground">
-            <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              {step === "receiving"
-                ? "Receiving identity from mobile device..."
-                : "Starting pairing..."}
-            </p>
-          </div>
-        )}
-      </div>
-      {step === "loading" || (step === "qr" && qrUri) ? (
-        <Button
-          className="w-full border-foreground/20 bg-white text-foreground shadow-none hover:bg-black/5"
-          data-testid="copy-identity-recovery-code"
-          disabled={step === "loading"}
-          onClick={() => void copyPairingCode()}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {step === "loading" ? (
-            <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
-          ) : copied ? (
-            <Check className="mr-1.5 h-4 w-4" />
-          ) : (
-            <Copy className="mr-1.5 h-4 w-4" />
-          )}
-          {step === "loading"
-            ? "Generating pairing code..."
-            : copied
-              ? "Copied"
-              : "Copy pairing code"}
-        </Button>
-      ) : null}
-      {step === "qr" && error ? (
-        <p className="max-w-[266px] text-center text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
+          <ol className="c3fr-pairing-steps">
+            <li>Open Colony on your phone.</li>
+            <li>Go to Settings, then pair a device.</li>
+            <li>Scan the code and check the codes match.</li>
+          </ol>
+          {waiting && error ? <FirstRunError>{error}</FirstRunError> : null}
+        </>
+      )}
     </div>
   );
 }

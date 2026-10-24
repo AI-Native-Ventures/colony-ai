@@ -28,9 +28,9 @@ for (const viewport of [
     await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
     const card = page.getByTestId("onboarding-connect-runtime-codex");
     await expect(card).toContainText("Setup needed");
-    await expect(card).toContainText(
-      "Codex is installed. Its connection needs to be set up.",
-    );
+    await expect(
+      page.getByText("Codex is installed. Its connection needs to be set up."),
+    ).toBeVisible();
     await expect(card).not.toContainText("Not installed");
     await waitForAnimations(page);
     await page.screenshot({
@@ -86,7 +86,7 @@ for (const viewport of [
     await expect(page.locator("details.more-tools")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Skip for now", exact: true }),
-    ).toBeEnabled();
+    ).toHaveCount(0);
     await waitForAnimations(page);
     await page.screenshot({
       path: `test-results/harness-detection/app-two-paths-only-${viewport.width}.png`,
@@ -107,12 +107,9 @@ for (const viewport of [
       discoveryDelayMs: 4000,
     });
     await expect(page.getByTestId("onboarding-runtime-loading")).toBeVisible();
-    await expect(
-      page.getByRole("button", {
-        name: "Check installed AI apps again",
-        exact: true,
-      }),
-    ).toBeDisabled();
+    await expect(page.getByTestId("onboarding-runtime-loading")).toContainText(
+      "Checking your installed apps",
+    );
     await waitForAnimations(page);
     await page.screenshot({
       path: `test-results/harness-detection/app-subscription-scan-${viewport.width}.png`,
@@ -160,9 +157,6 @@ test("runtime auth recheck is labelled and disabled during discovery", async ({
     exact: true,
   });
   await expect(check).toBeEnabled();
-  await expect(
-    card.getByRole("button", { name: "Open Codex setup guide", exact: true }),
-  ).toBeEnabled();
   await check.click();
   await expect(check).toBeDisabled();
   await expect(check).toBeEnabled();
@@ -245,16 +239,20 @@ for (const viewport of [
     });
     const codex = page.getByTestId("onboarding-connect-runtime-codex");
     await expect(codex).toBeVisible();
-    await expect(codex).toContainText("ChatGPT Pro");
-    await expect(codex).toContainText("87% left");
-    await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "87");
-    await expect(codex).not.toContainText("5-hour allowance");
+    // An outdated connection is not ready, so no allowance shows until it is
+    // updated.
+    await expect(codex.getByRole("meter")).toHaveCount(0);
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
     ).toBeHidden();
     await expect(
-      page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toContainText("Last known plan: Max 20x");
+      page
+        .getByTestId("onboarding-connect-runtime-claude")
+        .getByRole("button", {
+          name: "Check Claude subscription",
+          exact: true,
+        }),
+    ).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `test-results/subscriptions/app-real-data-${viewport.width}.png`,
@@ -262,11 +260,17 @@ for (const viewport of [
     await codex
       .getByRole("button", { name: "Update connection", exact: true })
       .click();
-    await expect(codex.getByRole("alert")).toContainText("timed out");
+    await expect(page.getByRole("alert")).toContainText("timed out");
     await codex.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(
       codex.getByRole("button", { name: "Retry", exact: true }),
     ).toHaveCount(0);
+    await expect(codex).toContainText("Weekly allowance");
+    await expect(codex.getByRole("meter")).toHaveAttribute(
+      "aria-valuenow",
+      "87",
+    );
+    await expect(codex).not.toContainText("5-hour allowance");
     await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
@@ -303,13 +307,12 @@ test("Claude protected subscription is checked only after an explicit action", a
     },
   });
   const card = page.getByTestId("onboarding-connect-runtime-claude");
-  await expect(card).toContainText("Last known plan");
-  await expect(card).not.toContainText("72% left");
+  await expect(card.getByRole("meter")).toHaveCount(0);
   await card
     .getByRole("button", { name: "Check Claude subscription", exact: true })
     .click();
-  await expect(card).toContainText("72% left");
-  await expect(card).toContainText("Subscription found");
+  await expect(card.getByRole("meter")).toHaveAttribute("aria-valuenow", "72");
+  await expect(card).toContainText("5-hour allowance");
   await expect(
     card.getByRole("button", {
       name: "Check Claude subscription",
@@ -351,10 +354,15 @@ for (const viewport of [
     });
     await expect(
       page.getByTestId("onboarding-connect-runtime-codex"),
-    ).toContainText("ChatGPT Pro");
+    ).toBeVisible();
     await expect(
-      page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toContainText("Last known plan: Max 20x");
+      page
+        .getByTestId("onboarding-connect-runtime-claude")
+        .getByRole("button", {
+          name: "Check Claude subscription",
+          exact: true,
+        }),
+    ).toBeVisible();
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
     ).toBeHidden();
