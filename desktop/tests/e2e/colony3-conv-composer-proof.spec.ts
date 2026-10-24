@@ -228,6 +228,9 @@ test("Composer: editing a message", async ({ page }) => {
   await openOlive(page);
   await narrowComposer(page);
   const row = page.locator(`[data-message-id="${COMPOSER_IDS.leratoEdit}"]`);
+  // The composer takes focus when the channel opens; open the menu after that,
+  // or its focus-outside dismissal closes the menu.
+  await expect(page.getByTestId("message-input")).toBeFocused();
   await row.hover();
   await page.getByTestId(`more-actions-${COMPOSER_IDS.leratoEdit}`).click();
   await page.getByTestId(`edit-message-${COMPOSER_IDS.leratoEdit}`).click();
