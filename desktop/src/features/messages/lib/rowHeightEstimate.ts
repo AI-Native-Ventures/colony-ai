@@ -22,10 +22,10 @@ import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
 // Visual caps mirror the inline image/markdown styles.
 const MEDIA_MAX_WIDTH = 384; // max-w-[min(24rem,100%)]
 const MEDIA_MAX_HEIGHT = 256; // max-h-64
-const TEXT_LINE_HEIGHT = 20;
+const TEXT_LINE_HEIGHT = 27; // 17px message text at the design's 1.6 line height
 const CODE_LINE_HEIGHT = 19;
 const CHARS_PER_LINE = 64; // rough wrap width at the timeline column
-const ROW_CHROME = 26; // author/time header + denser row padding
+const ROW_CHROME = 31; // author/time header + row padding at the design's sizes
 const CONTINUATION_ROW_CHROME = 8; // uniform py-1 padding; header/avatar are hidden
 const MEDIA_BLOCK_MARGIN_TOP = 4; // image/video blocks use mt-1 in markdown
 const REACTION_ROW = 24;
