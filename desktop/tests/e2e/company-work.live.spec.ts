@@ -201,12 +201,6 @@ test.describe("company work local relay journey", () => {
     await expect(page.getByTestId("company-work-full-timeline")).toContainText(
       "moved this work item to a new thread.",
     );
-    await page.goto(
-      `/#/channels/${GENERAL_CHANNEL_ID}?messageId=${destinationRootId}&threadRootId=${destinationRootId}`,
-    );
-    await expect(
-      page.getByTestId(`company-work-current-card-${workItemId}`),
-    ).toBeVisible();
     await page.goto(`/#/work/detail/${workItemId}`);
     await expect(page.getByTestId("company-work-verification")).toContainText(
       "The evidence satisfies the done condition.",

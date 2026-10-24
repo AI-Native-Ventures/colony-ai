@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { UpdateIndicator } from "@/features/settings/UpdateIndicator";
 import { cn } from "@/shared/lib/cn";
 
 type ConversationHeaderProps = {
@@ -122,20 +123,20 @@ export function ConversationHeader({
           <>
             <div className="flex items-center gap-3.5">
               {titleBlock}
-              {actions ? (
-                <div className="ml-auto flex shrink-0 items-center gap-1">
-                  {actions}
-                </div>
-              ) : null}
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <UpdateIndicator />
+                {actions}
+              </div>
             </div>
             {tabs}
           </>
         ) : (
           <>
             {titleBlock}
-            {actions ? (
-              <div className="ml-auto flex items-center gap-1">{actions}</div>
-            ) : null}
+            <div className="ml-auto flex items-center gap-1">
+              <UpdateIndicator />
+              {actions}
+            </div>
           </>
         )}
       </header>

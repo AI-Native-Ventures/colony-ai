@@ -93,6 +93,9 @@ async function emitPin(
 async function openMessageMenu(page: Page, messageId: string, content: string) {
   const row = page.getByTestId("message-row").filter({ hasText: content });
   await expect(row).toBeVisible();
+  // A menu chosen from a moment ago is still easing out; opening the next one
+  // over it swallows the click.
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await row.hover();
   await page.getByTestId(`more-actions-${messageId}`).click();
   const item = page.getByTestId(`pin-message-${messageId}`);

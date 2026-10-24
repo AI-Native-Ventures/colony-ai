@@ -590,7 +590,9 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
   await expect.poll(measureWrappedSentChip).toMatchObject({
     boxDecorationBreak: "clone",
     lineHeight: 25,
-    fragmentStep: 28,
+    // Message text runs at 1.5 of 17px on the Channel board, so wrapped lines
+    // of a chip step 27px.
+    fragmentStep: 27,
   });
   expect((await measureWrappedSentChip()).rects.length).toBeGreaterThanOrEqual(
     2,

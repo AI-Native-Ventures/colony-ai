@@ -494,11 +494,23 @@
   .inbox-channel-chip
 ):not(.search-channel-chip) {
   border-radius: calc(7 * var(--colony-px));
-  padding: calc(1 * var(--colony-px)) calc(6 * var(--colony-px));
+  padding-inline: calc(6 * var(--colony-px));
   background-color: hsl(var(--colony-accent-soft));
   color: hsl(var(--colony-accent-ink));
   font-weight: 700;
   text-decoration: none;
+}
+
+/*
+ * Only the horizontal padding is ours: a repository chip sizes its wrapped
+ * lines from its own vertical padding, and people's @mentions sit on the
+ * prose rhythm with a hairline of height.
+ */
+.c3c-body
+[data-mention].mention-chip:not(.buzz-link-unavailable):not(.buzz-link-deleted):not(
+  .inbox-channel-chip
+):not(.search-channel-chip) {
+  padding-block: calc(1 * var(--colony-px));
 }
 
 /* The provenance cloud on an agent chip stays: it says where the agent runs. */
