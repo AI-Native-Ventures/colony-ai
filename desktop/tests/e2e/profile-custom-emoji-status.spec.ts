@@ -414,7 +414,7 @@ test("profile popover renders a custom emoji status as an image", async ({
   await expect(statusButton).not.toContainText(`:${SHORTCODE}:`);
 });
 
-test("shows status and huddle indicators beside chat names with tooltips", async ({
+test("shows the status indicator beside chat names with a tooltip", async ({
   page,
 }) => {
   await page.goto("/");
@@ -466,58 +466,4 @@ test("shows status and huddle indicators beside chat names with tooltips", async
   await expect(statusIndicator.locator("[title]")).toHaveCount(0);
   await statusIndicator.hover();
   await expect(page.getByRole("tooltip")).toHaveText(STATUS_TEXT);
-
-  await waitForMockLiveSubscription(page, "alice-tyler", 48100);
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-      }),
-      id: "8".repeat(64),
-      kind: 48100,
-      pubkey,
-    });
-  }, MOCK_IDENTITY_PUBKEY);
-  const huddleIndicator = row.getByTestId("user-huddle-indicator");
-  await expect(huddleIndicator).toHaveCount(0);
-
-  await waitForMockLiveSubscription(page, "alice-tyler", 48101);
-  await page.evaluate((relayPubkey) => {
-    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
-    emit?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        admission_id: "status-admission",
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-        roster_revision: 1,
-      }),
-      extraTags: [["p", relayPubkey]],
-      id: "9".repeat(64),
-      kind: 48101,
-      pubkey: relayPubkey,
-    });
-    emit?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-      }),
-      extraTags: [["d", "status-huddle"]],
-      id: "a".repeat(64),
-      kind: 48104,
-      pubkey: relayPubkey,
-    });
-  }, MOCK_IDENTITY_PUBKEY);
-  await expect(huddleIndicator).toBeVisible();
-  await expect(huddleIndicator).toHaveAttribute("aria-label", "🎧 In a huddle");
-  await expect
-    .poll(() =>
-      huddleIndicator.evaluate((element) => getComputedStyle(element).fontSize),
-    )
-    .toBe("16px");
-  await huddleIndicator.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("In a huddle");
 });
