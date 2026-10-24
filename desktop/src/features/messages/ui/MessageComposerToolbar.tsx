@@ -180,6 +180,21 @@ export const MessageComposerToolbar = React.memo(
       </Tooltip>
     );
 
+    // Keys keep each tool mounted when the order changes (a thread composer
+    // moves its mention group first once an agent is addressed).
+    const tools = {
+      attach: { key: "attach", node: attachButton },
+      emoji: { key: "emoji", node: emojiPicker },
+      format: { key: "format", node: formattingButton },
+      mention: { key: "mention", node: mentionButton },
+    };
+    const orderedTools =
+      layout === "thread"
+        ? addressedAgents.length > 0
+          ? [tools.mention, tools.attach, tools.format]
+          : [tools.attach, tools.format, tools.mention]
+        : [tools.mention, tools.attach, tools.emoji, tools.format];
+
     return (
       <div className="c3c-toolbar" data-testid="message-composer-toolbar">
         {onLinkButton ? (
@@ -221,30 +236,9 @@ export const MessageComposerToolbar = React.memo(
               data-layout={layout}
               data-testid="composer-ingress-controls"
             >
-              {layout === "thread" ? (
-                addressedAgents.length > 0 ? (
-                  // With agents addressed, the mention group (button and
-                  // chips) leads, as the Composer states board draws it.
-                  <>
-                    {mentionButton}
-                    {attachButton}
-                    {formattingButton}
-                  </>
-                ) : (
-                  <>
-                    {attachButton}
-                    {formattingButton}
-                    {mentionButton}
-                  </>
-                )
-              ) : (
-                <>
-                  {mentionButton}
-                  {attachButton}
-                  {emojiPicker}
-                  {formattingButton}
-                </>
-              )}
+              {orderedTools.map((tool) => (
+                <React.Fragment key={tool.key}>{tool.node}</React.Fragment>
+              ))}
               {/* The reference slot sits where "Reference goal" used to; the
                   ask pill follows it. Both are optional per conversation. */}
               {referenceSlot}

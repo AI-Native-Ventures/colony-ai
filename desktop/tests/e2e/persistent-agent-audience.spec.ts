@@ -1568,8 +1568,10 @@ test("reduced motion removes addressed agents without spatial animation", async 
     `composer-address-lock-remove-${AGENT_A}`,
   );
   await expect(removeButton).toBeVisible();
-  await expect(removeButton).toHaveAttribute("style", /opacity: 1/);
-  await expect(removeButton).toHaveCSS("transform", "none");
+  // The chip, not its remove button, is the animated element now.
+  const chip = composer.getByTestId(`composer-address-chip-${AGENT_A}`);
+  await expect(chip).toHaveAttribute("style", /opacity: 1/);
+  await expect(chip).toHaveCSS("transform", "none");
 
   await removeButton.click();
   await expect(input).toHaveText("");

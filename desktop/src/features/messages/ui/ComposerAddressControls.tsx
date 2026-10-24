@@ -227,6 +227,7 @@ export function ComposerMentionButton({
                     <motion.span
                       animate={{ opacity: 1, scale: 1 }}
                       className="c3c-chip"
+                      data-testid={`composer-address-chip-${agent.pubkey}`}
                       exit={
                         shouldReduceMotion
                           ? { opacity: 0 }
