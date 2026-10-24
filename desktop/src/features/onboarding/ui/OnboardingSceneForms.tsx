@@ -168,10 +168,30 @@ function GoogleAccountAction({
   );
 }
 
+/** A quiet way in for people who lost their account details but still hold a key. */
+function AdvancedSignInEntry({
+  onAdvanced,
+}: Pick<PresentationProps, "onAdvanced">) {
+  if (!onAdvanced) return null;
+  return (
+    <div className="advanced-signin-entry">
+      <button
+        className="link"
+        data-testid="account-auth-advanced"
+        onClick={onAdvanced}
+        type="button"
+      >
+        Advanced sign-in options
+      </button>
+    </div>
+  );
+}
+
 export function AccountForm({
   data,
   error,
   inviteBrand,
+  onAdvanced,
   onEmailChange,
   onNameChange,
   onPasswordChange,
@@ -236,6 +256,7 @@ export function AccountForm({
         onGoogleSignIn={onGoogleSignIn}
         googlePending={googlePending}
       />
+      <AdvancedSignInEntry onAdvanced={onAdvanced} />
     </>
   );
 }
@@ -284,6 +305,7 @@ export function SignInForm({
   data,
   error,
   inviteBrand,
+  onAdvanced,
   onEmailChange,
   onNavigate,
   onPasswordChange,
@@ -355,6 +377,7 @@ export function SignInForm({
           Create an account
         </button>
       </div>
+      <AdvancedSignInEntry onAdvanced={onAdvanced} />
     </>
   );
 }
