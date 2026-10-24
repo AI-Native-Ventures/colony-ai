@@ -111,8 +111,8 @@ test("avatar step uses the compact prototype emoji picker", async ({
     .getByTestId("onboarding-content-card")
     .evaluate((element) => window.getComputedStyle(element).backgroundColor);
   // The card uses the warm surface while the selected segment uses the canvas.
-  expect(cardColor).toBe("rgb(255, 254, 253)");
-  expect(activeSegmentColor).toBe("rgb(243, 241, 245)");
+  expect(cardColor).toBe("rgb(255, 253, 250)");
+  expect(activeSegmentColor).toBe("rgb(255, 255, 255)");
   await expectSmoothCorners(page.getByTestId("onboarding-avatar-emoji-picker"));
   await waitForAnimations(page);
   await page.screenshot({

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 import { invokeMockCommand } from "../helpers/welcomeTeam";
 import {
   installWorkflowAdminBridge,
@@ -15,6 +16,7 @@ async function bootWithDefinition(
 ) {
   await page.goto("/");
   const workflow = await seedWorkflow(page, name, { definition });
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();
   return workflow;
