@@ -104,9 +104,9 @@ export function buildDirectMessageIntro({
   });
 
   // The conversation's picture shows who is in it, you included, when it is
-  // with one other person or a few.
+  // with one other person.
   const selfParticipant =
-    normalizedCurrentPubkey && otherParticipants.length > 0
+    normalizedCurrentPubkey && otherParticipants.length === 1
       ? participants.find(
           (participant) =>
             normalizePubkey(participant.pubkey) === normalizedCurrentPubkey,

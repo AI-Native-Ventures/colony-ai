@@ -34,7 +34,24 @@ import {
   SearchGlyph,
   WorkAreaToggleIcon,
 } from "@/shared/ui/conversationIcons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+
+/** A header control with its name in a tooltip. */
+function HeaderTip({
+  children,
+  label,
+}: {
+  children: React.ReactElement;
+  label: string;
+}) {
+  return (
+    <Tooltip disableHoverableContent>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 const DM_HEADER_AVATAR_SIZE = 40;
 const DM_HEADER_AVATAR_STATUS_GEOMETRY = scaleProfileAvatarStatusGeometry(
@@ -115,58 +132,68 @@ export function ChannelScreenHeader({
           {isJoining ? "Joining…" : "Join"}
         </button>
       ) : !isDm ? (
-        <button
-          aria-label={`View channel members (${memberCount})`}
-          className="flex h-10 items-center gap-2 rounded-xl pl-1.5 pr-2.5 text-colony-fg transition-colors hover:bg-colony-accent-soft"
-          data-testid="channel-members-trigger"
-          onClick={onToggleMembers}
-          type="button"
-        >
-          <ChannelMemberAvatarStack
-            currentPubkey={currentPubkey}
-            members={members}
-            size="header"
-            testIdPrefix="channel-topbar-member"
-          />
-          <span className="c3c-button font-bold tabular-nums">
-            {memberCount}
-          </span>
-        </button>
+        <HeaderTip label="Channel members">
+          <button
+            aria-label={`View channel members (${memberCount})`}
+            className="flex h-10 items-center gap-2 rounded-xl pl-1.5 pr-2.5 text-colony-fg transition-colors hover:bg-colony-accent-soft"
+            data-testid="channel-members-trigger"
+            onClick={onToggleMembers}
+            type="button"
+          >
+            <ChannelMemberAvatarStack
+              currentPubkey={currentPubkey}
+              members={members}
+              size="header"
+              testIdPrefix="channel-topbar-member"
+            />
+            <span className="c3c-button font-bold tabular-nums">
+              {memberCount}
+            </span>
+          </button>
+        </HeaderTip>
       ) : null}
       {showJoinButton || !workArea ? null : (
+        <HeaderTip label="Work area">
+          <button
+            aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+            aria-expanded={workArea.open}
+            aria-label="Open work area"
+            className="c3c-icon-button"
+            data-active={workArea.open ? "true" : undefined}
+            data-testid="channel-work-area-trigger"
+            onClick={(event) =>
+              toggleWorkAreaFrom(activeChannel.id, event.currentTarget)
+            }
+            type="button"
+          >
+            <WorkAreaToggleIcon />
+          </button>
+        </HeaderTip>
+      )}
+      <HeaderTip
+        label={isDm ? "Search this conversation" : "Search this channel"}
+      >
         <button
-          aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
-          aria-expanded={workArea.open}
-          aria-label="Open work area"
+          aria-label={isDm ? "Search this conversation" : "Search this channel"}
           className="c3c-icon-button"
-          data-active={workArea.open ? "true" : undefined}
-          data-testid="channel-work-area-trigger"
-          onClick={(event) =>
-            toggleWorkAreaFrom(activeChannel.id, event.currentTarget)
-          }
+          data-testid="channel-search-trigger"
+          onClick={requestChannelSearch}
           type="button"
         >
-          <WorkAreaToggleIcon />
+          <SearchGlyph />
         </button>
-      )}
-      <button
-        aria-label={isDm ? "Search this conversation" : "Search this channel"}
-        className="c3c-icon-button"
-        data-testid="channel-search-trigger"
-        onClick={requestChannelSearch}
-        type="button"
-      >
-        <SearchGlyph />
-      </button>
-      <button
-        aria-label="Manage channel"
-        className="c3c-icon-button"
-        data-testid="channel-management-trigger"
-        onClick={onManageChannel}
-        type="button"
-      >
-        <KebabIcon />
-      </button>
+      </HeaderTip>
+      <HeaderTip label="Channel settings">
+        <button
+          aria-label="Manage channel"
+          className="c3c-icon-button"
+          data-testid="channel-management-trigger"
+          onClick={onManageChannel}
+          type="button"
+        >
+          <KebabIcon />
+        </button>
+      </HeaderTip>
       {headerEndActions}
       <ChannelAddAgentHost
         channel={activeChannel}

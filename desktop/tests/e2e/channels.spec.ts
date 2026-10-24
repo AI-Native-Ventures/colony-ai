@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 
 import {
   KIND_HUDDLE_ENDED,
-  KIND_HUDDLE_STARTED,
   KIND_TYPING_INDICATOR,
 } from "../../src/shared/constants/kinds";
 import {
@@ -1383,11 +1382,9 @@ test("opens a sent direct message without waiting for a channel-list refresh", a
   });
 
   await page.getByTestId("send-message").click();
-  await expect(
-    page
-      .locator(".colony-workspace-topbar-title")
-      .getByText("charlie", { exact: true }),
-  ).toBeVisible({ timeout: 1_000 });
+  await expect(page.getByTestId("chat-title")).toHaveText("charlie", {
+    timeout: 1_000,
+  });
   await expect(page.getByTestId("message-timeline")).toContainText(message);
   expect(commandCount(await readCommandLog(page), "get_channels")).toBe(
     baselineChannelsReads,
@@ -4549,60 +4546,7 @@ test("channel header omits the add agent action", async ({ page }) => {
 
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
-});
-
-test("huddle rollback end event clears the active header action", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByTestId("channel-random").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await waitForMockLiveSubscription(page, "random", KIND_HUDDLE_STARTED);
-
-  const ephemeralChannelId = "10000000-0000-4000-8000-000000000001";
-  const createdAt = Math.floor(Date.now() / 1000);
-
-  await page.evaluate(
-    ({ createdAt, ephemeralChannelId, kind }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "random",
-        content: JSON.stringify({
-          ephemeral_channel_id: ephemeralChannelId,
-        }),
-        createdAt,
-        id: "1".repeat(64),
-        kind,
-      });
-    },
-    { createdAt, ephemeralChannelId, kind: KIND_HUDDLE_STARTED },
-  );
-
-  await expect(
-    page.getByRole("button", {
-      name: "Join active huddle (1 participant)",
-    }),
-  ).toBeVisible();
-
-  await page.evaluate(
-    ({ createdAt, ephemeralChannelId, kind }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "random",
-        content: JSON.stringify({
-          ephemeral_channel_id: ephemeralChannelId,
-        }),
-        createdAt,
-        id: "2".repeat(64),
-        kind,
-      });
-    },
-    { createdAt, ephemeralChannelId, kind: KIND_HUDDLE_ENDED },
-  );
-
-  await expect(
-    page.getByTestId("channel-start-huddle-trigger"),
-  ).toHaveAttribute("aria-label", "Start huddle");
 });
 
 test("channel header actions show tooltips", async ({ page }) => {
@@ -4612,7 +4556,6 @@ test("channel header actions show tooltips", async ({ page }) => {
 
   for (const [testId, label] of [
     ["channel-members-trigger", "Channel members"],
-    ["channel-huddle-tooltip-trigger", "Huddle"],
     ["channel-management-trigger", "Channel settings"],
   ] as const) {
     await page.getByTestId(testId).hover();

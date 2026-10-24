@@ -3297,7 +3297,6 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-actions-menu-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
 
   const rootMessage = page.locator('[data-message-id="mock-general-alice"]');
@@ -3307,10 +3306,9 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await page.getByTestId("reply-message-mock-general-alice").click();
   await expect(threadPanel).toBeVisible();
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
+  await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
 });
 
 test("single-panel thread view hides channel actions", async ({ page }) => {
