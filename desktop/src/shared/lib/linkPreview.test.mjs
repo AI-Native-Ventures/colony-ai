@@ -234,6 +234,7 @@ test("parseSupportedLinkPreview rejects malformed buzz:// entity links", () => {
     `buzz://repo?owner=${BUZZ_OWNER}&d=.hidden`,
     `buzz://project?owner=${BUZZ_OWNER}&d=.hidden`,
     "buzz://goal/123e4567-e89b-12d3-a456-426614174000",
+    "buzz://lead/123e4567-e89b-12d3-a456-426614174000",
   ]) {
     assert.equal(parseSupportedLinkPreview(href), null, href);
   }
@@ -246,6 +247,7 @@ test("extractSupportedLinkPreviews excludes Buzz entity links while keeping exte
     `buzz://issue?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
     `buzz://pr?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
     "buzz://goal/123e4567-e89b-12d3-a456-426614174000",
+    "buzz://lead/123e4567-e89b-12d3-a456-426614174000",
   ];
 
   assert.deepEqual(

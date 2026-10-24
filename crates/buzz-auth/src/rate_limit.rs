@@ -62,6 +62,8 @@ pub enum LimitType {
     ApiCalls,
     /// Relay-proxied GIF metadata searches.
     GifSearches,
+    /// Relay-proxied prospect discovery searches.
+    DiscoverySearches,
     /// All WebSocket events (broader than `Messages`).
     WsEvents,
     /// Concurrent WebSocket connections from a single IP address.
@@ -75,6 +77,7 @@ impl LimitType {
             Self::Messages => "msg",
             Self::ApiCalls => "api",
             Self::GifSearches => "gif",
+            Self::DiscoverySearches => "disc",
             Self::WsEvents => "ws",
             Self::IpConnections => "conn",
         }
@@ -94,6 +97,10 @@ pub struct RateLimitConfig {
     /// Default: 30.
     #[serde(default = "default_gif_searches")]
     pub gif_searches_per_min: u64,
+    /// Maximum relay-proxied prospect discovery searches per minute for each
+    /// pubkey. Default: 20.
+    #[serde(default = "default_discovery_searches")]
+    pub discovery_searches_per_min: u64,
     /// Maximum HTTP API calls per minute for human users. Default: 300.
     #[serde(default = "default_human_api")]
     pub human_api_calls_per_min: u64,
@@ -120,6 +127,9 @@ fn default_human_msg() -> u64 {
 fn default_gif_searches() -> u64 {
     30
 }
+fn default_discovery_searches() -> u64 {
+    20
+}
 fn default_human_api() -> u64 {
     300
 }
@@ -144,6 +154,7 @@ impl Default for RateLimitConfig {
         Self {
             human_messages_per_min: default_human_msg(),
             gif_searches_per_min: default_gif_searches(),
+            discovery_searches_per_min: default_discovery_searches(),
             human_api_calls_per_min: default_human_api(),
             human_ws_events_per_sec: default_human_ws(),
             agent_standard_messages_per_min: default_agent_std_msg(),
@@ -292,6 +303,17 @@ mod tests {
 
         assert!(gif_key.ends_with(":gif"));
         assert_ne!(gif_key, api_key);
+    }
+
+    #[test]
+    fn discovery_searches_have_an_independent_quota_key() {
+        let ctx = fixture_ctx("relay-a.example");
+        let keys = Keys::generate();
+        let discovery_key = rate_limit_key(&ctx, &keys.public_key(), &LimitType::DiscoverySearches);
+        let gif_key = rate_limit_key(&ctx, &keys.public_key(), &LimitType::GifSearches);
+
+        assert!(discovery_key.ends_with(":disc"));
+        assert_ne!(discovery_key, gif_key);
     }
 
     #[test]

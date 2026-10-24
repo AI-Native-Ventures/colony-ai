@@ -31,6 +31,8 @@ interface ProfilePopoverProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
+  /** The person's own job title, shown under their name. */
+  jobTitle?: string | null;
   avatarUrl: string | null;
   avatarDataUrl?: string | null;
   currentStatus: PresenceStatus;
@@ -69,6 +71,7 @@ export function ProfilePopover({
   open,
   onOpenChange,
   displayName,
+  jobTitle,
   avatarUrl,
   avatarDataUrl,
   currentStatus,
@@ -156,6 +159,14 @@ export function ProfilePopover({
                   </span>
                   <span className="pm-identity-copy">
                     <span className="pm-name">{displayName}</span>
+                    {jobTitle ? (
+                      <span
+                        className="pm-job-title"
+                        data-testid="profile-popover-job-title"
+                      >
+                        {jobTitle}
+                      </span>
+                    ) : null}
                     <PopoverTrigger asChild>
                       <button
                         aria-expanded={presenceMenuOpen}

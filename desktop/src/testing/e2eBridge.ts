@@ -303,6 +303,8 @@ type MockSearchProfileSeed = {
   displayName: string | null;
   avatarUrl?: string | null;
   nip05Handle?: string | null;
+  /** Job title, as published in the kind:0 `job_title` field. */
+  jobTitle?: string | null;
   about?: string | null;
   ownerPubkey?: string | null;
   isAgent?: boolean;
@@ -522,6 +524,12 @@ type E2eConfig = {
     }>;
     /** Seed the r19 work-reference card in The Olive House client channel. */
     referenceWorkspaceWorkShare?: boolean;
+    /**
+     * The reference workspace installs the simulated discovery runner by
+     * default. Set false to run the real runner against the page's own
+     * `window.__BUZZ_E2E_DISCOVERY_SEARCH__` stub instead.
+     */
+    referenceWorkspaceDiscoveryStandIn?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -1171,6 +1179,7 @@ type RawProfile = {
   avatar_url: string | null;
   about: string | null;
   nip05_handle: string | null;
+  job_title?: string | null;
   owner_pubkey: string | null;
   is_agent?: boolean;
   /** Mirrors the Rust `has_profile_event` flag: true when a real kind:0 event
@@ -1183,6 +1192,7 @@ type RawUserProfileSummary = {
   name?: string | null;
   avatar_url: string | null;
   nip05_handle: string | null;
+  job_title?: string | null;
   owner_pubkey: string | null;
   is_agent?: boolean;
 };
@@ -2599,6 +2609,7 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     system_prompt: agent.system_prompt,
     avatar_url: agent.avatar_url ?? null,
     model: agent.model,
+    model_source: agent.model_source ?? null,
     provider: agent.provider ?? null,
     env_vars: { ...(agent.env_vars ?? {}) },
     status: agent.status,
@@ -3436,6 +3447,7 @@ function seedMockSearchProfiles(config?: E2eConfig) {
       avatar_url: seed.avatarUrl ?? null,
       about: seed.about ?? null,
       nip05_handle: seed.nip05Handle ?? null,
+      job_title: seed.jobTitle ?? null,
       owner_pubkey: seed.ownerPubkey ?? null,
       is_agent: seed.isAgent ?? false,
       has_profile_event: true,
@@ -5454,7 +5466,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     channelId: REFERENCE_CHANNEL_IDS.sales,
     label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   };
-  installReferenceDiscoveryProvider();
+  if (config.mock?.referenceWorkspaceDiscoveryStandIn !== false) {
+    installReferenceDiscoveryProvider();
+  }
   const self = getMockMemberPubkey(config);
   const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);
@@ -13322,6 +13336,7 @@ async function runGetProfile(config: E2eConfig | undefined) {
     about: content.about ?? null,
     avatar_url: content.picture ?? null,
     nip05_handle: content.nip05 ?? null,
+    job_title: content.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13347,6 +13362,7 @@ async function handleUpdateProfile(
     avatarUrl?: string;
     about?: string;
     nip05Handle?: string;
+    jobTitle?: string;
   },
   config: E2eConfig | undefined,
 ) {
@@ -13375,6 +13391,7 @@ async function handleUpdateProfile(
     const hasAvatarUrlUpdate = typeof args.avatarUrl === "string";
     const hasAboutUpdate = typeof args.about === "string";
     const hasNip05HandleUpdate = typeof args.nip05Handle === "string";
+    const hasJobTitleUpdate = typeof args.jobTitle === "string";
     const nextDisplayName = args.displayName?.trim() ?? "";
     const nextAvatarUrl = args.avatarUrl?.trim() ?? "";
     const nextAbout = args.about?.trim() ?? "";
@@ -13393,6 +13410,9 @@ async function handleUpdateProfile(
     if (hasNip05HandleUpdate && nextNip05Handle !== profile.nip05_handle) {
       profile.nip05_handle = nextNip05Handle || null;
     }
+    if (hasJobTitleUpdate) {
+      profile.job_title = args.jobTitle?.trim() || null;
+    }
 
     return cloneProfile(profile);
   }
@@ -13410,6 +13430,10 @@ async function handleUpdateProfile(
     picture: args.avatarUrl ?? currentContent.picture ?? undefined,
     about: args.about ?? currentContent.about ?? undefined,
     nip05: args.nip05Handle ?? currentContent.nip05 ?? undefined,
+    job_title:
+      (args.jobTitle === undefined
+        ? currentContent.job_title
+        : args.jobTitle.trim()) || undefined,
   });
   await submitSignedEvent(config, {
     kind: 0,
@@ -13425,6 +13449,7 @@ async function handleUpdateProfile(
     about: updated.about ?? null,
     avatar_url: updated.picture ?? null,
     nip05_handle: updated.nip05 ?? null,
+    job_title: updated.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13479,6 +13504,7 @@ async function handleGetUserProfile(
     about: content.about ?? null,
     avatar_url: content.picture ?? null,
     nip05_handle: content.nip05 ?? null,
+    job_title: content.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13521,6 +13547,7 @@ async function handleGetUsersBatch(
         name: profile.name ?? null,
         avatar_url: profile.avatar_url,
         nip05_handle: profile.nip05_handle,
+        job_title: profile.job_title ?? null,
         owner_pubkey: profile.owner_pubkey,
         is_agent: profile.is_agent ?? false,
       };
@@ -13546,6 +13573,7 @@ async function handleGetUsersBatch(
       name: content.name ?? null,
       avatar_url: content.picture ?? null,
       nip05_handle: content.nip05 ?? null,
+      job_title: content.job_title ?? null,
       owner_pubkey:
         ((ev.tags ?? []) as string[][]).find(
           (tag) => Array.isArray(tag) && tag[0] === "auth" && tag.length === 4,
@@ -13575,6 +13603,7 @@ async function handleGetUsersBatch(
       name: profile.name ?? null,
       avatar_url: profile.avatar_url,
       nip05_handle: profile.nip05_handle,
+      job_title: profile.job_title ?? null,
       owner_pubkey: profile.owner_pubkey,
       is_agent: profile.is_agent ?? false,
     };
@@ -16595,6 +16624,7 @@ async function handleGetManagedAgentLog(args: {
 async function handleUpdateManagedAgent(args: {
   input: {
     pubkey: string;
+    personaId?: string;
     name?: string;
     model?: string | null;
     systemPrompt?: string | null;
@@ -16604,6 +16634,9 @@ async function handleUpdateManagedAgent(args: {
   };
 }): Promise<{ agent: RawManagedAgent; profile_sync_error: string | null }> {
   const agent = getMockManagedAgent(args.input.pubkey);
+  if (args.input.personaId !== undefined) {
+    agent.persona_id = args.input.personaId;
+  }
   if (args.input.name !== undefined) {
     agent.name = args.input.name;
   }

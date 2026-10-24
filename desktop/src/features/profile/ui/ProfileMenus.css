@@ -88,6 +88,16 @@
   white-space: nowrap;
 }
 
+.pm-job-title {
+  overflow: hidden;
+  margin-top: -0.125rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pm-chip {
   display: inline-flex;
   height: 1.875rem;

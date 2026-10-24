@@ -12,6 +12,7 @@ import {
   truncateInlineChipLabel,
   WRAPPING_INLINE_CHIP_CLASSES,
 } from "@/shared/ui/mentionChip";
+import { buildLeadLink, parseEntityLink } from "@/shared/lib/entityLink";
 import { buildChannelLink, parseChannelLink } from "./channelLink";
 import { getMessageLinkLabel } from "./messageLinkLabel";
 import { buildMessageLink, parseMessageLink } from "./messageLink";
@@ -28,9 +29,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -73,6 +74,11 @@ export function resolveComposerMessageLinkAttributes(
     };
   }
 
+  const entity = parseEntityLink(href);
+  if (entity.ok && entity.value.type === "lead") {
+    return { channelName: "", href: buildLeadLink(entity.value.id) };
+  }
+
   return null;
 }
 
@@ -80,7 +86,12 @@ function unwrapExactBuzzLink(text: string): string | null {
   const href =
     text.startsWith("<") && text.endsWith(">") ? text.slice(1, -1) : text;
   if (!href || /\s/.test(href)) return null;
-  return parseMessageLink(href).ok || parseChannelLink(href).ok ? href : null;
+  const entity = parseEntityLink(href);
+  return parseMessageLink(href).ok ||
+    parseChannelLink(href).ok ||
+    (entity.ok && entity.value.type === "lead")
+    ? href
+    : null;
 }
 
 function unwrapExactHttpLink(text: string): string | null {
@@ -343,6 +354,21 @@ function composerLinkPresentation(
       dataAttributes: { "data-channel-deep-link": "" },
       icon: "channel",
       label: resolvedChannelName,
+    };
+  }
+
+  const entity = parseEntityLink(href);
+  if (entity.ok && entity.value.type === "lead") {
+    // A lead chip shows the lead's name when the picker supplied one (the
+    // draft keeps only the link, so a restored draft falls back to the id).
+    const shortId = entity.value.id.slice(0, 8);
+    const leadName = channelName.trim();
+    return {
+      ariaLabel: leadName ? `Open lead ${leadName}` : `Open lead ${shortId}`,
+      channelName: leadName,
+      dataAttributes: { "data-buzz-link-kind": "lead" },
+      icon: "lead",
+      label: leadName || `Lead ${shortId}`,
     };
   }
 

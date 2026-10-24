@@ -36,7 +36,7 @@ const reportTitle =
   process.env.COLONY3_REPORT_TITLE ??
   notes.title ??
   "Colony 3.0 foundation proof";
-const reportLede = process.env.COLONY3_REPORT_LEDE;
+const reportLede = process.env.COLONY3_REPORT_LEDE ?? notes.lede;
 
 function decode(path) {
   const buffer = readFileSync(path);

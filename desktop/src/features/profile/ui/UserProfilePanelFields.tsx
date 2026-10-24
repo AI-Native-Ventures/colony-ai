@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowUpRight,
+  Briefcase,
   Cpu,
   Ear,
   Fingerprint,
@@ -180,6 +181,15 @@ export function buildPublicFields({
       icon: Fingerprint,
       label: "Public key",
       testId: "user-profile-public-key",
+    });
+  }
+
+  if (profile?.jobTitle?.trim()) {
+    fields.push({
+      displayValue: profile.jobTitle.trim(),
+      icon: Briefcase,
+      label: "Job title",
+      testId: "user-profile-job-title",
     });
   }
 

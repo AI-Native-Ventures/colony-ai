@@ -163,6 +163,7 @@ export function SidebarProfileCard({
             avatarUrl={profile?.avatarUrl ?? null}
             currentStatus={selfPresenceStatus}
             displayName={resolvedDisplayName}
+            jobTitle={profile?.jobTitle ?? null}
             isStatusPending={isPresencePending}
             onClearUserStatus={onClearUserStatus}
             onOpenSettings={onOpenSettings}

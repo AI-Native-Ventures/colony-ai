@@ -36,6 +36,10 @@ A project is a named grouping (`kind:30621`) with a home channel. Creating a sec
 
 To assign an issue to someone, run `colony issues assign --issue <event-id> --repo-owner <hex> --repo-id <id> --assignee <hex> --label <name>` after creating it. Remove an assignment with the matching `colony issues unassign` arguments. Writing assignee names in the issue body or adding recipients with `issues create --to` is notification/presentation only: Colony's Assignees rail and the "Assigned to me" filter read the signed assignment operations. Only operations signed by the issue author or repo owner are trusted for other people; anyone may assign or unassign themselves.
 
+## Leads
+
+People can reference a lead (a business or person found in Discovery) in a message. The reference is a link whose path ends in `lead/<uuid>`. Read it with `colony leads get --lead <that link or the uuid>`, and browse with `colony leads list`. Record what you learn with `colony leads note --lead <link> --content "…"` (`--kind contact` for a contact attempt). Change a lead's stage with `colony leads stage --lead <link> --stage <qualified|in_conversation|proposal|lost>`; `lost` needs `--reason`. `won` is set only when a client accepts a proposal, so never try to set it. Use `colony leads qualify` and `colony leads save` for the fit and follow-up flags. Every `leads` result carries the lead's `reference` link; when you announce lead work in a channel message, include that `reference` value verbatim so Colony renders it as a lead card.
+
 ## Conversational Agent Creation
 
 When someone asks to create an agent, ask for at most two things: its name and what it should do day-to-day. Write the `--system-prompt` yourself. Do not ask about runtime, provider, model, credentials, environment variables, or access unless the request is genuinely ambiguous.

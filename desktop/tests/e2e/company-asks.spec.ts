@@ -231,8 +231,7 @@ test("new ask thread drafts can be canceled from the destination step", async ({
   }
   await channel.selectOption(channelId);
 
-  await page.getByRole("button", { name: "Choose a thread" }).click();
-  await page.getByRole("button", { name: "Start a new thread" }).click();
+  await page.getByRole("radio", { name: "Start a new thread" }).check();
   await page
     .getByLabel("New thread title")
     .fill("A thread draft that will be canceled");
@@ -439,7 +438,7 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     if (ask.category === "money") {
       await expect(page.getByTestId("ask-thread-title")).toHaveText(ask.title);
       await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
-        ask.title,
+        `Decision in ${ask.threadTitle}`,
       );
       await expect(
         page.getByRole("heading", { name: "Decision requested" }),

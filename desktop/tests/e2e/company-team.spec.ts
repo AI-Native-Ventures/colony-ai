@@ -214,8 +214,10 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
   );
   await expect(page.getByTestId("company-team-list")).toContainText("alice");
   await expect(
-    page.getByTestId("company-team-screen").locator("header"),
-  ).toHaveText("Company / Team");
+    page
+      .getByRole("navigation", { name: "Breadcrumb" })
+      .locator('[aria-current="page"]'),
+  ).toHaveText("Team");
   await expect(
     page.getByTestId(`company-team-member-${OWNER_PUBKEY}`),
   ).toContainText("Founder · Human");
@@ -224,9 +226,13 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
     "Mina worker",
   );
 
+  await expect(page.getByRole("tab", { name: "Reporting lines" })).toHaveCount(
+    0,
+  );
   await page.getByTestId(`company-team-member-${alicePubkey}`).click();
   await expect(page).toHaveURL(new RegExp(`/team/detail/${alicePubkey}$`));
   await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0);
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Account Manager · Human",
   );
@@ -257,72 +263,41 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
   );
 
   await page.goto(`/#/team/detail/${unlinkedPubkey}`);
-  await expect(page.getByTestId("company-position-unlinked")).toBeVisible();
-  await expect(page.getByTestId("company-position-record")).toContainText(
-    "Campaign Designer",
-  );
-  await expect(page.getByTestId("company-position-record")).toContainText(
-    "Runtime statusReady",
-  );
   await expect(
-    page.getByRole("button", { name: "Connect a managed agent" }),
-  ).toBeDisabled();
-
-  await expect(
-    page.getByRole("button", { name: "Edit role and reporting" }),
+    page.getByRole("heading", { name: "Unlinked Mina", level: 1 }),
   ).toBeVisible();
+  await expect(page.getByText("Campaign Designer").first()).toBeVisible();
+  await expect(page.getByText("Not on this device")).toBeVisible();
   await captureRoute("team-unlinked");
   await page.goto("/#/team");
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
-  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    `${EMPLOYEE_TITLE} · Employee · Ready`,
+    "AI employee · Reports to",
   );
+  await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
   await expect(
-    page.getByTestId("company-position-header").getByRole("button", {
+    page.getByTestId("agent-profile").getByRole("button", {
       name: "Message",
-    }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByTestId("company-employee-direct-reports"),
-  ).toContainText("alice");
-  await page.getByRole("tab", { name: "Instructions" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "Existing employee instructions.",
-  );
-  await page.getByRole("button", { name: "Edit instructions" }).click();
-  await expect(
-    page.getByTestId("employee-instructions-editor").getByRole("heading", {
-      name: "Edit instructions",
+      exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByTestId("employee-instructions-editor").getByRole("button"),
-  ).toHaveText(["Save changes", "Cancel"]);
-  await expect(page.locator("h1")).toHaveCount(1);
-  await captureRoute("team-edit-instructions");
-  await page
-    .getByTestId("employee-system-instructions")
-    .fill("First revised employee instructions.");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "First revised employee instructions.",
-  );
-  await page.getByRole("button", { name: "Edit instructions" }).click();
-  await page
-    .getByTestId("employee-system-instructions")
-    .fill("Second revised employee instructions.");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "Second revised employee instructions.",
-  );
 
-  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.getByRole("button", { name: "More agent actions" }).click();
   await expect(
-    page.getByRole("button", { name: "Pause employee" }),
+    page.getByRole("menuitem", { name: "Edit role and reporting" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Pause employee" }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Terminate employee" }).click();
-  await expect(page.getByTestId("company-team-archive-screen")).toBeVisible();
+  await page.getByRole("menuitem", { name: "Edit role and reporting" }).click();
+  await expect(page.getByTestId("team-dialog-edit-role")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue(EMPLOYEE_TITLE);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("team-dialog-edit-role")).toHaveCount(0);
+  await page.getByRole("button", { name: "More agent actions" }).click();
+  await page.getByRole("menuitem", { name: "Terminate employee" }).click();
+  await expect(page.getByTestId("team-dialog-terminate")).toBeVisible();
   await page.getByLabel("Reason").fill("The role has ended after review.");
   await page.evaluate(() => {
     window.__BUZZ_E2E__?.mock?.companyMemberActionErrors?.push(
@@ -350,11 +325,14 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
       window.__BUZZ_E2E__.mock.companyMemberActionErrors = [];
   });
   await page.getByRole("button", { name: "Terminate employee" }).click();
-  await expect(page.getByTestId("company-position-header")).toContainText(
-    EMPLOYEE_TITLE,
-  );
+  await expect(page.getByTestId("team-dialog-terminate")).toHaveCount(0);
+  await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
   await expect(page.getByTestId("company-terminated-banner")).toBeVisible();
 
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
+  });
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await waitForMockLiveSubscription(page, "general");
   await emitEmployeeMessage(page, employeePubkey, "The handoff is complete.");
@@ -364,6 +342,7 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
 
   await page.goto(`/#/team/detail/${employeePubkey}`);
   await page.getByRole("button", { name: "Review rehire" }).click();
+  await expect(page.getByTestId("team-dialog-rehire")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve and rehire" }),
   ).toBeDisabled();
@@ -371,7 +350,7 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
   await page.getByRole("button", { name: "Approve and rehire" }).click();
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Offline",
+    "AI employee",
   );
   await expect
     .poll(() =>

@@ -113,6 +113,111 @@ impl std::fmt::Debug for KlipyConfig {
     }
 }
 
+/// Default Outscraper API host for Google Maps place searches.
+const DEFAULT_OUTSCRAPER_API_BASE: &str = "https://api.app.outscraper.com";
+/// Default Outscraper host that serves results for requests that run asynchronously.
+const DEFAULT_OUTSCRAPER_POLL_BASE: &str = "https://api.outscraper.cloud";
+/// Wait between result polls for an asynchronous Outscraper request.
+const OUTSCRAPER_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Optional Outscraper prospect-search integration owned by the relay operator.
+///
+/// The API key deliberately stays private and its [`Debug`] implementation is
+/// redacted so dumping [`Config`] cannot disclose it.
+#[derive(Clone)]
+pub struct DiscoveryConfig {
+    api_key: String,
+    api_base: String,
+    poll_base: String,
+    poll_interval: Duration,
+}
+
+impl DiscoveryConfig {
+    /// Build a configuration from an already-validated key and base URLs.
+    pub(crate) fn new(api_key: String, api_base: String, poll_base: String) -> Self {
+        Self {
+            api_key,
+            api_base,
+            poll_base,
+            poll_interval: OUTSCRAPER_POLL_INTERVAL,
+        }
+    }
+
+    /// Return the key only to the outbound Outscraper client.
+    pub(crate) fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
+    /// Base URL of the search API.
+    pub(crate) fn api_base(&self) -> &str {
+        &self.api_base
+    }
+
+    /// Base URL that serves results of asynchronous requests.
+    pub(crate) fn poll_base(&self) -> &str {
+        &self.poll_base
+    }
+
+    /// Wait between result polls.
+    pub(crate) fn poll_interval(&self) -> Duration {
+        self.poll_interval
+    }
+
+    /// Shorten the poll wait so tests do not sleep for seconds.
+    #[cfg(test)]
+    pub(crate) fn with_poll_interval(mut self, poll_interval: Duration) -> Self {
+        self.poll_interval = poll_interval;
+        self
+    }
+}
+
+impl std::fmt::Debug for DiscoveryConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscoveryConfig")
+            .field("api_key", &"[REDACTED]")
+            .field("api_base", &self.api_base)
+            .field("poll_base", &self.poll_base)
+            .finish()
+    }
+}
+
+/// Read the optional Outscraper integration from `OUTSCRAPER_API_KEY`,
+/// `OUTSCRAPER_API_BASE` and `OUTSCRAPER_POLL_BASE`. An unset or blank key
+/// means prospect search is not configured.
+fn discovery_config_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<Option<DiscoveryConfig>, ConfigError> {
+    let value = |name: &str| {
+        lookup(name)
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty())
+    };
+    let Some(api_key) = value("OUTSCRAPER_API_KEY") else {
+        return Ok(None);
+    };
+    let api_base =
+        value("OUTSCRAPER_API_BASE").unwrap_or_else(|| DEFAULT_OUTSCRAPER_API_BASE.to_string());
+    let poll_base =
+        value("OUTSCRAPER_POLL_BASE").unwrap_or_else(|| DEFAULT_OUTSCRAPER_POLL_BASE.to_string());
+    for (name, base) in [
+        ("OUTSCRAPER_API_BASE", &api_base),
+        ("OUTSCRAPER_POLL_BASE", &poll_base),
+    ] {
+        let parsed = url::Url::parse(base)
+            .map_err(|_| ConfigError::InvalidValue(format!("{name} must be an http(s) URL")))?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(ConfigError::InvalidValue(format!(
+                "{name} must be an http(s) URL without a query or fragment"
+            )));
+        }
+    }
+    Ok(Some(DiscoveryConfig::new(api_key, api_base, poll_base)))
+}
+
 /// Email, key-custody, and Google configuration for account routes.
 #[derive(Clone)]
 pub struct AccountConfig {
@@ -794,6 +899,10 @@ pub struct Config {
     /// and its proxy routes return 404.
     pub klipy: Option<KlipyConfig>,
 
+    /// Relay-owned Outscraper prospect search. Unset means `POST
+    /// /discovery/search` answers 503 with a plain "not set up" message.
+    pub discovery: Option<DiscoveryConfig>,
+
     /// Media storage configuration (S3/MinIO).
     pub media: buzz_media::MediaConfig,
     /// Maximum concurrent media uploads handled by one relay process.
@@ -985,6 +1094,10 @@ fn rate_limit_config_from_env() -> Result<buzz_auth::RateLimitConfig, ConfigErro
         gif_searches_per_min: positive_u64_from_env(
             "BUZZ_RATE_LIMIT_GIF_SEARCHES_PER_MIN",
             defaults.gif_searches_per_min,
+        )?,
+        discovery_searches_per_min: positive_u64_from_env(
+            "BUZZ_RATE_LIMIT_DISCOVERY_SEARCHES_PER_MIN",
+            defaults.discovery_searches_per_min,
         )?,
         human_api_calls_per_min: positive_u64_from_env(
             "BUZZ_RATE_LIMIT_HUMAN_API_CALLS_PER_MIN",
@@ -1322,6 +1435,8 @@ impl Config {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .map(|api_key| KlipyConfig { api_key });
+
+        let discovery = discovery_config_from_lookup(|name| std::env::var(name).ok())?;
 
         // Note: intentionally not prefixed with BUZZ_ — this is a relay-identity
         // config that may be shared across multiple services (e.g., ACP agent).
@@ -1869,6 +1984,7 @@ impl Config {
             self_provision_public_ip_limit,
             self_provision_public_global_limit,
             klipy,
+            discovery,
             media,
             media_max_concurrent_uploads,
             media_max_concurrent_uploads_per_pubkey,
@@ -1963,6 +2079,66 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn discovery_config_debug_redacts_the_api_key() {
+        let config = DiscoveryConfig::new(
+            "private-outscraper-key".to_string(),
+            DEFAULT_OUTSCRAPER_API_BASE.to_string(),
+            DEFAULT_OUTSCRAPER_POLL_BASE.to_string(),
+        );
+
+        let debug = format!("{config:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("private-outscraper-key"));
+    }
+
+    #[test]
+    fn discovery_config_needs_a_key_and_defaults_to_the_provider_hosts() {
+        assert!(discovery_config_from_lookup(env_of(&[]))
+            .expect("unset")
+            .is_none());
+        assert!(
+            discovery_config_from_lookup(env_of(&[("OUTSCRAPER_API_KEY", "   ")]))
+                .expect("blank")
+                .is_none()
+        );
+
+        let config = discovery_config_from_lookup(env_of(&[("OUTSCRAPER_API_KEY", " key ")]))
+            .expect("configured")
+            .expect("key present");
+        assert_eq!(config.api_key(), "key");
+        assert_eq!(config.api_base(), DEFAULT_OUTSCRAPER_API_BASE);
+        assert_eq!(config.poll_base(), DEFAULT_OUTSCRAPER_POLL_BASE);
+    }
+
+    #[test]
+    fn discovery_config_accepts_http_overrides_and_rejects_other_urls() {
+        let config = discovery_config_from_lookup(env_of(&[
+            ("OUTSCRAPER_API_KEY", "key"),
+            ("OUTSCRAPER_API_BASE", "http://127.0.0.1:9000"),
+            ("OUTSCRAPER_POLL_BASE", "http://127.0.0.1:9001/"),
+        ]))
+        .expect("overrides")
+        .expect("key present");
+        assert_eq!(config.api_base(), "http://127.0.0.1:9000");
+        assert_eq!(config.poll_base(), "http://127.0.0.1:9001/");
+
+        for invalid in [
+            "not a url",
+            "ftp://example.test",
+            "https://example.test/?a=b",
+        ] {
+            assert!(
+                discovery_config_from_lookup(env_of(&[
+                    ("OUTSCRAPER_API_KEY", "key"),
+                    ("OUTSCRAPER_API_BASE", invalid),
+                ]))
+                .is_err(),
+                "{invalid} must be rejected"
+            );
+        }
     }
 
     #[test]

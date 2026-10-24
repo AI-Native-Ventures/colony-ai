@@ -95,21 +95,65 @@ test.describe("W10 discovery and sales", () => {
     ).toBeVisible();
   });
 
-  test("normal runtime exposes no successful provider search", async ({
+  test("industry catalogue opens twelve, expands to all, and an industry lists its verticals", async ({
+    page,
+  }) => {
+    await installMockBridge(page, REFERENCE_WORKSPACE);
+    await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+
+    const discovery = page.getByTestId("w10-discovery-page");
+    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(12);
+    await discovery
+      .getByRole("button", { name: "Show all 34 industries" })
+      .click();
+    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(34);
+
+    await discovery.getByRole("button", { name: /Beauty & Wellness/ }).click();
+    await expect(
+      discovery.getByRole("heading", { name: "Beauty & Wellness" }),
+    ).toBeVisible();
+    await expect(discovery.getByText("13 verticals")).toBeVisible();
+    await expect(
+      page.getByTestId("discovery-category-breadcrumb"),
+    ).toContainText("Business/Discovery/Beauty & Wellness");
+    await expect(
+      discovery.getByRole("button", { name: "Find prospects" }),
+    ).toHaveCount(13);
+
+    await discovery.getByRole("button", { name: "All industries" }).click();
+    await expect(
+      discovery.getByRole("heading", { name: "Browse industries" }),
+    ).toBeVisible();
+  });
+
+  test("normal runtime shows no simulated results: a search with no server fails in plain words and creates no campaign", async ({
     page,
   }) => {
     await installMockBridge(page);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     const discovery = page.getByTestId("w10-discovery-page");
     await discovery
-      .getByRole("textbox", { name: "Search industries and verticals" })
+      .getByRole("textbox", { name: /Search industries/ })
       .fill("home decor");
-    await expect(
-      discovery.getByRole("button", { name: "Find prospects" }).first(),
-    ).toBeDisabled();
+    const find = discovery
+      .getByRole("button", { name: "Find prospects" })
+      .first();
+    await expect(find).toBeEnabled();
     await expect(
       discovery.getByText("Independent brands needing social support"),
     ).toHaveCount(0);
+
+    await find.click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Location").fill("South Africa");
+    await dialog
+      .getByRole("checkbox", {
+        name: "I approve this campaign’s maximum budget.",
+      })
+      .check();
+    await dialog.getByRole("button", { name: /Approve & start/ }).click();
+    await expect(dialog.getByRole("alert")).not.toBeEmpty();
+    await expect(page.getByTestId("w10-campaign-page")).toHaveCount(0);
 
     await page.goto("/#/campaign", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
@@ -145,7 +189,7 @@ test.describe("W10 discovery and sales", () => {
     await campaign
       .getByRole("checkbox", { name: "Select Form & Field" })
       .check();
-    await campaign.getByRole("button", { name: "Accept as leads" }).click();
+    await campaign.getByRole("button", { name: "Accept as lead" }).click();
     await expect(
       campaign.locator("tbody tr").getByText("Qualified"),
     ).toBeVisible();
@@ -255,6 +299,44 @@ test.describe("W10 discovery and sales", () => {
     await expect(addLead.getByRole("alert")).toHaveText(
       "This business already exists in Leads. Open the existing record.",
     );
+  });
+
+  test("leads screens offer no proposal, pipeline or services entry points", async ({
+    page,
+  }) => {
+    await installMockBridge(page, REFERENCE_WORKSPACE);
+    await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
+    const leads = page.getByTestId("w10-leads-page");
+    await expect(leads.getByRole("heading", { name: "Leads" })).toBeVisible();
+    await expect(leads.locator("tbody tr")).toHaveCount(12);
+    for (const name of ["Pipeline", "Proposals", "Services"]) {
+      await expect(leads.getByRole("link", { name })).toHaveCount(0);
+    }
+    await expect(
+      page.getByTestId("top-bar-breadcrumb").getByText("Leads"),
+    ).toBeVisible();
+
+    await page.goto("/#/sales/lead/form-field", {
+      waitUntil: "domcontentloaded",
+    });
+    const detail = page.getByTestId("w10-prospect-page");
+    await expect(
+      detail.getByRole("heading", { name: "Form & Field" }),
+    ).toBeVisible();
+    for (const name of [
+      "Prepare proposal",
+      "Prepare outreach",
+      /Open proposal/,
+    ]) {
+      await expect(detail.getByRole("button", { name })).toHaveCount(0);
+      await expect(detail.getByRole("link", { name })).toHaveCount(0);
+    }
+    await expect(page.getByTestId("lead-breadcrumb")).toContainText(
+      "Form & Field",
+    );
+    await expect(
+      detail.getByRole("link", { name: "Discuss in Sales" }),
+    ).toBeVisible();
   });
 
   test("W10 reference routes resolve to their own screen", async ({ page }) => {

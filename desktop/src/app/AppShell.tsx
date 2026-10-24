@@ -168,8 +168,6 @@ export function AppShell() {
     // Activity draws its own header; on a narrow window the sidebar drawer's
     // only handle is the shell bar, so it stays there.
     (location.pathname !== "/" || isNarrowWindow) &&
-    location.pathname !== "/team" &&
-    !location.pathname.startsWith("/asks/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;
@@ -693,7 +691,6 @@ export function AppShell() {
                 !settingsOpen &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
-                  location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
                   selectedView === "pins" ||

@@ -12,6 +12,7 @@ pub mod feed;
 pub mod gifs;
 pub mod goals;
 pub mod issues;
+pub mod leads;
 pub mod mem;
 pub mod messages;
 pub mod moderation;

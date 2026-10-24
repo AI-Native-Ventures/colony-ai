@@ -1,13 +1,19 @@
 import type * as React from "react";
 
-import { isEntityLink, type ParsedEntityLink } from "@/shared/lib/entityLink";
+import { LeadReferenceCard } from "@/features/leads/LeadReferenceCard";
+import {
+  isEntityLink,
+  parseEntityLink,
+  type ParsedEntityLink,
+} from "@/shared/lib/entityLink";
 import { parseSupportedLinkPreview } from "@/shared/lib/linkPreview";
 
 /**
  * Goals, projects, repositories and the rest of the entity surfaces are no
- * longer part of the app, so `buzz://` entity links have nowhere to go. They
- * stay in the message as plain text instead of rich cards or in-app
- * navigation.
+ * longer part of the app, so those `buzz://` entity links have nowhere to go.
+ * They stay in the message as plain text instead of rich cards or in-app
+ * navigation. Leads are the exception: a `buzz://lead/<id>` link renders as a
+ * lead card that opens the lead page itself.
  */
 const noopOpenEntityLink = (_link: ParsedEntityLink) => {};
 
@@ -58,6 +64,7 @@ export function EntityLinkAnchor({
   children,
   href,
   relayOrigin,
+  interactive = true,
 }: {
   children?: React.ReactNode;
   href: string;
@@ -66,6 +73,13 @@ export function EntityLinkAnchor({
   interactive?: boolean;
   asChip?: boolean;
 }): React.ReactElement | null {
+  const canonicalHref = resolveEntityHref(href, relayOrigin);
+  const parsed = canonicalHref ? parseEntityLink(canonicalHref) : null;
+  if (parsed?.ok && parsed.value.type === "lead") {
+    return (
+      <LeadReferenceCard leadId={parsed.value.id} interactive={interactive} />
+    );
+  }
   return (
     renderEntityLinkAnchor({ children, href, relayOrigin }) ?? <>{children}</>
   );

@@ -85,10 +85,6 @@ for (const viewport of [
       .getByText("Scout", { exact: true })
       .click();
     await expect(page.getByTestId("agent-profile")).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Agent profile sections" })
-      .getByRole("button", { name: "Instructions" })
-      .click();
     const instructions = page.getByTestId("agent-instructions");
     await expect(instructions).toContainText("Chief of Staff");
     const editor = instructions.locator("textarea");

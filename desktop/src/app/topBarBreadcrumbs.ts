@@ -18,6 +18,13 @@ const SALES_PAGES: Record<string, string> = {
   lead: "Lead",
 };
 
+const HIRE_PAGES: Record<string, string> = {
+  roles: "Role catalog",
+  configure: "Configure employee",
+  review: "Review hire",
+  success: "Hired",
+};
+
 function trail(...labels: string[]): Crumb[] {
   return labels.map((label) => ({ label }));
 }
@@ -34,7 +41,7 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
         ? trail("Company", "Team", "Member")
         : trail("Company", "Team");
     case "hire":
-      return trail("Company", "Team", "Hire");
+      return trail("Company", "Team", HIRE_PAGES[second ?? ""] ?? "Hire");
     case "work":
       return trail("Company", "Work");
     case "discovery":
@@ -42,15 +49,13 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
     case "campaign":
       return trail("Business", "Discovery", "Campaign");
     case "leads":
-      return trail("Business", "Sales");
+      return trail("Business", "Sales", "Leads");
     case "pipeline":
       return trail("Business", "Sales", "Pipeline");
     case "sales":
-      return trail(
-        "Business",
-        "Sales",
-        SALES_PAGES[second ?? ""] ?? "Overview",
-      );
+      return second === "lead"
+        ? trail("Business", "Sales", "Leads", "Lead")
+        : trail("Business", "Sales", SALES_PAGES[second ?? ""] ?? "Overview");
     case "clients":
       return segments.length > 1
         ? trail("Business", "Clients", "Client")

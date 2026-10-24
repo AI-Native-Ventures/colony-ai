@@ -245,6 +245,7 @@ export function deriveShellRoute(pathname: string): {
 
   if (
     pathname === "/discovery" ||
+    pathname === "/campaign" ||
     pathname === "/leads" ||
     pathname === "/pipeline" ||
     pathname === "/money" ||
@@ -282,7 +283,11 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
-  if (pathname === "/team" || pathname.startsWith("/team/")) {
+  if (
+    pathname === "/team" ||
+    pathname.startsWith("/team/") ||
+    pathname.startsWith("/hire/")
+  ) {
     return {
       selectedChannelId: null,
       selectedView: "team",

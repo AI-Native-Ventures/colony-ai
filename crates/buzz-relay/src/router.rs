@@ -100,6 +100,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Relay-owned third-party GIF metadata proxy (NIP-98 auth).
         .route(api::gifs::SEARCH_PATH, post(api::gifs::search))
         .route(api::gifs::SHARE_PATH, post(api::gifs::share))
+        // Relay-owned prospect search proxy; the provider key stays server-side.
+        .route(api::discovery::SEARCH_PATH, post(api::discovery::search))
         .route(
             "/workflows/{workflow_id}/runs",
             get(api::workflows::workflow_runs),

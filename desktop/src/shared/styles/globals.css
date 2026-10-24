@@ -24,9 +24,7 @@
 @import "./globals/colony-full-app-sidebar.css";
 @import "./globals/colony-workspace-continuation.css";
 @import "./globals/company-asks.css";
-@import "./globals/company-asks-destination.css";
 @import "./globals/company-asks-hire.css";
-@import "./globals/company-asks-money.css";
 @import "./globals/colony-workspace-continuation-after-asks.css";
 @import "./globals/colony-workspace-updates.css";
 @import "./globals/colony-shell.css";
@@ -34,6 +32,7 @@
 @import "./globals/colony3-field.css";
 @import "./globals/colony3-sidebar.css";
 @import "./globals/colony3-shell.css";
+@import "./globals/colony3-steps.css";
 
 @config "../../../tailwind.config.js";
 

@@ -39,10 +39,7 @@ test("profile instructions cancel and save through the managed config path", asy
     .click();
   await expect(page.getByTestId("agent-profile")).toBeVisible();
 
-  const profileNav = page.getByRole("navigation", {
-    name: "Agent profile sections",
-  });
-  await profileNav.getByRole("button", { name: "Instructions" }).click();
+  // The agent page shows its instructions without a tab to open first.
   const editor = page.getByTestId("agent-system-instructions");
   const saveButton = page.getByRole("button", {
     name: "Save changes",
