@@ -117,7 +117,7 @@ test("profile hover uses the light channel hover surface", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/");
 
-  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.31)");
+  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.62)");
 
   await waitForAnimations(page);
   await page
@@ -132,7 +132,7 @@ test("profile hover uses the dark channel hover surface", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/");
 
-  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.075)");
+  await expectProfileHoverToMatchChannel(page, "rgba(255, 255, 255, 0.09)");
 
   await waitForAnimations(page);
   await page

@@ -339,10 +339,13 @@ test("keeps automatic mention preferences in the composer across the R19 setting
   const headingBox = await heading.boundingBox();
   expect(settingsBox?.width).toBeGreaterThanOrEqual(300);
   // Keep the heading on one line as the shared typography ramp grows.
-  const headingLineHeight = await heading.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).lineHeight),
+  // The design leaves line height at "normal": one line is between one and
+  // one and a half font sizes tall.
+  const headingFontSize = await heading.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
   );
-  expect(headingBox?.height).toBeCloseTo(headingLineHeight, 1);
+  expect(headingBox?.height).toBeGreaterThanOrEqual(headingFontSize);
+  expect(headingBox?.height).toBeLessThanOrEqual(headingFontSize * 1.5);
   await composer
     .getByTestId("mention-autocomplete")
     .getByRole("button", { name: "Automatically mention Morgarita" })

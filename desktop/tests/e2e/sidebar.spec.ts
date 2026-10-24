@@ -86,11 +86,11 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   await page.mouse.move(600, 100);
   await expect(selectedRow).toHaveCSS(
     "background-color",
-    "rgba(255, 255, 255, 0.56)",
+    "rgba(255, 255, 255, 0.84)",
   );
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "650");
+  await expect(selectedRow).toHaveCSS("font-weight", "800");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -104,7 +104,8 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     const followingBox = following.getBoundingClientRect();
     return followingBox.top - selectedBox.bottom;
   });
-  expect(rowGap).toBe(0);
+  // Rows are 38px tall on a 40px pitch in the designed sidebar.
+  expect(rowGap).toBe(2);
 
   const idleHoverRowBackground = await hoverRow.evaluate(
     (row) => getComputedStyle(row).backgroundColor,

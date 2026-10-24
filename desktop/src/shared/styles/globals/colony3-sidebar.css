@@ -272,7 +272,10 @@
   opacity: 1;
 }
 
-.app-sidebar-full-shell [data-sidebar="menu-button"]:hover {
+.app-sidebar-full-shell [data-sidebar="menu-button"]:hover,
+.app-sidebar-full-shell
+  [data-sidebar="menu-item"]:hover
+  > [data-sidebar="menu-button"]:not([data-active="true"]) {
   background: var(--colony-sidebar-glass);
 }
 
@@ -320,6 +323,19 @@
 .app-sidebar-full-shell [data-sidebar-row-label]:not(.sidebar-muted-content),
 .app-sidebar-full-shell [data-sidebar="menu-button"] > svg.opacity-80 {
   opacity: 1;
+}
+
+/* A muted channel recedes as a whole: its icon dims with its label. */
+.app-sidebar-full-shell [data-sidebar="menu-button"]:has(.sidebar-muted-content)
+  > svg:first-child {
+  opacity: 0.5;
+}
+
+:root.dark
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"]:has(.sidebar-muted-content)
+  > svg:first-child {
+  opacity: 0.45;
 }
 
 .app-sidebar-full-shell [data-sidebar="menu-label"] {
@@ -1049,6 +1065,50 @@
 .colony-sidebar-notice-copy {
   align-items: flex-start;
   border-radius: 0.5rem;
+}
+
+/* The ShellNotices board lays the same cards out at 341px with larger type. */
+.colony-notice-gallery .colony-sidebar-notice {
+  padding: 0.875rem 1rem;
+  gap: 0.75rem;
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 12px 30px -20px rgb(40 20 60 / 35%);
+}
+
+.colony-notice-gallery
+  .colony-sidebar-notice:has(.colony-sidebar-notice-detail) {
+  align-items: flex-start;
+}
+
+.colony-notice-gallery .colony-sidebar-notice[data-dismissible="true"] {
+  padding-right: 0.625rem;
+}
+
+.colony-notice-gallery .colony-sidebar-notice > svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.colony-notice-gallery
+  .colony-sidebar-notice:has(.colony-sidebar-notice-detail)
+  > svg {
+  margin-top: 1px;
+}
+
+.colony-notice-gallery .colony-sidebar-notice-copy {
+  gap: 0.125rem;
+  line-height: 1.35;
+}
+
+.colony-notice-gallery .colony-sidebar-notice-title {
+  font-size: calc(15.5 * var(--colony-px));
+}
+
+.colony-notice-gallery .colony-sidebar-notice-detail {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
 }
 
 .colony-floating-notice .colony-sidebar-notice {

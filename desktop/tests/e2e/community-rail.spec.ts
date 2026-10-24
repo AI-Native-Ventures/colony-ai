@@ -123,6 +123,8 @@ test.describe("community rail", () => {
       tileStyle(buttonA),
       tileStyle(buttonB),
     ]);
+    await expect(buttonA).toHaveCSS("opacity", "1");
+    await expect(buttonB).toHaveCSS("opacity", "1");
     // Same 40px rounded tile; the open community is the dark one.
     expect(activeStyle.width).toBe("40px");
     expect(inactiveStyle.width).toBe("40px");
@@ -1395,9 +1397,9 @@ test.describe("community rail", () => {
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
     // 2.75rem below the rail's top: clear of the window buttons.
-    expect(
-      Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44),
-    ).toBeLessThan(0.5);
+    expect(Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44)).toBeLessThan(
+      0.5,
+    );
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
     );

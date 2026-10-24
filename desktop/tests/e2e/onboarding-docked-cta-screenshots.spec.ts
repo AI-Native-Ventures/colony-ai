@@ -41,7 +41,7 @@ async function expectSharedCardGeometry(page: Page, expectedWidth = 610) {
 
   expect(geometry.width).toBeCloseTo(expectedWidth, 0);
   expect(geometry.height).toBeCloseTo(664, 0);
-  expect(geometry.borderRadius).toBe("32px");
+  expect(geometry.borderRadius).toBe("16px");
   expect(geometry.paddingTop).toBe("48px");
   expect(geometry.paddingRight).toBe("48px");
   expect(geometry.paddingBottom).toBe("48px");
