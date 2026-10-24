@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
 import { installMockBridge } from "../helpers/bridge";
 
 const TERM = 'section[aria-label="Colony Term"]';
@@ -170,34 +169,6 @@ async function reveal(page: Page) {
     .poll(async () => page.locator(TERM).evaluate((el) => el.clientHeight))
     .toBeGreaterThanOrEqual(180);
 }
-
-test("project terminal button opens Colony Term for the repository", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await installTerminalBackend(page);
-  await installMockBridge(page);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await openLegacyProjectsView(page);
-  await page.getByTestId("projects-section-projects").click();
-  const projectEntry = page
-    .locator(
-      '[data-testid="project-card-buzz"], [data-testid="project-row-buzz"]',
-    )
-    .first();
-  await expect(projectEntry).toBeVisible({ timeout: 10_000 });
-  await projectEntry.click();
-  await page.getByTestId("project-home-context-repo-buzz").click();
-
-  const terminalButton = page.getByTestId("project-terminal-toggle");
-  await expect(terminalButton).toBeEnabled();
-  await terminalButton.click();
-  await expect(page.locator(TERM)).toHaveAttribute(
-    "data-terminal-mode",
-    "docked",
-  );
-  await expect(page.locator(TERM)).toBeVisible();
-});
 
 test("scrollback: wheel over Colony Term reaches terminal_scroll", async ({
   page,

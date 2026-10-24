@@ -88,7 +88,7 @@ function sidebarField(page: Page) {
   );
 }
 for (const width of [1728, 1440]) {
-  for (const variant of ["default", "catppuccin-latte", "dracula", "field"]) {
+  for (const variant of ["default", "field"]) {
     test(`chrome paint ${variant} ${width}`, async ({ page }) => {
       test.setTimeout(60_000);
       await page.setViewportSize({
@@ -108,12 +108,6 @@ for (const width of [1728, 1440]) {
           "#9CC2F7",
           "#00ACE6",
         ]);
-      } else if (variant !== "default") {
-        await page.getByTestId("appearance-open-themes").click();
-        await page.getByTestId(`theme-catalog-${variant}`).click();
-        await page.getByTestId("theme-use").click();
-        await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-        await page.getByTestId("theme-done").click();
       }
       const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
       const capture = async (route: string) => {
@@ -273,30 +267,3 @@ test("Agent Defaults shows the saved OpenRouter connection first", async ({
   ).toHaveCount(0);
   await expect(page.getByTestId("openrouter-connection")).toBeVisible();
 });
-
-for (const width of [1728, 1440]) {
-  test(`approved named preview and applied states ${width}`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: width === 1728 ? 1117 : 900 });
-    await start(page);
-    await appearance(page);
-    await page.getByTestId("appearance-open-themes").click();
-    await page.getByTestId("theme-catalog-buzz").click();
-    await expect(page.getByTestId("theme-use")).toHaveText("Use Colony");
-    const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-preview.png`,
-      });
-    await page.getByTestId("theme-use").click();
-    await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-    await expect(page.getByTestId("theme-done")).toHaveText("Done");
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-applied.png`,
-      });
-  });
-}

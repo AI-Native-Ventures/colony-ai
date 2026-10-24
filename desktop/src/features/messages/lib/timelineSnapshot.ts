@@ -233,10 +233,6 @@ export function selectTimelineBodySurface({
  *   4. "empty"    → the load succeeded and the branch is genuinely empty
  *   5. "pending"  → deferred is empty but the live list has content; paint
  *                   nothing yet (rows are streaming in on the deferred commit)
- *
- * Huddle transcripts flatten replies into the chat timeline and never show the
- * skeleton/error/empty affordances, so their non-list surfaces collapse to
- * "pending" (render nothing).
  */
 export type ThreadRepliesSurface =
   | "skeleton"
@@ -246,25 +242,6 @@ export type ThreadRepliesSurface =
   | "pending";
 
 export function selectThreadRepliesSurface({
-  isPending,
-  isError,
-  renderState,
-  isHuddleTranscript = false,
-}: {
-  isPending: boolean;
-  isError: boolean;
-  renderState: DeferredListRenderState;
-  isHuddleTranscript?: boolean;
-}): ThreadRepliesSurface {
-  const surface = resolveThreadRepliesSurface({
-    isPending,
-    isError,
-    renderState,
-  });
-  return isHuddleTranscript && surface !== "list" ? "pending" : surface;
-}
-
-function resolveThreadRepliesSurface({
   isPending,
   isError,
   renderState,

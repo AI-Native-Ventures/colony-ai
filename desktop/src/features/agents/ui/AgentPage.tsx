@@ -3,7 +3,6 @@ import * as React from "react";
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
 import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
 import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import {
@@ -156,7 +155,6 @@ export function AgentPage({
   const channelsQuery = useChannelsQuery({ enabled: true });
   const relayAgentsQuery = useRelayAgentsQuery({ enabled: true });
   const activeTurns = useActiveAgentTurns(key);
-  const managedOwner = useIsManagedAgent(key);
   const profileQuery = useUserProfileQuery(key);
   const archive = useIdentityArchive(key);
   // A profile that only came from the shared name lookup has no about text or
@@ -617,7 +615,7 @@ export function AgentPage({
             agent={agent}
             authStatus={runtime?.authStatus.status ?? "unknown"}
             availability={availability}
-            canEdit={managedOwner !== false}
+            canEdit
             config={configQuery.data}
             configError={
               configQuery.error instanceof Error ? configQuery.error : null
@@ -630,7 +628,7 @@ export function AgentPage({
           <AgentPageInstructions
             agent={agent}
             agents={actions.managedAgents}
-            canEdit={managedOwner !== false}
+            canEdit
             instruction={agent.systemPrompt ?? persona?.systemPrompt ?? null}
             key={agent.pubkey}
             ownerName={ownerName}

@@ -1,7 +1,5 @@
 import {
   AlertCircle,
-  Bell,
-  Clock,
   Ellipsis,
   ExternalLink,
   LoaderCircle,
@@ -24,12 +22,6 @@ import {
   type DraftViewItem,
 } from "@/features/messages/ui/DraftsPanel";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import type { Reminder } from "@/features/reminders/lib/reminderTypes";
-import { isDue } from "@/features/reminders/lib/reminderFilters";
-import {
-  RemindersPanel,
-  useReminderSources,
-} from "@/features/reminders/ui/RemindersPanel";
 import { TopChromeInsetHeader } from "@/shared/layout/TopChromeInsetHeader";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -54,23 +46,19 @@ import { VirtualizedList } from "@/shared/ui/VirtualizedList";
 
 const INBOX_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No activity yet",
-  project: "No project work found",
   mention: "No mentions found",
   thread: "No threads found",
   needs_action: "Nothing needs action",
   agent_activity: "No agent updates found",
-  reminders: "No reminders",
   drafts: "No drafts",
 };
 
 const INBOX_UNREAD_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No unread activity",
-  project: "No unread project work",
   mention: "No unread mentions",
   thread: "No unread threads",
   needs_action: "No unread items needing action",
   agent_activity: "No unread agent updates",
-  reminders: "No unread reminders",
   drafts: "No unread drafts",
 };
 
@@ -117,20 +105,6 @@ function InboxLabel({
   );
 }
 
-function formatReminderStatus(notBefore: number | undefined) {
-  if (notBefore === undefined) return "Pending";
-  const secondsUntil = notBefore - Math.floor(Date.now() / 1_000);
-  if (secondsUntil <= 0) return "Reminder due";
-  if (secondsUntil < 60) return "Reminder in less than a minute";
-  if (secondsUntil < 3_600) {
-    return `Reminder in ${Math.floor(secondsUntil / 60)}m`;
-  }
-  if (secondsUntil < 86_400) {
-    return `Reminder in ${Math.floor(secondsUntil / 3_600)}h`;
-  }
-  return `Reminder in ${Math.floor(secondsUntil / 86_400)}d`;
-}
-
 function getInboxVideoReviewCommentRootId(item: InboxItem) {
   const feedItems = [item.item, ...item.groupItems];
   const feedItemById = new Map(
@@ -159,59 +133,7 @@ function getInboxVideoReviewCommentRootId(item: InboxItem) {
   return undefined;
 }
 
-function PersonalItemRow({
-  id,
-  location,
-  onClick,
-  preview,
-  selected,
-  status,
-}: {
-  id: string;
-  location: InboxTypeLabel | null;
-  onClick: () => void;
-  preview: string;
-  selected: boolean;
-  status: string;
-}) {
-  return (
-    <button
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "flex w-full items-center gap-3 border-b border-border/45 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden",
-        selected && "bg-muted/40",
-      )}
-      data-testid={`home-all-reminders-${id}`}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Bell className="h-4 w-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-foreground">
-          Reminder
-        </span>
-        {location ? (
-          <InboxLabel
-            isActionRequired={false}
-            isDone={false}
-            label={location}
-          />
-        ) : null}
-        <span className="block truncate text-sm text-muted-foreground">
-          {preview}
-        </span>
-      </span>
-      <span className="shrink-0 text-xs font-medium text-muted-foreground">
-        {status}
-      </span>
-    </button>
-  );
-}
-
 type InboxListPaneProps = {
-  activeReminderEventIds?: ReadonlySet<string>;
   agentPubkeys?: ReadonlySet<string>;
   activeDraftCount: number;
   draftItems: DraftViewItem[];
@@ -225,23 +147,16 @@ type InboxListPaneProps = {
   onOpenDirect: (item: InboxItem) => void;
   isReopenPending?: (channelId: string | null | undefined) => boolean;
   isReopenErrored?: (channelId: string | null | undefined) => boolean;
-  onRemindLater: (item: InboxItem) => void;
   onSelect: (itemId: string) => void;
   onSelectDraft: (draftKey: string) => void;
-  onSelectReminder: (reminderId: string) => void;
   onUnreadOnlyChange: (checked: boolean) => void;
   selectedConversationId: string | null;
   selectedDraftKey: string | null;
   showRightDivider?: boolean;
-  dueReminderCount: number;
-  reminderPubkey?: string;
-  reminders: readonly Reminder[];
-  selectedReminderId: string | null;
   unreadOnly: boolean;
 };
 
 export function InboxListPane({
-  activeReminderEventIds,
   agentPubkeys,
   activeDraftCount,
   draftItems,
@@ -255,44 +170,17 @@ export function InboxListPane({
   onOpenDirect,
   isReopenPending,
   isReopenErrored,
-  onRemindLater,
   onSelect,
   onSelectDraft,
-  onSelectReminder,
   onUnreadOnlyChange,
   selectedConversationId,
   selectedDraftKey,
   showRightDivider = false,
-  dueReminderCount,
-  reminderPubkey,
-  reminders,
-  selectedReminderId,
   unreadOnly,
 }: InboxListPaneProps) {
-  const isReminders = filter === "reminders";
   const isDrafts = filter === "drafts";
-  const isMixedInboxView = filter === "all";
   const scrollRef = React.useRef<HTMLDivElement>(null);
-  const inboxRows = React.useMemo(
-    () =>
-      buildInboxListRows({
-        items,
-        reminders: unreadOnly
-          ? []
-          : reminders.filter((reminder) =>
-              isDue(reminder, Math.floor(Date.now() / 1_000)),
-            ),
-      }),
-    [items, reminders, unreadOnly],
-  );
-  const visibleInboxRows = React.useMemo(
-    () =>
-      isMixedInboxView
-        ? inboxRows
-        : inboxRows.filter((row) => row.kind === "inbox"),
-    [inboxRows, isMixedInboxView],
-  );
-  const reminderSources = useReminderSources(reminders);
+  const inboxRows = React.useMemo(() => buildInboxListRows({ items }), [items]);
   const unreadVisibleItemCount = React.useMemo(
     () =>
       items.reduce((count, item) => count + (doneSet.has(item.id) ? 0 : 1), 0),
@@ -306,14 +194,9 @@ export function InboxListPane({
     }
   }, [doneSet, items, onMarkRead]);
 
-  const renderItem = (item: InboxItem, dueReminder?: Reminder) => {
+  const renderItem = (item: InboxItem) => {
     const isSelected = item.conversationId === selectedConversationId;
     const isDone = doneSet.has(item.id);
-    const hasActiveReminder =
-      dueReminder !== undefined ||
-      [item.id, ...item.groupItems.map((groupItem) => groupItem.id)].some(
-        (eventId) => activeReminderEventIds?.has(eventId) ?? false,
-      );
     const hasChannelTarget = Boolean(item.item.channelId);
     const isReopening = isReopenPending?.(item.item.channelId) ?? false;
     const hasReopenError = isReopenErrored?.(item.item.channelId) ?? false;
@@ -444,15 +327,6 @@ export function InboxListPane({
                 isDone={isDone}
                 label={typeLabel}
               />
-              {dueReminder ? (
-                <div
-                  className="mt-1 flex items-center gap-1 text-2xs font-medium text-amber-600/80 dark:text-amber-300/80"
-                  data-testid="home-inbox-reminder-due"
-                >
-                  <Bell className="h-3 w-3" />
-                  Reminder due
-                </div>
-              ) : null}
 
               {isReopening || hasReopenError ? (
                 <div
@@ -538,20 +412,6 @@ export function InboxListPane({
           >
             <ExternalLink className="!h-4 !w-4" />
           </InboxRowActionButton>
-          <InboxRowActionButton
-            active={hasActiveReminder}
-            disabled={!hasChannelTarget}
-            label={
-              hasChannelTarget
-                ? hasActiveReminder
-                  ? "Reminder set"
-                  : "Remind me later"
-                : "Cannot remind without a channel"
-            }
-            onClick={() => onRemindLater(item)}
-          >
-            <Clock className="!h-4 !w-4" />
-          </InboxRowActionButton>
         </div>
       </div>
     );
@@ -582,17 +442,6 @@ export function InboxListPane({
           >
             <ExternalLink className="h-4 w-4" />
             {openLabel}
-          </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!hasChannelTarget}
-            onClick={() => {
-              if (hasChannelTarget) {
-                onRemindLater(item);
-              }
-            }}
-          >
-            <Clock className="h-4 w-4" />
-            {hasActiveReminder ? "Reminder set" : "Remind me later"}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -625,7 +474,7 @@ export function InboxListPane({
                   <div
                     className={cn(
                       "flex min-h-9 items-center justify-between gap-3 rounded-lg px-2 py-1.5",
-                      (isReminders || isDrafts) && "opacity-50",
+                      isDrafts && "opacity-50",
                     )}
                   >
                     <label
@@ -638,7 +487,7 @@ export function InboxListPane({
                       checked={unreadOnly}
                       className="shadow-none [&>span]:shadow-none"
                       data-testid="inbox-unread-only-toggle"
-                      disabled={isReminders || isDrafts}
+                      disabled={isDrafts}
                       id="inbox-unread-only-switch"
                       onCheckedChange={onUnreadOnlyChange}
                     />
@@ -663,31 +512,15 @@ export function InboxListPane({
             <div className="order-1 flex shrink-0 items-center justify-start">
               <InboxFilterMenu
                 activeDraftCount={activeDraftCount}
-                dueReminderCount={dueReminderCount}
                 filter={filter}
                 onFilterChange={onFilterChange}
-                reminderCount={reminders.length}
               />
             </div>
           </div>
         </div>
       </TopChromeInsetHeader>
 
-      {isReminders ? (
-        <div
-          className="-mt-13 flex min-h-0 flex-1 flex-col overflow-hidden pt-13"
-          data-testid="home-inbox-reminders"
-        >
-          {reminderPubkey ? (
-            <RemindersPanel
-              onSelectReminder={onSelectReminder}
-              presentation="inbox-list"
-              pubkey={reminderPubkey}
-              selectedReminderId={selectedReminderId}
-            />
-          ) : null}
-        </div>
-      ) : isDrafts ? (
+      {isDrafts ? (
         <div
           className="-mt-13 flex min-h-0 flex-1 flex-col overflow-hidden pt-13"
           data-testid="home-inbox-drafts"
@@ -705,43 +538,12 @@ export function InboxListPane({
           data-testid="home-inbox-list"
           ref={scrollRef}
         >
-          {visibleInboxRows.length > 0 ? (
+          {inboxRows.length > 0 ? (
             <VirtualizedList
               estimateSize={96}
               getItemKey={(row) => row.key}
-              items={visibleInboxRows}
-              renderItem={(row) => {
-                if (row.kind === "inbox") {
-                  return renderItem(row.item, row.dueReminder);
-                }
-
-                const source = reminderSources.get(row.reminder.id);
-                return (
-                  <PersonalItemRow
-                    id={row.reminder.id}
-                    location={
-                      source?.channel
-                        ? source.channel.channelType === "dm"
-                          ? {
-                              text: `In DM with ${source.channelLabel}`,
-                              channelLabel: null,
-                            }
-                          : { text: "In", channelLabel: source.channelLabel }
-                        : null
-                    }
-                    onClick={() => {
-                      onSelectReminder(row.reminder.id);
-                    }}
-                    preview={
-                      row.reminder.content.target?.preview ||
-                      row.reminder.content.note ||
-                      "Reminder"
-                    }
-                    selected={selectedReminderId === row.reminder.id}
-                    status={formatReminderStatus(row.reminder.notBefore)}
-                  />
-                );
-              }}
+              items={inboxRows}
+              renderItem={(row) => renderItem(row.item)}
               scrollRef={scrollRef}
             />
           ) : (
@@ -769,13 +571,11 @@ export function InboxListPane({
 }
 
 function InboxRowActionButton({
-  active = false,
   children,
   disabled = false,
   label,
   onClick,
 }: {
-  active?: boolean;
   children: React.ReactNode;
   disabled?: boolean;
   label: string;
@@ -786,10 +586,7 @@ function InboxRowActionButton({
       <TooltipTrigger asChild>
         <button
           aria-label={label}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
-            active && "bg-blue-500/10 text-blue-500 hover:text-blue-500",
-          )}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
           disabled={disabled}
           onClick={(event) => {
             event.preventDefault();

@@ -423,21 +423,6 @@ function AskDetailMemberScreen({
               showDiscussionLink={channel?.isMember === true}
             />
           ) : null}
-          {record?.head.status === "open" &&
-          record.head.ask.category === "secret" ? (
-            <Link
-              className="colony-decision-link"
-              search={{
-                askId,
-                bindingId: null,
-                channelId,
-                state: "request",
-              }}
-              to="/secrets"
-            >
-              Enter securely
-            </Link>
-          ) : null}
         </div>
       </main>
     </div>

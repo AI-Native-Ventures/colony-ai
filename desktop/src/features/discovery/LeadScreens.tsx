@@ -13,7 +13,6 @@ import type { BusinessRecords, BusinessRole } from "./businessRecordRelay";
 import type { ProspectStage } from "./businessRecordContract";
 import {
   publishProspectAction,
-  publishProposalVersion,
   type ProspectChanges,
 } from "./businessRecordMutations";
 import {
@@ -424,12 +423,6 @@ export function PipelineScreen(context: LeadContext) {
           value={openProspects.length.toString()}
         />
         <Metric
-          label="Proposals"
-          value={context.records.proposals
-            .filter(({ acceptance }) => !acceptance)
-            .length.toString()}
-        />
-        <Metric
           label="New clients"
           value={prospects
             .filter(({ record }) => record.prospect.stage === "won")
@@ -507,7 +500,6 @@ export function LeadDetailScreen({
   const [error, setError] = React.useState("");
   const [activity, setActivity] = React.useState("");
   const [activityType, setActivityType] = React.useState("Qualification");
-  const [proposalOpen, setProposalOpen] = React.useState(false);
   const [lostOpen, setLostOpen] = React.useState(false);
   const [lostReason, setLostReason] = React.useState("Not a fit");
   const [lostNotes, setLostNotes] = React.useState("");
@@ -529,12 +521,6 @@ export function LeadDetailScreen({
 
   const record = prospect.record;
   const person = record.prospect;
-  const proposals = context.records.proposals.filter(
-    ({ version }) => version?.prospectPartyId === person.party.partyId,
-  );
-  const currentProposal = proposals.sort(
-    (left, right) => right.head.revision - left.head.revision,
-  )[0];
 
   async function saveProspect(
     changes: ProspectChanges,
@@ -725,22 +711,6 @@ export function LeadDetailScreen({
               <W10Button disabled variant="secondary">
                 Prepare outreach
               </W10Button>
-              {currentProposal ? (
-                <a
-                  className="w10-button w10-button-primary"
-                  href={`#/sales/proposal/${currentProposal.head.proposalId}`}
-                >
-                  Open proposal · v{currentProposal.head.revision}
-                </a>
-              ) : (
-                <W10Button
-                  disabled={!canWrite}
-                  onClick={() => setProposalOpen(true)}
-                  variant="primary"
-                >
-                  Prepare proposal
-                </W10Button>
-              )}
               {person.stage === "lost" ? (
                 <W10Button
                   disabled={!canWrite || saving}
@@ -771,10 +741,7 @@ export function LeadDetailScreen({
           </section>
           <section className="w10-section">
             <h2>Keep the conversation together</h2>
-            <p>
-              Qualification notes and proposal decisions stay with this
-              opportunity.
-            </p>
+            <p>Qualification notes stay with this opportunity.</p>
             <a
               className="w10-button w10-button-secondary"
               href={`#/channels/${context.channelId}`}
@@ -785,12 +752,6 @@ export function LeadDetailScreen({
         </aside>
       </div>
 
-      <ProposalCreateDialog
-        context={context}
-        onOpenChange={setProposalOpen}
-        open={proposalOpen}
-        prospect={prospect}
-      />
       <Dialog onOpenChange={setLostOpen} open={lostOpen}>
         <DialogContent
           className="w10-dialog-content"
@@ -863,159 +824,5 @@ export function LeadDetailScreen({
         </DialogContent>
       </Dialog>
     </W10Page>
-  );
-}
-
-function ProposalCreateDialog({
-  context,
-  prospect,
-  open,
-  onOpenChange,
-}: {
-  context: LeadContext;
-  prospect: ProspectRow;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const navigate = useNavigate();
-  const service = context.records.services.find(
-    ({ record }) => record.status === "active",
-  )?.record.service;
-  const [title, setTitle] = React.useState(service?.name ?? "");
-  const [scope, setScope] = React.useState(service?.description ?? "");
-  const [amount, setAmount] = React.useState(
-    service ? String(service.monthlyFeeMinor / 100) : "",
-  );
-  const [posts, setPosts] = React.useState(
-    service?.postsPerMonth.toString() ?? "8",
-  );
-  const [revisions, setRevisions] = React.useState(
-    service?.revisionRounds.toString() ?? "2",
-  );
-  const [start, setStart] = React.useState("2026-10-01");
-  const [error, setError] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!context.currentPubkey) {
-      setError("Identity is unavailable. Retry when the connection is ready.");
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      const proposalId = crypto.randomUUID();
-      await publishProposalVersion({
-        channelId: context.channelId,
-        communityId: context.communityId,
-        proposalId,
-        prospect: prospect.record,
-        current: null,
-        acceptorPubkey: context.currentPubkey,
-        terms: {
-          title: title.trim(),
-          scope: scope.trim(),
-          postsPerMonth: Number(posts),
-          revisionRounds: Number(revisions),
-          serviceStart: start,
-        },
-        monthlyFeeMinor: Math.round(Number(amount) * 100),
-        serviceId: service?.serviceId ?? null,
-      });
-      await context.refresh();
-      onOpenChange(false);
-      await navigate({
-        to: "/sales/proposal/$proposalId",
-        params: { proposalId },
-      });
-    } catch (submitError) {
-      setError(errorMessage(submitError));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="w10-dialog-content"
-        data-testid="w10-proposal-form"
-      >
-        <DialogHeader>
-          <DialogTitle>Prepare proposal</DialogTitle>
-          <DialogDescription className="sr-only">
-            Prepare a service proposal for{" "}
-            {prospect.record.prospect.party.displayName}.
-          </DialogDescription>
-        </DialogHeader>
-        <form className="w10-form" onSubmit={(event) => void submit(event)}>
-          <Field
-            id="w10-proposal-title"
-            label="Title"
-            onChange={setTitle}
-            required
-            value={title}
-          />
-          <Field
-            id="w10-proposal-scope"
-            label="Scope & exclusions"
-            onChange={setScope}
-            required
-            rows={5}
-            value={scope}
-          />
-          <Field
-            id="w10-proposal-amount"
-            label="Monthly fee (ZAR)"
-            min={1}
-            onChange={setAmount}
-            required
-            step={0.01}
-            type="number"
-            value={amount}
-          />
-          <div className="w10-field-grid">
-            <Field
-              id="w10-proposal-posts"
-              label="Posts per month"
-              min={1}
-              onChange={setPosts}
-              required
-              type="number"
-              value={posts}
-            />
-            <Field
-              id="w10-proposal-revisions"
-              label="Revision rounds"
-              min={1}
-              onChange={setRevisions}
-              required
-              type="number"
-              value={revisions}
-            />
-          </div>
-          <Field
-            id="w10-proposal-start"
-            label="Service start"
-            onChange={setStart}
-            required
-            type="date"
-            value={start}
-          />
-          {error ? (
-            <p className="w10-form-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <div className="w10-dialog-actions">
-            <W10Button onClick={() => onOpenChange(false)}>Cancel</W10Button>
-            <W10Button disabled={saving} type="submit" variant="primary">
-              {saving ? "Saving…" : "Save proposal"}
-            </W10Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

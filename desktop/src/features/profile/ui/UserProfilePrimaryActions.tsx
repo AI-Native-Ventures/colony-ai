@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import {
   Hand,
-  Headphones,
   MessageSquare,
   Play,
   RefreshCw,
@@ -31,12 +30,10 @@ export function ProfilePrimaryActions({
   className,
   concealed = false,
   followMutation,
-  huddlePending,
   isFollowing,
   messagePending,
   onAgentPrimaryAction,
   onAgentRestart,
-  onHuddle,
   onMessage,
   onWave,
   pubkey,
@@ -51,12 +48,10 @@ export function ProfilePrimaryActions({
   className?: string;
   concealed?: boolean;
   followMutation: ReturnType<typeof useFollowMutation>;
-  huddlePending?: boolean;
   isFollowing: boolean;
   messagePending?: boolean;
   onAgentPrimaryAction?: () => void;
   onAgentRestart?: () => void;
-  onHuddle?: () => void;
   onMessage?: () => void;
   onWave?: () => void;
   pubkey: string;
@@ -79,7 +74,6 @@ export function ProfilePrimaryActions({
     showFollowAction ||
     onWave !== undefined ||
     onMessage !== undefined ||
-    onHuddle !== undefined ||
     (onAgentPrimaryAction !== undefined && agentActionLabel !== undefined) ||
     onAgentRestart !== undefined;
 
@@ -121,16 +115,6 @@ export function ProfilePrimaryActions({
           label="Message"
           onClick={onMessage}
           testId="user-profile-message"
-        />
-      ) : null}
-      {onHuddle ? (
-        <ProfileActionTile
-          disabled={huddlePending}
-          icon={Headphones}
-          isLoading={huddlePending}
-          label="Huddle"
-          onClick={onHuddle}
-          testId="user-profile-huddle"
         />
       ) : null}
       {onWave ? (

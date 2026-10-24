@@ -1,9 +1,4 @@
 import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
-import * as React from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
-import { CommunitiesProvider } from "@/features/communities/useCommunities";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -1979,12 +1974,6 @@ declare global {
       requestId: string;
       timeoutMs?: number;
     }) => Promise<string>;
-    /** Mount AgentSessionThreadPanel directly for channelId-only UI coverage. */
-    __BUZZ_E2E_MOUNT_AGENT_SESSION_PANEL__?: (input: {
-      agentPubkey: string;
-      channelId: string;
-      canInterruptTurn?: boolean;
-    }) => Promise<void>;
     /** Resolve decoded test-only observer controls back through the mock relay. */
     __BUZZ_E2E_OBSERVER_CONTROLS__?: Array<{
       agentPubkey: string;
@@ -5567,9 +5556,6 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }
   }
 }
-let directPanelRoot: Root | null = null;
-let directPanelContainer: HTMLDivElement | null = null;
-let directPanelQueryClient: QueryClient | null = null;
 let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
@@ -18737,61 +18723,6 @@ export function maybeInstallE2eTauriMocks() {
         return () => window.clearTimeout(timeout);
       },
     });
-  };
-  window.__BUZZ_E2E_MOUNT_AGENT_SESSION_PANEL__ = async ({
-    agentPubkey,
-    channelId,
-    canInterruptTurn = true,
-  }) => {
-    directPanelRoot?.unmount();
-    directPanelContainer?.remove();
-    directPanelQueryClient?.clear();
-
-    directPanelContainer = document.createElement("div");
-    directPanelContainer.dataset.testid = "e2e-direct-agent-session-panel-root";
-    document.body.appendChild(directPanelContainer);
-    directPanelQueryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          networkMode: "always",
-          refetchOnWindowFocus: false,
-        },
-        mutations: { networkMode: "always" },
-      },
-    });
-    directPanelRoot = createRoot(directPanelContainer);
-    _testRegisterKnownAgents("e2e-direct-agent-session-panel", [agentPubkey]);
-
-    const agent = {
-      pubkey: agentPubkey,
-      name: mockDisplayNames.get(agentPubkey) ?? "E2E agent",
-      status: "running" as const,
-      agentSource: "managed" as const,
-      canInterruptTurn,
-      channelIds: [channelId],
-    };
-    directPanelRoot.render(
-      React.createElement(
-        QueryClientProvider,
-        { client: directPanelQueryClient },
-        React.createElement(
-          CommunitiesProvider,
-          null,
-          React.createElement(AgentSessionThreadPanel, {
-            agent,
-            canInterruptTurn,
-            channel: null,
-            channelId,
-            isSinglePanelView: true,
-            layout: "standalone",
-            onClose: () => {},
-            widthPx: 420,
-          }),
-        ),
-      ),
-    );
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
   };
   mockMediaProxyPort = config.mock?.mediaProxyInitiallyUnavailable
     ? 0

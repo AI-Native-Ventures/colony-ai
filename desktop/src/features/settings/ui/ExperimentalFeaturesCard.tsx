@@ -57,9 +57,15 @@ export function ExperimentalFeaturesCard() {
       />
 
       <SettingsOptionGroup title="Features">
-        {previewFeatures.map((f) => (
-          <FeatureRow feature={f} key={f.id} />
-        ))}
+        {previewFeatures.length === 0 ? (
+          <SettingsOptionRow>
+            <p className="text-sm text-muted-foreground">
+              No experiments are available right now.
+            </p>
+          </SettingsOptionRow>
+        ) : (
+          previewFeatures.map((f) => <FeatureRow feature={f} key={f.id} />)
+        )}
       </SettingsOptionGroup>
     </section>
   );

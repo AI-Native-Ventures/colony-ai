@@ -68,8 +68,6 @@ type MessageRowItemProps = {
   followThreadById?: (rootId: string) => void;
   footer: React.ReactNode;
   highlightedMessageId?: string | null;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
   hideAgentAccessBadges?: boolean;
   isContinuation?: boolean;
   isFollowedByContinuation?: boolean;
@@ -102,8 +100,6 @@ export function MessageRowItem({
   followThreadById,
   footer,
   highlightedMessageId,
-  huddleMemberPubkeys,
-  huddleMemberPubkeysPending,
   hideAgentAccessBadges,
   isContinuation = false,
   isFollowedByContinuation = false,
@@ -151,8 +147,6 @@ export function MessageRowItem({
           channelId={channelId}
           highlighted={false}
           hoverBackground={false}
-          huddleMemberPubkeys={huddleMemberPubkeys}
-          huddleMemberPubkeysPending={huddleMemberPubkeysPending}
           hideAgentAccessBadge={hideAgentAccessBadges}
           isFollowingThread={
             isFollowingThreadById
@@ -211,8 +205,6 @@ export function MessageRowItem({
       <MessageRow
         channelId={channelId}
         highlighted={message.id === highlightedMessageId || isSearchActive}
-        huddleMemberPubkeys={huddleMemberPubkeys}
-        huddleMemberPubkeysPending={huddleMemberPubkeysPending}
         hideAgentAccessBadge={hideAgentAccessBadges}
         isContinuation={isContinuation}
         isUnread={isUnread}

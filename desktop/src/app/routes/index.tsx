@@ -21,12 +21,10 @@ type HomeRouteSearch = {
 
 const HOME_FILTERS: InboxFilter[] = [
   "all",
-  "project",
   "mention",
   "thread",
   "needs_action",
   "agent_activity",
-  "reminders",
   "drafts",
 ];
 

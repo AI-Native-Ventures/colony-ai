@@ -1,55 +1,12 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { ColonySteps } from "@/shared/ui/ColonySteps";
 import { InfoGlyph } from "./hireTools";
 import "./hire.css";
 
 export const hirePrimaryButtonClass =
   "bg-[#536d9c] text-white shadow hover:bg-[#4d668f] disabled:bg-[#536d9c] disabled:text-white disabled:opacity-100";
-
-/** Old page header, still used by the role pack editor page in Agents. */
-export function HirePageHeader({ title }: { title: string }) {
-  return (
-    <div className="flex h-[78px] w-full flex-none items-center border-b border-border px-6">
-      <p className="text-sm font-semibold text-foreground">Company / {title}</p>
-    </div>
-  );
-}
-
-/** Old back button, still used by the role pack editor page in Agents. */
-export function HireBackButton({
-  disabled = false,
-  onClick,
-}: {
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      aria-label="Back"
-      className="mb-4 inline-flex items-center gap-1 px-0 pt-4 text-xs text-muted-foreground hover:text-foreground"
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-      variant="ghost"
-    >
-      <span aria-hidden="true">‹</span> Back
-    </Button>
-  );
-}
-
-export function HireFlash({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="mb-[22px] rounded-[7px] border border-border bg-card px-[15px] py-3 text-xs text-foreground"
-      role="status"
-    >
-      {children}
-    </div>
-  );
-}
 
 /** The scrolling page frame of every hiring board. */
 export function HirePage({

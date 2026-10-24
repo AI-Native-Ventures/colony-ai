@@ -126,21 +126,17 @@ function RolePreview({
   onConfigure,
   onPropose,
   rolePack,
-  saved,
   workerLabels,
 }: {
   busy: boolean;
   onConfigure: () => void;
   onPropose: () => void;
   rolePack: RolePack;
-  saved: boolean;
   workerLabels: readonly string[];
 }) {
   return (
     <section className="colony-hire-card colony-hire-panel">
-      <h2 className="colony-hire-eyebrow">
-        {saved ? "Role pack saved" : "Role pack preview"}
-      </h2>
+      <h2 className="colony-hire-eyebrow">Role pack preview</h2>
       <h3 className="colony-hire-panel-title">{rolePack.title}</h3>
       <dl className="colony-hire-detail">
         <div>
@@ -221,34 +217,20 @@ function NoRuntimeNotice({ onOpenSettings }: { onOpenSettings: () => void }) {
   );
 }
 
-export function HireRolesScreen({
-  savedRolePackId,
-  roleRecovery,
-  rolePersonaId,
-}: {
-  savedRolePackId?: string;
-  roleRecovery?: "runtime-empty" | "provider-empty" | "model-empty";
-  rolePersonaId?: string;
-}) {
+export function HireRolesScreen() {
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery();
   const membershipQuery = useMyRelayMembershipQuery();
-  const { goAgentRolePack, goAgentRolePackEdit, goHireConfigure, goTeam } =
-    useAppNavigation();
+  const { goHireConfigure, goTeam } = useAppNavigation();
   const navigate = useNavigate();
   const appShell = useAppShell();
   const queryClient = useQueryClient();
   const createPersona = useCreatePersonaMutation();
   const { activeCommunity } = useCommunities();
-  const [selectedId, setSelectedId] = React.useState<string | null>(
-    savedRolePackId ?? null,
-  );
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [addFailed, setAddFailed] = React.useState(false);
   const addingRef = React.useRef(false);
-  React.useEffect(() => {
-    if (savedRolePackId) setSelectedId(savedRolePackId);
-  }, [savedRolePackId]);
 
   const authorized =
     membershipQuery.data?.role === "owner" ||
@@ -313,69 +295,6 @@ export function HireRolesScreen({
             proposal.
           </HireRecovery>
         )}
-      </HirePage>
-    );
-  }
-
-  if (roleRecovery) {
-    const kind = roleRecovery.replace("-empty", "") as
-      | "runtime"
-      | "provider"
-      | "model";
-    const recoveryCopy = {
-      runtime: {
-        title: "No runtime is available",
-        body: "Connect a supported runtime before creating an agent. The proposed position and draft are kept.",
-        action: "Open harness settings",
-      },
-      provider: {
-        title: "No provider is available",
-        body: "The chosen runtime has no connected provider. Connect one, then return.",
-        action: "Open AI connections",
-      },
-      model: {
-        title: "No model is available",
-        body: "This provider returned no eligible models. Refresh its model list or choose another configured provider.",
-        action: "Open AI connections",
-      },
-    }[kind];
-    return (
-      <HirePage testId={`company-role-${kind}-recovery`}>
-        <HireTitle
-          subtitle="Choose the role a new AI employee will fill."
-          title="Role catalog"
-        />
-        <section
-          aria-labelledby="hire-role-recovery-title"
-          className="colony-hire-card colony-hire-recovery"
-          data-centered="true"
-        >
-          <h2 id="hire-role-recovery-title">{recoveryCopy.title}</h2>
-          <p>{recoveryCopy.body}</p>
-          <HireButton
-            onClick={() =>
-              appShell.onOpenSettings?.(
-                kind === "runtime" ? "harnesses" : "agent-defaults",
-              )
-            }
-            size="md"
-          >
-            {recoveryCopy.action}
-          </HireButton>
-          <HireButton
-            onClick={() => {
-              if (rolePersonaId && rolePersonaId !== "new") {
-                void goAgentRolePackEdit(rolePersonaId, true);
-              } else {
-                void goAgentRolePack(true);
-              }
-            }}
-            size="md"
-            variant="outline"
-          >
-            Keep draft and return
-          </HireButton>
-        </section>
       </HirePage>
     );
   }
@@ -479,7 +398,6 @@ export function HireRolesScreen({
               onConfigure={() => configure(selected)}
               onPropose={() => propose(selected)}
               rolePack={selected.rolePack}
-              saved={selected.persona.id === savedRolePackId}
               workerLabels={workerLabelsFor(selected.rolePack)}
             />
           ) : null}

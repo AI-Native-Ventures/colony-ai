@@ -49,11 +49,9 @@ function AppError({ children }: { children: React.ReactNode }) {
 export function TeamMemberScreen({
   memberPubkey,
   mode,
-  initialTab,
 }: {
   memberPubkey: string;
   mode: TeamMemberScreenMode;
-  initialTab?: "overview" | "history";
 }) {
   const teamQuery = useCompanyTeamQuery();
   const identity = useIdentityQuery();
@@ -297,7 +295,6 @@ export function TeamMemberScreen({
     return (
       <HumanMemberProfile
         fullName={fullName}
-        initialTab={initialTab}
         member={member}
         onBack={() => void goTeam()}
         canManage={canManage}

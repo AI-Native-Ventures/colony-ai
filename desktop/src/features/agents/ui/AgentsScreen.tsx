@@ -21,11 +21,6 @@ import {
 import { useHistorySearchState } from "@/shared/hooks/useHistorySearchState";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
-import type { AgentWorkspaceView } from "./AgentsView";
-
-function workspaceViewFromSearch(value: string | null): AgentWorkspaceView {
-  return value === "teams" || value === "templates" ? value : "directory";
-}
 
 const AgentsView = React.lazy(async () => {
   const module = await import("@/features/agents/ui/AgentsView");
@@ -39,15 +34,11 @@ type ProfilePanelTarget =
 const AGENTS_PROFILE_SEARCH_KEYS = [
   "agent",
   "agentTab",
-  "editRolePack",
   "profile",
   "profilePersona",
   "profileTab",
   "profileView",
-  "rolePack",
-  "resumeRolePack",
   "rows",
-  "view",
 ] as const;
 
 export function AgentsScreen() {
@@ -122,7 +113,6 @@ export function AgentsScreen() {
         profilePersona: null,
         profileTab: null,
         profileView: null,
-        view: null,
       }),
     [applyPatch],
   );
@@ -163,10 +153,6 @@ export function AgentsScreen() {
               onOpenAgent={handleOpenAgent}
               onPageSizeChange={handlePageSizeChange}
               pageSize={values.rows ?? undefined}
-              createRolePack={values.rolePack === "create"}
-              editRolePackPersonaId={values.editRolePack ?? undefined}
-              resumeRolePack={values.resumeRolePack === "1"}
-              view={workspaceViewFromSearch(values.view)}
             />
           </React.Suspense>
           {profilePanelTarget ? (

@@ -33,7 +33,6 @@ import { UnreadDivider } from "./UnreadDivider";
 import { useTimelineRetention } from "./useTimelineRetention";
 import { useUpwardPaginationWheel } from "./useUpwardPaginationWheel";
 import { useVirtualizedBottomSettle } from "./useVirtualizedBottomSettle";
-import { CompanyWorkTrackingProvider } from "@/features/company-work/companyWorkTrackingContext";
 
 export type TimelineVirtualizerApi = {
   cancelBottomIntent: () => void;
@@ -51,8 +50,6 @@ type TimelineMessageListProps = {
   channelName?: string;
   channelType?: ChannelType | null;
   currentPubkey?: string;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
   /** Event id of the oldest unread top-level message; renders a "New" divider above it. */
   firstUnreadMessageId?: string | null;
   followThreadById?: (rootId: string) => void;
@@ -106,13 +103,13 @@ type TimelineMessageListProps = {
   threadUnreadCounts?: ReadonlyMap<string, number>;
   /** Content rendered as the first virtual row before channel history. */
   leadingContent?: React.ReactNode;
-  /** Hide date boundaries for a huddle's live transcript. */
+  /** Hide date boundaries between message groups. */
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
   /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
-  /** Hide agent access-policy badges in the purpose-built Huddle chat. */
+  /** Hide agent access-policy badges. */
   hideAgentAccessBadges?: boolean;
   /**
    * True when the loaded window provably starts at the channel's beginning.
@@ -137,8 +134,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   firstUnreadMessageId = null,
   followThreadById,
   highlightedMessageId = null,
-  huddleMemberPubkeys,
-  huddleMemberPubkeysPending = false,
   isFollowingThreadById,
   isMessageUnreadById,
   entranceMessageId = null,
@@ -260,8 +255,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               followThreadById={followThreadById}
               footer={messageFooters?.[item.entry.message.id] ?? null}
               highlightedMessageId={highlightedMessageId}
-              huddleMemberPubkeys={huddleMemberPubkeys}
-              huddleMemberPubkeysPending={huddleMemberPubkeysPending}
               hideAgentAccessBadges={hideAgentAccessBadges}
               isContinuation={
                 alwaysShowMessageIdentity ? false : item.isContinuation
@@ -303,8 +296,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       currentPubkey,
       followThreadById,
       highlightedMessageId,
-      huddleMemberPubkeys,
-      huddleMemberPubkeysPending,
       hideAgentAccessBadges,
       isFollowingThreadById,
       isMessageUnreadById,
@@ -331,57 +322,53 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
 
   if (useVirtualizer) {
     return (
-      <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
-        <VirtualizedTimelineRows
-          dayGroups={dayGroups}
-          historyExhausted={historyExhausted}
-          hideDayDividers={hideDayDividers}
-          leadingContent={leadingContent}
-          onAtBottomStateChange={onAtBottomStateChange}
-          onStartReached={onStartReached}
-          onVirtualizerApiChange={onVirtualizerApiChange}
-          onVirtualizerRangeChanged={onVirtualizerRangeChanged}
-          onVirtualizerScrollerChange={onVirtualizerScrollerChange}
-          renderItem={renderItem}
-        />
-      </CompanyWorkTrackingProvider>
+      <VirtualizedTimelineRows
+        dayGroups={dayGroups}
+        historyExhausted={historyExhausted}
+        hideDayDividers={hideDayDividers}
+        leadingContent={leadingContent}
+        onAtBottomStateChange={onAtBottomStateChange}
+        onStartReached={onStartReached}
+        onVirtualizerApiChange={onVirtualizerApiChange}
+        onVirtualizerRangeChanged={onVirtualizerRangeChanged}
+        onVirtualizerScrollerChange={onVirtualizerScrollerChange}
+        renderItem={renderItem}
+      />
     );
   }
 
   return (
-    <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
-      <div className="flex flex-col">
-        {dayGroups.map((group) => (
-          <section
-            className={cn(
-              "relative flex flex-col",
-              !hideDayDividers &&
-                group.headingTimestamp !== null &&
-                "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
-            )}
-            data-day-label={
-              group.headingTimestamp === null
-                ? undefined
-                : formatDayGroupLabel(group.headingTimestamp)
-            }
-            data-testid="message-timeline-day-group"
-            key={group.key}
-          >
-            {hideDayDividers || group.headingTimestamp === null ? null : (
-              <DayDivider
-                label={formatDayGroupLabel(group.headingTimestamp)}
-                sticky={stickyDayDividers}
-              />
-            )}
-            {group.items.map((item) => (
-              <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
-                {renderItem(item)}
-              </TimelineRowShell>
-            ))}
-          </section>
-        ))}
-      </div>
-    </CompanyWorkTrackingProvider>
+    <div className="flex flex-col">
+      {dayGroups.map((group) => (
+        <section
+          className={cn(
+            "relative flex flex-col",
+            !hideDayDividers &&
+              group.headingTimestamp !== null &&
+              "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
+          )}
+          data-day-label={
+            group.headingTimestamp === null
+              ? undefined
+              : formatDayGroupLabel(group.headingTimestamp)
+          }
+          data-testid="message-timeline-day-group"
+          key={group.key}
+        >
+          {hideDayDividers || group.headingTimestamp === null ? null : (
+            <DayDivider
+              label={formatDayGroupLabel(group.headingTimestamp)}
+              sticky={stickyDayDividers}
+            />
+          )}
+          {group.items.map((item) => (
+            <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
+              {renderItem(item)}
+            </TimelineRowShell>
+          ))}
+        </section>
+      ))}
+    </div>
   );
 });
 

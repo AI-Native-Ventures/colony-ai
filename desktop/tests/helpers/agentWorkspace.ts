@@ -11,21 +11,28 @@ export async function openAgentsDirectoryView(page: Page): Promise<void> {
   });
 }
 
-export async function openAgentTemplatesView(page: Page): Promise<void> {
-  await openAgentsDirectoryView(page);
-  await showAgentTemplates(page);
+/** Opens an agent's profile side panel on the agents route by deep link. */
+export async function openAgentProfilePanel(
+  page: Page,
+  pubkey: string,
+): Promise<void> {
+  await page.evaluate((target) => {
+    window.location.hash = `/agents?profile=${target}`;
+  }, pubkey);
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
+    timeout: 10_000,
+  });
 }
 
-/**
- * Opens the Templates & snapshots view. The Agents directory no longer has a
- * Templates tab (agent templates are cut from the lean app), so the view is
- * reached by its address; its code and coverage stay until it is removed.
- */
-export async function showAgentTemplates(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    window.location.hash = "/agents?view=templates";
-  });
-  await expect(page.getByTestId("agents-library-personas")).toBeVisible({
+/** Opens an agent definition's profile side panel on the agents route by deep link. */
+export async function openPersonaProfilePanel(
+  page: Page,
+  personaId: string,
+): Promise<void> {
+  await page.evaluate((target) => {
+    window.location.hash = `/agents?profilePersona=${target}`;
+  }, personaId);
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
     timeout: 10_000,
   });
 }

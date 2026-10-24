@@ -99,7 +99,6 @@ test("loads the app shell with mocked channels", async ({ page }) => {
     )
     .toContain("is_shared_identity");
   await expect(page.getByTestId("stream-list")).toContainText("general");
-  await expect(page.getByTestId("forum-list")).toContainText("watercooler");
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
 });
 
@@ -396,30 +395,6 @@ test("highlights the query in search results and the opened message", async ({
   );
 });
 
-test("highlights the clicked forum post when its route is already open", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await expect(
-    page.locator('[data-forum-event-id="mock-forum-release-thread"]'),
-  ).toBeVisible();
-  await page.keyboard.press("ControlOrMeta+f");
-  await page.getByTestId("search-dialog-input").fill("checklist");
-
-  const result = page.getByTestId("search-result-mock-forum-release-thread");
-  await expect(result).toBeVisible();
-  await result.click();
-
-  const post = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(post.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-});
-
 test("ordinary same-channel activation clears a prior search highlight", async ({
   page,
 }) => {
@@ -463,60 +438,6 @@ test("ordinary rendered channel link clears a prior search highlight", async ({
   await message.locator('[data-channel-link=""]').click();
 
   await expect(message.locator('[data-search-match="true"]')).toHaveCount(0);
-});
-
-test("ordinary same-forum activation clears a prior search highlight", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await page.getByTestId("open-search").click();
-  await page.getByTestId("search-dialog-input").fill("checklist");
-  await page.getByTestId("search-result-mock-forum-release-thread").click();
-
-  const post = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(post.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Release checklist: async feedback thread.").click();
-
-  await expect(post.locator('[data-search-match="true"]')).toHaveCount(0);
-});
-
-test("ordinary forum navigation clears a prior search highlight", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await page.getByTestId("open-search").click();
-  await page.getByTestId("search-dialog-input").fill("checklist");
-  await page.getByTestId("search-result-mock-forum-release-thread").click();
-
-  const releasePost = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(releasePost.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Team offsite planning and travel notes.").click();
-  await expect(
-    page.locator('[data-forum-event-id="mock-forum-offsite-thread"]'),
-  ).toBeVisible();
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Release checklist: async feedback thread.").click();
-
-  await expect(releasePost).toBeVisible();
-  await expect(releasePost.locator('[data-search-match="true"]')).toHaveCount(
-    0,
-  );
 });
 
 test("does not expose stale search results with a newly typed query", async ({

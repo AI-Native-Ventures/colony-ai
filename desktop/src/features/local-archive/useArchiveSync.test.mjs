@@ -74,8 +74,7 @@ function mountGate({
       return Promise.resolve(null);
     },
     // `getCurrentWindow()` reads exactly this path (api/window.js:85), and
-    // `isTauri()` reads `globalThis.isTauri` (api/core.js:280). Both are what
-    // `huddleWindowChannelId` uses to tell a companion realm from the main one.
+    // `isTauri()` reads `globalThis.isTauri` (api/core.js:280).
     metadata: { currentWindow: { label: windowLabel } },
     transformCallback: () => Math.random(),
   };
@@ -254,37 +253,9 @@ describe("archive sync lifecycle leases", () => {
   });
 });
 
-// ── Realm ownership ──────────────────────────────────────────────────────────
-//
-// `AppShell` is the root route, so a companion huddle window mounts this same
-// tree in a second JS realm. Archive sync is app-global work and the main
-// window owns it, exactly as it owns microphone capture. The epoch cannot fix
-// this: epochs order realms in TIME, and a companion is a second realm in
-// SPACE — its unmount cleanup would carry the newest epoch and cancel the live
-// main-window task. So the companion must never announce or issue lifecycle
-// commands at all.
+// ── Lifecycle ────────────────────────────────────────────────────────────────
 
-describe("archive sync realm ownership", () => {
-  it("issues no archive lifecycle commands from a companion window", async () => {
-    const gate = mountGate({
-      windowLabel: "huddle-11111111-2222-3333-4444-555555555555",
-    });
-    await gate.mount();
-    await gate.settleGate();
-    await gate.unmount();
-
-    assert.deepEqual(
-      gate.invoked.filter(
-        (cmd) =>
-          cmd.endsWith("_archive_sync") ||
-          cmd === "announce_archive_sync_epoch",
-      ),
-      [],
-      "a companion realm must not announce or run lifecycle commands — its " +
-        "cleanup would cancel the main window's live sync task",
-    );
-  });
-
+describe("archive sync lifecycle", () => {
   it("still runs the lifecycle in the main window", async () => {
     const gate = mountGate({ windowLabel: "main" });
     await gate.mount();
@@ -294,7 +265,7 @@ describe("archive sync realm ownership", () => {
     assert.deepEqual(
       gate.invoked.filter((cmd) => cmd.endsWith("_archive_sync")),
       ["start_archive_sync", "stop_archive_sync"],
-      "the owning window must be unaffected by the companion exclusion",
+      "the main window must run the archive lifecycle",
     );
   });
 

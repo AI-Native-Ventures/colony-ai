@@ -8,10 +8,8 @@ import {
 } from "nostr-tools/pure";
 
 import {
-  KIND_DUTY_HEAD,
   KIND_MEMBER_POSITION_HEAD,
   KIND_STREAM_MESSAGE,
-  KIND_WORK_ITEM_HEAD,
 } from "../../src/shared/constants/kinds";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
@@ -19,7 +17,6 @@ import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
-const EMPLOYEE_WORK_ITEM_ID = "e3a4b5c6-d7e8-49f0-a1b2-c3d4e5f60718";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
 function positionHead(input: {
@@ -49,32 +46,6 @@ function positionHead(input: {
       }),
     },
     input.relaySecret,
-  );
-}
-
-function companyWorkHeadEvent(relaySecret: Uint8Array, assignedPubkey: string) {
-  return finalizeEvent(
-    {
-      kind: KIND_WORK_ITEM_HEAD,
-      created_at: Math.floor(Date.now() / 1_000),
-      tags: [
-        ["h", GENERAL_CHANNEL_ID],
-        ["d", `company:work:${EMPLOYEE_WORK_ITEM_ID}`],
-      ],
-      content: JSON.stringify({
-        schemaVersion: 1,
-        workItemId: EMPLOYEE_WORK_ITEM_ID,
-        title: "Prepare the launch brief",
-        status: "active",
-        assignedPubkeys: [assignedPubkey],
-        approverPubkeys: [],
-        deliverables: [],
-        requesterPubkey: OWNER_PUBKEY,
-        doneCondition: "The launch brief is ready for review.",
-        sourceActionEventId: "c".repeat(64),
-      }),
-    },
-    relaySecret,
   );
 }
 
@@ -118,49 +89,7 @@ async function emitEmployeeMessage(
   );
 }
 
-function dutyHead(input: { relaySecret: Uint8Array; employeePubkey: string }) {
-  const dutyId = "9d55771d-6404-4f92-9c6b-4ff59aa12260";
-  const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
-  const now = new Date().toISOString();
-  return finalizeEvent(
-    {
-      kind: KIND_DUTY_HEAD,
-      created_at: Math.floor(Date.now() / 1_000),
-      tags: [
-        ["d", `company:duty:${dutyId}`],
-        ["p", input.employeePubkey],
-      ],
-      content: JSON.stringify({
-        schemaVersion: 1,
-        dutyId,
-        proposal: {
-          schemaVersion: 1,
-          dutyId,
-          employeePubkey: input.employeePubkey,
-          title: "Review the weekly content calendar",
-          scheduleText: "Every Monday at 08:00",
-          scheduleCron: "0 8 * * 1",
-          timeZone: "UTC",
-          channelId,
-          instructions: "Review the calendar and flag exceptions.",
-        },
-        status: "active",
-        proposedByPubkey: TEST_IDENTITIES.tyler.pubkey,
-        approvedByPubkey: TEST_IDENTITIES.tyler.pubkey,
-        approvedAt: now,
-        sourceAskId: "7d2d873b-f5a6-4b95-bb2f-2ac0ae2f74f8",
-        sourceAskChannelId: channelId,
-        workflowDefinitionHash: "c".repeat(64),
-        createdAt: now,
-        updatedAt: now,
-        sourceActionEventId: "d".repeat(64),
-      }),
-    },
-    input.relaySecret,
-  );
-}
-
-test("Team shows mixed reporting lines and lets an owner edit, terminate and rehire an employee", async ({
+test("Team lists members and lets an owner edit, terminate and rehire an employee", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -232,9 +161,6 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
         managerPubkey: alicePubkey,
       }),
     ],
-    companyDutyHeads: [dutyHead({ relaySecret, employeePubkey })],
-    companyDutyRelayPrivateKeyHex: bytesToHex(relaySecret),
-    companyLessonRelayPrivateKeyHex: bytesToHex(relaySecret),
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role: "owner" },
       { pubkey: alicePubkey, role: "member" },
@@ -275,11 +201,6 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
         channelNames: ["general"],
       },
     ],
-    companyWorkEvents: [companyWorkHeadEvent(relaySecret, employeePubkey)],
-    channelsReadErrors: Array.from(
-      { length: 32 },
-      () => "invalid: e2e forced channel read failure.",
-    ),
     visualChannels: [{ id: GENERAL_CHANNEL_ID, name: "general" }],
   });
 
@@ -355,7 +276,12 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
     "AI employee · Reports to",
   );
   await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
-  await expect(page.getByRole("button", { name: "Message" })).toBeVisible();
+  await expect(
+    page.getByTestId("agent-profile").getByRole("button", {
+      name: "Message",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "More agent actions" }).click();
   await expect(

@@ -131,7 +131,6 @@ type MembersSidebarProps = {
   currentPubkey?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onViewActivity?: (pubkey: string) => void;
   relayUrl?: string;
 };
 
@@ -140,7 +139,6 @@ export function MembersSidebar({
   currentPubkey,
   open,
   onOpenChange,
-  onViewActivity,
   relayUrl,
 }: MembersSidebarProps) {
   const channelId = channel?.id ?? null;
@@ -608,11 +606,6 @@ export function MembersSidebar({
   function renderMemberCard(member: ChannelMember, memberIsBot: boolean) {
     const memberProfile =
       memberProfilesQuery.data?.profiles[member.pubkey.toLowerCase()];
-    const viewerIsOwner = Boolean(
-      memberProfile?.ownerPubkey &&
-        currentPubkey &&
-        memberProfile.ownerPubkey.toLowerCase() === currentPubkey.toLowerCase(),
-    );
     const managedAgent = memberIsBot
       ? managedAgentByPubkey.get(normalizePubkey(member.pubkey))
       : undefined;
@@ -662,19 +655,10 @@ export function MembersSidebar({
         onTimeout={onTimeout}
         onUnban={onUnban}
         onUntimeout={onUntimeout}
-        onViewActivity={
-          onViewActivity
-            ? (pubkey: string) => {
-                onOpenChange(false);
-                onViewActivity(pubkey);
-              }
-            : undefined
-        }
         pairAction={pairAction}
         presenceStatus={getAvailability(member.pubkey)}
         profileAvatarUrl={memberProfile?.avatarUrl ?? null}
         profileOwnerPubkey={memberProfile?.ownerPubkey}
-        viewerIsOwner={viewerIsOwner}
       />
     );
   }

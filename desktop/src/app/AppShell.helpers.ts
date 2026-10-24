@@ -8,15 +8,10 @@ export type AppView =
   | "channel"
   | "messages"
   | "agents"
-  | "workflows"
   | "clients"
   | "work"
-  | "pulse"
-  | "projects"
   | "business"
-  | "factory"
   | "team"
-  | "goals"
   | "pins";
 
 const WINDOW_DRAG_HANDLE_HEIGHT = 44;
@@ -269,7 +264,7 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
-  if (pathname === "/supervision" || pathname === "/power") {
+  if (pathname === "/power") {
     return {
       selectedChannelId: null,
       selectedView: "agents",
@@ -284,20 +279,6 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "today",
-    };
-  }
-
-  if (pathname === "/workflows" || pathname.startsWith("/workflows/")) {
-    return {
-      selectedChannelId: null,
-      selectedView: "workflows",
-    };
-  }
-
-  if (pathname === "/goals" || pathname.startsWith("/goals/")) {
-    return {
-      selectedChannelId: null,
-      selectedView: "goals",
     };
   }
 
@@ -323,27 +304,6 @@ export function deriveShellRoute(pathname: string): {
     return {
       selectedChannelId: null,
       selectedView: "work",
-    };
-  }
-
-  if (pathname === "/projects" || pathname.startsWith("/projects/")) {
-    return {
-      selectedChannelId: null,
-      selectedView: "projects",
-    };
-  }
-
-  if (pathname === "/factory" || pathname.startsWith("/factory/")) {
-    return {
-      selectedChannelId: null,
-      selectedView: "factory",
-    };
-  }
-
-  if (pathname === "/pulse") {
-    return {
-      selectedChannelId: null,
-      selectedView: "today",
     };
   }
 

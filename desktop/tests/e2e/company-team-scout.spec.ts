@@ -173,10 +173,6 @@ for (const viewport of [
       });
     }
     await capture("team");
-    await expect(
-      page.getByTestId(`company-team-member-${pubkey}`),
-    ).toContainText("Ready");
-    await expect(page.getByTestId(`team-avatar-${pubkey}-image`)).toBeVisible();
     await page.getByTestId(`company-team-member-${pubkey}`).click();
     await expect(page.getByTestId("agent-profile-avatar-image")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
