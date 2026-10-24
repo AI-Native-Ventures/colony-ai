@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
 import {
-  KIND_HUDDLE_ENDED,
   KIND_TYPING_INDICATOR,
 } from "../../src/shared/constants/kinds";
 import {
