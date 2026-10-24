@@ -843,9 +843,7 @@ export function AppShell() {
                   location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
-                  selectedView === "pins" ||
-                  selectedView === "clients" ||
-                  selectedView === "work")
+                  selectedView === "pins")
                   ? "true"
                   : undefined
               }
