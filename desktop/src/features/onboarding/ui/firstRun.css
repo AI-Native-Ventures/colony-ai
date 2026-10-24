@@ -89,7 +89,8 @@
   font-family: inherit;
 }
 
-.c3fr-root button {
+/* Zero specificity: any button class can set its own colour. */
+:where(.c3fr-root) button {
   cursor: pointer;
   color: inherit;
 }
@@ -3120,8 +3121,15 @@
   overflow: hidden;
 }
 
+/* Present for screen readers, no room on screen until it has something to say. */
 .c3fr-hidden {
-  opacity: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .c3fr-redeem-actions {
