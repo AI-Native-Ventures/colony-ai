@@ -61,22 +61,22 @@ test.describe("Colony 3.0 Settings", () => {
     await openSettings(page);
     await page.getByTestId("settings-group-preferences").click();
 
-    for (const section of ["notifications", "voice", "shortcuts"]) {
+    for (const section of ["notifications", "shortcuts"]) {
       await expect(page.getByTestId(`settings-panel-${section}`)).toHaveCount(
         1,
       );
     }
-    await page.getByTestId("settings-inner-voice").click();
-    await expect(page.getByTestId("settings-inner-voice")).toHaveAttribute(
+    await expect(page.getByTestId("settings-panel-voice")).toHaveCount(0);
+    await page.getByTestId("settings-inner-shortcuts").click();
+    await expect(page.getByTestId("settings-inner-shortcuts")).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await expect(page.getByTestId("settings-panel-notifications")).toHaveCount(
       0,
     );
-    await expect(page.getByTestId("settings-panel-voice")).toBeVisible();
-    await expect(page.getByTestId("settings-panel-shortcuts")).toHaveCount(1);
-    await expect(page).toHaveURL(/section=voice/);
+    await expect(page.getByTestId("settings-panel-shortcuts")).toBeVisible();
+    await expect(page).toHaveURL(/section=shortcuts/);
   });
 
   test("Appearance offers six accents and a typeface, and no theme catalog", async ({

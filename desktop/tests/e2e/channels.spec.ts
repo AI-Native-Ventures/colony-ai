@@ -2896,6 +2896,15 @@ test("manage channel places canvas between channel info and actions", async ({
   expect(canvasBox?.y).toBeLessThan(leaveBox?.y);
 });
 
+/** The Activity header keeps channel settings in its overflow menu. */
+async function openHomeChannelSettings(page: import("@playwright/test").Page) {
+  await page
+    .getByTestId("home-inbox-detail")
+    .locator(".ca-more-button")
+    .click();
+  await page.getByRole("menuitem", { name: "Channel settings" }).click();
+}
+
 async function seedHomeInboxMention(
   page: import("@playwright/test").Page,
   itemId: string,
