@@ -26,8 +26,7 @@ import {
   useMemberPositionActionMutation,
 } from "../teamRelay";
 import type { MemberPositionActionKind } from "../teamModels";
-import type { CompanyTeamData } from "../teamRelay";
-import { EmployeeProfileScreen } from "./EmployeeProfileScreen";
+import { AgentPage } from "@/features/agents/ui/AgentPage";
 import { HumanMemberProfile } from "./HumanMemberProfile";
 
 export type TeamMemberScreenMode = "detail" | "edit" | "pause" | "archive";
@@ -56,8 +55,7 @@ export function TeamMemberScreen({
 }) {
   const teamQuery = useCompanyTeamQuery();
   const identity = useIdentityQuery();
-  const { goTeam, goTeamArchive, goTeamEdit, goTeamMember } =
-    useAppNavigation();
+  const { goTeam, goTeamEdit, goTeamMember } = useAppNavigation();
   const mutation = useMemberPositionActionMutation();
   const member = teamQuery.data?.members.find(
     (candidate) => candidate.pubkey === memberPubkey.toLowerCase(),
@@ -197,19 +195,7 @@ export function TeamMemberScreen({
     void (mode === "detail" ? goTeam() : goTeamMember(member.pubkey));
   const currentMember = member;
   if (member.kind === "employee" && mode === "detail") {
-    return (
-      <EmployeeProfileScreen
-        canManage={canManage}
-        fullName={fullName}
-        member={member}
-        onBack={() => void goTeam()}
-        onEditPosition={() => void goTeamEdit(member.pubkey)}
-        onOpenMember={(pubkey) => void goTeamMember(pubkey)}
-        onTerminate={() => void goTeamArchive(member.pubkey)}
-        profiles={allProfiles}
-        teamData={teamQuery.data as CompanyTeamData}
-      />
-    );
+    return <AgentPage origin="team" pubkey={member.pubkey} />;
   }
   const pageTitle =
     mode === "edit"

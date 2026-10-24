@@ -3,7 +3,15 @@ import type {
   DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
 } from "@/features/discovery/discoveryProvider";
-import { REFERENCE_PROSPECT_IDS } from "./e2eReferenceWorkspace";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_PROSPECT_IDS,
+} from "./e2eReferenceWorkspace";
+
+const REFERENCE_RUNNER = {
+  name: REFERENCE_AGENTS.aya.name,
+  pubkey: REFERENCE_AGENTS.aya.pubkey,
+};
 
 const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   id: "agency-prospects",
@@ -21,6 +29,9 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   status: "complete",
   prospectIds: Object.values(REFERENCE_PROSPECT_IDS),
   created: false,
+  runBy: REFERENCE_RUNNER,
+  simulated: true,
+  postedInSales: true,
 };
 
 const PROGRESS_INTERVAL_MS = 800;
@@ -102,6 +113,9 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
       status: prospectIds.length ? "running" : "complete",
       prospectIds,
       created: true,
+      runBy: REFERENCE_RUNNER,
+      simulated: true,
+      postedInSales: true,
     };
     update(campaign);
     if (campaign.status === "running") advanceProgress();

@@ -164,11 +164,9 @@ export function AppShell() {
   const showAppTopChrome =
     !settingsOpen &&
     selectedView !== "pins" &&
-    location.pathname !== "/team" &&
     location.pathname !== "/today" &&
     location.pathname !== "/messages/new" &&
     !location.pathname.startsWith("/today/") &&
-    !location.pathname.startsWith("/asks/") &&
     !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
@@ -697,7 +695,6 @@ export function AppShell() {
                 !settingsOpen &&
                 (location.pathname === "/today" ||
                   location.pathname.startsWith("/today/") ||
-                  location.pathname.startsWith("/asks/") ||
                   location.pathname.startsWith("/navigation/") ||
                   selectedView === "channel" ||
                   selectedView === "pins" ||

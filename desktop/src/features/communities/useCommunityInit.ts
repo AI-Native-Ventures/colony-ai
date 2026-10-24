@@ -43,6 +43,7 @@ import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
 import { resetAvatarProfileSync } from "@/features/profile/avatarProfileSync";
 import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
+import { resetDiscoveryRuntime } from "@/features/discovery/discoveryRuntimeRegistry";
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
@@ -87,6 +88,7 @@ async function resetCommunityState({
   }
   resetSidebarRelayConnectionCardState();
   resetMembershipDenialGate();
+  resetDiscoveryRuntime();
   resetWorkAreaState();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();

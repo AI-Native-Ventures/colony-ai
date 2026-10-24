@@ -74,6 +74,7 @@ import { ComposerReferenceSlot } from "./ComposerReferenceSlot";
 import { ComposerSendButton } from "./ComposerAddressControls";
 import { FormattingToolbar } from "./FormattingToolbar";
 import { SelectionFormattingTray } from "./SelectionFormattingTray";
+import { LeadReferenceComposerButton } from "@/features/leads/LeadReferenceComposerButton";
 function MessageComposerImpl({
   audienceContext = null,
   channelId = null,
@@ -102,6 +103,7 @@ function MessageComposerImpl({
   replyTarget = null,
   mediaController,
   showBackgroundUploadProgress = true,
+  showLeadReference = true,
   showTopBorder = false,
   statusBanner,
   toolbarAskAction,
@@ -1043,7 +1045,13 @@ function MessageComposerImpl({
                 isVoiceNoteRecording={voiceNote.status !== "idle"}
                 hasVoiceNoteAttachment={voiceNote.hasAttachment}
                 layout={resolvedToolbarLayout}
-                referenceSlot={<ComposerReferenceSlot />}
+                referenceSlot={
+                  <ComposerReferenceSlot>
+                    {showLeadReference && channelId && editTarget == null ? (
+                      <LeadReferenceComposerButton editor={richText.editor} />
+                    ) : null}
+                  </ComposerReferenceSlot>
+                }
                 voiceNoteRecorder={voiceNote.recorderElement}
                 onCaptureSelection={handleCaptureSelection}
                 onAutoPinConfirmationDismiss={dismissAutoPinConfirmation}

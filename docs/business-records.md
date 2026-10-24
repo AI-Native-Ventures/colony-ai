@@ -216,10 +216,76 @@ manage services. The relay emits kind 30632.
 evidence items), `qualification`, `saved`, `stage` (`qualified`,
 `in_conversation`, `proposal`, `won`, or `lost`), and `lostReason` for a lost
 prospect. Members, admins and owners of the internal business channel can
-manage prospects. The relay emits kind 30644 `ProspectHead` with the prospect, its
-status, the activity history and `sourceActionEventId`. Prospect records live
-in the internal business channel; see the W10 discovery plan for provider
-boundaries (OutScraper, Brave Search and Exa adapters are not active yet).
+manage prospects. Agents (the `bot` role) can send `update` actions only, so
+they can add notes and change a lead's stage, qualification or saved flag but
+cannot create, archive or restore one. The relay emits kind 30644
+`ProspectHead` with the prospect, its status, the activity history and
+`sourceActionEventId`. Prospect records live in the internal business channel.
+Real prospect search is described in [Discovery search and lead
+tools](#discovery-search-and-lead-tools); the Brave Search and Exa adapters are
+not active yet.
+
+### Discovery search and lead tools
+
+**Search endpoint.** `POST /discovery/search` runs one page of an Outscraper
+Google Maps search and returns normalized places. The endpoint exists only
+because the provider key must stay on the server (the same reason as the KLIPY
+GIF proxy). The relay stores nothing: a client saves the places the person
+keeps as ordinary prospect actions (kind 47034), and may post a summary in the
+Sales channel as an ordinary message.
+
+- Auth: NIP-98 over the request body, bound to the request host's community,
+  with the same relay-membership check as the GIF endpoints. The rate limit is
+  20 searches per minute per pubkey (`BUZZ_RATE_LIMIT_DISCOVERY_SEARCHES_PER_MIN`).
+- Config: `OUTSCRAPER_API_KEY` (required to enable search; never logged),
+  optional `OUTSCRAPER_API_BASE` (default `https://api.app.outscraper.com`) and
+  `OUTSCRAPER_POLL_BASE` (default `https://api.outscraper.cloud`). When the key
+  is unset the endpoint answers 503 with code `discovery_not_configured`.
+- Request: `{ "query": string 1-200, "location": string 0-200, "country":
+  optional name or two-letter code, "limit": 1-50 (default 20), "skip": 0-1000
+  (default 0), "language": optional, 2-5 letters (default "en") }`. The relay
+  searches for `"<query>, <location>"` and passes the country as the
+  provider `region`.
+- Response 200: `{ "provider": "outscraper", "places": [Place],
+  "estimatedCostUsd": number, "nextSkip": integer or null }`. `nextSkip` is the
+  `skip` for the next page, or null when the page was not full. A `Place` has
+  `placeId`, `name`, `category`, `subtypes`, `address`, `city`, `state`,
+  `country`, `phone`, `website`, `email`, `rating`, `reviews`, `latitude`,
+  `longitude`, `mapsUrl`, `description` and `businessStatus`; every key is
+  present and any value except `name` can be null. Only http and https
+  websites are kept, and a prospect's `website` must be https, so clients
+  decide how to store an http site. Places without a name are dropped.
+- Errors carry `{ "error": message, "code": code }`:
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| 503 | `discovery_not_configured` | No Outscraper key on this server |
+| 502 | `discovery_provider_auth` | The provider rejected the server key |
+| 502 | `discovery_provider_credits` | The provider account is out of credits |
+| 429 | `discovery_provider_busy` | The provider asked the relay to slow down |
+| 502 | `discovery_provider_unavailable` | Timeout, bad answer or any other failure |
+
+**Lead references.** A lead is a prospect record. Its chat reference is
+`buzz://lead/<prospect-uuid>` (the CLI also reads `colony://lead/<uuid>` and a
+bare UUID). Desktop clients render the link as a lead card.
+
+**CLI tools for agents.** `colony leads` reads the relay-signed prospect heads
+and sends member-signed prospect `update` actions that name the exact head they
+replace:
+
+- `leads list [--limit N] [--stage S] [--query TEXT]` returns lead summaries,
+  newest first, each with a `reference` link.
+- `leads get --lead <uuid|link>` returns one lead with its evidence and notes.
+- `leads note --lead <uuid|link> --content TEXT [--kind note|contact]` appends
+  a note (1 to 2000 bytes).
+- `leads stage --lead <uuid|link> --stage qualified|in_conversation|proposal|lost
+  [--reason TEXT]` changes the stage. `lost` needs a reason; `won` cannot be set
+  because only an accepted proposal moves a lead there.
+- `leads qualify --lead <uuid|link> --qualification qualified|not_fit|unreviewed`
+  and `leads save --lead <uuid|link> [--unsave]` set the fit and follow-up flags.
+
+Write commands print the standard `{ event_id, accepted, message }` response
+plus `lead_id` and `reference`.
 
 ### Proposal version, kind 47003
 

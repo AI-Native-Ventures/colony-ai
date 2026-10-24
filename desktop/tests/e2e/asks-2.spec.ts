@@ -416,7 +416,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   await page
     .getByLabel("Employee or budget", { exact: true })
     .selectOption(employeePubkey);
-  await page.getByLabel("Change duration").selectOption("permanent");
+  await page.getByLabel("Permanent").check();
   await page.getByLabel("Requested amount, USD").fill("8.75");
   await page
     .getByLabel("Reason", { exact: true })
@@ -463,14 +463,18 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   ).toBeVisible();
   await page.getByRole("button", { name: "Open decision" }).click();
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
-  await expect(
-    page
-      .getByTestId("message-thread-head")
-      .getByTestId("ask-money-allowance-proposal"),
-  ).toContainText("USD 8.75 / week");
+  // The thread card is the compact budget card; the allowance and the reason
+  // live on the decision page it opens.
   await expect(
     page.getByTestId("message-thread-head").getByTestId("ask-card"),
-  ).toContainText("The employee needs more capacity for the approved work.");
+  ).toBeVisible();
+  await page.getByTestId("ask-detail-link").click();
+  await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
+    "USD 8.75 / week",
+  );
+  await expect(page.getByTestId("ask-card")).toContainText(
+    "The employee needs more capacity for the approved work.",
+  );
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
 

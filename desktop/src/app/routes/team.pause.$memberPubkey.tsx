@@ -1,12 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { TeamMemberScreen } from "@/features/company-team/ui/TeamMemberScreen";
-
+// Editing a role, terminating and rehiring are dialogs on the person's page
+// now. This redirect keeps old history entries and bookmarks landing there.
 export const Route = createFileRoute("/team/pause/$memberPubkey")({
-  component: TeamMemberPauseRoute,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      params: { memberPubkey: params.memberPubkey },
+      replace: true,
+      search: { panel: undefined, tab: undefined },
+      to: "/team/detail/$memberPubkey",
+    });
+  },
 });
-
-function TeamMemberPauseRoute() {
-  const { memberPubkey } = Route.useParams();
-  return <TeamMemberScreen memberPubkey={memberPubkey} mode="pause" />;
-}

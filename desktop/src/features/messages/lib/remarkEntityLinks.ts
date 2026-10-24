@@ -1,7 +1,8 @@
 /** Detect bare Buzz entity links in markdown text nodes. */
 import { createRemarkPrefixPlugin } from "../../../shared/lib/createRemarkPrefixPlugin.ts";
 
-const ENTITY_URL_PATTERN = /buzz:\/\/(?:pr|issue|repo|project)\?[^\s<>"')\]]+/g;
+const ENTITY_URL_PATTERN =
+  /buzz:\/\/(?:(?:pr|issue|repo|project)\?[^\s<>"')\]]+|lead\/[^\s<>"')\]]+)/g;
 const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
 
 export default function remarkEntityLinks() {

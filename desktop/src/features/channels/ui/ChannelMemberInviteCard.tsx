@@ -1,9 +1,7 @@
-import { Search, UserPlus, X } from "lucide-react";
 import * as React from "react";
 
 import { parsePubkeyInput } from "@/shared/lib/nostrUtils";
 import { truncateNpub } from "@/shared/lib/pubkey";
-import { PubKey } from "@/shared/ui/PubKey";
 import { useIsArchivedPredicate } from "@/features/identity-archive/hooks";
 import { useUserSearchQuery } from "@/features/profile/hooks";
 import type {
@@ -11,9 +9,12 @@ import type {
   ChannelMember,
   UserSearchResult,
 } from "@/shared/api/types";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import {
+  AskCloseIcon,
+  AskHireIcon,
+  AskSearchIcon,
+} from "@/features/company-asks/ui/askIcons";
 
 function formatSearchUserName(user: UserSearchResult) {
   return (
@@ -30,6 +31,8 @@ export function ChannelMemberInviteCard({
   onSubmit,
   open,
   requestErrorMessage,
+  footerNote,
+  onCancel,
 }: {
   canAssignElevatedRoles: boolean;
   existingMembers: ChannelMember[];
@@ -40,6 +43,10 @@ export function ChannelMemberInviteCard({
   }) => Promise<AddChannelMembersResult>;
   open: boolean;
   requestErrorMessage?: string | null;
+  /** A line under the member box, above the buttons. */
+  footerNote?: React.ReactNode;
+  /** Shows a Cancel button next to Add members. */
+  onCancel?: () => void;
 }) {
   const [inviteQuery, setInviteQuery] = React.useState("");
   const [selectedInvitees, setSelectedInvitees] = React.useState<
@@ -147,7 +154,7 @@ export function ChannelMemberInviteCard({
 
   return (
     <form
-      className="space-y-2.5 rounded-xl border border-border/70 bg-background/70 p-3"
+      className="ask3-invite-form"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({
@@ -167,175 +174,138 @@ export function ChannelMemberInviteCard({
         });
       }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <UserPlus className="h-4 w-4" />
+      <div className="ask3-invite-box">
+        <div className="ask3-invite-box-head">
+          <AskHireIcon size={16} />
           <span>Add members</span>
+          {inviteTargets.length > 0 ? (
+            <span className="ask3-invite-count">
+              {inviteTargets.length} selected
+            </span>
+          ) : null}
         </div>
-        {inviteTargets.length > 0 ? (
-          <span className="rounded-full bg-background px-2 py-1 text-2xs font-medium leading-none text-muted-foreground">
-            {inviteTargets.length} selected
-          </span>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        <label className="sr-only" htmlFor="channel-management-search-users">
-          Search people
-        </label>
-        <div className="rounded-lg border border-border/80 bg-background">
-          <div className="flex items-center gap-2 px-2.5 py-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <Input
-              className="h-auto border-0 px-0 py-0 shadow-none focus-visible:ring-0"
-              data-testid="channel-management-search-users"
-              disabled={isPending}
-              id="channel-management-search-users"
-              onChange={(event) => setInviteQuery(event.target.value)}
-              placeholder="Search people, or paste a public key"
-              value={inviteQuery}
-            />
-          </div>
-          {selectedInvitees.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 border-t border-border/70 px-2.5 py-2">
-              {selectedInvitees.map((invitee) => (
-                <div
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-2.5 py-1 text-2xs leading-none"
-                  data-testid={`selected-invitee-${invitee.pubkey}`}
-                  key={invitee.pubkey}
-                >
-                  <UserAvatar
-                    avatarUrl={invitee.avatarUrl ?? null}
-                    displayName={formatSearchUserName(invitee)}
-                    shape={invitee.isAgent ? "squircle" : "circle"}
-                    size="xs"
-                  />
-                  <span className="font-medium">
-                    {formatSearchUserName(invitee)}
-                  </span>
-                  <button
-                    aria-label={`Remove ${formatSearchUserName(invitee)}`}
-                    className="text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => {
-                      setSelectedInvitees((current) =>
-                        current.filter(
-                          (candidate) => candidate.pubkey !== invitee.pubkey,
-                        ),
-                      );
-                    }}
-                    type="button"
+        <div>
+          <label className="sr-only" htmlFor="channel-management-search-users">
+            Search people
+          </label>
+          <div className="ask3-invite-search">
+            <div className="ask3-invite-search-row">
+              <AskSearchIcon className="text-colony-muted" size={16} />
+              <input
+                data-testid="channel-management-search-users"
+                disabled={isPending}
+                id="channel-management-search-users"
+                onChange={(event) => setInviteQuery(event.target.value)}
+                placeholder="Search people, or paste a public key"
+                value={inviteQuery}
+              />
+            </div>
+            {selectedInvitees.length > 0 ? (
+              <div className="ask3-invite-chips">
+                {selectedInvitees.map((invitee) => (
+                  <div
+                    className="ask3-invite-chip"
+                    data-testid={`selected-invitee-${invitee.pubkey}`}
+                    key={invitee.pubkey}
                   >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {selectedInvitees.length > 0 ? (
-            <div className="space-y-1 border-t border-border/70 px-2.5 py-2">
-              {selectedInvitees.map((invitee) => (
-                <div
-                  className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-2xs text-muted-foreground"
-                  data-testid={`invitee-pubkey-${invitee.pubkey}`}
-                  key={invitee.pubkey}
-                >
-                  <span className="font-medium">
-                    {formatSearchUserName(invitee)}
-                  </span>
-                  <PubKey pubkey={invitee.pubkey} variant="full" />
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {deferredInviteQuery.length > 0 ? (
-            <div className="border-t border-border/70 px-2 py-2">
-              {userSearchQuery.isLoading && !directInvitee ? (
-                <p className="px-2 py-1 text-sm text-muted-foreground">
-                  Searching…
-                </p>
-              ) : inviteSearchResults.length > 0 || directInvitee ? (
-                <div className="max-h-44 space-y-1 overflow-y-auto">
-                  {directInvitee ? (
+                    <ProfileAvatar
+                      avatarUrl={invitee.avatarUrl ?? null}
+                      className="ask3-av size-6"
+                      label={formatSearchUserName(invitee)}
+                      shape={invitee.isAgent ? "squircle" : "circle"}
+                    />
+                    <span>{formatSearchUserName(invitee)}</span>
                     <button
-                      className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
-                      data-testid={`channel-direct-invite-${directInvitee.pubkey}`}
+                      aria-label={`Remove ${formatSearchUserName(invitee)}`}
                       onClick={() => {
-                        setSelectedInvitees((current) => [
-                          ...current,
-                          directInvitee,
-                        ]);
-                        setInviteQuery("");
+                        setSelectedInvitees((current) =>
+                          current.filter(
+                            (candidate) => candidate.pubkey !== invitee.pubkey,
+                          ),
+                        );
                       }}
                       type="button"
                     >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <UserAvatar
+                      <AskCloseIcon size={12} strokeWidth={2.8} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {deferredInviteQuery.length > 0 ? (
+              <div className="ask3-invite-results">
+                {userSearchQuery.isLoading && !directInvitee ? (
+                  <p className="ask3-state-text">Searching…</p>
+                ) : inviteSearchResults.length > 0 || directInvitee ? (
+                  <>
+                    {directInvitee ? (
+                      <button
+                        className="ask3-invite-result"
+                        data-testid={`channel-direct-invite-${directInvitee.pubkey}`}
+                        onClick={() => {
+                          setSelectedInvitees((current) => [
+                            ...current,
+                            directInvitee,
+                          ]);
+                          setInviteQuery("");
+                        }}
+                        type="button"
+                      >
+                        <ProfileAvatar
                           avatarUrl={null}
-                          displayName={truncateNpub(directInvitee.pubkey)}
-                          size="xs"
+                          className="ask3-av size-7"
+                          label={truncateNpub(directInvitee.pubkey)}
                         />
-                        <p className="truncate text-sm font-medium leading-5">
+                        <span className="ask3-invite-result-name">
                           {truncateNpub(directInvitee.pubkey)}
-                        </p>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          by public key
+                          <span className="ask3-hint"> by public key</span>
                         </span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">Add</span>
-                    </button>
-                  ) : null}
-                  {inviteSearchResults.map((result) => (
-                    <button
-                      className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
-                      data-testid={`channel-user-search-result-${result.pubkey}`}
-                      key={result.pubkey}
-                      onClick={() => {
-                        setSelectedInvitees((current) => [...current, result]);
-                        setInviteQuery("");
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <UserAvatar
+                        <span className="ask3-invite-result-add">Add</span>
+                      </button>
+                    ) : null}
+                    {inviteSearchResults.map((result) => (
+                      <button
+                        className="ask3-invite-result"
+                        data-testid={`channel-user-search-result-${result.pubkey}`}
+                        key={result.pubkey}
+                        onClick={() => {
+                          setSelectedInvitees((current) => [
+                            ...current,
+                            result,
+                          ]);
+                          setInviteQuery("");
+                        }}
+                        type="button"
+                      >
+                        <ProfileAvatar
                           avatarUrl={result.avatarUrl}
-                          displayName={formatSearchUserName(result)}
+                          className="ask3-av size-7"
+                          label={formatSearchUserName(result)}
                           shape={result.isAgent ? "squircle" : "circle"}
-                          size="xs"
                         />
-                        <p className="truncate text-sm font-medium leading-5">
+                        <span className="ask3-invite-result-name">
                           {formatSearchUserName(result)}
-                        </p>
-                        {result.isAgent ? (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            agent
-                          </span>
-                        ) : null}
-                      </div>
-                      <span className="text-xs text-muted-foreground">Add</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="px-2 py-1 text-sm text-muted-foreground">
-                  No matching users.
-                </p>
-              )}
-            </div>
+                          {result.isAgent ? (
+                            <span className="ask3-hint"> agent</span>
+                          ) : null}
+                        </span>
+                        <span className="ask3-invite-result-add">Add</span>
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <p className="ask3-state-text">No matching users.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+          {userSearchQuery.error instanceof Error ? (
+            <p className="ask3-error">{userSearchQuery.error.message}</p>
           ) : null}
         </div>
-        {userSearchQuery.error instanceof Error ? (
-          <p className="text-sm text-destructive">
-            {userSearchQuery.error.message}
-          </p>
-        ) : null}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="sr-only" htmlFor="channel-member-role">
+        <label className="ask3-invite-role" htmlFor="channel-member-role">
           Role
-        </label>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Role</span>
           <select
-            className="h-8 rounded-md border border-input bg-background px-2.5 text-sm"
             data-testid="channel-management-add-role"
             disabled={isPending}
             id="channel-member-role"
@@ -348,26 +318,17 @@ export function ChannelMemberInviteCard({
           >
             {availableRoles.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {role.charAt(0).toUpperCase() + role.slice(1)}
               </option>
             ))}
           </select>
-        </div>
-        <Button
-          className="min-w-24"
-          data-testid="channel-management-add-members"
-          disabled={isPending || inviteTargets.length === 0}
-          size="sm"
-          type="submit"
-        >
-          {isPending ? "Adding..." : "Add members"}
-        </Button>
+        </label>
       </div>
       {requestErrorMessage ? (
-        <p className="text-sm text-destructive">{requestErrorMessage}</p>
+        <p className="ask3-error">{requestErrorMessage}</p>
       ) : null}
       {submissionErrors.length > 0 ? (
-        <div className="space-y-1 text-sm text-destructive">
+        <div className="ask3-error">
           {submissionErrors.map((error) => (
             <p key={`${error.pubkey}-${error.error}`}>
               {truncateNpub(error.pubkey)}: {error.error}
@@ -375,6 +336,27 @@ export function ChannelMemberInviteCard({
           ))}
         </div>
       ) : null}
+      {footerNote}
+      <div className="ask3-invite-footer">
+        {onCancel ? (
+          <button
+            className="ask3-btn"
+            data-variant="secondary"
+            onClick={onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
+        ) : null}
+        <button
+          className="ask3-btn"
+          data-testid="channel-management-add-members"
+          disabled={isPending || inviteTargets.length === 0}
+          type="submit"
+        >
+          {isPending ? "Adding..." : "Add members"}
+        </button>
+      </div>
     </form>
   );
 }

@@ -51,6 +51,7 @@ test("Team keeps the relay-signed human position after reload in the integration
   const profile = page.getByTestId("company-team-member-profile");
   const role = page.getByTestId("company-human-role");
   await expect(profile).toBeVisible();
+  await expect(page.getByTestId("company-human-tab-history")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Edit role and reporting" }),
   ).toBeVisible();

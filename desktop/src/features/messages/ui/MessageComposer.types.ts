@@ -109,6 +109,8 @@ export type MessageComposerProps = {
     body: string;
     id: string;
   } | null;
+  /** Hide the "Reference lead" tool in the first-run Welcome conversation. */
+  showLeadReference?: boolean;
   showTopBorder?: boolean;
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;
