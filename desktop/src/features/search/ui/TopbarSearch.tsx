@@ -288,6 +288,7 @@ function getSuggestedSearchResults(channels: Channel[]) {
     .filter(
       (channel) =>
         !channel.archivedAt &&
+        channel.channelType !== "forum" &&
         (channel.isMember || channel.channelType === "dm"),
     )
     .sort((a, b) => {

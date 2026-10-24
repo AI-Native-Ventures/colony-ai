@@ -162,19 +162,8 @@ for (const viewport of [
     expect(bounds?.height).toBeLessThanOrEqual(80);
     expect(bounds?.width).toBeGreaterThan(850);
     await capture("team");
-    await team.getByRole("tab", { name: "Reporting lines" }).click();
-    const items = page.getByRole("treeitem");
-    await expect(items).toHaveCount(8);
-    await items.first().focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(items.nth(1)).toBeFocused();
-    await team.getByRole("heading", { name: "Team", exact: true }).click();
-    await capture("team-org");
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("company-employee-profile")).toBeVisible();
-    await expect(
-      page.getByTestId("employee-salary-overview-unavailable"),
-    ).toHaveCount(0);
     await expect(
       page.getByTestId("company-employee-direct-reports"),
     ).toContainText("Noluthando");
@@ -216,14 +205,6 @@ for (const viewport of [
     await capture("team-pause-unavailable-mina");
     await page.goto(`/#/team/detail/${TEST_IDENTITIES.alice.pubkey}`);
     await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-    const overview = page.getByRole("tab", { name: "Overview", exact: true });
-    await overview.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(
-      page.getByRole("tab", { name: "History", exact: true }),
-    ).toBeFocused();
-    await page.keyboard.press("ArrowLeft");
-    await expect(overview).toBeFocused();
     await capture("team-detail-noluthando");
   });
 }

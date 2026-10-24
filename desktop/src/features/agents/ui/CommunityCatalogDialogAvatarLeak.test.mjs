@@ -3,14 +3,14 @@
  *
  * `ProfileAvatarUntrusted.test.mjs` proves the component guard in isolation,
  * but it never renders `CommunityCatalogDialog` — so deleting `untrusted` from
- * any of the three browse sites (persona sidebar row, persona detail header,
- * team member row) would leave that test green while restoring the exact leak
- * Carl flagged: opening Discover Teams fires image requests at up to 64
- * publisher-controlled hosts, handing the viewer's IP and browse timing away.
+ * either browse site (persona sidebar row, persona detail header) would leave
+ * that test green while restoring the exact leak Carl flagged: opening the
+ * catalog fires image requests at up to 64 publisher-controlled hosts, handing
+ * the viewer's IP and browse timing away.
  *
  * This test mounts the real dialog with publisher URLs on every avatar-bearing
- * projection, drives selection through all three sites, and asserts zero
- * HTTP(S) `Image.src` assignments — the actual network trigger Radix fires.
+ * projection, drives selection through both sites, and asserts zero
+ * HTTP(S) `Image.src` assignments - the actual network trigger Radix fires.
  * Removing `untrusted` from any single site turns it RED.
  */
 
@@ -173,9 +173,8 @@ afterEach(() => {
 
 after(() => dom.window.close());
 
-// Distinct publisher hosts per site so a RED assertion names the leaking one.
+// Publisher host so a RED assertion names the leaking site.
 const PERSONA_AVATAR = "https://persona.attacker.example/beacon.png";
-const MEMBER_AVATAR = "https://member.attacker.example/beacon.png";
 
 const networkAssignments = () =>
   imageSrcAssignments.filter((src) => /^https?:/i.test(src));
@@ -202,30 +201,6 @@ function catalogPersona() {
     // Marks a foreign catalog entry so PersonaCatalogDetail resolves an owner
     // label — exercises the detail header (site 735) as a browsed row.
     catalogSource: { ownerPubkey: "a".repeat(64), teamDTag: "", isOwn: false },
-  };
-}
-
-function catalogTeam() {
-  return {
-    eventId: "ev-1",
-    ownerPubkey: "b".repeat(64),
-    teamDTag: "crew",
-    name: "Crew",
-    description: "A crew.",
-    instructions: null,
-    members: [
-      {
-        memberKey: "m-1",
-        displayName: "Eve",
-        systemPrompt: "Review.",
-        avatarUrl: MEMBER_AVATAR,
-        runtime: "goose",
-        model: "claude",
-        provider: null,
-      },
-    ],
-    isOwn: false,
-    localTeam: null,
   };
 }
 
@@ -261,15 +236,7 @@ async function mountDialog() {
               feedbackNoticeMessage: null,
               onClearFeedback: () => {},
               onSelectPersona: () => {},
-              teams: [catalogTeam()],
-              teamsError: null,
-              teamsLoading: false,
-              teamsAdding: false,
-              onAddTeam: () => {},
               open: true,
-              // "agents" so the dialog does not auto-select the first team; the
-              // test drives each selection explicitly.
-              preferSection: "agents",
               onOpenChange: () => {},
             }),
           ),
@@ -297,7 +264,7 @@ async function clickTestId(testId) {
   });
 }
 
-test("catalog browse fires no publisher image request across all three avatar sites", async () => {
+test("catalog browse fires no publisher image request across both avatar sites", async () => {
   const { root, container, client } = await mountDialog();
 
   // Site 1 — persona sidebar row is rendered on open.
@@ -313,14 +280,6 @@ test("catalog browse fires no publisher image request across all three avatar si
     networkAssignments(),
     [],
     "persona detail avatar leaked a network request",
-  );
-
-  // Site 3 — team member row (avatar is in the always-visible expander button).
-  await clickTestId(`community-catalog-team-${"b".repeat(64)}:crew`);
-  assert.deepEqual(
-    networkAssignments(),
-    [],
-    "team member avatar leaked a network request",
   );
 
   await act(async () => {

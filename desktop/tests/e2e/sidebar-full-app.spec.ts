@@ -23,14 +23,11 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(page.getByTestId("sidebar-activity-button")).toContainText(
     "Activity",
   );
-  await expect(page.getByTestId("sidebar-saved-for-later")).toContainText(
-    "Saved for later",
-  );
 
   // Colony 3.0 order: the destinations first, the conversations below them.
   const navigationOrder = await sidebar
     .locator(
-      "[data-testid='sidebar-nav-conversations'], [data-testid='sidebar-nav-company'], [data-testid='sidebar-nav-business'], [data-testid='sidebar-software-factory-group'], [data-testid='sidebar-nav-library']",
+      "[data-testid='sidebar-nav-conversations'], [data-testid='sidebar-nav-company'], [data-testid='sidebar-nav-business']",
     )
     .evaluateAll((groups) =>
       groups.map((group) => group.getAttribute("data-testid")),
@@ -38,18 +35,14 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   expect(navigationOrder).toEqual([
     "sidebar-nav-company",
     "sidebar-nav-business",
-    "sidebar-software-factory-group",
-    "sidebar-nav-library",
     "sidebar-nav-conversations",
   ]);
 
   const conversations = page.getByTestId("sidebar-nav-conversations");
   await expect(conversations.getByTestId("channel-general")).toBeVisible();
-  await expect(conversations.getByTestId("forum-list")).toBeVisible();
   await expect(conversations.getByTestId("dm-list")).toBeVisible();
   for (const [section, list] of [
     ["channels", "stream-list"],
-    ["forums", "forum-list"],
     ["dms", "dm-list"],
   ]) {
     await expect(page.getByTestId(`section-actions-${section}`)).toBeVisible();
@@ -68,27 +61,20 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   // Company starts collapsed; opening it shows every company destination.
   const company = page.getByTestId("sidebar-nav-company-toggle");
   await expect(company).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("sidebar-company-goals")).toBeHidden();
+  await expect(page.getByTestId("sidebar-company-team")).toBeHidden();
   await company.click();
   await expect(company).toHaveAttribute("aria-expanded", "true");
   for (const id of [
-    "open-workflows-view",
-    "sidebar-company-goals",
     "sidebar-company-work",
     "sidebar-company-team",
     "sidebar-company-agents",
   ])
     await expect(page.getByTestId(id)).toBeVisible();
-  await expect(page.getByTestId("open-factory-view")).toBeVisible();
-  await expect(page.getByTestId("sidebar-software-factory-toggle")).toHaveCount(
-    0,
-  );
   await expect(page.getByTestId("sidebar-ai-spend-power")).toBeVisible();
   await expect(page.getByTestId("sidebar-settings")).toBeVisible();
   await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
 
-  // Company and Business open and close, each with a 16px caret and no frame;
-  // Library is a single row.
+  // Company and Business open and close, each with a 16px caret and no frame.
   for (const group of ["company", "business"]) {
     const toggle = sidebar.getByTestId(`sidebar-nav-${group}-toggle`);
     await expect(toggle).toBeVisible();
@@ -96,7 +82,6 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
     await expect(chevron).toHaveCSS("width", "16px");
     await expect(chevron).toHaveCSS("border-top-width", "0px");
   }
-  await expect(sidebar.getByTestId("sidebar-blocks-templates")).toBeVisible();
   // The profile row sits under a hairline at the foot of the sidebar.
   await expect(sidebar.locator("[data-buzz-glass-footer-wrap]")).toHaveCSS(
     "border-top-width",
@@ -123,25 +108,6 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
       sidebar.getByRole("button", { name: label, exact: true }),
     ).toHaveCount(0);
   }
-});
-
-test("Company Goals opens the existing goals route", async ({ page }) => {
-  await page.goto("/");
-
-  await page.getByTestId("sidebar-nav-company-toggle").click();
-  const goals = page.getByTestId("sidebar-company-goals");
-  await expect(goals).toBeVisible();
-  await goals.click();
-
-  await expect(page).toHaveURL(/#\/goals$/);
-  await expect(page.getByTestId("sidebar-nav-company-toggle")).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect(goals).toHaveAttribute("data-active", "true");
-  await expect(
-    page.getByText("Company / Goals", { exact: true }),
-  ).toBeVisible();
 });
 
 test("Company Work and Business destinations open existing routes", async ({
@@ -225,22 +191,14 @@ test("conversation groups collapse independently with the keyboard", async ({
   await page.goto("/");
 
   const channels = page.getByTestId("stream-list-section-label");
-  const forums = page.getByTestId("forum-list-section-label");
   const directMessages = page.getByTestId("dm-list-section-label");
   await expect(channels).toHaveAttribute("aria-expanded", "true");
-  await expect(forums).toHaveAttribute("aria-expanded", "true");
   await expect(directMessages).toHaveAttribute("aria-expanded", "true");
 
   await channels.focus();
   await page.keyboard.press("Enter");
   await expect(channels).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("stream-list")).toBeHidden();
-  await expect(page.getByTestId("forum-list")).toBeVisible();
-
-  await forums.focus();
-  await page.keyboard.press("Space");
-  await expect(forums).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("forum-list")).toBeHidden();
   await expect(page.getByTestId("dm-list")).toBeVisible();
 
   await directMessages.focus();
@@ -248,51 +206,4 @@ test("conversation groups collapse independently with the keyboard", async ({
   await expect(directMessages).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("dm-list")).toBeHidden();
   await expect(page.getByTestId("stream-list")).toBeHidden();
-});
-
-test("Saved for later is its own row under Activity and keeps the reminder filter", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  const savedForLater = page.getByTestId("sidebar-saved-for-later");
-  await expect(savedForLater).toBeVisible();
-  await savedForLater.click();
-
-  await expect(page).toHaveURL(/filter=reminders/);
-  const reminders = page.getByTestId("home-inbox-reminders");
-  await expect(reminders).toBeVisible();
-  await expect(reminders).toContainText("No reminders");
-  await expect(savedForLater).toHaveAttribute("data-active", "true");
-});
-
-test("Software Factory exposes its designed Projects destination only", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await expect(page.getByTestId("sidebar-projects-section")).toHaveCount(0);
-  await page.getByTestId("open-factory-view").click();
-  await expect(page).toHaveURL(/#\/factory$/);
-  await expect(page.getByTestId("sidebar-projects-section")).toBeVisible();
-  await expect(page.getByTestId("sidebar-shared-compute")).toHaveCount(0);
-});
-
-test("Library is one row that opens Blocks and templates in Settings", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
-  await expect(blocksAndTemplates).toBeVisible();
-  await expect(blocksAndTemplates).toHaveCount(1);
-  await blocksAndTemplates.click();
-
-  await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(
-    page.getByTestId("settings-panel-channel-templates"),
-  ).toBeVisible();
-  await expect(page.getByTestId("settings-nav-channel-templates")).toHaveCount(
-    0,
-  );
 });

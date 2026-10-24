@@ -9,12 +9,9 @@ import {
   type ProfilePanelTab,
   type ProfilePanelView,
 } from "@/features/profile/ui/UserProfilePanelUtils";
-import { HuddleStartingView } from "@/features/huddle/components/HuddleStartingView";
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
 
 type ChannelRouteSearch = {
-  agentSession?: string;
   /**
    * When set, the composer on mount will auto-submit its loaded draft once,
    * then clear this param. Value is the draft key that was loaded so the
@@ -37,7 +34,6 @@ function validateChannelSearch(
   search: Record<string, unknown>,
 ): ChannelRouteSearch {
   return {
-    agentSession: nonEmptyString(search.agentSession),
     autoSend: nonEmptyString(search.autoSend),
     messageId: nonEmptyString(search.messageId),
     profile: nonEmptyString(search.profile),
@@ -64,25 +60,16 @@ function ChannelRouteComponent() {
   const searchHighlight = useLocation({
     select: selectSearchHighlightRouteState,
   });
-  const isHuddleTranscript = huddleWindowChannelId() !== null;
 
   return (
     <React.Suspense
-      fallback={
-        isHuddleTranscript ? (
-          <HuddleStartingView />
-        ) : (
-          <ViewLoadingFallback includeHeader kind="channel" />
-        )
-      }
+      fallback={<ViewLoadingFallback includeHeader kind="channel" />}
     >
       <ChannelRouteScreen
         autoSendDraftKey={search.autoSend ?? null}
         channelId={channelId}
         searchHighlight={searchHighlight}
-        selectedPostId={null}
         targetMessageId={search.messageId ?? null}
-        targetReplyId={null}
         targetThreadRootId={search.threadRootId ?? search.thread ?? null}
       />
     </React.Suspense>

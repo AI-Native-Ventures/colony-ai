@@ -24,24 +24,15 @@ import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
-  getConversationDensity,
-  type ConversationDensity,
-} from "@/shared/lib/conversationDensityPreference";
-import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/features/profile/hooks";
-import type { SyntaxThemeName } from "@/shared/theme/theme-loader";
 import {
-  appearanceLastBusinessKey,
   appearanceSnapshotKey,
   blendColor,
   isValidHexColor,
-  writeAppearanceSnapshot,
   readAppearanceSnapshot,
-  mergeLiveAppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
-import { currentAppearanceSnapshot } from "./AppearanceSettingsPanel";
 import {
   canonicalSettingsSection,
   renderSettingsSection,
@@ -51,11 +42,6 @@ import {
   type SettingsPanelProps,
   type SettingsSection,
 } from "./SettingsPanels";
-import {
-  ThemeAppliedRoute,
-  ThemeCatalogRoute,
-  ThemePreviewRoute,
-} from "./ThemeCatalogRoute";
 import { membershipRoleLabel } from "./membershipRoleLabel";
 import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import "./SettingsView.css";
@@ -79,17 +65,12 @@ const LAST_SECTIONS_KEY = "colony.settings.last-inner-section.v1";
 
 const R19_SETTINGS_LAYOUT_SECTIONS = new Set<SettingsSection>([
   "notifications",
-  "voice",
   "shortcuts",
   "accessibility",
   "business-profile",
-  "moderation",
-  "audit",
   "custom-emoji",
-  "local-archive",
   "archived-records",
   "recovery",
-  "storage",
   "updates",
   "experimental",
   "feedback",
@@ -114,18 +95,6 @@ function routeGroup(section: SettingsSection): SettingsGroupDescriptor {
     group.sections.some((entry) => entry.value === canonical),
   );
   if (found) return found;
-  if (canonical.startsWith("settings/theme-")) {
-    return (
-      settingsGroups.find((group) => group.id === "appearance-group") ??
-      settingsGroups[0]
-    );
-  }
-  if (canonical === "settings/themes") {
-    return (
-      settingsGroups.find((group) => group.id === "appearance-group") ??
-      settingsGroups[0]
-    );
-  }
   if (canonical === "feedback") {
     return (
       settingsGroups.find((group) => group.id === "app-devices") ??
@@ -202,15 +171,6 @@ export function SettingsView({
   const [search, setSearch] = React.useState("");
   const [remembered, setRemembered] = React.useState(safeReadLastSections);
   const theme = useTheme();
-  const {
-    accentColor,
-    fieldColors,
-    followSystem,
-    glassBackground,
-    glassOpacity,
-    prominentActiveTab,
-    selectedThemeName,
-  } = theme;
   const { activeCommunity } = useCommunities();
   const identity = useIdentityQuery();
   const profile = useProfileQuery();
@@ -219,38 +179,9 @@ export function SettingsView({
   const membershipQuery = useMyRelayMembershipQuery();
   const roleCaption = membershipRoleLabel(membershipQuery.data?.role);
   const updateProfile = useUpdateProfileMutation();
-  const appearancePersonId =
-    identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
-  const appearanceBusinessId = activeCommunity?.id ?? "local-business";
-  const appearanceKey = appearanceSnapshotKey(
-    appearancePersonId,
-    appearanceBusinessId,
-  );
-  const initialAppearance = mergeLiveAppearanceSnapshot(
-    currentAppearanceSnapshot({
-      accentColor,
-      fieldColors,
-      followSystem,
-      glassBackground,
-      glassOpacity,
-      prominentActiveTab,
-      selectedThemeName,
-    }),
-    readAppearanceSnapshot(appearanceKey),
-  );
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
   const [avatarEditorContext, setAvatarEditorContext] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
-  const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
-    initialAppearance.theme as SyntaxThemeName,
-  );
-  const [themeSearch, setThemeSearch] = React.useState("");
-  const [themeFilter, setThemeFilter] = React.useState("All");
-  const [appearanceSaveFailed, setAppearanceSaveFailed] = React.useState(false);
-  const [savedAppearance, setSavedAppearance] = React.useState({
-    theme: initialAppearance.theme as SyntaxThemeName,
-    density: initialAppearance.density,
-  });
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
@@ -264,37 +195,6 @@ export function SettingsView({
     const frameId = window.requestAnimationFrame(() => setIsLoaded(true));
     return () => window.cancelAnimationFrame(frameId);
   }, []);
-
-  React.useEffect(() => {
-    const current = mergeLiveAppearanceSnapshot(
-      currentAppearanceSnapshot({
-        accentColor,
-        fieldColors,
-        followSystem,
-        glassBackground,
-        glassOpacity,
-        prominentActiveTab,
-        selectedThemeName,
-      }),
-      readAppearanceSnapshot(appearanceKey),
-    );
-    const selectedTheme = current.theme as SyntaxThemeName;
-    setPreviewTheme(selectedTheme);
-    setSavedAppearance({
-      theme: selectedTheme,
-      density: current.density,
-    });
-    setAppearanceSaveFailed(false);
-  }, [
-    appearanceKey,
-    accentColor,
-    fieldColors,
-    followSystem,
-    glassBackground,
-    glassOpacity,
-    prominentActiveTab,
-    selectedThemeName,
-  ]);
 
   React.useEffect(() => {
     const personId =
@@ -389,56 +289,6 @@ export function SettingsView({
     setSearch("");
   }
 
-  function saveAppearance(
-    selectedTheme: SyntaxThemeName,
-    selectedDensity: ConversationDensity,
-  ) {
-    const lastBusinessKey = appearanceLastBusinessKey(appearancePersonId);
-    const current = mergeLiveAppearanceSnapshot(
-      currentAppearanceSnapshot(theme),
-      readAppearanceSnapshot(appearanceKey),
-    );
-    const next = {
-      ...current,
-      theme: selectedTheme,
-      density: selectedDensity,
-      followSystem: false,
-      custom: false,
-    };
-    const saved = writeAppearanceSnapshot(
-      window.localStorage,
-      appearanceKey,
-      next,
-    );
-    if (!saved) {
-      setAppearanceSaveFailed(true);
-      return;
-    }
-    setAppearanceSaveFailed(false);
-    document.documentElement.classList.remove("w20-custom-appearance");
-    document.documentElement.style.removeProperty(
-      "--w20-custom-gradient-start",
-    );
-    document.documentElement.style.removeProperty("--w20-custom-gradient-end");
-    try {
-      window.localStorage.setItem(lastBusinessKey, appearanceBusinessId);
-    } catch {
-      // The scoped appearance snapshot does not depend on this migration hint.
-    }
-    theme.applyAppearance({
-      theme: selectedTheme,
-      accent: next.accent,
-      field: next.field,
-      followSystem: false,
-    });
-    setSavedAppearance({ theme: selectedTheme, density: selectedDensity });
-    chooseSection("settings/theme-applied");
-  }
-
-  function savePreviewAppearance() {
-    saveAppearance(previewTheme, getConversationDensity());
-  }
-
   return (
     <>
       <Sidebar
@@ -513,7 +363,7 @@ export function SettingsView({
               const category =
                 index < 3
                   ? "Personal"
-                  : index < 7
+                  : index < 5
                     ? (activeCommunity?.name ?? "Business")
                     : "This device";
               const previousCategory =
@@ -521,7 +371,7 @@ export function SettingsView({
                   ? null
                   : index - 1 < 3
                     ? "Personal"
-                    : index - 1 < 7
+                    : index - 1 < 5
                       ? (activeCommunity?.name ?? "Business")
                       : "This device";
               return (
@@ -639,12 +489,6 @@ export function SettingsView({
               {activeGroup.sections.map((entry) => (
                 <button
                   aria-selected={entry.value === activeInnerSection}
-                  aria-current={
-                    entry.value === "appearance" &&
-                    activeSection.startsWith("settings/theme")
-                      ? "page"
-                      : undefined
-                  }
                   className={cn(
                     "w20-inner-tab",
                     entry.value === activeInnerSection && "is-active",
@@ -665,8 +509,6 @@ export function SettingsView({
             className={cn(
               "w20-route-scroll",
               activeSection === "appearance" && "w20-route-scroll-appearance",
-              activeSection === "channel-templates" &&
-                "w20-route-scroll-templates",
             )}
             data-testid="settings-content-scroll"
           >
@@ -681,69 +523,35 @@ export function SettingsView({
                 ) && "w20-route-content-account",
                 activeSection === "appearance" &&
                   "w20-route-content-appearance",
-                activeSection.startsWith("settings/theme") &&
-                  "w20-route-content-theme",
-                activeSection === "channel-templates" &&
-                  "w20-route-content-templates",
                 activeSection === "profile" &&
                   avatarEditorContext &&
                   "w20-route-content-avatar",
               )}
               data-testid={`settings-panel-${activeSection}`}
             >
-              {activeSection === "settings/themes" ? (
-                <ThemeCatalogRoute
-                  query={themeSearch}
-                  onQueryChange={setThemeSearch}
-                  filter={themeFilter}
-                  onFilterChange={setThemeFilter}
-                  onBack={() => chooseSection("appearance")}
-                  onPreview={(name) => {
-                    setPreviewTheme(name);
-
-                    setAppearanceSaveFailed(false);
-                    chooseSection("settings/theme-preview");
-                  }}
-                />
-              ) : activeSection === "settings/theme-preview" ? (
-                <ThemePreviewRoute
-                  name={previewTheme}
-                  onBack={() => chooseSection("settings/themes")}
-                  saveFailed={appearanceSaveFailed}
-                  onApply={savePreviewAppearance}
-                />
-              ) : activeSection === "settings/theme-applied" ? (
-                <ThemeAppliedRoute
-                  name={savedAppearance.theme}
-                  onDone={() => chooseSection("appearance")}
-                  onBack={() => chooseSection("settings/themes")}
-                />
-              ) : (
-                renderSettingsSection(activeSection, {
-                  currentPubkey,
-                  avatarEditorContext,
-                  avatarSaved,
-                  fallbackDisplayName,
-                  onEditAvatar: () => {
-                    setAvatarSaved(false);
-                    setIsAvatarDialogOpen(true);
-                  },
-                  isUpdatingDesktopNotifications,
-                  notificationErrorMessage,
-                  notificationPermission,
-                  notificationSettings,
-                  onSetDesktopNotificationsEnabled,
-                  onSetHomeBadgeEnabled,
-                  onSetSlotAlertsEnabled,
-                  onSetNotifyWhileViewing,
-                  onSetAllSlotAlertsEnabled,
-                  onSetSoundForSlot,
-                  onOpenThemeCatalog: () => chooseSection("settings/themes"),
-                  onOpenDraftRecovery: () => chooseSection("recovery"),
-                  onClose,
-                  onSectionChange: chooseSection,
-                })
-              )}
+              {renderSettingsSection(activeSection, {
+                currentPubkey,
+                avatarEditorContext,
+                avatarSaved,
+                fallbackDisplayName,
+                onEditAvatar: () => {
+                  setAvatarSaved(false);
+                  setIsAvatarDialogOpen(true);
+                },
+                isUpdatingDesktopNotifications,
+                notificationErrorMessage,
+                notificationPermission,
+                notificationSettings,
+                onSetDesktopNotificationsEnabled,
+                onSetHomeBadgeEnabled,
+                onSetSlotAlertsEnabled,
+                onSetNotifyWhileViewing,
+                onSetAllSlotAlertsEnabled,
+                onSetSoundForSlot,
+                onOpenDraftRecovery: () => chooseSection("recovery"),
+                onClose,
+                onSectionChange: chooseSection,
+              })}
             </div>
           </section>
         </main>

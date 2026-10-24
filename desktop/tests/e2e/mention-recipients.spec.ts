@@ -10,22 +10,14 @@ const AMBIGUOUS =
 
 async function install(page: Page, channel = "general", agents = false) {
   await installMockBridge(page, {
-    managedAgents:
-      channel === "watercooler"
-        ? ["a".repeat(64), "b".repeat(64)].map((pubkey) => ({
-            pubkey,
-            name: "Scout",
-            status: "running",
-            channelNames: ["watercooler"],
-          }))
-        : agents
-          ? [FIRST, SECOND].map((pubkey) => ({
-              pubkey,
-              name: "Scout",
-              status: "running",
-              channelNames: [channel],
-            }))
-          : [],
+    managedAgents: agents
+      ? [FIRST, SECOND].map((pubkey) => ({
+          pubkey,
+          name: "Scout",
+          status: "running",
+          channelNames: [channel],
+        }))
+      : [],
     searchProfiles: [FIRST, SECOND].map((pubkey) => ({
       pubkey,
       displayName: "Scout",
@@ -35,8 +27,6 @@ async function install(page: Page, channel = "general", agents = false) {
   await page.goto("/");
   await page.getByTestId(`channel-${channel}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channel);
-  if (channel === "watercooler")
-    await page.getByRole("button", { name: "Start a new post..." }).click();
 }
 
 async function recipients(page: Page, content: string) {
@@ -59,24 +49,22 @@ async function recipients(page: Page, content: string) {
   }, content);
 }
 
-for (const channel of ["general", "watercooler"]) {
-  test(`ambiguous typed name is visible and preserves ${channel === "general" ? "chat" : "standalone forum"} draft`, async ({
-    page,
-  }) => {
-    await install(page, channel);
-    const input = page.getByTestId("message-input");
-    await input.fill("@Scout hello");
-    await input.press("Escape");
-    await page.getByTestId("send-message").click();
-    await expect(page.getByText(AMBIGUOUS, { exact: false })).toBeVisible();
-    await expect(input).toHaveText("@Scout hello");
-    expect(await recipients(page, "@Scout hello")).toEqual([]);
-    await waitForAnimations(page);
-    await page.screenshot({
-      path: `test-results/mention-recipients/ambiguous-${channel}.png`,
-    });
+test("ambiguous typed name is visible and preserves chat draft", async ({
+  page,
+}) => {
+  await install(page, "general");
+  const input = page.getByTestId("message-input");
+  await input.fill("@Scout hello");
+  await input.press("Escape");
+  await page.getByTestId("send-message").click();
+  await expect(page.getByText(AMBIGUOUS, { exact: false })).toBeVisible();
+  await expect(input).toHaveText("@Scout hello");
+  expect(await recipients(page, "@Scout hello")).toEqual([]);
+  await waitForAnimations(page);
+  await page.screenshot({
+    path: "test-results/mention-recipients/ambiguous-general.png",
   });
-}
+});
 
 test("two selected same-name members send both exact identities", async ({
   page,

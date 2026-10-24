@@ -195,7 +195,6 @@ test("loads channels from the relay", async ({ page }) => {
 
   await expect(page.getByTestId("stream-list")).toContainText("general");
   await expect(page.getByTestId("stream-list")).toContainText("random");
-  await expect(page.getByTestId("forum-list")).toContainText("watercooler");
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
 });
 

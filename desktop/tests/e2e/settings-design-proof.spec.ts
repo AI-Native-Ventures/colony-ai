@@ -49,50 +49,11 @@ for (const viewport of [
       await page.evaluate(() => document.fonts.ready);
       await page.mouse.move(0, 0);
       await waitForAnimations(page);
-      if (name === "themes") {
-        const renderedPalettes = () =>
-          Array.from(document.querySelectorAll(".d17-theme-mini")).map(
-            (mini) => ({
-              background: getComputedStyle(mini).backgroundColor,
-              foreground: getComputedStyle(mini).color,
-              replies: getComputedStyle(mini.querySelector("small") as Element)
-                .color,
-            }),
-          );
-        expect(await page.evaluate(renderedPalettes)).toEqual(
-          await reference.evaluate(renderedPalettes),
-        );
-      }
       await page.screenshot({
         path: `${output}/${name}-${viewport.width}-app.png`,
       });
     };
     await capture("appearance", "20260925-r17", "settings/appearance");
-    await page.getByTestId("appearance-open-themes").click();
-    await expect(page.getByTestId("settings-theme-catalog")).toHaveAttribute(
-      "data-theme-catalog-ready",
-      "true",
-    );
-    await capture("themes", "20260925-r17", "settings/themes");
-    await page.getByTestId("theme-catalog-buzz").click();
-    await expect(page.getByTestId("theme-use")).toBeEnabled();
-    await capture("theme-preview", "20260925-r17", "settings/theme-preview");
-    await page.getByTestId("theme-use").click();
-    await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-    // The frozen applied route is reached by its real preview apply action.
-    await reference
-      .getByRole("button", { name: "Use Colony", exact: true })
-      .click();
-    await waitForAnimations(reference);
-    await reference.mouse.move(0, 0);
-    await reference.screenshot({
-      path: `${output}/theme-applied-${viewport.width}-reference.png`,
-    });
-    await waitForAnimations(page);
-    await page.mouse.move(0, 0);
-    await page.screenshot({
-      path: `${output}/theme-applied-${viewport.width}-app.png`,
-    });
     await page.goto("/#/settings?section=accessibility");
     await expect(page.getByTestId("settings-accessibility")).toBeVisible();
     await capture("accessibility", "20260925-r17", "account/accessibility");
@@ -100,13 +61,12 @@ for (const viewport of [
       ["profile", "account"],
       ["updates", "settings/updates"],
       ["archived-records", "account/archive"],
-      ["storage", "settings/storage"],
       ["people", "settings/people"],
     ]) {
       await page.goto(`/#/settings?section=${section}`);
       await expect(page.getByTestId(`settings-panel-${section}`)).toBeVisible();
       await page.waitForLoadState("networkidle");
-      if (section === "updates" || section === "storage")
+      if (section === "updates")
         await expect(
           page.getByTestId(`settings-panel-${section}`),
         ).not.toContainText(/\bBuzz\b/);
@@ -141,21 +101,16 @@ test("audit the remaining Settings groups against frozen routes", async ({
     ["security", "account/security"],
     ["accessibility", "account/accessibility"],
     ["notifications", "account/notifications"],
-    ["voice", "settings/voice"],
     ["shortcuts", "settings/shortcuts"],
     ["business-profile", "settings"],
     ["people", "settings/people"],
     ["agent-defaults", "agent-settings/defaults"],
     ["harnesses", "agent-settings/harnesses"],
-    ["channel-templates", "settings/templates"],
     ["custom-emoji", "settings/emoji"],
-    ["moderation", "account/moderation"],
-    ["audit", "account/audit"],
     ["app", "settings/device"],
     ["mobile", "settings/mobile"],
     ["updates", "settings/updates"],
     ["experimental", "settings/experiments"],
-    ["storage", "settings/storage"],
     ["archived-records", "account/archive"],
     ["recovery", "account/recovery"],
   ];
@@ -176,7 +131,6 @@ test("audit the remaining Settings groups against frozen routes", async ({
   }
   for (const [section, route] of [
     ["privacy", "b2/settings/privacy/controls"],
-    ["compute", "settings/recovery/compute/retry-success"],
   ]) {
     await page.goto(`/#/settings?section=${section}`);
     await expect(page.getByTestId(`settings-panel-${section}`)).toBeVisible();

@@ -1,6 +1,5 @@
 import type * as React from "react";
 import type { BotActivityAgent } from "@/features/channels/ui/BotActivityBar";
-import type { ChannelAgentSessionAgent } from "@/features/channels/ui/useChannelAgentSessions";
 import type { MessageComposerEditTarget } from "@/features/messages/ui/MessageComposer.types";
 import type { MainTimelineEntry } from "@/features/messages/lib/threadPanel";
 import type { ChannelWindowThreadSummary } from "@/features/messages/lib/channelWindowStore";
@@ -18,8 +17,6 @@ export type ChannelPaneProps = {
   activeChannel: Channel | null;
   activityAgents?: BotActivityAgent[];
   agentPubkeys?: ReadonlySet<string>;
-  agentPubkeysPending?: boolean;
-  agentSessionAgents: ChannelAgentSessionAgent[];
   /**
    * When non-null, the main composer fires `submitMessage` once after loading
    * the draft identified by this key — i.e. the user clicked "Send message"
@@ -42,7 +39,7 @@ export type ChannelPaneProps = {
   header?: React.ReactNode;
   /**
    * Idle-state body for the right auxiliary pane (project extras, etc.).
-   * Uses the same slot as thread, profile, agent-session, and management panels.
+   * Uses the same slot as thread, profile, and management panels.
    * By default it yields to those surfaces; callers may opt into thread override.
    */
   idleAuxiliaryPanel?: React.ReactNode;
@@ -54,8 +51,6 @@ export type ChannelPaneProps = {
   /** True when the loaded window provably starts at the channel's beginning. */
   historyExhausted?: boolean;
   isFetchingOlder?: boolean;
-  /** A companion huddle window presents the channel only as a transcript. */
-  isHuddleTranscript?: boolean;
   isJoining?: boolean;
   isSinglePanelView?: boolean;
   isSending: boolean;
@@ -72,26 +67,11 @@ export type ChannelPaneProps = {
   welcomeKickoffSettingUp?: boolean;
   messages: TimelineMessage[];
   threadSummaries?: ReadonlyMap<string, ChannelWindowThreadSummary>;
-  /**
-   * A Huddle transcript flattens summarized reply subtrees into the chat
-   * timeline. When one of those subtree loads fails, this reports the aggregate
-   * failure so the transcript can surface a non-destructive retry alert instead
-   * of silently presenting a partial conversation as complete.
-   */
-  huddleThreadRepliesError?: boolean;
-  onRetryHuddleThreadReplies?: () => void;
   firstUnreadMessageId?: string | null;
   unreadCount?: number;
   canResetThreadPanelWidth: boolean;
   onCancelEdit?: () => void;
   onCancelThreadReply: () => void;
-  /**
-   * Fired by the header back arrow when Activity has a captured pane to
-   * return to. Absent (arrow hidden) for composer/no-pane opens and
-   * direct/restored Activity URLs — the close affordance is the fallback.
-   */
-  onBackFromAgentSession?: () => void;
-  onCloseAgentSession: () => void;
   onCloseChannelManagement?: () => void;
   onChannelManagementDeleted?: () => void;
   onCloseIdleAuxiliaryPanel?: () => void;
@@ -112,7 +92,6 @@ export type ChannelPaneProps = {
   onMarkRead?: (message: TimelineMessage) => void;
   onExpandThreadReplies: (message: TimelineMessage) => void;
   onJoinChannel?: () => Promise<void>;
-  onOpenAgentSession: (pubkey: string, channelId?: string | null) => void;
   onOpenDm?: (pubkeys: string[]) => Promise<void> | void;
   onOpenMembers?: () => void;
   onOpenProfilePanel: (
@@ -170,8 +149,6 @@ export type ChannelPaneProps = {
   ownerProfiles?: UserProfileLookup;
   openThreadHeadId: string | null;
   shouldShowThreadSkeleton: boolean;
-  openAgentSessionChannelId: string | null;
-  openAgentSessionPubkey: string | null;
   onProfilePanelViewChange: (
     view: ProfilePanelView,
     options?: { replace?: boolean },

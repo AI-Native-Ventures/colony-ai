@@ -25,14 +25,6 @@ function ask(
   };
 }
 
-function approval(approvalRef, expiresAt, createdAt, id = approvalRef) {
-  return {
-    approval: { approvalRef, expiresAt, createdAt },
-    workflow: { id: `workflow-${id}` },
-    run: { id: `run-${id}` },
-  };
-}
-
 test("Needs me sorts by deadline, then creation time and stable record id", () => {
   const items = buildNeedsMeItems({
     asks: [
@@ -61,18 +53,11 @@ test("Needs me sorts by deadline, then creation time and stable record id", () =
         "2026-09-27T11:00:00Z",
       ),
     ],
-    workflowApprovals: [
-      approval("approval-late", "2026-09-27T15:00:00+02:00", 1_790_500_000),
-    ],
   });
 
   assert.deepEqual(
-    items.map((item) =>
-      item.kind === "ask"
-        ? item.record.head.askId
-        : item.record.approval.approvalRef,
-    ),
-    ["ask-earliest", "ask-a", "ask-z", "ask-b", "approval-late"],
+    items.map((item) => item.record.head.askId),
+    ["ask-earliest", "ask-a", "ask-z", "ask-b"],
   );
 });
 
@@ -88,7 +73,6 @@ test("Needs me places missing and invalid deadlines after dated records", () => 
         "2026-09-27T10:00:00Z",
       ),
     ],
-    workflowApprovals: [],
   });
 
   assert.deepEqual(
@@ -132,7 +116,6 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
       ),
       ask("channel-c", "unassigned", null, "2026-09-27T14:00:00.000Z"),
     ],
-    workflowApprovals: [],
   });
 
   const byType = groupNeedsMeItems(items, "type", { now });

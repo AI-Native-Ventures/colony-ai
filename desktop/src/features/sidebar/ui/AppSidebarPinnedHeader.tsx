@@ -1,5 +1,3 @@
-import { ArrowLeft } from "lucide-react";
-
 import { isMacPlatform } from "@/shared/lib/platform";
 import { useIsFullscreen } from "@/shared/lib/useIsFullscreen";
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
@@ -18,10 +16,8 @@ import {
   ActivityIcon,
   CollapseSidebarIcon,
   ExpandSidebarIcon,
-  SavedIcon,
   TodayIcon,
 } from "@/shared/ui/colonyIcons";
-import colonyIcon from "../assets/colony-icon-v2.svg";
 
 type SidebarSelectedView =
   | "today"
@@ -29,20 +25,14 @@ type SidebarSelectedView =
   | "channel"
   | "messages"
   | "agents"
-  | "workflows"
   | "clients"
   | "work"
-  | "pulse"
-  | "projects"
   | "business"
-  | "factory"
   | "team"
-  | "goals"
   | "pins";
 
 type AppSidebarPinnedHeaderProps = {
   activeCommunityName: string;
-  factoryView?: boolean;
   channelLabels: Record<string, string>;
   currentChannelId?: string | null;
   currentPubkey?: string;
@@ -52,7 +42,6 @@ type AppSidebarPinnedHeaderProps = {
   onOpenDm: (input: { pubkeys: string[] }) => Promise<void>;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;
   onSelectChannel: (channelId: string) => void;
-  onReturnToWorkspace?: () => void;
   searchChannels: Channel[];
   searchFocusRequest: number;
   showSidebarCollapseButton: boolean;
@@ -62,8 +51,6 @@ type AppSidebarPinnedHeaderProps = {
 
 type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
-  isSavedForLaterActive: boolean;
-  onSelectSavedForLater: () => void;
   onSelectToday: () => void;
   onSelectHome: () => void;
   suppressTodaySelection?: boolean;
@@ -72,7 +59,6 @@ type AppSidebarPrimaryMenuProps = {
 
 export function AppSidebarPinnedHeader({
   activeCommunityName,
-  factoryView = false,
   channelLabels,
   currentChannelId,
   currentPubkey,
@@ -82,7 +68,6 @@ export function AppSidebarPinnedHeader({
   onOpenDm,
   onOpenSearchResult,
   onSelectChannel,
-  onReturnToWorkspace,
   searchChannels,
   searchFocusRequest,
   showSidebarCollapseButton,
@@ -101,42 +86,23 @@ export function AppSidebarPinnedHeader({
       data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
     >
       <div className="colony-sidebar-brand">
-        {factoryView ? (
-          <div
-            className="flex min-w-0 flex-1 items-center gap-2 px-1.5"
-            data-testid="factory-sidebar-brand"
-          >
-            <img
-              alt=""
-              aria-hidden="true"
-              className="h-[26px] w-[26px] rounded-md"
-              src={colonyIcon}
-            />
-            <span className="colony-sidebar-wordmark min-w-0 truncate">
-              colony
-            </span>
-          </div>
-        ) : (
-          <button
-            aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
-            data-testid="sidebar-business-switcher"
-            onClick={() =>
-              window.dispatchEvent(
-                new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT),
-              )
-            }
-            type="button"
-          >
-            <span aria-hidden="true" className="colony-sidebar-brand-mark">
-              {communityInitial}
-              <span className="colony-sidebar-brand-dot" />
-            </span>
-            <span className="sidebar-company-name">
-              <span>{activeCommunityName || "No community"}</span>
-              <span className="sidebar-company-context">Company workspace</span>
-            </span>
-          </button>
-        )}
+        <button
+          aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
+          data-testid="sidebar-business-switcher"
+          onClick={() =>
+            window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
+          }
+          type="button"
+        >
+          <span aria-hidden="true" className="colony-sidebar-brand-mark">
+            {communityInitial}
+            <span className="colony-sidebar-brand-dot" />
+          </span>
+          <span className="sidebar-company-name">
+            <span>{activeCommunityName || "No community"}</span>
+            <span className="sidebar-company-context">Company workspace</span>
+          </span>
+        </button>
         {showSidebarCollapseButton ? (
           <button
             aria-expanded={sidebar.open}
@@ -154,36 +120,21 @@ export function AppSidebarPinnedHeader({
           </button>
         ) : null}
       </div>
-      {factoryView ? (
-        <button
-          className="fx-sidebar-workspace-link"
-          data-testid="factory-return-to-workspace"
-          onClick={onReturnToWorkspace}
-          type="button"
-        >
-          <ArrowLeft aria-hidden="true" />
-          <span>
-            <strong>{activeCommunityName}</strong>
-            <small>Business workspace</small>
-          </span>
-        </button>
-      ) : (
-        <TopbarSearch
-          channelLabels={channelLabels}
-          channels={searchChannels}
-          currentChannelId={currentChannelId}
-          currentPubkey={currentPubkey}
-          focusRequest={searchFocusRequest}
-          onOpenChannel={onSelectChannel}
-          onOpenResult={onOpenSearchResult}
-          onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
-          onBrowseChannels={onBrowseChannels}
-          onCreateAgent={onCreateAgent}
-          onCreateChannel={onCreateChannel}
-          scopeFocusRequest={scopeSearchFocusRequest}
-          suggestionChannels={suggestionChannels}
-        />
-      )}
+      <TopbarSearch
+        channelLabels={channelLabels}
+        channels={searchChannels}
+        currentChannelId={currentChannelId}
+        currentPubkey={currentPubkey}
+        focusRequest={searchFocusRequest}
+        onOpenChannel={onSelectChannel}
+        onOpenResult={onOpenSearchResult}
+        onOpenUser={(user) => onOpenDm({ pubkeys: [user.pubkey] })}
+        onBrowseChannels={onBrowseChannels}
+        onCreateAgent={onCreateAgent}
+        onCreateChannel={onCreateChannel}
+        scopeFocusRequest={scopeSearchFocusRequest}
+        suggestionChannels={suggestionChannels}
+      />
     </div>
   );
 }
@@ -192,8 +143,6 @@ export function AppSidebarPrimaryMenu({
   homeBadgeCount,
   onSelectToday,
   onSelectHome,
-  isSavedForLaterActive,
-  onSelectSavedForLater,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
@@ -248,18 +197,6 @@ export function AppSidebarPrimaryMenu({
               {Math.min(homeBadgeCount, 99)}
             </SidebarMenuBadge>
           ) : null}
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            data-testid="sidebar-saved-for-later"
-            isActive={isSavedForLaterActive}
-            onClick={onSelectSavedForLater}
-            tooltip="Saved for later"
-            type="button"
-          >
-            <SavedIcon />
-            <SidebarMenuLabel>Saved for later</SidebarMenuLabel>
-          </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarHeader>

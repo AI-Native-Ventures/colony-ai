@@ -197,7 +197,6 @@ test("parseProfilePanelView accepts all profile panel subviews", () => {
     "info",
     "configuration",
     "diagnostics",
-    "memories",
     "channels",
     "logs",
   ]) {
@@ -218,7 +217,7 @@ test("profilePanelViewFromSearch falls back to summary for invalid values", () =
 });
 
 test("parseProfilePanelTab accepts profile summary tabs", () => {
-  for (const tab of ["info", "runtime", "channels", "memories"]) {
+  for (const tab of ["info", "runtime", "channels"]) {
     assert.equal(parseProfilePanelTab(tab), tab);
   }
 });

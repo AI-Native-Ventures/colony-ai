@@ -102,32 +102,26 @@ test("notification event guard suppresses reconnect replay and stays bounded", (
   assert.deepEqual([...seen], ["event-b", "event-c"]);
 });
 
-test("dmHuddleStart_isDmOnlyUnreadTrigger", () => {
-  assert.equal(
-    isChannelUnreadTriggerKind(KIND_HUDDLE_STARTED, true),
-    true,
-    "inactive DM huddle start should bump unread",
-  );
-  assert.equal(
-    isChannelUnreadTriggerKind(KIND_HUDDLE_STARTED, false),
-    false,
-    "stream/forum huddle start should not become a generic unread trigger",
-  );
-  assert.equal(
-    isChannelUnreadTriggerKind(KIND_HUDDLE_ENDED, true),
-    false,
-    "huddle end lifecycle should stay quiet",
-  );
+test("huddle cards are not unread triggers in any channel", () => {
+  for (const isDmChannel of [true, false]) {
+    assert.equal(
+      isChannelUnreadTriggerKind(KIND_HUDDLE_STARTED, isDmChannel),
+      false,
+    );
+    assert.equal(
+      isChannelUnreadTriggerKind(KIND_HUDDLE_ENDED, isDmChannel),
+      false,
+    );
+  }
 });
 
-test("dmCatchUpFetch_includesOnlyHuddleStartInvite", () => {
-  const dmKinds = channelCatchUpEventKinds("dm");
-  const streamKinds = channelCatchUpEventKinds("stream");
-
-  assert.equal(dmKinds.includes(KIND_STREAM_MESSAGE), true);
-  assert.equal(dmKinds.includes(KIND_HUDDLE_STARTED), true);
-  assert.equal(dmKinds.includes(KIND_HUDDLE_ENDED), false);
-  assert.equal(streamKinds.includes(KIND_HUDDLE_STARTED), false);
+test("catch-up fetch kinds never include huddle cards", () => {
+  for (const channelType of ["dm", "stream"]) {
+    const kinds = channelCatchUpEventKinds(channelType);
+    assert.equal(kinds.includes(KIND_STREAM_MESSAGE), true);
+    assert.equal(kinds.includes(KIND_HUDDLE_STARTED), false);
+    assert.equal(kinds.includes(KIND_HUDDLE_ENDED), false);
+  }
 });
 
 // An explicit caller timeline position must still advance the read marker. This

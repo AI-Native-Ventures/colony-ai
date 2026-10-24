@@ -18,9 +18,9 @@ test("company shell fixture supplies the approved sidebar rows", async ({
   ).toBeVisible();
   await expect(sidebar.getByText("marketing", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("sales", { exact: true })).toBeVisible();
-  await expect(
-    sidebar.getByText("Company forum", { exact: true }),
-  ).toBeVisible();
+  await expect(sidebar.getByText("Company forum", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(sidebar.getByText("Mina", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("Aya", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("Client work", { exact: true })).toHaveCount(
@@ -36,10 +36,6 @@ test("company shell fixture supplies the approved sidebar rows", async ({
     "22px",
   );
   await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-sales"), 3);
-  await expectUnreadBadgeCount(
-    sidebar.getByTestId("channel-unread-Company forum"),
-    1,
-  );
   await expectUnreadBadgeCount(sidebar.getByTestId("channel-unread-Aya"), 1);
   await expect(sidebar.getByTestId("channel-avatar-Mina")).toHaveCSS(
     "width",

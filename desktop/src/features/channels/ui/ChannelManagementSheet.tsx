@@ -5,7 +5,6 @@ import {
   DoorClosed,
   DoorOpen,
   Trash2,
-  Workflow as WorkflowIcon,
 } from "lucide-react";
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -22,12 +21,8 @@ import {
   useUpdateChannelMutation,
 } from "@/features/channels/hooks";
 import { compareMembersByRole } from "@/features/channels/lib/memberUtils";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useChannelWorkflowsQuery } from "@/features/workflows/hooks";
 import { DEFAULT_EPHEMERAL_TTL_SECONDS } from "@/features/channels/lib/ephemeralChannel";
-import type { Channel, ChannelMember, Workflow } from "@/shared/api/types";
-import { useWorkflowEditorOverlay } from "@/shared/context/WorkflowEditorOverlayContext";
-import { useFeatureEnabled } from "@/shared/features";
+import type { Channel, ChannelMember } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import { Button } from "@/shared/ui/button";
@@ -57,7 +52,6 @@ import {
   PANEL_OVERLAY_CLASS,
 } from "@/shared/ui/OverlayPanelBackdrop";
 import { ChannelCanvas } from "./ChannelCanvas";
-import { ChannelWorkflowsSection } from "./ChannelWorkflowsSection";
 import {
   CHANNEL_FORM_FIELD_CONTROL_CLASS,
   CHANNEL_FORM_FIELD_SHELL_CLASS,
@@ -107,24 +101,15 @@ export function ChannelManagementSheet({
   transparentChrome = false,
 }: ChannelManagementSheetProps) {
   const { isDark } = useTheme();
-  const { goNewWorkflowForChannel, goWorkflow } = useAppNavigation();
-  const {
-    openNewWorkflow: openNewWorkflowOverlay,
-    openWorkflow: openWorkflowOverlay,
-  } = useWorkflowEditorOverlay();
   const isSplitLayout = layout === "split";
   const auxiliaryPanelMode = getAuxiliaryPanelMode(
     isSplitLayout,
     !isSplitLayout,
   );
   const channelId = channel?.id ?? null;
-  const workflowsEnabled = useFeatureEnabled("workflows");
   const detailsQuery = useChannelDetailsQuery(channelId, open);
   const membersQuery = useChannelMembersQuery(channelId, open);
   const canvasQuery = useCanvasQuery(channelId, channelId !== null && open);
-  const workflowsQuery = useChannelWorkflowsQuery(
-    workflowsEnabled && channelId !== null && open ? channelId : null,
-  );
   const updateChannelDetailsMutation = useUpdateChannelMutation(channelId);
   const archiveChannelMutation = useArchiveChannelMutation(channelId);
   const unarchiveChannelMutation = useUnarchiveChannelMutation(channelId);
@@ -175,11 +160,9 @@ export function ChannelManagementSheet({
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [hasUserEditedChannelDraft, setHasUserEditedChannelDraft] =
     React.useState(false);
-  const [activeView, setActiveView] = React.useState<
-    "summary" | "canvas" | "workflows"
-  >("summary");
-  const visibleActiveView =
-    workflowsEnabled || activeView !== "workflows" ? activeView : "summary";
+  const [activeView, setActiveView] = React.useState<"summary" | "canvas">(
+    "summary",
+  );
   const { cancelDeferredModalOpen, openNextFrame: openModalNextFrame } =
     useDeferredModalOpen();
 
@@ -252,33 +235,6 @@ export function ChannelManagementSheet({
     }
 
     onOpenChange(next);
-  }
-
-  // Workflows open as a modal above the channel settings Workflows view. Keep
-  // that view mounted behind the editor so every completed close path (clean,
-  // dirty-discard, or create cancel) returns to the exact surface that opened
-  // it. The navigation fallbacks still close the sheet before changing routes;
-  // canonical /workflows deep links stay unchanged either way.
-  function handleOpenWorkflow(workflow: Workflow) {
-    if (openWorkflowOverlay) {
-      openWorkflowOverlay(workflow.id, workflow);
-      return;
-    }
-
-    handlePanelOpenChange(false);
-    void goWorkflow(workflow.id);
-  }
-
-  function handleCreateWorkflow() {
-    if (!channelId) return;
-
-    if (openNewWorkflowOverlay) {
-      openNewWorkflowOverlay(channelId);
-      return;
-    }
-
-    handlePanelOpenChange(false);
-    void goNewWorkflowForChannel(channelId);
   }
 
   const currentVisibility = detail?.visibility ?? channel.visibility;
@@ -382,7 +338,7 @@ export function ChannelManagementSheet({
           onPointerDownOutside={(event) => event.preventDefault()}
         >
           <ChannelManagementPanelContent
-            activeView={visibleActiveView}
+            activeView={activeView}
             archiveChannelMutation={archiveChannelMutation}
             canEditNarrative={canEditNarrative}
             canEditChannel={canEditChannel}
@@ -393,10 +349,6 @@ export function ChannelManagementSheet({
             canvasQuery={canvasQuery}
             channelId={channelId}
             currentPubkey={currentPubkey}
-            workflowsEnabled={workflowsEnabled}
-            workflowsQuery={workflowsQuery}
-            onCreateWorkflow={handleCreateWorkflow}
-            onOpenWorkflow={handleOpenWorkflow}
             deleteChannelMutation={deleteChannelMutation}
             detailsError={detailsQuery.error}
             handleDeleteChannel={handleDeleteChannel}
@@ -434,7 +386,7 @@ export function ChannelManagementSheet({
             data-testid="channel-management-sheet"
           >
             <ChannelManagementPanelContent
-              activeView={visibleActiveView}
+              activeView={activeView}
               archiveChannelMutation={archiveChannelMutation}
               canEditNarrative={canEditNarrative}
               canEditChannel={canEditChannel}
@@ -445,10 +397,6 @@ export function ChannelManagementSheet({
               canvasQuery={canvasQuery}
               channelId={channelId}
               currentPubkey={currentPubkey}
-              workflowsEnabled={workflowsEnabled}
-              workflowsQuery={workflowsQuery}
-              onCreateWorkflow={handleCreateWorkflow}
-              onOpenWorkflow={handleOpenWorkflow}
               deleteChannelMutation={deleteChannelMutation}
               detailsError={detailsQuery.error}
               handleDeleteChannel={handleDeleteChannel}
@@ -555,7 +503,6 @@ export function ChannelManagementSheet({
                     data-testid="channel-management-lifecycle"
                   >
                     <ChannelTypeSettings
-                      channelId={resolvedChannel.id}
                       disabled={isSavingChannelEdits}
                       onTemporaryChange={(temporary) => {
                         setIsEphemeralDraft(temporary);
@@ -622,7 +569,7 @@ type ChannelMutation<TArgs = void> = {
 };
 
 type ChannelManagementPanelContentProps = {
-  activeView: "summary" | "canvas" | "workflows";
+  activeView: "summary" | "canvas";
   archiveChannelMutation: ChannelMutation;
   canEditChannel: boolean;
   canEditNarrative: boolean;
@@ -633,15 +580,6 @@ type ChannelManagementPanelContentProps = {
   canvasQuery: { isLoading: boolean };
   channelId: string | null;
   currentPubkey?: string;
-  workflowsEnabled: boolean;
-  workflowsQuery: {
-    data?: Workflow[];
-    error: unknown;
-    isLoading: boolean;
-    refetch: () => Promise<unknown>;
-  };
-  onCreateWorkflow: () => void;
-  onOpenWorkflow: (workflow: Workflow) => void;
   deleteChannelMutation: ChannelMutation;
   detailsError: unknown;
   handleDeleteChannel: () => Promise<void>;
@@ -660,9 +598,7 @@ type ChannelManagementPanelContentProps = {
   onOpenMembers?: () => void;
   onOpenChange: (open: boolean) => void;
   resolvedChannel: Channel;
-  setActiveView: React.Dispatch<
-    React.SetStateAction<"summary" | "canvas" | "workflows">
-  >;
+  setActiveView: React.Dispatch<React.SetStateAction<"summary" | "canvas">>;
   unarchiveChannelMutation: ChannelMutation;
 };
 
@@ -678,10 +614,6 @@ function ChannelManagementPanelContent({
   canvasQuery,
   channelId,
   currentPubkey,
-  workflowsEnabled,
-  workflowsQuery,
-  onCreateWorkflow,
-  onOpenWorkflow,
   deleteChannelMutation,
   detailsError,
   handleDeleteChannel,
@@ -738,11 +670,7 @@ function ChannelManagementPanelContent({
         >
           <DialogPrimitive.Title asChild>
             <AuxiliaryPanelTitle>
-              {activeView === "canvas"
-                ? "Canvas"
-                : activeView === "workflows"
-                  ? "Workflows"
-                  : "Channel Settings"}
+              {activeView === "canvas" ? "Canvas" : "Channel Settings"}
             </AuxiliaryPanelTitle>
           </DialogPrimitive.Title>
         </AuxiliaryPanelHeaderGroup>
@@ -817,45 +745,14 @@ function ChannelManagementPanelContent({
             </FieldGroup>
 
             {canOpenCanvas ? (
-              <div className="space-y-3">
-                <IngressRow
-                  description={canvasPreview}
-                  helpText="Use the canvas as a shared space for notes, plans, and other channel information."
-                  icon={BookOpenText}
-                  label="Canvas"
-                  onClick={() => setActiveView("canvas")}
-                  testId="channel-canvas-ingress"
-                  trailing={canvasQuery.isLoading ? "Loading..." : undefined}
-                />
-                {workflowsEnabled ? (
-                  <IngressRow
-                    description={
-                      workflowsQuery.isLoading
-                        ? undefined
-                        : `${workflowsQuery.data?.length ?? 0} workflow${workflowsQuery.data?.length === 1 ? "" : "s"}`
-                    }
-                    icon={WorkflowIcon}
-                    label="Workflows"
-                    onClick={() => setActiveView("workflows")}
-                    testId="channel-workflows-ingress"
-                    trailing={
-                      workflowsQuery.isLoading ? "Loading..." : undefined
-                    }
-                  />
-                ) : null}
-              </div>
-            ) : workflowsEnabled ? (
               <IngressRow
-                description={
-                  workflowsQuery.isLoading
-                    ? undefined
-                    : `${workflowsQuery.data?.length ?? 0} workflow${workflowsQuery.data?.length === 1 ? "" : "s"}`
-                }
-                icon={WorkflowIcon}
-                label="Workflows"
-                onClick={() => setActiveView("workflows")}
-                testId="channel-workflows-ingress"
-                trailing={workflowsQuery.isLoading ? "Loading..." : undefined}
+                description={canvasPreview}
+                helpText="Use the canvas as a shared space for notes, plans, and other channel information."
+                icon={BookOpenText}
+                label="Canvas"
+                onClick={() => setActiveView("canvas")}
+                testId="channel-canvas-ingress"
+                trailing={canvasQuery.isLoading ? "Loading..." : undefined}
               />
             ) : null}
 
@@ -978,15 +875,6 @@ function ChannelManagementPanelContent({
               isArchived={isArchived}
             />
           </div>
-        ) : activeView === "workflows" && workflowsEnabled ? (
-          <ChannelWorkflowsSection
-            error={workflowsQuery.error}
-            loading={workflowsQuery.isLoading}
-            onCreate={onCreateWorkflow}
-            onOpen={onOpenWorkflow}
-            onRetry={() => void workflowsQuery.refetch()}
-            workflows={workflowsQuery.data ?? []}
-          />
         ) : null}
       </AuxiliaryPanelBody>
     </AuxiliaryPanelContext.Provider>

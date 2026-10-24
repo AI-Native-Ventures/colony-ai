@@ -5,96 +5,52 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
-  ArrowRight,
   BookOpen,
-  Clock3,
   Ellipsis,
   FileText,
-  List,
-  LockKeyhole,
   MessageSquare,
-  Settings,
   Square,
   Users,
 } from "lucide-react";
 
-import { ownsAuthorAgent } from "@/features/profile/lib/identity";
 import { useUserProfileQuery } from "@/features/profile/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { CompanyEmployeeProfileActions } from "@/features/company-team/ui/CompanyEmployeeProfileActions";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { useIdentityArchive } from "@/features/identity-archive/hooks";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
-import {
-  MemoryRefreshButton,
-  MemorySection,
-} from "@/features/agent-memory/ui/MemorySection";
 import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
 import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import {
   useAcpRuntimesQuery,
-  useAgentConfigSurface,
-  useManagedAgentLogQuery,
   useRelayAgentsQuery,
   useUpdateManagedAgentMutation,
 } from "@/features/agents/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
-import { ManagedAgentSessionPanel } from "@/features/agents/ui/ManagedAgentSessionPanel";
-import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
-import { ManagedAgentLogPanel } from "@/features/agents/ui/ManagedAgentLogPanel";
 import { ArchiveConfirmDialog } from "@/features/profile/ui/ArchiveConfirmDialog";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { AgentPersona, ManagedAgent } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
 import { Badge } from "@/shared/ui/badge";
-import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
 import { providerDisplayLabel } from "./agentConfigOptions";
-import { accessLabel, OverviewTab } from "./AgentProfileOverviewTab";
+import { OverviewTab } from "./AgentProfileOverviewTab";
 
-export type AgentProfileTab =
-  | "overview"
-  | "model-runtime"
-  | "instructions"
-  | "tools-access"
-  | "activity"
-  | "advanced"
-  | "memory";
+export type AgentProfileTab = "overview" | "instructions";
 
 const PROFILE_TABS: Array<{ id: AgentProfileTab; label: string }> = [
   { id: "overview", label: "Overview" },
-  { id: "model-runtime", label: "Model & runtime" },
   { id: "instructions", label: "Instructions" },
-  { id: "tools-access", label: "Tools & access" },
-  { id: "activity", label: "Activity" },
-  { id: "advanced", label: "Advanced" },
-  { id: "memory", label: "Memory" },
 ];
 
 const PROFILE_TAB_ICONS: Record<AgentProfileTab, typeof Users> = {
   overview: Users,
-  "model-runtime": Settings,
   instructions: FileText,
-  "tools-access": LockKeyhole,
-  activity: Clock3,
-  advanced: List,
-  memory: BookOpen,
 };
 
 export function parseAgentProfileTab(
@@ -113,7 +69,6 @@ export function AgentProfileView({
   onBack,
   onMessage,
   onOpenChannel,
-  onOpenHarnesses,
   onRestartAgent,
   onStopAgent,
   isActionPending,
@@ -125,23 +80,18 @@ export function AgentProfileView({
   onBack: () => void;
   onMessage: (pubkey: string) => Promise<void>;
   onOpenChannel: (channelId: string) => void;
-  onOpenHarnesses: () => void;
   onRestartAgent: (pubkey: string) => void;
   onStopAgent: (pubkey: string) => void;
   isActionPending: boolean;
 }) {
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
-  const runtimeConfigQuery = useAgentConfigSurface(
-    tab === "model-runtime" ? agent.pubkey : null,
-  );
   const channelsQuery = useChannelsQuery({
-    enabled: tab === "activity" || tab === "overview",
+    enabled: tab === "overview",
   });
   const relayAgentsQuery = useRelayAgentsQuery({
-    enabled: tab === "activity" || tab === "overview",
+    enabled: tab === "overview",
   });
   const activeTurns = useActiveAgentTurns(agent.pubkey);
-  const managedOwner = useIsManagedAgent(agent.pubkey);
   const identity = useIdentityQuery();
   const profileQuery = useUserProfileQuery(agent.pubkey);
   const companyTeamQuery = useCompanyTeamQuery();
@@ -163,12 +113,8 @@ export function AgentProfileView({
   const refreshedSummaryPubkey = React.useRef<string | null>(null);
   const archive = useIdentityArchive(agent.pubkey);
   const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
-  const [logDialogOpen, setLogDialogOpen] = React.useState(false);
   const [isOpeningMessage, setIsOpeningMessage] = React.useState(false);
   const [messageError, setMessageError] = React.useState<string | null>(null);
-  const agentLogQuery = useManagedAgentLogQuery(
-    logDialogOpen ? agent.pubkey : null,
-  );
 
   const runtimes = runtimesQuery.data ?? [];
   const runtime = runtimeForAgent(agent, runtimes);
@@ -189,13 +135,6 @@ export function AgentProfileView({
       channelsQuery.data?.find((channel) => channel.id === channelId)?.name ??
       channelId.slice(0, 8),
   }));
-  const currentChannelId = activeChannelIds[0] ?? channelOptions[0]?.id ?? null;
-  const currentChannelName = channelOptions.find(
-    (channel) => channel.id === currentChannelId,
-  )?.name;
-  const viewerIsOwner =
-    managedOwner === true ||
-    ownsAuthorAgent(profileQuery.data, identity.data?.pubkey);
   const role = profileQuery.data?.about?.trim() || null;
   const managerName = managerProfileQuery.data?.displayName?.trim() || null;
   const companyPosition = position
@@ -470,7 +409,6 @@ export function AgentProfileView({
                   description={description}
                   harnessLabel={runtime?.label ?? "Not reported"}
                   onOpenChannel={onOpenChannel}
-                  onTabChange={onTabChange}
                   providerLabel={
                     agent.provider
                       ? providerDisplayLabel(agent.provider)
@@ -490,30 +428,6 @@ export function AgentProfileView({
                 ) : null}
               </>
             ) : null}
-            {tab === "model-runtime" ? (
-              <ModelRuntimeTab
-                agent={agent}
-                onManageHarnesses={onOpenHarnesses}
-                runtimeLabel={runtime?.label ?? "Not reported"}
-                runtimeAvailability={
-                  runtimesQuery.isLoading
-                    ? "loading"
-                    : runtimesQuery.isError
-                      ? "error"
-                      : runtime
-                        ? runtime.availability
-                        : "unknown"
-                }
-                authStatus={runtime?.authStatus.status ?? "unknown"}
-                runtimeConfig={runtimeConfigQuery.data}
-                isLoading={runtimeConfigQuery.isLoading}
-                error={
-                  runtimeConfigQuery.error instanceof Error
-                    ? runtimeConfigQuery.error
-                    : null
-                }
-              />
-            ) : null}
             {tab === "instructions" ? (
               <InstructionsTab
                 agent={agent}
@@ -523,35 +437,6 @@ export function AgentProfileView({
                 }
                 ownerName={ownerName}
                 key={agent.pubkey}
-              />
-            ) : null}
-            {tab === "tools-access" ? <ToolsAccessTab agent={agent} /> : null}
-            {tab === "activity" ? (
-              <ActivityTab
-                agent={agent}
-                activeChannelIds={activeChannelIds}
-                currentChannelId={currentChannelId}
-                currentChannelName={currentChannelName ?? null}
-                isLoading={
-                  channelsQuery.isLoading || relayAgentsQuery.isLoading
-                }
-                onOpenHarnessLog={() => setLogDialogOpen(true)}
-              />
-            ) : null}
-            {tab === "advanced" ? (
-              <AdvancedTab
-                agent={agent}
-                runtimeLabel={runtime?.label ?? "Not reported"}
-              />
-            ) : null}
-            {tab === "memory" ? (
-              <MemoryTab
-                agentName={agent.name}
-                agentPubkey={agent.pubkey}
-                isOwner={viewerIsOwner}
-                isOwnerLoading={
-                  managedOwner === undefined && profileQuery.isLoading
-                }
               />
             ) : null}
           </div>
@@ -565,189 +450,6 @@ export function AgentProfileView({
         onOpenChange={setArchiveDialogOpen}
         open={archiveDialogOpen}
       />
-      <Dialog onOpenChange={setLogDialogOpen} open={logDialogOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{agent.name} · Harness log</DialogTitle>
-            <DialogDescription>
-              This Mac · Example diagnostic output
-            </DialogDescription>
-          </DialogHeader>
-          <ManagedAgentLogPanel
-            chrome="bare"
-            error={
-              agentLogQuery.error instanceof Error ? agentLogQuery.error : null
-            }
-            isLoading={agentLogQuery.isLoading}
-            logContent={agentLogQuery.data?.content ?? null}
-            selectedAgent={agent}
-            variant="section"
-          />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button size="sm" type="button" variant="outline">
-                Close log
-              </Button>
-            </DialogClose>
-            <Button
-              onClick={() => {
-                setLogDialogOpen(false);
-                onTabChange("activity");
-              }}
-              size="sm"
-              type="button"
-            >
-              Open activity
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function ModelRuntimeTab({
-  agent,
-  onManageHarnesses,
-  runtimeLabel,
-  runtimeAvailability,
-  authStatus,
-  runtimeConfig,
-  isLoading,
-  error,
-}: {
-  agent: ManagedAgent;
-  onManageHarnesses: () => void;
-  runtimeLabel: string;
-  runtimeAvailability: string;
-  authStatus: string;
-  runtimeConfig: ReturnType<typeof useAgentConfigSurface>["data"];
-  isLoading: boolean;
-  error: Error | null;
-}) {
-  const effectiveModel = runtimeConfig?.normalized.model?.value?.trim() || null;
-  const effectiveProvider =
-    runtimeConfig?.normalized.provider?.value?.trim() || null;
-  const isObservedConfig =
-    runtimeConfig !== undefined && !runtimeConfig.isPreSpawn;
-  const requestedSource =
-    agent.modelSource === "definition"
-      ? "Agent definition"
-      : agent.modelSource === "global"
-        ? "Global defaults"
-        : agent.modelSource === "instance_legacy"
-          ? "Agent record"
-          : "Not reported";
-
-  return (
-    <div>
-      <ProfileTabHeading
-        action={
-          <Button
-            className="h-auto gap-1 px-0 text-xs text-[#2655a0] dark:text-[#adbfdf]"
-            onClick={onManageHarnesses}
-            size="sm"
-            type="button"
-            variant="link"
-          >
-            Manage harnesses
-            <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Button>
-        }
-        title="Model & runtime"
-      />
-      <div className="grid gap-5 lg:grid-cols-2">
-        <PanelSectionGroup title="Model selection">
-          <InfoRow
-            label="Requested model"
-            value={agent.model ?? "Not reported"}
-          />
-          <InfoRow label="Requested value source" value={requestedSource} />
-          <InfoRow
-            label="Effective model"
-            value={
-              isLoading
-                ? "Loading"
-                : isObservedConfig && effectiveModel
-                  ? effectiveModel
-                  : "Not reported"
-            }
-          />
-          <InfoRow
-            label="Effective provider"
-            value={
-              isLoading
-                ? "Loading"
-                : isObservedConfig && effectiveProvider
-                  ? providerDisplayLabel(effectiveProvider)
-                  : "Not reported"
-            }
-          />
-          {error ? (
-            <p className="px-4 py-3 text-sm text-destructive" role="alert">
-              {error.message}
-            </p>
-          ) : null}
-          {runtimeConfig?.isPreSpawn ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">
-              The agent has not reported an effective model for a running
-              session.
-            </p>
-          ) : null}
-        </PanelSectionGroup>
-        <PanelSectionGroup title="Harness and account">
-          <InfoRow label="Harness" value={runtimeLabel} />
-          <InfoRow label="Harness availability" value={runtimeAvailability} />
-          <InfoRow
-            label="Harness authentication"
-            value={authStatusLabel(authStatus)}
-          />
-          <InfoRow
-            label="Provider route"
-            value={
-              agent.provider
-                ? providerDisplayLabel(agent.provider)
-                : "Not reported"
-            }
-          />
-          <p className="px-4 py-3 text-sm text-muted-foreground">
-            Harness authentication and provider funding are separate. The
-            available runtime data does not report a credit balance or
-            subscription allowance.
-          </p>
-        </PanelSectionGroup>
-        <div className="lg:col-span-2">
-          <PanelSectionGroup title="Reported runtime values">
-            <InfoRow
-              label="Thinking effort"
-              value={reportedValue(
-                runtimeConfig,
-                "thinkingEffort",
-                isObservedConfig,
-                isLoading,
-              )}
-            />
-            <InfoRow
-              label="Maximum output tokens"
-              value={reportedValue(
-                runtimeConfig,
-                "maxOutputTokens",
-                isObservedConfig,
-                isLoading,
-              )}
-            />
-            <InfoRow
-              label="Context limit"
-              value={reportedValue(
-                runtimeConfig,
-                "contextLimit",
-                isObservedConfig,
-                isLoading,
-              )}
-            />
-          </PanelSectionGroup>
-        </div>
-      </div>
     </div>
   );
 }
@@ -882,284 +584,4 @@ function InstructionsTab({
       </div>
     </div>
   );
-}
-
-function ToolsAccessTab({ agent }: { agent: ManagedAgent }) {
-  return (
-    <div>
-      <ProfileTabHeading title="Tools & access" />
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.8fr)]">
-        <AgentConfigPanel
-          advancedMode="flat"
-          pubkey={agent.pubkey}
-          sections={["mcp"]}
-        />
-        <PanelSectionGroup title="Who can send instructions">
-          <InfoRow label="Access" value={accessLabel(agent.respondTo)} />
-          {agent.respondTo === "allowlist" ? (
-            <InfoRow
-              label="Selected people"
-              value={`${agent.respondToAllowlist.length}`}
-            />
-          ) : null}
-          <InfoRow
-            label="Conversation scope"
-            value={agent.sessionPolicy === "thread" ? "Thread" : "Channel"}
-          />
-          <p className="px-4 py-3 text-sm text-muted-foreground">
-            Tool availability comes from the configured harness and its reported
-            MCP servers.
-          </p>
-        </PanelSectionGroup>
-      </div>
-      <ToolPermissionList agentPubkey={agent.pubkey} />
-    </div>
-  );
-}
-
-function ActivityTab({
-  agent,
-  activeChannelIds,
-  currentChannelId,
-  currentChannelName,
-  isLoading,
-  onOpenHarnessLog,
-}: {
-  agent: ManagedAgent;
-  activeChannelIds: string[];
-  currentChannelId: string | null;
-  currentChannelName: string | null;
-  isLoading: boolean;
-  onOpenHarnessLog: () => void;
-}) {
-  const isRunning = agent.status === "running" || agent.status === "deployed";
-  const activityEmpty = (
-    <div
-      className="rounded-xl border border-dashed border-border/70 bg-background/70 px-4 py-4 text-sm text-muted-foreground"
-      data-testid="agent-activity-empty"
-    >
-      No task activity in this example. Configuration and lifecycle changes will
-      appear here.
-    </div>
-  );
-
-  return (
-    <div className="space-y-4" data-testid="agent-activity">
-      <ProfileTabHeading
-        action={
-          <Button
-            onClick={onOpenHarnessLog}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Harness log
-          </Button>
-        }
-        title="Activity"
-      />
-      <div className="flex items-center gap-2">
-        <Badge
-          className="rounded-[5px] border border-[#dce9df] bg-[#edf4ef] px-2 py-0.5 text-2xs font-medium normal-case tracking-normal text-[#507d69] dark:border-[#3c5445] dark:bg-[#25392e] dark:text-[#9ebda8]"
-          variant={activeChannelIds.length > 0 ? "default" : "success"}
-        >
-          {activeChannelIds.length > 0
-            ? "Working"
-            : isRunning
-              ? "Idle"
-              : "Stopped"}
-        </Badge>
-        <span className="text-sm text-muted-foreground">
-          {activeChannelIds.length > 0
-            ? currentChannelName
-              ? `Working in #${currentChannelName}`
-              : "Working in a channel"
-            : isRunning
-              ? "Waiting for instructions"
-              : "No process running on this Mac"}
-        </span>
-      </div>
-      {currentChannelId ? (
-        <ManagedAgentSessionPanel
-          agent={agent}
-          channelId={currentChannelId}
-          emptyDescription="No task activity in this example. Configuration and lifecycle changes will appear here."
-          emptyFallback={activityEmpty}
-          showHeader={false}
-          showRaw={false}
-        />
-      ) : isLoading ? (
-        <p className="py-4 text-sm text-muted-foreground">Loading activity…</p>
-      ) : (
-        activityEmpty
-      )}
-    </div>
-  );
-}
-
-function AdvancedTab({
-  agent,
-  runtimeLabel,
-}: {
-  agent: ManagedAgent;
-  runtimeLabel: string;
-}) {
-  return (
-    <div>
-      <ProfileTabHeading title="Advanced" />
-      <div className="grid gap-5 lg:grid-cols-2">
-        <PanelSectionGroup title="Runtime settings">
-          <InfoRow label="Harness" value={runtimeLabel} />
-          <InfoRow label="Parallelism" value={String(agent.parallelism)} />
-          <InfoRow
-            label="Turn timeout"
-            value={`${agent.turnTimeoutSeconds} seconds`}
-          />
-          <InfoRow
-            label="Idle timeout"
-            value={
-              agent.idleTimeoutSeconds === null
-                ? "Not reported"
-                : `${agent.idleTimeoutSeconds} seconds`
-            }
-          />
-          <InfoRow
-            label="Maximum turn duration"
-            value={
-              agent.maxTurnDurationSeconds === null
-                ? "Not reported"
-                : `${agent.maxTurnDurationSeconds} seconds`
-            }
-          />
-        </PanelSectionGroup>
-        <PanelSectionGroup title="Run location">
-          <InfoRow
-            label="Host type"
-            value={
-              agent.backend.type === "local" ? "This computer" : "Remote host"
-            }
-          />
-          <InfoRow
-            label="Start with desktop"
-            value={agent.startOnAppLaunch ? "On" : "Off"}
-          />
-          <InfoRow
-            label="Restart on configuration change"
-            value={agent.autoRestartOnConfigChange ? "On" : "Off"}
-          />
-          <p className="px-4 py-3 text-sm text-muted-foreground">
-            Credential values are hidden. This view lists runtime settings only.
-          </p>
-        </PanelSectionGroup>
-      </div>
-    </div>
-  );
-}
-
-function MemoryTab({
-  agentName,
-  agentPubkey,
-  isOwner,
-  isOwnerLoading,
-}: {
-  agentName: string;
-  agentPubkey: string;
-  isOwner: boolean;
-  isOwnerLoading: boolean;
-}) {
-  if (isOwnerLoading) {
-    return (
-      <p className="py-4 text-sm text-muted-foreground">
-        Loading memory access…
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-4" data-testid="agent-profile-memory">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">Memory</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            What {agentName} remembers across conversations.
-          </p>
-        </div>
-        <MemoryRefreshButton
-          agentPubkey={agentPubkey}
-          className="h-7 gap-1.5 px-2.5 text-xs"
-          iconClassName="size-3.5"
-          showLabel
-          variant="outline"
-          viewerIsOwner={isOwner}
-        />
-      </div>
-      {isOwner ? (
-        <MemorySection
-          agentPubkey={agentPubkey}
-          variant="grouped"
-          viewerIsOwner
-        />
-      ) : (
-        <div className="rounded-xl border border-border/70 bg-background/70 px-5 py-8">
-          <p className="text-sm text-muted-foreground">
-            Memory is available to the agent owner.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfileTabHeading({
-  action,
-  title,
-}: {
-  action?: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="mb-5 flex items-center justify-between gap-4">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      {action}
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span
-        className="max-w-[65%] truncate text-right text-sm font-medium text-foreground"
-        title={value}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function authStatusLabel(status: string) {
-  switch (status) {
-    case "logged_in":
-      return "Signed in";
-    case "logged_out":
-      return "Sign-in needed";
-    case "config_invalid":
-      return "Configuration issue";
-    case "not_applicable":
-      return "Not checked for this harness";
-    default:
-      return "Unknown";
-  }
-}
-
-function reportedValue(
-  config: ReturnType<typeof useAgentConfigSurface>["data"],
-  field: "thinkingEffort" | "maxOutputTokens" | "contextLimit",
-  isObserved: boolean,
-  isLoading: boolean,
-) {
-  if (isLoading) return "Loading";
-  if (!isObserved || !config) return "Not reported";
-  return config.normalized[field]?.value?.trim() || "Not reported";
 }

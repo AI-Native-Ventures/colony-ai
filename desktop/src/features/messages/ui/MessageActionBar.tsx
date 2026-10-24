@@ -1,7 +1,6 @@
 import {
   BellOff,
   BellRing,
-  Clock,
   Copy,
   CornerUpLeft,
   EllipsisVertical,
@@ -73,8 +72,8 @@ function copyMessageLink(channelId: string, message: TimelineMessage) {
 }
 
 /** Gate shared by every copy-link surface: pending sends have no delivered
- *  event to link to, huddle system rows aren't linkable, and callers without
- *  a channelId (e.g. inbox preview rows) can't build the link. */
+ *  event to link to, legacy huddle system rows aren't linkable, and callers
+ *  without a channelId (e.g. inbox preview rows) can't build the link. */
 function canCopyMessageLink(
   message: TimelineMessage,
   channelId: string | null | undefined,
@@ -95,7 +94,6 @@ function MoreActionsMenu({
   onMarkUnread,
   onMarkRead,
   onOpenChange,
-  onRemindLater,
   onRaiseAsk,
   onSendToChannel,
   onUnfollowThread,
@@ -116,7 +114,6 @@ function MoreActionsMenu({
   onMarkUnread?: (message: TimelineMessage) => void;
   onMarkRead?: (message: TimelineMessage) => void;
   onOpenChange: (open: boolean) => void;
-  onRemindLater?: (message: TimelineMessage) => void;
   onRaiseAsk?: (message: TimelineMessage) => void;
   onSendToChannel?: (message: TimelineMessage) => Promise<void>;
   onUnfollowThread?: (message: TimelineMessage) => void;
@@ -150,8 +147,8 @@ function MoreActionsMenu({
       : null;
 
   // A report needs a real, delivered event to target and a known author to
-  // name in the NIP-56 `p` tag. Pending sends and system huddle rows have
-  // neither, so the entry is hidden for them.
+  // name in the NIP-56 `p` tag. Pending sends and legacy huddle system rows
+  // have neither, so the entry is hidden for them.
   const canReport =
     !message.pending &&
     message.kind !== KIND_HUDDLE_STARTED &&
@@ -256,17 +253,6 @@ function MoreActionsMenu({
             >
               <Copy className="h-4 w-4" />
               Copy message
-            </DropdownMenuItem>
-          ) : null}
-
-          {onRemindLater ? (
-            <DropdownMenuItem
-              onClick={() => {
-                onRemindLater(message);
-              }}
-            >
-              <Clock className="h-4 w-4" />
-              Remind me later
             </DropdownMenuItem>
           ) : null}
 
@@ -441,7 +427,6 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   onMarkRead,
   onReactionBadgeBurstRequest,
   onReactionSelect,
-  onRemindLater,
   onRaiseAsk,
   onReply,
   onSendToChannel,
@@ -466,7 +451,6 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   onMarkRead?: (message: TimelineMessage) => void;
   onReactionBadgeBurstRequest?: (emoji: string) => void;
   onReactionSelect?: (emoji: string) => Promise<void>;
-  onRemindLater?: (message: TimelineMessage) => void;
   onRaiseAsk?: (message: TimelineMessage) => void;
   onReply?: (message: TimelineMessage) => void;
   onSendToChannel?: (message: TimelineMessage) => Promise<void>;
@@ -506,7 +490,6 @@ export const MessageActionBar = React.memo(function MessageActionBar({
     Boolean(onMarkRead) ||
     Boolean(onFollowThread) ||
     Boolean(onUnfollowThread) ||
-    Boolean(onRemindLater) ||
     Boolean(onRaiseAsk) ||
     Boolean(onSendToChannel) ||
     !message.pending;
@@ -684,7 +667,6 @@ export const MessageActionBar = React.memo(function MessageActionBar({
               onMarkUnread={onMarkUnread}
               onMarkRead={onMarkRead}
               onOpenChange={setIsDropdownOpen}
-              onRemindLater={onRemindLater}
               onRaiseAsk={onRaiseAsk}
               onSendToChannel={onSendToChannel}
               onUnfollowThread={onUnfollowThread}

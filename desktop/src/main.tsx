@@ -17,7 +17,6 @@ import { UpdaterProvider } from "@/features/settings/hooks/UpdaterProvider";
 import { migrateLegacyCommunityStorageBeforeRender } from "@/features/communities/legacyCommunityStorage";
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { CommunityOnboardingProvider } from "@/features/onboarding/communityOnboarding";
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 import { AvatarClipPaths } from "@/shared/ui/AvatarClipPaths";
@@ -93,9 +92,7 @@ function renderApp() {
       <RootErrorBoundary>
         <AvatarClipPaths />
         <CommunitiesProvider>
-          <CommunityOnboardingProvider
-            enabled={huddleWindowChannelId() === null}
-          >
+          <CommunityOnboardingProvider>
             <ThemeProvider defaultTheme="buzz">
               <TooltipProvider>
                 <EmojiBurstProvider>

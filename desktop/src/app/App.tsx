@@ -24,7 +24,6 @@ import { CommunityThemeController } from "@/shared/theme/CommunityThemeControlle
 import { useReloadShortcut } from "@/app/useReloadShortcut";
 import { useCloseWindowShortcut } from "@/app/useCloseWindowShortcut";
 import { KnownAgentPubkeysProvider } from "@/features/agents/useKnownAgentPubkeys";
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { useAppOnboardingState } from "@/features/onboarding/hooks";
 import { useMachineOnboardingState } from "@/features/onboarding/machineOnboarding";
 import { AccountClaimPrompt } from "@/features/account/AccountClaimPrompt";
@@ -62,7 +61,6 @@ import {
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
 import { prepareCommunitySwitchFromFailure } from "@/app/prepareCommunitySwitch";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
-import { seedProjectSnapshot } from "@/features/projects/projectSnapshot";
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
 import { hydrateChannelHeads } from "@/features/messages/lib/channelHeadCache";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -203,7 +201,6 @@ function CommunityQueryProvider({
   const [queryClient] = useState(() => {
     const client = createBuzzQueryClient();
     if (pubkey && relayUrl) {
-      seedProjectSnapshot(client, { pubkey, relayUrl });
       void hydrateChannelHeads(client, { pubkey, relayUrl });
     }
     return client;
@@ -316,9 +313,7 @@ function AppReady({
   return (
     <KnownAgentPubkeysProvider>
       <RouterProvider router={router} />
-      {huddleWindowChannelId() === null ? (
-        <AccountClaimPrompt authClient={authClient} />
-      ) : null}
+      <AccountClaimPrompt authClient={authClient} />
     </KnownAgentPubkeysProvider>
   );
 }
@@ -707,12 +702,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
     [activeCommunity, communityOnboarding.start],
   );
 
-  // Community links are app-global work. A Huddle companion loads the same
-  // React tree, but must never race the main window for the native pending-link
-  // queue or replace its dedicated transcript surface with onboarding.
-  const acceptsCommunityDeepLinks = huddleWindowChannelId() === null;
   useEffect(() => {
-    if (!acceptsCommunityDeepLinks) return;
     if (!supportsNativeCapability("deep-links")) return;
 
     const unlisten = listenForDeepLinks({
@@ -723,12 +713,9 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [acceptsCommunityDeepLinks, communityOnboarding.start, openAddCommunity]);
+  }, [communityOnboarding.start, openAddCommunity]);
 
-  useInvitePasteCapture(
-    communityOnboarding.start,
-    acceptsCommunityDeepLinks && machine.stage === "ready",
-  );
+  useInvitePasteCapture(communityOnboarding.start, machine.stage === "ready");
 
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;

@@ -200,12 +200,7 @@ for (const [width, height] of [
         const tools = await thread
           .getByRole("button", { name: "Record voice note", exact: true })
           .boundingBox();
-        const send = await thread
-          .getByRole("button", {
-            name: "Reference goal or sub-goal",
-            exact: true,
-          })
-          .boundingBox();
+        const send = await thread.getByTestId("send-message").boundingBox();
         expect(tools).not.toBeNull();
         expect(send).not.toBeNull();
         expect(
