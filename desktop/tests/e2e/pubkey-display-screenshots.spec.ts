@@ -16,7 +16,7 @@ const AGENT_PUBKEY = "cafef00d".repeat(8);
 // Screenshot evidence for the pubkey-display work: the canonical profile
 // surfaces, plus the new-DM recipient identity-hover states retained by it.
 
-test("profile panel Public key row reveals its copy action on hover", async ({
+test("profile panel Public key row keeps its copy action in view", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -31,11 +31,13 @@ test("profile panel Public key row reveals its copy action on hover", async ({
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
 
   const pubkeyRow = page.getByTestId("user-profile-public-key");
-  const copyIndicator = page.getByTestId("user-profile-public-key-copy-status");
   await expect(pubkeyRow).toBeVisible();
-  await expect(copyIndicator).toHaveCSS("opacity", "0");
-  await pubkeyRow.hover();
-  await expect(copyIndicator).toHaveCSS("opacity", "1");
+  // The board keeps the copy action in view beside the key; it no longer
+  // appears only on hover.
+  const copyButton = page.getByTestId("user-profile-public-key-copy");
+  await expect(copyButton).toBeVisible();
+  await expect(copyButton).toHaveAttribute("aria-label", "Copy Public key");
+  await expect(copyButton).toHaveAttribute("data-copied", "false");
   await waitForAnimations(page);
   await page.screenshot({
     path: `${SHOTS}/profile-panel-pubkey-hover-copy.png`,
