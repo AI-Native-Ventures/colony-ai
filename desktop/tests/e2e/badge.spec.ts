@@ -136,7 +136,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
   await openSidebarGroup(page, "company");
 
   const primaryMenu = page.getByTestId("sidebar-primary-menu");
-  // Today, Activity and the Software Factory row carry an icon.
+  // Today and Activity carry an icon.
   const inactiveRows = [
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
     page.getByTestId("sidebar-activity-button"),
@@ -158,7 +158,8 @@ test("primary navigation rows share the same inactive emphasis", async ({
     "opacity",
     "1",
   );
-  await expect(activity.locator("svg")).toHaveCSS("opacity", "0.8");
+  await expect(activity.locator("svg")).toHaveCSS("opacity", "1");
+  await expect(activity).toHaveCSS("font-weight", "800");
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {
