@@ -107,26 +107,12 @@ for (const size of sizes) {
     await page
       .getByRole("radio", { name: "Colony Agent", exact: true })
       .click();
-    const skip = page.getByRole("button", {
-      name: "Skip for now",
-      exact: true,
-    });
-    const initialSkip = await skip.elementHandle();
-    expect(initialSkip).not.toBeNull();
-    await expect(
-      page.getByRole("button", { name: "Test Colony Agent", exact: true }),
-    ).toBeEnabled();
-    // Harness readiness must not remove the fallback under the pointer.
-    expect(await initialSkip!.evaluate((element) => element.isConnected)).toBe(
-      true,
-    );
-    expect(
-      await skip.evaluate(
-        (element, initial) => element === initial,
-        initialSkip,
-      ),
-    ).toBe(true);
-    await skip.click();
+    await expect(page.getByTestId("onboarding-test-connection")).toBeEnabled();
+    await page.getByTestId("onboarding-test-connection").click();
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Open my Colony", exact: true })
+      .click();
     await expect(page.getByTestId("chat-title")).toContainText("Welcome");
     await expect
       .poll(() =>

@@ -25,7 +25,7 @@ test("R17 signup offers email-code resend after the cooldown", async ({
 }) => {
   await page.clock.install();
   await startR17AccountAuth(page, { identityLost: true });
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("lost-session@example.com");
   await page

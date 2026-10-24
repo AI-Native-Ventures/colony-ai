@@ -14,72 +14,28 @@ async function pasteCode(page: Page, code: string) {
   await page.keyboard.type(code);
 }
 
-test("legacy fallback screens render in the Colony visual shell", async ({
+test("startup problem and advanced sign-in screens render in the Colony visual shell", async ({
   page,
 }) => {
-  await page.goto("/tests/visual/onboarding.html?reskin=account-legacy");
-  await expect(page.getByTestId("reskin-account-card")).toBeVisible();
-  const legacyHeading = page.locator(
-    '[data-testid="reskin-account-card"] h1[tabindex="-1"]',
-  );
-  await expect(legacyHeading).toBeFocused();
-  await expect(legacyHeading).toHaveCSS("outline-style", "none");
-  await captureReskinState(page, "account-legacy-fallback");
-
-  await page.goto("/tests/visual/onboarding.html?reskin=identity-intro");
-  await expect(page.getByTestId("onboarding-page-key-intro")).toBeVisible();
-  await captureReskinState(page, "identity-introduction");
-  await page.getByTestId("identity-key-help-trigger").click();
-  await expect(page.getByTestId("identity-key-help-body")).toBeVisible();
-  await captureReskinState(page, "identity-key-help");
-
   await page.goto("/tests/visual/onboarding.html?reskin=native-unavailable");
   await expect(page.getByTestId("native-unavailable")).toBeVisible();
+  await expect(page.getByTestId("startup-problem")).toBeVisible();
   await captureReskinState(page, "native-unavailable");
-});
 
-test("machine identity landing and help fit both review widths", async ({
-  page,
-}) => {
-  await page.goto("/tests/visual/onboarding.html?reskin=machine-identity");
+  await page.goto("/tests/visual/onboarding.html?reskin=advanced");
   await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create a Colony sign-in" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Use a sign-in I already have" }),
-  ).toBeVisible();
-  await captureReskinState(page, "machine-identity-landing");
-
-  await page.getByTestId("identity-key-help-trigger").click();
-  await expect(page.getByTestId("identity-key-help-body")).toBeVisible();
-  // This route reuses the shared help screen captured with identity intro.
+  await expect(page.getByTestId("advanced-import")).toBeVisible();
+  await expect(page.getByTestId("advanced-create")).toBeVisible();
+  await captureReskinState(page, "advanced-sign-in");
 });
 
-test("identity help dialog and machine sign-in error follow the selected theme", async ({
-  page,
-}) => {
-  await page.goto("/tests/visual/onboarding.html?reskin=identity-help-dialog");
+test("the account help dialog follows the selected theme", async ({ page }) => {
+  await page.goto("/tests/visual/onboarding.html?scene=signin");
   const helpTrigger = page.getByTestId("identity-key-help-trigger");
-  await expect(helpTrigger).toHaveCSS("opacity", "1");
+  await expect(helpTrigger).toBeVisible();
   await helpTrigger.click();
   await expect(page.getByTestId("identity-key-help-dialog")).toBeVisible();
   await captureReskinState(page, "identity-key-help-dialog");
-
-  await page.goto(
-    "/tests/visual/onboarding.html?reskin=machine-identity-error",
-  );
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("Native identity-read");
-  const detailsButton = page.getByRole("button", {
-    name: "Technical details",
-  });
-  await expect(detailsButton).toHaveAttribute("aria-expanded", "false");
-  await captureReskinState(page, "machine-identity-error");
-  await detailsButton.click();
-  await expect(page.locator("body")).toContainText("Native identity-read");
-  await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
-  await captureReskinState(page, "machine-identity-error-technical-details");
 });
 
 test("locked sign-in screen fits both review widths", async ({ page }) => {

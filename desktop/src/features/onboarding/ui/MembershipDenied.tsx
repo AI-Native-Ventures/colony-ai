@@ -1,20 +1,23 @@
 import * as React from "react";
-import { Check, Copy, KeyRound, ShieldX, Ticket } from "lucide-react";
 
+import { CommunityFrame } from "@/features/communities/ui/CommunityFrame";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { nsecToNpub } from "@/shared/lib/nostrUtils";
 import { canonicalNpub, UNAVAILABLE_KEY_LABEL } from "@/shared/lib/pubkey";
-import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { Spinner } from "@/shared/ui/spinner";
-import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
-import { InviteRedeemForm } from "./InviteRedeemForm";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
+import {
+  FirstRunButton,
+  FirstRunError,
+  FirstRunLink,
+} from "./firstRunControls";
+import { CopyIcon, LockIcon } from "./firstRunIcons";
+import { InviteRedeemForm } from "./InviteRedeemForm";
 
 type MembershipDeniedProps = {
   /** The relay that denied membership, used as the target for bare-code invites. */
   activeRelayUrl: string;
+  /** The community's name, when the caller knows it. */
+  communityName?: string;
   embedded?: boolean;
   onChangeCommunity: () => void;
   onImportKey: (nsec: string) => Promise<void>;
@@ -24,6 +27,7 @@ type MembershipDeniedProps = {
 
 export function MembershipDenied({
   activeRelayUrl,
+  communityName,
   embedded = false,
   onChangeCommunity,
   onImportKey,
@@ -39,7 +43,6 @@ export function MembershipDenied({
   const npub =
     identityNpub ?? (pubkey ? UNAVAILABLE_KEY_LABEL : "Unknown public key");
   const [copied, setCopied] = React.useState(false);
-  const [technicalDetailsOpen, setTechnicalDetailsOpen] = React.useState(false);
   const [importError, setImportError] = React.useState<string | null>(null);
   const [isImportFormOpen, setIsImportFormOpen] = React.useState(false);
   const [isImportingKey, setIsImportingKey] = React.useState(false);
@@ -47,9 +50,10 @@ export function MembershipDenied({
   const previewNpub = React.useMemo(() => nsecToNpub(nsecInput), [nsecInput]);
   const trimmedNsec = nsecInput.trim();
   const isValidNsec = previewNpub !== null;
-
   const [isInviteFormOpen, setIsInviteFormOpen] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
+  const name =
+    communityName?.trim() || (embedded ? "this community" : "this business");
 
   const handleCopy = React.useCallback(async () => {
     if (!identityNpub) return;
@@ -58,7 +62,7 @@ export function MembershipDenied({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: select the text so the user can copy manually
+      // The code stays on screen to copy by hand.
     }
   }, [identityNpub, npub]);
 
@@ -69,10 +73,8 @@ export function MembershipDenied({
       );
       return;
     }
-
     setImportError(null);
     setIsImportingKey(true);
-
     try {
       await onImportKey(trimmedNsec);
     } catch (error) {
@@ -96,222 +98,159 @@ export function MembershipDenied({
     [communityOnboarding],
   );
 
-  return (
-    <div
-      className={
-        embedded
-          ? ""
-          : "flex min-h-dvh items-center justify-center bg-background px-4 py-8"
-      }
+  const card = (
+    <section
+      aria-labelledby="md-title"
+      className="c3fr-gate-card"
       data-testid="membership-denied"
     >
-      {embedded ? null : <StartupWindowDragRegion />}
-      <div
-        className={
-          embedded
-            ? ""
-            : "w-full max-w-md rounded-2xl border border-border bg-background p-8"
-        }
-      >
-        <div className="space-y-3">
-          <Badge variant="warning">Invitation needed</Badge>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-              <ShieldX className="h-4 w-4 text-destructive" />
-            </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-              {embedded
-                ? "You’re not in this community yet"
-                : "You’re not in this business yet"}
-            </h2>
-          </div>
-          <p className="text-sm leading-6 text-muted-foreground">
-            {embedded
-              ? "Ask the community owner to invite you, or sign in with the account that owns it."
-              : "Ask the owner to invite you, or sign in with the account that owns this business."}
-          </p>
-        </div>
+      <div className="c3fr-gate-card-head">
+        <span aria-hidden="true" className="c3fr-tile" data-tone="need">
+          <LockIcon size={21} strokeWidth={2.2} />
+        </span>
+        <h2 className="c3fr-gate-card-title" id="md-title" tabIndex={-1}>
+          {embedded
+            ? "You’re not in this community yet"
+            : "You’re not in this business yet"}
+        </h2>
+      </div>
+      <p className="c3fr-gate-text">
+        Ask an owner or admin of {name} to add you. Share this account code with
+        them.
+      </p>
+      <div className="c3fr-code-row">
+        <label className="c3fr-sr-only" htmlFor="md-code">
+          Your account code
+        </label>
+        <input
+          className="c3fr-code-field"
+          data-testid="membership-denied-account-code"
+          id="md-code"
+          readOnly
+          value={npub}
+        />
+        <FirstRunButton
+          aria-label={copied ? "Account code copied" : "Copy account code"}
+          disabled={!identityNpub}
+          onClick={() => void handleCopy()}
+          size="small"
+        >
+          <CopyIcon size={16} />
+          {copied ? "Copied" : "Copy code"}
+        </FirstRunButton>
+      </div>
 
-        <div className="mt-6 text-left text-xs text-muted-foreground">
-          <button
-            aria-expanded={technicalDetailsOpen}
-            className="w-fit rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setTechnicalDetailsOpen((isOpen) => !isOpen)}
-            type="button"
-          >
-            Technical details
-          </button>
-          {technicalDetailsOpen ? (
-            <div className="mt-3 space-y-3">
-              <div className="space-y-1.5">
-                <p className="font-medium">Your account code</p>
-                <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 font-mono text-xs text-foreground">
-                    {npub}
-                  </code>
-                  <Button
-                    className="shrink-0"
-                    disabled={!identityNpub}
-                    onClick={() => {
-                      void handleCopy();
-                    }}
-                    size="icon"
-                    aria-label={
-                      copied ? "Account code copied" : "Copy account code"
-                    }
-                    type="button"
-                    variant="outline"
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-              <p className="leading-5">
-                {embedded
-                  ? "Share this code with the community owner so they can invite you."
-                  : "Share this code with the business owner so they can invite you."}
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-6 flex flex-col gap-2">
-          {isInviteFormOpen ? (
-            <InviteRedeemForm
-              defaultRelayUrl={activeRelayUrl}
-              error={null}
-              isRedeeming={false}
-              onCancel={() => setIsInviteFormOpen(false)}
-              onRedeem={handleInviteRedeem}
+      {isInviteFormOpen ? (
+        <InviteRedeemForm
+          defaultRelayUrl={activeRelayUrl}
+          error={null}
+          isRedeeming={false}
+          onCancel={() => setIsInviteFormOpen(false)}
+          onRedeem={handleInviteRedeem}
+        />
+      ) : isImportFormOpen ? (
+        <form
+          className="c3fr-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleImportKey();
+          }}
+          style={{ "--c3fr-gap": 12 } as React.CSSProperties}
+        >
+          <div className="c3fr-field-group">
+            <label className="c3fr-label" htmlFor="membership-denied-nsec">
+              Private key
+            </label>
+            <input
+              autoComplete="off"
+              autoCorrect="off"
+              className="c3fr-input"
+              data-testid="membership-denied-nsec-input"
+              disabled={isImportingKey}
+              id="membership-denied-nsec"
+              onChange={(event) => {
+                setNsecInput(event.target.value);
+                setImportError(null);
+              }}
+              placeholder="nsec1..."
+              spellCheck={false}
+              type="password"
+              value={nsecInput}
             />
-          ) : isImportFormOpen ? (
-            <form
-              className="flex flex-col gap-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleImportKey();
+          </div>
+          {previewNpub ? (
+            <p
+              className="c3fr-ok-line"
+              data-testid="membership-denied-npub-preview"
+            >
+              This is the account you’re adding: {previewNpub}
+            </p>
+          ) : null}
+          {importError ? <FirstRunError>{importError}</FirstRunError> : null}
+          <div className="c3fr-gate-actions">
+            <FirstRunButton
+              data-testid="membership-denied-import-key"
+              disabled={!isValidNsec || isImportingKey}
+              kind="primary"
+              size="small"
+              type="submit"
+            >
+              {isImportingKey ? "Importing…" : "Import key"}
+            </FirstRunButton>
+            <FirstRunButton
+              disabled={isImportingKey}
+              onClick={() => {
+                setImportError(null);
+                setIsImportFormOpen(false);
+                setNsecInput("");
+              }}
+              size="small"
+            >
+              Back
+            </FirstRunButton>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="c3fr-gate-actions">
+            <FirstRunButton kind="primary" onClick={onRetry} size="small">
+              Try again
+            </FirstRunButton>
+            <FirstRunButton onClick={onChangeCommunity} size="small">
+              {embedded ? "Change community" : "Change business"}
+            </FirstRunButton>
+          </div>
+          <div className="c3fr-gate-links">
+            <FirstRunLink
+              data-testid="membership-denied-redeem-invite"
+              onClick={() => setIsInviteFormOpen(true)}
+            >
+              Have an invite?
+            </FirstRunLink>
+            <FirstRunLink
+              data-testid="membership-denied-change-key"
+              onClick={() => {
+                setImportError(null);
+                setIsImportFormOpen(true);
               }}
             >
-              <div className="space-y-1.5 text-left">
-                <label
-                  className="text-sm font-medium text-foreground"
-                  htmlFor="membership-denied-nsec"
-                >
-                  Private key
-                </label>
-                <Input
-                  autoComplete="off"
-                  autoCorrect="off"
-                  data-testid="membership-denied-nsec-input"
-                  disabled={isImportingKey}
-                  id="membership-denied-nsec"
-                  onChange={(event) => {
-                    setNsecInput(event.target.value);
-                    setImportError(null);
-                  }}
-                  placeholder="nsec1..."
-                  spellCheck={false}
-                  type="password"
-                  value={nsecInput}
-                />
-              </div>
+              Use a different account
+            </FirstRunLink>
+          </div>
+        </>
+      )}
+    </section>
+  );
 
-              {previewNpub ? (
-                <div
-                  className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
-                  data-testid="membership-denied-npub-preview"
-                >
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="font-medium text-foreground">
-                      This is the account you’re adding:
-                    </p>
-                    <p className="break-all font-mono text-2xs text-muted-foreground">
-                      {previewNpub}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
-
-              {importError ? (
-                <p className="text-center text-sm text-destructive">
-                  {importError}
-                </p>
-              ) : null}
-
-              <Button
-                className="w-full"
-                data-testid="membership-denied-import-key"
-                disabled={!isValidNsec || isImportingKey}
-                type="submit"
-              >
-                {isImportingKey ? (
-                  <Spinner
-                    aria-label="Importing key"
-                    className="h-4 w-4 border-2"
-                  />
-                ) : (
-                  "Import key"
-                )}
-              </Button>
-              <Button
-                className="w-full text-muted-foreground hover:text-accent-foreground"
-                disabled={isImportingKey}
-                onClick={() => {
-                  setImportError(null);
-                  setIsImportFormOpen(false);
-                  setNsecInput("");
-                }}
-                type="button"
-                variant="ghost"
-              >
-                Back
-              </Button>
-            </form>
-          ) : (
-            <>
-              <Button className="w-full" onClick={onRetry} type="button">
-                Try again
-              </Button>
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1 text-muted-foreground hover:text-accent-foreground"
-                  onClick={onChangeCommunity}
-                  type="button"
-                  variant="ghost"
-                >
-                  {embedded ? "Change community" : "Change business"}
-                </Button>
-              </div>
-              <button
-                className="flex w-full items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                data-testid="membership-denied-redeem-invite"
-                onClick={() => setIsInviteFormOpen(true)}
-                type="button"
-              >
-                <Ticket className="h-4 w-4" />
-                Have an invite?
-              </button>
-              <button
-                className="flex w-full items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                data-testid="membership-denied-change-key"
-                onClick={() => {
-                  setImportError(null);
-                  setIsImportFormOpen(true);
-                }}
-                type="button"
-              >
-                <KeyRound className="h-4 w-4" />
-                Use a different key
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+  if (embedded) return card;
+  return (
+    <CommunityFrame
+      body={`Nothing in ${name} is lost while you wait to be added.`}
+      heading="Your work is safe. We just can’t reach it right now."
+      testId="membership-denied-screen"
+      variant="failed"
+    >
+      <div className="c3fr-brand-column">{card}</div>
+    </CommunityFrame>
   );
 }

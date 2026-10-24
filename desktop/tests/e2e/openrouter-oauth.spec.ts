@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
+import { installMockBridge } from "../helpers/bridge";
 import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
 // These scenarios include account setup, business creation, OAuth and a first reply.
@@ -174,11 +175,11 @@ for (const viewport of [
       await expect(panel.locator('input[type="password"]')).toHaveCount(0);
       if (state === "connected" || state === "usage" || state === "limit") {
         await expect(
-          panel.getByRole("button", { name: "Test connection", exact: true }),
-        ).toHaveClass(/primary/);
+          page.getByTestId("onboarding-test-connection"),
+        ).toHaveAttribute("data-kind", "primary");
         if (state === "connected")
           await expect(
-            page.locator(".form-content button.primary"),
+            page.locator('.c3fr-form .c3fr-button[data-kind="primary"]'),
           ).toHaveCount(1);
         await expect(
           panel.getByText("Connected", { exact: true }),
@@ -238,7 +239,7 @@ for (const viewport of [
         ).toHaveCount(0);
         if (state === "limit")
           await expect(
-            panel.getByRole("button", { name: "Test connection", exact: true }),
+            page.getByTestId("onboarding-test-connection"),
           ).toBeDisabled();
       }
       if (state === "error")
@@ -283,9 +284,7 @@ for (const viewport of [
         expect(urls).toContain("https://openrouter.ai/credits");
       }
       if (state === "connected") {
-        await panel
-          .getByRole("button", { name: "Test connection", exact: true })
-          .click();
+        await page.getByTestId("onboarding-test-connection").click();
         await expect(
           page.getByTestId("onboarding-scene-connected"),
         ).toBeVisible();
@@ -319,15 +318,20 @@ test("Settings provides OAuth from the OpenRouter card and shows the saved provi
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await openRouterTab(page);
-  await page
-    .getByRole("radio", { name: "Claude Code or Codex", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await page.getByTestId("open-settings").click();
-  await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-group-agents-group").click();
+  await installMockBridge(page, {
+    accountLinked: true,
+    referenceWorkspace: true,
+    acpRuntimesCatalog: [
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
+    ],
+  });
+  await page.goto("/#/settings?section=agent-defaults");
+  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
+  await mockOAuth(page);
   const card = page.getByTestId("settings-global-agent-config");
   // The OpenRouter card is always on the page; with nothing connected it
   // offers Connect, and the key form of the old disclosure is gone.
@@ -399,7 +403,7 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
     if (status === "linked") {
       await expect(panel.getByText("Saved", { exact: true })).toBeVisible();
       await expect(
-        panel.getByRole("button", { name: "Test connection", exact: true }),
+        page.getByTestId("onboarding-test-connection"),
       ).toBeDisabled();
     } else if (status === "reauth")
       await expect(
@@ -486,9 +490,7 @@ for (const balance of [0, -0.004, -1]) {
     await expect(
       panel.getByRole("status", { name: "OpenRouter balance", exact: true }),
     ).toContainText("Out of credits");
-    await expect(
-      panel.getByRole("button", { name: "Test connection", exact: true }),
-    ).toBeEnabled();
+    await expect(page.getByTestId("onboarding-test-connection")).toBeEnabled();
     await expect(panel.getByText(/-\$/)).toHaveCount(0);
   });
 }
