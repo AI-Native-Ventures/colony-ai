@@ -614,7 +614,6 @@ export const MessageRow = React.memo(
         ownerLabel={message.ownerLabel}
         ownerPubkey={message.ownerPubkey}
         selfName={selfName}
-        selfPubkey={currentPubkey}
       />
     );
 
