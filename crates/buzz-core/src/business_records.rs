@@ -895,6 +895,8 @@ pub enum InvoiceStatus {
 pub enum InvoiceVersionAction {
     /// Initial draft produced by accepting a proposal.
     ProposalAcceptance,
+    /// Initial draft created directly for an existing client, with no proposal.
+    Create,
     /// Draft terms were edited before issue.
     DraftEdit,
     /// Draft invoice was issued.

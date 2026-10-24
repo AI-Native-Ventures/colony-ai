@@ -253,6 +253,8 @@ export function deriveShellRoute(pathname: string): {
     pathname === "/campaign" ||
     pathname === "/leads" ||
     pathname === "/pipeline" ||
+    pathname === "/money" ||
+    pathname.startsWith("/money/") ||
     pathname.startsWith("/sales/")
   ) {
     return {

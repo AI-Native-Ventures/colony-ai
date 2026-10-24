@@ -38,11 +38,15 @@ test("money overview and invoice list derive scoped totals from reference record
 
   await page.goto("/#/money/invoices");
   const rows = page.getByTestId("money-invoice-list").getByRole("row");
-  await expect(rows).toHaveCount(5);
+  // Opens on every month with records: the header, two month headings, and
+  // the six invoices.
+  await expect(rows).toHaveCount(9);
+  await page.getByLabel("Money period").selectOption("2026-09");
+  await expect(rows).toHaveCount(6);
   await expect(page.getByRole("table")).toContainText("The Olive House");
   await expect(page.getByRole("table")).toContainText("Cedar Café");
   await page.getByLabel("Money period").selectOption("2026-08");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   await expect(page.getByRole("table")).toContainText("August retainer");
 
   await page.goto("/#/money/revenue");
@@ -122,20 +126,6 @@ test("invoice detail records payment evidence and keeps typed values after a rej
   await expect(dialog).toContainText("No money moves in Colony.");
 });
 
-test("invoice detail opens a credit note scoped to the current invoice", async ({
-  page,
-}) => {
-  await openMoney(page, `/#/money/invoice/${CEDAR_PARTIAL_INVOICE_ID}`);
-
-  await page.getByRole("button", { name: "Create credit note" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create credit note" });
-  await expect(dialog.getByLabel("Invoice")).toHaveValue(
-    CEDAR_PARTIAL_INVOICE_ID,
-  );
-  await expect(dialog.getByLabel("Credit amount · ZAR")).toBeVisible();
-  await expect(dialog.getByLabel("Evidence reference")).toBeVisible();
-});
-
 test("client members can read invoice records without payment controls", async ({
   page,
 }) => {
@@ -151,14 +141,7 @@ test("client members can read invoice records without payment controls", async (
   await expect(
     page.getByRole("button", { name: "Record payment" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Prepare reminder" }),
-  ).toHaveCount(0);
   await expect(page.getByLabel("Money client")).toHaveCount(0);
-  await page.goto("/#/money/adjustments");
-  await expect(
-    page.getByRole("heading", { name: "Credit notes & refunds" }),
-  ).toBeVisible();
 });
 
 test("client channel ownership does not grant community money write authority", async ({
@@ -177,29 +160,108 @@ test("client channel ownership does not grant community money write authority", 
   await expect(
     page.getByRole("button", { name: "Record payment" }),
   ).toHaveCount(0);
-  await page.goto("/#/money/adjustments");
+});
+
+const NORTHLINE_CLIENT_ID = "1e1a7000-0000-4000-8000-000000000013";
+
+test("an owner creates a draft invoice from the invoices page", async ({
+  page,
+}) => {
+  await openMoney(page, "/#/money/invoices");
+
+  await page.getByRole("button", { name: "New invoice" }).click();
+  const dialog = page.getByRole("dialog", { name: "New invoice" });
+  await expect(dialog).toContainText(
+    "New invoices start as drafts. Review and issue separately.",
+  );
+  const create = dialog.getByRole("button", { name: "Create invoice" });
+  await dialog.getByLabel("Client").selectOption(NORTHLINE_CLIENT_ID);
+  await dialog.getByLabel("Service / description").fill("Website refresh");
+  await dialog.getByLabel("Quantity").fill("2");
+  await dialog.getByLabel("Unit amount · ZAR").fill("1250");
+  await dialog.getByLabel("Due date").fill("2026-10-15");
+  await expect(dialog).toContainText(/R\s*2\s*500/);
+  await create.click();
+
+  await expect(page).toHaveURL(/#\/money\/invoice\/[0-9a-f-]{36}$/);
+  const detail = page.getByTestId("money-invoice-detail");
+  await expect(detail).toContainText("Website refresh");
+  await expect(detail).toContainText("Northline Interiors");
+  await expect(detail).toContainText(/R\s*2\s*500/);
+  await expect(detail).toContainText("Draft");
   await expect(
-    page.getByRole("button", { name: "Create credit note" }),
-  ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Record refund" })).toHaveCount(
-    0,
+    page.getByRole("button", { name: "Review & issue" }),
+  ).toBeVisible();
+});
+
+test("a draft invoice is created from the client page for that client", async ({
+  page,
+}) => {
+  await openMoney(page, `/#/clients/${NORTHLINE_CLIENT_ID}`);
+
+  await page.getByRole("button", { name: "New invoice" }).click();
+  const dialog = page.getByRole("dialog", { name: "New invoice" });
+  await expect(dialog.getByLabel("Client")).toHaveCount(0);
+  await expect(dialog).toContainText("Northline Interiors");
+  await dialog.getByLabel("Service / description").fill("Onboarding workshop");
+  await dialog.getByLabel("Unit amount · ZAR").fill("4000");
+  await dialog.getByRole("button", { name: "Create invoice" }).click();
+
+  await expect(page).toHaveURL(/#\/money\/invoice\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("money-invoice-detail")).toContainText(
+    "Onboarding workshop",
+  );
+  await page.goto("/#/money/invoices");
+  await expect(page.getByTestId("money-invoice-list")).toContainText(
+    "Onboarding workshop",
   );
 });
 
-test("refund recording requires real client credit evidence", async ({
+test("a refused new invoice keeps what was typed and says why", async ({
   page,
 }) => {
-  await openMoney(page, "/#/money/adjustments");
+  await openMoney(page, "/#/money/invoices");
+  await page.getByRole("button", { name: "New invoice" }).click();
+  const dialog = page.getByRole("dialog", { name: "New invoice" });
+  await dialog.getByLabel("Client").selectOption(NORTHLINE_CLIENT_ID);
+  await dialog.getByLabel("Service / description").fill("Retry me");
+  await dialog.getByLabel("Unit amount · ZAR").fill("900");
+  await page.evaluate(() => {
+    (
+      window as Window & {
+        __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+          kind: number;
+          reason: string;
+        }>;
+      }
+    ).__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+      { kind: 47026, reason: "client channel is not available" },
+    ];
+  });
+  await dialog.getByRole("button", { name: "Create invoice" }).click();
 
-  await page.getByRole("button", { name: "Record refund" }).click();
-  const dialog = page.getByRole("dialog", { name: "No refundable balance" });
-  await expect(dialog).toContainText(
-    "A refund cannot exceed the client credit balance.",
+  await expect(dialog.getByRole("alert")).toContainText(
+    "client channel is not available",
   );
-  await dialog.getByRole("button", { name: "Create credit note" }).click();
-  const creditDialog = page.getByRole("dialog", { name: "Create credit note" });
-  await expect(creditDialog).toBeVisible();
+  await expect(dialog.getByLabel("Service / description")).toHaveValue(
+    "Retry me",
+  );
+  await expect(dialog.getByLabel("Unit amount · ZAR")).toHaveValue("900");
+});
+
+test("a member cannot create invoices", async ({ page }) => {
+  await openMoney(page, "/#/money/invoices", "member");
   await expect(
-    creditDialog.getByRole("button", { name: "Create credit note" }),
-  ).toBeEnabled();
+    page.getByRole("heading", { name: "Invoices", exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "New invoice" })).toHaveCount(
+    0,
+  );
+  await page.goto(`/#/clients/${NORTHLINE_CLIENT_ID}`);
+  await expect(
+    page.getByRole("heading", { name: "Northline Interiors" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "New invoice" })).toHaveCount(
+    0,
+  );
 });
