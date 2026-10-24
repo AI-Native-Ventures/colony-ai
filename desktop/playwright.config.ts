@@ -198,7 +198,6 @@ export default defineConfig({
         "**/company-team.spec.ts",
         "**/company-team-design.spec.ts",
         "**/company-team-scout.spec.ts",
-        "**/company-permissions.spec.ts",
         "**/asks-2.spec.ts",
         "**/identity-archive.spec.ts",
         "**/identity-archive-hide.spec.ts",

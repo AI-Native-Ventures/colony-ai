@@ -33,6 +33,9 @@ pub struct ProfileInfo {
     pub avatar_url: Option<String>,
     pub about: Option<String>,
     pub nip05_handle: Option<String>,
+    /// Job title from the kind:0 `job_title` field, shown beside the name.
+    #[serde(default)]
+    pub job_title: Option<String>,
     pub owner_pubkey: Option<String>,
     /// `true` when a real kind:0 event was found on the relay; `false` for the
     /// synthesized fallback returned when no metadata event exists.  The
@@ -51,6 +54,9 @@ pub struct UserProfileSummaryInfo {
     pub name: Option<String>,
     pub avatar_url: Option<String>,
     pub nip05_handle: Option<String>,
+    /// Job title from the kind:0 `job_title` field.
+    #[serde(default)]
+    pub job_title: Option<String>,
     pub owner_pubkey: Option<String>,
     #[serde(default)]
     pub is_agent: bool,

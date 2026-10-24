@@ -14,6 +14,7 @@ export const Route = createFileRoute("/asks/new")({
         ? search.threadRootEventId
         : null,
     ...(search.type === "money" ? { type: "money" as const } : {}),
+    ...(search.type === "hire" ? { type: "hire" as const } : {}),
   }),
   component: AskCreateRouteComponent,
 });
@@ -34,7 +35,13 @@ function AskCreateRouteComponent() {
       <AskCreateScreen
         channelId={channelId}
         threadRootEventId={threadRootEventId}
-        initialType={type === "money" ? "money_allowance_proposal" : undefined}
+        initialType={
+          type === "money"
+            ? "money_allowance_proposal"
+            : type === "hire"
+              ? "hire_proposal"
+              : undefined
+        }
       />
     </React.Suspense>
   );

@@ -59,7 +59,14 @@ test("owner hires from a role and the configured draft survives reload", async (
   await page.goto("/#/team");
   await page.getByRole("button", { name: "Hire employee" }).click();
   await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
-  await page.getByRole("button", { name: "Configure this role" }).click();
+  await expect(page.getByRole("button", { name: "Edit pack" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open role pack" }),
+  ).toHaveCount(0);
+  await page
+    .getByTestId(`hire-role-${PERSONA_ID}`)
+    .getByRole("button", { name: "Configure this role" })
+    .click();
 
   const name = page.getByTestId("hire-employee-name");
   const allowance = page.getByTestId("hire-weekly-allowance");
@@ -90,8 +97,119 @@ test("owner hires from a role and the configured draft survives reload", async (
     timeout: 15_000,
   });
   await expect(page.getByText("Mina joined the team.")).toBeVisible();
-  await expect(page.getByText("Hire approved.", { exact: true })).toBeVisible();
   await expect(page.getByText(/Hello team\. I’ll coordinate/)).toBeVisible();
+});
+
+test("a business with no role personas is offered the built-in roles", async ({
+  page,
+}) => {
+  const relay = newRelayKey();
+  await installMockBridge(page, {
+    relaySelf: relay.relaySelf,
+    companyHireRelayPrivateKeyHex: relay.privateKeyHex,
+    relayRequiresMembership: true,
+    personas: [],
+    discoverAgentModels: {
+      models: [{ id: "gpt-5.5", name: "GPT-5.5" }],
+      supportsSwitching: true,
+      selectedModel: "gpt-5.5",
+    },
+  });
+  await page.goto("/#/hire/roles");
+
+  const names = [
+    "Hospitality researcher",
+    "Social media manager",
+    "Bookkeeper",
+    "Chief of Staff",
+    "Business development",
+    "Writer",
+  ];
+  for (const name of names) {
+    await expect(
+      page
+        .getByRole("region", { name: "Role packs" })
+        .getByRole("heading", { name }),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Your role catalog starts here" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create role pack" }),
+  ).toHaveCount(0);
+  const socialCard = page.getByTestId(
+    "hire-role-built-in-role-social-media-manager",
+  );
+  await expect(socialCard).toContainText("Client social content");
+  await expect(socialCard).toContainText("Social publishing");
+  await expect(socialCard).toContainText("External action");
+
+  const rolePersonas = () =>
+    page.evaluate(async () => {
+      const invoke = (
+        window as Window & {
+          __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+            command: string,
+            payload?: unknown,
+          ) => Promise<unknown>;
+        }
+      ).__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+      const personas = (await invoke?.("list_personas", {})) as Array<{
+        display_name: string;
+        company_role: unknown;
+      }>;
+      return personas
+        .filter((persona) => persona.company_role)
+        .map((persona) => persona.display_name);
+    });
+  expect(await rolePersonas()).toEqual([]);
+
+  // A double click on a built-in role creates its persona once and reaches Configure.
+  await socialCard
+    .getByRole("button", { name: "Configure this role" })
+    .dblclick();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  await expect(page).toHaveURL(/#\/hire\/configure\?.*personaId=/);
+  expect(await rolePersonas()).toEqual(["Social media manager"]);
+
+  // The role is now the business's own: it is listed once, and a second hire
+  // reuses the persona instead of adding another.
+  await page.goto("/#/hire/roles");
+  await expect(
+    page
+      .getByRole("region", { name: "Role packs" })
+      .getByRole("heading", { name: "Social media manager" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId("hire-role-built-in-role-social-media-manager"),
+  ).toHaveCount(0);
+  await page
+    .locator('[data-testid^="hire-role-"]', {
+      hasText: "Social media manager",
+    })
+    .getByRole("button", { name: "Configure this role" })
+    .click();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  expect(await rolePersonas()).toEqual(["Social media manager"]);
+});
+
+test("a member cannot open the role catalog", async ({ page }) => {
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    relayRole: "member",
+    personas: [],
+  });
+  await page.goto("/#/hire/roles");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "You do not have permission for this action",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Configure this role" }),
+  ).toHaveCount(0);
 });
 
 async function seedHireAsk(
@@ -336,7 +454,9 @@ test("hire ask decisions use the reasoned handoff screen", async ({ page }) => {
   await expect(
     declinedCard.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
-  await expect(declinedCard.getByTestId("ask-status")).toHaveText("denied");
+  await expect(declinedCard.getByTestId("ask-status")).toHaveText(
+    "Request declined",
+  );
   await expect(
     declinedCard.getByText("Request declined", { exact: true }),
   ).toBeVisible();
@@ -384,7 +504,7 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
     page.getByText("The proposal needs another review."),
   ).toBeVisible();
   await page.goto(`/#/asks/${channelId}/${askId}`);
-  await expect(card.getByTestId("ask-status")).toHaveText("denied");
+  await expect(card.getByTestId("ask-status")).toHaveText("Request declined");
   await expect(
     card.getByText("Request declined", { exact: true }),
   ).toBeVisible();
@@ -497,7 +617,7 @@ test("resolved hire ask card explains that the requester has the outcome", async
   await expect(
     card.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
-  await expect(card.getByTestId("ask-status")).toHaveText("resolved");
+  await expect(card.getByTestId("ask-status")).toHaveText("Approved");
   await expect(
     card.getByText("Decision recorded", { exact: true }),
   ).toBeVisible();

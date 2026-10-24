@@ -49,37 +49,44 @@ test.describe("W07 agent workspace smoke", () => {
       .click();
     const profile = page.getByTestId("agent-profile");
     await expect(profile).toBeVisible();
-    for (const label of ["Instructions"]) {
-      const tab = profile.getByRole("button", { name: label, exact: true });
-      await expect(tab).toBeVisible();
-      await tab.click();
-      if (label === "Instructions") {
-        const editor = profile.getByRole("textbox", {
-          name: "System instructions",
-        });
-        const original = await editor.inputValue();
-        await editor.fill("Discard this instruction change.");
-        await profile.getByRole("button", { name: "Cancel" }).click();
-        await expect(editor).toHaveValue(original);
-
-        await editor.fill("Persisted instruction change.");
-        await profile.getByRole("button", { name: "Save changes" }).click();
-        await expect(editor).toHaveValue("Persisted instruction change.");
-        await expect(
-          profile.getByRole("button", { name: "Save changes" }),
-        ).toBeDisabled();
-      }
+    // One page: the model and the instructions sit under the overview, and
+    // the runtime, access, activity, advanced and memory tabs are gone.
+    await expect(
+      profile.getByRole("heading", { name: "Model & runtime" }),
+    ).toBeVisible();
+    await expect(
+      profile.getByRole("heading", { name: "System instructions" }),
+    ).toBeVisible();
+    for (const label of ["Tools & access", "Activity", "Advanced", "Memory"]) {
+      await expect(
+        profile.getByRole("button", { name: label, exact: true }),
+      ).toHaveCount(0);
     }
+    const editor = profile.getByRole("textbox", {
+      name: "System instructions",
+    });
+    const original = await editor.inputValue();
+    await editor.fill("Discard this instruction change.");
+    await profile.getByRole("button", { name: "Cancel" }).click();
+    await expect(editor).toHaveValue(original);
+
+    await editor.fill("Persisted instruction change.");
+    await profile.getByRole("button", { name: "Save changes" }).click();
+    await expect(editor).toHaveValue("Persisted instruction change.");
+    await expect(
+      profile.getByRole("button", { name: "Save changes" }),
+    ).toBeDisabled();
   });
 
-  test("persona-linked instructions stay read-only at the instance boundary", async ({
+  test("persona-linked instructions save into the definition they come from", async ({
     page,
   }) => {
+    const pubkey =
+      "0000000000000000000000000000000000000000000000000000000000000011";
     await installMockBridge(page, {
       managedAgents: [
         {
-          pubkey:
-            "0000000000000000000000000000000000000000000000000000000000000011",
+          pubkey,
           name: "Mina",
           about: "Social media manager",
           personaId: "mina",
@@ -95,22 +102,105 @@ test.describe("W07 agent workspace smoke", () => {
         },
       ],
     });
-    await page.goto(
-      "/#/agents?agent=0000000000000000000000000000000000000000000000000000000000000011&agentTab=instructions",
-      { waitUntil: "domcontentloaded" },
-    );
+    await page.goto(`/#/agents?agent=${pubkey}&agentTab=instructions`, {
+      waitUntil: "domcontentloaded",
+    });
 
     const profile = page.getByTestId("agent-profile");
     await expect(profile).toBeVisible();
-    await expect(
-      profile.getByText("Persona-owned instructions, shown exactly."),
-    ).toBeVisible();
-    await expect(
-      profile.getByRole("textbox", { name: "System instructions" }),
-    ).toHaveCount(0);
+    const editor = profile.getByRole("textbox", {
+      name: "System instructions",
+    });
+    await expect(editor).toHaveValue(
+      "Persona-owned instructions, shown exactly.",
+    );
+    await editor.fill("Persona-owned instructions, edited on the agent page.");
+    await profile.getByRole("button", { name: "Save changes" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const bridge = window as typeof window & {
+            __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+              command: string,
+            ) => Promise<unknown>;
+          };
+          const personas = (await bridge.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+            "list_personas",
+          )) as Array<{ id: string; system_prompt: string }> | undefined;
+          return personas?.find((persona) => persona.id === "mina")
+            ?.system_prompt;
+        }),
+      )
+      .toBe("Persona-owned instructions, edited on the agent page.");
+  });
+
+  test("editing instructions shared with another agent copies the definition for this agent only", async ({
+    page,
+  }) => {
+    const mina =
+      "0000000000000000000000000000000000000000000000000000000000000011";
+    const noor =
+      "0000000000000000000000000000000000000000000000000000000000000012";
+    await installMockBridge(page, {
+      managedAgents: [
+        { pubkey: mina, name: "Mina", personaId: "shared", status: "stopped" },
+        { pubkey: noor, name: "Noor", personaId: "shared", status: "stopped" },
+      ],
+      personas: [
+        {
+          id: "shared",
+          displayName: "Shared definition",
+          systemPrompt: "Shared instructions.",
+        },
+      ],
+    });
+    await page.goto(`/#/agents?agent=${mina}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const profile = page.getByTestId("agent-profile");
+    const editor = profile.getByRole("textbox", {
+      name: "System instructions",
+    });
+    await expect(editor).toHaveValue("Shared instructions.");
+    await editor.fill("Mina's own instructions.");
+    await profile.getByRole("button", { name: "Save changes" }).click();
     await expect(
       profile.getByRole("button", { name: "Save changes" }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
+    await expect(editor).toHaveValue("Mina's own instructions.");
+
+    const state = await page.evaluate(async () => {
+      const bridge = window as typeof window & {
+        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (c: string) => Promise<unknown>;
+      };
+      const personas = (await bridge.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "list_personas",
+      )) as Array<{ id: string; system_prompt: string }>;
+      const agents = (await bridge.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "list_managed_agents",
+      )) as Array<{ pubkey: string; persona_id: string | null }>;
+      return {
+        sharedPrompt: personas.find((persona) => persona.id === "shared")
+          ?.system_prompt,
+        minaPersona: agents.find(
+          (agent) => agent.pubkey === "0".repeat(62) + "11",
+        )?.persona_id,
+        noorPersona: agents.find(
+          (agent) => agent.pubkey === "0".repeat(62) + "12",
+        )?.persona_id,
+        minaPrompt: personas.find(
+          (persona) =>
+            persona.id ===
+            agents.find((agent) => agent.pubkey === "0".repeat(62) + "11")
+              ?.persona_id,
+        )?.system_prompt,
+      };
+    });
+    expect(state.sharedPrompt).toBe("Shared instructions.");
+    expect(state.noorPersona).toBe("shared");
+    expect(state.minaPersona).not.toBe("shared");
+    expect(state.minaPrompt).toBe("Mina's own instructions.");
   });
 
   test("overview resolves profile role and seeded channel membership names", async ({

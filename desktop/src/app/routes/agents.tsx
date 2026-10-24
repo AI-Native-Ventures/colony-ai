@@ -7,15 +7,12 @@ import {
   type ProfilePanelTab,
   type ProfilePanelView,
 } from "@/features/profile/ui/UserProfilePanelUtils";
-import {
-  parseAgentProfileTab,
-  type AgentProfileTab,
-} from "@/features/agents/ui/AgentProfileView";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
 
 type AgentsRouteSearch = {
   agent?: string;
-  agentTab?: AgentProfileTab;
+  /** Retired profile tab; kept so older links still open the agent page. */
+  agentTab?: string;
   profile?: string;
   profilePersona?: string;
   profileTab?: ProfilePanelTab;
@@ -38,9 +35,7 @@ function validateAgentsSearch(
   const agent = nonEmptyString(search.agent);
   return {
     agent,
-    agentTab: agent
-      ? parseAgentProfileTab(nonEmptyString(search.agentTab))
-      : undefined,
+    agentTab: agent ? nonEmptyString(search.agentTab) : undefined,
     profile: nonEmptyString(search.profile),
     profilePersona: nonEmptyString(search.profilePersona),
     profileTab: parseProfilePanelTab(search.profileTab) ?? undefined,

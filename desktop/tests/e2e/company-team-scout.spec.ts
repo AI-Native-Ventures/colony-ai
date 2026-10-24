@@ -174,44 +174,36 @@ for (const viewport of [
     }
     await capture("team");
     await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await expect(
-      page.getByTestId("employee-header-avatar-image"),
-    ).toBeVisible();
+    await expect(page.getByTestId("agent-profile-avatar-image")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Employee · Ready",
+      "AI employee",
+    );
+    await expect(page.getByTestId("agent-profile")).toContainText(
+      "Runtime ready",
     );
     await capture("scout-detail");
-    await page.getByRole("tab", { name: "Model & runtime" }).click();
-    const summary = page.getByTestId("employee-runtime-summary");
-    await expect(summary).toContainText("HarnessClaude Code");
-    await expect(summary).toContainText("Modelsonnet");
-    await expect(summary).toContainText("Thinking efforthigh");
-    const harnessLabel = await summary.locator("dt").first().boundingBox();
-    const harnessValue = await summary.locator("dd").first().boundingBox();
-    if (!harnessLabel || !harnessValue)
-      throw new Error(
-        "Runtime fields must render before measuring the reference rows",
-      );
-    expect(harnessValue.x).toBeGreaterThan(harnessLabel.x + harnessLabel.width);
-    expect(harnessValue.y).toBe(harnessLabel.y);
-    await expect(summary.getByText("16384", { exact: true })).not.toBeVisible();
+    // The model and runtime sit on the same page as the overview.
+    const harness = page.getByTestId("agent-harness-account");
+    await expect(harness).toContainText("Claude Code");
+    await expect(page.getByTestId("agent-model-selection")).toContainText(
+      "sonnet",
+    );
     for (const key of [
       "agentPushNotifEnabled",
       "autoUpdatesChannel",
       "enableAllProjectMcpServers",
       "enabledPlugins",
       "private-settings-path",
-      "Provider",
       "template default",
     ])
-      await expect(summary).not.toContainText(key);
+      await expect(page.getByTestId("agent-profile")).not.toContainText(key);
     await capture("scout-model");
   });
 }
 
-for (const [lifecycle, label] of [
-  ["failed", "Needs attention"],
-  ["stopped", "Offline"],
+for (const [lifecycle, label, chip] of [
+  ["failed", "Needs attention", "Needs attention"],
+  ["stopped", "Offline", "Runtime offline"],
 ] as const) {
   test(`Scout ${lifecycle} state is shown in Team and profile`, async ({
     page,
@@ -221,9 +213,7 @@ for (const [lifecycle, label] of [
       page.getByTestId(`company-team-member-${pubkey}`),
     ).toContainText(label);
     await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await expect(page.getByTestId("company-position-header")).toContainText(
-      `Employee · ${label}`,
-    );
+    await expect(page.getByTestId("agent-profile")).toContainText(chip);
   });
 }
 
@@ -243,9 +233,12 @@ test("Scout active work changes the live Team status", async ({ page }) => {
     "Working",
   );
   await page.getByTestId(`company-team-member-${pubkey}`).click();
-  await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Working",
+  // Working is a state of the work: the runtime stays ready and the
+  // channel shows under Current work.
+  await expect(page.getByTestId("agent-profile")).toContainText(
+    "Runtime ready",
   );
+  await expect(page.getByTestId("agent-overview")).toContainText("Working");
 });
 
 test("Scout artwork and runtime state are shared with the agent profile", async ({
@@ -286,7 +279,7 @@ test("Scout artwork and runtime state are shared with the agent profile", async 
   await expect(profile).toBeVisible();
   await expect(page.getByTestId("agent-profile-avatar-image")).toBeVisible();
   await expect(
-    profile.getByText("Presence: Ready", { exact: true }),
+    profile.getByText("Runtime ready", { exact: true }),
   ).toBeVisible();
   await expect(profile.getByText("Unknown", { exact: true })).toHaveCount(0);
   await waitForAnimations(page);

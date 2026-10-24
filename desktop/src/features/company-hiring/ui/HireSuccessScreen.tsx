@@ -1,17 +1,26 @@
-import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { usePersonasQuery } from "@/features/agents/hooks";
+import { useChannelsQuery } from "@/features/channels/hooks";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useCompanyHireHeadQuery } from "../hireRelay";
-import { Button } from "@/shared/ui/button";
-import {
-  HireFlash,
-  HirePageContent,
-  HirePageHeader,
-  hirePrimaryButtonClass,
-} from "./HirePresentation";
+import { hireIntroductionText } from "../hireIntroduction";
+import { HireButton, HirePage, HireSteps } from "./HirePresentation";
+import { memberName } from "./hireMembers";
 
 export function HireSuccessScreen({ hireId }: { hireId: string }) {
   const hireQuery = useCompanyHireHeadQuery(hireId);
+  const teamQuery = useCompanyTeamQuery();
+  const channelsQuery = useChannelsQuery();
+  const personasQuery = usePersonasQuery();
   const { goChannel, goTeam, goTeamMember } = useAppNavigation();
+  const members = teamQuery.data?.members ?? [];
+  const managerPubkey = hireQuery.data?.head.proposal.managerPubkey;
+  const profilesQuery = useUsersBatchQuery(
+    members.map((member) => member.pubkey),
+    { enabled: members.length > 0 },
+  );
   if (hireQuery.isError) throw hireQuery.error;
   const record = hireQuery.data;
   if (record?.head.status !== "hired" || !record.head.employeePubkey)
@@ -20,71 +29,80 @@ export function HireSuccessScreen({ hireId }: { hireId: string }) {
   const proposal = record.head.proposal;
   const name = proposal.displayName;
   const employeePubkey = record.head.employeePubkey;
+  const profiles = profilesQuery.data?.profiles ?? {};
+  const manager = managerPubkey
+    ? members.find(
+        (member) => member.pubkey.toLowerCase() === managerPubkey.toLowerCase(),
+      )
+    : members.find((member) => member.role === "owner");
+  const managerLabel = manager
+    ? memberName(manager, profiles)
+    : "the company owner";
+  const channelName =
+    channelsQuery.data?.find(
+      (channel) => channel.id === proposal.introductionChannelId,
+    )?.name ?? "";
+  const persona = personasQuery.data?.find(
+    (candidate) => candidate.id === proposal.rolePack.personaId,
+  );
 
   return (
-    <>
-      <HirePageHeader title="Employee hired" />
-      <HirePageContent>
-        <h1 className="mb-6 mt-8 text-2xl font-semibold tracking-tight text-foreground">
-          Employee hired
-        </h1>
-        <HireFlash>Hire approved.</HireFlash>
-        <section
-          className="my-5 rounded-[9px] border border-success/25 bg-success/10 p-[18px] text-xs"
-          data-testid="hire-success"
-        >
-          <h2 className="text-base font-semibold text-success">
-            {name} joined the team.
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            The founder-approved scope and allowance have been recorded.
-          </p>
-        </section>
-        <article className="my-8 flex items-start gap-3">
-          <span aria-hidden="true">
-            <UserAvatar avatarUrl={null} displayName={name} size="md" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <strong className="text-sm font-semibold text-foreground">
-                {name}
-              </strong>
-              <span className="text-2xs text-muted-foreground">Employee</span>
-              <span className="text-2xs text-muted-foreground">Just now</span>
+    <HirePage centered testId="hire-success">
+      <HireSteps centered current={4} />
+      <div className="colony-hire-hero">
+        <EmployeeAvatar
+          className="colony-hire-avatar-104"
+          definition={persona?.avatarUrl}
+          name={name}
+          personaId={persona?.id}
+        />
+        <h1>{name} joined the team.</h1>
+        <span>
+          {proposal.title} · reports to {managerLabel} · #{channelName}
+        </span>
+      </div>
+      <section aria-labelledby="intro-preview" className="colony-hire-intro">
+        <h2 className="colony-hire-eyebrow" id="intro-preview">
+          Introduction in #{channelName}
+        </h2>
+        <article className="colony-hire-intro-card">
+          <EmployeeAvatar
+            className="colony-hire-avatar-44"
+            definition={persona?.avatarUrl}
+            name={name}
+            personaId={persona?.id}
+          />
+          <div>
+            <div className="colony-hire-intro-meta">
+              <strong>{name}</strong>
+              <span>{proposal.title} · just now</span>
             </div>
-            <p className="mt-1 text-sm leading-[1.8] text-foreground">
-              Hello team. I’ll coordinate {proposal.title} and bring decisions
-              back to the right people.
-            </p>
+            <p>{hireIntroductionText(proposal.title)}</p>
           </div>
         </article>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            className={hirePrimaryButtonClass}
-            data-testid="hire-open-profile"
-            onClick={() => void goTeamMember(employeePubkey)}
-            type="button"
-          >
-            Open employee profile
-          </Button>
-          <Button
-            data-testid="hire-view-team"
-            onClick={() => void goTeam()}
-            type="button"
-            variant="outline"
-          >
-            View team
-          </Button>
-          <Button
-            data-testid="hire-open-introduction"
-            onClick={() => void goChannel(proposal.introductionChannelId)}
-            type="button"
-            variant="outline"
-          >
-            Open introduction channel
-          </Button>
-        </div>
-      </HirePageContent>
-    </>
+      </section>
+      <div className="colony-hire-success-actions">
+        <HireButton
+          onClick={() => void goTeamMember(employeePubkey)}
+          testId="hire-open-profile"
+        >
+          Open employee profile
+        </HireButton>
+        <HireButton
+          onClick={() => void goTeam()}
+          testId="hire-view-team"
+          variant="outline"
+        >
+          View team
+        </HireButton>
+        <HireButton
+          onClick={() => void goChannel(proposal.introductionChannelId)}
+          testId="hire-open-introduction"
+          variant="outline"
+        >
+          Open introduction channel
+        </HireButton>
+      </div>
+    </HirePage>
   );
 }

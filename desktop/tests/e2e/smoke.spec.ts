@@ -299,8 +299,7 @@ test("create agent supports parallelism and system prompt overrides", async ({
   await createdAgent.click();
   await expect(page.getByTestId("agent-profile")).toBeVisible();
 
-  await page.getByRole("button", { name: "Instructions", exact: true }).click();
-  await expect(page.getByTestId("agent-instructions")).toContainText(
+  await expect(page.getByTestId("agent-system-instructions")).toHaveValue(
     systemPrompt,
   );
 });

@@ -1,8 +1,9 @@
-import type * as React from "react";
-import { Bell, Building2, Search } from "lucide-react";
+import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
+import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
@@ -20,9 +21,15 @@ import {
   KIND_STREAM_MESSAGE_V2,
 } from "@/shared/constants/kinds";
 import { Markdown } from "@/shared/ui/markdown";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
-import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { Button } from "@/shared/ui/button";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlusIcon,
+} from "@/shared/ui/colonyIcons";
+import { BellGlyph, DecisionAvatar, SearchGlyph } from "./AskDecisionParts";
+import { formatClockTime } from "./askCardFormatting";
+import "./askDecisions.css";
 
 function isChannelRootMessage(
   event: RelayEvent,
@@ -70,7 +77,7 @@ function AskDetailState({
   onRetry?: () => void;
 }) {
   return (
-    <section className="colony-ask-route-state" data-testid={testId}>
+    <section className="colony-decision-state" data-testid={testId}>
       <p role={onRetry ? "alert" : "status"}>{message}</p>
       {onRetry ? (
         <Button onClick={onRetry} type="button" variant="outline">
@@ -78,6 +85,98 @@ function AskDetailState({
         </Button>
       ) : null}
     </section>
+  );
+}
+
+const TOP_CHROME_CONTENT_ID = "app-top-chrome-content";
+
+/**
+ * The page's top bar: the history buttons and the breadcrumb, with Search and
+ * the Inbox bell at the end (`AskDetail.dc.html`). When the shell already draws
+ * its own top bar, the breadcrumb and the two buttons move into it instead.
+ */
+function AskDetailTopBar({
+  pageTitle,
+  onSearch,
+  onInbox,
+}: {
+  pageTitle: string;
+  onSearch: () => void;
+  onInbox: () => void;
+}) {
+  const { navigationHistory } = useAppShell();
+  const [slot, setSlot] = React.useState<HTMLElement | null>(() =>
+    document.getElementById(TOP_CHROME_CONTENT_ID),
+  );
+  React.useLayoutEffect(() => {
+    setSlot(document.getElementById(TOP_CHROME_CONTENT_ID));
+  }, []);
+  const trail = (
+    <>
+      <nav aria-label="Breadcrumb" className="colony-decision-breadcrumb">
+        <span>Company</span>
+        <span aria-hidden="true">/</span>
+        <span
+          data-current="true"
+          data-testid="ask-detail-breadcrumb"
+          title={pageTitle}
+        >
+          {pageTitle}
+        </span>
+      </nav>
+      <span className="colony-decision-topbar-spacer" />
+      <button
+        aria-label="Search workspace"
+        className="colony-decision-topbar-action"
+        onClick={onSearch}
+        type="button"
+      >
+        <SearchGlyph />
+      </button>
+      <button
+        aria-label="Open Inbox"
+        className="colony-decision-topbar-action"
+        onClick={onInbox}
+        type="button"
+      >
+        <BellGlyph />
+      </button>
+    </>
+  );
+  if (slot) return createPortal(trail, slot);
+  return (
+    <header className="colony-topbar" data-testid="ask-detail-topbar">
+      <button
+        aria-label="Go back"
+        className="colony-topbar-button"
+        data-testid="global-back"
+        disabled={!navigationHistory.canGoBack}
+        onClick={navigationHistory.goBack}
+        type="button"
+      >
+        <ChevronLeftIcon size={17} />
+      </button>
+      <button
+        aria-label="Go forward"
+        className="colony-topbar-button"
+        data-testid="global-forward"
+        disabled={!navigationHistory.canGoForward}
+        onClick={navigationHistory.goForward}
+        type="button"
+      >
+        <ChevronRightIcon size={17} />
+      </button>
+      {trail}
+    </header>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link className="colony-decision-back" to="/today">
+      <ChevronLeftIcon size={15} strokeWidth={2.6} />
+      Back
+    </Link>
   );
 }
 
@@ -127,6 +226,7 @@ function AskDetailMemberScreen({
     record?.head.ask.addresseePubkey,
     record?.head.resolution?.resolvedByPubkey,
     record?.head.cancellation?.cancelledByPubkey,
+    record?.head.ask.spendAllowanceProposal?.employeePubkey,
   ].filter((pubkey): pubkey is string => Boolean(pubkey));
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: profilePubkeys.length > 0,
@@ -152,7 +252,9 @@ function AskDetailMemberScreen({
     record && mapSpecializedAskCard(record.head.ask)
       ? record.head.ask.title
       : null;
-  const pageTitle = specializedAskTitle ?? `Decision in ${threadTitle}`;
+  const pageTitle = formattedRoot
+    ? `Decision in ${threadTitle}`
+    : (specializedAskTitle ?? "Decision");
   const rootDisplayBody = formattedRoot
     ? rootThreadDisplayBody(formattedRoot.body)
     : "";
@@ -234,96 +336,79 @@ function AskDetailMemberScreen({
       ?.click();
   };
 
-  return (
-    <div className="colony-ask-detail-screen" data-testid="ask-detail-screen">
-      <WorkspaceTopBar
-        actions={
-          <>
-            <button
-              aria-label="Search workspace"
-              onClick={searchWorkspace}
-              type="button"
-            >
-              <Search aria-hidden="true" />
-            </button>
-            <button
-              aria-label="Open Inbox"
-              onClick={() => void goHome()}
-              type="button"
-            >
-              <Bell aria-hidden="true" />
-            </button>
-          </>
-        }
+  const rootAnchor =
+    !specializedAskTitle && formattedRoot ? (
+      <article
+        aria-label="Message anchoring this ask"
+        className="colony-decision-root"
+        data-testid="ask-thread-root"
       >
-        <Building2 aria-hidden="true" />
-        <span>Company</span>
-        <span
-          aria-hidden="true"
-          className="colony-workspace-breadcrumb-separator"
+        <DecisionAvatar
+          isAgent={formattedRoot.isAgent}
+          name={formattedRoot.author}
+          profiles={profilesQuery.data?.profiles}
+          pubkey={formattedRoot.pubkey}
+          size={42}
+        />
+        <div className="colony-decision-message-body">
+          <div className="colony-decision-message-head">
+            <strong>{formattedRoot.author}</strong>
+            <time
+              dateTime={new Date(formattedRoot.createdAt * 1_000).toISOString()}
+            >
+              {formattedRoot.isAgent ? "AI employee" : "Person"} · #
+              {channel?.name ?? "conversation"} ·{" "}
+              {formatClockTime(
+                new Date(formattedRoot.createdAt * 1_000).toISOString(),
+              ) ?? formattedRoot.time}
+            </time>
+          </div>
+          <Markdown
+            className="colony-decision-message-text"
+            content={rootDisplayBody}
+            interactive={false}
+            messageId={formattedRoot.id}
+          />
+        </div>
+      </article>
+    ) : null;
+
+  return (
+    <div className="colony-decision-screen" data-testid="ask-detail-screen">
+      <AskDetailTopBar
+        onInbox={() => void goHome()}
+        onSearch={searchWorkspace}
+        pageTitle={pageTitle}
+      />
+      <main className="colony-decision-scroll">
+        <div
+          className="colony-decision-content"
+          data-funding={specializedAskTitle ? "true" : undefined}
         >
-          /
-        </span>
-        <span
-          className="colony-ask-detail-breadcrumb-label"
-          data-testid="ask-detail-breadcrumb"
-        >
-          {pageTitle}
-        </span>
-      </WorkspaceTopBar>
-      <main className="colony-ask-detail-scroll">
-        <div className="colony-ask-detail-content">
-          <Link className="colony-ask-detail-back" to="/today">
-            ‹ Back
-          </Link>
+          <BackLink />
           {specializedAskTitle ? (
-            <div className="colony-ask-detail-title-row">
+            <div className="colony-decision-title-row">
               <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
               <Link
-                className="colony-ask-special-raise"
+                className="colony-decision-raise"
                 search={{
                   channelId,
                   threadRootEventId: record?.head.ask.threadRootEventId ?? null,
                 }}
                 to="/asks/new"
               >
+                <PlusIcon size={16} />
                 Raise an ask
               </Link>
             </div>
           ) : null}
           {!specializedAskTitle && formattedRoot ? (
-            <>
-              <h1 data-testid="ask-thread-title">Decision in {threadTitle}</h1>
-              <article
-                aria-label="Message anchoring this ask"
-                className="colony-ask-thread-root"
-                data-testid="ask-thread-root"
-              >
-                <UserAvatar
-                  avatarUrl={formattedRoot.avatarUrl ?? null}
-                  displayName={formattedRoot.author}
-                  size="md"
-                />
-                <div className="colony-ask-thread-root-content">
-                  <header>
-                    <strong>{formattedRoot.author}</strong>
-                    <time
-                      dateTime={new Date(
-                        formattedRoot.createdAt * 1_000,
-                      ).toISOString()}
-                    >
-                      {formattedRoot.time}
-                    </time>
-                  </header>
-                  <Markdown
-                    className="colony-ask-thread-root-body"
-                    content={rootDisplayBody}
-                    interactive={false}
-                    messageId={formattedRoot.id}
-                  />
-                </div>
-              </article>
-            </>
+            <h1
+              className="colony-decision-title"
+              data-testid="ask-thread-title"
+            >
+              Decision in {threadTitle}
+            </h1>
           ) : null}
           {detailState}
           {record ? (
@@ -331,31 +416,12 @@ function AskDetailMemberScreen({
               askId={askId}
               channelId={channelId}
               currentPubkey={currentPubkey}
+              leading={rootAnchor}
               profiles={profilesQuery.data?.profiles}
               queryState={askState}
               showDetailLink={false}
+              showDiscussionLink={channel?.isMember === true}
             />
-          ) : null}
-          {!specializedAskTitle ? (
-            <nav
-              aria-label="Ask navigation"
-              className="colony-ask-detail-actions"
-            >
-              {channel?.isMember ? (
-                <Link
-                  params={{ channelId }}
-                  search={{
-                    messageId: rootId ?? undefined,
-                    threadRootId: rootId ?? undefined,
-                    thread: rootId ?? undefined,
-                  }}
-                  to="/channels/$channelId"
-                >
-                  Back to discussion
-                </Link>
-              ) : null}
-              <Link to="/today">Needs me</Link>
-            </nav>
           ) : null}
         </div>
       </main>
@@ -452,48 +518,24 @@ export function AskDetailScreen({
   }
 
   return (
-    <div className="colony-ask-detail-screen" data-testid="ask-detail-screen">
-      <WorkspaceTopBar
-        actions={
-          <>
-            <button
-              aria-label="Search workspace"
-              onClick={searchWorkspace}
-              type="button"
-            >
-              <Search aria-hidden="true" />
-            </button>
-            <button
-              aria-label="Open Inbox"
-              onClick={() => void goHome()}
-              type="button"
-            >
-              <Bell aria-hidden="true" />
-            </button>
-          </>
-        }
-      >
-        <Building2 aria-hidden="true" />
-        <span>Company</span>
-        <span
-          aria-hidden="true"
-          className="colony-workspace-breadcrumb-separator"
-        >
-          /
-        </span>
-        <span className="colony-ask-detail-breadcrumb-label">Decision</span>
-      </WorkspaceTopBar>
-      <main className="colony-ask-detail-scroll">
-        <div className="colony-ask-detail-content">
-          <Link className="colony-ask-detail-back" to="/today">
-            ‹ Back
-          </Link>
+    <div className="colony-decision-screen" data-testid="ask-detail-screen">
+      <AskDetailTopBar
+        onInbox={() => void goHome()}
+        onSearch={searchWorkspace}
+        pageTitle="Decision"
+      />
+      <main className="colony-decision-scroll">
+        <div className="colony-decision-content">
+          <BackLink />
           {accessState}
           <nav
             aria-label="Ask navigation"
-            className="colony-ask-detail-actions"
+            className="colony-decision-actions"
+            data-passive="true"
           >
-            <Link to="/today">Needs me</Link>
+            <Link className="colony-decision-link" to="/today">
+              Needs me
+            </Link>
           </nav>
         </div>
       </main>

@@ -61,6 +61,8 @@ type MockSearchProfileSeed = {
   displayName: string | null;
   avatarUrl?: string | null;
   nip05Handle?: string | null;
+  /** Job title published on the profile (kind:0 `job_title`). */
+  jobTitle?: string | null;
   about?: string | null;
   ownerPubkey?: string | null;
   isAgent?: boolean;

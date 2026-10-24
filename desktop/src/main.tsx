@@ -135,6 +135,17 @@ async function renderShowcaseIfRequested(): Promise<boolean> {
   if (
     (import.meta.env.DEV || import.meta.env.MODE === "e2e") &&
     (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-ask-outcomes"
+  ) {
+    const { renderAskOutcomesShowcase } = await import(
+      "@/testing/colony3AskOutcomes"
+    );
+    renderAskOutcomesShowcase();
+    return true;
+  }
+  if (
+    (import.meta.env.DEV || import.meta.env.MODE === "e2e") &&
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
       .__BUZZ_E2E__?.showcase === "colony3-business-states"
   ) {
     const { renderBusinessStatesShowcase } = await import(

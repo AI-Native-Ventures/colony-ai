@@ -143,14 +143,19 @@ for (const viewport of [
     await page.goto("/#/team");
     const team = page.getByTestId("company-team-screen");
     await expect(team).toBeVisible();
-    await expect(team.locator("header")).toHaveText("Company / Team");
+    await expect(
+      page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .locator('[aria-current="page"]'),
+    ).toHaveText("Team");
     await expect(
       team.getByRole("button", { name: "Hire employee" }),
     ).toBeVisible();
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
-    await expect(row).toContainText("Social Media Manager · Employee");
-    await expect(row).toContainText("Reports to Lerato Molefe");
-    await expect(row.locator("span").filter({ hasText: /^Ready$/ })).toHaveCSS(
+    await expect(row).toContainText("Social Media Manager · AI employee");
+    await expect(row).toHaveAttribute("aria-label", /Reports to Lerato Molefe/);
+    await expect(row).toContainText("Reviewing the workload.");
+    await expect(row.getByText("Paused", { exact: true })).toHaveCSS(
       "text-transform",
       "none",
     );
@@ -162,15 +167,15 @@ for (const viewport of [
     expect(bounds?.height).toBeLessThanOrEqual(80);
     expect(bounds?.width).toBeGreaterThan(850);
     await capture("team");
-    await page.goto(`/#/team/detail/${employeePubkey}`);
-    await expect(page.getByTestId("company-employee-profile")).toBeVisible();
     await expect(
-      page.getByTestId("company-employee-direct-reports"),
-    ).toContainText("Noluthando");
+      team.getByRole("tab", { name: "Reporting lines" }),
+    ).toHaveCount(0);
+    await page.goto(`/#/team/detail/${employeePubkey}`);
+    await expect(page.getByTestId("agent-profile")).toBeVisible();
+    await expect(page.getByTestId("company-position-header")).toContainText(
+      "Reports to Lerato Molefe",
+    );
     await expect(page.getByTestId("company-paused-banner")).toBeVisible();
-    await page.getByRole("tab", { name: "Instructions", exact: true }).click();
-    await expect(page.getByTestId("company-paused-banner")).toHaveCount(0);
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
     await capture("team-detail-mina");
     await page.goto(`/#/team/edit/${employeePubkey}`);
     await expect(page.getByLabel("Title")).toHaveValue(employee.title);
@@ -184,27 +189,26 @@ for (const viewport of [
     await expect(page.getByLabel("Reports to")).toHaveValue(employeePubkey);
     await expect(
       page.getByLabel("Reports to").locator("option:checked"),
-    ).toHaveText("Mina · Employee, paused");
+    ).toHaveText("Mina");
     await expect(
       page.getByLabel("Reports to").locator("option:checked"),
-    ).toBeDisabled();
+    ).toHaveJSProperty("disabled", true);
     await capture("team-edit-paused-manager");
     await page.goto(`/#/team/archive/${employeePubkey}`);
     await expect(page.getByLabel("Reason")).toBeVisible();
     await expect(
-      page.getByText("This cannot be undone from this screen.", {
+      page.getByText("can’t be undone from this screen", {
         exact: false,
       }),
     ).toBeVisible();
     await capture("team-terminate-mina");
     await page.goto(`/#/team/pause/${employeePubkey}`);
-    await expect(
-      page.getByText("Pausing employees is unavailable."),
-    ).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/team/detail/${employeePubkey}$`));
     await expect(page.getByLabel("Reason")).toHaveCount(0);
     await capture("team-pause-unavailable-mina");
     await page.goto(`/#/team/detail/${TEST_IDENTITIES.alice.pubkey}`);
     await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+    await expect(page.getByRole("tab")).toHaveCount(0);
     await capture("team-detail-noluthando");
   });
 }
@@ -249,25 +253,21 @@ test("Team does not infer an employee position from its running runtime", async 
     });
   }
   await row.click();
-  const profile = page.getByTestId("company-employee-profile");
+  const profile = page.getByTestId("agent-profile");
   await expect(profile).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Ready",
+    "AI employee",
   );
+  await expect(profile).toContainText("Runtime ready");
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(
     profile.getByRole("button", { name: "Pause employee", exact: true }),
   ).toHaveCount(0);
+  await profile.getByRole("button", { name: "More agent actions" }).click();
   await expect(
-    profile.getByRole("button", { name: "Terminate employee", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    profile.getByRole("button", {
-      name: "Edit role and reporting",
-      exact: true,
-    }),
+    page.getByRole("menuitem", { name: "Edit role and reporting" }),
   ).toBeVisible();
-  await expect(profile).toContainText("Reporting line not set");
+  await page.keyboard.press("Escape");
   for (const viewport of [
     { width: 1728, height: 1117 },
     { width: 1440, height: 900 },
@@ -309,7 +309,7 @@ for (const state of [
     await page.goto(state === "denied" ? `/#/team/edit/${minaPk}` : "/#/team");
     await expect(
       page.getByRole("navigation", { name: "Breadcrumb" }),
-    ).toHaveText("Company / Team");
+    ).toContainText("Team");
     if (state === "loading")
       await expect(
         page.getByText("Loading Team", { exact: true }),
@@ -338,8 +338,8 @@ for (const state of [
           "Only a community owner or admin can make this change directly.",
         ),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Back", exact: true }).click();
-      await expect(page).toHaveURL(/\/team$/);
+      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/team/detail/${minaPk}$`));
     }
   });
 }
@@ -376,14 +376,14 @@ for (const width of [1728, 1440]) {
         ];
     });
     await page.getByRole("button", { name: "Approve and rehire" }).click();
-    await expect(page.getByRole("alert")).toContainText(
-      "The review is kept. Try again.",
-    );
+    await expect(
+      page.getByTestId("team-dialog-rehire").getByRole("alert"),
+    ).toContainText("The review is kept. Try again.");
     await expect(page.getByRole("checkbox")).toBeChecked();
     await page.getByRole("button", { name: "Approve and rehire" }).click();
-    await expect(page.getByTestId("company-rehire-review")).toHaveCount(0);
+    await expect(page.getByTestId("team-dialog-rehire")).toHaveCount(0);
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Employee · Offline",
+      "AI employee",
     );
     await expect
       .poll(() =>

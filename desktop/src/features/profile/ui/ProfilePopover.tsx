@@ -28,6 +28,8 @@ interface ProfilePopoverProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
+  /** The person's own job title, shown under their name. */
+  jobTitle?: string | null;
   avatarUrl: string | null;
   avatarDataUrl?: string | null;
   currentStatus: PresenceStatus;
@@ -64,6 +66,7 @@ export function ProfilePopover({
   open,
   onOpenChange,
   displayName,
+  jobTitle,
   avatarUrl,
   avatarDataUrl,
   currentStatus,
@@ -160,6 +163,14 @@ export function ProfilePopover({
                 <p className="truncate text-sm font-semibold leading-tight text-popover-foreground">
                   {displayName}
                 </p>
+                {jobTitle ? (
+                  <p
+                    className="truncate text-xs leading-tight text-muted-foreground"
+                    data-testid="profile-popover-job-title"
+                  >
+                    {jobTitle}
+                  </p>
+                ) : null}
                 {/* ── Presence chip (opens status chooser) ─────────── */}
                 <Popover
                   onOpenChange={setPresenceMenuOpen}

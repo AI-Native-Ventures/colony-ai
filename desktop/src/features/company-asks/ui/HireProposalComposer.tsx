@@ -2,8 +2,6 @@ import * as React from "react";
 
 import { companyHireRolePackFromPersona } from "@/features/company-hiring/companyHireModels";
 import type { AgentPersona } from "@/shared/api/types";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
 
 import type {
   AskComposerDraft,
@@ -55,7 +53,12 @@ export function useAskHireProposal(
   return { roleOptions, selectedRole, hireContext };
 }
 
-type AskHireRecipientOption = { pubkey: string; label: string };
+type AskHireRecipientOption = {
+  pubkey: string;
+  label: string;
+  /** The person's company role, shown beside the name ("Founder"). */
+  role?: string;
+};
 type AskHireChannelOption = { id: string; name: string };
 type AskHireThreadOption = { id: string; label: string };
 type UpdateAskDraft = <K extends keyof AskComposerDraft>(
@@ -93,6 +96,14 @@ type HireProposalComposerProps = {
   onOpenRoleCatalog: () => void;
 };
 
+function FieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <span className="ask3-error" id={id} role="alert">
+      {message}
+    </span>
+  ) : null;
+}
+
 export function HireProposalComposer({
   draft,
   errors,
@@ -122,189 +133,199 @@ export function HireProposalComposer({
   onRetryRoleOptions,
   onOpenRoleCatalog,
 }: HireProposalComposerProps) {
-  return hireProposalReview && selectedHireRole ? (
-    <div className="colony-ask-hire-review">
-      <h2>Review hire proposal</h2>
-      <dl>
-        <div>
-          <dt>Role pack</dt>
-          <dd>{selectedHireRole.rolePack.title}</dd>
-        </div>
-        <div>
-          <dt>Name</dt>
-          <dd>{draft.hireName.trim()}</dd>
-        </div>
-        <div>
-          <dt>Title</dt>
-          <dd>{draft.hireTitle.trim()}</dd>
-        </div>
-        <div>
-          <dt>Allowance request</dt>
-          <dd>USD {draft.hireAllowance.trim()} / week</dd>
-        </div>
-        <div>
-          <dt>Reason</dt>
-          <dd>{draft.hireReason.trim()}</dd>
-        </div>
-        <div>
-          <dt>Destination</dt>
-          <dd>{proposalDestination}</dd>
-        </div>
-      </dl>
-      <p>Submitting proposes a hire. Only the founder can complete sign-off.</p>
-    </div>
-  ) : (
-    <>
-      <h2>The proposed position</h2>
-      <fieldset className="colony-ask-hire-context">
-        <legend>Conversation and recipient</legend>
-        <div className="colony-ask-hire-context-grid">
-          <div>
-            <label htmlFor="ask-channel">Channel</label>
-            <select
-              disabled={locked}
-              id="ask-channel"
-              onChange={(event) => onChangeChannel(event.target.value)}
-              value={selectedChannelId}
-            >
-              <option value="">Choose channel</option>
-              {channelOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
+  if (hireProposalReview && selectedHireRole) {
+    return (
+      <div className="ask3-hire-review">
+        <h2 className="ask3-heading-2">Review hire proposal</h2>
+        <dl className="ask3-rows" data-layout="split">
+          <div className="ask3-row">
+            <dt>Role pack</dt>
+            <dd>{selectedHireRole.rolePack.title}</dd>
           </div>
-          <div>
-            <label htmlFor="ask-thread">Thread</label>
-            <select
-              disabled={locked || threadsPending || threadsError}
-              id="ask-thread"
-              onChange={(event) => onChangeThread(event.target.value)}
-              value={startNewThread ? "new" : selectedThreadRootId}
-            >
-              {startNewThread ? (
-                <option value="new">New thread</option>
-              ) : (
-                <option value="">Choose thread</option>
-              )}
-              {threadOptions.map((thread) => (
-                <option key={thread.id} value={thread.id}>
-                  {thread.label}
-                </option>
-              ))}
-            </select>
+          <div className="ask3-row">
+            <dt>Name</dt>
+            <dd>{draft.hireName.trim()}</dd>
           </div>
-          <div className="colony-ask-hire-recipient">
-            <label htmlFor="ask-addressee">Recipient</label>
-            <select
-              aria-describedby={
-                errors.addresseePubkey ? "ask-addressee-error" : undefined
-              }
-              aria-invalid={Boolean(errors.addresseePubkey)}
-              disabled={
-                locked ||
-                recipientLoading ||
-                recipientError ||
-                channelPeople === 0
-              }
-              id="ask-addressee"
-              onChange={(event) =>
-                onUpdateDraft("addresseePubkey", event.target.value)
-              }
-              value={draft.addresseePubkey}
-            >
-              <option value="">Choose recipient</option>
-              {recipientOptions.map((member) => (
-                <option key={member.pubkey} value={member.pubkey}>
-                  {member.label}
-                </option>
-              ))}
-            </select>
-            {errors.addresseePubkey ? (
-              <span
-                className="colony-ask-compose-error"
-                id="ask-addressee-error"
-                role="alert"
-              >
-                {errors.addresseePubkey}
-              </span>
-            ) : null}
+          <div className="ask3-row">
+            <dt>Title</dt>
+            <dd>{draft.hireTitle.trim()}</dd>
           </div>
-        </div>
-        {threadsError ? (
-          <div role="alert">
-            <p>Threads could not load. Your draft is kept.</p>
-            <Button onClick={onRetryThreads} type="button" variant="outline">
-              Retry threads
-            </Button>
+          <div className="ask3-row">
+            <dt>Allowance request</dt>
+            <dd>USD {draft.hireAllowance.trim()} / week</dd>
           </div>
-        ) : null}
-      </fieldset>
+          <div className="ask3-row">
+            <dt>Reason</dt>
+            <dd>{draft.hireReason.trim()}</dd>
+          </div>
+          <div className="ask3-row">
+            <dt>Destination</dt>
+            <dd>{proposalDestination}</dd>
+          </div>
+        </dl>
+        <p className="ask3-hint">
+          Submitting proposes a hire. Only the founder can complete sign-off.
+        </p>
+      </div>
+    );
+  }
 
-      <label htmlFor="hire-role-pack">Role pack</label>
-      <select
-        aria-describedby={
-          errors.hireRolePackId ? "hire-role-pack-error" : undefined
-        }
-        aria-invalid={Boolean(errors.hireRolePackId)}
-        disabled={locked || !roleOptionsReady}
-        id="hire-role-pack"
-        onChange={(event) =>
-          onUpdateDraft("hireRolePackId", event.target.value)
-        }
-        value={draft.hireRolePackId}
-      >
-        <option value="">Choose role pack</option>
-        {roleOptions.map((option) => (
-          <option key={option.persona.id} value={option.persona.id}>
-            {option.rolePack.title}
-          </option>
-        ))}
-      </select>
-      {roleOptionsPending ? (
-        <p role="status">Loading role packs…</p>
-      ) : roleOptionsError ? (
-        <div role="alert">
-          <p>Role packs could not load. Your draft is kept.</p>
-          <Button
-            onClick={() => void onRetryRoleOptions()}
-            type="button"
-            variant="outline"
+  return (
+    <>
+      <div className="ask3-grid" data-min="200">
+        <div className="ask3-field">
+          <label htmlFor="ask-channel">Channel</label>
+          <select
+            className="ask3-control"
+            disabled={locked}
+            id="ask-channel"
+            onChange={(event) => onChangeChannel(event.target.value)}
+            value={selectedChannelId}
           >
-            Retry role packs
-          </Button>
+            <option value="">Choose channel</option>
+            {channelOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                # {option.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="ask3-field">
+          <label htmlFor="ask-thread">Thread</label>
+          <select
+            className="ask3-control"
+            disabled={locked || threadsPending || threadsError}
+            id="ask-thread"
+            onChange={(event) => onChangeThread(event.target.value)}
+            value={startNewThread ? "new" : selectedThreadRootId}
+          >
+            {startNewThread ? (
+              <option value="new">New thread</option>
+            ) : (
+              <option value="">Choose thread</option>
+            )}
+            {threadOptions.map((thread) => (
+              <option key={thread.id} value={thread.id}>
+                {thread.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="ask3-field">
+          <label htmlFor="ask-addressee">Recipient</label>
+          <select
+            aria-describedby={
+              errors.addresseePubkey ? "ask-addressee-error" : undefined
+            }
+            aria-invalid={Boolean(errors.addresseePubkey)}
+            className="ask3-control"
+            disabled={
+              locked ||
+              recipientLoading ||
+              recipientError ||
+              channelPeople === 0
+            }
+            id="ask-addressee"
+            onChange={(event) =>
+              onUpdateDraft("addresseePubkey", event.target.value)
+            }
+            value={draft.addresseePubkey}
+          >
+            <option value="">Choose recipient</option>
+            {recipientOptions.map((member) => (
+              <option key={member.pubkey} value={member.pubkey}>
+                {member.role
+                  ? `${member.label} · ${member.role}`
+                  : member.label}
+              </option>
+            ))}
+          </select>
+          <FieldError
+            id="ask-addressee-error"
+            message={errors.addresseePubkey}
+          />
+        </div>
+      </div>
+      {threadsError ? (
+        <div className="ask3-notice" data-tone="bad" role="alert">
+          <p>Threads could not load. Your draft is kept.</p>
+          <button
+            className="ask3-btn"
+            data-size="42"
+            data-variant="secondary"
+            onClick={onRetryThreads}
+            type="button"
+          >
+            Retry threads
+          </button>
         </div>
       ) : null}
-      {!roleOptionsPending && !roleOptionsError ? (
-        <Button
-          className="colony-ask-hire-catalog"
-          onClick={() => void onOpenRoleCatalog()}
-          type="button"
-          variant="outline"
+
+      <div className="ask3-field">
+        <label htmlFor="hire-role-pack">Role pack</label>
+        <select
+          aria-describedby={
+            errors.hireRolePackId ? "hire-role-pack-error" : undefined
+          }
+          aria-invalid={Boolean(errors.hireRolePackId)}
+          className="ask3-control"
+          disabled={locked || !roleOptionsReady}
+          id="hire-role-pack"
+          onChange={(event) =>
+            onUpdateDraft("hireRolePackId", event.target.value)
+          }
+          value={draft.hireRolePackId}
         >
-          No role available? Open catalog
-        </Button>
-      ) : null}
-      {errors.hireRolePackId ? (
-        <span
-          className="colony-ask-compose-error"
-          id="hire-role-pack-error"
-          role="alert"
-        >
-          {errors.hireRolePackId}
-        </span>
-      ) : null}
+          <option value="">Choose role pack</option>
+          {roleOptions.map((option) => (
+            <option key={option.persona.id} value={option.persona.id}>
+              {option.rolePack.title}
+            </option>
+          ))}
+        </select>
+        {roleOptionsPending ? (
+          <p className="ask3-state-text" role="status">
+            Loading role packs…
+          </p>
+        ) : roleOptionsError ? (
+          <div className="ask3-notice" data-tone="bad" role="alert">
+            <p>Role packs could not load. Your draft is kept.</p>
+            <button
+              className="ask3-btn"
+              data-size="42"
+              data-variant="secondary"
+              onClick={() => void onRetryRoleOptions()}
+              type="button"
+            >
+              Retry role packs
+            </button>
+          </div>
+        ) : (
+          <span className="ask3-hint">
+            No role available?{" "}
+            <button
+              className="ask3-link-button"
+              onClick={() => void onOpenRoleCatalog()}
+              type="button"
+            >
+              Open catalog
+            </button>
+          </span>
+        )}
+        <FieldError id="hire-role-pack-error" message={errors.hireRolePackId} />
+      </div>
+
       {selectedHireRole ? (
         <>
-          <div className="colony-ask-hire-fields">
-            <div>
+          <div className="ask3-grid" data-min="240">
+            <div className="ask3-field">
               <label htmlFor="hire-name">Proposed name</label>
-              <Input
+              <input
                 aria-describedby={
                   errors.hireName ? "hire-name-error" : undefined
                 }
                 aria-invalid={Boolean(errors.hireName)}
+                className="ask3-control"
                 disabled={locked}
                 id="hire-name"
                 maxLength={120}
@@ -313,23 +334,16 @@ export function HireProposalComposer({
                 }
                 value={draft.hireName}
               />
-              {errors.hireName ? (
-                <span
-                  className="colony-ask-compose-error"
-                  id="hire-name-error"
-                  role="alert"
-                >
-                  {errors.hireName}
-                </span>
-              ) : null}
+              <FieldError id="hire-name-error" message={errors.hireName} />
             </div>
-            <div>
+            <div className="ask3-field">
               <label htmlFor="hire-title">Job title</label>
-              <Input
+              <input
                 aria-describedby={
                   errors.hireTitle ? "hire-title-error" : undefined
                 }
                 aria-invalid={Boolean(errors.hireTitle)}
+                className="ask3-control"
                 disabled={locked}
                 id="hire-title"
                 maxLength={120}
@@ -338,77 +352,63 @@ export function HireProposalComposer({
                 }
                 value={draft.hireTitle}
               />
-              {errors.hireTitle ? (
-                <span
-                  className="colony-ask-compose-error"
-                  id="hire-title-error"
-                  role="alert"
-                >
-                  {errors.hireTitle}
-                </span>
-              ) : null}
+              <FieldError id="hire-title-error" message={errors.hireTitle} />
             </div>
           </div>
 
-          <label htmlFor="hire-reason">Reason</label>
-          <textarea
-            aria-describedby={
-              errors.hireReason
-                ? "hire-reason-error hire-reason-count"
-                : "hire-reason-count"
-            }
-            aria-invalid={Boolean(errors.hireReason)}
-            disabled={locked}
-            id="hire-reason"
-            maxLength={1000}
-            onChange={(event) =>
-              onUpdateDraft("hireReason", event.target.value)
-            }
-            rows={4}
-            value={draft.hireReason}
-          />
-          <small id="hire-reason-count">
-            {Array.from(draft.hireReason).length} / 1,000 characters · Required
-          </small>
-          {errors.hireReason ? (
-            <span
-              className="colony-ask-compose-error"
-              id="hire-reason-error"
-              role="alert"
-            >
-              {errors.hireReason}
+          <div className="ask3-field">
+            <label htmlFor="hire-reason">Reason</label>
+            <textarea
+              aria-describedby={
+                errors.hireReason
+                  ? "hire-reason-error hire-reason-count"
+                  : "hire-reason-count"
+              }
+              aria-invalid={Boolean(errors.hireReason)}
+              className="ask3-textarea"
+              data-leading="155"
+              disabled={locked}
+              id="hire-reason"
+              maxLength={1000}
+              onChange={(event) =>
+                onUpdateDraft("hireReason", event.target.value)
+              }
+              rows={3}
+              value={draft.hireReason}
+            />
+            <span className="ask3-hint" id="hire-reason-count">
+              {Array.from(draft.hireReason).length} / 1,000 characters ·
+              Required
             </span>
-          ) : null}
+            <FieldError id="hire-reason-error" message={errors.hireReason} />
+          </div>
 
-          <div className="colony-ask-hire-fields">
-            <div>
+          <div className="ask3-grid" data-min="240">
+            <div className="ask3-field">
               <label htmlFor="hire-allowance">Requested allowance, USD</label>
-              <Input
+              <input
                 aria-describedby={
                   errors.hireAllowance ? "hire-allowance-error" : undefined
                 }
                 aria-invalid={Boolean(errors.hireAllowance)}
+                className="ask3-control"
                 disabled={locked}
                 id="hire-allowance"
                 min="0.01"
                 onChange={(event) =>
                   onUpdateDraft("hireAllowance", event.target.value)
                 }
+                placeholder="[AMOUNT]"
                 step="0.01"
                 type="number"
                 value={draft.hireAllowance}
               />
-              {errors.hireAllowance ? (
-                <span
-                  className="colony-ask-compose-error"
-                  id="hire-allowance-error"
-                  role="alert"
-                >
-                  {errors.hireAllowance}
-                </span>
-              ) : null}
+              <FieldError
+                id="hire-allowance-error"
+                message={errors.hireAllowance}
+              />
             </div>
-            <div>
+            <div className="ask3-field">
               <label htmlFor="hire-allowance-period">Allowance period</label>
               <select
                 aria-describedby={
@@ -417,6 +417,7 @@ export function HireProposalComposer({
                     : undefined
                 }
                 aria-invalid={Boolean(errors.hireAllowancePeriod)}
+                className="ask3-control"
                 disabled={locked}
                 id="hire-allowance-period"
                 onChange={(event) =>
@@ -429,23 +430,15 @@ export function HireProposalComposer({
                 value={draft.hireAllowancePeriod}
               >
                 <option value="">Choose allowance period</option>
-                <option disabled value="day">
-                  Day
-                </option>
                 <option value="week">Week</option>
                 <option disabled value="month">
-                  Month
+                  Month (not available yet)
                 </option>
               </select>
-              {errors.hireAllowancePeriod ? (
-                <span
-                  className="colony-ask-compose-error"
-                  id="hire-allowance-period-error"
-                  role="alert"
-                >
-                  {errors.hireAllowancePeriod}
-                </span>
-              ) : null}
+              <FieldError
+                id="hire-allowance-period-error"
+                message={errors.hireAllowancePeriod}
+              />
             </div>
           </div>
         </>
@@ -454,23 +447,46 @@ export function HireProposalComposer({
   );
 }
 
+/** The three-step side panel of the Propose a hire board. */
 export function HireProposalReviewSteps() {
+  const steps = [
+    {
+      title: "Describe the need",
+      copy: "Say what the role is for and what it may spend.",
+    },
+    {
+      title: "Review the request",
+      copy: "An owner or administrator checks the scope and allowance.",
+    },
+    {
+      title: "Founder signs off",
+      copy: "Only the founder can open the position.",
+    },
+  ];
   return (
     <>
-      <h2>A proposal, then a decision</h2>
-      <ol className="colony-ask-hire-steps">
-        <li>
-          <strong>Describe the need</strong>
-          <p>Choose a curated role and explain the work.</p>
-        </li>
-        <li>
-          <strong>Review the request</strong>
-          <p>An authorized human reviews the scope and allowance.</p>
-        </li>
-        <li>
-          <strong>Founder signs off</strong>
-          <p>Creating the position remains a separate, explicit action.</p>
-        </li>
+      <h2 className="ask3-aside-title" id="proposal-steps">
+        A proposal, then a decision
+      </h2>
+      <ol className="ask3-flow">
+        {steps.map((step, index) => (
+          <li
+            aria-current={index === 0 ? "step" : undefined}
+            className="ask3-flow-step"
+            key={step.title}
+          >
+            <span className="ask3-flow-rail">
+              <span className="ask3-flow-dot">{index + 1}</span>
+              {index < steps.length - 1 ? (
+                <span aria-hidden="true" className="ask3-flow-line" />
+              ) : null}
+            </span>
+            <span className="ask3-flow-copy">
+              <strong>{step.title}</strong>
+              <span>{step.copy}</span>
+            </span>
+          </li>
+        ))}
       </ol>
     </>
   );

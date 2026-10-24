@@ -61,6 +61,16 @@ fn tags_named<'a>(event: &'a Event, name: &'a str) -> impl Iterator<Item = &'a [
 /// owner signature and every condition apply to the event. Time clauses constrain
 /// the profile's `created_at`, not the verifier's clock. Ownership is provenance;
 /// the agent's pubkey remains the author.
+/// The kind:0 `job_title`, trimmed, when it is a non-empty string.
+fn profile_job_title(content: &Value) -> Option<String> {
+    content
+        .get("job_title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
+}
+
 pub(crate) fn profile_valid_oa_owner_pubkey(event: &Event) -> Option<String> {
     if event.kind != nostr::Kind::Metadata {
         return None;
@@ -313,6 +323,7 @@ pub fn profile_info_from_event(event: &Event) -> Result<ProfileInfo, String> {
     let avatar_url = v.get("picture").and_then(Value::as_str).map(str::to_string);
     let about = v.get("about").and_then(Value::as_str).map(str::to_string);
     let nip05_handle = v.get("nip05").and_then(Value::as_str).map(str::to_string);
+    let job_title = profile_job_title(&v);
 
     Ok(ProfileInfo {
         pubkey: event.pubkey.to_hex(),
@@ -320,6 +331,7 @@ pub fn profile_info_from_event(event: &Event) -> Result<ProfileInfo, String> {
         avatar_url,
         about,
         nip05_handle,
+        job_title,
         owner_pubkey: profile_valid_oa_owner_pubkey(event),
         has_profile_event: true,
     })
@@ -359,6 +371,7 @@ pub fn users_batch_from_events(
             name: v.get("name").and_then(Value::as_str).map(str::to_string),
             avatar_url: v.get("picture").and_then(Value::as_str).map(str::to_string),
             nip05_handle: v.get("nip05").and_then(Value::as_str).map(str::to_string),
+            job_title: profile_job_title(&v),
             is_agent: owner_pubkey.is_some(),
             owner_pubkey,
         };
