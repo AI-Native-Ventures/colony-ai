@@ -51,7 +51,10 @@ export function MessageAgentOwner({
       <span className="sr-only">
         {isAgent ? (managedBy ? "Agent managed by" : "Agent") : "Job title"}
       </span>
-      {jobTitle ? <span className="truncate">{jobTitle}</span> : null}
+      {jobTitle ? (
+        // The owner's name gives way first; the title only after it.
+        <span className="truncate [flex-shrink:0.1]">{jobTitle}</span>
+      ) : null}
       {jobTitle && managedBy ? <span aria-hidden="true">·</span> : null}
       {managedBy && ownerPubkey ? (
         <>
