@@ -187,10 +187,10 @@ test("first-run join and already-have community choices remain available", async
   await expect(page.getByTestId("community-choice-existing")).toBeVisible();
   await page.getByTestId("community-choice-join").click();
   await expect(
-    page.getByRole("heading", { name: "Join a community" }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
-  await page.getByTestId("welcome-join-back").click();
-  await page.getByTestId("community-choice-existing").click();
+  await page.getByTestId("add-community-close").click();
+  // "I already have a community" reconnects in place, no extra click.
   await expect(page.getByTestId("existing-choice-owner")).toBeVisible();
   await expect(page.getByTestId("existing-choice-member")).toBeVisible();
 });

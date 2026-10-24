@@ -41,6 +41,8 @@ type BusinessSetupStepProps = {
     community: SelfServeCommunity,
     profile: OnboardingBusinessProfile,
   ) => void;
+  /** "Have an invite link?" at the top right; absent when one is not wanted. */
+  onHaveInviteLink?: () => void;
 };
 
 function businessSlug(name: string) {
@@ -104,6 +106,7 @@ export function BusinessSetupStep({
   additional = false,
   onBack,
   onCreated,
+  onHaveInviteLink,
   pubkey,
 }: BusinessSetupStepProps) {
   const [name, setName] = React.useState("");
@@ -459,6 +462,7 @@ export function BusinessSetupStep({
         setWebsite(value);
         setError(null);
       }}
+      onHaveInviteLink={onHaveInviteLink}
       pending={pending || configLoading}
       scene={additional ? "additional" : "business"}
     />

@@ -38,26 +38,16 @@ test.beforeEach(async ({ page }) => {
 for (const width of [1440, 900]) {
   test(`capture Colony community creation at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.getByTestId("add-community-create")).toBeVisible();
+    // Create and join sit side by side on one card.
+    await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
     await expect(page.getByTestId("add-community-join")).toBeVisible();
-    await captureReskinAtWidth(page, "add-community-choices", width);
-
-    await page.getByTestId("add-community-create").click();
-    await expect(page.getByLabel("Community address")).toBeVisible();
     const dialog = page.getByTestId("add-community-dialog");
     await expect(
-      dialog.getByRole("heading", { name: "Create a community" }),
+      dialog.getByRole("heading", { name: "Add a community" }),
     ).toHaveCount(1);
-    await expect(dialog.getByTestId("add-community-back")).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: "Back", exact: true }),
-    ).toHaveCount(0);
-    await expect(page.getByText(/Builderlab/i)).toHaveCount(0);
-    await captureReskinAtWidth(page, "add-community-create", width);
-
-    await page.getByTestId("add-community-back").click();
-    await page.getByTestId("add-community-join").click();
+    await expect(page.getByLabel("Community address")).toBeVisible();
     await expect(page.getByTestId("invite-redeem-input")).toBeVisible();
-    await captureReskinAtWidth(page, "add-community-join", width);
+    await expect(page.getByText(/Builderlab/i)).toHaveCount(0);
+    await captureReskinAtWidth(page, "add-community-choices", width);
   });
 }

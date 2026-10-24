@@ -1,12 +1,9 @@
 /**
- * Tests for the onboarding step-count logic and the BackupStep gating helper
- * (BackupStep now runs in the machine onboarding flow). These are pure-logic
- * tests — no React rendering needed.
+ * Tests for the onboarding step-count logic. These are pure-logic tests, no
+ * React rendering needed.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { backupNextDisabled } from "./BackupStep.tsx";
 
 // Mirrors the activeSteps array in OnboardingFlow.tsx. The relay-scoped flow
 // owns only the community profile: profile → avatar. key-import is normalised
@@ -50,14 +47,6 @@ test("currentStep_avatar_is_2", () => {
 
 test("currentStep_falls_back_to_1_for_pages_outside_the_step_list", () => {
   assert.equal(computeCurrentStep("membership-denied"), 1);
-});
-
-// ---------------------------------------------------------------------------
-// BackupStep gating: saving a password-protected backup is recommended, not required
-// ---------------------------------------------------------------------------
-
-test("backup_next_is_always_enabled", () => {
-  assert.equal(backupNextDisabled(), false);
 });
 
 // ---------------------------------------------------------------------------

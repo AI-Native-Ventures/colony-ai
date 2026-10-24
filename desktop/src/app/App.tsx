@@ -30,10 +30,7 @@ import { AccountClaimPrompt } from "@/features/account/AccountClaimPrompt";
 import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { CommunityOnboardingFlow } from "@/features/onboarding/ui/CommunityOnboardingFlow";
-import {
-  MachineOnboardingFlow,
-  type MachineOnboardingPage,
-} from "@/features/onboarding/ui/MachineOnboardingFlow";
+import { MachineOnboardingFlow } from "@/features/onboarding/ui/MachineOnboardingFlow";
 import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
@@ -324,13 +321,11 @@ function AppReady({
 function CommunityApp({
   continueOnboarding,
   currentPubkey,
-  onBackToMachineConfig,
   onIdentityRecovered,
   sharedIdentity,
 }: {
   continueOnboarding: boolean;
   currentPubkey: string | null;
-  onBackToMachineConfig: () => void;
   onIdentityRecovered: (pubkey: string) => void;
   sharedIdentity: boolean;
 }) {
@@ -553,13 +548,7 @@ function CommunityApp({
   if (!transaction) {
     if (community.needsSetup) {
       // Show welcome setup for first-run users with no communities
-      appContent = (
-        <WelcomeSetup
-          onBack={
-            isFindingCommunityAfterLeave ? undefined : onBackToMachineConfig
-          }
-        />
-      );
+      appContent = <WelcomeSetup />;
     } else if (failureError !== null) {
       // Surface apply failures, and a membership refusal that reached the open
       // workspace, so the user can retry, switch, or drop this community.
@@ -682,16 +671,8 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
       : undefined,
     isSharedIdentity: sharedIdentity,
   });
-  const [machineInitialPage, setMachineInitialPage] =
-    useState<MachineOnboardingPage>();
   const [continueOnboarding, setContinueOnboarding] = useState(false);
   const authClient = getAccountAuthClient();
-
-  const reopenMachineConfig = useCallback(() => {
-    setContinueOnboarding(false);
-    setMachineInitialPage("config");
-    machine.reopen();
-  }, [machine.reopen]);
 
   const completeMachineOnboarding = useCallback(
     (
@@ -699,7 +680,6 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
       options?: { continueToProfile?: boolean; openAiSettings?: boolean },
     ) => {
       setContinueOnboarding(options?.continueToProfile === true);
-      setMachineInitialPage(undefined);
       machine.complete(pubkey);
       if (options?.openAiSettings)
         void router.navigate({
@@ -747,6 +727,11 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         onRetry={() => window.location.reload()}
         title="Colony could not start"
         testId="machine-identity-error"
+        details={
+          machine.identityError instanceof Error
+            ? machine.identityError.message
+            : null
+        }
       />
     );
   }
@@ -769,7 +754,6 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
       <CommunityApp
         continueOnboarding={continueOnboarding}
         currentPubkey={machine.currentPubkey}
-        onBackToMachineConfig={reopenMachineConfig}
         onIdentityRecovered={machine.complete}
         sharedIdentity={sharedIdentity}
       />
@@ -795,7 +779,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         continueWithIdentity={machine.continueWithIdentity}
         continueWithRecoveredIdentity={machine.continueWithRecoveredIdentity}
         identityLost={machine.identityLost}
-        initialPage={machineInitialPage}
+        initialPage={undefined}
         queryClient={machine.queryClient}
         authClient={authClient}
       />
@@ -809,7 +793,7 @@ export function App() {
   useCloseWindowShortcut();
   useInitialRenderReady();
   const [sharedIdentity, setSharedIdentity] = useState<boolean | null>(null);
-  const [startupError, setStartupError] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [queryClient] = useState(createBuzzQueryClient);
 
   useEffect(() => {
@@ -821,20 +805,21 @@ export function App() {
   useEffect(() => {
     getSharedIdentity()
       .then(setSharedIdentity)
-      .catch(() => {
+      .catch((cause) => {
         // The shell must fail closed. A bridge failure is not proof of a
         // non-shared identity and must never unlock the workspace path.
-        setStartupError(true);
+        setStartupError(cause instanceof Error ? cause.message : String(cause));
       });
   }, []);
 
-  if (startupError) {
+  if (startupError !== null) {
     return (
       <NativeUnavailableScreen
         body="Colony could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
         onRetry={() => window.location.reload()}
         title="Colony could not start"
         testId="native-startup-error"
+        details={startupError}
       />
     );
   }

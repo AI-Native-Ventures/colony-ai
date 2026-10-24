@@ -27,23 +27,20 @@ for (const viewport of [
       ],
     });
     const routes = page.getByRole("radiogroup", { name: "AI connection" });
-    await expect(routes.getByRole("radio")).toHaveCount(2);
+    await expect(routes.getByRole("radio")).toHaveCount(3);
     await expect(
       routes.getByRole("radio", { name: "Claude Code or Codex", exact: true }),
     ).toBeChecked();
     const claude = page.getByTestId("onboarding-connect-runtime-claude");
     await expect(claude).toBeVisible();
     // A ready card says Installed once, not again at its foot.
-    await expect(claude.getByText("Installed", { exact: true })).toHaveCount(1);
+    await expect(claude.getByText(/Installed/)).toHaveCount(1);
     await expect(
       page.getByTestId("onboarding-connect-runtime-codex"),
     ).toBeVisible();
-    // Someone without either app can always skip from the first tab.
-    const subscriptionSkip = page.getByRole("button", {
-      name: "Skip for now",
-      exact: true,
-    });
-    await expect(subscriptionSkip).toBeEnabled();
+    // There is no Skip: the way on is the connection test.
+    const subscriptionSkip = page.getByTestId("onboarding-test-connection");
+    await expect(subscriptionSkip).toBeVisible();
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
     ).toHaveCount(0);
@@ -87,12 +84,9 @@ for (const viewport of [
     await page.screenshot({
       path: `${SHOT_DIR}/02-colony-agent-${viewport.width}.png`,
     });
-    const skip = page.getByRole("button", {
-      name: "Skip for now",
-      exact: true,
-    });
+    const skip = page.getByTestId("onboarding-test-connection");
     await skip.scrollIntoViewIfNeeded();
-    await expect(skip).toBeEnabled();
+    await expect(skip).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/03-colony-credits-and-skip-${viewport.width}.png`,

@@ -34,7 +34,7 @@ for (const viewport of [
     await openR17ConnectionSetup(page, {
       runtimes: [r17Runtime("codex", "available", { status: "logged_in" })],
     });
-    await page.getByRole("button", { name: /^Connect / }).click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await capture(page, `connected-${viewport.width}`);
     await page
