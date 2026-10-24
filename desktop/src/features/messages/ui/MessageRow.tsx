@@ -231,11 +231,9 @@ export const MessageRow = React.memo(
     const { openReminder, activeReminderEventIds } = useRemindLater();
     const hasActiveReminder = activeReminderEventIds.has(message.id);
     // The hover/focus action rail is absolutely positioned over the row, so it
-    // takes no layout space of its own. Measure its rendered footprint and
-    // reserve it in the message-header row (see `headerNode`) so a long author
-    // name ellipsizes before the rail instead of painting underneath it. The
-    // reservation is unconditional — the rail appears on hover AND
-    // focus-within, and padding must not reflow the header mid-interaction.
+    // takes no layout space of its own. Its rendered footprint is published as
+    // `--message-action-rail-width` on the row; the Colony 3.0 header does not
+    // reserve it (the bar floats above the row), but descendants may read it.
     const articleRef = React.useRef<HTMLElement | null>(null);
     const actionRailMeasureRef = useMeasuredCssVariable({
       cssVariable: "--message-action-rail-width",
@@ -711,9 +709,10 @@ export const MessageRow = React.memo(
       ) : null;
 
     const headerNode = isDisplayedAsContinuation ? null : (
-      // pe reserves the measured action-rail footprint (0px until measured) so
-      // header content ends before the rail's left edge in every rail state.
-      <MessageHeaderRow className="flex-nowrap pe-[var(--message-action-rail-width,0px)]">
+      // One line: the title truncates before the time ever wraps. The hover
+      // action bar floats above the row, as the board draws it, so the header
+      // keeps the whole row width.
+      <MessageHeaderRow className="flex-nowrap">
         {message.pubkey ? (
           <MessageAuthorWithIndicators
             authorName={message.author}
