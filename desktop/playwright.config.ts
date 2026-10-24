@@ -171,7 +171,6 @@ export default defineConfig({
         "**/active-turn-resilience.spec.ts",
         "**/agent-control-regressions.spec.ts",
         "**/profile-active-turn.spec.ts",
-        "**/config-bridge-screenshots.spec.ts",
         "**/observer-feed-screenshots.spec.ts",
         "**/core-memory-screenshots.spec.ts",
         "**/activity-scope-label-screenshots.spec.ts",
