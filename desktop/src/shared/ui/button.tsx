@@ -10,9 +10,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         // Primary is ink on warm white; the agent action is the accent.
-        default: "bg-colony-fg text-colony-surface hover:bg-colony-fg/90",
-        agent: "bg-colony-accent text-white hover:bg-colony-accent-ink",
-        destructive: "bg-colony-danger text-white hover:bg-colony-danger/90",
+        // A disabled filled button turns to a quiet grey that still reads.
+        default:
+          "bg-colony-fg text-colony-surface hover:bg-colony-fg/90 disabled:bg-colony-border-strong disabled:text-colony-fg-secondary disabled:opacity-100",
+        agent:
+          "bg-colony-accent text-white hover:bg-colony-accent-ink disabled:bg-colony-border-strong disabled:text-colony-fg-secondary disabled:opacity-100",
+        destructive:
+          "bg-colony-danger text-white hover:bg-colony-danger/90 disabled:bg-colony-border-strong disabled:text-colony-fg-secondary disabled:opacity-100",
         outline:
           "border border-colony-border-strong bg-colony-pop font-semibold text-colony-fg hover:bg-colony-track",
         secondary:

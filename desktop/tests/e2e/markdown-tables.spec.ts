@@ -76,7 +76,10 @@ for (const surface of ["channel", "thread"] as const) {
           (cell) => getComputedStyle(cell).verticalAlign,
         ),
         rowHeight: table.rows[1].getBoundingClientRect().height,
-        lineHeight: Number.parseFloat(getComputedStyle(table).lineHeight),
+        // The design leaves table line height at "normal", which has no number.
+        lineHeight:
+          Number.parseFloat(getComputedStyle(table).lineHeight) ||
+          Number.parseFloat(getComputedStyle(table).fontSize) * 1.25,
         pageWidth: document.documentElement.clientWidth,
         pageScrollWidth: document.documentElement.scrollWidth,
       };

@@ -259,8 +259,8 @@ test.describe("inbox refactor screenshots", () => {
     // The sidebar must be in frame - the label is the point of this shot.
     const activityButton = page.getByTestId("sidebar-activity-button");
     await expect(activityButton).toBeVisible();
-    // Activity is a destination with its own check-list icon, not a
-    // notification tray. Asserted because nothing else pins the icon.
+    // Activity is a destination with its check-list icon, not a notification
+    // tray. Asserted because nothing else pins the icon.
     await expect(activityButton.locator("svg")).toHaveCount(1);
 
     await page.getByTestId("inbox-options-trigger").click();

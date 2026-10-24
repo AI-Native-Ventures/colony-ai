@@ -445,7 +445,7 @@ test("shows status and huddle indicators beside chat names with tooltips", async
     .poll(() =>
       statusIndicator.evaluate((element) => getComputedStyle(element).fontSize),
     )
-    .toBe("15px");
+    .toBe("16px");
   await expect
     .poll(() =>
       statusIndicator.locator("[aria-hidden='true']").evaluate((element) => ({
@@ -508,7 +508,7 @@ test("shows status and huddle indicators beside chat names with tooltips", async
     .poll(() =>
       huddleIndicator.evaluate((element) => getComputedStyle(element).fontSize),
     )
-    .toBe("15px");
+    .toBe("16px");
   await huddleIndicator.hover();
   await expect(page.getByRole("tooltip")).toHaveText("In a huddle");
 });

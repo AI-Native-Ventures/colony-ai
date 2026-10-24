@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { invokeMockCommand } from "../helpers/welcomeTeam";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 import { installWorkflowAdminBridge } from "../helpers/workflows";
 
 type LoggedCommand = {
@@ -52,6 +53,7 @@ test("creates, previews, publishes, pauses, and edits a workflow draft", async (
   page,
 }) => {
   await page.goto("/");
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId("workflows-view")).toBeVisible();
   await page.getByRole("button", { name: "Use this example" }).click();
