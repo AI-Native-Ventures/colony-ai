@@ -148,12 +148,18 @@
 }
 
 .c3c-author {
+  flex-shrink: 0;
+  max-width: 60%;
   font-size: calc(16.5 * var(--colony-px));
   font-weight: 800;
   line-height: normal;
 }
 
+/* One line: the title truncates before the time ever wraps under the name. */
 .c3c-sender-meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   font-size: calc(14.5 * var(--colony-px));
   font-weight: 600;
   color: hsl(var(--colony-muted));

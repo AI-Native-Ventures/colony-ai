@@ -713,7 +713,7 @@ export const MessageRow = React.memo(
     const headerNode = isDisplayedAsContinuation ? null : (
       // pe reserves the measured action-rail footprint (0px until measured) so
       // header content ends before the rail's left edge in every rail state.
-      <MessageHeaderRow className="pe-[var(--message-action-rail-width,0px)]">
+      <MessageHeaderRow className="flex-nowrap pe-[var(--message-action-rail-width,0px)]">
         {message.pubkey ? (
           <MessageAuthorWithIndicators
             authorName={message.author}

@@ -96,6 +96,9 @@ const EMPTY_RELAY_EVENTS: RelayEvent[] = [];
 const CHANNEL_SINGLE_PANEL_CONTENT_BREAKPOINT_PX = 640;
 const EMPTY_CHANNEL_MEMBERS: ChannelMember[] = [];
 
+/** The Colony 3.0 thread and settings panels are 380px wide (400px for settings, which shares this width). */
+const CHANNEL_PANEL_DEFAULT_WIDTH_PX = 380;
+
 export function ChannelScreen({
   activeChannel,
   autoSendDraftKey,
@@ -158,7 +161,9 @@ export function ChannelScreen({
     onResetWidth: handleThreadPanelWidthReset,
     onResizeStart: handleThreadPanelResizeStart,
     widthPx: threadPanelWidthPx,
-  } = useThreadPanelWidth(channelContentWidthPx || undefined);
+  } = useThreadPanelWidth(channelContentWidthPx || undefined, {
+    defaultWidthPx: CHANNEL_PANEL_DEFAULT_WIDTH_PX,
+  });
   const [isMembersSidebarOpen, setIsMembersSidebarOpen] = React.useState(false);
   const [isAddBotOpen, setIsAddBotOpen] = React.useState(false);
   const [expandedThreadReplyIds, setExpandedThreadReplyIds] = React.useState(

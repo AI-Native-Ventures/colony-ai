@@ -3226,7 +3226,7 @@ test("thread panel width uses session storage and reset handle", async ({
   page,
 }) => {
   const customWidthPx = 600;
-  const defaultWidthPx = 520;
+  const defaultWidthPx = 380;
 
   await page.addInitScript((width) => {
     window.sessionStorage.setItem(
