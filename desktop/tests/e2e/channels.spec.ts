@@ -5,7 +5,6 @@ import {
   KIND_HUDDLE_STARTED,
   KIND_TYPING_INDICATOR,
 } from "../../src/shared/constants/kinds";
-import { FEATURE_OVERRIDES_STORAGE_KEY } from "../helpers/features";
 import {
   TEST_IDENTITIES,
   installMockBridge,
@@ -20,8 +19,6 @@ const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
 const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
-const ALICE_PUBKEY =
-  "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f";
 const CACHED_PROFILE_LABELS_TAG = "@cached-profile-labels";
 // Relay-only agent owned by the mock viewer (see e2eBridge.ts
 // OWNED_RELAY_AGENT_PUBKEY). Classified as a bot via mockRelayAgents and
@@ -1551,132 +1548,9 @@ test("channel name values stay primary after their inputs blur", async ({
   );
 });
 
-test("create channel template selector matches the lifecycle controls", async ({
+test("create channel lays out type, expiry and visibility without templates", async ({
   page,
 }) => {
-  await installMockBridge(page, {
-    channelTemplates: [
-      {
-        id: "project-kickoff",
-        name: "Project kickoff",
-        description: "Coordinate a new project from planning through launch.",
-        channelType: "stream",
-        visibility: "private",
-        canvasTemplate: "# {channel.name}\n\nKickoff notes",
-        agents: {
-          personas: [
-            {
-              personaId: "planner",
-              runtime: null,
-              model: null,
-              role: null,
-              backend: null,
-            },
-          ],
-          teams: [
-            {
-              teamId: "research-team",
-              runtime: null,
-              model: null,
-              backend: null,
-            },
-          ],
-        },
-        isBuiltin: false,
-        createdAt: "2026-07-23T00:00:00Z",
-        updatedAt: "2026-07-23T00:00:00Z",
-      },
-    ],
-  });
-
-  await page.goto("/");
-  await openCreateChannelDialog(page);
-
-  const templateControl = page.getByTestId("create-channel-template");
-  await expect(templateControl).toHaveRole("button");
-  await expect(templateControl).toHaveText("None");
-  await templateControl.click();
-  await expect(
-    page.getByRole("menuitem", { name: "Create new channel template…" }),
-  ).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "Project kickoff" }).click();
-
-  await expect(templateControl).toHaveText("Project kickoff");
-  await expect(page.getByTestId("create-channel-template-summary")).toHaveText(
-    "Private · Canvas included · 1 agent · 1 team",
-  );
-  await expect(page.getByTestId("create-channel-description")).toHaveValue(
-    "Coordinate a new project from planning through launch.",
-  );
-  await expect(
-    page.getByTestId("create-channel-permissions-option-private"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("create-channel-permissions-option-open").click();
-  await expect(page.getByTestId("create-channel-template-summary")).toHaveText(
-    "Open · Canvas included · 1 agent · 1 team",
-  );
-});
-
-test("template picker returns a real template to the channel creation flow", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    channelTemplates: [
-      {
-        id: "team-updates",
-        name: "Team updates",
-        description: "An async forum for your team.",
-        channelType: "forum",
-        visibility: "private",
-        canvasTemplate: null,
-        agents: { personas: [], teams: [] },
-        isBuiltin: true,
-        createdAt: "2026-09-26T07:00:00Z",
-        updatedAt: "2026-09-26T07:00:00Z",
-      },
-    ],
-  });
-
-  await page.goto("/");
-  await openCreateChannelDialog(page);
-  await page.getByTestId("create-channel-name").fill("weekly-updates");
-  await page.getByTestId("create-channel-template").click();
-  await page.getByTestId("create-channel-browse-templates").click();
-
-  const picker = page.getByTestId("channel-template-picker");
-  await expect(picker).toBeVisible();
-  await expect(picker.getByText("New channel", { exact: true })).toBeVisible();
-  await expect(picker.getByText("E2E Test", { exact: true })).toBeVisible();
-  await expect(
-    picker.getByRole("heading", { name: "Create from a template" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("settings-view")).toHaveCount(0);
-
-  const teamUpdates = page
-    .getByTestId("channel-template-card")
-    .filter({ hasText: "Team updates" });
-  const useTemplate = teamUpdates.getByTestId("channel-template-use");
-  await expect(useTemplate).toHaveCSS("background-color", "rgb(38, 85, 160)");
-  await useTemplate.click();
-
-  const createForum = page.getByTestId("create-channel-dialog");
-  await expect(createForum).toBeVisible();
-  await expect(createForum).toContainText("Create a new forum");
-  await expect(createForum.getByTestId("create-channel-name")).toHaveValue(
-    "weekly-updates",
-  );
-  await expect(createForum.getByTestId("create-channel-template")).toHaveText(
-    "Team updates",
-  );
-  await expect(
-    createForum.getByTestId("create-channel-description"),
-  ).toHaveValue("An async forum for your team.");
-});
-
-test("create channel exposes templates when the library is empty", async ({
-  page,
-}) => {
-  await installMockBridge(page, { channelTemplates: [] });
   await page.goto("/");
   await openCreateChannelDialog(page);
 
@@ -1686,43 +1560,28 @@ test("create channel exposes templates when the library is empty", async ({
   const visibilityContainer = page.getByTestId(
     "create-channel-permissions-container",
   );
-  const templateContainer = page.getByTestId(
-    "create-channel-template-container",
-  );
   await expect(
-    page.getByTestId("create-channel-channel-type").getByRole("button"),
+    page.getByTestId("create-channel-channel-type").locator("label"),
   ).toHaveText(["Temporary", "Ongoing"]);
   await expect(
-    page.getByTestId("create-channel-permissions").getByRole("button"),
-  ).toHaveText(["Private", "Public"]);
-  await expect(templateContainer).toContainText("TemplateOptional");
+    page.getByTestId("create-channel-permissions").locator("label"),
+  ).toContainText(["Private", "Public"]);
+  await expect(
+    page.getByTestId("create-channel-permissions-option-private"),
+  ).toContainText("Only people and agents you add");
+  await expect(
+    page.getByTestId("create-channel-permissions-option-open"),
+  ).toContainText("can join");
+  await expect(page.getByTestId("create-channel-template")).toHaveCount(0);
+  await expect(
+    page.getByTestId("create-channel-template-container"),
+  ).toHaveCount(0);
   const typeBox = await typeContainer.boundingBox();
   const visibilityBox = await visibilityContainer.boundingBox();
-  const templateBox = await templateContainer.boundingBox();
   expect(typeBox).not.toBeNull();
   expect(visibilityBox).not.toBeNull();
-  expect(templateBox).not.toBeNull();
   expect(typeBox?.y ?? 0).toBeLessThan(visibilityBox?.y ?? 0);
-  expect(visibilityBox?.y ?? 0).toBeLessThan(templateBox?.y ?? 0);
-
-  const templateControl = page.getByTestId("create-channel-template");
-  await expect(templateControl).toHaveText("None");
-  await templateControl.click();
-  await page
-    .getByRole("menuitem", { name: "Create new channel template…" })
-    .click();
-
-  await expect(
-    page.getByText("Create template", { exact: true }),
-  ).toBeVisible();
-  await page.locator("#template-name").fill("Weekly planning");
-  await page.locator("#template-description").fill("Plan the next week.");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-
-  await expect(templateControl).toHaveText("Weekly planning");
-  await expect(page.getByTestId("create-channel-description")).toHaveValue(
-    "Plan the next week.",
-  );
+  await expect(page.getByTestId("create-channel-cancel")).toBeVisible();
 });
 
 test("create ephemeral stream shows sidebar and header affordances", async ({
@@ -1748,20 +1607,16 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
   await expect(
     page.getByTestId("create-channel-permissions-container"),
   ).toBeVisible();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "true");
+  const visibilityRadio = (value: "open" | "private") =>
+    page
+      .getByTestId(`create-channel-permissions-option-${value}`)
+      .locator("input");
+  await expect(visibilityRadio("open")).toBeChecked();
   await page.getByTestId("create-channel-permissions-option-private").click();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-private"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(visibilityRadio("private")).toBeChecked();
+  await expect(visibilityRadio("open")).not.toBeChecked();
   await page.getByTestId("create-channel-permissions-option-open").click();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(visibilityRadio("open")).toBeChecked();
   await expect(page.getByTestId("create-channel-ttl")).toContainText("7 days");
   await page.getByTestId("create-channel-ttl").click();
   await page.getByTestId("create-channel-ttl-option-1209600").click();
@@ -2936,25 +2791,14 @@ test("manage channel shows member avatars and owner-only row controls", async ({
     memberStack.getByTestId("channel-management-member-avatar-overflow"),
   ).toHaveText("+1");
   await expect(page.getByTestId("channel-management-hero")).toBeVisible();
-  await expect(
-    page.getByTestId("channel-management-sheet").locator(".space-y-6").first(),
-  ).toBeVisible();
   const detailsSection = page.getByTestId("channel-management-details");
-  const detailsTitle = detailsSection.getByRole("heading", {
-    exact: true,
-    level: 2,
-    name: "Details",
-  });
-  await expect(detailsTitle).toHaveClass(/text-xs/);
-  await expect(detailsTitle).toHaveClass(/text-muted-foreground\/70/);
   await expect(
-    detailsSection.locator('[data-slot="panel-section-header"]'),
-  ).toHaveClass(/px-4/);
-  await expect(
-    detailsSection
-      .locator('[data-slot="panel-section-card"]')
-      .getByRole("heading", { exact: true, name: "Details" }),
-  ).toHaveCount(0);
+    detailsSection.getByRole("heading", {
+      exact: true,
+      level: 3,
+      name: "Details",
+    }),
+  ).toHaveClass(/uppercase/);
   const untitledChannelSections = [
     page.getByTestId("channel-canvas-ingress-section"),
     page.getByTestId("channel-management-actions"),
@@ -2983,26 +2827,15 @@ test("manage channel shows member avatars and owner-only row controls", async ({
   await expect(
     leaveChannelRow.locator(":scope > span.rounded-full"),
   ).toHaveCount(0);
-  const canvasInfo = page.getByTestId("channel-canvas-ingress-info");
-  await canvasInfo.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(
+  await expect(page.getByTestId("channel-canvas-ingress")).toContainText(
     "Use the canvas as a shared space for notes, plans, and other channel information.",
   );
   const nameEdit = page.getByTestId("channel-management-edit");
   await expect(nameEdit).toBeVisible();
-  const nameEditIcon = page.getByTestId("channel-management-edit-icon");
-  await expect(nameEditIcon).toHaveCSS("opacity", "0");
-  await nameEdit.hover();
-  await expect(nameEditIcon).toHaveCSS("opacity", "1");
+  await expect(nameEdit).toContainText("Edit name and description");
   await expect(
     page.getByTestId("channel-management-edit-description"),
   ).toHaveCount(0);
-  await expect(
-    page.getByTestId("channel-management-edit-channel-type"),
-  ).toHaveCSS("opacity", "0");
-  await expect(
-    page.getByTestId("channel-management-edit-visibility"),
-  ).toHaveCSS("opacity", "0");
   await expect(page.getByTestId("channel-management-archive")).toBeVisible();
   await expect(page.getByTestId("channel-management-delete")).toBeVisible();
   await expect(
@@ -3030,11 +2863,12 @@ test("manage channel shows member avatars and owner-only row controls", async ({
   await expect(channelIdRow.getByTitle(GENERAL_CHANNEL_ID)).toHaveText(
     "9a1657ac…fb50",
   );
-  await expect(channelIdCopyStatus).toHaveCSS("opacity", "0");
-  await channelIdRow.hover();
-  await expect(channelIdCopyStatus).toHaveCSS("opacity", "1");
-  await channelIdRow.click();
-  await expect(channelIdRow).toHaveAttribute("aria-label", "Channel ID copied");
+  await expect(channelIdCopyStatus).toBeVisible();
+  await channelIdCopyStatus.click();
+  await expect(channelIdCopyStatus).toHaveAttribute(
+    "aria-label",
+    "Channel ID copied",
+  );
   await expect(channelIdCopyStatus).toHaveAttribute("data-copied", "true");
 
   for (const editTrigger of [
@@ -3169,7 +3003,6 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
 
   await expect(saveChangesButton).toBeDisabled();
 
-  await page.getByTestId("channel-management-permissions").click();
   await page
     .getByTestId("channel-management-permissions-option-private")
     .click();
@@ -3177,10 +3010,11 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
     page.getByRole("dialog", { name: "Edit private channel" }),
   ).toBeVisible();
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Private");
-  await page.getByTestId("channel-management-channel-type").click();
-  await page.getByLabel("Temporary channel").click();
+    page.getByTestId("channel-management-permissions-option-private"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByTestId("channel-management-channel-type-option-temporary")
+    .click();
   await expect(page.getByTestId("channel-management-ttl")).toBeVisible();
   await expect(saveChangesButton).toBeEnabled();
 
@@ -3221,25 +3055,25 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
   saveChangesButton = page.getByTestId("channel-management-save-changes");
 
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Private");
+    page.getByTestId("channel-management-permissions-option-private"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("channel-management-channel-type"),
-  ).toContainText("Temporary");
+    page.getByTestId("channel-management-channel-type-option-temporary"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("channel-management-ttl")).toContainText(
     "7 days",
   );
 
-  await page.getByTestId("channel-management-permissions").click();
   await page.getByTestId("channel-management-permissions-option-open").click();
   await expect(
     page.getByRole("dialog", { name: "Edit public channel" }),
   ).toBeVisible();
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Public");
-  await page.getByTestId("channel-management-channel-type").click();
-  await page.getByLabel("Ongoing channel").click();
+    page.getByTestId("channel-management-permissions-option-open"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByTestId("channel-management-channel-type-option-ongoing")
+    .click();
   await expect(saveChangesButton).toBeEnabled();
 
   const commandCountBeforeDisable = (await readCommandPayloadLog(page)).length;
@@ -3278,11 +3112,11 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
   await openChannelEditDialog(page);
 
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Public");
+    page.getByTestId("channel-management-permissions-option-open"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("channel-management-channel-type"),
-  ).toContainText("Ongoing");
+    page.getByTestId("channel-management-channel-type-option-ongoing"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("channel-management-ttl")).toHaveCount(0);
 });
 
@@ -3333,17 +3167,7 @@ test("manage channel places canvas between channel info and actions", async ({
   expect(canvasBox?.y).toBeLessThan(leaveBox?.y);
 });
 
-test("channel settings hides workflows and skips its query when the experiment is disabled", async ({
-  page,
-}) => {
-  await page.addInitScript((key) => {
-    const overrides = JSON.parse(
-      window.localStorage.getItem(key) ?? "{}",
-    ) as Record<string, boolean>;
-    overrides.workflows = false;
-    window.localStorage.setItem(key, JSON.stringify(overrides));
-  }, FEATURE_OVERRIDES_STORAGE_KEY);
-
+test("channel settings never offers workflows", async ({ page }) => {
   await page.goto("/");
   await openChannelManagement(page, "general");
 
@@ -3364,73 +3188,18 @@ test("channel settings hides workflows and skips its query when the experiment i
     .toBe(false);
 });
 
-test("channel workflow entries open a plain workflow and keep channel context", async ({
-  page,
-}) => {
+test("channel settings opens the pinned messages page", async ({ page }) => {
   await page.goto("/");
-  await invokeMockCommand(page, "create_workflow", {
-    channelId: GENERAL_CHANNEL_ID,
-    yamlDefinition: `name: Welcome responder\ndescription: Prepare a welcome message and review it.\ntrigger:\n  on: schedule\n  cron: "0 6 * * 1"\nsteps:\n  - id: prepare\n    name: Prepare the welcome message\n    action: ask_agent\n    agent_pubkey: ${ALICE_PUBKEY}\n    instruction: Prepare a welcome message.\n    expected_result: A welcome message ready for review.\n  - id: review\n    name: Review the welcome message\n    action: request_approval\n    from: ${MOCK_IDENTITY_PUBKEY}\n    message: Review the welcome message.\n`,
-  });
   await openChannelManagement(page, "general");
 
-  const sheet = page.getByTestId("channel-management-sheet");
-  const canvasBox = await sheet
-    .getByTestId("channel-canvas-ingress")
-    .boundingBox();
-  const workflowsBox = await sheet
-    .getByTestId("channel-workflows-ingress")
-    .boundingBox();
-  expect(canvasBox).not.toBeNull();
-  expect(workflowsBox).not.toBeNull();
-  expect(canvasBox?.y).toBeLessThan(workflowsBox?.y);
-
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-list")).toContainText(
-    "Welcome responder",
+  await page
+    .getByTestId("channel-management-sheet")
+    .getByTestId("channel-pins-trigger")
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/channels/pins/${GENERAL_CHANNEL_ID}`),
   );
-
-  // The full workflow route owns plain-language viewing and editing.
-  const channelUrl = new RegExp(`/channels/${GENERAL_CHANNEL_ID}(?:\\?|$)`);
-  await sheet.getByTestId("channel-workflow-mock-wf-1").click();
-  const builder = page.getByTestId("plain-workflow-builder");
-  await expect(builder).toBeVisible();
-  await expect(page).toHaveURL(/#\/workflows\/mock-wf-1/);
-  await expect(
-    builder.getByRole("heading", { name: "Welcome responder" }),
-  ).toBeVisible();
-  await expect(builder.getByTestId("plain-workflow-detail")).toContainText(
-    "Every Monday at 08:00",
-  );
-  await expect(
-    builder.getByRole("button", { name: "Edit workflow" }),
-  ).toBeVisible();
-  await builder.getByRole("button", { name: "Back to workflows" }).click();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-list")).toContainText(
-    "Welcome responder",
-  );
-
-  await page.getByTestId("channel-workflows-new").click();
-
-  const createBuilder = page.getByTestId("plain-workflow-builder");
-  await expect(createBuilder).toBeVisible();
-  await expect(page).toHaveURL(/#\/workflows\?/);
-  await expect(
-    createBuilder.getByLabel("Give this workflow a name"),
-  ).toBeVisible();
-  expect(page.url()).toContain(GENERAL_CHANNEL_ID);
-  await createBuilder.getByRole("button", { name: "Cancel" }).click();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-new")).toBeVisible();
+  await expect(page.getByTestId("channel-management-sheet")).toHaveCount(0);
 });
 
 async function seedHomeInboxMention(
@@ -5320,8 +5089,12 @@ test("open channel management supports join and leave", async ({ page }) => {
   await expect(page.getByTestId("channel-management-join")).toHaveCount(0);
   await expect(page.getByTestId("channel-management-leave")).toBeVisible();
 
-  // Leave the channel
+  // Leave the channel (the panel asks first, as the sidebar menu does)
   await page.getByTestId("channel-management-leave").click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Leave", exact: true })
+    .click();
   await expect(page.getByTestId("channel-management-sheet")).not.toBeVisible();
 
   // After leaving, the app navigates away - re-open browser and find design

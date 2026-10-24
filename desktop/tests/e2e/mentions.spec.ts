@@ -622,7 +622,9 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
   ).toHaveCount(0);
   await input.pressSequentially("remote");
   await page.getByTestId("send-message").click();
-  const sendWithoutInviting = page.getByRole("button", { name: "Do nothing" });
+  const sendWithoutInviting = page.getByRole("button", {
+    name: "Send anyway",
+  });
   try {
     await sendWithoutInviting.waitFor({ state: "visible", timeout: 2_000 });
     await sendWithoutInviting.click();

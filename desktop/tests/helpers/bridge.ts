@@ -414,6 +414,8 @@ type MockBridgeOptions = {
   managedAgentRuntimes?: Array<{
     pubkey: string;
     relayUrl: string;
+    /** False for an agent that still needs setup on this device. */
+    localSetup?: boolean;
     lifecycle?:
       | "starting"
       | "listening"

@@ -8,7 +8,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { Button } from "@/shared/ui/button";
+import { TrashGlyph } from "@/features/channels/ui/dialogIcons";
+import { buttonVariants } from "@/shared/ui/button";
 
 /**
  * The "Delete message?" confirmation. Single definition shared by every
@@ -28,23 +29,31 @@ export function DeleteMessageConfirmDialog({
 }) {
   return (
     <AlertDialog onOpenChange={onOpenChange} open={open}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-[400px] gap-4.5">
+        <span className="flex size-11 items-center justify-center rounded-[0.8125rem] bg-colony-danger-bg text-colony-danger">
+          <TrashGlyph size={20} />
+        </span>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete message?</AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogTitle className="leading-[normal]">
+            Delete message?
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-sm leading-[1.55]">
             This will permanently delete this message and cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
+        <AlertDialogFooter className="pt-0">
+          <AlertDialogCancel className="px-4.5" type="button">
+            Cancel
           </AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button onClick={onConfirm} type="button" variant="destructive">
-              Delete
-            </Button>
+          <AlertDialogAction
+            className={buttonVariants({
+              variant: "destructive",
+              size: "dialog",
+            })}
+            onClick={onConfirm}
+            type="button"
+          >
+            Delete
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

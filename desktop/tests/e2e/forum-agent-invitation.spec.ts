@@ -507,7 +507,9 @@ test("shared chat dialog keeps reference-only action and restores composer focus
     "@RemoteScout hello",
   );
   await page.getByTestId("send-message").click();
-  await dialog.getByRole("button", { name: "Do nothing", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Send anyway", exact: true })
+    .click();
   await expect.poll(() => sent(page)).toEqual([[]]);
   expect(await forumAdds(page)).toEqual([]);
 });

@@ -252,6 +252,8 @@ type MockManagedAgentRuntimeSeed = {
   pubkey: string;
   relayUrl: string;
   lifecycle?: MockManagedAgentRuntimeRow["lifecycle"];
+  /** False for an agent that still needs setup on this device. Defaults to true. */
+  localSetup?: boolean;
 };
 
 type MockRelayAgentSeed = {
@@ -3239,7 +3241,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
     (seed) => ({
       pubkey: seed.pubkey,
       relayUrl: seed.relayUrl,
-      localSetup: true,
+      localSetup: seed.localSetup ?? true,
       lifecycle: seed.lifecycle ?? "ready",
       pid: seed.lifecycle === "stopped" ? null : 43000,
       error: null,

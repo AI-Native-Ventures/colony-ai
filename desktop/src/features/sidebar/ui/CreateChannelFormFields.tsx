@@ -1,95 +1,54 @@
-import { ChevronDown, Plus } from "lucide-react";
-import * as React from "react";
-
-import { TemplateFormDialog } from "@/features/settings/ui/ChannelTemplatesSettingsCard";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
-import { Input } from "@/shared/ui/input";
-import { Textarea } from "@/shared/ui/textarea";
 
 import {
-  CHANNEL_FORM_FIELD_CONTROL_CLASS,
-  CHANNEL_FORM_FIELD_SHELL_CLASS,
+  CHANNEL_FORM_BARE_INPUT_CLASS,
+  CHANNEL_FORM_INPUT_SHELL_CLASS,
+  CHANNEL_FORM_LABEL_CLASS,
 } from "@/features/channels/ui/channelFormStyles";
 import { ChannelPermissionsSettings } from "@/features/channels/ui/ChannelPermissionsSettings";
 import { ChannelTypeSettings } from "@/features/channels/ui/ChannelTypeSettings";
 import type { CreateChannelFormState } from "@/features/sidebar/lib/useCreateChannelForm";
 
-const CREATE_LABEL_OPTIONAL_CLASS =
-  "ml-1 text-xs font-normal text-muted-foreground/50";
-const NO_TEMPLATE_VALUE = "__no-template__";
-
 export const CREATE_CHANNEL_FORM_ID = "create-channel-form";
 
 /**
- * The body of the create-channel form (name, description, visibility,
- * optional template). Rendered inside both the standalone dialog and the
- * "Add channel" browser's create mode. Wrap in a `<form>` with
+ * The body of the create-channel form (name, description, type, expiry,
+ * visibility). Rendered inside both the standalone dialog and the "Add
+ * channel" browser's create mode. Wrap in a `<form>` with
  * `id={CREATE_CHANNEL_FORM_ID}` and hook up `form.handleSubmit`.
  */
 export function CreateChannelFormFields({
   form,
-  onBrowseTemplates,
 }: {
   form: CreateChannelFormState;
-  onBrowseTemplates?: (
-    draft: ReturnType<CreateChannelFormState["getDraft"]>,
-  ) => void;
 }) {
   const { channelKind, kindLabel, isCreating } = form;
-  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = React.useState(false);
-  const selectedTemplate = form.templates.find(
-    (template) => template.id === form.selectedTemplateId,
-  );
-  const selectedTemplatePersonaCount =
-    selectedTemplate?.agents.personas.length ?? 0;
-  const selectedTemplateTeamCount = selectedTemplate?.agents.teams.length ?? 0;
-  const selectedTemplateSummary = selectedTemplate
-    ? [
-        form.visibility === "private" ? "Private" : "Open",
-        selectedTemplate.canvasTemplate ? "Canvas included" : null,
-        selectedTemplatePersonaCount > 0
-          ? `${selectedTemplatePersonaCount} ${selectedTemplatePersonaCount === 1 ? "agent" : "agents"}`
-          : null,
-        selectedTemplateTeamCount > 0
-          ? `${selectedTemplateTeamCount} ${selectedTemplateTeamCount === 1 ? "team" : "teams"}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : null;
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-1.5">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-[7px]">
         <label
-          className="text-sm font-medium text-foreground"
+          className={CHANNEL_FORM_LABEL_CLASS}
           htmlFor="create-channel-name"
         >
           Name
         </label>
-        <div
-          className={cn(
-            "flex min-h-11 items-center px-3",
-            CHANNEL_FORM_FIELD_SHELL_CLASS,
-          )}
-        >
-          <Input
+        {/* The board's Name shell is 46px inside a 1px border: 48px outside. */}
+        <div className={cn(CHANNEL_FORM_INPUT_SHELL_CLASS, "h-12")}>
+          <span
+            aria-hidden="true"
+            className="text-base font-bold text-colony-muted"
+          >
+            #
+          </span>
+          <input
             autoCapitalize="none"
             autoComplete="off"
             autoCorrect="off"
             className={cn(
-              "h-8 px-0 py-0 leading-6",
-              CHANNEL_FORM_FIELD_CONTROL_CLASS,
+              CHANNEL_FORM_BARE_INPUT_CLASS,
+              "font-semibold placeholder:font-medium",
             )}
             data-testid="create-channel-name"
             disabled={isCreating}
@@ -105,26 +64,23 @@ export function CreateChannelFormFields({
         </div>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-[7px]">
         <label
-          className="text-sm font-medium text-foreground"
+          className={CHANNEL_FORM_LABEL_CLASS}
           htmlFor="create-channel-description"
         >
-          Description
-          <span className={CREATE_LABEL_OPTIONAL_CLASS}>Optional</span>
+          Description{" "}
+          <span className="font-semibold text-colony-muted">· Optional</span>
         </label>
-        <div className={CHANNEL_FORM_FIELD_SHELL_CLASS}>
-          <Textarea
-            className={cn(
-              "min-h-20 resize-none px-3 py-3 leading-5",
-              CHANNEL_FORM_FIELD_CONTROL_CLASS,
-            )}
+        <div className={CHANNEL_FORM_INPUT_SHELL_CLASS}>
+          <input
+            autoComplete="off"
+            className={cn(CHANNEL_FORM_BARE_INPUT_CLASS, "font-medium")}
             data-testid="create-channel-description"
             disabled={isCreating}
             id="create-channel-description"
             onChange={(event) => form.setDescription(event.target.value)}
             placeholder={`What this ${kindLabel} is for`}
-            rows={2}
             value={form.description}
           />
         </div>
@@ -132,13 +88,13 @@ export function CreateChannelFormFields({
 
       <ChannelTypeSettings
         disabled={isCreating}
-        label="Type"
+        label="Channel type"
         onTemporaryChange={form.setEphemeral}
         onTtlSecondsChange={form.setTtlSeconds}
         temporary={form.ephemeral}
         testIdPrefix="create-channel"
         ttlSeconds={form.ttlSeconds}
-        variant="segmented"
+        variant="form"
       />
 
       <ChannelPermissionsSettings
@@ -146,120 +102,50 @@ export function CreateChannelFormFields({
         onVisibilityChange={form.setVisibility}
         testIdPrefix="create-channel"
         visibility={form.visibility}
-        variant="segmented"
+        variant="cards"
       />
 
-      <div
-        className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-input bg-background px-3 py-3"
-        data-testid="create-channel-template-container"
-      >
-        <span
-          className={cn(
-            "text-sm font-medium text-foreground",
-            isCreating && "opacity-50",
-          )}
-        >
-          Template
-          <span className={CREATE_LABEL_OPTIONAL_CLASS}>Optional</span>
-        </span>
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Template: ${selectedTemplate?.name ?? "None"}`}
-              className="-mr-2.5 ml-auto h-9 min-w-0 max-w-[60%] justify-end px-2.5 text-right text-sm font-medium text-foreground hover:bg-muted/50"
-              data-testid="create-channel-template"
-              disabled={isCreating}
-              id="create-channel-template"
-              type="button"
-              variant="ghost"
-            >
-              <span className="truncate text-right">
-                {selectedTemplate?.name ?? "None"}
-              </span>
-              <ChevronDown className="size-4 shrink-0 text-muted-foreground/70" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            onCloseAutoFocus={(event) => event.preventDefault()}
-            style={{
-              minWidth: "var(--radix-dropdown-menu-trigger-width)",
-            }}
-          >
-            <DropdownMenuRadioGroup
-              onValueChange={(templateId) =>
-                form.handleTemplateChange(
-                  templateId === NO_TEMPLATE_VALUE ? "" : templateId,
-                )
-              }
-              value={form.selectedTemplateId ?? NO_TEMPLATE_VALUE}
-            >
-              <DropdownMenuRadioItem value={NO_TEMPLATE_VALUE}>
-                None
-              </DropdownMenuRadioItem>
-              {form.templates.map((template) => (
-                <DropdownMenuRadioItem key={template.id} value={template.id}>
-                  {template.name}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-            {form.templates.length > 0 && onBrowseTemplates ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid="create-channel-browse-templates"
-                  onSelect={() => onBrowseTemplates(form.getDraft())}
-                >
-                  Browse templates
-                </DropdownMenuItem>
-              </>
-            ) : null}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setIsCreateTemplateOpen(true)}>
-              <Plus className="size-4" />
-              Create new channel template…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <TemplateFormDialog
-          onCreated={form.handleTemplateCreated}
-          onOpenChange={setIsCreateTemplateOpen}
-          open={isCreateTemplateOpen}
-          template={null}
-        />
-      </div>
-      {selectedTemplateSummary ? (
-        <p
-          className="-mt-3 px-3 text-xs text-muted-foreground"
-          data-testid="create-channel-template-summary"
-        >
-          {selectedTemplateSummary}
-        </p>
-      ) : null}
-
       {form.errorMessage ? (
-        <p className="text-sm text-destructive">{form.errorMessage}</p>
+        <p className="text-xs font-semibold text-colony-danger">
+          {form.errorMessage}
+        </p>
       ) : null}
     </div>
   );
 }
 
 /**
- * Footer for the create-channel form. The submit button is bound to the form
- * via `form={CREATE_CHANNEL_FORM_ID}`.
+ * Footer for the create-channel form: Cancel (when the caller has somewhere to
+ * go back to) and the submit button, bound to the form via
+ * `form={CREATE_CHANNEL_FORM_ID}`.
  */
 export function CreateChannelFormFooter({
   form,
+  onCancel,
   submitLabel,
 }: {
   form: CreateChannelFormState;
+  onCancel?: () => void;
   submitLabel?: string;
 }) {
   const { isCreating, kindLabel } = form;
 
   return (
-    <div className="flex w-full items-center justify-end gap-3">
+    <div className="flex w-full items-center justify-end gap-2.5 pt-1">
+      {onCancel ? (
+        <Button
+          className="h-11.5 px-4.5 text-sm font-bold"
+          data-testid="create-channel-cancel"
+          disabled={isCreating}
+          onClick={onCancel}
+          type="button"
+          variant="outline"
+        >
+          Cancel
+        </Button>
+      ) : null}
       <Button
+        className="h-11.5 px-5 text-sm"
         data-testid="create-channel-submit"
         disabled={!form.canSubmit}
         form={CREATE_CHANNEL_FORM_ID}
