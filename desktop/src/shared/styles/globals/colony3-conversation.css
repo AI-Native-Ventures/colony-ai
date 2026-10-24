@@ -507,9 +507,9 @@
  * prose rhythm with a hairline of height.
  */
 .c3c-body
-[data-mention].mention-chip:not(.buzz-link-unavailable):not(.buzz-link-deleted):not(
-  .inbox-channel-chip
-):not(.search-channel-chip) {
+[data-mention].mention-chip:not(.buzz-link-unavailable):not(
+  .buzz-link-deleted
+):not(.inbox-channel-chip):not(.search-channel-chip) {
   padding-block: calc(1 * var(--colony-px));
 }
 
