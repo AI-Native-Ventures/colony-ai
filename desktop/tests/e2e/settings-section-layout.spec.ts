@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings, selectSettingsSection } from "../helpers/settings";
 
-test("settings use six groups, inner search, remembered sections, and return navigation", async ({
+test("settings use seven pages, find-a-setting search, remembered sections, and return navigation", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -18,27 +18,29 @@ test("settings use six groups, inner search, remembered sections, and return nav
     "preferences",
     "business",
     "agents-group",
+    "blocks-templates",
     "app-devices",
   ]) {
     await expect(page.getByTestId(`settings-group-${group}`)).toBeVisible();
   }
-  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(7);
   await expect(page.getByRole("tablist")).toHaveCount(1);
 
-  await page.getByTestId("settings-search").fill("Keyboard shortcuts");
-  const result = page.getByRole("option", {
-    name: "Keyboard shortcuts, Preferences",
-  });
+  await page.getByTestId("settings-search").fill("Harnesses");
+  const result = page.getByRole("option", { name: "Harnesses, Agents" });
   await expect(result).toBeVisible();
   await result.click();
-  await expect(page.getByTestId("settings-shortcuts")).toBeVisible();
-  await expect(page.getByTestId("settings-group-preferences")).toHaveAttribute(
+  await expect(page.getByTestId("settings-harnesses")).toBeVisible();
+  await expect(page.getByTestId("settings-group-agents-group")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
 
-  await selectSettingsSection(page, "harnesses");
-  await expect(page.getByTestId("settings-harnesses")).toBeVisible();
+  // Pages the owner cut have no way in, not even through search.
+  await page.getByTestId("settings-search").fill("Channel templates");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await page.getByTestId("settings-search").fill("");
+
   await page.getByTestId("settings-group-appearance-group").click();
   await expect(page.getByTestId("settings-appearance")).toBeVisible();
   await page.getByTestId("settings-group-agents-group").click();
@@ -57,9 +59,7 @@ test("settings use six groups, inner search, remembered sections, and return nav
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
-test("prominent settings selection uses the saved accent tint", async ({
-  page,
-}) => {
+test("prominent settings selection uses the saved accent", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.addInitScript(() => {
     localStorage.setItem("buzz-accent-color", "#3b82f6");
@@ -71,13 +71,21 @@ test("prominent settings selection uses the saved accent tint", async ({
 
   const selectedGroup = page.getByTestId("settings-group-account");
   await expect(selectedGroup).toHaveAttribute("data-active", "true");
+  const accent = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.background = "hsl(var(--colony-accent))";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   await expect
     .poll(() =>
       selectedGroup.evaluate(
         (element) => getComputedStyle(element).backgroundColor,
       ),
     )
-    .toBe("rgb(38, 85, 160)");
+    .toBe(accent);
 });
 
 test("routes without a data-backed design fall back to Account profile", async ({
@@ -102,6 +110,8 @@ test("routes without a data-backed design fall back to Account profile", async (
     "settings/themes",
     "settings/theme-preview",
     "settings/theme-applied",
+    "archived-records",
+    "administration",
   ]) {
     await page.goto(`/#/settings?section=${section}`);
 
@@ -113,40 +123,10 @@ test("routes without a data-backed design fall back to Account profile", async (
   }
 });
 
-test("archive follows the r19 title and empty state", async ({ page }) => {
-  await installMockBridge(page, { archivedIdentities: [] });
-  await page.goto("/");
-  await openSettings(page, "archived-records");
-
-  const archive = page.getByTestId("settings-archived-records");
-  await expect(
-    archive.getByRole("heading", {
-      name: "Archived records",
-      level: 1,
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    archive.getByRole("heading", {
-      name: "Archived records",
-      level: 2,
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(archive).toContainText("No archived records.");
-  await expect(archive).not.toContainText(
-    "Identities archived from community discovery.",
-  );
-  await archive.getByTestId("settings-archive-back-to-today").click();
-  await expect(page.getByTestId("settings-view")).toHaveCount(0);
-});
-
-test("account profile follows the r19 grid and type scale at desktop widths", async ({
+test("account profile follows the design grid and type scale at desktop widths", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("buzz-sidebar-width", "238");
-  });
+  await page.setViewportSize({ width: 1440, height: 960 });
   await installMockBridge(page, {
     relayRequiresMembership: true,
     relayRole: "owner",
@@ -160,269 +140,58 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     .getByRole("heading", { name: "Profile", exact: true });
   await expect(profileTitle).toBeVisible();
   const profileCard = page.getByTestId("settings-account-profile-card");
-  await expect(
-    profileCard.getByRole("heading", { name: "Your profile", exact: true }),
-  ).toBeVisible();
   await expect(profileCard.getByLabel("Name")).toHaveValue(/\S/);
-  await expect(profileCard.getByLabel("Email address")).toHaveValue(/.+@.+/);
-  await expect(profileCard.getByLabel("Status")).toHaveValue("Available");
+  await expect(profileCard.getByLabel("Email")).toHaveValue(/.+@.+/);
+  await expect(page.getByTestId("account-profile-status")).toContainText(
+    "Available",
+  );
   await expect(profileCard.getByLabel("Timezone")).toHaveValue(/\S/);
   const businessCard = page.getByTestId("settings-account-business-card");
-  await expect(
-    businessCard.getByRole("heading", { name: "This business", exact: true }),
-  ).toBeVisible();
-  await expect(businessCard.getByText("Owner", { exact: true })).toBeVisible();
+  await expect(businessCard.getByText("This business")).toBeVisible();
+  await expect(businessCard.getByText("Your role · Owner")).toBeVisible();
   await expect(
     businessCard.getByRole("button", { name: "Business settings" }),
   ).toBeVisible();
-  await expect
-    .poll(() =>
-      page
-        .locator(".w20-account-card-title")
-        .evaluateAll((elements) =>
-          elements.map((element) => getComputedStyle(element).fontSize),
-        ),
-    )
-    .toEqual(["17px", "17px"]);
-  const titleFontSize = await profileTitle.evaluate(
-    (element) => getComputedStyle(element).fontSize,
-  );
-  const breadcrumbLineHeights = await page
-    .locator(".w20-topbar-title > span")
-    .evaluateAll((elements) =>
-      elements.map((element) => getComputedStyle(element).lineHeight),
-    );
-  const breadcrumbFontSizes = await page
-    .locator(".w20-topbar-title > span")
-    .evaluateAll((elements) =>
-      elements.map((element) => getComputedStyle(element).fontSize),
-    );
-  const topbarPadding = await page
-    .locator(".w20-settings-topbar")
-    .evaluate((element) => getComputedStyle(element).padding);
-  const profileAvatarSize = await page
-    .getByTestId("settings-profile-avatar")
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { width: rect.width, height: rect.height };
-    });
+  await expect(
+    businessCard.getByRole("button", { name: "Members & roles" }),
+  ).toBeVisible();
 
-  expect(titleFontSize).toBe("29.1429px");
-  expect(breadcrumbLineHeights).toEqual(["23.9999px", "23.9999px"]);
-  expect(breadcrumbFontSizes).toEqual(["16px", "16px"]);
-  expect(topbarPadding).toBe("0px 25px");
-  expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
-
-  // Pin the enlarged title to 600-weight Manrope and its -0.03em tracking.
-  // Measure those frozen font values independently of the element's styles:
-  // glyph advances can differ between browser platforms, not the grid bounds.
-  const titleWidth = await page.evaluate(async () => {
-    const font = '600 29.1429px "Manrope Variable"';
-    const faces = await document.fonts.load(font);
-    if (faces.length === 0)
-      throw new Error("Manrope title font is unavailable");
-    const context = document.createElement("canvas").getContext("2d");
-    if (!context) throw new Error("Cannot measure the Manrope title");
-    context.font = font;
-    const text = "Profile";
-    return context.measureText(text).width - text.length * 29.1429 * 0.03;
-  });
-
-  for (const expected of [
-    {
-      viewport: {
-        width: 1440,
-        height: 900,
-      },
-      fieldLayer: {
-        x: 0,
-        y: 0,
-        width: 240,
-        height: 900,
-      },
-      settingsSurface: {
-        x: 248,
-        y: 60,
-        width: 1184,
-        height: 832,
-      },
-      title: {
-        x: 322,
-        y: 175.234375,
-        width: titleWidth,
-        height: 35.546875,
-      },
-      profileCard: {
-        x: 322,
-        y: 276.015625,
-        width: 627.609375,
-        height: 544.5625,
-      },
-      businessCard: {
-        x: 977.609375,
-        y: 276.015625,
-        width: 380.375,
-        height: 206.5,
-      },
-      nameField: {
-        x: 347,
-        y: 341.515625,
-        width: 577.609375,
-        height: 75.890625,
-      },
-      nameInput: {
-        x: 347,
-        y: 377.40625,
-        width: 577.609375,
-        height: 40,
-      },
-    },
-    {
-      viewport: {
-        width: 1728,
-        height: 1117,
-      },
-      fieldLayer: {
-        x: 0,
-        y: 0,
-        width: 240,
-        height: 1117,
-      },
-      settingsSurface: {
-        x: 248,
-        y: 60,
-        width: 1472,
-        height: 1049,
-      },
-      title: {
-        x: 330,
-        y: 178.859375,
-        width: titleWidth,
-        height: 35.546875,
-      },
-      profileCard: {
-        x: 330,
-        y: 284.1875,
-        width: 796.96875,
-        height: 544.5625,
-      },
-      businessCard: {
-        x: 1154.96875,
-        y: 284.1875,
-        width: 483.015625,
-        height: 206.5,
-      },
-      nameField: {
-        x: 355,
-        y: 349.6875,
-        width: 746.96875,
-        height: 75.890625,
-      },
-      nameInput: {
-        x: 355,
-        y: 385.578125,
-        width: 746.96875,
-        height: 40,
-      },
-    },
-  ]) {
-    await page.setViewportSize(expected.viewport);
-    const geometry = await page.evaluate(() => {
-      const bounds = (selector: string) => {
-        const rect = document.querySelector(selector)?.getBoundingClientRect();
-        if (!rect) throw new Error(`Missing settings geometry for ${selector}`);
+  const box = async (selector: string) =>
+    page
+      .locator(selector)
+      .first()
+      .evaluate((element) => {
+        const rect = element.getBoundingClientRect();
         return {
           x: rect.x,
           y: rect.y,
           width: rect.width,
           height: rect.height,
+          fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
         };
-      };
-      const firstProfileField = document.querySelector(
-        '[data-testid="settings-profile"] .w20-account-field',
-      );
-      const firstProfileFieldRect = firstProfileField?.getBoundingClientRect();
-      if (!firstProfileFieldRect) {
-        throw new Error("Missing first account profile field");
-      }
-      return {
-        fieldLayer: bounds('[data-testid="settings-sidebar"] .colony-field'),
-        settingsSurface: bounds(".w20-settings-surface"),
-        fieldFrame: (() => {
-          const layer = document.querySelector(
-            '[data-testid="settings-sidebar"] .colony-field',
-          );
-          if (!layer) throw new Error("Missing settings field");
-          const style = getComputedStyle(layer);
-          return {
-            rootBackground: getComputedStyle(document.documentElement)
-              .backgroundColor,
-            display: style.display,
-            overflow: style.overflow,
-            position: style.position,
-          };
-        })(),
-        title: bounds('[data-testid="settings-profile"] h1'),
-        profileCard: bounds('[data-testid="settings-account-profile-card"]'),
-        businessCard: bounds('[data-testid="settings-account-business-card"]'),
-        nameField: {
-          x: firstProfileFieldRect.x,
-          y: firstProfileFieldRect.y,
-          width: firstProfileFieldRect.width,
-          height: firstProfileFieldRect.height,
-        },
-        nameInput: bounds('[data-testid="profile-display-name"]'),
-      };
-    });
-    const expectCoordinate = (actual: number, expectedValue: number) => {
-      expect(
-        Math.abs(actual - expectedValue),
-        `Expected ${expectedValue}px, received ${actual}px`,
-      ).toBeLessThan(1);
-    };
-    expectCoordinate(geometry.fieldLayer.x, expected.fieldLayer.x);
-    expectCoordinate(geometry.fieldLayer.y, expected.fieldLayer.y);
-    expectCoordinate(geometry.fieldLayer.width, expected.fieldLayer.width);
-    expectCoordinate(geometry.fieldLayer.height, expected.fieldLayer.height);
-    expectCoordinate(geometry.settingsSurface.x, expected.settingsSurface.x);
-    expectCoordinate(geometry.settingsSurface.y, expected.settingsSurface.y);
-    expectCoordinate(
-      geometry.settingsSurface.width,
-      expected.settingsSurface.width,
-    );
-    expectCoordinate(
-      geometry.settingsSurface.height,
-      expected.settingsSurface.height,
-    );
-    // The settings sidebar paints the field, edge to edge.
-    expect(geometry.fieldFrame).toEqual({
-      rootBackground: "rgba(0, 0, 0, 0)",
-      display: "block",
-      overflow: "hidden",
-      position: "absolute",
-    });
-    expectCoordinate(geometry.title.x, expected.title.x);
-    expectCoordinate(geometry.title.y, expected.title.y);
-    expectCoordinate(geometry.title.width, expected.title.width);
-    expectCoordinate(geometry.title.height, expected.title.height);
-    expectCoordinate(geometry.profileCard.x, expected.profileCard.x);
-    expectCoordinate(geometry.profileCard.y, expected.profileCard.y);
-    expectCoordinate(geometry.profileCard.width, expected.profileCard.width);
-    expectCoordinate(geometry.businessCard.x, expected.businessCard.x);
-    expectCoordinate(geometry.businessCard.y, expected.businessCard.y);
-    expectCoordinate(geometry.businessCard.width, expected.businessCard.width);
-    expectCoordinate(geometry.nameField.x, expected.nameField.x);
-    expectCoordinate(geometry.nameField.y, expected.nameField.y);
-    expectCoordinate(geometry.nameField.width, expected.nameField.width);
-    expectCoordinate(geometry.nameField.height, expected.nameField.height);
-    expectCoordinate(geometry.nameInput.x, expected.nameInput.x);
-    expectCoordinate(geometry.nameInput.y, expected.nameInput.y);
-    expectCoordinate(geometry.nameInput.width, expected.nameInput.width);
-    expectCoordinate(geometry.nameInput.height, expected.nameInput.height);
-  }
+      });
+  const near = (actual: number, expected: number, label: string) =>
+    expect(
+      Math.abs(actual - expected),
+      `${label}: expected ${expected}, received ${actual}`,
+    ).toBeLessThanOrEqual(1);
+
+  // Values from the Colony 3.0 SettingsAccount board at 1440 wide.
+  const title = await box(".cs-page-title h1");
+  near(title.x, 420, "title x");
+  near(title.fontSize, 38, "title size");
+  const card = await box('[data-testid="settings-account-profile-card"]');
+  near(card.x, 420, "profile card x");
+  near(card.width, 881, "profile card width");
+  const nameInput = await box('[data-testid="profile-display-name"]');
+  near(nameInput.x, 446, "name input x");
+  near(nameInput.height, 46, "name input height");
+  const business = await box('[data-testid="settings-account-business-card"]');
+  near(business.x, 420, "business card x");
+  near(business.width, 881, "business card width");
 });
 
-test("device privacy preferences save with closed defaults", async ({
+test("device privacy preferences apply at once with closed defaults", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -433,18 +202,11 @@ test("device privacy preferences save with closed defaults", async ({
   const typingActivity = page.getByTestId("privacy-typing-activity");
   await expect(messageText).not.toBeChecked();
   await expect(typingActivity).not.toBeChecked();
-  await expect(
-    page.getByText(
-      "Turning this off hides your typing indicator; it does not hide sent messages.",
-    ),
-  ).toBeVisible();
 
-  await messageText.check();
-  await typingActivity.check();
-  await page.getByRole("button", { name: "Save privacy preferences" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "The selections apply to this device. Existing conversations are unchanged.",
-  );
+  await messageText.click();
+  await typingActivity.click();
+  await expect(messageText).toBeChecked();
+  await expect(typingActivity).toBeChecked();
   const saved = await page.evaluate(() =>
     Object.entries(localStorage)
       .filter(([key]) => key.startsWith("colony.device-privacy.v1:"))
@@ -458,7 +220,7 @@ test("device privacy preferences save with closed defaults", async ({
   });
 });
 
-test("device privacy save failure keeps both selected controls editable", async ({
+test("device privacy save failure keeps the controls editable and says so", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -475,35 +237,30 @@ test("device privacy save failure keeps both selected controls editable", async 
   await openSettings(page, "privacy");
 
   const messageText = page.getByTestId("privacy-message-text");
-  const typingActivity = page.getByTestId("privacy-typing-activity");
-  await messageText.check();
-  await typingActivity.check();
-  await page.getByRole("button", { name: "Save privacy preferences" }).click();
+  await messageText.click();
 
-  await expect(page.getByRole("alert")).toContainText("Your inputs are kept");
-  await expect(messageText).toBeChecked();
-  await expect(typingActivity).toBeChecked();
-  await expect(
-    page.getByRole("button", { name: "Save privacy preferences" }),
-  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    "Could not save your privacy preferences",
+  );
+  await expect(messageText).not.toBeChecked();
+  await expect(messageText).toBeEnabled();
 });
 
-test("Accessibility saves the referenced controls and restores motion and keyboard hints", async ({
+test("Accessibility saves as it changes and restores motion and keyboard hints", async ({
   page,
 }) => {
   await installMockBridge(page);
   await page.goto("/#/settings?section=accessibility");
   const panel = page.getByTestId("settings-accessibility");
   await expect(
-    panel.getByRole("heading", { name: "Reading & motion" }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("heading", { name: "Keyboard", exact: true }),
+    panel.getByRole("heading", { name: "Accessibility", exact: true }),
   ).toBeVisible();
   await expect(panel.getByTestId("settings-shortcuts")).toHaveCount(0);
-  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
-  await panel.getByLabel("Show keyboard hints").uncheck();
-  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "Save", exact: true }),
+  ).toHaveCount(0);
+  await panel.getByTestId("accessibility-motion-reduce").click();
+  await panel.getByTestId("accessibility-keyboard-hints").click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-reduced-motion",
     "true",
@@ -513,10 +270,12 @@ test("Accessibility saves the referenced controls and restores motion and keyboa
     "false",
   );
   await page.reload();
-  await expect(panel.getByLabel("Motion", { exact: true })).toHaveValue(
-    "reduce",
-  );
-  await expect(panel.getByLabel("Show keyboard hints")).not.toBeChecked();
+  await expect(
+    panel.getByTestId("accessibility-motion-reduce"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    panel.getByTestId("accessibility-keyboard-hints"),
+  ).not.toBeChecked();
   await expect(page.locator("html")).toHaveAttribute(
     "data-reduced-motion",
     "true",
@@ -528,7 +287,6 @@ test("Accessibility saves the referenced controls and restores motion and keyboa
     .locator("[data-keyboard-hint]");
   await expect(hint).toHaveCount(1);
   await expect(hint).toBeHidden();
-  await page.keyboard.press("Escape");
 });
 
 test("Accessibility save failure preserves the durable and live preference", async ({
@@ -545,16 +303,13 @@ test("Accessibility save failure preserves the durable and live preference", asy
     };
   });
   const panel = page.getByTestId("settings-accessibility");
-  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
-  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await panel.getByTestId("accessibility-motion-reduce").click();
   await expect(panel.getByRole("alert")).toContainText("Could not save");
   await expect(page.locator("html")).toHaveAttribute(
     "data-reduced-motion",
     "false",
   );
-  await expect(
-    panel.getByRole("button", { name: "Save", exact: true }),
-  ).toBeEnabled();
+  await expect(panel.getByTestId("accessibility-motion-reduce")).toBeEnabled();
   expect(
     await page.evaluate(() => localStorage.getItem("colony.accessibility.v1")),
   ).toBeNull();

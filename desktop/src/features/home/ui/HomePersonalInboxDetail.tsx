@@ -7,6 +7,7 @@ type HomePersonalInboxDetailProps = {
   onDeleteDraft: (draftKey: string) => void;
 };
 
+/** The right pane while the Drafts filter is open. */
 export function HomePersonalInboxDetail({
   draftItem,
   onBack,

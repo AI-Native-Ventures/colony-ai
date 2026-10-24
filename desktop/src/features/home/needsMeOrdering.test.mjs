@@ -138,9 +138,10 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
   );
 
   const byDeadline = groupNeedsMeItems(items, "deadline", { now });
-  assert.deepEqual(
-    byDeadline.groups.slice(0, 2).map((group) => group.label),
-    ["Today", "Tomorrow"],
+  assert.equal(byDeadline.groups[0].label, "Today");
+  assert.match(
+    byDeadline.groups[1].label,
+    /^Tomorrow · [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2,3}$/,
   );
   assert.match(byDeadline.groups[2].label, /30/);
   assert.equal(byDeadline.groups[3].label, "No deadline");

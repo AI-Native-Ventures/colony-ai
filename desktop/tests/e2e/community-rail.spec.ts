@@ -212,7 +212,7 @@ test.describe("community rail", () => {
     await expect(page).toHaveURL(/#\/settings\?section=community-members$/);
     await expect(page.getByTestId("settings-community-members")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Invites", exact: true }),
+      page.getByRole("heading", { name: "People & access", exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId("community-icon-settings")).toHaveCount(0);
     await expect(
@@ -1372,7 +1372,9 @@ test.describe("community rail", () => {
     });
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
-    await page.goto("/");
+    // Activity draws its own header per the design, so the shell's history
+    // controls are checked on Today.
+    await page.goto("/#/today");
 
     // The first community button must start below the traffic-light band
     // (native controls sit around y<=31 with trafficLightPosition y:24).
@@ -1427,6 +1429,8 @@ test.describe("community rail", () => {
     // History controls live inside the inset content frame, clear of the
     // native traffic lights and aligned with the content left edge.
     const back = page.getByTestId("global-back");
+    // Today mounts its route after the shell, so wait for the controls.
+    await expect(back).toBeVisible();
     const backBox = await back.boundingBox();
     expect(backBox).not.toBeNull();
     expect(backBox?.x ?? 0).toBeGreaterThanOrEqual(contentBox?.x ?? 0);

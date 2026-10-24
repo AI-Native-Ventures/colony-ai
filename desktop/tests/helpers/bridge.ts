@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
 import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
 import type {
+  Colony3Extras,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
@@ -180,6 +181,8 @@ type MockBridgeOptions = {
   windowFullscreen?: boolean;
   /** Colony 3.0 foundation fixture (the Sidebar board's Lerato Social). */
   colony3Sidebar?: boolean;
+  /** Colony 3.0 conversation boards: extra people, channels, members and messages. */
+  colony3Extras?: Colony3Extras;
   /** Colony 3.0 business boards: the design's deliverables, people and dates. */
   colony3Business?: boolean;
   /** Match the company shell review's conversation rows and empty badge state. */

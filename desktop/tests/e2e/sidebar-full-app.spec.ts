@@ -9,7 +9,9 @@ test.beforeEach(async ({ page }) => {
 test("full app sidebar follows the approved navigation hierarchy", async ({
   page,
 }) => {
-  await page.goto("/");
+  // Activity ("/") draws its own header per the design, so the shell's top
+  // chrome is checked on Today.
+  await page.goto("/#/today");
 
   const sidebar = page.getByTestId("app-sidebar");
   await expect(sidebar).toHaveAttribute("data-colony-full-app-shell", "true");

@@ -52,35 +52,20 @@ test("capture: consolidated invites settings", async ({ page }) => {
     "People & access",
   );
   await expect(
-    page.getByRole("heading", { name: "Invites", exact: true }),
+    page.getByRole("heading", { name: "People & access", exact: true }),
   ).toBeVisible();
   await expect(page.getByTestId("community-icon-settings")).toHaveCount(0);
-  await expect(
-    page.getByTestId("community-invite-dialog-trigger"),
-  ).toBeVisible();
+  await expect(page.getByTestId("community-invite-input")).toBeVisible();
+  await expect(page.getByTestId("community-invite-role")).toBeVisible();
+  await expect(page.getByTestId("community-invite-send")).toBeVisible();
+  await expect(page.getByTestId("community-invite-dialog-trigger")).toHaveText(
+    "Copy invite link",
+  );
   await expect(page.getByTestId("community-invite-email-field")).toHaveCount(0);
   await expect(page.getByTestId("copy-invite-link")).toHaveCount(0);
   await expect(page.getByText("alice", { exact: true })).toBeVisible();
   await expect(page.getByText("bob", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("Manage roles or remove access.", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText("People who use the link join as members."),
-  ).toHaveCount(0);
   await expect(page.getByTestId("community-icon-save")).toHaveCount(0);
-
-  const aliceName = page.getByText("alice", { exact: true });
-  const aliceRow = page
-    .locator('[data-testid^="relay-member-row-"]')
-    .filter({ has: aliceName });
-  const aliceNpub = aliceRow.locator('[data-testid^="relay-member-npub-"]');
-  await expect(aliceName).toHaveCSS("opacity", "1");
-  await expect(aliceNpub).toHaveCSS("opacity", "0");
-  await aliceRow.hover();
-  await expect(aliceName).toHaveCSS("opacity", "0");
-  await expect(aliceNpub).toHaveCSS("opacity", "1");
-  await page.mouse.move(0, 0);
 
   await waitForAnimations(page);
   await panel.screenshot({ path: `${OUTDIR}/01-invites-settings.png` });

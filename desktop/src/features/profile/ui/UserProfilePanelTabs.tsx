@@ -1,13 +1,6 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  Archive,
-  ChevronRight,
-  Info,
-  MessageSquare,
-  RefreshCw,
-  ScrollText,
-} from "lucide-react";
+import { ChevronRight, Info, RefreshCw, ScrollText } from "lucide-react";
 
 import type { IdentityArchiveActions } from "@/features/identity-archive/hooks";
 import type { ManagedAgent, RestartDiffEntry } from "@/shared/api/types";
@@ -16,6 +9,10 @@ import {
   AUTO_RESTART_ON_BLURB,
   RestartDiffList,
 } from "@/features/agents/ui/RestartDiffBadge";
+import {
+  CopyGlyphIcon,
+  DocumentIcon,
+} from "@/features/profile/ui/profileIcons";
 import { UserProfileAgentManagementRows } from "@/features/profile/ui/UserProfileAgentManagementRows";
 import { ProtectedAgentBestieAction } from "@protected-feature-components";
 import { ProfileInstancesSection } from "@/features/profile/ui/ProfileInstancesSection";
@@ -27,6 +24,8 @@ import {
 import type { ProfilePanelTab } from "@/features/profile/ui/UserProfilePanelUtils";
 import { cn } from "@/shared/lib/cn";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { useCopyFeedback } from "@/shared/ui/HoverCopyIndicator";
+import { CheckIcon } from "@/shared/ui/colonyIcons";
 import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
 import { Switch } from "@/shared/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -143,7 +142,7 @@ export function ProfileTabBar({
     >
       <TabsList
         aria-label="Profile sections"
-        className="relative isolate grid h-9 w-full overflow-hidden rounded-lg bg-muted p-0.5"
+        className="pp-tab-list"
         data-testid="user-profile-tab-list"
         style={{
           gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
@@ -151,26 +150,24 @@ export function ProfileTabBar({
       >
         <div
           aria-hidden="true"
-          className="absolute bottom-0.5 left-0.5 top-0.5 z-0 rounded-md bg-background shadow-sm transition-transform duration-[220ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+          className="pp-tab-indicator"
           data-testid="user-profile-tab-indicator"
           style={{
             transform: `translateX(${activeIndex * 100}%)`,
-            width: `calc((100% - 4px) / ${tabs.length})`,
+            width: `calc((100% - 6px) / ${tabs.length})`,
           }}
         />
         {tabs.map((tab) => {
           return (
             <TabsTrigger
-              className="group relative z-10 h-full min-w-0 gap-1 rounded-md bg-transparent px-2 text-xs font-medium shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              className="pp-tab"
               data-testid={`user-profile-tab-${tab.id}`}
               key={tab.id}
               value={tab.id}
             >
               <span className="truncate">{tab.label}</span>
               {tab.trailing ? (
-                <span className="inline-flex shrink-0 items-center leading-none text-2xs text-muted-foreground group-data-[state=active]:text-foreground/70">
-                  {tab.trailing}
-                </span>
+                <span className="pp-tab-trailing">{tab.trailing}</span>
               ) : null}
             </TabsTrigger>
           );
@@ -181,53 +178,45 @@ export function ProfileTabBar({
 }
 
 export function ProfileInfoTabContent({
-  agentInfoFields,
   archiveActions,
   canArchiveAgent,
   canDeleteAgent,
-  isArchived,
+  facts,
   isDeleteAgentPending,
   managedAgent,
   onCreateCard,
   onDeleteAgent,
   onDuplicateAgent,
-  onExportAgent,
   onEditAgent,
+  onExportAgent,
+  onToggleStartOnLaunch,
   showInstructionBlock,
+  startOnLaunchEnabled,
+  startOnLaunchPending = false,
 }: {
-  agentInfoFields: ProfileField[];
   archiveActions: IdentityArchiveActions;
   canArchiveAgent: boolean;
   canDeleteAgent: boolean;
-  isArchived: boolean;
+  /** The labelled facts, already in board order. */
+  facts: ProfileField[];
   isDeleteAgentPending: boolean;
   managedAgent?: ManagedAgent;
   /** Mint an agent trading card. Present only for owner-managed personas. */
   onCreateCard?: () => void;
   onDeleteAgent: () => void;
   onDuplicateAgent?: () => void;
-  onExportAgent?: () => void;
   onEditAgent: () => void;
+  onExportAgent?: () => void;
+  onToggleStartOnLaunch?: () => void;
   showInstructionBlock: boolean;
+  startOnLaunchEnabled?: boolean;
+  startOnLaunchPending?: boolean;
 }) {
-  const infoFields: ProfileField[] = isArchived
-    ? [
-        ...agentInfoFields,
-        {
-          displayValue: "Archived",
-          icon: Archive,
-          label: "Visibility",
-          testId: "user-profile-archived-flair",
-          trailingNode: <ArchiveStatusTooltip />,
-        },
-      ]
-    : agentInfoFields;
-  const hasInfoFields = infoFields.length > 0;
   const showArchiveAction =
     canArchiveAgent && archiveActions.isArchived !== undefined;
 
   if (
-    !hasInfoFields &&
+    facts.length === 0 &&
     !showArchiveAction &&
     !canDeleteAgent &&
     !onCreateCard &&
@@ -239,20 +228,31 @@ export function ProfileInfoTabContent({
   }
 
   return (
-    <div className="space-y-4" data-testid="user-profile-info-sections">
-      {hasInfoFields || showInstructionBlock ? (
-        <ProfileSectionGroup testId="user-profile-info-section" title="Info">
-          {showInstructionBlock ? (
-            <ProfileIngressRow
-              grouped
-              icon={MessageSquare}
-              label="Agent instructions"
-              onClick={onEditAgent}
-              testId="user-profile-agent-instruction-row"
+    <div className="pp-info" data-testid="user-profile-info-sections">
+      {showInstructionBlock ? (
+        <button
+          className="pp-link-row"
+          data-testid="user-profile-agent-instruction-row"
+          onClick={onEditAgent}
+          type="button"
+        >
+          <DocumentIcon size={18} />
+          <span>Agent instructions</span>
+          <ChevronRight className="h-4 w-4" strokeWidth={2.4} />
+        </button>
+      ) : null}
+      {facts.length > 0 ? (
+        <dl className="pp-facts" data-testid="user-profile-info-section">
+          {facts.map((field) => (
+            <ProfileFact
+              field={field}
+              key={field.testId ?? field.label}
+              onToggleStartOnLaunch={onToggleStartOnLaunch}
+              startOnLaunchEnabled={startOnLaunchEnabled}
+              startOnLaunchPending={startOnLaunchPending}
             />
-          ) : null}
-          <ProfileFieldRows fields={infoFields} />
-        </ProfileSectionGroup>
+          ))}
+        </dl>
       ) : null}
       <UserProfileAgentManagementRows
         archiveActions={archiveActions}
@@ -274,7 +274,97 @@ export function ProfileInfoTabContent({
   );
 }
 
-function ArchiveStatusTooltip() {
+/** One labelled fact: its name, its value, and a copy button when copyable. */
+function ProfileFact({
+  field,
+  onToggleStartOnLaunch,
+  startOnLaunchEnabled,
+  startOnLaunchPending,
+}: {
+  field: ProfileField;
+  onToggleStartOnLaunch?: () => void;
+  startOnLaunchEnabled?: boolean;
+  startOnLaunchPending: boolean;
+}) {
+  const { copied, copy } = useCopyFeedback({
+    label: field.label,
+    value: field.copyValue ?? "",
+  });
+
+  if (field.label === "Start on launch") {
+    const enabled = startOnLaunchEnabled ?? field.displayValue === "Yes";
+    const canToggle = onToggleStartOnLaunch !== undefined;
+    return (
+      <div className="pp-fact" data-testid={`${field.testId}-fact`}>
+        <dt>{field.label}</dt>
+        <dd>
+          <div
+            aria-checked={enabled}
+            aria-disabled={!canToggle || startOnLaunchPending}
+            aria-label={field.label}
+            className="pp-fact-switch"
+            data-testid={field.testId}
+            onClick={
+              canToggle && !startOnLaunchPending
+                ? onToggleStartOnLaunch
+                : undefined
+            }
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              if (canToggle && !startOnLaunchPending) onToggleStartOnLaunch?.();
+            }}
+            role="switch"
+            tabIndex={canToggle ? 0 : -1}
+          >
+            <Switch
+              aria-hidden="true"
+              checked={enabled}
+              data-testid={`${field.testId}-toggle`}
+              disabled={!canToggle || startOnLaunchPending}
+              tabIndex={-1}
+            />
+            <span>{enabled ? "On" : "Off"}</span>
+          </div>
+        </dd>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pp-fact" data-testid={field.testId}>
+      <dt>{field.label}</dt>
+      <dd title={field.displayValue}>
+        <span
+          className="pp-fact-value"
+          data-mono={field.label === "Public key" ? "true" : undefined}
+        >
+          {field.displayNode ?? field.displayValue}
+        </span>
+        {field.trailingNode}
+        {field.copyValue ? (
+          <button
+            aria-label={`Copy ${field.label}`}
+            className="pp-copy"
+            data-copied={copied ? "true" : "false"}
+            data-testid={field.testId ? `${field.testId}-copy` : undefined}
+            onClick={() => void copy()}
+            title={`Copy ${field.label}`}
+            type="button"
+          >
+            {copied ? (
+              <CheckIcon size={13} strokeWidth={2.6} />
+            ) : (
+              <CopyGlyphIcon size={13} strokeWidth={2.2} />
+            )}
+          </button>
+        ) : null}
+      </dd>
+    </div>
+  );
+}
+
+export function ArchiveStatusTooltip() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>

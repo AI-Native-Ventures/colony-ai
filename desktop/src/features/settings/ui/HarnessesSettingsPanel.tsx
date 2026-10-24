@@ -8,13 +8,10 @@ import {
 } from "@/features/agents/hooks";
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { PageHeader } from "@/shared/ui/PageHeader";
-import { Button } from "@/shared/ui/button";
 
 import { HarnessCatalogDialog } from "./HarnessCatalogDialog";
 import { HarnessRow } from "./HarnessRow";
 import { stableRowOrder, yourHarnessEntries } from "./harnessCatalogLogic";
-import { SettingsOptionGroup } from "./SettingsOptionGroup";
 
 function GitBashCard({
   prerequisite,
@@ -112,117 +109,83 @@ export function HarnessesSettingsPanel() {
   const isRefreshing = runtimesQuery.isFetching;
 
   return (
-    <>
-      <PageHeader className="mb-0" title="Agent harnesses" />
-      <SettingsOptionGroup
-        data-testid="settings-harnesses"
-        headerAction={
-          <Button
-            disabled={isRefreshing}
-            onClick={() => {
-              setResetEpoch((e) => e + 1);
-              void runtimesQuery.forceRefresh();
-              void gitBashQuery.refetch();
-            }}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <RefreshCw
-              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-            />
-            Check again
-          </Button>
-        }
-        title="Available harnesses"
-      >
-        <div className="divide-y divide-border/55">
-          {gitBashQuery.data ? (
-            <section>
-              <div className="px-4 py-3 text-sm">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  System prerequisites
-                </h2>
-                <p
-                  className="mt-1 text-sm font-normal text-muted-foreground/70"
-                  data-settings-subcopy
-                >
-                  Windows tools required by supported agents.
-                </p>
-              </div>
-              <GitBashCard prerequisite={gitBashQuery.data} />
-            </section>
-          ) : null}
-
-          <section aria-label="Your runtimes">
-            {/* The sub-header only earns its keep when another section (System
-              prerequisites, Windows-only) shares the page; otherwise it just
-              restates the page header. */}
-            {gitBashQuery.data ? (
-              <div className="border-b border-border/55 px-4 py-3 text-sm">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  Your runtimes
-                </h2>
-                <p
-                  className="mt-1 text-sm font-normal text-muted-foreground/70"
-                  data-settings-subcopy
-                >
-                  Ready to use, or one click from installed.
-                </p>
-              </div>
-            ) : null}
-
-            {runtimesQuery.isLoading ? (
-              <div className="px-4 py-4 text-sm font-normal text-muted-foreground">
-                Checking agent runtimes...
-              </div>
-            ) : rows.length > 0 ? (
-              <div
-                className="divide-y divide-border/55"
-                data-testid="doctor-runtime-list"
-              >
-                {rows.map((runtime) => (
-                  <HarnessRow
-                    embedded
-                    key={runtime.id}
-                    resetEpoch={resetEpoch}
-                    runtime={runtime}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="bg-amber-500/10 px-4 py-4 text-sm text-warning">
-                No agent runtimes ready yet. Add one below.
-              </div>
-            )}
-
-            {runtimesQuery.error instanceof Error ? (
-              <p className="border-t border-border/55 bg-destructive/10 px-4 py-4 text-sm text-destructive">
-                {runtimesQuery.error.message}
-              </p>
-            ) : null}
-
-            <div className="border-t border-border/55 px-4 py-3">
-              <Button
-                className="gap-2"
-                data-testid="harness-add-button"
-                onClick={() => setCatalogOpen(true)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <Plus className="h-4 w-4" />
-                Add runtimes
-              </Button>
-            </div>
-          </section>
+    <div className="cs-led" data-testid="settings-harnesses">
+      <div className="cs-harness-head">
+        <div className="cs-harness-title">
+          <h2 className="cs-section-title">Available harnesses</h2>
+          <span className="cs-section-note">
+            The programs on this Mac that run your agents.
+          </span>
         </div>
+        <button
+          className="cs-button cs-harness-check"
+          disabled={isRefreshing}
+          onClick={() => {
+            setResetEpoch((e) => e + 1);
+            void runtimesQuery.forceRefresh();
+            void gitBashQuery.refetch();
+          }}
+          type="button"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+          />
+          Check again
+        </button>
+      </div>
 
-        <HarnessCatalogDialog
-          onOpenChange={setCatalogOpen}
-          open={catalogOpen}
-        />
-      </SettingsOptionGroup>
-    </>
+      <div className="cs-card">
+        {gitBashQuery.data ? (
+          <section>
+            <div className="px-4 py-3 text-sm">
+              <h3 className="cs-eyebrow">System prerequisites</h3>
+              <p className="cs-help">
+                Windows tools required by supported agents.
+              </p>
+            </div>
+            <GitBashCard prerequisite={gitBashQuery.data} />
+          </section>
+        ) : null}
+
+        <section aria-label="Your harnesses">
+          {runtimesQuery.isLoading ? (
+            <div className="cs-harness-empty">Checking agent harnesses…</div>
+          ) : rows.length > 0 ? (
+            <div data-testid="doctor-runtime-list">
+              {rows.map((runtime) => (
+                <HarnessRow
+                  embedded
+                  key={runtime.id}
+                  resetEpoch={resetEpoch}
+                  runtime={runtime}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="cs-harness-empty" data-tone="need">
+              No agent harnesses ready yet. Add one below.
+            </div>
+          )}
+
+          {runtimesQuery.error instanceof Error ? (
+            <p className="cs-notice" data-tone="bad">
+              {runtimesQuery.error.message}
+            </p>
+          ) : null}
+        </section>
+      </div>
+
+      <button
+        className="cs-dashed-button"
+        data-testid="harness-add-button"
+        onClick={() => setCatalogOpen(true)}
+        type="button"
+      >
+        <Plus className="h-4 w-4" />
+        Add harness
+      </button>
+
+      <HarnessCatalogDialog onOpenChange={setCatalogOpen} open={catalogOpen} />
+    </div>
   );
 }

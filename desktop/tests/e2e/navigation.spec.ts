@@ -207,7 +207,8 @@ test("home inbox selection survives reload and back restores it", async ({
     `item=${encodeURIComponent(selectedItemId ?? "")}`,
   );
 
-  await page.getByTestId("global-back").click();
+  // Activity has no shell back button in the design; the browser's Back does it.
+  await page.goBack();
   await expect.poll(() => page.url()).toBe(defaultUrl);
 });
 

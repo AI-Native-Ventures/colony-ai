@@ -83,6 +83,18 @@
   }
 
   /* Conversation text contract: 16 / 17 / 18px before keyboard zoom. */
+  /* Appearance > Typeface: Manrope is the default; Inter and the system face
+     replace it everywhere the stack is used. */
+  :root[data-typeface="inter"] {
+    --colony-font-sans:
+      "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+  }
+
+  :root[data-typeface="system"] {
+    --colony-font-sans:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+
   :root[data-font-size="smaller"] {
     --buzz-type-scale: 1;
   }

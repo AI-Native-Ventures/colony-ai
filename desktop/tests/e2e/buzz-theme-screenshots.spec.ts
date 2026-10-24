@@ -373,16 +373,18 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
   );
   const sidebar = page.getByTestId("settings-sidebar");
   const sectionLabel = sidebar
-    .locator(".w20-nav-heading")
+    .locator(".cs-nav-heading")
     .filter({ hasText: "Personal" });
+  const activeItem = sidebar.locator('.cs-nav-item[data-active="true"]');
 
   await expect(sectionLabel).toHaveCSS(
     "color",
-    // Dark keeps the smallest AA step over the field.
-    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
+    // The branded dark field is a mid-tone, so its soft ink is the lighter
+    // #dcd6e2 (colony3-field.css).
+    mode === "dark" ? "rgb(220, 214, 226)" : mutedColor,
   );
   await expect(
-    sidebar.locator('.w20-nav-item[data-active="true"]'),
+    sidebar.locator('.cs-nav-item[data-active="true"]'),
   ).not.toHaveCSS("color", mutedColor);
 
   await expectBuzzGradientPaint(page, mode);
@@ -462,9 +464,13 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
       4.5,
     );
     await openSettings(page, "profile");
-    await expect(page.locator(".w20-nav-person small")).toHaveCSS(
+    await expect(page.locator(".cs-person-copy small")).toHaveCSS(
       "color",
-      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+      await resolveSidebarColor(
+        page,
+        "color",
+        "var(--colony-sidebar-ink-soft)",
+      ),
     );
   });
 }
@@ -549,7 +555,7 @@ async function openAppearance(page: Page) {
   return panel;
 }
 
-test("appearance keeps the supported workspace density choices and no theme catalog", async ({
+test("appearance keeps the design controls and supported workspace choices", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
@@ -558,15 +564,14 @@ test("appearance keeps the supported workspace density choices and no theme cata
 
   const appearance = page.getByTestId("settings-appearance");
   await expect(
-    appearance.getByRole("heading", { exact: true, name: "Appearance" }),
-  ).toBeVisible();
-  await expect(
-    appearance.getByRole("heading", { name: "Make yourself at home." }),
+    page.getByRole("heading", { name: "Make yourself at home." }),
   ).toBeVisible();
   await expect(appearance.getByTestId("appearance-open-themes")).toHaveCount(0);
   await expect(appearance.getByTestId("appearance-density")).toHaveCount(0);
   await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-message-size")).toBeVisible();
+  await expect(
+    appearance.getByTestId("appearance-message-size-larger"),
+  ).toBeVisible();
   await expect(appearance.getByTestId("appearance-links-rich")).toBeVisible();
   await expect(
     appearance.getByTestId("appearance-threads-focus"),
@@ -579,7 +584,7 @@ test("conversation size and accessibility text size keep their own scopes", asyn
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await openAppearance(page);
-  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("appearance-message-size-larger").click();
 
   await expect
     .poll(() =>
@@ -594,15 +599,8 @@ test("conversation size and accessibility text size keep their own scopes", asyn
   await page.getByTestId("settings-inner-accessibility").click();
   const accessibility = page.getByTestId("settings-accessibility");
   await expect(accessibility).toBeVisible();
-  await expect(
-    accessibility.getByLabel("Text size", { exact: true }),
-  ).toBeVisible();
-  await accessibility
-    .getByLabel("Text size", { exact: true })
-    .selectOption("larger");
-  await accessibility
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
+  // Accessibility saves as each control changes; there is no Save button.
+  await accessibility.getByTestId("accessibility-text-size-larger").click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-font-size",
     "larger",
@@ -627,14 +625,14 @@ test("settings nav keeps its row geometry with Colony selection (light)", async 
   const profileRow = page.getByTestId("settings-group-account");
   const profileLabel = profileRow.locator(".truncate");
   await expect(profileRow).toHaveAttribute("data-active", "true");
-  await expect(profileRow).toHaveCSS("font-weight", "700");
+  await expect(profileRow).toHaveCSS("font-weight", "800");
   await page.evaluate(() => document.fonts.ready);
   const selectedRowBox = await profileRow.boundingBox();
   const selectedLabelBox = await profileLabel.boundingBox();
   // Manrope's bold glyphs can be wider. The row and label origin must stay
   // fixed when selection changes, without constraining intrinsic glyph width.
   await page.getByTestId("settings-group-appearance-group").click();
-  await expect(profileRow).toHaveCSS("font-weight", "400");
+  await expect(profileRow).toHaveCSS("font-weight", "600");
   const unselectedLabelBox = await profileLabel.boundingBox();
   const unselectedRowBox = await profileRow.boundingBox();
   expect(selectedLabelBox).not.toBeNull();
@@ -675,7 +673,7 @@ test("settings nav uses Buzz active pill + hover (dark)", async ({ page }) => {
   await expectBuzzSettingsPalette(page, "dark");
   await expect(page.getByTestId("settings-content-surface")).toHaveCSS(
     "background-color",
-    "rgba(0, 0, 0, 0)",
+    "rgb(33, 30, 38)",
   );
   await expect(page.getByTestId("settings-view")).toHaveCSS(
     "background-color",
@@ -828,92 +826,51 @@ for (const { mode, theme } of [
   });
 }
 
-test("settings content uses the same inset surface as the main app", async ({
+test("settings content fills the window beside the field sidebar", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const searchBox = await page.getByTestId("open-search").boundingBox();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
 
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
-  await expect(settingsView).toHaveCSS("margin", "8px");
-  await expect(settingsView).toHaveCSS("border-radius", "11px");
-  const settingsTopChrome = page.getByTestId("settings-top-chrome");
-  const settingsBackToApp = page.getByTestId("settings-back-to-app");
-  const backToAppBox = await page
-    .getByTestId("settings-back-to-app")
-    .boundingBox();
+  const topChrome = page.getByTestId("settings-top-chrome");
+  // The design has no inset card: the page runs edge to edge beside the sidebar.
+  await expect(settingsView).toHaveCSS("margin", "0px");
   await expect(contentSurface).toBeVisible({ timeout: 10_000 });
-  const settingsTopTitle = settingsTopChrome.locator(".w20-topbar-title");
-  await expect(settingsTopTitle).toHaveAttribute(
+  await expect(topChrome).toHaveAttribute(
     "data-tauri-drag-region",
     /^(?:|true)$/,
   );
-  await expect(settingsTopTitle).toHaveCSS("cursor", "default");
-  await expect(settingsTopTitle).toHaveCSS("user-select", "none");
-  await expect(settingsBackToApp).not.toHaveAttribute("data-tauri-drag-region");
-  await expect(settingsBackToApp).toHaveCSS("cursor", "pointer");
-  // The r19 account surface uses a 59px top inset for the profile content.
-  await expect(page.getByTestId("settings-content-scroll")).toHaveCSS(
-    "padding-top",
-    "59.03px",
+  await expect(topChrome).toHaveCSS("cursor", "default");
+  await expect(topChrome).toHaveCSS("user-select", "none");
+  await expect(page.getByTestId("settings-back-to-app")).not.toHaveAttribute(
+    "data-tauri-drag-region",
   );
 
   const viewBox = await settingsView.boundingBox();
   const surfaceBox = await contentSurface.boundingBox();
-  expect(searchBox).not.toBeNull();
-  expect(backToAppBox).not.toBeNull();
+  const chromeBox = await topChrome.boundingBox();
   expect(viewBox).not.toBeNull();
   expect(surfaceBox).not.toBeNull();
-  if (!searchBox || !backToAppBox || !viewBox || !surfaceBox) {
+  expect(chromeBox).not.toBeNull();
+  if (!viewBox || !surfaceBox || !chromeBox) {
     throw new Error("Settings layout is missing");
   }
 
-  // The sidebar starts at the shared 8px frame inset. Settings keeps its
-  // own top chrome, so this measures the two independent control rows.
-  const isMac = await page.evaluate(() =>
-    /mac|iphone|ipad|ipod/i.test(navigator.platform),
-  );
-  // The Colony 3.0 sidebar puts the search 78px down on a Mac (below the
-  // window buttons) and 50px down elsewhere; the settings sidebar starts at
-  // the window top, 8px higher than before.
-  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 86 : 58);
-
-  // Header and content share one card. The frame carries the 8px margin;
-  // the content starts directly below its 52px header.
-  expect(surfaceBox.y - viewBox.y).toBe(52);
+  // The design's bar is 64px with its hairline, 65px in all; the page starts
+  // directly below it and shares the view's edges.
+  expect(Math.round(chromeBox.height)).toBe(65);
+  expect(surfaceBox.y - viewBox.y).toBe(chromeBox.height);
   expect(surfaceBox.x - viewBox.x).toBe(0);
   expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(0);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
     0,
   );
-
-  const topChromeBox = await settingsTopTitle.boundingBox();
-  const settingsHeadingBox = await page
-    .getByRole("heading", { level: 1, name: "Profile" })
-    .boundingBox();
-  expect(topChromeBox).not.toBeNull();
-  expect(settingsHeadingBox).not.toBeNull();
-  if (!topChromeBox || !settingsHeadingBox) {
-    throw new Error("Settings drag region or title is missing");
-  }
-  await page.mouse.move(
-    topChromeBox.x + topChromeBox.width / 2,
-    topChromeBox.y + topChromeBox.height / 2,
-  );
-  await page.mouse.down();
-  await page.mouse.move(
-    settingsHeadingBox.x + settingsHeadingBox.width / 2,
-    settingsHeadingBox.y + settingsHeadingBox.height / 2,
-    { steps: 5 },
-  );
-  await page.mouse.up();
-  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
 
   await waitForAnimations(page);
   await settingsView.screenshot({
@@ -948,7 +905,7 @@ test("saved glass preference keeps settings content solid", async ({
   await expect(root).toHaveAttribute("data-glass-background", "");
   await expect(page.getByTestId("settings-view")).toHaveCSS(
     "background-color",
-    "rgb(255, 254, 253)",
+    "rgb(255, 253, 250)",
   );
   await expect
     .poll(() =>
@@ -1066,6 +1023,57 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
   }
 });
 
+test("an applied colour mode remains applied after returning to workspace appearance", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await openAppearance(page);
+
+  await page.getByTestId("appearance-mode-dark").click();
+  await page.getByTestId("appearance-apply").click();
+  await expect(page.getByTestId("appearance-apply-status")).toContainText(
+    "Applied",
+  );
+  await expectAppliedBuzzTheme(page, "buzz-dark");
+
+  await page.getByTestId("settings-back-to-app").click();
+  await page.getByTestId("open-settings").click();
+  await page.getByTestId("profile-popover-settings").click();
+  await page.getByTestId("settings-group-appearance-group").click();
+  const updatedAppearance = page.getByTestId("settings-appearance");
+  await expect(updatedAppearance).toBeVisible();
+  await expect(
+    updatedAppearance.getByTestId("appearance-mode-dark"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({ theme: "buzz-dark" });
+  await waitForAnimations(page);
+  await updatedAppearance.screenshot({
+    path: `${SHOTS}/12-appearance-theme.png`,
+  });
+});
+
+test("colour mode applies live without a reload", async ({ page }) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await openAppearance(page);
+  await expectAppliedBuzzTheme(page, "buzz");
+  const lightGradient = await expectBuzzGradientPaint(page, "light");
+
+  await page.getByTestId("appearance-mode-dark").click();
+  await page.getByTestId("appearance-apply").click();
+  await expectAppliedBuzzTheme(page, "buzz-dark");
+  const darkGradient = await expectBuzzGradientPaint(page, "dark");
+  expect(darkGradient).not.toBe(lightGradient);
+
+  await page.getByTestId("appearance-mode-light").click();
+  await page.getByTestId("appearance-apply").click();
+  await expectAppliedBuzzTheme(page, "buzz");
+  await expectBuzzGradientPaint(page, "light");
+});
+
 test("Buzz follows native system theme changes without a reload", async ({
   page,
 }) => {
@@ -1085,7 +1093,19 @@ test("Buzz follows native system theme changes without a reload", async ({
   await expectBuzzGradientPaint(page, "light");
 });
 
-test("r17 settings have six groups, section search, and return navigation", async ({
+function businessSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const key = Object.keys(localStorage).find(
+      (candidate) =>
+        candidate.startsWith("colony.appearance.v1:") &&
+        !candidate.endsWith(":global-conversations") &&
+        !candidate.endsWith(":last-business"),
+    );
+    return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+  });
+}
+
+test("settings have seven pages, section search, and return navigation", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
@@ -1094,19 +1114,47 @@ test("r17 settings have six groups, section search, and return navigation", asyn
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
 
-  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(7);
   await expect(page.getByRole("tablist")).toHaveCount(1);
-  await page.getByTestId("settings-search").fill("Keyboard shortcuts");
-  const result = page.getByRole("option", {
-    name: "Keyboard shortcuts, Preferences",
-  });
+  await page.getByTestId("settings-search").fill("Harnesses");
+  const result = page.getByRole("option", { name: "Harnesses, Agents" });
   await expect(result).toBeVisible();
   await result.click();
-  await expect(page.getByTestId("settings-panel-shortcuts")).toBeVisible();
+  await expect(page.getByTestId("settings-panel-harnesses")).toBeVisible();
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(page.getByTestId("settings-view")).toHaveCount(0);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
+
+test("applying a colour mode saves it through a scoped snapshot", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz");
+  await installMockBridge(page);
+  await openAppearance(page);
+
+  await page.getByTestId("appearance-mode-dark").click();
+  await expect(page.getByTestId("appearance-apply-status")).toContainText(
+    "Preview only",
+  );
+  await page.getByTestId("appearance-apply").click();
+  await expect(page.getByTestId("appearance-apply-status")).toContainText(
+    "Applied",
+  );
+  await expectAppliedBuzzTheme(page, "buzz-dark");
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({
+      theme: "buzz-dark",
+      followSystem: false,
+      density: "comfortable",
+    });
+
+  await waitForAnimations(page);
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/03-theme-applied.png`,
+  });
 });
 
 test("workspace appearance saves conversation size in its global preference", async ({
@@ -1115,8 +1163,10 @@ test("workspace appearance saves conversation size in its global preference", as
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page);
-  await expect(panel.getByTestId("appearance-message-size")).toBeVisible();
-  await panel.getByTestId("appearance-message-size").selectOption("larger");
+  await expect(
+    panel.getByTestId("appearance-message-size-larger"),
+  ).toBeVisible();
+  await panel.getByTestId("appearance-message-size-larger").click();
 
   await expect
     .poll(() =>

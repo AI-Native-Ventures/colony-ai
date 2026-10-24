@@ -389,6 +389,47 @@ pub(crate) fn persist_imported_identity(
     persist_imported_identity_impl(store, keys, legacy_path, data_dir)
 }
 
+fn remove_file_if_present(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("remove {}: {error}", path.display())),
+    }
+}
+
+/// Forget this device's identity and nothing else: the keyring entry, the
+/// `identity.key` file and the migration marker. The next boot finds no
+/// identity and starts first-run, while app data, the nest and the webview's
+/// storage stay, so signing back in as the same account resumes them.
+#[cfg_attr(not(feature = "system-keyring"), allow(dead_code))]
+pub(crate) fn forget_identity_with_store(
+    store: &impl IdentityKeyStore,
+    legacy_path: &std::path::Path,
+    data_dir: &std::path::Path,
+) -> Result<(), String> {
+    let profile = profile_scope(legacy_path, data_dir);
+    store.delete(colony_identity_kernel::IDENTITY_KEY_NAME)?;
+    remove_file_if_present(profile.legacy_identity_path())?;
+    remove_file_if_present(&profile.migration_marker_path())
+}
+
+/// Public Tauri adapter used by the keep-data sign-out.
+pub(crate) fn forget_persisted_identity(data_dir: &std::path::Path) -> Result<(), String> {
+    let legacy_path = data_dir.join(colony_identity_kernel::IDENTITY_FILE_NAME);
+    #[cfg(feature = "system-keyring")]
+    {
+        let store = crate::secret_store::SecretStore::shared(keyring_service());
+        forget_identity_with_store(store, &legacy_path, data_dir)
+    }
+    #[cfg(not(feature = "system-keyring"))]
+    {
+        // Without a keyring the 0600 file is the identity.
+        let profile = profile_scope(&legacy_path, data_dir);
+        remove_file_if_present(profile.legacy_identity_path())?;
+        remove_file_if_present(&profile.migration_marker_path())
+    }
+}
+
 #[cfg(test)]
 fn migration_marker_path(data_dir: &std::path::Path) -> std::path::PathBuf {
     ProfileScope::for_keyring_service(data_dir.to_path_buf(), keyring_service())

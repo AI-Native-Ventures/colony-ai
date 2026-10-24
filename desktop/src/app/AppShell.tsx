@@ -9,6 +9,7 @@ import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
 import { AppShellFrame } from "@/app/AppShellFrame";
 import { AppTopChrome } from "@/app/AppTopChrome";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   type TerminalContextOverride,
   TerminalContextOverrideProvider,
@@ -160,14 +161,15 @@ export function AppShell() {
   });
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
+  const isNarrowWindow = useIsMobile();
   const showAppTopChrome =
     !settingsOpen &&
     selectedView !== "pins" &&
+    // Activity draws its own header; on a narrow window the sidebar drawer's
+    // only handle is the shell bar, so it stays there.
+    (location.pathname !== "/" || isNarrowWindow) &&
     location.pathname !== "/team" &&
-    location.pathname !== "/today" &&
-    !location.pathname.startsWith("/today/") &&
     !location.pathname.startsWith("/asks/") &&
-    !location.pathname.startsWith("/navigation/") &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;

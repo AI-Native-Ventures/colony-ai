@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings, selectSettingsSection } from "../helpers/settings";
+import { openSettings } from "../helpers/settings";
 
-async function openSignOutDialog(page: Parameters<typeof openSettings>[0]) {
+async function openConfirmation(page: Parameters<typeof openSettings>[0]) {
   await openSettings(page, "security");
   await page.getByTestId("signout-open-dialog").click();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await expect(page.getByTestId("signout-dialog")).toBeVisible();
 }
 
 async function installSignOutFixture(page: Parameters<typeof openSettings>[0]) {
@@ -45,51 +45,79 @@ async function installSignOutFixture(page: Parameters<typeof openSettings>[0]) {
   await page.goto("/");
 }
 
-test("sign-out confirmation previews running agents and unsynced work", async ({
+test("Sign out & remove data names what goes before anything is removed", async ({
   page,
 }) => {
   await installSignOutFixture(page);
-  await openSignOutDialog(page);
+  await openConfirmation(page);
 
-  const dialog = page.getByRole("alertdialog");
-  const removeButton = page.getByTestId("signout-confirm");
+  const confirmation = page.getByTestId("signout-dialog");
+  await expect(confirmation).toContainText("Remove this device’s data?");
+  await expect(confirmation).toContainText("1 unsent draft");
+  await expect(confirmation).toContainText("1 pending attachment");
+  await expect(confirmation).toContainText(
+    "Local agents managed on this Mac: Ava, Noah",
+  );
+  await expect(page.getByTestId("signout-confirm")).toBeEnabled();
+  await expect(
+    page.evaluate(() => {
+      const commands = window.__BUZZ_E2E_COMMANDS__ ?? [];
+      return (
+        commands.includes("sign_out") || commands.includes("sign_out_keep_data")
+      );
+    }),
+  ).resolves.toBe(false);
+});
 
-  await expect(
-    dialog.getByText("Sign out of this device?", { exact: true }),
-  ).toBeVisible();
-  await expect(dialog).toContainText(
-    "Your remote business and conversations stay available.",
-  );
-  await expect(dialog).toContainText("2 local agents are running");
-  await expect(dialog).toContainText(
-    "Sign-out stops local agents on this device. Remote agents continue with their own permissions.",
-  );
-  await expect(dialog).toContainText("1 draft · 1 pending attachment");
-  await expect(
-    dialog.getByRole("button", { name: "Review before leaving" }),
-  ).toBeVisible();
-  await expect(removeButton).toBeEnabled();
+test("Cancel closes the confirmation and nothing is removed", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await openConfirmation(page);
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  await expect(page.getByTestId("signout-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("signout-open-dialog")).toBeVisible();
   await expect(
     page.evaluate(
       () => window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
     ),
   ).resolves.toBe(false);
-  await dialog.getByRole("button", { name: "Review before leaving" }).click();
-  await expect(page.getByRole("alertdialog")).toHaveCount(0);
-  await expect(page.getByTestId("settings-draft-recovery")).toBeVisible();
 });
 
-test("staying signed in closes the dialog and restores the security panel", async ({
-  page,
-}) => {
+test("Sign out keeps this computer's data", async ({ page }) => {
   await installMockBridge(page);
   await page.goto("/");
-  await openSignOutDialog(page);
-  await page.getByRole("button", { name: "Stay signed in" }).click();
+  await openSettings(page, "security");
+  await page.getByTestId("signout-keep-data").click();
 
-  await expect(page.getByRole("alertdialog")).toHaveCount(0);
-  await expect(page.getByTestId("settings-account-security")).toBeVisible();
-  await expect(page.getByTestId("signout-open-dialog")).toBeVisible();
-  await selectSettingsSection(page, "profile");
-  await expect(page.getByTestId("settings-profile")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_COMMANDS__?.includes("sign_out_keep_data") ?? false,
+      ),
+    )
+    .toBe(true);
+  await expect(
+    page.evaluate(
+      () => window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
+    ),
+  ).resolves.toBe(false);
+});
+
+test("confirming Sign out & remove data runs the wipe", async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await openConfirmation(page);
+  await page.getByTestId("signout-confirm").click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
+      ),
+    )
+    .toBe(true);
 });

@@ -47,9 +47,7 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const section = page.getByTestId("settings-mobile");
-  const card = page
-    .getByTestId("mobile-pairing-card")
-    .locator('[data-slot="settings-section-card"]');
+  const card = page.getByTestId("mobile-pairing-card");
   const layout = card.getByTestId("mobile-pairing-layout");
   const qrContainer = page.getByTestId("mobile-pairing-qr-container");
   const steps = card.getByTestId("mobile-pairing-steps");
@@ -63,7 +61,7 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
   const startButton = card.getByTestId("start-pairing-button");
   await expect(card).toBeVisible();
   await expect(card).toHaveCSS("border-top-width", "0px");
-  await expect(card).toHaveCSS("border-radius", "16px");
+  await expect(card).toHaveCSS("border-radius", "20px");
   expect(
     await card.evaluate((element) => getComputedStyle(element).backgroundColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
@@ -81,13 +79,13 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
   await expect(finalStepIndicator).toHaveText("3");
   await expect(scanStepIndicator).toHaveAttribute("data-completed", "false");
   await expect(confirmStepIndicator).toHaveAttribute("data-completed", "false");
-  await expect(finalStepIndicator).toHaveCSS("width", "48px");
-  await expect(finalStepIndicator).toHaveCSS("height", "48px");
+  await expect(finalStepIndicator).toHaveCSS("width", "30px");
+  await expect(finalStepIndicator).toHaveCSS("height", "30px");
   expect(
     await finalStepIndicator.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).borderRadius),
     ),
-  ).toBeGreaterThanOrEqual(24);
+  ).toBeGreaterThanOrEqual(15);
   const indicatorBackground = await finalStepIndicator.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
@@ -95,10 +93,9 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
     (element) => getComputedStyle(element).backgroundColor,
   );
   expect(indicatorBackground).not.toBe(primaryActionBackground);
-  await expect(layout).toHaveCSS("padding-top", "60px");
-  await expect(layout).toHaveCSS("padding-right", "60px");
-  await expect(layout).toHaveCSS("padding-left", "60px");
-  await expect(layout).toHaveCSS("column-gap", "56px");
+  await expect(card).toHaveCSS("padding-top", "24px");
+  await expect(card).toHaveCSS("padding-left", "24px");
+  await expect(layout).toHaveCSS("column-gap", "40px");
   await expect(page.getByTestId("mobile-pairing-qr")).toHaveCount(0);
   await expect(page.getByTestId("copy-pairing-code")).toHaveCount(0);
   expect(
@@ -112,20 +109,14 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
 
   const sectionBox = await section.boundingBox();
   const cardBox = await card.boundingBox();
-  const initialStepsBox = await steps.boundingBox();
   expect(sectionBox).not.toBeNull();
   expect(cardBox).not.toBeNull();
-  expect(initialStepsBox).not.toBeNull();
   const initialQrBox = await qrContainer.boundingBox();
   expect(initialQrBox).not.toBeNull();
   const qrTopSpace = (initialQrBox?.y ?? 0) - (cardBox?.y ?? 0);
   const qrLeftSpace = (initialQrBox?.x ?? 0) - (cardBox?.x ?? 0);
-  const qrBottomSpace =
-    (cardBox?.y ?? 0) +
-    (cardBox?.height ?? 0) -
-    ((initialQrBox?.y ?? 0) + (initialQrBox?.height ?? 0));
+  // The design pins the QR panel to the card's top-left padding.
   expect(Math.abs(qrTopSpace - qrLeftSpace)).toBeLessThan(0.5);
-  expect(Math.abs(qrTopSpace - qrBottomSpace)).toBeLessThan(0.5);
   const sectionCenter = (sectionBox?.x ?? 0) + (sectionBox?.width ?? 0) / 2;
   const cardCenter = (cardBox?.x ?? 0) + (cardBox?.width ?? 0) / 2;
   expect(Math.abs(sectionCenter - cardCenter)).toBeLessThan(0.5);
@@ -185,18 +176,16 @@ test("mobile pairing starts on demand and reveals the QR code", async ({
   expect(stepsBox).not.toBeNull();
   expect(qrCardBox).not.toBeNull();
   expect(qrBox?.x ?? 0).toBeLessThan(stepsBox?.x ?? 0);
-  expect(Math.abs((stepsBox?.y ?? 0) - (initialStepsBox?.y ?? 0))).toBeLessThan(
-    0.5,
-  );
-  expect(
-    Math.abs((qrCardBox?.height ?? 0) - (cardBox?.height ?? 0)),
-  ).toBeLessThan(0.5);
+  // The design's idle panel is 204px; the QR state is taller, so the card may
+  // grow when the code appears.
+  expect(qrCardBox?.height ?? 0).toBeGreaterThanOrEqual(cardBox?.height ?? 0);
   expect(copyBox?.y ?? 0).toBeGreaterThan(
     (qrBox?.y ?? 0) + (qrBox?.height ?? 0),
   );
-  expect(Math.abs((copyBox?.x ?? 0) - (qrBox?.x ?? 0))).toBeLessThan(0.5);
-  expect(Math.abs((copyBox?.width ?? 0) - (qrBox?.width ?? 0))).toBeLessThan(
-    0.5,
+  // The design's Copy pairing code is a text button inside the QR column.
+  expect(copyBox?.x ?? 0).toBeGreaterThanOrEqual((qrBox?.x ?? 0) - 0.5);
+  expect((copyBox?.x ?? 0) + (copyBox?.width ?? 0)).toBeLessThanOrEqual(
+    (qrBox?.x ?? 0) + (qrBox?.width ?? 0) + 0.5,
   );
 
   await emitPairingEvent(page, "pairing-error", {
@@ -251,10 +240,6 @@ test("pairing completion updates the final step and resets after leaving", async
   await emitPairingEvent(page, "pairing-sas-received", { sas: "123456" });
   const confirmation = card.getByTestId("mobile-pairing-code-confirmation");
   await expect(scanStepIndicator).toHaveAttribute("data-completed", "true");
-  await expect(scanStepIndicator.locator('[data-state="complete"]')).toHaveCSS(
-    "opacity",
-    "1",
-  );
   await expect(scanStepIndicator.locator("svg")).toHaveCount(1);
   await expect(confirmStepIndicator).toHaveAttribute("data-completed", "false");
   await expect(page.getByTestId("mobile-pairing-dialog")).toHaveCount(0);
@@ -268,17 +253,14 @@ test("pairing completion updates the final step and resets after leaving", async
   ).toHaveCount(6);
   await expect(
     confirmationCode.getByTestId("pairing-sas-code-digit-1"),
-  ).toHaveCSS("border-radius", "12px");
-  await expect(
-    confirmationCode.getByTestId("pairing-sas-code-digit-1"),
-  ).toHaveCSS("box-shadow", "none");
+  ).toHaveCSS("border-radius", "10px");
   const firstCodeDigit = confirmationCode.getByTestId(
     "pairing-sas-code-digit-1",
   );
   const firstCodeDigitBox = await firstCodeDigit.boundingBox();
   expect(firstCodeDigitBox).not.toBeNull();
-  expect(firstCodeDigitBox?.width ?? 0).toBeGreaterThan(32);
-  expect(firstCodeDigitBox?.height ?? 0).toBeGreaterThan(48);
+  expect(firstCodeDigitBox?.width ?? 0).toBeGreaterThanOrEqual(32);
+  expect(firstCodeDigitBox?.height ?? 0).toBeGreaterThanOrEqual(48);
   const secondCodeDigitBox = await confirmationCode
     .getByTestId("pairing-sas-code-digit-2")
     .boundingBox();
@@ -299,8 +281,8 @@ test("pairing completion updates the final step and resets after leaving", async
     ((thirdCodeDigitBox?.x ?? 0) + (thirdCodeDigitBox?.width ?? 0));
   expect(groupedDigitGap).toBeGreaterThan(regularDigitGap);
   await expect(card.getByTestId("mobile-pairing-qr-container")).toHaveCSS(
-    "border-color",
-    "rgba(0, 0, 0, 0)",
+    "box-shadow",
+    "none",
   );
   const confirmButton = confirmation.getByTestId("confirm-sas");
   const cancelButton = confirmation.getByTestId("deny-sas");
@@ -315,33 +297,26 @@ test("pairing completion updates the final step and resets after leaving", async
   expect(confirmationTitleBox).not.toBeNull();
   expect(confirmationCodeBox).not.toBeNull();
   expect(confirmationActionsBox).not.toBeNull();
+  // Title, code, then actions, top to bottom.
   expect(
     Math.abs((confirmationTitleBox?.y ?? 0) - (confirmationBox?.y ?? 0)),
   ).toBeLessThan(0.5);
-  const codeCenter =
-    (confirmationCodeBox?.y ?? 0) + (confirmationCodeBox?.height ?? 0) / 2;
-  const availableCodeCenter =
-    ((confirmationTitleBox?.y ?? 0) +
-      (confirmationTitleBox?.height ?? 0) +
-      (confirmationActionsBox?.y ?? 0)) /
-    2;
-  expect(Math.abs(availableCodeCenter - codeCenter)).toBeLessThan(0.5);
-  expect(
-    Math.abs(
-      (confirmationActionsBox?.y ?? 0) +
-        (confirmationActionsBox?.height ?? 0) -
-        ((confirmationBox?.y ?? 0) + (confirmationBox?.height ?? 0)),
-    ),
-  ).toBeLessThan(0.5);
-  await expect(confirmButton).toHaveCSS("height", "46px");
-  await expect(cancelButton).toHaveCSS("height", "46px");
+  expect(confirmationCodeBox?.y ?? 0).toBeGreaterThan(
+    (confirmationTitleBox?.y ?? 0) + (confirmationTitleBox?.height ?? 0),
+  );
+  expect(confirmationActionsBox?.y ?? 0).toBeGreaterThan(
+    (confirmationCodeBox?.y ?? 0) + (confirmationCodeBox?.height ?? 0),
+  );
+  await expect(confirmButton).toHaveCSS("height", "40px");
+  await expect(cancelButton).toHaveCSS("height", "40px");
   await expect(confirmButton.locator("svg")).toHaveCount(1);
   await expect(cancelButton.locator("svg")).toHaveCount(0);
   const confirmBox = await confirmButton.boundingBox();
   const cancelBox = await cancelButton.boundingBox();
   expect(confirmBox).not.toBeNull();
   expect(cancelBox).not.toBeNull();
-  expect(confirmBox?.y ?? 0).toBeLessThan(cancelBox?.y ?? 0);
+  // The design puts Codes match first, Cancel beside it.
+  expect(confirmBox?.x ?? 0).toBeLessThan(cancelBox?.x ?? 0);
   await expect(
     confirmation.getByText(/Only confirm if you started this pairing/),
   ).toHaveCount(0);
@@ -356,9 +331,6 @@ test("pairing completion updates the final step and resets after leaving", async
   await confirmation.getByTestId("confirm-sas").click();
   await expect(card.getByText("Pairing mobile device...")).toBeVisible();
   await expect(confirmStepIndicator).toHaveAttribute("data-completed", "true");
-  await expect(
-    confirmStepIndicator.locator('[data-state="complete"]'),
-  ).toHaveCSS("opacity", "1");
   await expect(confirmStepIndicator.locator("svg")).toHaveCount(1);
 
   await emitPairingEvent(page, "pairing-complete");
@@ -449,7 +421,5 @@ test("step completion respects reduced motion", async ({ page }) => {
 
   await expect(scanStepIndicator).toHaveAttribute("data-completed", "true");
   await expect(scanStepIndicator).toHaveCSS("transition-property", "none");
-  const completedContent = scanStepIndicator.locator('[data-state="complete"]');
-  await expect(completedContent).toHaveCSS("opacity", "1");
-  await expect(completedContent).toHaveCSS("transform", "none");
+  await expect(scanStepIndicator.locator("svg")).toHaveCount(1);
 });

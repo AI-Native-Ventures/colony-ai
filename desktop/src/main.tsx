@@ -27,6 +27,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { recoverLocalStorageQuotaOnStartup } from "@/shared/lib/localStorageQuota";
 import { startLocalStorageSweep } from "@/shared/lib/localStorageSweep";
 import { initializeConversationDensityPreference } from "@/shared/lib/conversationDensityPreference";
+import { initializeTypefacePreference } from "@/shared/lib/typefacePreference";
 import { initializeFontSizePreference } from "@/shared/lib/fontSizePreference";
 
 type E2eWindow = Window & {
@@ -169,6 +170,7 @@ async function bootstrap() {
   initializeConversationDensityPreference();
   initializeFontSizePreference();
   initializeAccessibilityPreference();
+  initializeTypefacePreference();
   startLocalStorageSweep();
   await installE2eBridgeIfConfigured();
   if (supportsNativeCapability("legacy-migration")) {

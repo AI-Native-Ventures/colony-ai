@@ -370,6 +370,72 @@ export type VisualFixtureSeed = {
   today: HomeFeedVisualFixture;
 };
 
+/** Extra records for the Colony 3.0 conversation boards. */
+export type Colony3Extras = {
+  profiles?: Array<{
+    pubkey: string;
+    displayName: string;
+    isAgent?: boolean;
+    ownerPubkey?: string | null;
+    about?: string | null;
+    avatarUrl?: string | null;
+    presence?: PresenceStatus;
+  }>;
+  channels?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    channelType?: "stream" | "forum" | "dm";
+    visibility?: "open" | "private";
+    archived?: boolean;
+    /** Members besides the signed-in user (who joins unless `selfIsMember` is false). */
+    members?: Array<{ pubkey: string; role?: RawChannelMember["role"] }>;
+    selfIsMember?: boolean;
+    selfRole?: RawChannelMember["role"];
+    lastMessageAt?: number | null;
+    ttlSeconds?: number | null;
+    ttlDeadline?: string | null;
+  }>;
+  /** Adds (or re-roles) members of channels the workspace already has. */
+  members?: Array<{
+    channelId: string;
+    pubkey: string;
+    role?: RawChannelMember["role"];
+  }>;
+  /** Removes the signed-in user from channels, to show the not-a-member views. */
+  leaveChannelIds?: string[];
+  messages?: Array<{
+    channelId: string;
+    id: string;
+    pubkey: string;
+    createdAt: number;
+    kind?: number;
+    tags?: string[][];
+    content: string;
+  }>;
+  /** Agent workspace files the mock host reports as existing (message file cards). */
+  workspaceFiles?: string[];
+  /** Home feed buckets for the Activity board; they replace the reference inbox items. */
+  feed?: {
+    [bucket in
+      | "mentions"
+      | "needs_action"
+      | "activity"
+      | "agent_activity"]?: Array<{
+      id: string;
+      kind: number;
+      pubkey: string;
+      content: string;
+      created_at: number;
+      channel_id: string | null;
+      channel_name: string;
+      channel_type?: string | null;
+      tags: string[][];
+      category: "mention" | "needs_action" | "activity" | "agent_activity";
+    }>;
+  };
+};
+
 type E2eConfig = {
   mode?: "mock" | "relay";
   forceRelayPacing?: boolean;
@@ -435,6 +501,10 @@ type E2eConfig = {
     /** Colony 3.0 foundation: seed the Sidebar board's channels, sections,
      *  unread counts and Activity badge on top of the reference workspace. */
     colony3Sidebar?: boolean;
+    /** Colony 3.0 conversation boards: extra people, channels, members and
+     *  messages seeded on top of the reference workspace. Test modules own the
+     *  data; the bridge only applies it (see `applyColony3Extras`). */
+    colony3Extras?: Colony3Extras;
     colony3Business?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
@@ -5548,6 +5618,110 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       store.push(event);
       mockBusinessRecordEvents.set(channelId, store);
     }
+  }
+  if (config.mock?.colony3Extras) {
+    applyColony3Extras(config.mock.colony3Extras, self);
+  }
+}
+
+function applyColony3Extras(extras: Colony3Extras, self: string): void {
+  for (const profile of extras.profiles ?? []) {
+    mockDisplayNames.set(profile.pubkey, profile.displayName);
+    if (profile.isAgent) mockAgentPubkeys.add(profile.pubkey);
+    mockProfiles.set(profile.pubkey, {
+      pubkey: profile.pubkey,
+      display_name: profile.displayName,
+      name: profile.displayName,
+      avatar_url: profile.avatarUrl ?? null,
+      about: profile.about ?? null,
+      nip05_handle: null,
+      owner_pubkey: profile.ownerPubkey ?? null,
+      is_agent: profile.isAgent === true,
+      has_profile_event: true,
+    });
+    if (profile.presence)
+      setMockPresenceStatus(profile.pubkey, profile.presence);
+  }
+  for (const seed of extras.channels ?? []) {
+    const members: RawChannelMember[] = [];
+    if (seed.selfIsMember !== false) {
+      members.push(createMockMember(self, seed.selfRole ?? "owner", 1440));
+    }
+    for (const member of seed.members ?? []) {
+      members.push(
+        createMockMember(member.pubkey, member.role ?? "member", 1200),
+      );
+    }
+    mockChannels.push(
+      createMockChannel({
+        id: seed.id,
+        name: seed.name,
+        channel_type: seed.channelType ?? "stream",
+        visibility: seed.visibility ?? "open",
+        description: seed.description ?? "",
+        topic: null,
+        purpose: null,
+        last_message_at:
+          seed.lastMessageAt === undefined || seed.lastMessageAt === null
+            ? null
+            : new Date(seed.lastMessageAt * 1_000).toISOString(),
+        archived_at: seed.archived ? isoMinutesAgo(600) : null,
+        created_by: self,
+        topic_set_by: null,
+        topic_set_at: null,
+        purpose_set_by: null,
+        purpose_set_at: null,
+        topic_required: false,
+        max_members: null,
+        nip29_group_id: null,
+        created_minutes_ago: 1440,
+        updated_minutes_ago: 30,
+        members,
+        ttl_seconds: seed.ttlSeconds ?? null,
+        ttl_deadline: seed.ttlDeadline ?? null,
+      }),
+    );
+  }
+  for (const entry of extras.members ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === entry.channelId,
+    );
+    if (!channel) continue;
+    const existing = channel.members.find(
+      (member) => member.pubkey === entry.pubkey,
+    );
+    if (existing) {
+      existing.role = entry.role ?? existing.role;
+    } else {
+      channel.members.push(
+        createMockMember(entry.pubkey, entry.role ?? "member", 1200),
+      );
+    }
+    syncMockChannel(channel);
+  }
+  for (const channelId of extras.leaveChannelIds ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (!channel) continue;
+    channel.members = channel.members.filter(
+      (member) => member.pubkey !== self,
+    );
+    syncMockChannel(channel);
+  }
+  const sig = "mocksig".repeat(20).slice(0, 128);
+  for (const message of extras.messages ?? []) {
+    const store = mockMessages.get(message.channelId) ?? [];
+    store.push({
+      id: message.id,
+      pubkey: message.pubkey,
+      created_at: message.createdAt,
+      kind: message.kind ?? KIND_STREAM_MESSAGE,
+      tags: [["h", message.channelId], ...(message.tags ?? [])],
+      content: message.content,
+      sig,
+    });
+    mockMessages.set(message.channelId, store);
   }
 }
 let nextSocketId = 1;
@@ -14480,6 +14654,27 @@ async function handleGetFeed(
 
   if (!isRelayMode(config) && referenceWorkspaceActive) {
     const now = Math.floor(Date.now() / 1000);
+    const extraFeed = config?.mock?.colony3Extras?.feed;
+    if (extraFeed) {
+      const feed = {
+        mentions: extraFeed.mentions ?? [],
+        needs_action: extraFeed.needs_action ?? [],
+        activity: extraFeed.activity ?? [],
+        agent_activity: extraFeed.agent_activity ?? [],
+      };
+      return {
+        feed,
+        meta: {
+          since: args.since ?? now - 7 * 24 * 60 * 60,
+          total: Object.values(feed).reduce(
+            (sum, list) => sum + list.length,
+            0,
+          ),
+          generated_at: now,
+        },
+        visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
+      };
+    }
     const unreadItems =
       config?.mock?.referenceSidebarShell === true
         ? []
@@ -20046,9 +20241,11 @@ export function maybeInstallE2eTauriMocks() {
         });
       }
       case "sign_out":
-        // Production wipes local state and restarts the app. In the browser
-        // harness there is nothing to wipe; resolving is enough — specs
-        // assert invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
+      case "sign_out_keep_data":
+        // Production wipes local state (or, for the keep-data variant, only
+        // forgets the identity) and restarts the app. In the browser harness
+        // there is nothing to wipe; resolving is enough; specs assert
+        // invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
         return;
       case "generate_backup_passphrase": {
         const request = payload as {
@@ -21041,6 +21238,12 @@ export function maybeInstallE2eTauriMocks() {
           "open-directory",
         );
         return directory.channels ?? [];
+      }
+      case "resolve_agent_workspace_file": {
+        const path = (payload as { path?: string } | undefined)?.path ?? "";
+        return activeConfig?.mock?.colony3Extras?.workspaceFiles?.includes(path)
+          ? { path }
+          : null;
       }
       case "get_feed":
         return handleGetFeed(

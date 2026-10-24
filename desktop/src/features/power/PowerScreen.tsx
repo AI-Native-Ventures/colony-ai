@@ -1,350 +1,234 @@
-import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
-import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { useAcpRuntimesQuery } from "@/features/agents/hooks";
-import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
+import { AppTopChromePortal } from "@/app/AppTopChromePortal";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import type { TeamMember } from "@/features/company-team/teamModels";
 import { readCredits } from "@/features/credits/accountPayments";
-import type {
-  AgentUsageSeries,
-  AgentUsageSeriesBucket,
-} from "@/shared/api/tauriArchive";
-import type { ManagedAgent } from "@/shared/api/types";
+import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { truncateNpub } from "@/shared/lib/pubkey";
-import { PageHeader } from "@/shared/ui/PageHeader";
-import type { UsagePeriodDays } from "./usageBoundaries";
-import { useAgentUsageSeries } from "./useAgentUsageSeries";
 
-export type PowerSection = "usage" | "credits";
+import {
+  AiSpendEmployeeScreen,
+  AiSpendOverview,
+  type PowerEmployee,
+} from "./AiSpendScreens";
+import { PowerBreadcrumb, PowerTabs, type PowerTab } from "./PowerParts";
+import { PowerConnections } from "./PowerConnections";
+import { PowerUsageTab } from "./PowerUsageTab";
+import {
+  useAiSpendHeadsQuery,
+  useEmployeeAllowanceHeadsQuery,
+  useSyncAgentTurnSpendRecords,
+} from "./spendRelay";
+import "./PowerScreen.css";
 
-const POWER_TABS: Array<{ id: PowerSection; label: string }> = [
+export type PowerPanel = "employee";
+
+export type PowerSection = "overview" | "usage" | "connections";
+
+const POWER_TABS: ReadonlyArray<PowerTab<PowerSection>> = [
+  { id: "overview", label: "Overview" },
   { id: "usage", label: "Usage" },
-  { id: "credits", label: "Credits" },
+  { id: "connections", label: "Connections & billing" },
 ];
 
+const HEADINGS: Record<PowerSection, { title: string; subtitle: string }> = {
+  overview: {
+    title: "AI spend & power",
+    subtitle: "What your AI employees use, and what pays for it.",
+  },
+  usage: {
+    title: "Agent usage",
+    subtitle: "Usage reports from your AI employees’ work.",
+  },
+  connections: {
+    title: "Connections & billing",
+    subtitle: "Where your AI employees get their models.",
+  },
+};
+
+/** Billing history and checkout are not in the lean app; old links land on Connections. */
 export function parsePowerSection(
   value: string | null | undefined,
 ): PowerSection {
-  return value === "credits" ? "credits" : "usage";
+  return value === "usage"
+    ? "usage"
+    : value === "connections" || value === "history" || value === "checkout"
+      ? "connections"
+      : "overview";
+}
+
+function moneyFromCents(amountCents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amountCents / 100);
 }
 
 export function PowerScreen({
   section,
+  panel,
+  employeePubkey,
   onSectionChange,
+  onOpenEmployee,
+  onClosePanel,
 }: {
   section: PowerSection;
+  panel?: PowerPanel;
+  employeePubkey?: string;
   onSectionChange: (section: PowerSection) => void;
+  onOpenEmployee: (pubkey: string) => void;
+  onClosePanel: () => void;
 }) {
   const creditsLaunched = useColonyCreditsLaunched();
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? "";
+  const { goSettings } = useAppNavigation();
   const creditsQuery = useQuery({
-    enabled: Boolean(communityId),
+    enabled: Boolean(communityId) && creditsLaunched,
     queryKey: ["account-credits", communityId],
     queryFn: readCredits,
     retry: false,
   });
-  const usageQuery = useAgentUsageSeries(30);
   const agentsQuery = useCompanyManagedAgentsQuery();
-  const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
-  const credits = creditsQuery.data
-    ? {
-        status: "available",
-        balanceUsdCents: creditsQuery.data.balanceUsdCents,
-      }
-    : { status: "unavailable" };
-  const agents = agentsQuery.data ?? [];
-  const runtimes = runtimesQuery.data ?? [];
+  const spendEnabled = section === "overview" || panel !== undefined;
+  const teamQuery = useCompanyTeamQuery(spendEnabled);
+  const employees = (teamQuery.data?.members ?? []).filter(
+    (member): member is TeamMember => member.kind === "employee",
+  );
+  const activeEmployees = employees.filter(
+    (employee) => employee.position?.head.status !== "terminated",
+  );
+  const profilesQuery = useUsersBatchQuery(
+    employees.map((member) => member.pubkey),
+    { enabled: spendEnabled && employees.length > 0 },
+  );
+  const allowancesQuery = useEmployeeAllowanceHeadsQuery(spendEnabled);
+  const spendQuery = useAiSpendHeadsQuery(spendEnabled);
+  const sync = useSyncAgentTurnSpendRecords(
+    employees,
+    spendQuery,
+    spendEnabled,
+  );
+  const profileRecords = profilesQuery.data?.profiles ?? {};
+  const powerEmployees: PowerEmployee[] = employees.map((member) => ({
+    member,
+    avatarUrl: profileRecords[member.pubkey]?.avatarUrl ?? null,
+    name:
+      profileRecords[member.pubkey]?.displayName?.trim() ||
+      member.fallbackName?.trim() ||
+      truncateNpub(member.pubkey),
+    title:
+      member.position?.head.title ||
+      (member.kind === "employee" ? "Employee" : "Human"),
+  }));
+  const allowanceRecords = allowancesQuery.data?.records ?? [];
+  const spendRecords = spendQuery.data?.records ?? [];
+  const spendError =
+    (teamQuery.error instanceof Error ? teamQuery.error : null) ??
+    (profilesQuery.error instanceof Error ? profilesQuery.error : null) ??
+    (allowancesQuery.error instanceof Error ? allowancesQuery.error : null) ??
+    (spendQuery.error instanceof Error ? spendQuery.error : null) ??
+    sync.error;
+  const spendLoading =
+    teamQuery.isLoading ||
+    profilesQuery.isLoading ||
+    allowancesQuery.isLoading ||
+    spendQuery.isLoading;
+  const selectedEmployee = powerEmployees.find(
+    (item) =>
+      item.member.pubkey.toLowerCase() === employeePubkey?.toLowerCase(),
+  );
+  const selectedAllowance = allowanceRecords.find(
+    (item) =>
+      item.head.employeePubkey.toLowerCase() ===
+      selectedEmployee?.member.pubkey.toLowerCase(),
+  );
+  const showEmployee = panel === "employee" && selectedEmployee !== undefined;
+  const heading = HEADINGS[section];
+  const leaf =
+    showEmployee && selectedEmployee
+      ? selectedEmployee.name
+      : section === "usage"
+        ? "Usage"
+        : section === "connections"
+          ? "Connections & billing"
+          : undefined;
+  const creditsStatus = creditsQuery.isLoading
+    ? "Loading"
+    : creditsQuery.data
+      ? moneyFromCents(creditsQuery.data.balanceUsdCents)
+      : "Unavailable";
 
   return (
-    <div
-      className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8"
-      data-testid="power-screen"
-    >
-      <PageHeader
-        title={section === "credits" ? "Colony credits" : "Agent usage"}
-      />
-      <PowerNavigation section={section} onSectionChange={onSectionChange} />
-      {section === "usage" ? (
-        <PowerUsage
-          agents={agents}
-          runtimes={runtimes}
-          isLoading={usageQuery.isLoading}
-          error={usageQuery.error instanceof Error ? usageQuery.error : null}
-          series={usageQuery.data}
-        />
-      ) : (
-        <PowerCredits
-          credits={credits}
-          creditsLaunched={creditsLaunched}
-          isCreditsLoading={creditsQuery.isLoading}
-        />
-      )}
-    </div>
-  );
-}
-
-function PowerNavigation({
-  section,
-  onSectionChange,
-}: {
-  section: PowerSection;
-  onSectionChange: (section: PowerSection) => void;
-}) {
-  return (
-    <nav
-      aria-label="Power sections"
-      className="overflow-x-auto border-b border-border/60"
-    >
-      <div className="flex min-w-max gap-5">
-        {POWER_TABS.map((tab) => (
-          <button
-            aria-current={section === tab.id ? "page" : undefined}
-            className={`border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${section === tab.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            key={tab.id}
-            onClick={() => onSectionChange(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
-function PowerCredits({
-  credits,
-  creditsLaunched,
-  isCreditsLoading,
-}: {
-  credits: { status: string; balanceUsdCents?: number };
-  creditsLaunched: boolean;
-  isCreditsLoading: boolean;
-}) {
-  return (
-    <div className="divide-y divide-border/70" data-testid="power-credits">
-      <section className="flex flex-wrap items-center justify-between gap-4 py-5">
-        <div className="min-w-0 space-y-1">
-          <h2 className="text-base font-semibold">Colony credits</h2>
-          <p className="text-sm text-muted-foreground">
-            Pay for supported agent work
-          </p>
-        </div>
-        <span className="text-sm text-muted-foreground">
-          {!creditsLaunched
-            ? "Coming soon"
-            : isCreditsLoading
-              ? "Loading"
-              : credits.status === "available" &&
-                  credits.balanceUsdCents !== undefined
-                ? moneyFromCents(credits.balanceUsdCents)
-                : "Unavailable"}
-        </span>
-      </section>
-    </div>
-  );
-}
-
-function PowerUsage({
-  agents,
-  runtimes,
-  isLoading,
-  error,
-  series,
-}: {
-  agents: ManagedAgent[];
-  runtimes: ReturnType<typeof useAcpRuntimesQuery>["data"];
-  isLoading: boolean;
-  error: Error | null;
-  series?: AgentUsageSeries;
-}) {
-  const [period, setPeriod] = React.useState<UsagePeriodDays>(30);
-  const [agentFilter, setAgentFilter] = React.useState("all");
-  const usageQuery = useAgentUsageSeries(period);
-  const effectiveSeries =
-    period === 30 ? (series ?? usageQuery.data) : usageQuery.data;
-  const managedByKey = new Map(
-    agents.map((agent) => [agent.pubkey.toLowerCase(), agent]),
-  );
-  const rows = React.useMemo(
-    () =>
-      (effectiveSeries?.agents ?? []).flatMap((agentUsage) => {
-        const agent = managedByKey.get(agentUsage.agentPubkey.toLowerCase());
-        const name = agent?.name ?? truncateNpub(agentUsage.agentPubkey);
-        if (
-          agentFilter !== "all" &&
-          agentUsage.agentPubkey.toLowerCase() !== agentFilter
-        )
-          return [];
-        return agentUsage.buckets
-          .filter((bucket) => bucket.reportCount > 0)
-          .map((bucket) => ({ agentUsage, bucket, agent, name }));
-      }),
-    [agentFilter, effectiveSeries, managedByKey],
-  );
-
-  return (
-    <div className="space-y-4" data-testid="power-usage">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label="Usage by agent"
-          className="h-9 rounded-lg border border-input/40 bg-background px-3 text-sm"
-          onChange={(event) => setAgentFilter(event.currentTarget.value)}
-          value={agentFilter}
-        >
-          <option value="all">All agents</option>
-          {(effectiveSeries?.agents ?? []).map((agentUsage) => {
-            const agent = managedByKey.get(
-              agentUsage.agentPubkey.toLowerCase(),
-            );
-            return (
-              <option
-                key={agentUsage.agentPubkey}
-                value={agentUsage.agentPubkey.toLowerCase()}
-              >
-                {agent?.name ?? truncateNpub(agentUsage.agentPubkey)}
-              </option>
-            );
-          })}
-        </select>
-        <select
-          aria-label="Usage by client"
-          className="h-9 rounded-lg border border-input/40 bg-background px-3 text-sm"
-          disabled
-          value="not-reported"
-        >
-          <option value="not-reported">Client not reported</option>
-        </select>
-        <div className="ml-auto inline-flex rounded-lg border border-border/70 p-1">
-          {([7, 30] as const).map((days) => (
-            <button
-              aria-pressed={period === days}
-              className={`rounded-md px-3 py-1.5 text-sm ${period === days ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-              key={days}
-              onClick={() => setPeriod(days)}
-              type="button"
-            >
-              {days} days
-            </button>
-          ))}
-        </div>
-      </div>
-      {effectiveSeries?.collectionEnabled === false ? (
-        <p className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-          Usage collection is turned off for this archive.
-        </p>
-      ) : null}
-      {error ? (
-        <p
-          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error.message}
-        </p>
-      ) : null}
-      {usageQuery.error instanceof Error ? (
-        <p
-          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          role="alert"
-        >
-          {usageQuery.error.message}
-        </p>
-      ) : null}
-      <div className="overflow-hidden rounded-xl border border-border/70 bg-background/70">
-        <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
-          <thead className="bg-muted/35 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3">Date / work</th>
-              <th className="px-3 py-3">Agent</th>
-              <th className="px-3 py-3">Client</th>
-              <th className="px-3 py-3">Source</th>
-              <th className="px-4 py-3 text-right">Recorded cost</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/55">
-            {rows.map(({ agentUsage, bucket, agent, name }) => (
-              <UsageRow
-                agent={agent}
-                agentName={name}
-                bucket={bucket}
-                harnessLabel={
-                  agent
-                    ? agentHarnessLabel(agent, runtimes ?? [])
-                    : "Not reported"
-                }
-                key={`${agentUsage.agentPubkey}:${bucket.start}`}
+    <div className="pw-screen">
+      <div className="pw-scroll">
+        <div className="pw-page" data-testid="power-screen">
+          <AppTopChromePortal>
+            <PowerBreadcrumb leaf={leaf} />
+          </AppTopChromePortal>
+          {showEmployee && selectedEmployee ? (
+            <AiSpendEmployeeScreen
+              allowance={selectedAllowance}
+              employee={selectedEmployee}
+              onBack={onClosePanel}
+              records={spendRecords}
+            />
+          ) : (
+            <>
+              <div className="pw-heading">
+                <div className="pw-heading-title">
+                  <h1>{heading.title}</h1>
+                  <span>{heading.subtitle}</span>
+                </div>
+                {section === "overview" && activeEmployees.length > 0 ? (
+                  <div className="pw-heading-actions">
+                    <Link
+                      className="pw-link-button"
+                      search={{
+                        channelId: null,
+                        threadRootEventId: null,
+                        type: "money",
+                      }}
+                      to="/asks/new"
+                    >
+                      Request allowance change
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+              <PowerTabs
+                onSelect={onSectionChange}
+                selected={section}
+                tabs={POWER_TABS}
               />
-            ))}
-          </tbody>
-        </table>
-        {!isLoading && !usageQuery.isLoading && rows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-            No usage reports are available for this period.
-          </p>
-        ) : null}
-        {isLoading || usageQuery.isLoading ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-            Loading usage…
-          </p>
-        ) : null}
+              {section === "overview" ? (
+                <AiSpendOverview
+                  allowances={allowanceRecords}
+                  employees={powerEmployees}
+                  error={spendError}
+                  isLoading={spendLoading}
+                  onOpenEmployee={onOpenEmployee}
+                  records={spendRecords}
+                />
+              ) : section === "usage" ? (
+                <PowerUsageTab agents={agentsQuery.data ?? []} />
+              ) : (
+                <PowerConnections
+                  creditsLaunched={creditsLaunched}
+                  creditsStatus={creditsStatus}
+                  onManage={() => void goSettings("agents")}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Agent-reported usage is not an invoice. Subscription usage is not
-        converted into a cost unless the provider reports one. Work and client
-        links are not available in these reports.
-      </p>
     </div>
-  );
-}
-
-function UsageRow({
-  agent,
-  agentName,
-  bucket,
-  harnessLabel,
-}: {
-  agent?: ManagedAgent;
-  agentName: string;
-  bucket: AgentUsageSeriesBucket;
-  harnessLabel: string;
-}) {
-  const cost = bucket.usage.estimatedCostUsd;
-  const costLabel =
-    cost.value === null || cost.incomplete ? "Not reported" : money(cost.value);
-  const source =
-    harnessLabel === "Not reported" ? "Agent report" : harnessLabel;
-  return (
-    <tr>
-      <td className="px-4 py-3">
-        <span className="block">{formatDay(bucket.start)}</span>
-        <span className="block text-xs text-muted-foreground">
-          {bucket.reportCount} {bucket.reportCount === 1 ? "report" : "reports"}
-        </span>
-      </td>
-      <td className="px-3 py-3 font-medium">{agent?.name ?? agentName}</td>
-      <td className="px-3 py-3 text-muted-foreground">Not reported</td>
-      <td className="px-3 py-3 text-muted-foreground">{source}</td>
-      <td className="px-4 py-3 text-right font-medium">{costLabel}</td>
-    </tr>
-  );
-}
-
-function money(amount: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(amount);
-}
-
-function moneyFromCents(amountCents: number) {
-  return money(amountCents / 100);
-}
-
-function formatDay(unixSeconds: number) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(unixSeconds * 1000),
   );
 }

@@ -10,7 +10,7 @@ test("settings omit owner-dropped hosted and deployment pages", async ({
   await page.goto("/");
   await openSettings(page);
 
-  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(7);
   await expect(
     page.getByText("Hosted communities", { exact: true }),
   ).toHaveCount(0);

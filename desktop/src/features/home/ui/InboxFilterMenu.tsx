@@ -1,7 +1,6 @@
 import { ChevronDown } from "lucide-react";
 
 import type { InboxFilter } from "@/features/home/lib/inbox";
-import { cn } from "@/shared/lib/cn";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,20 +10,18 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-const INBOX_FILTER_OPTIONS: Array<{
+/** The filters Activity offers, in the order the design lists them. */
+export const INBOX_FILTER_OPTIONS: Array<{
   label: string;
   value: InboxFilter;
 }> = [
   { value: "all", label: "All" },
   { value: "mention", label: "Mentions" },
-  { value: "thread", label: "Threads" },
   { value: "needs_action", label: "Needs action" },
+  { value: "thread", label: "Threads" },
   { value: "agent_activity", label: "Agents" },
   { value: "drafts", label: "Drafts" },
 ];
-
-const TRIGGER_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-muted/70 data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 relative -ml-2 w-auto gap-1 px-2 text-sm font-medium text-foreground";
 
 type InboxFilterMenuProps = {
   activeDraftCount: number;
@@ -32,6 +29,7 @@ type InboxFilterMenuProps = {
   onFilterChange: (value: InboxFilter) => void;
 };
 
+/** The "All activity" button: the same filters as the chips, as a menu. */
 export function InboxFilterMenu({
   activeDraftCount,
   filter,
@@ -50,15 +48,17 @@ export function InboxFilterMenu({
       <DropdownMenuTrigger asChild>
         <button
           aria-label={`Filter inbox: ${activeFilter?.label ?? "All"}${statusLabel ? `. ${statusLabel}` : ""}`}
-          className={cn(TRIGGER_CLASS)}
+          className="ca-filter-button"
           data-testid="inbox-filter-trigger"
           type="button"
         >
-          <span>{activeFilter?.label ?? "All"}</span>
-          <ChevronDown className="text-muted-foreground" />
+          <span>
+            {filter === "all" ? "All activity" : (activeFilter?.label ?? "All")}
+          </span>
+          <ChevronDown aria-hidden="true" size={14} strokeWidth={2.4} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
+      <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuRadioGroup
           onValueChange={(value) => onFilterChange(value as InboxFilter)}
           value={filter}
@@ -70,7 +70,9 @@ export function InboxFilterMenu({
               ) : null}
               <DropdownMenuRadioItem value={option.value}>
                 <span className="flex flex-1 items-center gap-2">
-                  <span>{option.label}</span>
+                  <span>
+                    {option.value === "all" ? "All activity" : option.label}
+                  </span>
                   <span className="ml-auto flex items-center gap-1.5">
                     {option.value === "drafts" && activeDraftCount > 0 ? (
                       <span
@@ -88,5 +90,44 @@ export function InboxFilterMenu({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type InboxFilterChipsProps = {
+  activeDraftCount: number;
+  filter: InboxFilter;
+  onFilterChange: (value: InboxFilter) => void;
+};
+
+/** The chip row under the title: one tap to a filter. */
+export function InboxFilterChips({
+  activeDraftCount,
+  filter,
+  onFilterChange,
+}: InboxFilterChipsProps) {
+  return (
+    <div aria-label="Filter activity" className="ca-chips" role="tablist">
+      {INBOX_FILTER_OPTIONS.map((option) => (
+        <button
+          aria-selected={filter === option.value}
+          className="ca-chip"
+          data-testid={`inbox-chip-${option.value}`}
+          key={option.value}
+          onClick={() => onFilterChange(option.value)}
+          role="tab"
+          type="button"
+        >
+          {option.label}
+          {option.value === "drafts" && activeDraftCount > 0 ? (
+            <span
+              className="ca-chip-count"
+              data-testid="inbox-draft-chip-count"
+            >
+              {activeDraftCount}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
   );
 }

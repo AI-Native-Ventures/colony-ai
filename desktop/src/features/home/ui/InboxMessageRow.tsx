@@ -5,13 +5,12 @@ import type { InboxContextMessage } from "@/features/home/lib/inbox";
 import { toTimelineMessage } from "@/features/home/lib/inboxViewHelpers";
 import { formatTimeWithoutDayPeriod } from "@/features/messages/lib/dateFormatters";
 import { formatItemTimestamp } from "@/shared/lib/datetime";
+import { WorkAreaFileCard } from "@/features/home/ui/WorkAreaFileCard";
 import type { TimelineMessage } from "@/features/messages/types";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { MessageActionBar } from "@/features/messages/ui/MessageActionBar";
 import { MessageAgentOwner } from "@/features/messages/ui/MessageAgentOwner";
-import { MessageMetaSeparator } from "@/features/messages/ui/MessageHeader";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
-import { UnreadDivider } from "@/features/messages/ui/UnreadDivider";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
 import { useMessageEmoji } from "@/features/messages/lib/useMessageEmoji";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
@@ -19,14 +18,33 @@ import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { hasLinkPreviewSuppression } from "@/features/messages/lib/formatTimelineMessages";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type { VideoReviewContext } from "@/shared/ui/VideoPlayer";
 import { VideoReviewCommentMarkdown } from "@/shared/ui/VideoReviewCommentMarkdown";
 import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
+import "./ActivityScreen.css";
 
 export type InboxDisplayMessage = InboxContextMessage & {
   depth: number;
 };
+
+const CLOCK_24H = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** "09:12" today; "Yesterday at 09:12", "Monday at 09:12" or a date before. */
+function formatMessageStamp(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1_000);
+  const now = new Date();
+  const clock = CLOCK_24H.format(date);
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return sameDay ? clock : `${formatItemTimestamp(unixSeconds)} at ${clock}`;
+}
 
 type InboxMessageRowProps = {
   agentPubkeys?: ReadonlySet<string>;
@@ -36,6 +54,8 @@ type InboxMessageRowProps = {
   isContinuation?: boolean;
   isFirst?: boolean;
   isFocusHighlightVisible: boolean;
+  /** The author's job title from the Team records, shown beside their name. */
+  jobTitle?: string | null;
   message: InboxDisplayMessage;
   onDelete?: (message: InboxDisplayMessage) => void;
   onEdit?: (message: InboxDisplayMessage) => void;
@@ -59,6 +79,7 @@ export function InboxMessageRow({
   isContinuation = false,
   isFirst = false,
   isFocusHighlightVisible,
+  jobTitle = null,
   message,
   onDelete,
   onEdit,
@@ -114,12 +135,10 @@ export function InboxMessageRow({
   // day divider to supply the date, and deriving on render means a row does not
   // keep saying "Today" after midnight. `fullTimestampLabel` stays the absolute
   // value behind the hover title.
-  const timestampLabel = formatItemTimestamp(message.createdAt, {
-    withTime: true,
-  });
+  const timestampLabel = formatMessageStamp(message.createdAt);
   const timestampNode = (
     <p
-      className="shrink-0 text-message-timestamp font-normal tabular-nums text-muted-foreground/55"
+      className="ca-msg-time"
       data-testid="inbox-message-timestamp"
       title={message.fullTimestampLabel}
     >
@@ -128,24 +147,27 @@ export function InboxMessageRow({
   );
 
   return (
-    <div className="relative px-2">
-      {showUnreadBoundary ? <UnreadDivider /> : null}
+    <div className="ca-msg-wrap">
+      {showUnreadBoundary ? (
+        <section
+          aria-label="New messages"
+          className="ca-new-divider"
+          data-testid="message-unread-divider"
+        >
+          <span aria-hidden="true" />
+          <strong>New</strong>
+        </section>
+      ) : null}
       {message.isSelected ? (
         <div
           aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-x-3 inset-y-1 rounded-2xl transition-opacity duration-1000",
-            isFocusHighlightVisible
-              ? "bg-primary/[0.07] opacity-100"
-              : "bg-primary/[0.07] opacity-0",
-          )}
+          className="ca-msg-focus"
+          data-visible={isFocusHighlightVisible ? "true" : undefined}
         />
       ) : null}
       <article
-        className={cn(
-          "group/message relative z-10 mx-1 flex gap-2.5 rounded-2xl px-2 py-conversation-row transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
-          isContinuation ? "items-center" : "items-start",
-        )}
+        className="ca-msg group/message"
+        data-continuation={isContinuation ? "true" : undefined}
         data-message-id={message.id}
         data-testid={
           message.isSelected
@@ -155,10 +177,8 @@ export function InboxMessageRow({
       >
         {canReply || canToggleReactions || onDelete || onEdit ? (
           <div
-            className={cn(
-              "absolute right-2 top-1 z-10",
-              !isFirst && "sm:top-0 sm:-translate-y-1/2",
-            )}
+            className="ca-msg-actions"
+            data-first={isFirst ? "true" : undefined}
           >
             <MessageActionBar
               channelId={channelId}
@@ -184,15 +204,13 @@ export function InboxMessageRow({
         {isContinuation ? (
           <div
             aria-hidden="true"
-            className="flex w-9 shrink-0 self-stretch items-start justify-end pt-0.5"
+            className="ca-msg-gutter"
             title={message.fullTimestampLabel}
           >
-            <p className="shrink-0 cursor-default whitespace-nowrap text-message-timestamp font-normal tabular-nums text-muted-foreground/55 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-              {hoverTimestampLabel}
-            </p>
+            <p>{hoverTimestampLabel}</p>
           </div>
         ) : (
-          <div className="relative shrink-0">
+          <div className="ca-msg-lead">
             <UserProfilePopover
               botIdenticonValue={message.authorLabel}
               pubkey={message.authorPubkey}
@@ -204,64 +222,47 @@ export function InboxMessageRow({
               triggerElement="span"
             >
               <span className="inline-flex shrink-0">
-                <UserAvatar
-                  accent={isAuthorAgent}
+                <ProfileAvatar
                   avatarUrl={message.avatarUrl}
-                  className="h-9 w-9 shrink-0"
-                  displayName={message.authorLabel}
+                  className="ca-msg-avatar"
+                  label={message.authorLabel}
                   shape={isAuthorAgent ? "squircle" : "circle"}
-                  size="md"
                 />
               </span>
             </UserProfilePopover>
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
+        <div className="ca-msg-main">
           {isContinuation ? null : (
-            <div
-              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0"
-              data-testid="message-header"
-            >
+            <div className="ca-msg-head" data-testid="message-header">
               <UserProfilePopover
                 botIdenticonValue={message.authorLabel}
                 pubkey={message.authorPubkey}
                 role={profileRole}
                 triggerElement="span"
               >
-                <span
-                  className="block max-w-full truncate rounded text-message-author font-semibold leading-message-author text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="message-author"
-                >
+                <span className="ca-msg-name" data-testid="message-author">
                   {message.authorLabel}
                 </span>
               </UserProfilePopover>
-              {message.isAgent ? (
-                <>
-                  <MessageAgentOwner
-                    ownerLabel={message.ownerLabel}
-                    ownerPubkey={message.ownerPubkey}
-                  />
-                  {/*
-                    Grouped with the timestamp so the divider never wraps to the
-                    start of a line on its own. Gap matches the container's, so
-                    spacing reads the same either side of the divider.
-                  */}
-                  <span className="inline-flex min-w-0 items-center gap-x-2">
-                    <MessageMetaSeparator />
-                    {timestampNode}
-                  </span>
-                </>
-              ) : (
-                timestampNode
-              )}
+              {jobTitle || message.isAgent ? (
+                <span className="ca-msg-sub">
+                  {jobTitle}
+                  {jobTitle && message.isAgent ? " · " : null}
+                  {message.isAgent ? (
+                    <MessageAgentOwner
+                      ownerLabel={message.ownerLabel}
+                      ownerPubkey={message.ownerPubkey}
+                    />
+                  ) : null}
+                </span>
+              ) : null}
+              {timestampNode}
             </div>
           )}
 
-          <div
-            className={isContinuation ? "mt-0" : "mt-conversation-body"}
-            data-testid="message-body"
-          >
+          <div className="ca-msg-body" data-testid="message-body">
             <VideoReviewCommentMarkdown
               className={cn(
                 "max-w-full text-left text-message text-foreground",
@@ -307,6 +308,13 @@ export function InboxMessageRow({
               <p className="mt-1.5 text-xs text-destructive">
                 {reactionErrorMessage}
               </p>
+            ) : null}
+            {isAuthorAgent && !isContinuation ? (
+              <WorkAreaFileCard
+                authorPubkey={message.signerPubkey ?? message.authorPubkey}
+                content={message.content}
+                isKnownAgentPubkey={isKnownAgentPubkey}
+              />
             ) : null}
           </div>
         </div>
