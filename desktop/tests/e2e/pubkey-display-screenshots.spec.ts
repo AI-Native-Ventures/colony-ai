@@ -32,7 +32,7 @@ test("profile panel Public key row reveals its copy action on hover", async ({
 
   const pubkeyRow = page.getByTestId("user-profile-public-key");
   const copyIndicator = page.getByTestId("user-profile-public-key-copy-status");
-  await expect(page.getByTestId("user-profile-copy-pubkey")).toBeVisible();
+  await expect(pubkeyRow).toBeVisible();
   await expect(copyIndicator).toHaveCSS("opacity", "0");
   await pubkeyRow.hover();
   await expect(copyIndicator).toHaveCSS("opacity", "1");

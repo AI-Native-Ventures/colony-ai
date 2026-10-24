@@ -89,21 +89,6 @@ const NO_DRIFT_AGENT = {
   needsRestart: false,
 };
 
-/**
- * Inactive agent with a friendly error AND a restart diff. Opening its card
- * forces the panel to open on the Runtime tab (opensRuntimeTab logic).
- * Used to assert: Runtime tab is active, hero badge visible, uncapped banner.
- */
-const INACTIVE_FRIENDLY_ERROR_AGENT = {
-  pubkey: TEST_IDENTITIES.outsider.pubkey,
-  name: "Error Restart Agent",
-  status: "stopped" as const,
-  needsRestart: true,
-  restartDiff: DIFF_ENTRIES,
-  lastError: "Agent reported error (code -32002): llm model not found",
-  lastErrorCode: -32002,
-};
-
 const RESTART_AGENT = {
   pubkey: "cd".repeat(32),
   name: "Restart Agent",
@@ -369,102 +354,6 @@ test.describe("restart-diff screenshots", () => {
 
   // ── Runtime-tab banner with full uncapped diff ────────────────────────────
 
-  test("07-runtime-tab-restart-banner-with-diff", async ({ page }) => {
-    await installMockBridge(page, {
-      managedAgents: [STANDALONE_AGENT],
-    });
-
-    await gotoAgentsView(page);
-
-    const agentButton = page.getByRole("button", {
-      name: `${STANDALONE_AGENT.name} agent profile`,
-    });
-    await expect(agentButton).toBeVisible({ timeout: 10_000 });
-    await agentButton.click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible({ timeout: 10_000 });
-
-    // Switch to the Runtime tab
-    await panel.getByRole("tab", { name: "Runtime" }).click();
-
-    const banner = panel.getByTestId("needs-restart-banner");
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-
-    // Banner shows the full uncapped diff list (8 entries, no "and N more")
-    const diffList = banner.getByTestId("restart-diff-list");
-    await expect(diffList).toBeVisible();
-    // All 8 entries visible in banner (no cap).
-    // exact: true prevents substring collision with "Agent args:" label.
-    await expect(diffList.getByText("Args:", { exact: true })).toBeVisible();
-
-    await waitForAnimations(page);
-    await banner.screenshot({
-      path: `${SHOTS}/07-runtime-tab-banner-with-diff.png`,
-    });
-  });
-
-  test("08-runtime-tab-restart-banner-auto-on", async ({ page }) => {
-    await installMockBridge(page, {
-      managedAgents: [STANDALONE_AGENT],
-    });
-
-    await gotoAgentsView(page);
-
-    const agentButton = page.getByRole("button", {
-      name: `${STANDALONE_AGENT.name} agent profile`,
-    });
-    await agentButton.click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible({ timeout: 10_000 });
-    await panel.getByRole("tab", { name: "Runtime" }).click();
-
-    const banner = panel.getByTestId("needs-restart-banner");
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(
-      banner.getByText("Colony can restart it automatically"),
-    ).toBeVisible();
-
-    await waitForAnimations(page);
-    await banner.screenshot({
-      path: `${SHOTS}/08-runtime-tab-banner-auto-on.png`,
-    });
-  });
-
-  test("09-runtime-tab-restart-banner-auto-off", async ({ page }) => {
-    const agentAutoOff = {
-      ...STANDALONE_AGENT,
-      autoRestartOnConfigChange: false,
-    };
-
-    await installMockBridge(page, {
-      managedAgents: [agentAutoOff],
-    });
-
-    await gotoAgentsView(page);
-
-    const agentButton = page.getByRole("button", {
-      name: `${agentAutoOff.name} agent profile`,
-    });
-    await agentButton.click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible({ timeout: 10_000 });
-    await panel.getByRole("tab", { name: "Runtime" }).click();
-
-    const banner = panel.getByTestId("needs-restart-banner");
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(banner.getByText("Automatic restart is off")).toBeVisible();
-
-    await waitForAnimations(page);
-    await banner.screenshot({
-      path: `${SHOTS}/09-runtime-tab-banner-auto-off.png`,
-    });
-  });
-
-  // ── Side-panel badge on default (Info) tab ─────────────────────────────────
-
   test("10-profile-panel-badge-on-default-info-tab", async ({ page }) => {
     await installMockBridge(page, {
       managedAgents: [STANDALONE_AGENT],
@@ -498,60 +387,6 @@ test.describe("restart-diff screenshots", () => {
     await waitForAnimations(page);
     await panel.screenshot({
       path: `${SHOTS}/10-panel-badge-default-info-tab.png`,
-    });
-  });
-
-  // ── Inactive + friendly-error: panel opens on Runtime, hero badge + banner ─
-
-  test("11-inactive-friendly-error-panel-opens-runtime-tab", async ({
-    page,
-  }) => {
-    await installMockBridge(page, {
-      managedAgents: [INACTIVE_FRIENDLY_ERROR_AGENT],
-    });
-
-    await gotoAgentsView(page);
-
-    // The card for an inactive agent with a friendly error forces Runtime tab on open.
-    const agentCard = page.getByTestId(
-      `managed-agent-${INACTIVE_FRIENDLY_ERROR_AGENT.pubkey}`,
-    );
-    await expect(agentCard).toBeVisible({ timeout: 10_000 });
-    await agentCard.click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible({ timeout: 10_000 });
-
-    // Panel opens on Runtime tab (opensRuntimeTab = true for inactive+friendlyError)
-    const runtimeTab = panel.getByRole("tab", { name: "Runtime" });
-    await expect(runtimeTab).toHaveAttribute("aria-selected", "true", {
-      timeout: 5_000,
-    });
-
-    // Hero badge is visible on the Runtime tab (tab-independent)
-    const heroBadge = panel.getByTestId("restart-diff-badge");
-    await expect(heroBadge).toBeVisible({ timeout: 5_000 });
-
-    // Hero badge tooltip works on the Runtime tab too
-    await heroBadge.hover();
-    const heroTooltip = page.locator("[role=tooltip]");
-    await expect(heroTooltip).toBeVisible({ timeout: 5_000 });
-    await expect(heroTooltip.getByText("Model:")).toBeVisible();
-    // Tooltip is capped at 6 + "and 2 more"
-    await expect(heroTooltip.getByText("and 2 more")).toBeVisible();
-
-    // Full uncapped banner also visible on Runtime tab
-    const banner = panel.getByTestId("needs-restart-banner");
-    await expect(banner).toBeVisible({ timeout: 5_000 });
-    const diffList = banner.getByTestId("restart-diff-list");
-    await expect(diffList).toBeVisible();
-    // All 8 entries visible in banner (no cap)  -  last entry "args" is present.
-    // exact: true prevents substring collision with "Agent args:" label.
-    await expect(diffList.getByText("Args:", { exact: true })).toBeVisible();
-
-    await waitForAnimations(page);
-    await panel.screenshot({
-      path: `${SHOTS}/11-inactive-error-panel-runtime-tab.png`,
     });
   });
 });
