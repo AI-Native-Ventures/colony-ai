@@ -292,16 +292,6 @@
   font-weight: 800;
 }
 
-/* A named theme paints its open row with its own selected surface and the
-   foreground it chose for that surface, not with a white wash. */
-:root:not([data-buzz-sidebar])
-  .app-sidebar-full-shell
-  [data-sidebar="menu-button"][data-active="true"] {
-  background: hsl(var(--sidebar-accent));
-  box-shadow: none;
-  color: hsl(var(--sidebar-accent-foreground));
-}
-
 /* Appearance, "Prominent selected tab": the open row takes the accent as a
    flat fill instead of the soft white one. */
 :root[data-prominent-active-tab]
@@ -553,6 +543,9 @@
   flex: 1;
   padding: 0;
   color: var(--colony-sidebar-ink-soft);
+  /* A theme change repaints the label at once; a colour fade would leave it
+     part-way between two themes for a moment. */
+  transition: none;
   font-size: calc(12.5 * var(--colony-px));
   font-weight: 800;
   letter-spacing: 0.09em;
