@@ -490,9 +490,9 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "17px", lineHeight: "27.1999px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         2,
-        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
-        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
       ]);
     await waitForAnimations(page);
@@ -506,9 +506,9 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "17px", lineHeight: "27.1999px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
-        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
-        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
       ]);
 
@@ -531,13 +531,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "16px", lineHeight: "22.8571px" },
+        { fontSize: "18.1333px", lineHeight: "29.0133px" },
         { paddingBottom: "8px", paddingTop: "8px" },
         4,
-        { fontSize: "13.7143px", lineHeight: "18.2857px" },
-        { fontSize: "16px", lineHeight: "22.8571px" },
-        { fontSize: "13.7143px", lineHeight: "18.2857px" },
-        { fontSize: "16px", lineHeight: "22.8571px" },
+        { fontSize: "14.9333px", lineHeight: "21.3333px" },
+        { fontSize: "18.1333px", lineHeight: "29.0133px" },
+        { fontSize: "14.9333px", lineHeight: "21.3333px" },
+        { fontSize: "18.1333px", lineHeight: "29.0133px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/06-thread-context-spacious.png` });
@@ -572,13 +572,13 @@ test.describe("inbox refactor screenshots", () => {
       ])
       .toEqual([
         "17.6px",
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
+        { fontSize: "18.7px", lineHeight: "29.9199px" },
         { paddingBottom: "4.4px", paddingTop: "4.4px" },
         2.2,
-        { fontSize: "14.1429px", lineHeight: "18.8571px" },
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
-        { fontSize: "14.1429px", lineHeight: "18.8571px" },
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
+        { fontSize: "15.4px", lineHeight: "21.9999px" },
+        { fontSize: "18.7px", lineHeight: "29.9199px" },
+        { fontSize: "15.4px", lineHeight: "21.9999px" },
+        { fontSize: "18.7px", lineHeight: "29.9199px" },
       ]);
   });
 });

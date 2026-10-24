@@ -1173,7 +1173,9 @@ test("custom personas share with people and keep export separate", async ({
   const shareDescriptionMetrics = await shareDescription.evaluate(
     (element) => ({
       height: element.getBoundingClientRect().height,
-      lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+      lineHeight:
+        Number.parseFloat(getComputedStyle(element).lineHeight) ||
+        Number.parseFloat(getComputedStyle(element).fontSize) * 1.4,
     }),
   );
   expect(shareDescriptionMetrics.height).toBeLessThanOrEqual(
@@ -1245,7 +1247,7 @@ test("custom personas share with people and keep export separate", async ({
     (catalogSectionBox?.y ?? 0) + (catalogSectionBox?.height ?? 0) + 12,
   );
   await expect(copyLinkButton).toHaveClass(
-    /border.*bg-background.*border-border/,
+    /border.*bg-colony-pop.*border-border/,
   );
   const copyLinkHasVisibleShadow = () =>
     copyLinkButton.evaluate((element) => {

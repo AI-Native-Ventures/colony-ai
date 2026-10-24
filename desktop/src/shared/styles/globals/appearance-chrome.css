@@ -37,8 +37,9 @@
   --colony-hover: var(--muted);
   --colony-field: var(--muted);
   --colony-sidebar-foreground: var(--sidebar-foreground);
-  /* A named theme's sidebar ink is its own foreground, not the Colony ink. */
-  --colony-sidebar-ink: hsl(var(--colony-fg));
+  /* A named theme's sidebar ink is its own sidebar foreground (lifted until it
+     reads on the open row's wash), not the Colony ink. */
+  --colony-sidebar-ink: hsl(var(--sidebar-foreground));
   --colony-sidebar-ink-soft: hsl(var(--colony-fg-secondary));
   --colony-sidebar-selected-foreground: var(--sidebar-active-foreground);
   --colony-sidebar-muted-foreground: hsl(var(--muted-foreground));
