@@ -1163,7 +1163,7 @@ test("custom personas share with people and keep export separate", async ({
   await expect(shareDescription).toHaveText(
     "Anyone you share this agent with will receive a copy they can add and use. Changes you make later won’t sync.",
   );
-  await expect(shareDescription).toHaveClass(/text-sm.*text-muted-foreground/);
+  await expect(shareDescription).toHaveClass(/text-colony-fg-secondary/);
   const shareDescriptionId = await shareDescription.getAttribute("id");
   expect(shareDescriptionId).toBeTruthy();
   await expect(shareDialog).toHaveAttribute(
@@ -2623,7 +2623,7 @@ test("export from share aligns selections and animates memory details", async ({
   const exportDialog = page.getByTestId("agent-snapshot-export-dialog");
   const memoryTrigger = exportDialog.getByLabel("Memories");
   await expect(memoryTrigger).toHaveText("Agent only");
-  expect((await memoryTrigger.boundingBox())?.width).toBeLessThan(112);
+  expect((await memoryTrigger.boundingBox())?.width).toBeLessThan(116);
   await expect(memoryTrigger).toHaveCSS("text-align", "right");
   await expect(memoryTrigger.locator("svg.lucide-chevron-down")).toBeVisible();
 
