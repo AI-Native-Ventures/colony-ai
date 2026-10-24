@@ -153,14 +153,14 @@ test.describe("company goals live relay journey", () => {
     await expect(page.getByTestId("goal-detail")).toContainText(editedTitle);
 
     await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-    await expect(page.getByTestId("reference-goal-button")).toBeVisible();
-    await page.getByTestId("reference-goal-button").click();
-    await expect(page.getByTestId("goal-reference-picker")).toBeVisible();
-    await page.getByTestId("goal-reference-search").fill(childTitle);
-    await page.getByTestId(`insert-goal-${childGoalId}`).click();
+    // The goal picker button left the composer with Reference goal; a goal
+    // reference is posted as a link.
+    await expect(page.getByTestId("message-composer")).toBeVisible();
     await page
       .getByTestId("message-input")
-      .pressSequentially("This sub-goal is the next launch milestone.");
+      .pressSequentially(
+        `buzz://goal/${childGoalId} This sub-goal is the next launch milestone.`,
+      );
     await page.getByTestId("send-message").click();
     const childCard = page.getByTestId(`goal-reference-card-${childGoalId}`);
     await expect(childCard).toBeVisible();

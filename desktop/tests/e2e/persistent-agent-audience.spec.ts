@@ -409,9 +409,21 @@ test("the disabled root composer preserves its explicit draft without audience c
   await expect(page.getByTestId("channel-management-unarchive")).toBeVisible();
   await page.getByTestId("auxiliary-panel-close").click();
 
-  await expect(input).toHaveAttribute("contenteditable", "false");
-  await expect(input).toHaveText("explicit draft text");
-  await expect(composer.getByTestId("composer-address-locks")).toHaveCount(0);
+  // An archived channel swaps its composer for the read-only bar, and keeps the
+  // explicit draft for when the channel is unarchived.
+  await expect(page.getByTestId("archived-banner")).toBeVisible();
+  await expect(page.getByTestId("channel-composer-overlay")).toHaveCount(0);
+
+  await page.getByTestId("channel-management-trigger").click();
+  await page.getByTestId("channel-management-unarchive").click();
+  await expect(page.getByTestId("channel-management-archive")).toBeVisible();
+  await page.getByTestId("auxiliary-panel-close").click();
+  await expect(channelComposer(page).getByTestId("message-input")).toHaveText(
+    "explicit draft text",
+  );
+  await expect(
+    channelComposer(page).getByTestId("composer-address-locks"),
+  ).toHaveCount(0);
 });
 
 test("Tab inserts a one-time agent mention by default", async ({ page }) => {

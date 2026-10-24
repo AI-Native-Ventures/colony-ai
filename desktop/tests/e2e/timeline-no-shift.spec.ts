@@ -54,10 +54,12 @@ async function snapshotAnchor(timeline: Locator): Promise<AnchorSnapshot> {
       const rect = row.getBoundingClientRect();
       return rect.bottom > scrollerRect.top && rect.top < scrollerRect.bottom;
     });
+    // A row whose box starts within a pixel of the edge can flip in or out with
+    // sub-pixel rounding, so anchor on the first row clearly inside.
     const anchor =
       visibleRows.find((row) => {
         const rect = row.getBoundingClientRect();
-        return rect.top - scrollerRect.top >= 0;
+        return rect.top - scrollerRect.top >= 2;
       }) ?? visibleRows[0];
 
     if (!anchor) {

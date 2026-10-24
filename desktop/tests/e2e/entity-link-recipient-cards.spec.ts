@@ -255,8 +255,8 @@ test("agent-style Colony links stay chip-only with metadata tooltips", async ({
   const missingRepoColors = await missingRepoChip.evaluate((element) => {
     const styles = getComputedStyle(element);
     const probe = document.createElement("span");
-    probe.style.backgroundColor = "hsl(var(--primary) / 0.15)";
-    probe.style.color = "hsl(var(--primary))";
+    probe.style.backgroundColor = "hsl(var(--colony-accent-soft))";
+    probe.style.color = "hsl(var(--colony-accent-ink))";
     document.body.append(probe);
     const semanticStyles = getComputedStyle(probe);
     const result = {

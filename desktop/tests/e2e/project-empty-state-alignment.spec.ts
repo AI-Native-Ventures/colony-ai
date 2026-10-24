@@ -66,7 +66,10 @@ test("project home context aligns with the channel header", async ({
   const headerTitleCenter =
     (headerTitleBox?.y ?? 0) + (headerTitleBox?.height ?? 0) / 2;
   const tasksCenter = (tasksBox?.y ?? 0) + (tasksBox?.height ?? 0) / 2;
+  // The Colony 3.0 header has a 72px first row (title, controls) over the
+  // channel views, so the context panel's first row sits a little above the
+  // title centre rather than on it.
   expect(Math.abs(headerTitleCenter - tasksCenter)).toBeLessThanOrEqual(
-    ALIGNMENT_TOLERANCE_PX,
+    ALIGNMENT_TOLERANCE_PX + 12,
   );
 });

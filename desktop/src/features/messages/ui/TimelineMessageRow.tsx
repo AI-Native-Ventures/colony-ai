@@ -216,6 +216,7 @@ export function MessageRowItem({
         huddleMemberPubkeysPending={huddleMemberPubkeysPending}
         hideAgentAccessBadge={hideAgentAccessBadges}
         isContinuation={isContinuation}
+        isFollowedByContinuation={isFollowedByContinuation}
         isUnread={isUnread}
         playEntrance={playEntrance}
         onEntranceComplete={onEntranceComplete}

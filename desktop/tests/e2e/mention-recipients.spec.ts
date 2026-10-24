@@ -485,7 +485,9 @@ for (const { kind, scale } of [
       }
       const result = await geometry(host);
       expect(result.chips.length).toBeGreaterThanOrEqual(2);
-      expect(result.scrollWidth).toBeLessThanOrEqual(result.clientWidth + 1);
+      expect(result.scrollWidth, `${stage} fits its host`).toBeLessThanOrEqual(
+        result.clientWidth + 1,
+      );
       for (const chip of result.chips) {
         expect(chip.wrap).toBe("anywhere");
         if (stage !== "sent") {

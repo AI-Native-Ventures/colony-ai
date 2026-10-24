@@ -100,6 +100,12 @@ async function openMessageMenu(page: Page, messageId: string, content: string) {
   return item;
 }
 
+async function openPinsScreen(page: Page) {
+  // Pins moved from the header into Channel settings.
+  await page.getByTestId("channel-management-trigger").click();
+  await page.getByTestId("channel-pins-trigger").click();
+}
+
 async function openKnowledge(page: Page) {
   await headerKnowledge(page).click();
   await expect(dock(page)).toBeVisible();
@@ -137,7 +143,7 @@ test.describe("pinned messages", () => {
     ).toBeVisible();
 
     // The Pins screen reads the same source.
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     const screen = page.getByTestId("channel-pins-screen");
     await expect(screen).toBeVisible();
     await expect(
@@ -303,7 +309,7 @@ test.describe("pinned messages", () => {
     page,
   }) => {
     await boot(page);
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     const screen = page.getByTestId("channel-pins-screen");
     await expect(
       screen.getByRole("heading", { name: "No pinned messages" }),
@@ -367,7 +373,7 @@ for (const viewport of [
     ).toBeVisible();
     await shot("knowledge");
 
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     await expect(page.getByTestId("channel-pins-screen")).toBeVisible();
     await expect(
       page

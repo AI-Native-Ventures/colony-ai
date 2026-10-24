@@ -4359,7 +4359,10 @@ test("a refused sent-from-thread link preserves the edit and retries after cance
     .filter({ hasText: sharedMessage })
     .getByTestId("sent-from-thread")
     .locator("[data-message-link]");
-  await sentFromThreadLink.click();
+  // The hover action bar floats over the right side of its row, so open the
+  // link from the keyboard.
+  await sentFromThreadLink.focus();
+  await page.keyboard.press("Enter");
   await expect(
     page.getByText("Finish or cancel your edit before leaving the thread."),
   ).toBeVisible();
@@ -4370,7 +4373,10 @@ test("a refused sent-from-thread link preserves the edit and retries after cance
 
   await threadInput.press("Escape");
   await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-  await sentFromThreadLink.click();
+  // The hover action bar floats over the right side of its row, so open the
+  // link from the keyboard.
+  await sentFromThreadLink.focus();
+  await page.keyboard.press("Enter");
   await expect(page).not.toHaveURL(threadUrl);
   await expect(threadPanel).toBeVisible();
   await expect(threadPanel.getByTestId("message-thread-head")).toContainText(

@@ -468,9 +468,11 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   ).toBeVisible();
   await page.getByRole("button", { name: "Open decision" }).click();
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
-  await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
-    "USD 8.75 / week",
-  );
+  await expect(
+    page
+      .getByTestId("message-thread-head")
+      .getByTestId("ask-money-allowance-proposal"),
+  ).toContainText("USD 8.75 / week");
   await expect(
     page.getByTestId("message-thread-head").getByTestId("ask-card"),
   ).toContainText("The employee needs more capacity for the approved work.");

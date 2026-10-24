@@ -101,6 +101,7 @@ export const MessageRow = React.memo(
     collapseDescendantsLabel,
     isFollowingThread,
     isContinuation = false,
+    isFollowedByContinuation = false,
     isUnread,
     layoutVariant = "default",
     message,
@@ -142,6 +143,8 @@ export const MessageRow = React.memo(
     collapseDescendantsLabel?: string;
     isFollowingThread?: boolean;
     isContinuation?: boolean;
+    /** The next row continues this author's run, so the two rows sit tight. */
+    isFollowedByContinuation?: boolean;
     isUnread?: boolean;
     layoutVariant?: "default" | "thread-reply";
     message: TimelineMessage;
@@ -997,6 +1000,9 @@ export const MessageRow = React.memo(
           className={cn(
             "group/message relative z-10 transition-colors",
             hoverBackground ? "c3c-row" : "c3c-row--inner",
+            hoverBackground &&
+              (isDisplayedAsContinuation || isFollowedByContinuation) &&
+              "c3c-row--tight",
             playEntrance && "motion-enter-conversation",
             "flex gap-3.5",
             isDisplayedAsContinuation ? "items-center" : "items-start",
@@ -1087,6 +1093,7 @@ export const MessageRow = React.memo(
     prev.huddleMemberPubkeysPending === next.huddleMemberPubkeysPending &&
     prev.hideAgentAccessBadge === next.hideAgentAccessBadge &&
     prev.isContinuation === next.isContinuation &&
+    prev.isFollowedByContinuation === next.isFollowedByContinuation &&
     prev.isFollowingThread === next.isFollowingThread &&
     prev.isUnread === next.isUnread &&
     prev.layoutVariant === next.layoutVariant &&

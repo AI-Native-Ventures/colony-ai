@@ -107,7 +107,7 @@ async function joinGeneralChannel(page: import("@playwright/test").Page) {
     .getByRole("button", { name: "Join" });
   await expect(joinButton).toBeVisible();
   await joinButton.click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
 }
 
 test("goal list searches, filters and opens the signed head", async ({
@@ -343,7 +343,7 @@ test("progress status is explicit, archive restores, and delete respects sub-goa
   await expect(page.getByTestId(`goal-row-${ACTIVE_GOAL_ID}`)).toHaveCount(0);
 });
 
-test("chat picker inserts a goal chip and the message card opens that goal", async ({
+test("a goal link in a message renders a card that opens that goal", async ({
   page,
 }) => {
   await installGoalsMock(page);
@@ -361,27 +361,6 @@ test("chat picker inserts a goal chip and the message card opens that goal", asy
   await card.click();
   await expect(page.getByTestId("goal-detail")).toContainText(
     "Increase qualified enquiries",
-  );
-
-  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  await page.getByTestId("reference-goal-button").click();
-  await expect(page.getByTestId("goal-reference-picker")).toBeVisible();
-  await expect(
-    page.getByText("Find a goal or sub-goal", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByTestId(`insert-goal-${ARCHIVED_GOAL_ID}`)).toHaveCount(
-    0,
-  );
-  await page.getByTestId("goal-reference-search").fill("qualified");
-  const insertGoal = page.getByTestId(`insert-goal-${ACTIVE_GOAL_ID}`);
-  await page.keyboard.press("Tab");
-  await expect(insertGoal).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`#/channels/${GENERAL_CHANNEL_ID}$`));
-  await expect(page.locator("[data-composer-buzz-link]")).toBeVisible();
-  await expect(page.locator("[data-composer-buzz-link]")).toHaveAttribute(
-    "data-href",
-    `buzz://goal/${ACTIVE_GOAL_ID}`,
   );
 });
 

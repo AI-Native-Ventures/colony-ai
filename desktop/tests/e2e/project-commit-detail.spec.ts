@@ -285,15 +285,8 @@ test("creating a project opens its channel conversation", async ({ page }) => {
   );
   await expect(page.getByTestId("chat-title")).toHaveText("multi-repo-demo");
   await expect(page.getByTestId("project-agent-chat-panel")).toHaveCount(0);
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).not.toContainText(
-    "This is the beginning",
-  );
-  await expect(
-    page
-      .getByTestId("message-channel-intro-icon")
-      .getByTestId("project-channel-icon"),
-  ).toBeVisible();
+  // A new project channel starts with the empty conversation card.
+  await expect(page.getByTestId("message-empty")).toBeVisible();
   await expect(
     page.getByTestId("chat-header").getByTestId("project-channel-icon"),
   ).toBeVisible();
@@ -302,15 +295,8 @@ test("creating a project opens its channel conversation", async ({ page }) => {
       .getByTestId("channel-multi-repo-demo")
       .getByTestId("project-channel-icon"),
   ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-files"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-files-title"),
-  ).toHaveText("Add files");
-  await page.getByTestId("channel-intro-action-add-files").click();
-  await expect(page.getByTestId("add-project-repository-dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
+  // The intro's Add files card is gone with the other intro actions (the
+  // repository dialog is covered by the project home specs).
   await expect(page.getByTestId("add-project-repository-dialog")).toBeHidden();
   await expect(page.getByTestId("project-home-summary-column")).toBeVisible();
   await expect(

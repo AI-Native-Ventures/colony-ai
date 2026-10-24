@@ -513,7 +513,11 @@ test("dropping a file on the channel column attaches it to the composer", async 
     }),
   ]);
 
-  expect(overlayBox).toEqual(dropZoneBox);
+  // Sub-pixel layout rounding aside, the overlay covers the drop zone exactly.
+  expect(overlayBox?.x).toBeCloseTo(dropZoneBox?.x ?? 0, 0);
+  expect(overlayBox?.y).toBeCloseTo(dropZoneBox?.y ?? 0, 0);
+  expect(overlayBox?.width).toBeCloseTo(dropZoneBox?.width ?? 0, 0);
+  expect(overlayBox?.height).toBeCloseTo(dropZoneBox?.height ?? 0, 0);
   expect(overlayStyles).not.toBeNull();
   expect(overlayStyles?.overlayRadius).toBe(overlayStyles?.containerRadius);
   expect(overlayStyles?.backdropFilter).toContain("blur");
