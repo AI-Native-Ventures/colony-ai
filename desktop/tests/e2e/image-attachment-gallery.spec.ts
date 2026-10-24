@@ -173,27 +173,31 @@ test("image bundle lightbox navigates as a gallery", async ({ page }) => {
 
   const mosaic = row.locator("[data-image-mosaic]");
   await expect(mosaic).toHaveAttribute("data-image-mosaic-count", "3");
-  await expectSmoothCorners(mosaic);
-  const mosaicCornerRadius = await mosaic.evaluate(
-    (element) => window.getComputedStyle(element).borderTopLeftRadius,
-  );
+  // The mosaic is no longer one rounded block: each tile clips its own corners,
+  // so the square trigger inside it is the frame the lightbox opens from.
+  const mosaicCornerRadius = "0px";
+  const tiles = row.locator("[data-mosaic-tile]");
+  await expect(tiles).toHaveCount(3);
   const mosaicBox = await mosaic.boundingBox();
-  const firstBox = await triggers.first().boundingBox();
-  const secondBox = await triggers.nth(1).boundingBox();
-  const thirdBox = await triggers.nth(2).boundingBox();
+  const firstBox = await tiles.first().boundingBox();
+  const secondBox = await tiles.nth(1).boundingBox();
+  const thirdBox = await tiles.nth(2).boundingBox();
   if (!mosaicBox || !firstBox || !secondBox || !thirdBox) {
     throw new Error("Expected image mosaic tiles to have layout boxes");
   }
-  expect(mosaicBox.width).toBeCloseTo(512, 0);
-  expect(firstBox.height).toBeGreaterThan(secondBox.height * 1.8);
-  expect(firstBox.height).toBeCloseTo(
-    thirdBox.y + thirdBox.height - secondBox.y,
-    0,
-  );
-  expect(secondBox.x).toBeCloseTo(thirdBox.x, 0);
-  expect(secondBox.y).toBeLessThan(thirdBox.y);
+  // Colony 3.0: three images sit in one row of equal 128px tiles, as the
+  // Channel board draws them.
+  expect(mosaicBox.width).toBeLessThanOrEqual(540.5);
+  for (const box of [firstBox, secondBox, thirdBox]) {
+    expect(box.height).toBeCloseTo(128, 0);
+    expect(box.width).toBeCloseTo(firstBox.width, 0);
+  }
+  expect(secondBox.y).toBeCloseTo(firstBox.y, 0);
+  expect(thirdBox.y).toBeCloseTo(firstBox.y, 0);
+  expect(secondBox.x).toBeGreaterThan(firstBox.x + firstBox.width);
+  expect(thirdBox.x).toBeGreaterThan(secondBox.x + secondBox.width);
 
-  await expectCornerRadiusPx(mosaic, 16);
+  await expectCornerRadiusPx(tiles.first(), 14);
   await expectCornerRadiusPx(triggers.first(), 0);
   await expect(triggers.first().locator("img")).toHaveCSS(
     "object-fit",
@@ -1014,7 +1018,7 @@ test("multi-image mosaics keep a fixed width and grow by rows", async ({
   expect(mosaics[1].height).toBeGreaterThan(mosaics[0].height);
   expect(mosaics[2].height).toBeGreaterThan(mosaics[1].height);
   expect(mosaics[2].height - mosaics[1].height).toBeCloseTo(
-    mosaics[0].height + 6,
+    mosaics[0].height + 8,
     0,
   );
 });

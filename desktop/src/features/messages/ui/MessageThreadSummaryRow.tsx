@@ -7,7 +7,10 @@ import type {
 import type { TimelineMessage } from "@/features/messages/types";
 import type { ThreadDepthGuideAction } from "@/features/messages/ui/MessageRow";
 import { MaskedAvatarBadgeFrame } from "@/features/profile/ui/MaskedAvatarBadgeFrame";
-import { formatThreadSummaryLastReplyTime } from "@/features/messages/lib/dateFormatters";
+import {
+  formatThreadSummaryLastReplyClock,
+  formatThreadSummaryLastReplyTime,
+} from "@/features/messages/lib/dateFormatters";
 import {
   getThreadReplyAvatarCenterRem,
   getThreadReplyIndentRem,
@@ -17,15 +20,14 @@ import {
   THREAD_REPLY_ROW_MARGIN_INLINE_REM,
 } from "@/features/messages/lib/threadTreeLayout";
 import { cn } from "@/shared/lib/cn";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 
 // Workspace channel rows use a smaller avatar than the base thread row model.
 const THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_CONTENT_OFFSET_REM =
   THREAD_REPLY_BODY_OFFSET_REM - THREAD_REPLY_ROW_MARGIN_INLINE_REM;
-const THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_AVATAR_SIZE = 24;
-const THREAD_SUMMARY_AVATAR_OVERLAP = 4;
+const THREAD_SUMMARY_AVATAR_OVERLAP = 5;
 const THREAD_SUMMARY_STACK_CUTOUT = {
   cx: THREAD_SUMMARY_AVATAR_SIZE * 1.5 - THREAD_SUMMARY_AVATAR_OVERLAP,
   cy: THREAD_SUMMARY_AVATAR_SIZE / 2,
@@ -45,12 +47,11 @@ function ParticipantAvatar({
 }) {
   const hasForegroundAvatar = index < participantCount - 1;
   const avatar = (
-    <UserAvatar
+    <ProfileAvatar
       avatarUrl={participant.avatarUrl}
-      className="h-6 w-6 text-2xs"
-      displayName={participant.author}
+      className="h-6 w-6 text-3xs"
+      label={participant.author}
       shape={participant.isAgent ? "squircle" : "circle"}
-      size="sm"
       testId={`message-thread-summary-avatar-${index}`}
     />
   );
@@ -120,9 +121,6 @@ export function MessageThreadSummaryRow({
     THREAD_SUMMARY_CONTENT_OFFSET_REM -
       (compactTimelineAvatar ? THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM : 0),
   );
-  const surfaceInsetStart = `calc(${contentPaddingStart} - ${threadReplyLength(
-    THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM,
-  )})`;
   const replyLabel = summary.replyCount === 1 ? "reply" : "replies";
   const summaryAriaLabel = summary.lastReplyAt
     ? `View thread with ${summary.replyCount} ${replyLabel}, last reply ${formatThreadSummaryLastReplyTime(summary.lastReplyAt)}`
@@ -139,7 +137,7 @@ export function MessageThreadSummaryRow({
   );
 
   return (
-    <div className="relative pb-1 pt-0.5">
+    <div className="relative pt-1.5">
       {showDepthGuides && depthGuideItems.length > 0 ? (
         <div
           aria-hidden={
@@ -167,7 +165,9 @@ export function MessageThreadSummaryRow({
                     aria-hidden
                     className={cn(
                       "pointer-events-none absolute bottom-0 top-0 border-l transition-[border-color]",
-                      isHighlighted ? "border-primary" : "border-border/45",
+                      isHighlighted
+                        ? "border-primary"
+                        : "border-colony-border-strong",
                     )}
                     style={{
                       borderLeftWidth: threadReplyLength(
@@ -222,7 +222,9 @@ export function MessageThreadSummaryRow({
                 aria-hidden
                 className={cn(
                   "pointer-events-none absolute bottom-0 top-0 border-l transition-[border-color]",
-                  isHighlighted ? "border-primary" : "border-border/45",
+                  isHighlighted
+                    ? "border-primary"
+                    : "border-colony-border-strong",
                 )}
                 key={`${message.id}-summary-depth-guide-${offset}`}
                 style={{
@@ -242,25 +244,24 @@ export function MessageThreadSummaryRow({
           shifting this row 2px and the bottom-pinned timeline with it. */}
       <button
         aria-label={summaryAriaLabel}
-        className="group relative isolate flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
+        className="c3c-thread-summary group relative isolate flex w-fit max-w-full cursor-pointer items-center gap-2.5 rounded-xl py-1.5 pl-1.5 pr-2.5 text-left transition-[box-shadow,background-color] focus-visible:outline-hidden"
         data-thread-head-id={message.id}
         data-testid="message-thread-summary"
         onClick={() => onOpenThread(message)}
         style={{
-          marginLeft: hoverLeft,
-          maxWidth: `calc(100% - ${hoverLeft})`,
-          paddingLeft: contentPaddingStart,
+          marginLeft:
+            depth === 0
+              ? `calc(${message.isAgent ? 56 : 54} * var(--colony-px))`
+              : `calc(${hoverLeft} + ${contentPaddingStart})`,
+          maxWidth: "100%",
         }}
         type="button"
       >
+        {/* The pill's own surface (the button carries the white fill). */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-[-0.125rem] top-[-0.125rem] rounded-full opacity-0 ring-border/70 transition-[background-color,box-shadow,opacity] group-hover:bg-background/95 group-hover:opacity-100 group-hover:ring-1 group-focus-visible:bg-background/95 group-focus-visible:opacity-100 group-focus-visible:ring-1 group-focus-visible:ring-ring"
+          className="pointer-events-none absolute inset-0 rounded-xl"
           data-testid="message-thread-summary-surface"
-          style={{
-            left: surfaceInsetStart,
-            right: 0,
-          }}
         />
         <div className="relative z-10 flex shrink-0 items-center">
           {summary.participants.map((participant, index) => (
@@ -275,39 +276,35 @@ export function MessageThreadSummaryRow({
             />
           ))}
         </div>
-        <div className="relative z-10 min-w-0">
-          <div>
-            <span className="font-medium transition-colors group-hover:text-foreground">
-              {summary.replyCount} {replyLabel}
+        <div className="relative z-10 flex min-w-0 items-baseline gap-2.5">
+          <span className="c3c-thread-summary-count">
+            {summary.replyCount} {replyLabel}
+          </span>
+          {unreadCount != null && unreadCount > 0 ? (
+            <span
+              className="c3c-thread-summary-meta"
+              data-testid="thread-unread-badge"
+            >
+              ({unreadCount} new)
             </span>
-            {unreadCount != null && unreadCount > 0 ? (
-              <span className="ml-1" data-testid="thread-unread-badge">
-                ({unreadCount} new)
+          ) : null}
+          {summary.lastReplyAt ? (
+            <span className="inline-grid c3c-thread-summary-meta">
+              <span
+                className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0"
+                data-testid="message-thread-summary-last-reply"
+              >
+                last reply{" "}
+                {formatThreadSummaryLastReplyClock(summary.lastReplyAt)}
               </span>
-            ) : null}
-            {summary.lastReplyAt ? (
-              <>
-                <span className="mx-1 font-normal text-muted-foreground/50">
-                  ·
-                </span>
-                <span className="inline-grid font-normal text-muted-foreground/70">
-                  <span
-                    className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0"
-                    data-testid="message-thread-summary-last-reply"
-                  >
-                    last reply{" "}
-                    {formatThreadSummaryLastReplyTime(summary.lastReplyAt)}
-                  </span>
-                  <span
-                    className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                    data-testid="message-thread-summary-hover-action"
-                  >
-                    View thread
-                  </span>
-                </span>
-              </>
-            ) : null}
-          </div>
+              <span
+                className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                data-testid="message-thread-summary-hover-action"
+              >
+                View thread
+              </span>
+            </span>
+          ) : null}
         </div>
       </button>
     </div>

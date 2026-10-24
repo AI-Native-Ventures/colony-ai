@@ -67,7 +67,7 @@ export function MessageTimestamp({
         <TooltipTrigger asChild>
           <p
             className={cn(
-              "shrink-0 cursor-default whitespace-nowrap text-message-timestamp font-normal tabular-nums text-muted-foreground/55",
+              "c3c-time shrink-0 cursor-default whitespace-nowrap tabular-nums",
               className,
             )}
             data-testid="message-timestamp"

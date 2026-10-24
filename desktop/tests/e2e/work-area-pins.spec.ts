@@ -93,11 +93,20 @@ async function emitPin(
 async function openMessageMenu(page: Page, messageId: string, content: string) {
   const row = page.getByTestId("message-row").filter({ hasText: content });
   await expect(row).toBeVisible();
+  // A menu chosen from a moment ago is still easing out; opening the next one
+  // over it swallows the click.
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await row.hover();
   await page.getByTestId(`more-actions-${messageId}`).click();
   const item = page.getByTestId(`pin-message-${messageId}`);
   await expect(item).toBeVisible();
   return item;
+}
+
+async function openPinsScreen(page: Page) {
+  // Pins moved from the header into Channel settings.
+  await page.getByTestId("channel-management-trigger").click();
+  await page.getByTestId("channel-pins-trigger").click();
 }
 
 async function openKnowledge(page: Page) {
@@ -137,7 +146,7 @@ test.describe("pinned messages", () => {
     ).toBeVisible();
 
     // The Pins screen reads the same source.
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     const screen = page.getByTestId("channel-pins-screen");
     await expect(screen).toBeVisible();
     await expect(
@@ -303,7 +312,7 @@ test.describe("pinned messages", () => {
     page,
   }) => {
     await boot(page);
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     const screen = page.getByTestId("channel-pins-screen");
     await expect(
       screen.getByRole("heading", { name: "No pinned messages" }),
@@ -367,7 +376,7 @@ for (const viewport of [
     ).toBeVisible();
     await shot("knowledge");
 
-    await page.getByTestId("channel-pins-trigger").click();
+    await openPinsScreen(page);
     await expect(page.getByTestId("channel-pins-screen")).toBeVisible();
     await expect(
       page

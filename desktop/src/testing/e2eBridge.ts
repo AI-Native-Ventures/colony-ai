@@ -249,6 +249,8 @@ type MockManagedAgentRuntimeSeed = {
   pubkey: string;
   relayUrl: string;
   lifecycle?: MockManagedAgentRuntimeRow["lifecycle"];
+  /** False for an agent that still needs setup on this device. Defaults to true. */
+  localSetup?: boolean;
 };
 
 type MockRelayAgentSeed = {
@@ -372,6 +374,65 @@ export type VisualFixtureSeed = {
   today: HomeFeedVisualFixture;
 };
 
+/** Extra records for the Colony 3.0 conversation boards. */
+export type Colony3Extras = {
+  // The pubkey "self" stands for the signed-in user wherever a pubkey is given
+  // (message authors and any tag value).
+  profiles?: Array<{
+    pubkey: string;
+    displayName: string;
+    isAgent?: boolean;
+    ownerPubkey?: string | null;
+    about?: string | null;
+    avatarUrl?: string | null;
+    presence?: PresenceStatus;
+  }>;
+  channels?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    channelType?: "stream" | "forum" | "dm";
+    visibility?: "open" | "private";
+    archived?: boolean;
+    /** Members besides the signed-in user (who joins unless `selfIsMember` is false). */
+    members?: Array<{ pubkey: string; role?: RawChannelMember["role"] }>;
+    selfIsMember?: boolean;
+    selfRole?: RawChannelMember["role"];
+    lastMessageAt?: number | null;
+    ttlSeconds?: number | null;
+    ttlDeadline?: string | null;
+  }>;
+  /** Adds (or re-roles) members of channels the workspace already has. */
+  members?: Array<{
+    channelId: string;
+    pubkey: string;
+    role?: RawChannelMember["role"];
+  }>;
+  /** Edits seeded channels in place (the reference descriptions are not the design's). */
+  patchChannels?: Array<{ id: string; description?: string; name?: string }>;
+  /** Removes the signed-in user from channels, to show the not-a-member views. */
+  leaveChannelIds?: string[];
+  /** Channels read to the end, so no New divider or unread pill shows. */
+  readChannelIds?: string[];
+  /** Drops the history the reference workspace seeded in these channels, so a
+   *  board's own `messages` are the whole conversation. */
+  clearMessageChannelIds?: string[];
+  /** Same as `clearMessageChannelIds` (kept for boards that already use it). */
+  clearMessagesIn?: string[];
+  /** Overrides the last-activity time (unix seconds) of channels by id. */
+  lastMessageAt?: Record<string, number>;
+  messages?: Array<{
+    channelId: string;
+    id: string;
+    /** A pubkey, or "self" for the signed-in user. */
+    pubkey: string;
+    createdAt: number;
+    kind?: number;
+    tags?: string[][];
+    content: string;
+  }>;
+};
+
 type E2eConfig = {
   mode?: "mock" | "relay";
   forceRelayPacing?: boolean;
@@ -437,6 +498,10 @@ type E2eConfig = {
     /** Colony 3.0 foundation: seed the Sidebar board's channels, sections,
      *  unread counts and Activity badge on top of the reference workspace. */
     colony3Sidebar?: boolean;
+    /** Colony 3.0 conversation boards: extra people, channels, members and
+     *  messages seeded on top of the reference workspace. Test modules own the
+     *  data; the bridge only applies it (see `applyColony3Extras`). */
+    colony3Extras?: Colony3Extras;
     colony3Business?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
@@ -3179,7 +3244,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
     (seed) => ({
       pubkey: seed.pubkey,
       relayUrl: seed.relayUrl,
-      localSetup: true,
+      localSetup: seed.localSetup ?? true,
       lifecycle: seed.lifecycle ?? "ready",
       pid: seed.lifecycle === "stopped" ? null : 43000,
       error: null,
@@ -5562,6 +5627,150 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       store.push(event);
       mockBusinessRecordEvents.set(channelId, store);
     }
+  }
+  if (config.mock?.colony3Extras) {
+    applyColony3Extras(config.mock.colony3Extras, self);
+  }
+}
+
+function applyColony3Extras(extras: Colony3Extras, self: string): void {
+  for (const profile of extras.profiles ?? []) {
+    mockDisplayNames.set(profile.pubkey, profile.displayName);
+    if (profile.isAgent) mockAgentPubkeys.add(profile.pubkey);
+    mockProfiles.set(profile.pubkey, {
+      pubkey: profile.pubkey,
+      display_name: profile.displayName,
+      name: profile.displayName,
+      avatar_url: profile.avatarUrl ?? null,
+      about: profile.about ?? null,
+      nip05_handle: null,
+      owner_pubkey:
+        profile.ownerPubkey === "self" ? self : (profile.ownerPubkey ?? null),
+      is_agent: profile.isAgent === true,
+      has_profile_event: true,
+    });
+    if (profile.presence)
+      setMockPresenceStatus(profile.pubkey, profile.presence);
+  }
+  for (const seed of extras.channels ?? []) {
+    const members: RawChannelMember[] = [];
+    if (seed.selfIsMember !== false) {
+      members.push(createMockMember(self, seed.selfRole ?? "owner", 1440));
+    }
+    for (const member of seed.members ?? []) {
+      members.push(
+        createMockMember(member.pubkey, member.role ?? "member", 1200),
+      );
+    }
+    const created = createMockChannel({
+      id: seed.id,
+      name: seed.name,
+      channel_type: seed.channelType ?? "stream",
+      visibility: seed.visibility ?? "open",
+      description: seed.description ?? "",
+      topic: null,
+      purpose: null,
+      last_message_at:
+        seed.lastMessageAt === undefined || seed.lastMessageAt === null
+          ? null
+          : new Date(seed.lastMessageAt * 1_000).toISOString(),
+      archived_at: seed.archived ? isoMinutesAgo(600) : null,
+      created_by: self,
+      topic_set_by: null,
+      topic_set_at: null,
+      purpose_set_by: null,
+      purpose_set_at: null,
+      topic_required: false,
+      max_members: null,
+      nip29_group_id: null,
+      created_minutes_ago: 1440,
+      updated_minutes_ago: 30,
+      members,
+      ttl_seconds: seed.ttlSeconds ?? null,
+      ttl_deadline: seed.ttlDeadline ?? null,
+    });
+    mockChannels.push(created);
+    if (created.channel_type === "dm") syncMockChannel(created);
+  }
+  for (const patch of extras.patchChannels ?? []) {
+    const channel = mockChannels.find((candidate) => candidate.id === patch.id);
+    if (!channel) continue;
+    if (patch.description !== undefined)
+      channel.description = patch.description;
+    if (patch.name !== undefined) channel.name = patch.name;
+  }
+  for (const entry of extras.members ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === entry.channelId,
+    );
+    if (!channel) continue;
+    const existing = channel.members.find(
+      (member) => member.pubkey === entry.pubkey,
+    );
+    if (existing) {
+      existing.role = entry.role ?? existing.role;
+    } else {
+      channel.members.push(
+        createMockMember(entry.pubkey, entry.role ?? "member", 1200),
+      );
+    }
+    syncMockChannel(channel);
+  }
+  for (const [channelId, at] of Object.entries(extras.lastMessageAt ?? {})) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (channel) channel.last_message_at = new Date(at * 1_000).toISOString();
+  }
+  for (const channelId of extras.leaveChannelIds ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (!channel) continue;
+    channel.members = channel.members.filter(
+      (member) => member.pubkey !== self,
+    );
+    syncMockChannel(channel);
+  }
+  for (const channelId of [
+    ...(extras.clearMessageChannelIds ?? []),
+    ...(extras.clearMessagesIn ?? []),
+  ]) {
+    mockMessages.delete(channelId);
+  }
+  if (extras.readChannelIds?.length) {
+    const key = `buzz.channel-read-state.v2:${self}`;
+    let readState: Record<string, string> = {};
+    try {
+      readState = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    } catch {
+      readState = {};
+    }
+    // Later than any message a board seeds, whatever the fixed clock says.
+    const readAt = "2026-10-23T23:59:00.000+02:00";
+    for (const channelId of extras.readChannelIds) {
+      readState[channelId] = new Date(readAt).toISOString();
+    }
+    window.localStorage.setItem(key, JSON.stringify(readState));
+  }
+  const sig = "mocksig".repeat(20).slice(0, 128);
+  for (const message of extras.messages ?? []) {
+    const store = mockMessages.get(message.channelId) ?? [];
+    store.push({
+      id: message.id,
+      pubkey: message.pubkey === "self" ? self : message.pubkey,
+      created_at: message.createdAt,
+      kind: message.kind ?? KIND_STREAM_MESSAGE,
+      tags: [
+        ["h", message.channelId],
+        ...(message.tags ?? []).map((tag) =>
+          tag.map((value) => (value === "self" ? self : value)),
+        ),
+      ],
+      content: message.content,
+      sig,
+    });
+    mockMessages.set(message.channelId, store);
   }
 }
 let nextSocketId = 1;
@@ -16541,6 +16750,8 @@ async function handleSearchMessages(
         (candidate) => candidate.id === channelId,
       );
       for (const event of events) {
+        // The relay's NIP-50 search only covers message kinds (see below).
+        if (![9, 40002, 45001, 45003].includes(event.kind)) continue;
         mockHits.push({
           event_id: event.id,
           content: event.content,

@@ -8,6 +8,8 @@ import {
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
+import { PlusIcon } from "@/shared/ui/colonyIcons";
+import { getInitials } from "@/shared/lib/initials";
 import { PRIVATE_CHANNEL_ADD_DENIED_MESSAGE } from "@/features/channels/lib/channelMemberAdmission";
 
 type NonMemberMentionDialogProps = {
@@ -48,6 +50,7 @@ export function NonMemberMentionDialog({
       open={open}
     >
       <AlertDialogContent
+        className="max-w-[400px] gap-4.5"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           restoreFocusRef.current = onRestoreFocus;
@@ -61,11 +64,19 @@ export function NonMemberMentionDialog({
           requestAnimationFrame(() => restoreFocusRef.current?.());
         }}
       >
+        <span className="flex items-center">
+          <span className="flex size-10 items-center justify-center rounded-full bg-colony-person text-xs font-extrabold text-colony-fg ring-[3px] ring-colony-pop">
+            {getInitials(names[0] ?? "")}
+          </span>
+          <span className="-ml-2.5 flex size-10 items-center justify-center rounded-full bg-colony-track text-colony-fg-secondary ring-[3px] ring-colony-pop">
+            <PlusIcon size={17} strokeWidth={2} />
+          </span>
+        </span>
         <AlertDialogHeader>
-          <AlertDialogTitle>
+          <AlertDialogTitle className="leading-[1.2]">
             Mention people outside this channel?
           </AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className="text-sm leading-[1.55]">
             {names.join(", ")} {names.length === 1 ? "is" : "are"} not in this
             channel.{" "}
             {onDoNothing
@@ -80,31 +91,42 @@ export function NonMemberMentionDialog({
         {error ? (
           <p
             role="alert"
-            className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            className="rounded-colony-control-lg bg-colony-danger-bg px-3 py-2 text-xs font-semibold text-colony-danger"
           >
             {error}
           </p>
         ) : null}
-        <AlertDialogFooter>
+        <AlertDialogFooter className="flex-row flex-wrap justify-end pt-0">
+          {/* "Do nothing" keeps the draft and closes; "Send anyway" sends it
+              without inviting the people who are not in the channel. */}
           <Button
-            ref={safeActionRef}
+            className="px-4"
             disabled={Boolean(onDoNothing) && isInvitePending}
-            onClick={onDoNothing ?? onDismiss}
-            size="sm"
+            onClick={onDismiss}
+            ref={safeActionRef}
+            size="dialog"
             type="button"
-            variant="outline"
+            variant="ghost"
           >
-            {onDoNothing
-              ? canInvite
-                ? "Do nothing"
-                : "Send anyway"
-              : "Cancel"}
+            {onDoNothing ? "Do nothing" : "Cancel"}
           </Button>
+          {onDoNothing ? (
+            <Button
+              className="px-4"
+              disabled={isInvitePending}
+              onClick={onDoNothing}
+              size="dialog"
+              type="button"
+              variant="outline"
+            >
+              Send anyway
+            </Button>
+          ) : null}
           {canInvite ? (
             <Button
               disabled={isInvitePending}
               onClick={onInvite}
-              size="sm"
+              size="dialog"
               type="button"
             >
               {isInvitePending ? "Inviting..." : "Invite"}

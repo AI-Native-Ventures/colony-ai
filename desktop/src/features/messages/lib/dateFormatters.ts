@@ -93,6 +93,29 @@ export function formatThreadSummaryLastReplyTime(
   return `on ${formatShortMonthDay(unixSeconds)}`;
 }
 
+const CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/**
+ * Last-reply label in the Colony 3.0 thread summary: the clock on the same day
+ * ("16:40"), "yesterday at 16:40" the day before, and "on May 19" after that.
+ */
+export function formatThreadSummaryLastReplyClock(
+  unixSeconds: number,
+  nowSeconds = Date.now() / 1_000,
+): string {
+  const date = new Date(unixSeconds * 1_000);
+  const now = new Date(nowSeconds * 1_000);
+  const clock = CLOCK_FORMATTER.format(date);
+  if (isSameDayDate(date, now)) return clock;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDayDate(date, yesterday)) return `yesterday at ${clock}`;
+  return `on ${formatShortMonthDay(unixSeconds)}`;
+}
+
 function isSameDayDate(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

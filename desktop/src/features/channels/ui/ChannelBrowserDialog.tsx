@@ -1,12 +1,5 @@
 import * as React from "react";
-import {
-  ArrowLeft,
-  Compass,
-  Plus,
-  Search,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowLeft, Compass, Search, type LucideIcon } from "lucide-react";
 
 import type { Channel } from "@/shared/api/types";
 import {
@@ -18,25 +11,25 @@ import {
   type ChannelSortMode,
   sortChannelsForSidebar,
 } from "@/features/sidebar/lib/channelSortPreference";
-import { ListSortDescending } from "@/shared/ui/icons";
+import { CheckIcon, CloseIcon, PlusIcon } from "@/shared/ui/colonyIcons";
+import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
+import { cn } from "@/shared/lib/cn";
+import {
+  ChevronDownGlyph,
+  SearchGlyph,
+  SpeechGlyph,
+} from "@/features/channels/ui/dialogIcons";
 import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import {
-  MODAL_SEARCH_INPUT_CLASS,
-  MODAL_SEARCH_SHELL_CLASS,
-} from "@/shared/ui/modalSearchStyles";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -117,18 +110,6 @@ export function ChannelBrowserDialog({
   const [mode, setMode] = React.useState<"browse" | "create">("browse");
   const [createInitialName, setCreateInitialName] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const tabListRef = React.useRef<HTMLDivElement>(null);
-  const tabTriggerRefs = React.useRef<
-    Record<BrowserTab, HTMLButtonElement | null>
-  >({
-    all: null,
-    joined: null,
-    archived: null,
-  });
-  const [tabIndicator, setTabIndicator] = React.useState({
-    left: 0,
-    width: 0,
-  });
   const canonicalQuery = canonicalChannelName(query);
   const deferredQuery = React.useDeferredValue(canonicalQuery.toLowerCase());
   const trimmedQuery = canonicalQuery;
@@ -138,9 +119,8 @@ export function ChannelBrowserDialog({
   const normalizedQuery = trimmedQuery.toLowerCase();
 
   const canCreate = Boolean(onCreateChannel);
-  const searchPlaceholder = canCreate
-    ? "Search or create a channel"
-    : "Search channels by name or description";
+  const browseTitle = "Browse channels";
+  const searchPlaceholder = "Search channels by name or description";
   const entityLabel = "channel";
 
   const noopCreate = React.useCallback(async () => {}, []);
@@ -274,63 +254,6 @@ export function ChannelBrowserDialog({
   const isCreateRowSelected =
     createRowIndex !== null && selectedIndex === createRowIndex;
 
-  const updateTabIndicator = React.useCallback(() => {
-    const list = tabListRef.current;
-    const trigger = tabTriggerRefs.current[activeTab];
-
-    if (!open || mode !== "browse" || !list || !trigger) {
-      return;
-    }
-
-    const nextIndicator = {
-      left: trigger.offsetLeft,
-      width: trigger.offsetWidth,
-    };
-
-    setTabIndicator((current) =>
-      Math.abs(current.left - nextIndicator.left) < 0.5 &&
-      Math.abs(current.width - nextIndicator.width) < 0.5
-        ? current
-        : nextIndicator,
-    );
-  }, [activeTab, mode, open]);
-
-  React.useLayoutEffect(() => {
-    updateTabIndicator();
-
-    if (!open || mode !== "browse") {
-      return;
-    }
-
-    let isCancelled = false;
-    const updateIfActive = () => {
-      if (!isCancelled) {
-        updateTabIndicator();
-      }
-    };
-    const frameId = window.requestAnimationFrame(updateIfActive);
-    const observer = new ResizeObserver(updateTabIndicator);
-    const list = tabListRef.current;
-
-    void document.fonts.ready.then(updateIfActive);
-
-    if (list) {
-      observer.observe(list);
-    }
-
-    for (const trigger of Object.values(tabTriggerRefs.current)) {
-      if (trigger) {
-        observer.observe(trigger);
-      }
-    }
-
-    return () => {
-      isCancelled = true;
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [mode, open, updateTabIndicator]);
-
   React.useEffect(() => {
     if (!open) {
       setQuery("");
@@ -407,7 +330,7 @@ export function ChannelBrowserDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="gap-0 overflow-hidden border-0 px-6 pb-0 pt-6"
+        className="max-h-[calc(100vh-5rem)] max-w-[640px] gap-[18px] overflow-hidden px-7 pb-5 pt-7"
         data-testid="channel-browser-dialog"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -426,24 +349,32 @@ export function ChannelBrowserDialog({
           />
         ) : (
           <>
-            <DialogHeader className="space-y-0 pb-5">
-              <div className="flex items-center justify-between gap-4">
-                <DialogTitle>Browse channels</DialogTitle>
-                <DialogClose className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring">
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Close</span>
-                </DialogClose>
-              </div>
-              <div className={MODAL_SEARCH_SHELL_CLASS}>
+            <div className="flex shrink-0 items-center gap-3">
+              <DialogTitle className="flex-1 leading-[normal]">
+                {browseTitle}
+              </DialogTitle>
+              <DialogClose
+                aria-label="Close"
+                className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.6875rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+              >
+                <CloseIcon size={17} strokeWidth={2.4} />
+              </DialogClose>
+            </div>
+            <div className="shrink-0">
+              <div className="flex h-[3.125rem] items-center gap-2.5 rounded-[0.8125rem] border border-colony-border-strong bg-colony-pop px-3.5 text-colony-muted transition-colors focus-within:border-colony-accent">
                 <label
-                  className="flex min-w-0 flex-1 cursor-text items-center gap-3"
+                  className="flex min-w-0 flex-1 cursor-text items-center gap-2.5"
                   htmlFor="channel-browser-search"
                 >
-                  <Search className="h-4 w-4 shrink-0 text-muted-foreground/55 transition-colors duration-150 ease-out group-hover/search:text-muted-foreground group-focus-within/search:text-foreground" />
+                  <SearchGlyph
+                    className="shrink-0"
+                    size={18}
+                    strokeWidth={2.2}
+                  />
                   <input
                     autoCapitalize="none"
                     autoCorrect="off"
-                    className={MODAL_SEARCH_INPUT_CLASS}
+                    className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
                     data-testid="channel-browser-search"
                     id="channel-browser-search"
                     onChange={(event) => {
@@ -581,20 +512,55 @@ export function ChannelBrowserDialog({
                     value={query}
                   />
                 </label>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+              <Tabs
+                onValueChange={(value) => {
+                  setActiveTab(value as BrowserTab);
+                  setSelectedIndex(null);
+                }}
+                value={activeTab}
+              >
+                <TabsList className="h-auto gap-0.5 rounded-xl p-[3px]">
+                  {(
+                    [
+                      ["all", allTabLabel],
+                      ["joined", "Joined"],
+                      ["archived", "Archived"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <TabsTrigger
+                      className="h-[2.125rem] rounded-[0.5625rem] px-3.5 text-chip data-[state=active]:font-extrabold data-[state=active]:shadow-[0_1px_2px_rgba(60,40,80,0.12)]"
+                      key={value}
+                      value={value}
+                    >
+                      {label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <span className="flex-1" />
+              <div className="flex items-center gap-2 text-xs font-bold text-colony-fg-secondary">
+                Sort
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
+                    <button
                       aria-label={`Sort ${entityLabel}s: ${selectedSortLabel}`}
+                      className="flex h-[2.375rem] items-center gap-2 rounded-[0.625rem] border border-colony-border-strong bg-colony-pop py-0 pl-2.5 pr-2 text-chip font-semibold text-colony-fg transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
                       data-testid="channel-browser-sort"
-                      size="icon-xs"
                       type="button"
-                      variant="ghost"
                     >
-                      <ListSortDescending />
-                    </Button>
+                      {selectedSortLabel}
+                      <ChevronDownGlyph
+                        className="text-colony-fg-secondary"
+                        size={14}
+                        strokeWidth={2.4}
+                      />
+                    </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
                     <DropdownMenuRadioGroup
                       onValueChange={(value) => {
                         setSort(value as ChannelSort);
@@ -615,103 +581,45 @@ export function ChannelBrowserDialog({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </DialogHeader>
+            </div>
 
-            <div className="h-[min(60vh,30rem)] overflow-hidden">
-              <div className="flex h-full flex-col">
-                <Tabs
-                  className="shrink-0"
-                  onValueChange={(value) => {
-                    setActiveTab(value as BrowserTab);
-                    setSelectedIndex(null);
-                  }}
-                  value={activeTab}
-                >
-                  <TabsList
-                    className="relative h-auto w-full justify-start gap-6 rounded-none border-b border-border/70 bg-transparent p-0 text-muted-foreground"
-                    ref={tabListRef}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute bottom-[-1px] left-0 h-0.5 w-px origin-left rounded-full bg-foreground opacity-0 transition-[transform,opacity] duration-[180ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none data-[ready=true]:opacity-100"
-                      data-ready={tabIndicator.width > 0}
-                      data-testid="channel-browser-tab-indicator"
-                      style={{
-                        transform: `translate3d(${tabIndicator.left}px, 0, 0) scaleX(${tabIndicator.width})`,
-                      }}
-                    />
-                    <TabsTrigger
-                      className="rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm font-medium shadow-none transition-colors duration-150 ease-out data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      ref={(element) => {
-                        tabTriggerRefs.current.all = element;
-                      }}
-                      value="all"
-                    >
-                      {allTabLabel}
-                    </TabsTrigger>
-                    <TabsTrigger
-                      className="rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm font-medium shadow-none transition-colors duration-150 ease-out data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      ref={(element) => {
-                        tabTriggerRefs.current.joined = element;
-                      }}
-                      value="joined"
-                    >
-                      Joined
-                    </TabsTrigger>
-                    <TabsTrigger
-                      className="rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm font-medium shadow-none transition-colors duration-150 ease-out data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      ref={(element) => {
-                        tabTriggerRefs.current.archived = element;
-                      }}
-                      value="archived"
-                    >
-                      Archived
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+            <div className="-mx-2.5 flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {showCreateRow ? (
+                <>
+                  <CreateChannelRow
+                    entityLabel={entityLabel}
+                    isSelected={isCreateRowSelected}
+                    onClick={() => enterCreateMode(trimmedQuery)}
+                    query={trimmedQuery}
+                  />
+                  <div className="mx-2.5 my-1.5 h-px shrink-0 bg-colony-border" />
+                </>
+              ) : null}
 
-                <div className="min-h-0 flex-1 overflow-y-auto pb-6 pt-4">
-                  {showCreateRow ? (
-                    <div className="mb-3">
-                      <CreateChannelRow
-                        entityLabel={entityLabel}
-                        isSelected={isCreateRowSelected}
-                        onClick={() => enterCreateMode(trimmedQuery)}
-                        query={trimmedQuery}
-                      />
-                    </div>
-                  ) : null}
-
-                  {orderedVisibleChannels.length === 0 ? (
-                    <BrowseState
-                      description={emptyDescription}
-                      icon={deferredQuery.length > 0 ? Search : Compass}
-                      title={emptyTitle}
-                    />
-                  ) : (
-                    <div className="overflow-hidden rounded-xl border border-border/70 bg-background/70 shadow-xs divide-y divide-border/55">
-                      {orderedVisibleChannels.map((channel, index) => (
-                        <ChannelCard
-                          channel={channel}
-                          isJoining={joiningChannelId === channel.id}
-                          isSelected={
-                            index + channelNavOffset === selectedIndex
+              {orderedVisibleChannels.length === 0 ? (
+                <BrowseState
+                  description={emptyDescription}
+                  icon={deferredQuery.length > 0 ? Search : Compass}
+                  title={emptyTitle}
+                />
+              ) : (
+                orderedVisibleChannels.map((channel, index) => (
+                  <ChannelCard
+                    channel={channel}
+                    isJoining={joiningChannelId === channel.id}
+                    isSelected={index + channelNavOffset === selectedIndex}
+                    key={channel.id}
+                    onJoin={
+                      !channel.isMember
+                        ? () => {
+                            void handleJoin(channel.id);
                           }
-                          key={channel.id}
-                          onJoin={
-                            !channel.isMember
-                              ? () => {
-                                  void handleJoin(channel.id);
-                                }
-                              : undefined
-                          }
-                          onSelect={() => handleSelect(channel)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+                        : undefined
+                    }
+                    onSelect={() => handleSelect(channel)}
+                  />
+                ))
+              )}
             </div>
           </>
         )}
@@ -734,31 +642,32 @@ function CreateChannelRow({
   const hasQuery = query.length > 0;
   return (
     <button
-      className={
-        isSelected
-          ? "flex w-full items-center gap-3 rounded-xl border border-border/70 bg-muted/60 px-4 py-3 text-left transition-colors duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-          : "flex w-full items-center gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-      }
+      className={cn(
+        "flex w-full shrink-0 items-center gap-3.5 rounded-colony-chip px-2.5 py-3 text-left text-colony-fg transition-colors hover:bg-colony-wash/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40",
+        isSelected && "bg-colony-wash/80",
+      )}
       data-testid="channel-browser-create-row"
       data-selected={isSelected}
       onClick={onClick}
       type="button"
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Plus className="h-4 w-4" />
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-colony-control-lg bg-colony-accent-soft text-colony-accent-ink">
+        <PlusIcon size={18} strokeWidth={2.4} />
       </span>
-      {hasQuery ? (
-        <span className="min-w-0 text-sm">
-          <span className="font-medium text-foreground">
-            Create {entityLabel}{" "}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        {hasQuery ? (
+          <span className="text-sm font-extrabold">
+            Create {entityLabel} “{query}”
           </span>
-          <span className="font-semibold text-foreground">“{query}”</span>
+        ) : (
+          <span className="text-sm font-extrabold">
+            Create a new {entityLabel}
+          </span>
+        )}
+        <span className="text-xs font-medium text-colony-muted">
+          Name it, describe it, make it private.
         </span>
-      ) : (
-        <span className="min-w-0 text-sm font-medium text-foreground">
-          Create a new {entityLabel}
-        </span>
-      )}
+      </span>
     </button>
   );
 }
@@ -775,46 +684,37 @@ function ChannelCreateView({
   onClose: () => void;
 }) {
   return (
-    <div className="flex h-[min(72vh,38rem)] flex-col">
-      <DialogHeader className="space-y-0 pb-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              aria-label="Back to search"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
-              data-testid="channel-browser-create-back"
-              onClick={onBack}
-              type="button"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <DialogTitle className="truncate">
-              {`New ${entityLabel}`}
-            </DialogTitle>
-          </div>
-          <button
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </button>
-        </div>
-      </DialogHeader>
-
-      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-        <form
-          className="space-y-5"
-          id={CREATE_CHANNEL_FORM_ID}
-          onSubmit={form.handleSubmit}
+    <div className="flex h-[min(72vh,40rem)] flex-col gap-5">
+      <div className="flex shrink-0 items-center gap-3">
+        <button
+          aria-label="Back to search"
+          className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.6875rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+          data-testid="channel-browser-create-back"
+          onClick={onBack}
+          type="button"
         >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <DialogTitle className="min-w-0 flex-1 truncate">
+          {`New ${entityLabel}`}
+        </DialogTitle>
+        <button
+          aria-label="Close"
+          className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.6875rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+          onClick={onClose}
+          type="button"
+        >
+          <CloseIcon size={17} strokeWidth={2.4} />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <form id={CREATE_CHANNEL_FORM_ID} onSubmit={form.handleSubmit}>
           <CreateChannelFormFields form={form} />
         </form>
       </div>
 
-      <div className="shrink-0 pb-6 pt-4">
+      <div className="shrink-0">
         <CreateChannelFormFooter form={form} />
       </div>
     </div>
@@ -837,65 +737,96 @@ function ChannelCard({
   const memberLabel = `${channel.memberCount} ${
     channel.memberCount === 1 ? "member" : "members"
   }`;
+  const archived = Boolean(channel.archivedAt);
+  const TypeIcon =
+    channel.channelType === "forum"
+      ? SpeechGlyph
+      : channel.visibility === "private"
+        ? PrivateChannelIcon
+        : HashIcon;
 
   return (
     <div
-      className={
-        isSelected
-          ? "group/channel-row flex min-h-16 items-center gap-4 bg-muted/40 px-4 py-3 transition-colors duration-150 ease-out"
-          : "group/channel-row flex min-h-16 items-center gap-4 px-4 py-3 transition-colors duration-150 ease-out hover:bg-muted/40"
-      }
+      className={cn(
+        "group/channel-row flex shrink-0 items-center gap-3.5 rounded-colony-chip px-2.5 py-3 transition-colors hover:bg-colony-wash/80",
+        isSelected && "bg-colony-wash/80",
+      )}
       data-testid={`browse-channel-${channel.name}`}
     >
       <button
-        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-left text-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-3.5 border-0 bg-transparent p-0 text-left text-colony-fg outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
         }}
         type="button"
       >
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="shrink-0 text-sm font-normal text-muted-foreground">
-              #
-            </span>
-            <p className="min-w-0 truncate text-base font-medium tracking-tight">
-              {channel.name}
-            </p>
-            {channel.archivedAt ? (
-              <Badge className="ml-1 shrink-0" variant="warning">
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-colony-control-lg bg-colony-track transition-colors group-hover/channel-row:bg-colony-pop",
+            isSelected && "bg-colony-pop",
+            archived ? "text-colony-muted" : "text-colony-fg-secondary",
+          )}
+        >
+          <TypeIcon size={18} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-2 text-sm font-extrabold",
+              archived && "text-colony-fg-secondary",
+            )}
+          >
+            <span className="truncate">{channel.name}</span>
+            {archived ? (
+              <span className="inline-flex h-[1.375rem] shrink-0 items-center rounded-full bg-colony-idle px-2 text-[calc(12.5*var(--colony-px))] font-extrabold text-colony-fg-secondary">
                 archived
-              </Badge>
+              </span>
             ) : null}
-          </div>
-          <p className="mt-1 truncate text-sm text-muted-foreground">
+          </span>
+          <span className="truncate text-xs font-medium text-colony-muted">
             <span>{memberLabel}</span>
             {channel.description ? (
               <>
-                <span className="px-1.5">·</span>
+                <span className="px-1">·</span>
                 <span title={channel.description}>{channel.description}</span>
               </>
             ) : null}
-          </p>
-        </div>
+          </span>
+        </span>
       </button>
 
-      {!channel.isMember && onJoin ? (
+      {archived ? (
+        <button
+          className="shrink-0 text-chip font-extrabold text-colony-accent-ink underline underline-offset-2 hover:text-colony-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect();
+          }}
+          type="button"
+        >
+          View
+        </button>
+      ) : channel.isMember ? (
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-bold text-colony-success">
+          <CheckIcon size={16} strokeWidth={2.4} />
+          Joined
+        </span>
+      ) : onJoin ? (
         <Button
-          className={
-            isJoining
-              ? "shrink-0"
-              : "shrink-0 opacity-0 transition-opacity duration-150 ease-out group-hover/channel-row:opacity-100 group-focus-within/channel-row:opacity-100"
-          }
+          className={cn(
+            "h-[2.375rem] shrink-0 rounded-[0.625rem] px-4 text-chip font-bold",
+            isSelected
+              ? "border-transparent bg-colony-fg text-colony-surface hover:bg-colony-fg/90"
+              : "group-hover/channel-row:border-transparent group-hover/channel-row:bg-colony-fg group-hover/channel-row:text-colony-surface",
+          )}
           disabled={isJoining}
           onClick={(event) => {
             event.stopPropagation();
             onJoin();
           }}
-          size="sm"
           type="button"
-          variant="default"
+          variant="outline"
         >
           {isJoining ? "Joining..." : "Join"}
         </Button>

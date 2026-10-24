@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
 
 import type { ChannelVisibility } from "@/shared/api/types";
-import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
-import { Dialog } from "@/shared/ui/dialog";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 
 import {
   type CreateChannelInput,
@@ -63,27 +69,41 @@ export function CreateChannelDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <ChooserDialogContent
-        className="max-w-lg"
-        contentClassName="pt-3"
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] max-w-[560px] gap-5 overflow-y-auto"
         data-testid={testId}
-        footerClassName="border-t-0 pt-0"
-        headerClassName="pb-2"
-        title={title ?? `Create a new ${kindLabel}`}
-        description={
-          description ?? "Channels are real-time streams for team conversation."
-        }
-        footer={<CreateChannelFormFooter form={form} />}
+        showCloseButton={false}
       >
+        <div className="flex items-start gap-3">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <DialogTitle className="leading-[normal]">
+              {title ?? `Create a new ${kindLabel}`}
+            </DialogTitle>
+            <DialogDescription className="leading-normal text-colony-muted">
+              {description ??
+                "Channels are real-time streams for team conversation."}
+            </DialogDescription>
+          </div>
+          <DialogClose
+            aria-label="Close"
+            className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.6875rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+          >
+            <CloseIcon size={17} strokeWidth={2.4} />
+          </DialogClose>
+        </div>
         <form
-          className="space-y-5"
+          className="flex flex-col gap-5"
           id={CREATE_CHANNEL_FORM_ID}
           onSubmit={form.handleSubmit}
         >
           {children}
           <CreateChannelFormFields form={form} />
         </form>
-      </ChooserDialogContent>
+        <CreateChannelFormFooter
+          form={form}
+          onCancel={() => onOpenChange(false)}
+        />
+      </DialogContent>
     </Dialog>
   );
 }

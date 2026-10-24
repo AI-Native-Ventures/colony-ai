@@ -33,7 +33,6 @@ import {
   THREAD_PANEL_MESSAGE_GUTTER_CLASS,
 } from "@/features/messages/lib/messageThreadPanelLayout";
 import { Button } from "@/shared/ui/button";
-import { Separator } from "@/shared/ui/separator";
 import { ComposerActivityAccessory } from "./ComposerActivityAccessory";
 import { ComposerDockBackdrop } from "./ComposerDockBackdrop";
 import { MessageComposer } from "./MessageComposer";
@@ -152,6 +151,7 @@ export function MessageThreadPanel({
   layout = "standalone",
   editTarget,
   enterMotion,
+  headerChannelPrivate,
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
@@ -356,7 +356,7 @@ export function MessageThreadPanel({
   // card and the streaming-in `pending` state would both leave a rule hanging
   // over an empty region or a placeholder.
   const showThreadHeadDivider =
-    isFocusMode && (threadRepliesPending || repliesRenderState === "list");
+    threadRepliesPending || repliesRenderState === "list";
 
   const threadMessages = React.useMemo(
     () => deferredThreadReplies.map((entry) => entry.message),
@@ -548,6 +548,7 @@ export function MessageThreadPanel({
               className="colony-workspace-thread-context"
               data-testid="workspace-thread-context"
             >
+              <span className="c3c-eyebrow">Thread context</span>
               <h2>{workspaceThreadContext.title}</h2>
               {workspaceThreadContext.description ? (
                 <p>{workspaceThreadContext.description}</p>
@@ -612,7 +613,16 @@ export function MessageThreadPanel({
             className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-3 pt-2")}
             data-testid="message-thread-head-divider"
           >
-            <Separator className="bg-border/60" />
+            <section
+              aria-label={`${threadReplies.length} ${threadReplies.length === 1 ? "reply" : "replies"}`}
+              className="flex items-center gap-3"
+            >
+              <span className="c3c-eyebrow">
+                {threadReplies.length}{" "}
+                {threadReplies.length === 1 ? "reply" : "replies"}
+              </span>
+              <span aria-hidden className="h-px flex-1 bg-colony-border" />
+            </section>
           </div>
         ) : null}
 
@@ -936,6 +946,7 @@ export function MessageThreadPanel({
         footer={threadFooter}
         header={
           <MessageThreadPanelHeader
+            headerChannelPrivate={headerChannelPrivate}
             headerLeading={headerLeading}
             headerTitle={headerTitle}
             headerTitleAriaLabel={headerTitleAriaLabel}

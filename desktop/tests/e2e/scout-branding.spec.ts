@@ -126,9 +126,10 @@ for (const viewport of [
     await page.getByTestId("message-input").fill("Hi @");
     const picker = page.getByTestId("mention-autocomplete");
     await expect(picker).toBeVisible();
-    await expect(picker.getByText("Scout", { exact: true })).toBeVisible();
+    // The row's name carries an "agent" pill, so find rows by their title.
+    await expect(picker.getByTitle("Scout", { exact: true })).toBeVisible();
     for (const name of ["Fizz", "Honey", "Pollen"])
-      await expect(picker.getByText(name, { exact: true })).toHaveCount(0);
+      await expect(picker.getByTitle(name, { exact: true })).toHaveCount(0);
     expect((await records(page)).map((agent) => agent.pubkey)).toEqual(
       expect.arrayContaining([scout, ...legacyKeys]),
     );

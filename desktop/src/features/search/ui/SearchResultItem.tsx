@@ -3,13 +3,13 @@ import {
   ArrowRight,
   Bot,
   Hash,
+  Lock,
   MessageCircle,
   Plus,
   User,
   type LucideIcon,
 } from "lucide-react";
 
-import { HashSearch } from "@/shared/ui/icons";
 import {
   resolveUserLabel,
   resolveUserSecondaryLabel,
@@ -70,9 +70,9 @@ export function resultIcon(
 ) {
   if (result.kind === "action") {
     if (result.action.id === "browse-channels") {
-      return HashSearch;
+      return Hash;
     }
-    return result.action.id === "create-agent" ? Bot : Plus;
+    return Plus;
   }
 
   if (result.kind === "user") {
@@ -90,7 +90,13 @@ export function resultIcon(
     return MessageCircle;
   }
 
-  return Hash;
+  const visibility =
+    result.kind === "channel"
+      ? result.channel.visibility
+      : result.hit.channelId
+        ? channelLookup.get(result.hit.channelId)?.visibility
+        : undefined;
+  return visibility === "private" ? Lock : Hash;
 }
 
 export function SearchResultShell({

@@ -265,12 +265,8 @@ test("sends immediately and keeps upload progress across channels", async ({
   await expect(page.getByTestId("composer-upload-progress")).toHaveCount(0);
   await expect(page.getByTestId("composer-video-spoiler")).toHaveCount(0);
   const queuedSpoiler = page.getByTestId("composer-queued-video-spoiler");
-  // Revealed on hover rather than removed from the DOM: the control stays
-  // focusable so keyboard users can reach it, but is transparent and
-  // click-through until the thumbnail is hovered or focused.
-  await expect(queuedSpoiler).toHaveCSS("opacity", "0");
-  await expect(queuedSpoiler).toHaveCSS("pointer-events", "none");
-  await page.getByTestId("composer-queued-media-attachment").hover();
+  // The Colony 3.0 tile keeps its tool pill (spoiler, draw, remove) visible,
+  // as the Composer states board draws it.
   await expect(queuedSpoiler).toBeVisible();
   await expect(queuedSpoiler).toHaveCSS("opacity", "1");
   await page.getByTestId("send-message").click();
@@ -517,7 +513,11 @@ test("dropping a file on the channel column attaches it to the composer", async 
     }),
   ]);
 
-  expect(overlayBox).toEqual(dropZoneBox);
+  // Sub-pixel layout rounding aside, the overlay covers the drop zone exactly.
+  expect(overlayBox?.x).toBeCloseTo(dropZoneBox?.x ?? 0, 0);
+  expect(overlayBox?.y).toBeCloseTo(dropZoneBox?.y ?? 0, 0);
+  expect(overlayBox?.width).toBeCloseTo(dropZoneBox?.width ?? 0, 0);
+  expect(overlayBox?.height).toBeCloseTo(dropZoneBox?.height ?? 0, 0);
   expect(overlayStyles).not.toBeNull();
   expect(overlayStyles?.overlayRadius).toBe(overlayStyles?.containerRadius);
   expect(overlayStyles?.backdropFilter).toContain("blur");

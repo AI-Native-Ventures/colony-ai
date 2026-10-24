@@ -495,7 +495,7 @@ for (const theme of ["buzz", "github-light", "catppuccin-mocha"]) {
   });
 }
 
-test("aligns the sidebar search with the channel title outside the Buzz theme", async ({
+test("keeps the sidebar search at its design offset from the channel title outside the Buzz theme", async ({
   page,
 }) => {
   await loadTheme(page, "github-light");
@@ -520,7 +520,9 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
   expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(
-    process.platform === "darwin" ? 41 : 13,
+    // The conversation header (title row, then the channel views) sits above
+    // the search row, as drawn on the Channel board.
+    process.platform === "darwin" ? 89 : 61,
     2,
   );
 });
