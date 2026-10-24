@@ -75,6 +75,8 @@ export type OnboardingSceneActions = {
   inviteBrand?: React.ReactNode;
   /** "Have an invite link?" on the account screen; absent once an invite is pending. */
   onHaveInviteLink?: () => void;
+  /** "Advanced sign-in options" on the account and sign-in screens: use a key, a backup file, or a phone. */
+  onAdvanced?: () => void;
   headingRef?: React.RefObject<HTMLHeadingElement | null>;
   authCode?: {
     value: string;

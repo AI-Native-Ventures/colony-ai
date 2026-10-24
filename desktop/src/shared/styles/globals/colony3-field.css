@@ -16,7 +16,6 @@
   --colony-rail-middle: #2c2a4c;
   --colony-rail-bottom: #26356b;
   --colony-rail-shade: rgb(0 0 0 / 22%);
-  --colony-sidebar-ink: hsl(var(--colony-fg));
   --colony-sidebar-ink-soft: hsl(var(--colony-fg-secondary));
   --colony-sidebar-line: rgb(255 255 255 / 16%);
   --colony-sidebar-line-soft: rgb(255 255 255 / 12%);
@@ -35,6 +34,7 @@
 /* The branded dark field is a mid-tone, so its soft ink is lighter than the
    foreground-secondary the named themes use; every label reaches 4.5:1. */
 :root.dark[data-buzz-sidebar] {
+  --colony-sidebar-ink: hsl(var(--colony-fg));
   --colony-sidebar-ink-soft: #dcd6e2;
 }
 
