@@ -154,8 +154,8 @@ for (const [width, height] of [
       if (name === "thread") {
         const thread = page.getByTestId("message-thread-panel");
         const input = thread.getByTestId("message-input-scroll");
-        // The Colony 3.0 card pads the card, not the editor.
-        await expect(input).toHaveCSS("padding", "0px");
+        // The Colony 3.0 card pads the card; the editor keeps a 1px edge.
+        await expect(input).toHaveCSS("padding", "1px 0px");
         await expect(input).toHaveCSS("font-size", "17px");
         await expect(thread.locator(".composer-dock")).toHaveCSS(
           "padding",

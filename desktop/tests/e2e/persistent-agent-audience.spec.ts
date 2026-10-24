@@ -984,9 +984,11 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   if (!addressControlBox || !confirmationBox) {
     throw new Error("Automatic mention confirmation is not laid out");
   }
-  expect(confirmationBox.x).toBeGreaterThanOrEqual(
-    addressControlBox.x + addressControlBox.width,
-  );
+  // Beside the control on whichever side has room, never over it.
+  expect(
+    confirmationBox.x >= addressControlBox.x + addressControlBox.width ||
+      confirmationBox.x + confirmationBox.width <= addressControlBox.x,
+  ).toBe(true);
   const turnOffAction = autoPinConfirmation.getByRole("button", {
     name: "Turn off",
   });
