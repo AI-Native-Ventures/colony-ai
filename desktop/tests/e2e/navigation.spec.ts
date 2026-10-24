@@ -572,9 +572,11 @@ test("direct-message tooltip metadata stays on one physical line", async ({
   await expect
     .poll(() =>
       footer.evaluate((element) => {
-        const lineHeight = Number.parseFloat(
-          getComputedStyle(element).lineHeight,
-        );
+        const style = getComputedStyle(element);
+        // The design leaves line height at "normal", which has no number.
+        const lineHeight =
+          Number.parseFloat(style.lineHeight) ||
+          Number.parseFloat(style.fontSize) * 1.4;
         return {
           fitsOneLine: element.scrollHeight <= Math.ceil(lineHeight),
           heightIsClipped: element.clientHeight === element.scrollHeight,

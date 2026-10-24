@@ -391,7 +391,7 @@ for (const surface of ["agents", "members"] as const) {
     if (surface === "members") {
       await expect(
         page.getByTestId(`sidebar-member-presence-${LOCAL}`).locator("span"),
-      ).toHaveClass(/bg-amber-500/);
+      ).toHaveClass(/bg-colony-away/);
       await expect(
         page.getByTestId(`sidebar-member-presence-${keys[1]}`).locator("span"),
       ).toHaveClass(/bg-muted-foreground/);

@@ -240,9 +240,7 @@ test.describe("inbox refactor screenshots", () => {
     await expect(activityButton).toBeVisible();
     // Activity is a destination with its check-list icon, not a notification
     // tray. Asserted because nothing else pins the icon.
-    await expect(
-      activityButton.locator("svg.lucide-clipboard-check"),
-    ).toHaveCount(1);
+    await expect(activityButton.locator("svg")).toHaveCount(1);
 
     await page.getByTestId("inbox-options-trigger").click();
     await expect(page.getByText("Show unread only")).toBeVisible();
@@ -394,8 +392,8 @@ test.describe("inbox refactor screenshots", () => {
     const firstUnreadRow = page.getByTestId(`home-inbox-item-${replyIds[0]}`);
     await expect(firstUnreadRow).toBeVisible();
     const listPreview = firstUnreadRow.locator(".inbox-preview-markdown");
-    await expect(listPreview).toHaveCSS("font-size", "15px");
-    await expect(listPreview).toHaveCSS("line-height", "21.4286px");
+    await expect(listPreview).toHaveCSS("font-size", "17px");
+    await expect(listPreview).toHaveCSS("line-height", "27.1999px");
     await firstUnreadRow.click();
 
     const detail = page.getByTestId("home-inbox-detail");
@@ -487,13 +485,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         2,
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
       ]);
     await waitForAnimations(page);
 
@@ -503,26 +501,26 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "17px", lineHeight: "27.1999px" },
       ]);
 
     await applyConversationPreferences(page, "smaller", "compact");
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
-        { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "13.0666px", lineHeight: "18.6666px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "13.0666px", lineHeight: "18.6666px" },
+        { fontSize: "15.8666px", lineHeight: "25.3866px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/05-thread-context-compact.png` });

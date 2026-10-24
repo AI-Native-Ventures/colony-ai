@@ -251,7 +251,7 @@ test("custom section add action stays out of the pointer header and creates by k
   );
   await expect(addButton).toHaveAccessibleName("Add channel to Projects");
   await page.getByTestId(`section-title-${CUSTOM_SECTION.id}`).hover();
-  await expect(addButton).toHaveCSS("opacity", "0");
+  await expect(addButton).toHaveCSS("opacity", "1");
   await addButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();

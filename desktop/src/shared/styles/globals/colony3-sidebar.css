@@ -325,6 +325,19 @@
   opacity: 1;
 }
 
+/* A muted channel recedes as a whole: its icon dims with its label. */
+.app-sidebar-full-shell [data-sidebar="menu-button"]:has(.sidebar-muted-content)
+  > svg:first-child {
+  opacity: 0.5;
+}
+
+:root.dark
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"]:has(.sidebar-muted-content)
+  > svg:first-child {
+  opacity: 0.45;
+}
+
 .app-sidebar-full-shell [data-sidebar="menu-label"] {
   font-weight: inherit;
   opacity: 1;
