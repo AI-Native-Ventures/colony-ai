@@ -246,7 +246,6 @@ test("add-community deep link opens one editable prefill and acknowledges the qu
   await page.getByTestId("sidebar-profile-avatar-button").click();
   await page.getByTestId("community-switcher").click();
   await page.getByRole("menuitem", { name: "Add a community" }).click();
-  await page.getByTestId("add-community-join").click();
   await expect(communityInput).toHaveValue("");
 
   const acknowledgements = await page.evaluate(() =>

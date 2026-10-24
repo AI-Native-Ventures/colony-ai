@@ -346,7 +346,14 @@ export function MachineOnboardingFlow({
   if (page === "invite-link") {
     return (
       <InviteLinkScene
-        onBack={() => setPage(signedIn ? "businesses" : "account-auth")}
+        onBack={() => {
+          if (!signedIn) setPage("account-auth");
+          else if (ownedCommunities.length > 0) setPage("businesses");
+          else {
+            setBusinessBackPage("account-auth");
+            setPage("business");
+          }
+        }}
         onContinue={startInvite}
       />
     );

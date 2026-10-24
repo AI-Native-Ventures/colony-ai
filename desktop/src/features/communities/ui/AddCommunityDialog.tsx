@@ -47,7 +47,6 @@ export function AddCommunityDialog({
         showCloseButton={false}
         surface="none"
       >
-        <DialogTitle className="sr-only">Add a community</DialogTitle>
         <DialogDescription className="sr-only">
           Create a new community or join one you already have.
         </DialogDescription>
@@ -71,6 +70,7 @@ export function AddCommunityDialog({
             handleClose();
           }}
           prefill={prefill}
+          titleAs={DialogTitle}
           titleId="add-community-dialog-title"
         />
       </DialogContent>

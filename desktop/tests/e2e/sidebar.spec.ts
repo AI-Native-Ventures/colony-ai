@@ -183,23 +183,7 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     .toBe("none");
 });
 
-test("add community starts with create and join choices", async ({ page }) => {
-  await installMockBridge(page, {});
-  await page.goto("/");
-
-  await openAddCommunityDialog(page);
-
-  await expect(
-    page.getByRole("heading", { name: "Add community" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("add-community-create")).toContainText(
-    "Create a new community",
-  );
-  await expect(page.getByTestId("add-community-join")).toContainText(
-    "Join an existing community",
-  );
-  await expect(page.getByLabel("API Token")).toHaveCount(0);
-  await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
+test("add community shows create and join side by side", async ({ page }) => {
   await page.route("**/api/communities/config", (route) =>
     route.fulfill({
       json: {
@@ -210,18 +194,23 @@ test("add community starts with create and join choices", async ({ page }) => {
       },
     }),
   );
+  await installMockBridge(page, {});
+  await page.goto("/");
 
-  await page.getByTestId("add-community-join").click();
+  await openAddCommunityDialog(page);
+
   await expect(
-    page.getByRole("heading", { name: "Join an existing community" }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
+  await expect(page.getByTestId("self-serve-community-create")).toContainText(
+    "Create a new community",
+  );
+  await expect(page.getByTestId("add-community-join")).toContainText(
+    "Join an existing community",
+  );
+  await expect(page.getByLabel("API Token")).toHaveCount(0);
+  await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
   await expect(page.getByLabel("Community URL or invite link")).toBeVisible();
-  await page.getByTestId("add-community-back").click();
-
-  await page.getByTestId("add-community-create").click();
-  await expect(
-    page.getByRole("heading", { name: "Create a community" }),
-  ).toBeVisible();
   await expect(page.getByLabel("Community address")).toBeVisible();
 });
 
@@ -240,15 +229,12 @@ test("automatically shows community join requirements near the community URL", a
   await page.goto("/");
 
   await openAddCommunityDialog(page);
-  await page.getByTestId("add-community-join").click();
   await page
     .getByLabel("Community URL or invite link")
     .fill("https://policy.example.com");
 
-  const ageConfirmation = page.getByLabel("I am 18 years of age or older.");
-  const agreementConfirmation = page.getByLabel(
-    "I agree to the Colony Terms of Service and Privacy Policy.",
-  );
+  const ageConfirmation = page.getByLabel("I’m 18 or older");
+  const agreementConfirmation = page.getByLabel(/I agree to the/);
   await expect(ageConfirmation).toBeVisible();
   await expect(agreementConfirmation).toBeVisible();
   await expect(
@@ -259,7 +245,6 @@ test("automatically shows community join requirements near the community URL", a
   const joinCommunityButton = page.getByTestId("invite-redeem-submit");
   await expect(joinCommunityButton).toBeDisabled();
   await ageConfirmation.check();
-  await expect(ageConfirmation.locator("svg path")).toBeVisible();
   await expect(joinCommunityButton).toBeDisabled();
   await agreementConfirmation.check();
   await expect(joinCommunityButton).toBeEnabled();
@@ -289,7 +274,6 @@ test("joins a community URL without an API token field", async ({ page }) => {
   await page.goto("/");
 
   await openAddCommunityDialog(page);
-  await page.getByTestId("add-community-join").click();
 
   await page
     .getByLabel("Community URL or invite link")

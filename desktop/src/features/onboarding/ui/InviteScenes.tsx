@@ -246,7 +246,7 @@ type PolicyState =
  * forward.
  */
 export function InviteJoinScene({
-  email: _email,
+  email,
   invite,
   name: _name,
   onJoined,
@@ -396,7 +396,7 @@ export function InviteJoinScene({
         lede="Join your team, their agents and the work already in motion."
         title="You’re invited."
       />
-      <InviteCard invite={invite} />
+      <InviteCard email={email} invite={invite} />
       <form
         className="c3fr-form"
         onSubmit={(event) => {

@@ -63,9 +63,13 @@ const STEP_WORDS: Record<StepState, string> = {
 /** A first hello: three steps, driven by the real connection phases. */
 export function TestingScene({
   data,
+  headingRef,
   onCancelTest,
   onNavigate,
-}: Pick<PresentationProps, "data" | "onCancelTest" | "onNavigate">) {
+}: Pick<
+  PresentationProps,
+  "data" | "headingRef" | "onCancelTest" | "onNavigate"
+>) {
   const phase = data.visualOnly ? "starting" : data.connectionPhase;
   const saving = phase === "saving";
   const waiting = phase === "waiting" || saving;
@@ -98,6 +102,7 @@ export function TestingScene({
       style={{ "--c3fr-gap": 26 } as React.CSSProperties}
     >
       <FirstRunHead
+        headingRef={headingRef}
         lede="Checking that Scout can think and reply before you go in."
         title="A first hello."
       />

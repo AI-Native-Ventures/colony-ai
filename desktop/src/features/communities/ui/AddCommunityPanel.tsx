@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
 import { CloseXIcon, LinkIcon } from "@/features/onboarding/ui/firstRunIcons";
 import "@/features/onboarding/ui/firstRun.css";
@@ -23,6 +24,7 @@ export function AddCommunityPanel({
   onCreated,
   onStart,
   titleId = "add-community-dialog-title",
+  titleAs: TitleTag = "h1",
 }: {
   prefill?: AddCommunityPrefillRequest | null;
   joinError: string | null;
@@ -30,13 +32,15 @@ export function AddCommunityPanel({
   onCreated?: () => void;
   onStart: (target: AddCommunityTarget) => void;
   titleId?: string;
+  /** The title element: a dialog passes its own title component so there is one heading. */
+  titleAs?: React.ElementType;
 }) {
   return (
     <div className="c3fr-add-card c3fr-dialog" data-testid="add-community-card">
       <div className="c3fr-add-head">
-        <h1 className="c3fr-add-title" id={titleId}>
+        <TitleTag className="c3fr-add-title" id={titleId}>
           Add a community
-        </h1>
+        </TitleTag>
         <button
           aria-label="Close"
           className="c3fr-add-close"
@@ -56,19 +60,20 @@ export function AddCommunityPanel({
           aria-labelledby="add-community-join-title"
           className="c3fr-pane"
           data-side="join"
+          data-testid="add-community-join"
         >
           <div className="c3fr-pane-head">
             <span aria-hidden="true" className="c3fr-tile">
               <LinkIcon size={20} />
             </span>
-            <span className="c3fr-pane-head-text">
-              <span className="c3fr-pane-title" id="add-community-join-title">
+            <div className="c3fr-pane-head-text">
+              <h2 className="c3fr-pane-title" id="add-community-join-title">
                 Join an existing community
-              </span>
+              </h2>
               <span className="c3fr-pane-desc">
                 Use a community URL or invite link.
               </span>
-            </span>
+            </div>
           </div>
           <InviteRedeemForm
             error={joinError}

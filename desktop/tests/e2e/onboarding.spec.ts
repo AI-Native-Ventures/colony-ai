@@ -351,7 +351,7 @@ test("signed-out R17 entry offers email account access", async ({ page }) => {
     page.getByRole("button", { name: "Forgot password?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Create an account" }),
+    page.getByRole("button", { name: "Create an account" }).first(),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText(
     /\bkey\b|nsec1|backup file|pairing code/i,
@@ -363,7 +363,7 @@ test("R17 signup continues to six-digit email verification", async ({
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("signup@example.com");
   await page
@@ -384,7 +384,7 @@ test("R17 signup blocks passwords shorter than the designed minimum", async ({
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("short-password@example.com");
   const password = page.getByRole("textbox", { name: "Password" });
@@ -441,7 +441,7 @@ test("R17 verified signup continues through business and provider setup", async 
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("verified@example.com");
   await page
@@ -2390,11 +2390,9 @@ test("denied on relay A then paste relay B invite URL switches community to B", 
     .getByTestId("invite-redeem-input")
     .fill(`${relayBHttpUrl}/invite/test-invite-code`);
   await page.getByTestId("invite-redeem-submit").click();
-  await expect(page.getByText("I am 18 years of age or older.")).toBeVisible();
-  await page.getByLabel("I am 18 years of age or older.").check();
-  await page
-    .getByLabel("I agree to the Colony Terms of Service and Privacy Policy.")
-    .check();
+  await expect(page.getByText("I’m 18 or older")).toBeVisible();
+  await page.getByLabel("I’m 18 or older").check();
+  await page.getByLabel(/I agree to the/).check();
   await page.getByTestId("invite-redeem-submit").click();
 
   // After successful claim, relay B is added and becomes active; relay A remains

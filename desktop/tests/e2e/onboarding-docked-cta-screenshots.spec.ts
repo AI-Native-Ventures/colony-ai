@@ -82,7 +82,7 @@ test("R17 signup and email verification screens fit the onboarding card", async 
   await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await captureReskinState(page, "account-sign-in");
 
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await expect(
     page.getByRole("heading", { name: "Let’s get you started." }),
   ).toBeVisible();

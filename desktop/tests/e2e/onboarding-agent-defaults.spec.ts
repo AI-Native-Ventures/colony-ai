@@ -66,7 +66,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   });
 
   await expect(
-    page.getByRole("heading", { name: "Let’s connect your first agent." }),
+    page.getByRole("heading", { name: "Connect your AI." }),
   ).toBeVisible();
 
   await expect(
@@ -78,12 +78,10 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   await expect(
     page
       .getByTestId("onboarding-connect-runtime-claude")
-      .locator(".runtime-select"),
+      .locator(".c3fr-runtime-select"),
   ).toHaveAttribute("aria-pressed", "true");
   const subscription = page.getByTestId("onboarding-connect-runtime-claude");
-  const logo = subscription
-    .locator(".provider-top img, .provider-top svg")
-    .first();
+  const logo = subscription.locator(".c3fr-runtime-icon svg").first();
   const logoSize = await logo.boundingBox();
   expect(logoSize?.width).toBeGreaterThan(0);
   expect(logoSize?.width).toBeLessThanOrEqual(64);
@@ -96,11 +94,12 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     });
   expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
-  // Onboarding offers two paths only. Bring-your-own-key and the other
-  // harnesses stay under Settings > Agents.
+  // Onboarding offers three paths: Claude Code or Codex, Colony Agent and
+  // Start free. Bring-your-own-key and the other harnesses stay under
+  // Settings > Agents.
   await expect(
     page.getByRole("radiogroup", { name: "AI connection" }).getByRole("radio"),
-  ).toHaveCount(2);
+  ).toHaveCount(3);
   await expect(
     page.getByRole("radio", { name: "Bring your own key" }),
   ).toHaveCount(0);
@@ -121,7 +120,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     .getByRole("radio", { name: "Claude Code or Codex", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "On this computer" }),
+    page.getByTestId("onboarding-connect-runtime-claude"),
   ).toBeVisible();
 });
 
@@ -139,8 +138,8 @@ test("R17 onboarding can continue when provider discovery fails", async ({
     page.getByRole("radio", { name: "Colony Agent", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Skip for now" }),
-  ).toBeEnabled();
+    page.getByRole("radio", { name: "Start free", exact: true }),
+  ).toBeVisible();
 
   const savedBusiness = await page.evaluate((key) => {
     return JSON.parse(window.localStorage.getItem(key) ?? "null");
@@ -149,14 +148,6 @@ test("R17 onboarding can continue when provider discovery fails", async ({
     name: "North Star",
     website: "northstar.example",
   });
-
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await page.getByTestId("open-settings").click();
-  await page.getByTestId("profile-popover-settings").click();
-  await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-group-agents-group").click();
-  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
 });
 
 test("R17 Agent Defaults are available from Settings after workspace entry", async ({
@@ -343,15 +334,14 @@ test("R17 bundled agent without a provider is not ready and credits stay hidden"
   await expect(
     page.getByRole("button", { name: "Connect OpenRouter", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
     0,
   );
-  await expect(
-    page.getByRole("button", { name: "Skip for now" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  // The only way on is the connection test, which needs a ready connection.
+  await expect(page.getByRole("button", { name: "Skip for now" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("onboarding-test-connection")).toBeDisabled();
 });
 
 test("R17 Colony Agent saved in Settings is tested from onboarding without editing keys", async ({
@@ -377,11 +367,8 @@ test("R17 Colony Agent saved in Settings is tested from onboarding without editi
   await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
   const saved = page.getByTestId("onboarding-colony-agent-saved");
   await expect(saved).toContainText("saved in Settings");
-  await expect(page.locator(".harness-state")).toHaveText("Included");
   await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
-  await saved
-    .getByRole("button", { name: "Test Colony Agent", exact: true })
-    .click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   const request = await page.evaluate(() =>
     window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -395,25 +382,6 @@ test("R17 Colony Agent saved in Settings is tested from onboarding without editi
       model: "fixture/model",
     },
   });
-});
-
-test("R17 explicit skip opens Colony without saving a connection", async ({
-  page,
-}) => {
-  await openR17ConnectionSetup(page, {
-    runtimes: [
-      {
-        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
-        model_env_var: "BUZZ_AGENT_MODEL",
-        provider_env_var: "BUZZ_AGENT_PROVIDER",
-      },
-    ],
-  });
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  expect(
-    await mockCommand(page, "get_global_agent_config_set_call_count"),
-  ).toBe(0);
 });
 
 test("bundled agent readiness names missing Git for Windows before claiming Ready", async ({
@@ -444,9 +412,6 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
     },
   });
   await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
-  await expect(page.locator(".harness-state")).toHaveText(
-    "Git for Windows needed",
-  );
   await expect(
     page
       .getByTestId("onboarding-colony-agent")
@@ -462,5 +427,5 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
     .click();
   await expect(
     page.getByRole("button", { name: "Skip for now", exact: true }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
 });

@@ -543,10 +543,10 @@ function EmailCodeBody(props: PresentationProps) {
   const resend = (
     <>
       {remaining > 0 ? (
-        <span className="c3fr-resend-wait">
+        <button className="c3fr-resend-wait" disabled type="button">
           <ClockIcon size={15} strokeWidth={2.2} />
           <span>Resend code in {remaining}s</span>
-        </span>
+        </button>
       ) : (
         <FirstRunLink
           disabled={pending}

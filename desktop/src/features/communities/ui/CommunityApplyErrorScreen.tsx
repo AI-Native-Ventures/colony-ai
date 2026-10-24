@@ -4,7 +4,11 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import { signOut } from "@/shared/api/tauriIdentity";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { pubkeyToNpub } from "@/shared/lib/nostrUtils";
-import { isTechnicalRelayError } from "@/shared/lib/relayError";
+import {
+  isTechnicalRelayError,
+  plainRelayErrorMessage,
+  RELAY_UNREACHABLE_SHORT,
+} from "@/shared/lib/relayError";
 import {
   FirstRunButton,
   FirstRunLink,
@@ -40,6 +44,31 @@ function hostOf(relayUrl: string | undefined): string | null {
   }
 }
 
+/** The raw error behind a failure, open as the board draws it, closable by button. */
+function TechnicalDetails({ details }: { details: string }) {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <div className="c3fr-gate-details" data-open={open}>
+      <button
+        aria-controls="community-apply-error-details"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        Technical details
+      </button>
+      {open ? (
+        <pre
+          data-testid="community-apply-error-details"
+          id="community-apply-error-details"
+        >
+          {details}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
 export function CommunityApplyErrorScreen({
   error,
   onEditCommunity,
@@ -59,15 +88,23 @@ export function CommunityApplyErrorScreen({
   const name = exit.failing?.name?.trim() || "this community";
   const host = hostOf(exit.failing?.relayUrl);
   const npub = identity.data?.pubkey ? pubkeyToNpub(identity.data.pubkey) : "";
-  const details = copy.isMembershipError ? copy.detail : error;
-
   // The first action takes focus so a keyboard user can act without hunting.
   React.useEffect(() => {
     (firstSwitchRef.current ?? retryRef.current)?.focus();
   }, []);
 
   const unreachable =
-    !copy.isMembershipError && isTechnicalRelayError(error) && host !== null;
+    !copy.isMembershipError &&
+    copy.message === RELAY_UNREACHABLE_SHORT &&
+    host !== null;
+  // Raw relay text stays in the console: the details are the plain reason.
+  const plainReason = copy.isMembershipError
+    ? copy.detail
+    : isTechnicalRelayError(error)
+      ? plainRelayErrorMessage(error)
+      : error;
+  const details =
+    !unreachable && plainReason === copy.message ? null : plainReason;
 
   return (
     <CommunityFrame
@@ -178,12 +215,7 @@ export function CommunityApplyErrorScreen({
                 )}
               </p>
             </div>
-            {details ? (
-              <details className="c3fr-gate-details" open>
-                <summary>Technical details</summary>
-                <pre data-testid="community-apply-error-details">{details}</pre>
-              </details>
-            ) : null}
+            {details ? <TechnicalDetails details={details} /> : null}
           </section>
         )}
         {exit.leaving ? (

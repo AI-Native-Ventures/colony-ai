@@ -204,7 +204,7 @@ export function CommunityOnboardingFlow({
     } else update({ stage: "profile", error: undefined });
   };
   return (
-    <div data-testid="community-onboarding-flow">
+    <div className="c3fr-gate" data-testid="community-onboarding-flow">
       {stage === "deferred" ? (
         <div
           role="status"

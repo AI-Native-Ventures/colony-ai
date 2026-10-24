@@ -253,14 +253,14 @@ export function SelfServeCommunityCreateFlow({
         <span aria-hidden="true" className="c3fr-tile" data-tone="dark">
           <PlusIcon size={20} strokeWidth={2.4} />
         </span>
-        <span className="c3fr-pane-head-text">
-          <span className="c3fr-pane-title" id="self-serve-community-title">
+        <div className="c3fr-pane-head-text">
+          <h2 className="c3fr-pane-title" id="self-serve-community-title">
             Create a new community
-          </span>
+          </h2>
           <span className="c3fr-pane-desc">
             Claim a Colony address for your team.
           </span>
-        </span>
+        </div>
       </div>
       {configLoading ? (
         <p className="c3fr-note" role="status">

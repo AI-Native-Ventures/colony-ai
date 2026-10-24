@@ -37,6 +37,18 @@
   font-synthesis: none;
 }
 
+/* A wrapper that carries a test id around a fixed screen: it needs its own box
+   to count as visible, and must not block the screen under it. */
+.c3fr-gate {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.c3fr-gate > :not(.pointer-events-none) {
+  pointer-events: auto;
+}
+
 .c3fr-scroll {
   box-sizing: border-box;
   position: fixed;
@@ -1098,13 +1110,31 @@
 
 /* ----------------------------------------------------------- narrow window -- */
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
+  /* The window is too narrow for Scout beside the step: Scout shrinks to a
+     slim bar with the wordmark so the form stays in view. */
   .c3fr-story {
-    padding: calc(28 * var(--u)) calc(24 * var(--u));
+    flex: 1 1 100%;
+    max-width: none;
+    min-height: 0;
+    gap: 0;
+    padding: calc(14 * var(--u)) calc(24 * var(--u));
+  }
+
+  .c3fr-story > :not(.c3fr-field, .c3fr-wordmark) {
+    display: none;
   }
 
   .c3fr-main {
-    padding-inline: calc(24 * var(--u));
+    padding: calc(16 * var(--u)) calc(24 * var(--u));
+  }
+
+  .c3fr-column-wrap {
+    padding-block: calc(12 * var(--u));
+  }
+
+  .c3fr-column {
+    gap: calc(14 * var(--u));
   }
 }
 
@@ -1309,16 +1339,17 @@
 
 .c3fr-resend,
 .c3fr-resend-wait {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: calc(8 * var(--u));
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
   font-size: calc(15 * var(--t));
   font-weight: 600;
   color: var(--fr-muted);
-}
-
-.c3fr-resend-wait {
-  display: inline-flex;
+  cursor: default;
 }
 
 .c3fr-resend-wait svg {
@@ -2966,10 +2997,17 @@
   background: #fbf9f7;
 }
 
-.c3fr-gate-details summary {
+.c3fr-gate-details button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fr-ink);
   cursor: pointer;
+  font-family: inherit;
   font-size: calc(15 * var(--t));
   font-weight: 800;
+  text-align: left;
 }
 
 .c3fr-gate-details pre {
@@ -3141,6 +3179,7 @@
 }
 
 .c3fr-pane-title {
+  margin: 0;
   font-size: calc(19 * var(--t));
   font-weight: 800;
 }
@@ -3277,7 +3316,7 @@
   border-bottom: 1px solid var(--fr-line);
 }
 
-.c3fr-add-title {
+.c3fr-add-card .c3fr-add-title {
   flex: 1;
   margin: 0;
   font-size: calc(26 * var(--t));

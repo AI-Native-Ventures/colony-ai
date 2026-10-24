@@ -216,12 +216,15 @@ export function BusinessMark({
 /** The workspace card: its mark, its name and, when known, who invited you. */
 export function InviteCard({
   invite,
+  email,
 }: {
   invite: { businessName: string; inviter?: string };
+  /** The account that will join, so it is clear which one is signed in. */
+  email?: string;
 }) {
   return (
     <div className="c3fr-card" data-testid="invite-card">
-      <div className="c3fr-invite-head">
+      <div className="c3fr-invite-head" data-testid="invite-brand">
         <BusinessMark dot="#c6b3f4" name={invite.businessName} />
         <span className="c3fr-preview-text">
           <span className="c3fr-invite-name">{invite.businessName}</span>
@@ -235,6 +238,16 @@ export function InviteCard({
           </span>
           <span>
             Invited by <strong>{invite.inviter}</strong>
+          </span>
+        </div>
+      ) : null}
+      {email ? (
+        <div className="c3fr-invite-by">
+          <span aria-hidden="true" className="c3fr-invite-by-avatar">
+            {email.charAt(0).toUpperCase()}
+          </span>
+          <span>
+            Joining as <strong>{email}</strong>
           </span>
         </div>
       ) : null}

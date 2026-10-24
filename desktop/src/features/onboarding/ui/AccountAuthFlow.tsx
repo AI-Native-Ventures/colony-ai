@@ -997,7 +997,10 @@ export function AccountAuthFlow({
         className="colony-onboarding-auth-root"
         data-testid="machine-onboarding-gate"
       >
-        <div data-testid={`account-auth-screen-${state.screen}`}>
+        <div
+          className="c3fr-gate"
+          data-testid={`account-auth-screen-${state.screen}`}
+        >
           <StartupWindowDragRegion />
           <OnboardingScenePresentation
             data={data}

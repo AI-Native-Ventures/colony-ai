@@ -41,29 +41,25 @@ for (const viewport of [
         },
       },
     });
-    await expect(
-      page.getByText(
-        "Your AI teammates share these allowances with your other usage.",
-      ),
-    ).toBeVisible();
-    // Skip for now stays available on the Claude Code or Codex path even
-    // when an app is ready.
+    // The ready app shows its weekly allowance; there is no Skip, every path
+    // ends in the connection test.
+    await expect(page.getByText("Weekly allowance")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Skip for now", exact: true }),
-    ).toBeEnabled();
+    ).toHaveCount(0);
     await capture(page, `subscriptions-${viewport.width}`);
-    await page
-      .getByRole("button", { name: "Connect Claude Code", exact: true })
-      .click();
-    await expect(page.locator(".progress-list li").first()).toHaveText(
-      "Connection saved",
+    await page.getByTestId("onboarding-test-connection").click();
+    // Saved only after Scout replies, so the first row reads as ready, not saved.
+    await expect(page.locator(".c3fr-steps li").first()).toContainText(
+      "Connection ready",
     );
-    await expect(page.locator(".progress-list li").first()).not.toHaveClass(
-      /complete/,
+    await expect(page.locator(".c3fr-steps li").first()).toHaveAttribute(
+      "data-state",
+      "done",
     );
     await capture(page, `testing-${viewport.width}`);
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
-    await expect(page.locator(".connection-meta")).toContainText(
+    await expect(page.locator(".c3fr-reply-meta")).toContainText(
       "Claude Code · Claude Sonnet",
     );
     await expect(
@@ -129,13 +125,13 @@ for (const viewport of [
     await page
       .getByRole("radio", { name: "Colony Agent", exact: true })
       .click();
-    const action = page.getByRole("button", {
-      name: "Test connection",
-      exact: true,
-    });
+    const action = page.getByTestId("onboarding-test-connection");
     await expect(action).toBeEnabled();
-    await expect(action).toHaveClass(/primary/);
-    await expect(page.locator(".form-content .primary")).toHaveCount(1);
+    await expect(action).toHaveText("Test the connection");
+    await expect(action).toHaveAttribute("data-kind", "primary");
+    await expect(
+      page.locator('.c3fr-form .c3fr-button[data-kind="primary"]'),
+    ).toHaveCount(1);
     await expect(
       page.getByRole("button", { name: "Refresh connection", exact: true }),
     ).toHaveCount(0);

@@ -266,8 +266,13 @@ test("connected and no reply", async ({ page }) => {
   await openFirstRun(page, {
     mock: {
       acpRuntimesCatalog: [claude],
+      discoverAgentModels: {
+        supportsSwitching: true,
+        models: [{ id: "claude-sonnet", name: "Claude Sonnet" }],
+      },
       onboardingConnectionResult: {
         reply: "Hi Lerato! I’m here and ready when you are.",
+        model: "claude-sonnet",
         startupMs: 80,
         totalMs: 400,
       },
@@ -460,7 +465,7 @@ test("community failed and edit", async ({ page }) => {
   });
   await page.getByTestId("community-apply-error-edit").click();
   await expect(
-    page.getByRole("dialog", { name: "Edit Community" }),
+    page.getByRole("heading", { name: "Change community" }),
   ).toBeVisible();
   await shot(page, {
     name: "19-community-edit",

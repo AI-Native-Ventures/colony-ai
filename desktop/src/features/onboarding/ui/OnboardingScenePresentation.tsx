@@ -248,6 +248,7 @@ function SceneBody(props: PresentationProps) {
     return (
       <TestingScene
         data={data}
+        headingRef={props.headingRef}
         onCancelTest={props.onCancelTest}
         onNavigate={onNavigate}
       />
