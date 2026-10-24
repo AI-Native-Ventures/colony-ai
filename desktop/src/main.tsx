@@ -136,6 +136,17 @@ async function installE2eBridgeIfConfigured() {
  */
 async function renderShowcaseIfRequested(): Promise<boolean> {
   if (
+    (import.meta.env.DEV || import.meta.env.MODE === "e2e") &&
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-business-states"
+  ) {
+    const { renderBusinessStatesShowcase } = await import(
+      "@/testing/colony3BusinessShowcase"
+    );
+    renderBusinessStatesShowcase();
+    return true;
+  }
+  if (
     !(import.meta.env.DEV || import.meta.env.MODE === "e2e") ||
     !["colony3", "colony3-notices"].includes(
       (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })

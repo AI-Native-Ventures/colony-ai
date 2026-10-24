@@ -36,8 +36,9 @@ test("client directory opens its exact client record and work channel", async ({
 }) => {
   await openReferenceWorkspace(page, "/#/clients");
 
-  const rows = page.getByRole("table").locator("tbody tr");
-  await expect(rows).toHaveCount(3);
+  const rows = page.getByRole("table", { name: "Clients" }).getByRole("row");
+  // The header row and one row per client.
+  await expect(rows).toHaveCount(4);
   await expect(page.getByRole("table")).toContainText("The Olive House");
   await expect(page.getByRole("table")).toContainText("Cedar Café");
   await expect(page.getByRole("table")).toContainText("Northline Interiors");
@@ -54,7 +55,7 @@ test("client directory opens its exact client record and work channel", async ({
   await expect(
     page.getByRole("button", { name: "Client channel" }),
   ).toHaveCount(1);
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Archive client" }),
   ).toHaveCount(0);
@@ -115,25 +116,24 @@ test("work list and board open the exact client-scoped work item", async ({
     page.getByRole("heading", { name: "Make room for slow mornings" }),
   ).toBeVisible();
   await page.locator("details").first().locator("summary").click();
-  await expect(page.locator("article").first()).toContainText(
-    "Review required",
-  );
+  await expect(page.locator("article").first()).toContainText("Needs review");
   await expect(
     page.getByText(
       "Let the first slide breathe. Keep the product detail on slide two.",
     ),
   ).toBeVisible();
+  // Approved deliverables fold to one line and carry no review actions.
   const requestChangesActions = page.getByRole("button", {
     name: "Request changes",
   });
-  await expect(requestChangesActions).toHaveCount(4);
+  await expect(requestChangesActions).toHaveCount(2);
   await expect(
     page.locator("article").first().getByRole("button", {
       name: "Request changes",
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open client channel" }),
+    page.getByRole("button", { name: "Open #The Olive House" }),
   ).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Archive work" })).toHaveCount(
     0,
@@ -234,7 +234,9 @@ test("an unassigned member cannot edit existing client work", async ({
       "Only an assigned person or client channel admin can update this work item.",
     ),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pause work" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeDisabled();
 });
 
 test("archived client work stays visible and read only", async ({ page }) => {
@@ -258,7 +260,9 @@ test("archived client work stays visible and read only", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Request changes" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Pause work" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeDisabled();
 });
 
 test("archived work remains visible without mutation controls", async ({
