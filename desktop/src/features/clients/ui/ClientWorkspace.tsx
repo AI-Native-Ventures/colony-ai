@@ -1,26 +1,58 @@
 import type { ReactNode } from "react";
 
-import { PageHeader } from "@/shared/ui/PageHeader";
+import {
+  StateAlert,
+  StateLoading,
+  StateNote,
+} from "@/features/clients/ui/BusinessStates";
 
+import "./colony3-business.css";
+
+/**
+ * The page frame shared by Clients, Client and Work: the scrolling area, the
+ * centred (or full width) column and the title block. `header` replaces the
+ * default title block for pages that carry their own (a client or work item).
+ */
 export function ClientWorkspace({
   action,
   children,
+  gap = 22,
+  header,
+  subtitle,
   title,
+  variant,
+  wide = false,
 }: {
   action?: ReactNode;
   children: ReactNode;
+  gap?: 22 | 24;
+  header?: ReactNode;
+  subtitle?: ReactNode;
   title: ReactNode;
+  variant?: "work-detail";
+  wide?: boolean;
 }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border/70 px-6 py-5">
-        <PageHeader action={action} title={title} />
-      </header>
-      <main className="min-h-0 flex-1 overflow-auto px-6 py-5">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          {children}
-        </div>
-      </main>
+    <div className="b3-page">
+      <div
+        className="b3-frame"
+        data-gap={gap}
+        data-variant={variant}
+        data-wide={wide}
+      >
+        {header ?? (
+          <div className="b3-head">
+            <div className="b3-head-copy">
+              <h1 className="b3-title">{title}</h1>
+              {subtitle ? (
+                <span className="b3-subtitle">{subtitle}</span>
+              ) : null}
+            </div>
+            {action ? <div className="b3-head-actions">{action}</div> : null}
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }
@@ -30,55 +62,9 @@ export function RecordMessage({
   kind = "quiet",
 }: {
   children: ReactNode;
-  kind?: "quiet" | "error";
+  kind?: "quiet" | "error" | "loading";
 }) {
-  return (
-    <div
-      className={
-        kind === "error"
-          ? "rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-          : "rounded-lg border border-border/70 bg-card px-4 py-3 text-sm text-muted-foreground"
-      }
-      role={kind === "error" ? "alert" : undefined}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function RecordCard({
-  action,
-  children,
-  title,
-}: {
-  action?: ReactNode;
-  children: ReactNode;
-  title: ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-border/70 bg-card p-5 shadow-xs">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-export function RecordField({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm font-medium text-foreground">
-        {children}
-      </dd>
-    </div>
-  );
+  if (kind === "error") return <StateAlert>{children}</StateAlert>;
+  if (kind === "loading") return <StateLoading>{children}</StateLoading>;
+  return <StateNote>{children}</StateNote>;
 }

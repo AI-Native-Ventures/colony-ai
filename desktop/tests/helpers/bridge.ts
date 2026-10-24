@@ -183,6 +183,8 @@ type MockBridgeOptions = {
   colony3Sidebar?: boolean;
   /** Colony 3.0 conversation boards: extra people, channels, members and messages. */
   colony3Extras?: Colony3Extras;
+  /** Colony 3.0 business boards: the design's deliverables, people and dates. */
+  colony3Business?: boolean;
   /** Match the company shell review's conversation rows and empty badge state. */
   referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */
