@@ -12,6 +12,7 @@ import {
   type SoundName,
   type SoundSlot,
 } from "@/features/notifications/lib/sound";
+import { LocalArchiveSwitch } from "@/features/local-archive/ui/LocalArchiveSwitch";
 import { Switch } from "@/shared/ui/switch";
 import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./SettingsKit";
 
@@ -214,6 +215,8 @@ export function NotificationSettingsCard({
           </div>
         </div>
       </section>
+
+      <LocalArchiveSwitch />
 
       {permissionBlocked && (
         <p className="cs-notice" data-tone="bad" role="alert">
