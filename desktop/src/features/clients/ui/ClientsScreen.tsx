@@ -1,17 +1,79 @@
+import * as React from "react";
 import { Link } from "@tanstack/react-router";
 
-import { useClientDirectoryQuery } from "@/features/clients/useBusinessRecords";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+
+import type { WorkItemHead } from "@/features/clients/lib/businessRecords";
+import { usePeople } from "@/features/clients/lib/usePeople";
+import { useAllWorkItemHeadsQuery } from "@/features/clients/useBusinessRecords";
 import {
-  RecordMessage,
+  BriefcaseIcon,
+  ChevronRightIcon,
+  clientInitial,
+  ClientStatusPill,
+  PersonAvatar,
+  WorkStatusPill,
+} from "@/features/clients/ui/BusinessBits";
+import {
   ClientWorkspace,
+  RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
 
+/** The work item a client row shows: the one that most needs a person. */
+const WORK_PRIORITY = ["review", "blocked", "active", "paused", "complete"];
+
+export function sharedWorkForClient(
+  work: readonly { value: WorkItemHead }[],
+  clientId: string,
+): WorkItemHead | null {
+  const own = work
+    .map(({ value }) => value)
+    .filter((value) => value.clientId === clientId);
+  const rank = (status: string) => {
+    const index = WORK_PRIORITY.indexOf(status);
+    return index === -1 ? WORK_PRIORITY.length : index;
+  };
+  return [...own].sort((a, b) => rank(a.status) - rank(b.status))[0] ?? null;
+}
+
 export function ClientsScreen() {
-  const clientsQuery = useClientDirectoryQuery();
+  const workQuery = useAllWorkItemHeadsQuery();
+  const { goClient } = useAppNavigation();
+  const clientsQuery = workQuery.directoryQuery;
   const records = clientsQuery.data ?? [];
+  const work = workQuery.data;
+  const channelNameById = React.useMemo(
+    () =>
+      new Map(
+        clientsQuery.clientChannels.map((channel) => [
+          channel.id.toLowerCase(),
+          channel.name,
+        ]),
+      ),
+    [clientsQuery.clientChannels],
+  );
+  const rows = React.useMemo(
+    () =>
+      records.map(({ event, value }) => ({
+        event,
+        value,
+        work: work ? sharedWorkForClient(work, value.clientId) : null,
+      })),
+    [records, work],
+  );
+  const { person } = usePeople(
+    rows.flatMap((row) => row.work?.assignedPubkeys ?? []),
+  );
 
   return (
-    <ClientWorkspace title="Clients">
+    <ClientWorkspace
+      subtitle={
+        records.length > 0
+          ? `${records.length} ${records.length === 1 ? "client" : "clients"}`
+          : undefined
+      }
+      title="Clients"
+    >
       {clientsQuery.channelsQuery.isError ? (
         <RecordMessage kind="error">
           Client channels could not be loaded.
@@ -28,7 +90,7 @@ export function ClientsScreen() {
         </RecordMessage>
       ) : null}
       {clientsQuery.isPending ? (
-        <RecordMessage>Loading clients</RecordMessage>
+        <RecordMessage kind="loading">Loading clients</RecordMessage>
       ) : null}
       {clientsQuery.isSuccess && records.length === 0 ? (
         <RecordMessage>
@@ -36,47 +98,109 @@ export function ClientsScreen() {
         </RecordMessage>
       ) : null}
       {records.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-border/70 bg-card shadow-xs">
-          <table className="w-full border-collapse text-sm">
+        <div className="b3-card b3-table-card">
+          <table aria-label="Clients" className="b3-clients">
+            <colgroup>
+              <col style={{ width: "34.4%" }} />
+              <col style={{ width: "calc(166 * var(--b3u))" }} />
+              <col />
+              <col style={{ width: "calc(58 * var(--b3u))" }} />
+            </colgroup>
             <thead>
-              <tr className="border-b border-border/70 text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Client</th>
-                <th className="px-4 py-3 font-medium">Status</th>
+              <tr>
+                <th className="b3-eyebrow" scope="col">
+                  Client
+                </th>
+                <th className="b3-eyebrow" scope="col">
+                  Status
+                </th>
+                <th className="b3-eyebrow" scope="col">
+                  Shared work
+                </th>
+                <th className="b3-sr-only" scope="col">
+                  Open
+                </th>
               </tr>
             </thead>
             <tbody>
-              {records.map(({ event, value }) => (
-                <tr
-                  className="border-b border-border/50 last:border-0"
-                  key={event.id}
-                >
-                  <td className="px-4 py-3 font-medium">
-                    <Link
-                      className="text-foreground underline-offset-4 hover:underline"
-                      params={{ clientId: value.clientId }}
-                      to="/clients/$clientId"
-                    >
-                      {value.displayName}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatClientStatus(value.status)}
-                  </td>
-                </tr>
-              ))}
+              {rows.map(({ event, value, work: sharedWork }) => {
+                const owner = sharedWork?.assignedPubkeys[0]
+                  ? person(sharedWork.assignedPubkeys[0])
+                  : null;
+                return (
+                  <tr
+                    data-testid={`client-row-${value.clientId}`}
+                    key={event.id}
+                    onClick={(clickEvent) => {
+                      if (!(clickEvent.target as Element).closest("a")) {
+                        void goClient(value.clientId);
+                      }
+                    }}
+                  >
+                    <td>
+                      <span className="b3-clients-cell" data-first="true">
+                        <span aria-hidden="true" className="b3-tile">
+                          {clientInitial(value.displayName)}
+                        </span>
+                        <span className="b3-stack">
+                          <Link
+                            className="b3-name"
+                            params={{ clientId: value.clientId }}
+                            to="/clients/$clientId"
+                          >
+                            {value.displayName}
+                          </Link>
+                          <span className="b3-meta">
+                            #
+                            {channelNameById.get(
+                              value.clientId.toLowerCase(),
+                            ) ?? value.displayName}
+                          </span>
+                        </span>
+                      </span>
+                    </td>
+                    <td>
+                      <ClientStatusPill size="lg" status={value.status} />
+                    </td>
+                    <td>
+                      <span className="b3-clients-cell">
+                        {sharedWork ? (
+                          <>
+                            {owner ? (
+                              <PersonAvatar person={owner} size={32} />
+                            ) : null}
+                            <span className="b3-stack b3-grow">
+                              <span className="b3-work-title">
+                                {sharedWork.title}
+                              </span>
+                              <span className="b3-meta">
+                                {owner?.name ?? "Unassigned"}
+                              </span>
+                            </span>
+                            <WorkStatusPill status={sharedWork.status} />
+                          </>
+                        ) : null}
+                      </span>
+                    </td>
+                    <td aria-hidden="true" className="b3-chevron">
+                      <ChevronRightIcon />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : null}
+      {records.length > 0 ? (
+        <div className="b3-note">
+          <BriefcaseIcon />
+          <span>
+            Every client has their own private channel, where their work and
+            invoices are shared.
+          </span>
+        </div>
+      ) : null}
     </ClientWorkspace>
   );
-}
-
-function formatClientStatus(status: string) {
-  return status
-    .split(/([\s_-]+)/)
-    .map((part) =>
-      /^[a-z]/i.test(part) ? part[0].toUpperCase() + part.slice(1) : part,
-    )
-    .join("");
 }
