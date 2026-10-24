@@ -257,44 +257,28 @@ test("focus and split preserve reading context and interaction ownership", async
     .evaluate((element) => (element as HTMLElement).click());
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
 
+  // The thread keeps the reply at the top of the view (the one being read), so
+  // that is the row to follow through the next switch.
+  const readingRowId = await body.evaluate((element) => {
+    const top = element.getBoundingClientRect().top;
+    return (
+      Array.from(
+        element.querySelectorAll<HTMLElement>("[data-message-id]"),
+      ).find((row) => row.getBoundingClientRect().bottom > top)?.dataset
+        .messageId ?? null
+    );
+  });
+  expect(readingRowId).not.toBeNull();
+
   const splitModeToggle = page.getByRole("button", { name: "Expand thread" });
   await splitModeToggle.focus();
   await splitModeToggle.press("Enter");
   await expect(drawer).toBeVisible();
   await expect(channel).toHaveAttribute("inert", "");
   await expect(page.getByTestId("thread-view-mode-toggle")).toBeFocused();
-  try {
-    await expect(
-      body.locator(`[data-message-id="${anchorId}"]`),
-    ).toBeInViewport();
-  } catch (error) {
-    // Leave the thread's state in the log: this check only fails on CI.
-    console.log(
-      `THREAD-FOCUS-DIAG ${JSON.stringify(
-        await body.evaluate((element, id) => {
-          const rows = Array.from(
-            element.querySelectorAll<HTMLElement>("[data-message-id]"),
-          );
-          const anchor = rows.find((row) => row.dataset.messageId === id);
-          const bounds = element.getBoundingClientRect();
-          return {
-            anchorIndex: anchor ? rows.indexOf(anchor) : -1,
-            anchorTop: anchor
-              ? anchor.getBoundingClientRect().top - bounds.top
-              : null,
-            clientHeight: element.clientHeight,
-            rowCount: rows.length,
-            scrollHeight: element.scrollHeight,
-            scrollTop: element.scrollTop,
-            topRow: rows
-              .find((row) => row.getBoundingClientRect().bottom > bounds.top)
-              ?.textContent?.slice(0, 40),
-          };
-        }, anchorId),
-      )}`,
-    );
-    throw error;
-  }
+  await expect(
+    body.locator(`[data-message-id="${readingRowId}"]`),
+  ).toBeInViewport();
 
   // Focus mode owns Escape even while the rich-text composer and one of its
   // nested controls has focus: one press exits the focused thread.
