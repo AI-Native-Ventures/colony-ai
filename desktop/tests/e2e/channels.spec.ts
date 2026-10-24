@@ -437,13 +437,13 @@ async function expectIntroSpacedAboveDayDivider(
   // The intro is a flex sibling above the timeline; the day divider and first
   // message-row are virtualized items positioned by translateY inside the
   // scroll container. The intro -> divider gap is the wrapper flex spacing the
-  // layout controls (8px, stable), so guard THAT with a tight band - a layout
+  // layout controls (16px, stable), so guard THAT with a tight band - a layout
   // regression that collapses or balloons it fails here. The divider -> message
   // gap is NOT a layout-spacing contract: virtualized rows are positioned
   // back-to-back (no inter-item gap), so it is ~0 by construction plus
   // MessageRow avatar/font render jitter, genuinely variable run-to-run. Assert
   // only non-overlap on it (reading order: intro, divider, then message).
-  expect(Math.abs(gapAboveDivider - 8)).toBeLessThanOrEqual(2);
+  expect(Math.abs(gapAboveDivider - 16)).toBeLessThanOrEqual(2);
   expect(gapBelowDivider).toBeGreaterThanOrEqual(0);
 }
 
@@ -2013,15 +2013,13 @@ test("channel date divider keeps the date sticky while the separator rule scroll
     const pill = group?.querySelector<HTMLElement>("p");
     if (!group || !pill) throw new Error("missing visible day divider");
 
-    const rule = getComputedStyle(group, "::before");
-    const groupBox = group.getBoundingClientRect();
+    const rule = pill.previousElementSibling;
+    if (!(rule instanceof HTMLElement)) throw new Error("missing divider rule");
+    const ruleBox = rule.getBoundingClientRect();
     const pillBox = pill.getBoundingClientRect();
     return {
       chipCenter: pillBox.top + pillBox.height / 2,
-      ruleCenter:
-        groupBox.top +
-        Number.parseFloat(rule.top) +
-        Number.parseFloat(rule.height) / 2,
+      ruleCenter: ruleBox.top + ruleBox.height / 2,
     };
   });
   expect(

@@ -652,7 +652,8 @@ test("global search offers an optional current-channel scope", async ({
     relevantHeader.evaluate(contentStart),
     firstScopedResult.evaluate(contentStart),
   ]);
-  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(1);
+  // The Search board insets its section labels 2px from the input.
+  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(2);
   expect(Math.abs(inputStart - resultStart)).toBeLessThanOrEqual(1);
 
   await input.fill("x");

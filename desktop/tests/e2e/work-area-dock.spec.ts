@@ -97,7 +97,9 @@ test.describe("work area dock", () => {
     await expect(panel).toContainText("No agent workspace here yet");
 
     // Escape from the header closes the dock and returns focus to the opener.
+    // The opener's tooltip is still fading out; it owns Escape until it is gone.
     await filesTab.focus();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(dock(page)).toHaveCount(0);
     await expect(trigger(page)).toBeFocused();

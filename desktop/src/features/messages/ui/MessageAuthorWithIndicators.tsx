@@ -19,7 +19,7 @@ export function MessageAuthorWithIndicators({
   role,
 }: MessageAuthorWithIndicatorsProps) {
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1">
+    <span className="inline-flex min-w-0 max-w-[65%] shrink-0 items-baseline gap-1">
       <MessageAuthorIdentity
         displayName={authorName}
         ownerPubkey={ownerPubkey}

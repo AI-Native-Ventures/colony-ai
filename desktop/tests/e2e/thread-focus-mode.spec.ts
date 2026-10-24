@@ -306,12 +306,13 @@ test("narrow thread overlays reopen with keyboard and restore trigger focus", as
   const drawerBounds = await drawer.boundingBox();
   expect(drawerBounds?.x).toBeGreaterThanOrEqual(425);
   expect(drawerBounds?.x).toBeLessThanOrEqual(435);
-  expect(drawerBounds?.y).toBeGreaterThanOrEqual(229);
-  expect(drawerBounds?.y).toBeLessThanOrEqual(239);
+  // The drawer starts under the Colony 3.0 one-row channel header.
+  expect(drawerBounds?.y).toBeGreaterThanOrEqual(184);
+  expect(drawerBounds?.y).toBeLessThanOrEqual(194);
   expect(drawerBounds?.width).toBeGreaterThanOrEqual(500);
   expect(drawerBounds?.width).toBeLessThanOrEqual(520);
-  expect(drawerBounds?.height).toBeGreaterThan(560);
-  expect(drawerBounds?.height).toBeLessThan(610);
+  expect(drawerBounds?.height).toBeGreaterThan(600);
+  expect(drawerBounds?.height).toBeLessThan(660);
   await expect
     .poll(() =>
       drawer.evaluate((element) => element.contains(document.activeElement)),

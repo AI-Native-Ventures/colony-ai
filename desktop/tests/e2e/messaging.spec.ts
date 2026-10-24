@@ -3291,7 +3291,7 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
+  await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
 });
 
 test("single-panel thread view hides channel actions", async ({ page }) => {

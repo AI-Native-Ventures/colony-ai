@@ -173,9 +173,10 @@ test("image bundle lightbox navigates as a gallery", async ({ page }) => {
 
   const mosaic = row.locator("[data-image-mosaic]");
   await expect(mosaic).toHaveAttribute("data-image-mosaic-count", "3");
-  // The lightbox frame keeps its 16px radius (the mosaic itself is no longer one
-  // rounded block; each tile has its own corners).
-  const mosaicCornerRadius = "16px";
+  // The mosaic is no longer one rounded block: each tile clips its own corners,
+  // so the square trigger inside it is the frame the lightbox opens from.
+  const mosaicCornerRadius = "0px";
+  const lightboxCornerRadius = "16px";
   const tiles = row.locator("[data-mosaic-tile]");
   await expect(tiles).toHaveCount(3);
   const mosaicBox = await mosaic.boundingBox();
@@ -340,7 +341,9 @@ test("image bundle lightbox navigates as a gallery", async ({ page }) => {
       };
     });
   expect(lightboxSurfaceStyle.borderTopLeftRadius).toBe("0px");
-  expect(lightboxSurfaceStyle.borderBottomRightRadius).toBe(mosaicCornerRadius);
+  expect(lightboxSurfaceStyle.borderBottomRightRadius).toBe(
+    lightboxCornerRadius,
+  );
   expect(lightboxSurfaceStyle.transitionProperty).toBe("border-radius");
 
   expect(Math.abs(closingFrameStyle.left - currentThumbnailBox.x)).toBeLessThan(
