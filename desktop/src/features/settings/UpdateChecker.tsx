@@ -50,7 +50,7 @@ export function UpdateChecker() {
         "Automatic updates aren't available on this build. Download the latest release manually.";
       break;
     case "manual-required":
-      line = `Update available · v${status.version}. Automatic installation isn't available for this build.`;
+      line = `Update available · v${status.version}. Automatic installation isn't available for this build. Download the new version from GitHub.`;
       action = {
         label: "Download update",
         onClick: () => void openUrl(status.releaseUrl),

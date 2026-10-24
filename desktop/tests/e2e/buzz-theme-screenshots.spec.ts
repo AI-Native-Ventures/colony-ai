@@ -278,7 +278,7 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
       await resolveSidebarColor(
         page,
         "color",
-        "hsl(var(--colony-fg-secondary))",
+        "var(--colony-sidebar-ink-soft)",
       ),
     );
   });

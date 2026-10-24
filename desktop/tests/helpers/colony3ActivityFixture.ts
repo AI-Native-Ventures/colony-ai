@@ -320,6 +320,22 @@ export function colony3ActivityMockOptions() {
     companyAskHeads: [approvalAsk(relaySecret)],
     colony3Extras: {
       ...colony3Extras({
+        // The All view lists agent updates only from agents the signed-in
+        // member owns, so Scout and Noor are Lerato's.
+        profiles: [
+          {
+            pubkey: REFERENCE_AGENTS.scout.pubkey,
+            displayName: "Scout",
+            isAgent: true,
+            ownerPubkey: SELF,
+          },
+          {
+            pubkey: COLONY3_EXTRA_AGENTS.noor.pubkey,
+            displayName: "Noor",
+            isAgent: true,
+            ownerPubkey: SELF,
+          },
+        ],
         channels: [
           {
             id: DM_CHANNEL_ID,

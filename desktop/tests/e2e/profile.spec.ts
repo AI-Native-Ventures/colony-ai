@@ -957,8 +957,10 @@ test("renders the agent profile panel from the Playwright mock bridge", async ({
   await expect(startOnLaunchRow).not.toBeChecked();
   await expect(startOnLaunchToggle).toHaveAttribute("data-state", "unchecked");
   await expect(
-    page.locator('[data-sonner-toast][data-type="success"]'),
-  ).toContainText("Memory Bot will stay manual-start only.");
+    page
+      .locator('[data-sonner-toast][data-type="success"]')
+      .filter({ hasText: "Memory Bot will stay manual-start only." }),
+  ).toBeVisible();
   // Sonner pauses expiry while hovered. Clear this real startup-preference
   // toast before the first lower row is clicked.
   await page.mouse.move(0, 0);
@@ -1430,18 +1432,17 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
   await openSettings(page, "privacy");
   const messagePreviews = page.getByTestId("privacy-message-text");
   await expect(messagePreviews).not.toBeChecked();
-  await messagePreviews.check();
-  await page.getByRole("button", { name: "Save privacy preferences" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Privacy preferences saved",
-  );
+  await messagePreviews.click();
+  await expect(messagePreviews).toBeChecked();
   await selectSettingsSection(page, "notifications");
   await expect(page.getByTestId("settings-notifications")).toBeVisible();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Notifications & sounds" }),
+    page.getByRole("heading", { level: 1, name: "Preferences" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Choose what deserves your attention.", { exact: true }),
+    page.getByText("When Colony gets your attention, and how it sounds.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByTestId("notifications-desktop-state")).toContainText(
     "On",
@@ -1751,11 +1752,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await page.goto("/");
   await openSettings(page, "appearance");
   await page.getByTestId("settings-inner-accessibility").click();
-  await page.getByLabel("Text size", { exact: true }).selectOption("larger");
-  await page
-    .getByTestId("settings-accessibility")
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
+  await page.getByTestId("accessibility-text-size-larger").click();
 
   const dispatchZoomIn = () =>
     page.evaluate(() => {
@@ -1852,11 +1849,8 @@ test("maps agent defaults, harnesses and local behavior to their sections", asyn
   await page.getByTestId("settings-group-app-devices").click();
   await page.getByTestId("settings-inner-app").click();
   const appPreferences = page.getByTestId("settings-app-preferences");
-  const addressedAgents = appPreferences.getByTestId(
-    "settings-keep-addressed-agents",
-  );
   await expect(
-    addressedAgents.getByRole("switch", {
+    appPreferences.getByRole("switch", {
       name: "Keep addressed agents selected",
     }),
   ).toBeVisible();

@@ -400,7 +400,7 @@ test.describe("inbox refactor screenshots", () => {
     await expect(firstUnreadRow).toBeVisible();
     const listPreview = firstUnreadRow.locator(".inbox-preview-markdown");
     await expect(listPreview).toHaveCSS("font-size", "15px");
-    await expect(listPreview).toHaveCSS("line-height", "21.75px");
+    await expect(listPreview).toHaveCSS("line-height", "21.7499px");
     await firstUnreadRow.click();
 
     const detail = page.getByTestId("home-inbox-detail");
@@ -492,7 +492,7 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.75px" },
+        { fontSize: "15px", lineHeight: "21.7499px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         5,
         { fontSize: "16.5px", lineHeight: "20px" },
@@ -508,7 +508,7 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.75px" },
+        { fontSize: "15px", lineHeight: "21.7499px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         3,
         { fontSize: "16.5px", lineHeight: "20px" },

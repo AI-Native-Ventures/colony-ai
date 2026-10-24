@@ -30,7 +30,9 @@ test.describe("Colony 3.0 Today", () => {
     await expect(page.getByTestId("needs-me-overdue-toggle")).toHaveText(
       "1 overdue",
     );
-    await expect(page.getByRole("status")).toContainText(
+    await expect(
+      page.getByTestId("today-screen").getByRole("status"),
+    ).toContainText(
       "1 ask is overdue. It stays open until it’s answered, withdrawn or expires.",
     );
   });
