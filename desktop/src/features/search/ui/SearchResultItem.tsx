@@ -2,15 +2,14 @@ import type * as React from "react";
 import {
   ArrowRight,
   Bot,
-  FileText,
   Hash,
+  Lock,
   MessageCircle,
   Plus,
   User,
   type LucideIcon,
 } from "lucide-react";
 
-import { HashSearch } from "@/shared/ui/icons";
 import {
   resolveUserLabel,
   resolveUserSecondaryLabel,
@@ -71,9 +70,9 @@ export function resultIcon(
 ) {
   if (result.kind === "action") {
     if (result.action.id === "browse-channels") {
-      return HashSearch;
+      return Hash;
     }
-    return result.action.id === "create-agent" ? Bot : Plus;
+    return Plus;
   }
 
   if (result.kind === "user") {
@@ -87,15 +86,17 @@ export function resultIcon(
         ? channelLookup.get(result.hit.channelId)?.channelType
         : undefined;
 
-  if (channelType === "forum") {
-    return FileText;
-  }
-
   if (channelType === "dm") {
     return MessageCircle;
   }
 
-  return Hash;
+  const visibility =
+    result.kind === "channel"
+      ? result.channel.visibility
+      : result.hit.channelId
+        ? channelLookup.get(result.hit.channelId)?.visibility
+        : undefined;
+  return visibility === "private" ? Lock : Hash;
 }
 
 export function SearchResultShell({
@@ -161,10 +162,6 @@ function describeSearchHit(hit: SearchHit) {
   switch (hit.kind) {
     case 1:
       return "Note";
-    case 45001:
-      return "Forum post";
-    case 45003:
-      return "Forum reply";
     case 43001:
       return "Agent job";
     case 43003:

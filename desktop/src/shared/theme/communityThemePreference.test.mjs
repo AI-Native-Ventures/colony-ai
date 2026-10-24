@@ -11,6 +11,7 @@ import {
   communityThemeScopeFallback,
   communityThemeStorageKey,
   parseCommunityThemePreference,
+  sameCommunityThemePreference,
   readCommunityThemeOutbox,
   readCommunityThemePreference,
   readCommunityThemeWriteTime,
@@ -26,6 +27,44 @@ function localStorageStub() {
     removeItem: (key) => data.delete(key),
   };
 }
+
+test("carries the sidebar field colours only when they are not the default", () => {
+  const base = {
+    version: 1,
+    theme: "buzz",
+    accent: "#5B45BE",
+    followSystem: true,
+  };
+  const peach = ["#FFC2A6", "#F5A4D5", "#C6B3F4"];
+  assert.deepEqual(parseCommunityThemePreference({ ...base, field: peach }), {
+    ...base,
+    field: peach,
+  });
+  // The default trio is the absence of a field, so older records are unchanged.
+  assert.deepEqual(
+    parseCommunityThemePreference({
+      ...base,
+      field: ["#f5a4d5", "#c6b3f4", "#94b4fa"],
+    }),
+    base,
+  );
+  // An unreadable field never invalidates the rest of the choice.
+  assert.deepEqual(
+    parseCommunityThemePreference({ ...base, field: ["red", "green"] }),
+    base,
+  );
+  assert.equal(
+    sameCommunityThemePreference(base, { ...base, field: peach }),
+    false,
+  );
+  assert.equal(
+    sameCommunityThemePreference(base, {
+      ...base,
+      field: ["#F5A4D5", "#C6B3F4", "#94B4FA"],
+    }),
+    true,
+  );
+});
 
 test("parses only the versioned stable appearance contract", () => {
   const valid = {

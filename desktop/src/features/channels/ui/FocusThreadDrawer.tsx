@@ -35,7 +35,7 @@ type FocusThreadDrawerProps = {
  * header backdrop's `bg-background/80` vocabulary, a touch heavier because this
  * one has to defeat body text rather than sit over a gap.
  */
-const FOCUS_SCRIM_CLASS = "bg-background/75 dark:bg-background/80";
+const FOCUS_SCRIM_CLASS = "bg-[rgba(251,248,246,0.78)]";
 
 /**
  * Hover eases the veil one step in both themes.
@@ -43,8 +43,7 @@ const FOCUS_SCRIM_CLASS = "bg-background/75 dark:bg-background/80";
  * Feedback that the sliver is a target, deliberately not a peek: one step is
  * enough to register as interactive without making the channel readable.
  */
-const FOCUS_SCRIM_HOVER_CLASS =
-  "hover:bg-background/65 dark:hover:bg-background/70";
+const FOCUS_SCRIM_HOVER_CLASS = "hover:bg-[rgba(251,248,246,0.68)]";
 
 /** Arrive and settle. The iOS sheet curve, shared with `buzz-side-panel-enter`. */
 const ENTER_EASE = [0.32, 0.72, 0, 1] as const;
@@ -308,7 +307,7 @@ export function FocusThreadDrawer({
         className={cn(
           // Wide drawers stay flush to the content surface. Responsive overlays
           // use the compact placement from the frozen thread reference.
-          "absolute inset-y-0 right-0 flex flex-col overflow-hidden rounded-l-2xl bg-background shadow-panel-left outline-hidden",
+          "c3c-focus-drawer absolute inset-y-0 right-0 flex flex-col overflow-hidden rounded-l-[calc(22*var(--colony-px))] bg-colony-surface outline-hidden",
           responsiveOverlay && "focus-thread-drawer-responsive",
         )}
         transition={

@@ -179,44 +179,19 @@ test("discards an active recording when entering edit mode", async ({
   await expect(page.getByTestId("composer-voice-note-card")).toHaveCount(0);
 });
 
-test("editor Enter never saves an edit while a voice note is recording", async ({
-  page,
-}) => {
+test("the editing composer offers no voice recording", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
 
-  // Enter edit mode first, then start recording — the mic is available in edit
-  // mode, so this is the ordering the recorder submission gate must cover.
+  // The Editing state of the Colony 3.0 composer is the editor and its save
+  // button; the toolbar (and the microphone) is not part of it.
   await openMoreActionsMenu(page, "mock-general-welcome");
   await page.getByTestId("edit-message-mock-general-welcome").click();
   await expect(page.getByTestId("edit-target")).toBeVisible();
-  const input = page.getByTestId("message-input");
-  await expect(input).not.toBeEmpty();
-
-  // Change the text so a save (if it wrongly happened) is observable, then
-  // start recording.
-  const editedContent = `Edited mid-recording ${Date.now()}`;
-  await input.click();
-  await page.keyboard.press("ControlOrMeta+A");
-  await page.keyboard.type(editedContent);
-
-  await page.getByRole("button", { name: "Record voice note" }).click();
-  await expect(page.getByTestId("voice-note-recorder")).toBeVisible();
-  await page.waitForTimeout(100);
-
-  // The editor's Enter shortcut must not slip past the Finish/Discard flow: the
-  // edit stays unsaved and the recording stays live until explicitly resolved.
-  await input.press("Enter");
-
-  await expect(page.getByTestId("edit-target")).toBeVisible();
-  await expect(page.getByTestId("voice-note-recorder")).toBeVisible();
-  await expect(page.getByTestId("message-timeline")).not.toContainText(
-    editedContent,
-  );
-
-  // Finishing the recording still works, proving the note was never discarded.
-  await page.getByRole("button", { name: "Finish voice note" }).click();
-  await expect(page.getByTestId("composer-voice-note-card")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Record voice note" }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("voice-note-recorder")).toHaveCount(0);
 });
 
 test("discards while voice-note processing is pending", async ({ page }) => {

@@ -24,7 +24,7 @@ const MembersSidebar = React.lazy(async () => {
   return { default: module.MembersSidebar };
 });
 
-export type BrowseDialogType = "stream" | "forum" | null;
+export type BrowseDialogType = "stream" | null;
 
 type AppShellOverlaysProps = {
   activeChannel: Channel | null;
@@ -78,8 +78,6 @@ export function AppShellOverlays({
     });
   }, [browseDialogType, cancelDeferredModalOpen, openModalNextFrame]);
 
-  const renderedBrowseDialogType = visibleBrowseDialogType ?? browseDialogType;
-
   // The channel browser is the only overlay that shows non-member open
   // channels, so it — not the 60s poll — pays for the all-open directory scan,
   // and only while it is open. Merge the superset over the member list so a
@@ -98,7 +96,6 @@ export function AppShellOverlays({
         <React.Suspense fallback={null}>
           <ChannelBrowserDialog
             channels={browserChannels}
-            channelTypeFilter={renderedBrowseDialogType ?? browseDialogType}
             isCreatingChannel={isCreatingBrowseChannel}
             onCreateChannel={onBrowseChannelCreate}
             onJoinChannel={onBrowseChannelJoin}

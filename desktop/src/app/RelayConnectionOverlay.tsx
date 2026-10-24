@@ -13,14 +13,13 @@ type RelayConnectionOverlayProps = {
   card: ReturnType<typeof useSidebarRelayConnectionCard>;
   errorMessage?: string;
   hasCommunityRail?: boolean;
-  isHuddleDrawerOpen?: boolean;
 };
 
 /**
  * Fixed bottom-left overlay that shows the relay reconnect card when the
  * sidebar is collapsed. When the sidebar is open, the card lives in the
  * sidebar footer instead (and this overlay is hidden). Offsets itself for
- * the community rail (48px) and huddle drawer when present.
+ * the community rail (48px) when present.
  *
  * Also surfaces non-unreachable disconnect errors (e.g. auth rejections)
  * when the sidebar is hidden, since those errors are only rendered inside
@@ -30,7 +29,6 @@ export function RelayConnectionOverlay({
   card,
   errorMessage,
   hasCommunityRail,
-  isHuddleDrawerOpen,
 }: RelayConnectionOverlayProps) {
   const { open: sidebarOpen, openMobile } = useSidebar();
   const isMobile = useIsMobile();
@@ -60,18 +58,16 @@ export function RelayConnectionOverlay({
         <motion.div
           animate={{ opacity: 1, y: 0 }}
           className={cn(
-            "pointer-events-none fixed z-50 w-[284px]",
-            hasCommunityRail ? "left-[68px]" : "left-3",
-            isHuddleDrawerOpen
-              ? "bottom-[calc(var(--buzz-huddle-drawer-height,0px)+12px)]"
-              : "bottom-3",
+            "colony-floating-notice pointer-events-none fixed z-50 w-75",
+            hasCommunityRail ? "left-38" : "left-22",
+            "bottom-5.5",
           )}
           exit={{ opacity: 0, y: 20 }}
           initial={{ opacity: 0, y: -20 }}
           key="relay-connection-overlay"
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="pointer-events-auto rounded-xl bg-background shadow-md">
+          <div className="pointer-events-auto">
             <SidebarRelayConnectionCard
               isConnected={card.isRelayConnectionSuccess}
               isReconnectPending={card.isRelayReconnectPending}
@@ -88,9 +84,7 @@ export function RelayConnectionOverlay({
           className={cn(
             "pointer-events-none fixed z-50 w-[284px]",
             hasCommunityRail ? "left-[68px]" : "left-3",
-            isHuddleDrawerOpen
-              ? "bottom-[calc(var(--buzz-huddle-drawer-height,0px)+12px)]"
-              : "bottom-3",
+            "bottom-3",
           )}
           exit={{ opacity: 0, y: 20 }}
           initial={{ opacity: 0, y: -20 }}

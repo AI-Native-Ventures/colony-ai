@@ -1,8 +1,10 @@
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
+import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 
 import {
@@ -10,10 +12,31 @@ import {
   type WorkspaceFile,
   type WorkspaceFileReference,
 } from "../../workspaceFiles";
-import {
-  setWorkAreaFileReference,
-  showWorkAreaFileList,
-} from "../workAreaFilesStore";
+import { parentDirectory, showWorkAreaFileList } from "../workAreaFilesStore";
+import { openWorkArea } from "../workAreaStore";
+import { WorkspaceDocument } from "./workspaceDocument";
+
+const CLOCK = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+});
+
+/** "13:57" for today, "3 Oct, 13:57" for another day. */
+function formatWritten(modifiedAt: number, now = Date.now()): string {
+  const written = new Date(modifiedAt);
+  const today = new Date(now);
+  const sameDay =
+    written.getFullYear() === today.getFullYear() &&
+    written.getMonth() === today.getMonth() &&
+    written.getDate() === today.getDate();
+  return sameDay
+    ? CLOCK.format(written)
+    : `${DAY.format(written)}, ${CLOCK.format(written)}`;
+}
 
 /** A read-only file reader. No document HTML or external images are executed. */
 export function WorkspaceFileReader({
@@ -23,11 +46,16 @@ export function WorkspaceFileReader({
   channelId: string;
   reference: WorkspaceFileReference;
 }) {
+  const [attempt, setAttempt] = React.useState(0);
   const [loaded, setLoaded] = React.useState<{
     reference: WorkspaceFileReference;
+    attempt: number;
     file: WorkspaceFile;
   } | null>(null);
-  const file = loaded?.reference === reference ? loaded.file : null;
+  const file =
+    loaded?.reference === reference && loaded.attempt === attempt
+      ? loaded.file
+      : null;
   const [error, setError] = React.useState(false);
   React.useEffect(() => {
     let current = true;
@@ -35,7 +63,7 @@ export function WorkspaceFileReader({
     setError(false);
     void readWorkspaceFile(reference)
       .then((next) => {
-        if (current) setLoaded({ reference, file: next });
+        if (current) setLoaded({ reference, attempt, file: next });
       })
       .catch(() => {
         if (current) setError(true);
@@ -43,38 +71,63 @@ export function WorkspaceFileReader({
     return () => {
       current = false;
     };
-  }, [reference]);
+  }, [reference, attempt]);
+
+  const authorQuery = useUsersBatchQuery([reference.agentPubkey]);
+  const profile =
+    authorQuery.data?.profiles?.[normalizePubkey(reference.agentPubkey)];
+  const authorName = resolveUserLabel({
+    pubkey: reference.agentPubkey,
+    profiles: authorQuery.data?.profiles,
+  });
+  const segments = reference.path.split("/");
+  const trail = ["Workspace", ...segments].join(" / ");
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="work-area-files">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Button
+    <div className="colony-doc-reader" data-testid="work-area-files">
+      <div className="colony-doc-head">
+        <button
+          className="colony-doc-back"
           data-testid="work-area-files-back"
-          onClick={() => showWorkAreaFileList(channelId)}
-          size="sm"
+          onClick={() => {
+            showWorkAreaFileList(channelId, parentDirectory(reference.path));
+            openWorkArea(channelId, "files");
+          }}
           type="button"
-          variant="ghost"
         >
-          <ChevronLeft aria-hidden="true" />
+          <ChevronLeft aria-hidden="true" strokeWidth={2.4} />
           Files
-        </Button>
-        <p className="min-w-0 break-all text-sm font-medium">
-          {reference.path}
+        </button>
+        <p className="colony-doc-path" data-testid="work-area-file-path">
+          {trail}
+        </p>
+        <p className="colony-doc-author" data-testid="work-area-file-author">
+          <ProfileAvatar
+            avatarUrl={profile?.avatarUrl ?? null}
+            className="h-[1.375rem] w-[1.375rem] text-3xs"
+            label={authorName}
+            shape="squircle"
+          />
+          <span>
+            Written by {authorName}
+            {file?.modifiedAt !== undefined
+              ? ` · ${formatWritten(file.modifiedAt)}`
+              : ""}
+          </span>
         </p>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="colony-doc-scroll">
         {!file && !error ? (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p className="colony-doc-status" role="status">
             Opening file...
           </p>
         ) : null}
         {error ? (
-          <div role="alert" className="space-y-3 text-sm">
+          <div className="colony-doc-status" role="alert">
             <p>This file is no longer available in the agent's workspace.</p>
             <Button
+              onClick={() => setAttempt((count) => count + 1)}
               variant="outline"
-              onClick={() =>
-                setWorkAreaFileReference(channelId, { ...reference })
-              }
             >
               Try again
             </Button>
@@ -82,25 +135,9 @@ export function WorkspaceFileReader({
         ) : null}
         {file ? (
           /\.(md|markdown)$/i.test(file.path) ? (
-            <article
-              data-testid="work-area-markdown"
-              className="space-y-3 break-words text-sm [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono [&_table]:w-full [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2"
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  img: ({ alt }) => <span>{alt || "Image"}</span>,
-                  a: ({ children }) => <span>{children}</span>,
-                }}
-              >
-                {file.content}
-              </ReactMarkdown>
-            </article>
+            <WorkspaceDocument source={file.content} />
           ) : (
-            <pre
-              data-testid="work-area-text"
-              className="whitespace-pre-wrap break-words font-mono text-sm"
-            >
+            <pre className="colony-doc-text" data-testid="work-area-text">
               {file.content}
             </pre>
           )

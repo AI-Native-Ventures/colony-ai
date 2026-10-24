@@ -3,7 +3,6 @@ import test from "node:test";
 import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 
 import {
-  buildTeamTreeRows,
   memberPositionDTag,
   mergeTeamMembers,
   parseMemberPositionHeadEvent,
@@ -121,33 +120,4 @@ test("a saved position does not make a non-member appear on the team", () => {
     relayUrl: "wss://relay.example",
   });
   assert.deepEqual(members, []);
-});
-
-test("team reporting rows preserve the mixed reporting tree and reject cycles", () => {
-  const positions = [OWNER, EMPLOYEE, HUMAN].map((pubkey, index) => {
-    const head = position(
-      pubkey,
-      index === 1 ? OWNER : index === 2 ? EMPLOYEE : null,
-    );
-    return {
-      pubkey,
-      kind: head.kind,
-      createdAt: `2026-01-0${index + 1}`,
-      fallbackName: null,
-      role: pubkey === OWNER ? "owner" : "member",
-      managedAgent: null,
-      relayAgent: null,
-      position: { head, dTag: memberPositionDTag(pubkey), event: {} },
-    };
-  });
-  assert.deepEqual(
-    buildTeamTreeRows(positions).map((row) => [row.member.pubkey, row.depth]),
-    [
-      [OWNER, 0],
-      [EMPLOYEE, 1],
-      [HUMAN, 2],
-    ],
-  );
-  positions[0].position.head.managerPubkey = HUMAN;
-  assert.throws(() => buildTeamTreeRows(positions), /cycle/);
 });

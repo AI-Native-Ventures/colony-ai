@@ -222,7 +222,7 @@ test.describe("work area Files tab", () => {
     }
   });
 
-  test("a file link in chat opens the file in the Files tab even from another tab", async ({
+  test("a file link in chat opens the file on its own tab even from another tab", async ({
     page,
   }) => {
     const root = await createSampleWorkspace();
@@ -244,8 +244,12 @@ test.describe("work area Files tab", () => {
         .getByRole("link", { name: "DAY1_VIDEO_PACK.md", exact: true });
       await link.focus();
       await page.keyboard.press("Enter");
+      // The file opens on its own tab, named for the file.
       await expect(
-        dock(page).getByRole("tab", { name: "Files", exact: true }),
+        dock(page).getByRole("tab", {
+          name: "DAY1_VIDEO_PACK.md",
+          exact: true,
+        }),
       ).toHaveAttribute("aria-selected", "true");
       await expect(
         dock(page).getByRole("heading", { name: "Day one video pack" }),

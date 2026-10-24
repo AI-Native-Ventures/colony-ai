@@ -19,6 +19,8 @@ export type DirectMessageIntroParticipant = {
 };
 
 export type DirectMessageIntro = {
+  /** Faces for the intro picture: the others, then you. */
+  avatarParticipants?: DirectMessageIntroParticipant[];
   displayName: string;
   participants: DirectMessageIntroParticipant[];
 };
@@ -101,7 +103,34 @@ export function buildDirectMessageIntro({
     };
   });
 
+  // The conversation's picture shows who is in it, you included, when it is
+  // with one other person.
+  const selfParticipant =
+    normalizedCurrentPubkey && otherParticipants.length === 1
+      ? participants.find(
+          (participant) =>
+            normalizePubkey(participant.pubkey) === normalizedCurrentPubkey,
+        )
+      : undefined;
+  const selfProfile = selfParticipant
+    ? (profiles?.[normalizePubkey(selfParticipant.pubkey)] ?? null)
+    : null;
+  const avatarParticipants = selfParticipant
+    ? [
+        ...introParticipants,
+        {
+          avatarUrl: selfProfile?.avatarUrl ?? null,
+          displayName:
+            selfProfile?.displayName?.trim() ||
+            selfParticipant.fallbackName ||
+            "You",
+          pubkey: selfParticipant.pubkey,
+        },
+      ]
+    : introParticipants;
+
   return {
+    avatarParticipants,
     displayName: formatDmParticipantDisplayName(introParticipants),
     participants: introParticipants,
   };

@@ -3,14 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { importIdentity } from "@/shared/api/tauriIdentity";
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
-import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
-import { Button } from "@/shared/ui/button";
-import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
+import { FirstRunButton } from "./firstRunControls";
+import { LockIcon } from "./firstRunIcons";
+import { StartupProblem } from "./StartupProblem";
 import { NostrKeyImportForm } from "./NostrKeyImportForm";
 
 export function KeyringLockedScreen() {
   const queryClient = useQueryClient();
-  const systemColorScheme = useSystemColorScheme();
   const [showImport, setShowImport] = React.useState(false);
   const canRelaunch = supportsNativeCapability("identity-recovery");
   const canImport = supportsNativeCapability("identity-import");
@@ -38,64 +37,57 @@ export function KeyringLockedScreen() {
   );
 
   return (
-    <div
-      className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
-      data-system-color-scheme={systemColorScheme}
-      data-testid="keyring-locked"
-    >
-      <StartupWindowDragRegion />
-      <div className="relative flex w-full max-w-[500px] flex-col items-center text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Your sign-in is locked
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Your account is safe on this device, but Colony can’t open it right
-          now. Unlock your device or sign into your desktop account, then
-          restart Colony.
-        </p>
-
-        {!canRelaunch && !canImport ? (
-          <p
-            className="mt-8 rounded-xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground"
-            data-testid="identity-recovery-unsupported"
-            role="status"
-          >
-            This version of Colony can’t restore your sign-in yet. Open Colony
-            on a supported desktop version, then try again.
-          </p>
-        ) : showImport && canImport ? (
-          <NostrKeyImportForm
-            backLabel="Cancel"
-            onBack={() => setShowImport(false)}
-            onImport={handleImport}
-          />
-        ) : (
-          <div className="mt-8 flex w-full max-w-[300px] flex-col gap-3">
+    <StartupProblem
+      actions={
+        showImport && canImport ? null : (
+          <>
             {canRelaunch ? (
-              <Button
-                className="h-10 w-full"
+              <FirstRunButton
                 data-testid="relaunch-app"
+                kind="primary"
                 onClick={() => {
                   void relaunch();
                 }}
+                size="small"
                 type="button"
               >
                 Relaunch Colony
-              </Button>
+              </FirstRunButton>
             ) : null}
             {canImport ? (
-              <Button
-                className="h-10 w-full"
+              <FirstRunButton
                 onClick={handleReimportClick}
+                size="small"
                 type="button"
-                variant="secondary"
               >
                 Use a recovery key instead
-              </Button>
+              </FirstRunButton>
             ) : null}
-          </div>
-        )}
-      </div>
-    </div>
+          </>
+        )
+      }
+      body="Your account is safe on this device, but Colony can’t open it right now. Unlock your device or sign into your desktop account, then restart Colony."
+      icon={<LockIcon size={22} />}
+      testId="keyring-locked"
+      title="Your sign-in is locked"
+      tone="muted"
+    >
+      {!canRelaunch && !canImport ? (
+        <p
+          className="c3fr-note"
+          data-testid="identity-recovery-unsupported"
+          role="status"
+        >
+          This version of Colony can’t restore your sign-in yet. Open Colony on
+          a supported desktop version, then try again.
+        </p>
+      ) : showImport && canImport ? (
+        <NostrKeyImportForm
+          backLabel="Cancel"
+          onBack={() => setShowImport(false)}
+          onImport={handleImport}
+        />
+      ) : null}
+    </StartupProblem>
   );
 }

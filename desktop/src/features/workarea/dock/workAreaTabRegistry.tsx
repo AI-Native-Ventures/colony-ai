@@ -1,12 +1,4 @@
-import {
-  BookOpen,
-  Diamond,
-  FileText,
-  Globe,
-  Pencil,
-  SquareTerminal,
-  type LucideIcon,
-} from "lucide-react";
+import { BookOpen, Folder, Globe } from "lucide-react";
 import type * as React from "react";
 
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
@@ -16,12 +8,19 @@ import {
   closeBrowserTab,
   newBrowserTabId,
 } from "../browser/browserTabKind";
+import {
+  CanvasTabIcon,
+  FileTabIcon,
+  TerminalTabIcon,
+  type WorkAreaTabIcon,
+} from "./workAreaIcons";
+import { workAreaFileName } from "./workAreaFileTab";
 import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
+import { WorkAreaFileTab } from "./tabs/WorkAreaFileTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
-import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -36,7 +35,7 @@ export type WorkAreaTabDefinition = {
   kind: WorkAreaTabKind;
   /** Shown on the tab, in the add menu and as the panel's accessible name. */
   label: string;
-  icon: LucideIcon;
+  icon: WorkAreaTabIcon;
   /**
    * Offered by the add menu and the empty state, and shown if remembered. False
    * when the tab cannot work in this runtime (the browser needs the desktop
@@ -52,6 +51,13 @@ export type WorkAreaTabDefinition = {
   readonly newTabId?: (channelId: string) => string | null;
   /** The person closed one of these tabs: release what it held. */
   readonly onTabClosed?: (channelId: string, tab: WorkAreaTab) => void;
+  /**
+   * Left out of the add menu and the empty state: the tab is only ever opened
+   * by what it shows (a file tab opens from a file link or the Files list).
+   */
+  readonly hiddenFromMenu?: boolean;
+  /** A small count after the label (the Work tab's open work), read live. */
+  readonly Badge?: React.ComponentType<{ channelId: string; id?: string }>;
   /** A tab's own label (a page's title) instead of the kind's `label`. */
   readonly tabLabels?: {
     subscribe: (listener: () => void) => () => void;
@@ -82,30 +88,35 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
   terminal: {
     kind: "terminal",
     label: "Terminal",
-    icon: SquareTerminal,
+    icon: TerminalTabIcon,
     available: true,
     Panel: WorkAreaTerminalTab,
   },
   files: {
     kind: "files",
     label: "Files",
-    icon: FileText,
+    icon: Folder,
     available: true,
     Panel: WorkAreaFilesTab,
+  },
+  file: {
+    kind: "file",
+    label: "File",
+    icon: FileTabIcon,
+    available: true,
+    hiddenFromMenu: true,
+    tabLabels: {
+      subscribe: () => () => {},
+      get: (tab) => (tab.file ? workAreaFileName(tab.file.path) : "File"),
+    },
+    Panel: WorkAreaFileTab,
   },
   canvas: {
     kind: "canvas",
     label: "Canvas",
-    icon: Pencil,
+    icon: CanvasTabIcon,
     available: true,
     Panel: WorkAreaCanvasTab,
-  },
-  work: {
-    kind: "work",
-    label: "Work",
-    icon: Diamond,
-    available: true,
-    Panel: WorkAreaWorkTab,
   },
   knowledge: {
     kind: "knowledge",
@@ -125,6 +136,6 @@ export function getWorkAreaTabDefinition(
 /** Definitions the user can open, in menu order. */
 export function listOpenableWorkAreaTabs(): WorkAreaTabDefinition[] {
   return Object.values(DEFINITIONS).filter(
-    (definition) => definition.available,
+    (definition) => definition.available && !definition.hiddenFromMenu,
   );
 }

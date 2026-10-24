@@ -31,14 +31,11 @@ test("start free is the default and finishes with a real reply", async ({
       },
     },
   });
-  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByTestId("onboarding-mode-free")).toBeChecked();
   await expect(
     page.getByText("Free while OpenCode offers it.", { exact: false }),
   ).toBeVisible();
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(
     page.getByText("Hello! What shall we work on first?"),
   ).toBeVisible();
@@ -65,18 +62,15 @@ test("start free install failure offers retry and own AI", async ({ page }) => {
       },
     },
   });
-  await page.getByTestId("start-free-continue").click();
-  await expect(page.getByTestId("start-free-retry")).toBeVisible();
+  await page.getByTestId("onboarding-test-connection").click();
+  await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
   await expect(
     page.getByText("Check your internet connection and try again.", {
       exact: false,
     }),
   ).toBeVisible();
   await page.getByTestId("start-free-use-own").click();
-  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
 });
 
 test("start free shows the ended screen when the free model is gone", async ({
@@ -94,7 +88,7 @@ test("start free shows the ended screen when the free model is gone", async ({
       },
     },
   });
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(
     page.getByText(
       "OpenCode's free AI has ended. Connect your own AI to continue.",
@@ -102,10 +96,7 @@ test("start free shows the ended screen when the free model is gone", async ({
   ).toBeVisible();
   await expect(page.getByText(/big-pickle/i)).toHaveCount(0);
   await page.getByTestId("start-free-use-own").click();
-  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
 });
 
 test("mode choice is a keyboard radio group", async ({ page }) => {
@@ -115,16 +106,11 @@ test("mode choice is a keyboard radio group", async ({ page }) => {
   });
   await page.getByTestId("onboarding-mode-free").focus();
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
   await expect(page.getByTestId("onboarding-mode-own")).toBeFocused();
-  await page.keyboard.press("Home");
-  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  // Native radios wrap: ArrowUp from the first card lands on the last.
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByTestId("onboarding-mode-free")).toBeChecked();
 });
 
 test("mode choice and Back are locked while Start free installs", async ({
@@ -150,11 +136,11 @@ test("mode choice and Back are locked while Start free installs", async ({
       },
     },
   });
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(page.getByTestId("start-free-installing")).toBeVisible();
   await expect(page.getByTestId("onboarding-mode-own")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
-  await expect(page.getByTestId("start-free-retry")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back" })).toBeDisabled();
+  await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
   await expect(page.getByTestId("onboarding-mode-own")).toBeEnabled();
 });
 
@@ -181,11 +167,12 @@ test("an unsupported computer shows the reason and no retry", async ({
       },
     },
   });
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(
     page.getByText("Start free is not available on linux-riscv64 yet."),
   ).toBeVisible();
-  await expect(page.getByTestId("start-free-retry")).toHaveCount(0);
+  // Nothing to retry: the Test button stays off, Use your own AI is the way on.
+  await expect(page.getByTestId("onboarding-test-connection")).toBeDisabled();
   await expect(page.getByTestId("start-free-use-own")).toBeVisible();
 });
 
@@ -199,7 +186,7 @@ test("a slow first hello says it is still waiting", async ({ page }) => {
     },
   });
   await page.clock.install();
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   const hint = page.getByTestId("onboarding-slow-reply");
   await expect(hint).toBeAttached();
   await expect(hint).toHaveText("");

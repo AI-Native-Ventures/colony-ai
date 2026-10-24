@@ -20,14 +20,14 @@ function msg(over = {}) {
 
 test("estimateRowHeight: short text is near the floor", () => {
   const h = estimateRowHeight(msg({ body: "hello" }));
-  assert.ok(h >= 60 && h < 120, `expected small, got ${h}`);
+  assert.ok(h >= 56 && h < 120, `expected small, got ${h}`);
 });
 
-test("estimateRowHeight: continuation reserves its uniform padding", () => {
+test("estimateRowHeight: a continuation is one text line, no padding", () => {
   const h = estimateRowHeight(msg({ body: "hello" }), {
     isContinuation: true,
   });
-  assert.equal(h, 28);
+  assert.equal(h, 27);
 });
 
 test("estimateRowHeight: many lines reserve more", () => {

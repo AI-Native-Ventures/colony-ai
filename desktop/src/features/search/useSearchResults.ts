@@ -271,6 +271,9 @@ export function useSearchResults({
 
     return channels
       .flatMap((channel) => {
+        // Forums are no longer part of the app; leftover forum channels stay
+        // out of the results.
+        if (channel.channelType === "forum") return [];
         const isVisible = channel.archivedAt
           ? channel.isMember
           : channel.visibility === "open" || channel.isMember;

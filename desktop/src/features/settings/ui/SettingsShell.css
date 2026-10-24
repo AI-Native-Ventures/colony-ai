@@ -1,0 +1,808 @@
+/*
+ * Colony 3.0 Settings: the sidebar, top bar, page frame and the building
+ * blocks every Settings page shares (`SettingsAccount.dc.html` and the other
+ * Settings boards). Design pixels are written in rem (1px = 1/16rem); text
+ * uses `--colony-px` so it follows the font-size preference and zoom.
+ */
+
+/* --------------------------------------------------------------- sidebar -- */
+
+.cs-sidebar {
+  color: var(--colony-sidebar-ink);
+  font-family: var(--colony-font-sans);
+}
+
+.cs-sidebar [data-sidebar="sidebar"] {
+  background: transparent;
+  padding-right: 0;
+}
+
+:root:not([data-buzz-sidebar]) .cs-sidebar [data-sidebar="sidebar"] {
+  background: hsl(var(--sidebar-background));
+}
+
+.cs-sidebar-header,
+.cs-sidebar-content,
+.cs-sidebar-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.cs-sidebar-header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0.875rem 0.625rem;
+}
+
+.cs-sidebar-header[data-mac-chrome="true"] {
+  padding-top: 2.75rem;
+}
+
+.cs-back {
+  display: flex;
+  min-height: 2.375rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.6875rem;
+  background: transparent;
+  color: var(--colony-sidebar-ink);
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+  text-align: left;
+}
+
+.cs-back:hover,
+.cs-back:focus-visible {
+  background: var(--colony-sidebar-glass);
+}
+
+.cs-sidebar-title {
+  margin: 0;
+  padding: 0 0.625rem;
+  font-size: calc(28 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: normal;
+}
+
+.cs-search {
+  display: flex;
+  height: 2.625rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--colony-sidebar-glass);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+  color: var(--colony-sidebar-ink-soft);
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-search > svg {
+  flex: none;
+}
+
+.cs-search input {
+  height: auto;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--colony-sidebar-ink);
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+  outline: none;
+  padding: 0;
+}
+
+.cs-search input::placeholder {
+  color: var(--colony-sidebar-ink-soft);
+  opacity: 1;
+}
+
+.cs-sidebar-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: auto;
+  padding: 0.25rem 0.875rem 1rem;
+  scrollbar-width: none;
+}
+
+.cs-sidebar-content::-webkit-scrollbar {
+  display: none;
+}
+
+.cs-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.cs-nav-heading {
+  margin: 0;
+  padding: 0 0.625rem 0.375rem;
+  color: var(--colony-sidebar-ink-soft);
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.cs-nav-item {
+  display: flex;
+  width: 100%;
+  min-height: 2.375rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.6875rem;
+  background: transparent;
+  box-sizing: border-box;
+  color: var(--colony-sidebar-ink);
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+  text-align: left;
+}
+
+.cs-nav-item > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.cs-nav-item:hover {
+  background: var(--colony-sidebar-glass);
+}
+
+.cs-nav-item:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: -2px;
+}
+
+.cs-nav-item[aria-current="page"] {
+  background: var(--colony-sidebar-active);
+  box-shadow: var(--colony-sidebar-active-shadow);
+  font-weight: 800;
+}
+
+/* Appearance, "Prominent selected tab": the open page takes the accent fill. */
+:root[data-prominent-active-tab] .cs-nav-item[aria-current="page"] {
+  background: hsl(var(--colony-accent));
+  box-shadow: none;
+  color: hsl(var(--colony-surface));
+}
+
+.cs-search-result {
+  justify-content: space-between;
+}
+
+.cs-search-result small {
+  flex: none;
+  color: var(--colony-sidebar-ink-soft);
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-sidebar-empty {
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  color: var(--colony-sidebar-ink-soft);
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-sidebar-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border-top: 1px solid var(--colony-sidebar-line-soft);
+  padding: 0;
+}
+
+.cs-person {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--colony-sidebar-ink);
+  font-family: inherit;
+  text-align: left;
+}
+
+.cs-person:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: -2px;
+}
+
+.cs-person-avatar {
+  display: grid;
+  width: 2.375rem;
+  height: 2.375rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colony-sidebar-avatar);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-person-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.cs-person-copy strong {
+  overflow: hidden;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-person-copy small {
+  color: var(--colony-sidebar-ink-soft);
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ page -- */
+
+.cs-shell {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  font-family: var(--colony-font-sans);
+}
+
+.cs-main {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background: hsl(var(--colony-surface));
+  scroll-behavior: auto;
+}
+
+.cs-page {
+  display: flex;
+  box-sizing: content-box;
+  max-width: 55rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 0 auto;
+  padding: 2.25rem 2.5rem 4rem;
+}
+
+.cs-page[data-wide="true"] {
+  max-width: 66.25rem;
+}
+
+.cs-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+}
+
+.cs-page-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.cs-page-title h1 {
+  margin: 0;
+  font-size: calc(38 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.cs-page-title span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 500;
+}
+
+.cs-pill {
+  display: inline-flex;
+  height: 1.875rem;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  background: #f1eef2;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+}
+
+/* Segmented section tabs: a track with a white selected tab. */
+.cs-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.875rem;
+  background: hsl(var(--colony-track));
+}
+
+.cs-tab {
+  display: flex;
+  height: 2.375rem;
+  align-items: center;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: hsl(var(--colony-fg-secondary));
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cs-tabs[data-compact="true"] .cs-tab {
+  padding: 0 0.875rem;
+}
+
+.cs-tab[aria-selected="true"] {
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(60 40 80 / 12%);
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cs-tab:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+/* Sections stack on one page; the tabs jump to them. */
+.cs-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+  scroll-margin-top: 1.5rem;
+}
+
+.cs-section-title {
+  margin: 0;
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.cs-section-note {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ card -- */
+
+.cs-card {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.cs-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.375rem;
+  padding: 1.625rem 1.625rem 1.5rem;
+}
+
+.cs-card-title {
+  margin: 0;
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.cs-card-subtitle {
+  margin: 0;
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-eyebrow {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.cs-card > .cs-eyebrow {
+  padding: 1.25rem 1.375rem 0.375rem;
+}
+
+.cs-help {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* A settings row: label and help on the left, the control on the right. */
+.cs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.875rem 1.375rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.cs-row:last-child {
+  padding-bottom: 1.125rem;
+  border-bottom: 0;
+}
+
+.cs-row-copy {
+  display: flex;
+  min-width: 10rem;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.cs-row-label {
+  margin: 0;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cs-row-help {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+}
+
+.cs-row[data-switch="true"] {
+  flex-wrap: nowrap;
+  gap: 1.25rem;
+}
+
+/* Segmented choice inside a row. */
+.cs-choice {
+  display: flex;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-track));
+}
+
+.cs-choice button {
+  height: 2.125rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 0.5625rem;
+  background: transparent;
+  color: hsl(var(--colony-fg-secondary));
+  font-family: inherit;
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-choice button[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(60 40 80 / 12%);
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cs-choice button:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+/* Form fields on a card. */
+.cs-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.cs-label {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cs-input,
+.cs-select {
+  width: 100%;
+  height: 2.875rem;
+  padding: 0 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: #fff;
+  box-sizing: border-box;
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 400;
+}
+
+.cs-select {
+  padding: 0 0.75rem;
+}
+
+.cs-input[readonly] {
+  border-color: hsl(var(--colony-border));
+  background: hsl(var(--colony-surface-raised));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.cs-input:focus-visible,
+.cs-select:focus-visible {
+  border-color: hsl(var(--colony-accent));
+  outline: none;
+}
+
+.cs-input::placeholder {
+  color: hsl(var(--colony-muted));
+  opacity: 0.8;
+}
+
+.cs-link {
+  color: hsl(var(--colony-accent-ink));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 700;
+  text-decoration: underline;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.cs-link:hover {
+  color: #36257f;
+}
+
+/* Buttons that sit on cards (a shade smaller than the 46px primary). */
+.cs-button {
+  display: inline-flex;
+  height: 2.625rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.6875rem;
+  background: #fff;
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cs-button:hover {
+  background: hsl(var(--colony-track));
+}
+
+.cs-button:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.cs-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cs-button[data-tone="danger"] {
+  border-color: #f1c9d5;
+  color: hsl(var(--colony-danger));
+}
+
+.cs-button[data-size="small"] {
+  height: 2.375rem;
+  border-radius: 0.625rem;
+  font-size: calc(14.5 * var(--colony-px));
+}
+
+.cs-primary {
+  display: inline-flex;
+  height: 2.875rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.375rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cs-primary:hover {
+  background: hsl(var(--colony-fg) / 90%);
+}
+
+.cs-primary:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.cs-primary:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cs-badge {
+  display: inline-flex;
+  height: 1.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  background: #f1eef2;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cs-badge[data-tone="ok"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.cs-badge[data-tone="need"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.cs-badge[data-tone="bad"] {
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.cs-badge[data-tone="accent"] {
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+}
+
+.cs-badge[data-tone="info"] {
+  background: hsl(var(--colony-info-bg));
+  color: hsl(var(--colony-info));
+}
+
+.cs-notice {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-wash));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.cs-notice[data-tone="bad"] {
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.cs-notice[data-tone="ok"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.cs-notice[data-tone="need"] {
+  background: #fff6e6;
+  color: #5f3a00;
+}
+
+/* A section's panels sit one page gap apart. */
+.cs-section {
+  gap: 1.5rem;
+}
+
+.cs-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* A section that opens with its own title instead of a card. */
+.cs-led {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-top: 0.75rem;
+}
+
+.cs-narrow {
+  max-width: 42.5rem;
+}
+
+/* Groups are fieldsets for assistive tech; they draw nothing of their own. */
+fieldset.cs-choice,
+fieldset.cs-accents,
+fieldset.cs-confirm {
+  min-inline-size: 0;
+  margin: 0;
+}
+
+fieldset.cs-choice {
+  border: 0;
+}
+
+fieldset.cs-accents {
+  padding: 0;
+  border: 0;
+}
+
+/* Cards composed from the older group and header primitives. */
+.cs-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.cs-group-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.cs-group-head .cs-help {
+  margin-top: 0.125rem;
+}
+
+.cs-section-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.cs-section-head-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}

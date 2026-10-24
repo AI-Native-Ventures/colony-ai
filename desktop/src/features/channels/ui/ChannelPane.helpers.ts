@@ -7,7 +7,6 @@ import { KIND_SYSTEM_MESSAGE } from "@/shared/constants/kinds";
 
 export function shouldUseFocusIdleDrawer({
   channelManagementOpen,
-  hasAgentSession,
   hasIdleAuxiliaryPanel,
   hasIdlePanelCloseHandler,
   hasProfilePanel,
@@ -16,7 +15,6 @@ export function shouldUseFocusIdleDrawer({
   useSplitAuxiliaryPane,
 }: {
   channelManagementOpen: boolean;
-  hasAgentSession: boolean;
   hasIdleAuxiliaryPanel: boolean;
   hasIdlePanelCloseHandler: boolean;
   hasProfilePanel: boolean;
@@ -27,7 +25,6 @@ export function shouldUseFocusIdleDrawer({
   return (
     (useSplitAuxiliaryPane || overrideThread) &&
     !channelManagementOpen &&
-    !hasAgentSession &&
     !hasProfilePanel &&
     (!hasThreadSurface || overrideThread) &&
     hasIdleAuxiliaryPanel &&
@@ -35,14 +32,7 @@ export function shouldUseFocusIdleDrawer({
   );
 }
 
-export function getChannelIntroKind(
-  channel: Channel,
-  projectHome = false,
-): string {
-  if (projectHome) {
-    return "project channel";
-  }
-
+export function getChannelIntroKind(channel: Channel): string {
   const isPrivate = channel.visibility === "private";
   const isEphemeral = isEphemeralChannel(channel);
 
@@ -79,20 +69,6 @@ export function isWelcomeSetupSystemMessage(message: TimelineMessage) {
     const payload = JSON.parse(message.body) as { type?: string };
     return (
       payload.type === "channel_created" || payload.type === "member_joined"
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function isChannelCreatedSystemMessage(message: TimelineMessage) {
-  if (message.kind !== KIND_SYSTEM_MESSAGE) {
-    return false;
-  }
-
-  try {
-    return (
-      (JSON.parse(message.body) as { type?: string }).type === "channel_created"
     );
   } catch {
     return false;

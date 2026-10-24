@@ -8,6 +8,7 @@ import {
   getWorkAreaState,
   initWorkAreaStore,
   openWorkArea,
+  openWorkAreaFile,
   parseWorkAreaSnapshot,
   resetWorkAreaStore,
   resetWorkAreaWidth,
@@ -19,6 +20,7 @@ import {
   workAreaStorageKey,
 } from "./workAreaStore.ts";
 import { resetWorkAreaState } from "./resetWorkAreaState.ts";
+import { workAreaFileName, workAreaFileTabId } from "./workAreaFileTab.ts";
 import {
   WORK_AREA_DEFAULT_WIDTH,
   WORK_AREA_MAX_WIDTH,
@@ -289,4 +291,57 @@ test("a kind opened often keeps one tab per id; a singleton stays one", () => {
     { id: "browser:b", kind: "browser" },
     { id: "files", kind: "files" },
   ]);
+});
+
+const OCTOBER = { agentPubkey: "a".repeat(64), path: "mina/october.md" };
+
+test("a file opens on its own tab, and the same file is the same tab", () => {
+  openWorkAreaFile("chan-1", OCTOBER);
+  const id = workAreaFileTabId(OCTOBER);
+  assert.match(id, /^file:[0-9a-f]{8}$/);
+  const state = getWorkAreaState("chan-1");
+  assert.equal(state.activeTabId, id);
+  assert.deepEqual(state.tabs.at(-1), { id, kind: "file", file: OCTOBER });
+  const count = state.tabs.length;
+  openWorkAreaFile("chan-1", { ...OCTOBER });
+  assert.equal(getWorkAreaState("chan-1").tabs.length, count);
+  openWorkAreaFile("chan-1", { ...OCTOBER, path: "mina/november.md" });
+  assert.equal(getWorkAreaState("chan-1").tabs.length, count + 1);
+  assert.notEqual(
+    workAreaFileTabId({ ...OCTOBER, path: "mina/november.md" }),
+    id,
+  );
+  assert.equal(workAreaFileName(OCTOBER.path), "october.md");
+  assert.equal(workAreaFileName("root.md"), "root.md");
+});
+
+test("file tabs survive a reload with the file they read, and drop without it", () => {
+  openWorkAreaFile("chan-1", OCTOBER);
+  resetWorkAreaStore();
+  initWorkAreaStore(COMMUNITY_A);
+  const tab = getWorkAreaState("chan-1").tabs.at(-1);
+  assert.deepEqual(tab?.file, OCTOBER);
+  const snapshot = parseWorkAreaSnapshot(
+    JSON.stringify({
+      version: 1,
+      channels: {
+        chan: {
+          open: true,
+          tabs: [
+            { id: "file:00000001", kind: "file" },
+            { id: "file:00000002", kind: "file", file: { path: "x.md" } },
+            { id: "files", kind: "files" },
+          ],
+        },
+      },
+    }),
+  );
+  assert.deepEqual(snapshot.chan.tabs, [{ id: "files", kind: "files" }]);
+});
+
+test("the default width is kept exactly, any other width is rounded", () => {
+  setWorkAreaWidth("chan-1", 40);
+  resetWorkAreaWidth("chan-1");
+  assert.equal(getWorkAreaState("chan-1").width, 68.85);
+  assert.equal(WORK_AREA_DEFAULT_WIDTH, 68.85);
 });

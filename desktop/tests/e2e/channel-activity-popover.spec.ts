@@ -244,11 +244,11 @@ async function seedChannelActivity(
     );
   }
 
-  // C1 keeps channel labels at the same weight; thread activity still shows a
-  // dot and does not add a numeric badge.
+  // Thread activity shows a dot, not a numeric badge, and the row label turns
+  // bold with it, as the Colony 3.0 sidebar designs unread rows.
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "450",
+    "800",
   );
   await expect(page.getByTestId("channel-unread-general")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
@@ -294,7 +294,8 @@ test.describe("channel activity hover preview", () => {
       name: "Channel activity",
     });
     await expect(heading).toBeVisible();
-    await expect(heading).toHaveCSS("backdrop-filter", /blur/);
+    // The designed popover is one solid surface: no blurred sticky header.
+    await expect(heading).toHaveCSS("backdrop-filter", "none");
     const activityScroll = popover.getByTestId("channel-activity-scroll");
     await expect(activityScroll).toHaveCSS("overflow-y", "auto");
     await expect(activityScroll.getByRole("heading")).toHaveCount(0);
@@ -519,7 +520,7 @@ test.describe("channel activity hover preview", () => {
     ).toHaveCount(0);
   });
 
-  test("supports row actions and opens an agent's scoped activity", async ({
+  test("supports row actions and opens the channel from a working agent", async ({
     page,
   }) => {
     await seedChannelActivity(page);
@@ -532,24 +533,10 @@ test.describe("channel activity hover preview", () => {
     await firstRow.getByRole("button", { name: "Mark as read" }).click();
     await expect(popover.getByTestId(/^channel-activity-item-/)).toHaveCount(1);
 
-    const remainingRow = popover.getByTestId(/^channel-activity-item-/).first();
-    await remainingRow.hover();
-    await remainingRow.getByRole("button", { name: "Remind me later" }).click();
-    await expect(
-      page.getByRole("dialog").getByText("Remind me later"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Cancel" }).click();
-
     popover = await openActivityPopover(page);
     await popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`).click();
 
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await expect(page.getByTestId("agent-session-agent-name")).toContainText(
-      "Charlie",
-    );
-    await expect(page.getByTestId("agent-session-scope-label")).toContainText(
-      "#general",
-    );
   });
 
   test("keeps multiple Inbox threads visible after opening their channel", async ({
@@ -606,7 +593,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "800",
     );
     for (const [index, itemId] of inboxItemIds.entries()) {
       const inboxRow = page.getByTestId(`home-inbox-item-${itemId}`);
@@ -615,7 +602,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "450",
+          "800",
         );
       }
     }
@@ -628,7 +615,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "800",
     );
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await page.getByTestId("channel-general").click();
@@ -654,7 +641,7 @@ test.describe("channel activity hover preview", () => {
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "650",
+      "800",
     );
 
     await page.mouse.move(900, 680);
@@ -692,7 +679,7 @@ test.describe("channel activity hover preview", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("random");
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "600",
     );
   });
 
@@ -752,9 +739,10 @@ test.describe("channel activity hover preview", () => {
     await groupedInboxRow.getByRole("button", { name: "Mark as read" }).click();
 
     await page.getByTestId("channel-random").click();
+    // The manual unread keeps the row bold, as the designed sidebar draws it.
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "800",
     );
   });
 
@@ -788,7 +776,7 @@ test.describe("channel activity hover preview", () => {
     }
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "800",
     );
     await expect.poll(() => getForcedUnreadSources(page)).toEqual(["inbox"]);
 
@@ -800,7 +788,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "450",
+          "800",
         );
         await expect
           .poll(() => getForcedUnreadSources(page))

@@ -3,13 +3,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import {
-  channelsQueryKey,
-  useChannelsQuery,
-  useOpenDmMutation,
-} from "@/features/channels/hooks";
-import { useHuddle } from "@/features/huddle";
-import { formatHuddleActionError } from "@/features/huddle/lib/huddleError";
+import { useChannelsQuery, useOpenDmMutation } from "@/features/channels/hooks";
 import {
   createOptimisticMessage,
   mergeTimelineCacheMessages,
@@ -23,10 +17,9 @@ import type { Channel, RelayEvent } from "@/shared/api/types";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 
-export type ProfileInteractionAction = "huddle" | "message" | "wave";
+export type ProfileInteractionAction = "message" | "wave";
 
 type ProfileInteractionAvailability = {
-  huddle: boolean;
   message: boolean;
   wave: boolean;
 };
@@ -96,14 +89,12 @@ export function useProfileInteractionActions({
   const openDm = openDmMutation.mutateAsync;
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
-  const { isStarting: isStartingHuddle, startHuddle } = useHuddle();
 
   const canInteract = enabled && !isSelf && effectivePubkey !== null;
   const canWave = canInteract && (availability?.wave ?? !isBot);
   const canMessage =
     canInteract &&
     (availability?.message ?? (!isBot || viewerIsOwner === true));
-  const canHuddle = canInteract && (availability?.huddle ?? canMessage);
   const selfProfileQuery = useProfileQuery(enabled && canWave);
 
   React.useEffect(() => {
@@ -127,17 +118,13 @@ export function useProfileInteractionActions({
       try {
         await operation(effectivePubkey);
       } catch (error) {
-        if (action === "huddle") {
-          toast.error(formatHuddleActionError(error, "start"));
-        } else {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : action === "wave"
-                ? "Couldn't send the wave."
-                : "Couldn't open the direct message.",
-          );
-        }
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : action === "wave"
+              ? "Couldn't send the wave."
+              : "Couldn't open the direct message.",
+        );
       } finally {
         if (isMountedRef.current) {
           setPendingAction(null);
@@ -160,32 +147,6 @@ export function useProfileInteractionActions({
       }
     });
   }, [canMessage, goChannel, onClose, openDm, runAction]);
-
-  const handleHuddle = React.useCallback(() => {
-    if (!canHuddle || isStartingHuddle) {
-      return;
-    }
-
-    void runAction("huddle", async (targetPubkey) => {
-      const dm = await openDm({ pubkeys: [targetPubkey] });
-      await goChannel(dm.id);
-      await startHuddle(dm.id, isBot ? [targetPubkey] : []);
-      await queryClient.invalidateQueries({ queryKey: channelsQueryKey });
-      if (isMountedRef.current) {
-        onClose();
-      }
-    });
-  }, [
-    canHuddle,
-    goChannel,
-    isBot,
-    isStartingHuddle,
-    onClose,
-    openDm,
-    queryClient,
-    runAction,
-    startHuddle,
-  ]);
 
   const handleWave = React.useCallback(() => {
     if (!canWave) {
@@ -272,14 +233,11 @@ export function useProfileInteractionActions({
   ]);
 
   return {
-    canHuddle,
     canMessage,
     canWave,
-    handleHuddle,
     handleMessage,
     handleWave,
     isOpeningDm: openDmMutation.isPending,
-    isStartingHuddle,
     pendingAction,
   };
 }

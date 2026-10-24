@@ -274,6 +274,9 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// Read leads found in Discovery, add notes and update their stage
+    #[command(subcommand)]
+    Leads(LeadsCmd),
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
@@ -1266,6 +1269,70 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LeadsCmd {
+    /// List current leads, newest first
+    List {
+        /// Maximum leads to return, 1 through 500 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+        /// Only leads at this stage: qualified, in_conversation, proposal, won, or lost
+        #[arg(long)]
+        stage: Option<String>,
+        /// Only leads whose name, place, contact, industry or website contains this text
+        #[arg(long)]
+        query: Option<String>,
+    },
+    /// Get one lead with its evidence and notes
+    Get {
+        /// Lead UUID or lead link
+        #[arg(long)]
+        lead: String,
+    },
+    /// Add a note, or a record of a contact attempt, to a lead
+    Note {
+        /// Lead UUID or lead link
+        #[arg(long)]
+        lead: String,
+        /// Note text (1 through 2000 bytes), or '-' to read from stdin
+        #[arg(long)]
+        content: String,
+        /// note (default) or contact
+        #[arg(long)]
+        kind: Option<String>,
+    },
+    /// Move a lead to qualified, in_conversation, proposal, or lost
+    Stage {
+        /// Lead UUID or lead link
+        #[arg(long)]
+        lead: String,
+        /// One of: qualified, in_conversation, proposal, lost
+        #[arg(long)]
+        stage: String,
+        /// Why the lead was lost; required for lost, rejected for other stages
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Record whether a lead fits the business
+    Qualify {
+        /// Lead UUID or lead link
+        #[arg(long)]
+        lead: String,
+        /// One of: qualified, not_fit, unreviewed
+        #[arg(long)]
+        qualification: String,
+    },
+    /// Save a lead for follow-up, or remove it from the saved leads
+    Save {
+        /// Lead UUID or lead link
+        #[arg(long)]
+        lead: String,
+        /// Remove the lead from the saved leads instead of saving it
+        #[arg(long)]
+        unsave: bool,
     },
 }
 
@@ -3117,6 +3184,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
@@ -3302,6 +3370,7 @@ mod tests {
             "gifs",
             "goals",
             "issues",
+            "leads",
             "lessons",
             "media",
             "mem",
@@ -3529,6 +3598,10 @@ mod tests {
             ]
         );
         assert_eq!(
+            names(&cmd, "leads"),
+            vec!["get", "list", "note", "qualify", "save", "stage"]
+        );
+        assert_eq!(
             names(&cmd, "team"),
             vec!["get", "list", "set-manager", "set-position", "set-title"]
         );
@@ -3621,6 +3694,7 @@ mod tests {
             ("feed", 1),
             ("goals", 9),
             ("issues", 6),
+            ("leads", 6),
             ("media", 1),
             ("messages", 8),
             ("money", 4),

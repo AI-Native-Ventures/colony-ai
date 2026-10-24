@@ -14,6 +14,14 @@ import { isMacPlatform } from "@/shared/lib/platform";
 import { getStorageItem } from "@/shared/lib/safeStorage";
 import { createThemeVars, hexToHsl } from "./adaptive-theme";
 import {
+  applyFieldColors,
+  readStoredFieldColors,
+  sameFieldColors,
+  writeStoredFieldColors,
+  DEFAULT_FIELD_COLORS,
+  type FieldColors,
+} from "./sidebarField";
+import {
   SYNTAX_THEMES,
   type SyntaxThemeName,
   type ThemeInfo,
@@ -41,7 +49,22 @@ const VIDEO_REVIEW_TEXT_CONTRAST = 4.5;
 const VIDEO_REVIEW_CHIP_BACKGROUND_ALPHAS = [0.15, 0.3] as const;
 const GLASS_VIBRANCY_MATERIAL = "sidebar";
 
+/** The accent choices Colony 3.0 offers (Settings, Appearance). */
 export const ACCENT_COLORS = [
+  { name: "Violet", value: "#5B45BE" },
+  { name: "Rose", value: "#B23A6E" },
+  { name: "Teal", value: "#1F7A70" },
+  { name: "Blue", value: "#2B5899" },
+  { name: "Amber", value: "#9A5B00" },
+  { name: "Ink", value: "#25222C" },
+] as const;
+
+/**
+ * Accents earlier versions offered. They are no longer in the picker, but a
+ * stored or synced one keeps applying, so no one's appearance changes
+ * underneath them.
+ */
+export const LEGACY_ACCENT_COLORS = [
   { name: "Neutral", value: NEUTRAL_ACCENT },
   { name: "Blue", value: "#3b82f6" },
   { name: "Cyan", value: "#06b6d4" },
@@ -54,7 +77,7 @@ export const ACCENT_COLORS = [
   { name: "Indigo", value: "#6366f1" },
 ] as const;
 
-export const DEFAULT_ACCENT = "#895AF6";
+export const DEFAULT_ACCENT = "#5B45BE";
 
 type ThemeContextValue = {
   themeName: string;
@@ -72,11 +95,15 @@ type ThemeContextValue = {
   setTheme: (name: string) => void;
   setAccentColor: (color: string) => void;
   setFollowSystem: (enabled: boolean) => void;
+  /** `field` omitted means the default sidebar field colours. */
   applyAppearance: (appearance: {
     theme: SyntaxThemeName;
     accent: string;
     followSystem: boolean;
+    field?: FieldColors;
   }) => void;
+  fieldColors: FieldColors;
+  setFieldColors: (colors: FieldColors) => void;
   setGlassBackground: (enabled: boolean) => void;
   setGlassOpacity: (opacity: number) => void;
   setProminentActiveTab: (enabled: boolean) => void;
@@ -236,6 +263,19 @@ function applyAccentColor(value: string) {
     return;
   }
 
+  if (value.toLowerCase() === DEFAULT_ACCENT.toLowerCase()) {
+    // The default accent is the token itself: drop every override so the
+    // palette's own accent, soft tint and ink apply exactly.
+    for (const name of [
+      "--colony-accent",
+      "--colony-focus",
+      "--colony-accent-soft",
+      "--colony-accent-ink",
+    ]) {
+      root.style.removeProperty(name);
+    }
+  }
+
   const hex = value;
   const accentHsl = hexToHsl(hex);
   const fgHsl = hexToHsl(getContrastColor(hex));
@@ -248,8 +288,22 @@ function applyAccentColor(value: string) {
   root.style.setProperty("--primary", accentHsl);
   root.style.setProperty("--ring", accentHsl);
   root.style.setProperty("--sidebar-ring", accentHsl);
-  root.style.setProperty("--colony-accent", accentHsl);
-  root.style.setProperty("--colony-focus", accentHsl);
+  if (value.toLowerCase() !== DEFAULT_ACCENT.toLowerCase()) {
+    root.style.setProperty("--colony-accent", accentHsl);
+    root.style.setProperty("--colony-focus", accentHsl);
+    // The soft tint and the ink follow a chosen accent: a light wash of it
+    // and a deeper shade of it.
+    root.style.setProperty(
+      "--colony-accent-soft",
+      hexToHsl(
+        rgbToHex(mixRgb(hexToRgb(hex), { r: 255, g: 255, b: 255 }, 0.9)),
+      ),
+    );
+    root.style.setProperty(
+      "--colony-accent-ink",
+      hexToHsl(rgbToHex(mixRgb(hexToRgb(hex), { r: 0, g: 0, b: 0 }, 0.15))),
+    );
+  }
   root.style.setProperty("--primary-foreground", fgHsl);
   root.style.setProperty("--sidebar-primary", accentHsl);
   root.style.setProperty("--sidebar-primary-foreground", fgHsl);
@@ -491,6 +545,8 @@ function applyCachedVars(): string | null {
     const accent = getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
     // Restore the saved accent with the cached palette before the first paint.
     applyAccentColor(resolveEffectiveAccent(themeName, accent));
+    // The person's sidebar field colours restore in the same paint.
+    applyFieldColors(readStoredFieldColors());
 
     return themeName;
   } catch {
@@ -586,6 +642,9 @@ export function ThemeProvider({
     // denied-storage origin would otherwise kill the root on first mount.
     return getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
   });
+  const [fieldColors, setFieldColorsState] = useState<FieldColors>(() =>
+    readStoredFieldColors(),
+  );
   const [glassBackground, setGlassBackgroundState] = useState<boolean>(() => {
     const stored = getStorageItem(GLASS_BACKGROUND_STORAGE_KEY);
     // Glass is opt-in. Explicitly saved preferences remain intact, while a
@@ -724,6 +783,18 @@ export function ThemeProvider({
     window.localStorage.setItem(THEME_STORAGE_KEY, name);
   }, []);
 
+  // Idempotent, so it also covers the first render and any provider remount.
+  useEffect(() => {
+    applyFieldColors(fieldColors);
+  }, [fieldColors]);
+
+  const setFieldColors = useCallback((colors: FieldColors) => {
+    writeStoredFieldColors(colors);
+    setFieldColorsState((previous) =>
+      sameFieldColors(previous, colors) ? previous : colors,
+    );
+  }, []);
+
   const setAccentColor = useCallback((color: string) => {
     window.localStorage.setItem(ACCENT_STORAGE_KEY, color);
     setAccentColorState(color);
@@ -739,7 +810,9 @@ export function ThemeProvider({
       theme: SyntaxThemeName;
       accent: string;
       followSystem: boolean;
+      field?: FieldColors;
     }) => {
+      const field = appearance.field ?? DEFAULT_FIELD_COLORS;
       // Write the complete preference before updating state so applyTheme reads
       // the target community's accent in the same batch, never the previous one.
       try {
@@ -752,9 +825,13 @@ export function ThemeProvider({
       } catch {
         // Keep the active appearance responsive even if the local cache is full.
       }
+      writeStoredFieldColors(field);
       setSelectedTheme(appearance.theme);
       setAccentColorState(appearance.accent);
       setFollowSystemState(appearance.followSystem);
+      setFieldColorsState((previous) =>
+        sameFieldColors(previous, field) ? previous : field,
+      );
     },
     [],
   );
@@ -813,6 +890,8 @@ export function ThemeProvider({
     setAccentColor,
     setFollowSystem,
     applyAppearance,
+    fieldColors,
+    setFieldColors,
     setGlassBackground,
     setGlassOpacity,
     setProminentActiveTab,

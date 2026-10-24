@@ -154,7 +154,7 @@ for (const viewport of [
   { width: 1728, height: 1117 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Scout artwork, runtime privacy and connected Salary at ${viewport.width}`, async ({
+  test(`Scout artwork and runtime privacy at ${viewport.width}`, async ({
     page,
   }, info) => {
     await page.setViewportSize(viewport);
@@ -173,70 +173,37 @@ for (const viewport of [
       });
     }
     await capture("team");
-    await page.getByRole("tab", { name: "Reporting lines" }).click();
-    await expect(
-      page.getByRole("treeitem").filter({ hasText: "Scout" }),
-    ).toContainText("Ready");
-    await expect(page.getByTestId(`team-avatar-${pubkey}-image`)).toBeVisible();
-    await capture("team-org");
     await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await expect(
-      page.getByTestId("employee-header-avatar-image"),
-    ).toBeVisible();
+    await expect(page.getByTestId("agent-profile-avatar-image")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Employee · Ready",
+      "AI employee",
+    );
+    await expect(page.getByTestId("agent-profile")).toContainText(
+      "Runtime ready",
     );
     await capture("scout-detail");
-    await page.getByRole("tab", { name: "Model & runtime" }).click();
-    const summary = page.getByTestId("employee-runtime-summary");
-    await expect(summary).toContainText("HarnessClaude Code");
-    await expect(summary).toContainText("Modelsonnet");
-    await expect(summary).toContainText("Thinking efforthigh");
-    const harnessLabel = await summary.locator("dt").first().boundingBox();
-    const harnessValue = await summary.locator("dd").first().boundingBox();
-    if (!harnessLabel || !harnessValue)
-      throw new Error(
-        "Runtime fields must render before measuring the reference rows",
-      );
-    expect(harnessValue.x).toBeGreaterThan(harnessLabel.x + harnessLabel.width);
-    expect(harnessValue.y).toBe(harnessLabel.y);
-    await expect(
-      page.getByTestId("employee-runtime-advanced"),
-    ).not.toHaveAttribute("open", "");
-    await expect(summary.getByText("16384", { exact: true })).not.toBeVisible();
+    // The model and runtime sit on the same page as the overview.
+    const harness = page.getByTestId("agent-harness-account");
+    await expect(harness).toContainText("Claude Code");
+    await expect(page.getByTestId("agent-model-selection")).toContainText(
+      "sonnet",
+    );
     for (const key of [
       "agentPushNotifEnabled",
       "autoUpdatesChannel",
       "enableAllProjectMcpServers",
       "enabledPlugins",
       "private-settings-path",
-      "Provider",
       "template default",
     ])
-      await expect(summary).not.toContainText(key);
+      await expect(page.getByTestId("agent-profile")).not.toContainText(key);
     await capture("scout-model");
-    await summary.getByText("Advanced", { exact: true }).click();
-    await expect(summary.getByText("16384", { exact: true })).toBeVisible();
-    await expect(summary).not.toContainText("agentPushNotifEnabled");
-    await capture("scout-model-advanced");
-    await page.getByRole("tab", { name: "Salary" }).click();
-    const salary = page.getByTestId("employee-salary");
-    await expect(salary).toContainText("Claude Code account");
-    await expect(
-      page.getByTestId("employee-funding-source").getByRole("status"),
-    ).toHaveText("Connected");
-    await expect(salary).not.toContainText("Not configured");
-    await expect(salary).toContainText("No company allowance recorded");
-    await expect(
-      salary.getByRole("button", { name: "Change allowance or funding" }),
-    ).toHaveCount(0);
-    await capture("scout-salary");
   });
 }
 
-for (const [lifecycle, label] of [
-  ["failed", "Needs attention"],
-  ["stopped", "Offline"],
+for (const [lifecycle, label, chip] of [
+  ["failed", "Needs attention", "Needs attention"],
+  ["stopped", "Offline", "Runtime offline"],
 ] as const) {
   test(`Scout ${lifecycle} state is shown in Team and profile`, async ({
     page,
@@ -246,9 +213,7 @@ for (const [lifecycle, label] of [
       page.getByTestId(`company-team-member-${pubkey}`),
     ).toContainText(label);
     await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await expect(page.getByTestId("company-position-header")).toContainText(
-      `Employee · ${label}`,
-    );
+    await expect(page.getByTestId("agent-profile")).toContainText(chip);
   });
 }
 
@@ -268,9 +233,12 @@ test("Scout active work changes the live Team status", async ({ page }) => {
     "Working",
   );
   await page.getByTestId(`company-team-member-${pubkey}`).click();
-  await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Working",
+  // Working is a state of the work: the runtime stays ready and the
+  // channel shows under Current work.
+  await expect(page.getByTestId("agent-profile")).toContainText(
+    "Runtime ready",
   );
+  await expect(page.getByTestId("agent-overview")).toContainText("Working");
 });
 
 test("Scout artwork and runtime state are shared with the agent profile", async ({
@@ -311,68 +279,11 @@ test("Scout artwork and runtime state are shared with the agent profile", async 
   await expect(profile).toBeVisible();
   await expect(page.getByTestId("agent-profile-avatar-image")).toBeVisible();
   await expect(
-    profile.getByText("Presence: Ready", { exact: true }),
+    profile.getByText("Runtime ready", { exact: true }),
   ).toBeVisible();
   await expect(profile.getByText("Unknown", { exact: true })).toHaveCount(0);
   await waitForAnimations(page);
   await page.screenshot({
     path: `${dir}/scout-agent-profile-1728-${test.info().project.name}.png`,
   });
-});
-
-for (const [auth, expected] of [
-  ["logged_out", "Sign-in needed"],
-  ["unknown", "Connection not reported"],
-  ["config_invalid", "Needs attention"],
-] as const) {
-  test(`Salary reports Claude Code ${auth} separately from an allowance`, async ({
-    page,
-  }) => {
-    const pubkey = await setup(page, "ready", { auth });
-    await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await page.getByRole("tab", { name: "Salary" }).click();
-    await expect(
-      page.getByTestId("employee-funding-source").getByRole("status"),
-    ).toHaveText(expected);
-    await expect(page.getByTestId("employee-funding-source")).toContainText(
-      "Claude Code account",
-    );
-  });
-}
-
-for (const [connection, expected] of [
-  ["connected", "Connected"],
-  ["limit", "Spending limit reached"],
-  ["unlinked", "Not connected"],
-] as const) {
-  test(`Salary reports OpenRouter ${connection} from connection metadata`, async ({
-    page,
-  }) => {
-    const pubkey = await setup(page, "ready", {
-      source: "openrouter",
-      connection,
-    });
-    await page.getByTestId(`company-team-member-${pubkey}`).click();
-    await page.getByRole("tab", { name: "Salary" }).click();
-    await expect(
-      page.getByTestId("employee-funding-source").getByRole("status"),
-    ).toHaveText(expected);
-    await expect(page.getByTestId("employee-funding-source")).toContainText(
-      "OpenRouter",
-    );
-  });
-}
-
-test("Salary distinguishes a configured own key from a proven account connection", async ({
-  page,
-}) => {
-  const pubkey = await setup(page, "ready", { source: "own-key" });
-  await page.getByTestId(`company-team-member-${pubkey}`).click();
-  await page.getByRole("tab", { name: "Salary" }).click();
-  const funding = page.getByTestId("employee-funding-source");
-  await expect(funding).toContainText("Anthropic · Own key");
-  await expect(funding.getByRole("status")).toHaveText(
-    "Key configured; account status not reported",
-  );
-  await expect(funding).not.toContainText("test-only-placeholder");
 });

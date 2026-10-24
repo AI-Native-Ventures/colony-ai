@@ -179,6 +179,12 @@ export function companyHireRolePackFromPersona(
   ) {
     return null;
   }
+  const defaultAllowance =
+    typeof role.defaultAllowance === "string" &&
+    /^\d+(?:\.\d{1,2})?$/.test(role.defaultAllowance) &&
+    Number(role.defaultAllowance) > 0
+      ? role.defaultAllowance
+      : undefined;
   return {
     personaId: persona.id,
     title: persona.displayName,
@@ -186,6 +192,7 @@ export function companyHireRolePackFromPersona(
     skills: [...role.skills],
     tools: role.tools.map((tool) => ({ name: tool.name, risk: tool.risk })),
     workerMenu: [...role.workerMenu],
+    ...(defaultAllowance ? { defaultAllowance } : {}),
   };
 }
 

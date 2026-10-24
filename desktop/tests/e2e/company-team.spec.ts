@@ -8,10 +8,8 @@ import {
 } from "nostr-tools/pure";
 
 import {
-  KIND_DUTY_HEAD,
   KIND_MEMBER_POSITION_HEAD,
   KIND_STREAM_MESSAGE,
-  KIND_WORK_ITEM_HEAD,
 } from "../../src/shared/constants/kinds";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
@@ -19,7 +17,6 @@ import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
-const EMPLOYEE_WORK_ITEM_ID = "e3a4b5c6-d7e8-49f0-a1b2-c3d4e5f60718";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
 function positionHead(input: {
@@ -49,32 +46,6 @@ function positionHead(input: {
       }),
     },
     input.relaySecret,
-  );
-}
-
-function companyWorkHeadEvent(relaySecret: Uint8Array, assignedPubkey: string) {
-  return finalizeEvent(
-    {
-      kind: KIND_WORK_ITEM_HEAD,
-      created_at: Math.floor(Date.now() / 1_000),
-      tags: [
-        ["h", GENERAL_CHANNEL_ID],
-        ["d", `company:work:${EMPLOYEE_WORK_ITEM_ID}`],
-      ],
-      content: JSON.stringify({
-        schemaVersion: 1,
-        workItemId: EMPLOYEE_WORK_ITEM_ID,
-        title: "Prepare the launch brief",
-        status: "active",
-        assignedPubkeys: [assignedPubkey],
-        approverPubkeys: [],
-        deliverables: [],
-        requesterPubkey: OWNER_PUBKEY,
-        doneCondition: "The launch brief is ready for review.",
-        sourceActionEventId: "c".repeat(64),
-      }),
-    },
-    relaySecret,
   );
 }
 
@@ -118,49 +89,7 @@ async function emitEmployeeMessage(
   );
 }
 
-function dutyHead(input: { relaySecret: Uint8Array; employeePubkey: string }) {
-  const dutyId = "9d55771d-6404-4f92-9c6b-4ff59aa12260";
-  const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
-  const now = new Date().toISOString();
-  return finalizeEvent(
-    {
-      kind: KIND_DUTY_HEAD,
-      created_at: Math.floor(Date.now() / 1_000),
-      tags: [
-        ["d", `company:duty:${dutyId}`],
-        ["p", input.employeePubkey],
-      ],
-      content: JSON.stringify({
-        schemaVersion: 1,
-        dutyId,
-        proposal: {
-          schemaVersion: 1,
-          dutyId,
-          employeePubkey: input.employeePubkey,
-          title: "Review the weekly content calendar",
-          scheduleText: "Every Monday at 08:00",
-          scheduleCron: "0 8 * * 1",
-          timeZone: "UTC",
-          channelId,
-          instructions: "Review the calendar and flag exceptions.",
-        },
-        status: "active",
-        proposedByPubkey: TEST_IDENTITIES.tyler.pubkey,
-        approvedByPubkey: TEST_IDENTITIES.tyler.pubkey,
-        approvedAt: now,
-        sourceAskId: "7d2d873b-f5a6-4b95-bb2f-2ac0ae2f74f8",
-        sourceAskChannelId: channelId,
-        workflowDefinitionHash: "c".repeat(64),
-        createdAt: now,
-        updatedAt: now,
-        sourceActionEventId: "d".repeat(64),
-      }),
-    },
-    input.relaySecret,
-  );
-}
-
-test("Team shows mixed reporting lines and lets an owner edit, terminate and rehire an employee", async ({
+test("Team lists members and lets an owner edit, terminate and rehire an employee", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -232,9 +161,6 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
         managerPubkey: alicePubkey,
       }),
     ],
-    companyDutyHeads: [dutyHead({ relaySecret, employeePubkey })],
-    companyDutyRelayPrivateKeyHex: bytesToHex(relaySecret),
-    companyLessonRelayPrivateKeyHex: bytesToHex(relaySecret),
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role: "owner" },
       { pubkey: alicePubkey, role: "member" },
@@ -275,11 +201,6 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
         channelNames: ["general"],
       },
     ],
-    companyWorkEvents: [companyWorkHeadEvent(relaySecret, employeePubkey)],
-    channelsReadErrors: Array.from(
-      { length: 32 },
-      () => "invalid: e2e forced channel read failure.",
-    ),
     visualChannels: [{ id: GENERAL_CHANNEL_ID, name: "general" }],
   });
 
@@ -293,8 +214,10 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   );
   await expect(page.getByTestId("company-team-list")).toContainText("alice");
   await expect(
-    page.getByTestId("company-team-screen").locator("header"),
-  ).toHaveText("Company / Team");
+    page
+      .getByRole("navigation", { name: "Breadcrumb" })
+      .locator('[aria-current="page"]'),
+  ).toHaveText("Team");
   await expect(
     page.getByTestId(`company-team-member-${OWNER_PUBKEY}`),
   ).toContainText("Founder · Human");
@@ -303,19 +226,13 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
     "Mina worker",
   );
 
-  await page.getByRole("tab", { name: "Reporting lines" }).click();
-  const tree = page.getByRole("tree", { name: "Reporting lines" });
-  const treeItems = tree.getByRole("treeitem");
-  await treeItems.first().focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(treeItems.nth(1)).toBeFocused();
-
-  await page.getByRole("tab", { name: "Everyone" }).click();
+  await expect(page.getByRole("tab", { name: "Reporting lines" })).toHaveCount(
+    0,
+  );
   await page.getByTestId(`company-team-member-${alicePubkey}`).click();
   await expect(page).toHaveURL(new RegExp(`/team/detail/${alicePubkey}$`));
   await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "History" })).toBeEnabled();
+  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0);
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Account Manager · Human",
   );
@@ -344,186 +261,43 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await expect(page.getByTestId("company-human-role")).toContainText(
     EMPLOYEE_NAME,
   );
-  await page.getByRole("tab", { name: "History" }).click();
-  await expect(
-    page.getByTestId("company-member-position-history"),
-  ).toContainText("Position changed");
-  await expect(
-    page.getByTestId("company-member-position-history"),
-  ).toContainText("Chief of Staff");
 
   await page.goto(`/#/team/detail/${unlinkedPubkey}`);
-  await expect(page.getByTestId("company-position-unlinked")).toBeVisible();
-  await expect(page.getByTestId("company-position-record")).toContainText(
-    "Campaign Designer",
-  );
-  await expect(page.getByTestId("company-position-record")).toContainText(
-    "Runtime statusReady",
-  );
   await expect(
-    page.getByRole("button", { name: "Connect a managed agent" }),
-  ).toBeDisabled();
-
-  await expect(
-    page.getByRole("button", { name: "Edit role and reporting" }),
+    page.getByRole("heading", { name: "Unlinked Mina", level: 1 }),
   ).toBeVisible();
+  await expect(page.getByText("Campaign Designer").first()).toBeVisible();
+  await expect(page.getByText("Not on this device")).toBeVisible();
   await captureRoute("team-unlinked");
   await page.goto("/#/team");
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
-  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    `${EMPLOYEE_TITLE} · Employee · Ready`,
+    "AI employee · Reports to",
   );
+  await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
   await expect(
-    page.getByTestId("company-position-header").getByRole("button", {
+    page.getByTestId("agent-profile").getByRole("button", {
       name: "Message",
-    }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByTestId("company-employee-direct-reports"),
-  ).toContainText("alice");
-  await expect(page.getByTestId("employee-doing-now")).toContainText(
-    "Could not load current work",
-  );
-  await page.evaluate(() => {
-    if (window.__BUZZ_E2E__?.mock)
-      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
-  });
-  await page.getByRole("button", { name: "Retry current work" }).click();
-  await expect(page.getByTestId("employee-doing-now")).toContainText(
-    "Prepare the launch brief",
-  );
-  await expect(
-    page.getByTestId(`employee-work-${EMPLOYEE_WORK_ITEM_ID}`),
-  ).toBeVisible();
-
-  await page.getByRole("tab", { name: "Instructions" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "Existing employee instructions.",
-  );
-  await page.getByRole("button", { name: "Edit instructions" }).click();
-  await expect(
-    page.getByTestId("employee-instructions-editor").getByRole("heading", {
-      name: "Edit instructions",
+      exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByTestId("employee-instructions-editor").getByRole("button"),
-  ).toHaveText(["Save changes", "Cancel"]);
-  await expect(page.locator("h1")).toHaveCount(1);
-  await captureRoute("team-edit-instructions");
-  await page
-    .getByTestId("employee-system-instructions")
-    .fill("First revised employee instructions.");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "First revised employee instructions.",
-  );
-  await page.getByRole("button", { name: "Edit instructions" }).click();
-  await page
-    .getByTestId("employee-system-instructions")
-    .fill("Second revised employee instructions.");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("employee-instructions")).toContainText(
-    "Second revised employee instructions.",
-  );
 
-  await page.getByRole("tab", { name: "Salary" }).click();
-  await expect(page.getByTestId("employee-salary")).toContainText(
-    "No company allowance recorded.",
-  );
+  await page.getByRole("button", { name: "More agent actions" }).click();
   await expect(
-    page.getByRole("button", { name: "Change allowance or funding" }),
-  ).toHaveCount(0);
-  await page.goto(`/#/team/detail/${employeePubkey}?panel=salary-edit`);
-  await expect(page).toHaveURL(
-    new RegExp(`/team/detail/${employeePubkey}\\?panel=salary-edit$`),
-  );
-  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
-  await page.getByLabel("Allowance in USD API-equivalent").fill("50.00");
-  await page.getByLabel("Period").selectOption("week");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("employee-salary")).toContainText(
-    "USD 50 / week",
-  );
-  await waitForAnimations(page);
-  await page.screenshot({ path: "test-results/employee-salary.png" });
+    page.getByRole("menuitem", { name: "Edit role and reporting" }),
+  ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Change allowance or funding" }),
+    page.getByRole("menuitem", { name: "Pause employee" }),
   ).toHaveCount(0);
-  await page.goto(`/#/team/detail/${employeePubkey}?panel=salary-edit`);
-  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
-  await waitForAnimations(page);
-  await page.screenshot({ path: "test-results/employee-allowance-edit.png" });
+  await page.getByRole("menuitem", { name: "Edit role and reporting" }).click();
+  await expect(page.getByTestId("team-dialog-edit-role")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue(EMPLOYEE_TITLE);
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByTestId("employee-salary")).toBeVisible();
-  await page.reload();
-  await expect(page.getByTestId("employee-salary")).toContainText(
-    "USD 50 / week",
-  );
-  await page.getByRole("tab", { name: "Workers" }).click();
-  await expect(page.getByTestId("employee-unavailable-workers")).toContainText(
-    "Not available yet.",
-  );
-  await page.getByRole("tab", { name: "Duties" }).click();
-  await expect(page.getByTestId("employee-duties")).toContainText("Routines");
-  const duty = page.getByTestId(
-    "employee-duty-9d55771d-6404-4f92-9c6b-4ff59aa12260",
-  );
-  await expect(duty).toContainText("Review the weekly content calendar");
-  await duty.click();
-  await expect(page.getByTestId("employee-duty-detail")).toContainText(
-    "Run history",
-  );
-  await expect(page.getByTestId("employee-duty-detail")).toContainText(
-    "Not run yet",
-  );
-  await page.getByRole("button", { name: "Routines" }).click();
-  await page.getByRole("tab", { name: "Lessons" }).click();
-  await expect(page.getByTestId("employee-lessons")).toContainText(
-    "Lessons with evidence",
-  );
-  await expect(page.getByTestId("employee-lessons")).toContainText("Memory");
-  await page.getByRole("button", { name: "Propose lesson" }).click();
-  await page
-    .getByLabel("Lesson", { exact: true })
-    .fill("Keep campaign conclusions linked to their sources.");
-  await page.getByLabel("Supporting evidence").fill(employeePositionEvent.id);
-  await page.getByRole("button", { name: "Save candidate" }).click();
-  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
-    "Keep campaign conclusions linked to their sources.",
-  );
-  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
-    "Confidence: unassessed",
-  );
-
-  await page.getByRole("tab", { name: "History" }).click();
-  await expect(page.getByTestId("employee-history")).toContainText(
-    "Configuration changed",
-  );
-  await page.reload();
-  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
-  await page.getByRole("tab", { name: "Lessons" }).click();
-  await page.getByTestId(/^employee-lesson-/).click();
-  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
-    "Keep campaign conclusions linked to their sources.",
-  );
-  await page.getByRole("tab", { name: "History" }).click();
-  await expect(page.getByTestId("employee-history")).toContainText(
-    "Second revised employee instructions.",
-  );
-  await page.getByRole("button", { name: "Review undo" }).click();
-  await page.getByRole("button", { name: "Restore these values" }).click();
-  await expect(page.getByTestId("employee-history")).toContainText(
-    "Configuration restored",
-  );
-
-  await page.getByRole("tab", { name: "Overview" }).click();
-  await expect(
-    page.getByRole("button", { name: "Pause employee" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "Terminate employee" }).click();
-  await expect(page.getByTestId("company-team-archive-screen")).toBeVisible();
+  await expect(page.getByTestId("team-dialog-edit-role")).toHaveCount(0);
+  await page.getByRole("button", { name: "More agent actions" }).click();
+  await page.getByRole("menuitem", { name: "Terminate employee" }).click();
+  await expect(page.getByTestId("team-dialog-terminate")).toBeVisible();
   await page.getByLabel("Reason").fill("The role has ended after review.");
   await page.evaluate(() => {
     window.__BUZZ_E2E__?.mock?.companyMemberActionErrors?.push(
@@ -551,21 +325,24 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
       window.__BUZZ_E2E__.mock.companyMemberActionErrors = [];
   });
   await page.getByRole("button", { name: "Terminate employee" }).click();
-  await expect(page.getByTestId("company-position-header")).toContainText(
-    EMPLOYEE_TITLE,
-  );
+  await expect(page.getByTestId("team-dialog-terminate")).toHaveCount(0);
+  await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
   await expect(page.getByTestId("company-terminated-banner")).toBeVisible();
 
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
+  });
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await waitForMockLiveSubscription(page, "general");
   await emitEmployeeMessage(page, employeePubkey, "The handoff is complete.");
   await expect(
     page.getByTestId("employee-message-status-terminated").last(),
   ).toHaveText("Terminated: The role has ended after review.");
-  await expect(page.getByTestId("open-employee-history").last()).toBeVisible();
 
   await page.goto(`/#/team/detail/${employeePubkey}`);
   await page.getByRole("button", { name: "Review rehire" }).click();
+  await expect(page.getByTestId("team-dialog-rehire")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve and rehire" }),
   ).toBeDisabled();
@@ -573,7 +350,7 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await page.getByRole("button", { name: "Approve and rehire" }).click();
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Offline",
+    "AI employee",
   );
   await expect
     .poll(() =>
@@ -593,13 +370,4 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
     "Designer",
   );
   await expect(page.getByTestId("company-human-role")).toContainText("alice");
-  await page.evaluate(() => {
-    if (window.__BUZZ_E2E__?.mock)
-      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
-  });
-  const retryWork = page.getByRole("button", { name: "Retry current work" });
-  if (await retryWork.isVisible()) await retryWork.click();
-  await expect(page.getByTestId("company-member-doing-now")).toContainText(
-    "No current commitments.",
-  );
 });

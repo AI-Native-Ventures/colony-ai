@@ -22,6 +22,7 @@ import type { Channel, RelayEvent } from "@/shared/api/types";
 import {
   BusinessRecordParseError,
   businessRecordService,
+  parseDeliverableVersion,
   type BusinessEventTemplate,
   type EventRecord,
   type WorkItemHead,
@@ -424,6 +425,98 @@ export function useAllWorkItemHeadsQuery(enabled = true) {
     retry: false,
   });
   return { ...query, directoryQuery, liveError: live.error };
+}
+
+export type DeliverableSummary = {
+  title: string;
+  version: number;
+  createdAt: number;
+};
+
+const SUMMARY_BATCH = 100;
+
+/**
+ * Title and version of each work item's deliverable versions, read in one
+ * request per client channel. Keyed by version event id.
+ */
+export function useDeliverableSummaries(
+  work: readonly EventRecord<WorkItemHead>[] | undefined,
+) {
+  const { pubkey, relayUrl } = useRecordContext();
+  const idsByClient = React.useMemo(() => {
+    const grouped = new Map<string, Set<string>>();
+    for (const { value } of work ?? []) {
+      for (const pointer of value.deliverables) {
+        const ids = grouped.get(value.clientId) ?? new Set<string>();
+        ids.add(pointer.versionEventId);
+        grouped.set(value.clientId, ids);
+      }
+    }
+    return grouped;
+  }, [work]);
+  const scopeKey = [...idsByClient.entries()]
+    .map(([clientId, ids]) => `${clientId}:${[...ids].sort().join(",")}`)
+    .sort()
+    .join("|");
+  return useQuery({
+    queryKey: [
+      ...businessRecordScope(relayUrl, pubkey),
+      "deliverable-summaries",
+      scopeKey,
+    ] as const,
+    enabled: Boolean(relayUrl && pubkey && idsByClient.size > 0),
+    queryFn: async () => {
+      const summaries = new Map<string, DeliverableSummary>();
+      await Promise.all(
+        [...idsByClient.entries()].map(async ([clientId, ids]) => {
+          const all = [...ids];
+          for (let index = 0; index < all.length; index += SUMMARY_BATCH) {
+            const batch = all.slice(index, index + SUMMARY_BATCH);
+            const events = await relayClient.fetchEvents({
+              kinds: [KIND_DELIVERABLE_VERSION],
+              "#h": [clientId],
+              ids: batch,
+              limit: batch.length,
+            });
+            for (const event of events) {
+              try {
+                const { value } = parseDeliverableVersion(event);
+                const body =
+                  typeof value.body === "object" && value.body !== null
+                    ? (value.body as Record<string, unknown>)
+                    : {};
+                summaries.set(event.id, {
+                  title: typeof body.title === "string" ? body.title : "",
+                  version: value.version,
+                  createdAt: event.created_at,
+                });
+              } catch {
+                // A version that does not parse is left out of the summary.
+              }
+            }
+          }
+        }),
+      );
+      return summaries;
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+
+/** The newest deliverable of a work item, when its version could be read. */
+export function latestDeliverable(
+  head: WorkItemHead,
+  summaries: ReadonlyMap<string, DeliverableSummary> | undefined,
+): DeliverableSummary | null {
+  let latest: DeliverableSummary | null = null;
+  for (const pointer of head.deliverables) {
+    const summary = summaries?.get(pointer.versionEventId);
+    if (summary && (!latest || summary.createdAt >= latest.createdAt)) {
+      latest = summary;
+    }
+  }
+  return latest;
 }
 
 export function useSubmitBusinessRecordMutation() {

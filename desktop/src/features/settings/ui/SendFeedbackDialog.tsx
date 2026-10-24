@@ -1,4 +1,3 @@
-import { Check, LoaderCircle, X } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -11,12 +10,14 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Textarea } from "@/shared/ui/textarea";
+import { CheckIcon, CloseIcon, ConnectingIcon } from "@/shared/ui/colonyIcons";
 
 export type FeedbackCategoryId = "suggestion" | "bug" | "other";
 
+/** Listed in the order the dialog shows them. */
 export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategoryId, string> = {
-  suggestion: "Suggestion",
   bug: "Something is broken",
+  suggestion: "Suggestion",
   other: "Other",
 };
 
@@ -45,7 +46,6 @@ export function SendFeedbackDialog({
     React.useState<FeedbackCategoryId>("suggestion");
   const [message, setMessage] = React.useState("");
   const [includeLogs, setIncludeLogs] = React.useState(false);
-  const [showDiagnostics, setShowDiagnostics] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [sent, setSent] = React.useState(false);
 
@@ -54,7 +54,6 @@ export function SendFeedbackDialog({
     setCategory("suggestion");
     setMessage("");
     setIncludeLogs(false);
-    setShowDiagnostics(false);
     setErrorMessage(null);
     setSent(false);
   }, [open, sent]);
@@ -73,231 +72,198 @@ export function SendFeedbackDialog({
     }
   }
 
-  const dialogHeight = sent
-    ? "h-[28.3125rem]"
-    : isPending
-      ? "h-[24.1875rem]"
-      : errorMessage
-        ? "h-[38.6875rem]"
-        : showDiagnostics
-          ? "h-[42.1875rem]"
-          : "h-[34.0625rem]";
-
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden rounded-[11px] border-border/80 bg-card p-0 dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec] ${dialogHeight}`}
+        className="max-w-[21.3125rem] gap-4 p-6"
         data-testid="send-feedback-dialog"
         showCloseButton={false}
       >
-        <DialogHeader className="h-20 shrink-0 flex-row items-center justify-between gap-4 border-b border-border/70 px-[25px] py-5 dark:border-[#3c3544]">
-          <DialogTitle
-            className="text-base font-semibold tracking-tight"
-            data-testid="send-feedback-title"
-          >
-            {sent ? "Thank you for the feedback" : "Send feedback"}
-          </DialogTitle>
-          <DialogClose
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring dark:hover:bg-[#3a3243] dark:hover:text-[#e6e1ec]"
-            disabled={isPending}
-          >
-            <X aria-hidden="true" className="h-4 w-4" />
-          </DialogClose>
-        </DialogHeader>
-
         {sent ? (
           <div
-            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 py-5 text-center"
+            className="flex items-center gap-3.5"
             data-testid="feedback-sent"
+            role="status"
           >
-            <Check
-              aria-hidden="true"
-              className="size-6 text-muted-foreground"
-            />
-            <div className="mx-auto w-full max-w-[440px] space-y-4">
-              <p className="text-xl font-semibold">Your feedback was sent</p>
-              <p className="text-sm text-muted-foreground">
-                You can keep working. We’ll reply to your account email if more
-                detail is needed.
-              </p>
-            </div>
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-colony-success-bg text-colony-success">
+              <CheckIcon size={18} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <DialogTitle
+                className="text-base font-extrabold tracking-normal"
+                data-testid="send-feedback-title"
+              >
+                Thank you for the feedback
+              </DialogTitle>
+              <span className="text-sm font-medium text-colony-fg-secondary">
+                Your feedback was sent
+              </span>
+            </span>
             <Button
-              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
               data-testid="feedback-done"
               onClick={() => onOpenChange(false)}
+              size="sm"
               type="button"
+              variant="outline"
             >
-              Done
+              Close
             </Button>
           </div>
-        ) : isPending ? (
-          <div className="flex min-h-0 flex-1 flex-col px-[25px] py-5">
-            <div
-              aria-live="polite"
-              className="flex flex-1 -translate-y-2.5 flex-col items-center justify-center gap-4 px-6 text-center"
-              data-testid="feedback-sending"
-              role="status"
-            >
-              <LoaderCircle
-                aria-hidden="true"
-                className="size-6 animate-spin text-[#315fae] dark:text-[#a9bee8]"
-              />
-              <div className="space-y-1">
-                <p className="text-base font-medium">Sending your feedback…</p>
-                <p className="text-xs text-muted-foreground">
+        ) : (
+          <>
+            <DialogHeader className="flex-row items-center gap-2.5 space-y-0">
+              <DialogTitle
+                className="flex-1 text-xl font-extrabold tracking-[-0.02em]"
+                data-testid="send-feedback-title"
+              >
+                Send feedback
+              </DialogTitle>
+              <DialogClose
+                aria-label="Close"
+                className="grid size-9 shrink-0 place-items-center rounded-colony-menu-item text-colony-fg-secondary transition-colors hover:bg-colony-track focus:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+                disabled={isPending}
+              >
+                <CloseIcon size={16} strokeWidth={2.4} />
+              </DialogClose>
+            </DialogHeader>
+
+            {isPending ? (
+              <div
+                aria-live="polite"
+                className="flex flex-col items-center justify-center gap-3 py-10 text-center"
+                data-testid="feedback-sending"
+                role="status"
+              >
+                <ConnectingIcon
+                  className="text-colony-accent motion-safe:animate-spin"
+                  size={24}
+                />
+                <p className="text-sm font-extrabold">Sending your feedback…</p>
+                <p className="text-xs font-medium text-colony-fg-secondary">
                   Your message is kept until delivery is confirmed.
                 </p>
               </div>
-            </div>
-            <div className="flex shrink-0 justify-end gap-2 border-t border-border/70 px-[25px] pt-[18px] dark:border-[#3c3544]">
-              <Button
-                className="rounded-md bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
-                onClick={() => onOpenChange(false)}
-                type="button"
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <Button
-                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] disabled:opacity-100 dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-                disabled
-                data-testid="feedback-submit"
-                type="button"
-              >
-                Send feedback
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <form
-            className={`flex min-h-0 flex-1 flex-col gap-0 px-[25px] ${errorMessage ? "pt-6" : "pt-[46px]"}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitFeedback();
-            }}
-          >
-            {errorMessage ? (
-              <div
-                className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[15px] text-xs text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
-                data-testid="feedback-error"
-                role="alert"
-              >
-                <p className="font-semibold leading-[1.5]">
-                  Your feedback wasn’t sent
-                </p>
-                <p className="mt-[5px] leading-[1.65]">
-                  Your message is saved in this window. Try again.
-                </p>
-              </div>
-            ) : null}
-
-            <label
-              className="flex flex-col gap-2 text-xs"
-              htmlFor="feedback-type"
-            >
-              <span>Type</span>
-              <select
-                className="h-[2.6875rem] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
-                data-testid="feedback-type"
-                disabled={isPending}
-                id="feedback-type"
-                onChange={(event) =>
-                  setCategory(event.target.value as FeedbackCategoryId)
-                }
-                value={category}
-              >
-                {Object.entries(FEEDBACK_CATEGORY_LABELS).map(
-                  ([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-
-            <label
-              className="mt-[22px] flex flex-col gap-2 text-xs"
-              htmlFor="feedback-message"
-            >
-              <span>What would you like us to know?</span>
-              <Textarea
-                className="min-h-[7.3125rem] resize-y rounded-[7px] bg-card text-sm leading-6 shadow-none dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
-                data-testid="feedback-message"
-                disabled={isPending}
-                onChange={(event) => {
-                  setMessage(event.target.value);
-                  setErrorMessage(null);
+            ) : (
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitFeedback();
                 }}
-                value={message}
-              />
-            </label>
-
-            <div className="mt-[21px] space-y-[1.1875rem]">
-              <label
-                className="flex w-fit cursor-pointer items-center gap-2 text-xs text-foreground"
-                htmlFor="feedback-include-logs"
               >
-                <Checkbox
-                  checked={includeLogs}
-                  className="border-input data-[state=checked]:bg-[#2655a0] dark:border-[#5a5264] dark:data-[state=checked]:bg-[#a9bee8]"
-                  data-testid="feedback-include-logs"
+                {errorMessage ? (
+                  <div
+                    className="rounded-colony-control-lg bg-colony-danger-bg px-4 py-3 text-xs text-colony-danger"
+                    data-testid="feedback-error"
+                    role="alert"
+                  >
+                    <p className="font-extrabold leading-normal">
+                      Your feedback wasn’t sent
+                    </p>
+                    <p className="mt-1 font-medium leading-normal">
+                      Your message is saved in this window. Try again.
+                    </p>
+                  </div>
+                ) : null}
+
+                <fieldset
+                  className="m-0 flex flex-col gap-2 border-0 p-0"
+                  data-testid="feedback-type"
                   disabled={isPending}
-                  id="feedback-include-logs"
-                  onCheckedChange={(checked) =>
-                    setIncludeLogs(checked === true)
-                  }
-                />
-                <span>Include diagnostic information</span>
-              </label>
-              <Button
-                aria-expanded={showDiagnostics}
-                className="h-auto px-0 text-xs text-[#2655a0] hover:text-[#2655a0] dark:text-[#a9bee8] dark:hover:text-[#a9bee8]"
-                data-testid="feedback-diagnostics-toggle"
-                onClick={() => setShowDiagnostics((visible) => !visible)}
-                type="button"
-                variant="link"
-              >
-                What is included?
-              </Button>
-              {showDiagnostics ? (
-                <p
-                  className="rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]"
-                  data-testid="feedback-diagnostics-details"
                 >
-                  <span className="mb-[5px] block font-semibold leading-[1.5]">
-                    Diagnostic information
-                  </span>
-                  <span className="block leading-[1.65]">
-                    {DIAGNOSTICS_DESCRIPTION}
-                  </span>
-                </p>
-              ) : null}
-            </div>
+                  <legend className="mb-2 text-xs font-bold text-colony-fg-secondary">
+                    Type
+                  </legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      Object.entries(FEEDBACK_CATEGORY_LABELS) as Array<
+                        [FeedbackCategoryId, string]
+                      >
+                    ).map(([value, label]) => (
+                      <label
+                        className="flex h-9.5 cursor-pointer items-center gap-[7px] rounded-colony-menu-item px-3 text-chip font-semibold shadow-[inset_0_0_0_1px_hsl(var(--colony-border-strong))] has-[:checked]:bg-colony-accent-soft has-[:checked]:font-extrabold has-[:checked]:shadow-[inset_0_0_0_1.5px_#b9a9ee] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-colony-accent"
+                        key={value}
+                      >
+                        <input
+                          checked={category === value}
+                          className="m-0 accent-colony-accent"
+                          name="feedback-type"
+                          onChange={() => setCategory(value)}
+                          type="radio"
+                          value={value}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
 
-            <div
-              className={`${showDiagnostics ? "mt-[47px]" : "mt-[26px]"} flex justify-end gap-2 border-t border-border/70 pt-[18px] pb-[18px] dark:border-[#3c3544]`}
-            >
-              <Button
-                className="rounded-md border-input bg-card text-xs dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
-                onClick={() => onOpenChange(false)}
-                type="button"
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <Button
-                className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-                data-testid="feedback-submit"
-                disabled={message.trim().length === 0}
-                type="submit"
-              >
-                {isPending ? "Sending" : "Send feedback"}
-              </Button>
-            </div>
-          </form>
+                <label
+                  className="flex flex-col gap-2 text-xs font-bold text-colony-fg-secondary"
+                  htmlFor="feedback-message"
+                >
+                  <span>What would you like us to know?</span>
+                  <Textarea
+                    className="min-h-0 resize-none py-3 text-sm font-medium leading-6"
+                    data-testid="feedback-message"
+                    id="feedback-message"
+                    onChange={(event) => {
+                      setMessage(event.target.value);
+                      setErrorMessage(null);
+                    }}
+                    rows={4}
+                    value={message}
+                  />
+                </label>
+
+                <label
+                  className="flex cursor-pointer items-start gap-2.5"
+                  htmlFor="feedback-include-logs"
+                >
+                  <Checkbox
+                    checked={includeLogs}
+                    className="mt-0.5"
+                    data-testid="feedback-include-logs"
+                    id="feedback-include-logs"
+                    onCheckedChange={(checked) =>
+                      setIncludeLogs(checked === true)
+                    }
+                  />
+                  <span className="flex flex-col gap-[3px]">
+                    <span className="text-menu font-bold">
+                      Include diagnostic information
+                    </span>
+                    <span
+                      className="text-xs font-medium leading-[1.45] text-colony-muted"
+                      data-testid="feedback-diagnostics-details"
+                    >
+                      {DIAGNOSTICS_DESCRIPTION}
+                    </span>
+                  </span>
+                </label>
+
+                <div className="flex justify-end gap-2.5">
+                  <Button
+                    onClick={() => onOpenChange(false)}
+                    size="dialog"
+                    type="button"
+                    variant="outline"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    data-testid="feedback-submit"
+                    disabled={message.trim().length === 0}
+                    size="dialog"
+                    type="submit"
+                  >
+                    Send feedback
+                  </Button>
+                </div>
+              </form>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

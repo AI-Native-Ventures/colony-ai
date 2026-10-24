@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowUpRight,
+  Briefcase,
   Cpu,
   Ear,
   Fingerprint,
@@ -58,7 +59,7 @@ const AGENT_INFO_LABELS = new Set([
 const AGENT_SETTINGS_LABELS = new Set([
   "Runtime",
   "Agent profile",
-  "Who can send instructions",
+  "Who can instruct",
   "ACP command",
   "MCP command",
   "Start on launch",
@@ -180,6 +181,15 @@ export function buildPublicFields({
       icon: Fingerprint,
       label: "Public key",
       testId: "user-profile-public-key",
+    });
+  }
+
+  if (profile?.jobTitle?.trim()) {
+    fields.push({
+      displayValue: profile.jobTitle.trim(),
+      icon: Briefcase,
+      label: "Job title",
+      testId: "user-profile-job-title",
     });
   }
 
@@ -389,7 +399,7 @@ export function buildOwnerFields({
     fields.push({
       displayValue: respondToDisplayValue,
       icon: Ear,
-      label: "Who can send instructions",
+      label: "Who can instruct",
       testId: "user-profile-respond-to",
     });
   }

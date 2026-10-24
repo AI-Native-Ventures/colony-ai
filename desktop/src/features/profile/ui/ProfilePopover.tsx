@@ -1,17 +1,13 @@
 import * as React from "react";
-import { Camera, Smile } from "lucide-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/ui/popover";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
-import {
-  MaskedAvatarBadgeFrame,
-  STATUS_DOT_MASK_CURVE,
-} from "@/features/profile/ui/MaskedAvatarBadgeFrame";
-import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
-import {
-  getPresenceChipClassName,
-  getPresenceLabel,
-} from "@/features/presence/lib/presence";
+import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { useUpdateProfileMutation } from "@/features/profile/hooks";
 import { ProfileAvatarDialog } from "@/features/settings/ui/ProfileAvatarDialog";
 import { SetStatusDialog } from "@/features/user-status/ui/SetStatusDialog";
@@ -21,13 +17,22 @@ import {
 } from "@/features/user-status/ui/StatusEmoji";
 import type { UserStatusInput } from "@/features/user-status/types";
 import type { PresenceStatus } from "@/shared/api/types";
-import { cn } from "@/shared/lib/cn";
+import { CheckIcon, SettingsIcon } from "@/shared/ui/colonyIcons";
 import { isMacPlatform } from "@/shared/lib/platform";
+import {
+  CameraIcon,
+  ChevronDownIcon,
+  FeedbackIcon,
+  StatusFaceIcon,
+} from "./profileIcons";
+import "./ProfileMenus.css";
 
 interface ProfilePopoverProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
+  /** The person's own job title, shown under their name. */
+  jobTitle?: string | null;
   avatarUrl: string | null;
   avatarDataUrl?: string | null;
   currentStatus: PresenceStatus;
@@ -49,17 +54,24 @@ interface ProfilePopoverProps {
   // Optional slot rendered before the profile actions. Used by the sidebar to
   // surface active-community actions inside the profile menu.
   communitySwitcherSlot?: React.ReactNode;
+  /** Colour mode of the app, for the light/dark switch row. */
+  isDark?: boolean;
+  /** Switches between the light and dark twin of the current theme. */
+  onToggleTheme?: () => void;
 }
-
-const MENU_ITEM_CLASS =
-  "flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-popover-foreground outline-hidden transition-colors hover:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none";
 
 const ALL_STATUSES: PresenceStatus[] = ["online", "away", "offline"];
 
+/**
+ * The account menu, opened from the sidebar footer (`ProfilePopover.dc.html`):
+ * who you are and your presence, your status and photo, the community you are
+ * in, feedback and Settings.
+ */
 export function ProfilePopover({
   open,
   onOpenChange,
   displayName,
+  jobTitle,
   avatarUrl,
   avatarDataUrl,
   currentStatus,
@@ -76,13 +88,15 @@ export function ProfilePopover({
   children,
   triggerContainerRef,
   communitySwitcherSlot,
+  isDark = false,
+  onToggleTheme,
 }: ProfilePopoverProps) {
   const [statusDialogOpen, setStatusDialogOpen] = React.useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = React.useState(false);
   const updateProfile = useUpdateProfileMutation();
   const [presenceMenuOpen, setPresenceMenuOpen] = React.useState(false);
   const hasUserStatus = Boolean(userStatusText || userStatusEmoji);
-  const settingsShortcutLabel = isMacPlatform() ? "⌘," : "Ctrl+,";
+  const settingsShortcutLabel = isMacPlatform() ? "\u2318," : "Ctrl+,";
 
   function handlePopoverOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
@@ -107,212 +121,217 @@ export function ProfilePopover({
         <PopoverTrigger asChild>{children}</PopoverTrigger>
 
         <PopoverContent
-          side="top"
           align="start"
-          sideOffset={-32}
-          className="w-[280px] p-1"
+          alignOffset={-52}
+          className="pm-menu"
           data-testid="profile-popover"
           onInteractOutside={(event) => {
             const target = event.target as Node | null;
             if (target && triggerContainerRef?.current?.contains(target)) {
               // Click on an auxiliary trigger inside the same card
-              // (e.g. avatar or status) — let that trigger toggle the
+              // (e.g. avatar or status) - let that trigger toggle the
               // controlled state instead of auto-closing here.
               event.preventDefault();
             }
           }}
+          side="top"
+          sideOffset={27}
         >
-          <div aria-label="Profile menu" role="menu">
-            {/* ── Identity block ─────────────────────────────────── */}
-            <div className="flex items-center gap-2 px-3 pt-2 pb-2">
-              <MaskedAvatarBadgeFrame
-                badge={
-                  <span
-                    aria-label={getPresenceLabel(currentStatus)}
-                    className="flex h-3.5 w-3.5 items-center justify-center rounded-full"
-                    data-testid="profile-popover-current-status"
-                    role="img"
-                  >
-                    <PresenceDot className="h-2 w-2" status={currentStatus} />
+          <Popover onOpenChange={setPresenceMenuOpen} open={presenceMenuOpen}>
+            <PopoverAnchor asChild>
+              <div aria-label="Profile menu" className="pm-list" role="menu">
+                {/* Identity: photo with presence dot, name, presence chip. */}
+                <div className="pm-identity">
+                  <span className="pm-avatar">
+                    <ProfileAvatar
+                      avatarDataUrl={avatarDataUrl}
+                      avatarUrl={avatarUrl}
+                      className="pm-avatar-image"
+                      label={displayName}
+                    />
+                    <span
+                      aria-label={getPresenceLabel(currentStatus)}
+                      className="pm-presence-dot"
+                      data-status={currentStatus}
+                      data-testid="profile-popover-current-status"
+                      role="img"
+                    />
                   </span>
-                }
-                badgeBox={{ bottom: -2, height: 14, right: -2, width: 14 }}
-                className="h-8 w-8"
-                curve={STATUS_DOT_MASK_CURVE}
-                cutout={{ cx: 28, cy: 28, r: 7.5 }}
-                size={32}
-              >
-                <ProfileAvatar
-                  avatarDataUrl={avatarDataUrl}
-                  avatarUrl={avatarUrl}
-                  className="h-full w-full text-xs"
-                  iconClassName="h-4 w-4"
-                  label={displayName}
-                />
-              </MaskedAvatarBadgeFrame>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold leading-tight text-popover-foreground">
-                  {displayName}
-                </p>
-                {/* ── Presence chip (opens status chooser) ─────────── */}
-                <Popover
-                  onOpenChange={setPresenceMenuOpen}
-                  open={presenceMenuOpen}
-                >
-                  <PopoverTrigger asChild>
-                    <button
-                      aria-expanded={presenceMenuOpen}
-                      aria-haspopup="menu"
-                      className={cn(
-                        "mt-0.5 inline-flex max-w-full items-center rounded-md px-2 py-0.5 text-xs font-medium outline-hidden transition-opacity hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
-                        getPresenceChipClassName(currentStatus),
-                      )}
-                      data-testid="profile-popover-presence-trigger"
-                      disabled={isStatusPending}
-                      onClick={() => setPresenceMenuOpen((prev) => !prev)}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <span className="truncate">
-                        {getPresenceLabel(currentStatus)}
+                  <span className="pm-identity-copy">
+                    <span className="pm-name">{displayName}</span>
+                    {jobTitle ? (
+                      <span
+                        className="pm-job-title"
+                        data-testid="profile-popover-job-title"
+                      >
+                        {jobTitle}
                       </span>
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    className="w-52 p-1"
-                    side="bottom"
-                    sideOffset={4}
-                  >
-                    <div aria-label="Presence status" role="menu">
-                      {ALL_STATUSES.map((status) => (
-                        <button
-                          className={MENU_ITEM_CLASS}
-                          data-testid={`profile-popover-status-${status}`}
-                          disabled={isStatusPending}
-                          key={status}
-                          onClick={() => handlePresenceSelect(status)}
-                          role="menuitem"
-                          type="button"
-                        >
-                          <PresenceDot
-                            className="h-2.5 w-2.5"
-                            status={status}
-                          />
-                          <span>{getPresenceLabel(status)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-            {/* ── Status input (Slack-style) ──────────────────────── */}
-            <div className="px-2 pt-0 pb-1">
-              <button
-                className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-transparent px-3 py-2 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none"
-                data-testid="profile-popover-set-status"
-                onClick={() => {
-                  closePopover();
-                  window.requestAnimationFrame(() => {
-                    setStatusDialogOpen(true);
-                  });
-                }}
-                role="menuitem"
-                type="button"
-              >
-                {hasUserStatus ? (
-                  <StatusEmoji
-                    className="size-4 shrink-0 text-base"
-                    showTitle={false}
-                    value={userStatusEmoji || DEFAULT_USER_STATUS_EMOJI}
-                  />
-                ) : (
-                  <Smile
-                    aria-hidden="true"
-                    className="h-4 w-4 shrink-0 text-muted-foreground"
-                  />
-                )}
-                {hasUserStatus ? (
-                  <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-popover-foreground">
-                    <span className="truncate">{userStatusText}</span>
+                    ) : null}
+                    <PopoverTrigger asChild>
+                      <button
+                        aria-expanded={presenceMenuOpen}
+                        aria-haspopup="menu"
+                        className="pm-chip"
+                        data-status={currentStatus}
+                        data-testid="profile-popover-presence-trigger"
+                        disabled={isStatusPending}
+                        onClick={() => setPresenceMenuOpen((prev) => !prev)}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <i aria-hidden="true" />
+                        {getPresenceLabel(currentStatus)}
+                        <ChevronDownIcon size={13} strokeWidth={2.6} />
+                      </button>
+                    </PopoverTrigger>
                   </span>
-                ) : (
-                  <span className="flex-1 truncate text-muted-foreground">
-                    Update your status
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <button
-              className={MENU_ITEM_CLASS}
-              data-testid="profile-popover-change-photo"
-              onClick={() => {
-                closePopover();
-                window.requestAnimationFrame(() => {
-                  setAvatarDialogOpen(true);
-                });
-              }}
-              role="menuitem"
-              type="button"
-            >
-              <Camera
-                aria-hidden="true"
-                className="h-4 w-4 shrink-0 text-muted-foreground"
-              />
-              <span className="flex-1">Change photo</span>
-            </button>
-
-            <hr className="my-1 h-px border-0 bg-border/60" />
-
-            {communitySwitcherSlot ? (
-              <>
-                {/* ── Community actions ──────────────────────────── */}
-                <div className="py-1" data-testid="profile-popover-community">
-                  {communitySwitcherSlot}
                 </div>
-                <hr className="my-1 h-px border-0 bg-border/60" />
-              </>
-            ) : null}
 
-            {onSendFeedback ? (
-              <button
-                className={MENU_ITEM_CLASS}
-                data-testid="profile-popover-send-feedback"
-                onClick={() => {
-                  closePopover();
-                  window.requestAnimationFrame(() => {
-                    onSendFeedback();
-                  });
-                }}
-                role="menuitem"
-                type="button"
-              >
-                <span className="flex-1">Send feedback</span>
-              </button>
-            ) : null}
+                <button
+                  className="pm-row"
+                  data-testid="profile-popover-set-status"
+                  onClick={() => {
+                    closePopover();
+                    window.requestAnimationFrame(() => {
+                      setStatusDialogOpen(true);
+                    });
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  {hasUserStatus ? (
+                    <StatusEmoji
+                      className="size-4.5 shrink-0 text-base"
+                      showTitle={false}
+                      value={userStatusEmoji || DEFAULT_USER_STATUS_EMOJI}
+                    />
+                  ) : (
+                    <StatusFaceIcon size={18} />
+                  )}
+                  <span className="pm-row-label">
+                    {hasUserStatus ? userStatusText : "Update your status"}
+                  </span>
+                </button>
 
-            {/* ── Settings ───────────────────────────────────────── */}
-            <button
-              className={MENU_ITEM_CLASS}
-              data-testid="profile-popover-settings"
-              onClick={() => {
-                closePopover();
-                window.requestAnimationFrame(() => {
-                  onOpenSettings();
-                });
-              }}
-              role="menuitem"
-              type="button"
+                <button
+                  className="pm-row"
+                  data-testid="profile-popover-change-photo"
+                  onClick={() => {
+                    closePopover();
+                    window.requestAnimationFrame(() => {
+                      setAvatarDialogOpen(true);
+                    });
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <CameraIcon size={18} />
+                  <span className="pm-row-label">Change photo</span>
+                </button>
+
+                <hr className="pm-rule" />
+
+                {communitySwitcherSlot ? (
+                  <>
+                    {/* Community actions */}
+                    <div data-testid="profile-popover-community">
+                      {communitySwitcherSlot}
+                    </div>
+                    <hr className="pm-rule" />
+                  </>
+                ) : null}
+
+                {onSendFeedback ? (
+                  <button
+                    className="pm-row"
+                    data-testid="profile-popover-send-feedback"
+                    onClick={() => {
+                      closePopover();
+                      window.requestAnimationFrame(() => {
+                        onSendFeedback();
+                      });
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <FeedbackIcon size={18} />
+                    <span className="pm-row-label">Send feedback</span>
+                  </button>
+                ) : null}
+
+                {onToggleTheme ? (
+                  <button
+                    aria-label={
+                      isDark ? "Switch to light theme" : "Switch to dark theme"
+                    }
+                    className="pm-row"
+                    data-testid="sidebar-theme-toggle"
+                    onClick={() => {
+                      closePopover();
+                      onToggleTheme();
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <span className="pm-row-icon-gap" />
+                    <span className="pm-row-label">
+                      {isDark
+                        ? "Switch to light theme"
+                        : "Switch to dark theme"}
+                    </span>
+                  </button>
+                ) : null}
+
+                <button
+                  className="pm-row"
+                  data-testid="profile-popover-settings"
+                  onClick={() => {
+                    closePopover();
+                    window.requestAnimationFrame(() => {
+                      onOpenSettings();
+                    });
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <SettingsIcon size={18} />
+                  <span className="pm-row-label">Settings</span>
+                  <kbd className="pm-kbd">{settingsShortcutLabel}</kbd>
+                </button>
+              </div>
+            </PopoverAnchor>
+            <PopoverContent
+              align="start"
+              alignOffset={-8}
+              className="pm-presence"
+              side="right"
+              sideOffset={28}
             >
-              <span className="flex-1">Settings</span>
-              <kbd className="text-xs text-muted-foreground">
-                {settingsShortcutLabel}
-              </kbd>
-            </button>
-          </div>
+              <div aria-label="Presence status" role="menu">
+                {ALL_STATUSES.map((status) => (
+                  <button
+                    aria-checked={status === currentStatus}
+                    className="pm-presence-row"
+                    data-status={status}
+                    data-testid={`profile-popover-status-${status}`}
+                    disabled={isStatusPending}
+                    key={status}
+                    onClick={() => handlePresenceSelect(status)}
+                    role="menuitemradio"
+                    type="button"
+                  >
+                    <i aria-hidden="true" />
+                    <span className="pm-row-label">
+                      {getPresenceLabel(status)}
+                    </span>
+                    {status === currentStatus ? (
+                      <CheckIcon size={16} strokeWidth={2.8} />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </PopoverContent>
       </Popover>
 

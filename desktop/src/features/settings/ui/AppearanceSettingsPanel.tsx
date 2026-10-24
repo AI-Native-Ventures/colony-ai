@@ -1,20 +1,16 @@
 import * as React from "react";
-import {
-  ArrowRight,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  PanelRight,
-  UsersRound,
-} from "lucide-react";
-
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import {
   ACCENT_STORAGE_KEY,
+  DEFAULT_ACCENT,
   GLASS_BACKGROUND_STORAGE_KEY,
   useTheme,
 } from "@/shared/theme/ThemeProvider";
+import {
+  DEFAULT_FIELD_COLORS,
+  type FieldColors,
+} from "@/shared/theme/sidebarField";
 import {
   LIGHT_THEMES,
   SYNTAX_THEMES,
@@ -40,28 +36,33 @@ import {
 import {
   appearanceLastBusinessKey,
   appearanceSnapshotKey,
-  customGradientStops,
-  isValidHexColor,
   writeAppearanceSnapshot,
   readAppearanceSnapshot,
   mergeAppearanceSnapshot,
   mergeLiveAppearanceSnapshot,
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
-import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
 import {
-  ACCENTS,
-  LiveAppearancePreview,
-  MiniTheme,
-} from "./AppearanceLivePreview";
+  readTypeface,
+  setTypeface,
+  type Typeface,
+} from "@/shared/lib/typefacePreference";
+import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
+import { AppearanceFieldColours } from "./AppearanceFieldColours";
+import { ACCENTS, LiveAppearancePreview } from "./AppearanceLivePreview";
+import {
+  SettingsCard,
+  SettingsChoice,
+  SettingsRow,
+  SettingsSwitchRow,
+} from "./SettingsKit";
+import { CheckSmallIcon } from "./settingsIcons";
+import "./SettingsAppearance.css";
 
 type AppearanceMode = "system" | "light" | "dark";
-type AppearanceSettingsPanelProps = {
-  onOpenThemeCatalog: () => void;
-  onBackToWorkspace?: () => void;
-};
 
-const DEFAULT_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
+/** Kept in saved snapshots only so older ones still read; the field replaced it. */
+const LEGACY_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
 
 function currentMode(followSystem: boolean, theme: string): AppearanceMode {
   if (followSystem) return "system";
@@ -96,6 +97,7 @@ function themeForMode(
 type CurrentAppearanceTheme = Pick<
   ReturnType<typeof useTheme>,
   | "accentColor"
+  | "fieldColors"
   | "followSystem"
   | "glassBackground"
   | "glassOpacity"
@@ -109,7 +111,7 @@ export function currentAppearanceSnapshot(
   let linkPreview: LinkPreviewStyle = "compact";
   let threadLayout: ThreadViewMode = "split";
   let glassBackground = theme.glassBackground;
-  let accent = theme.accentColor || "#895AF6";
+  let accent = theme.accentColor || DEFAULT_ACCENT;
   try {
     density = getConversationDensity();
     linkPreview = getLinkPreviewStyle();
@@ -119,7 +121,7 @@ export function currentAppearanceSnapshot(
   }
   try {
     const savedAccent = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-    accent = savedAccent === null ? "#895AF6" : savedAccent;
+    accent = savedAccent === null ? DEFAULT_ACCENT : savedAccent;
     const savedGlass = window.localStorage.getItem(
       GLASS_BACKGROUND_STORAGE_KEY,
     );
@@ -133,7 +135,8 @@ export function currentAppearanceSnapshot(
     accent: accent === "neutral" ? "#74717B" : accent,
     followSystem: theme.followSystem,
     custom: false,
-    customLight: [...DEFAULT_CUSTOM_COLORS],
+    customLight: [...LEGACY_CUSTOM_COLORS],
+    field: [...theme.fieldColors],
     glassBackground,
     glassOpacity: theme.glassOpacity,
     prominentActiveTab: theme.prominentActiveTab,
@@ -158,6 +161,7 @@ function loadPreferences(
     ...businessSnapshot,
     theme: base.theme,
     accent: base.accent,
+    field: base.field,
     followSystem: base.followSystem,
     messageSize: globalSnapshot.messageSize,
     density: base.density,
@@ -166,98 +170,12 @@ function loadPreferences(
   };
 }
 
-function SegmentedChoices<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  testId,
-}: {
-  label: string;
-  value: T;
-  options: readonly [T, string][];
-  onChange: (next: T) => void;
-  testId: string;
-}) {
-  return (
-    <div className="ap-control">
-      <fieldset className="ap-segment">
-        <legend className="sr-only">{label}</legend>
-        {options.map(([option, optionLabel]) => (
-          <button
-            aria-pressed={option === value}
-            data-testid={`${testId}-${option}`}
-            key={option}
-            onClick={() => onChange(option)}
-            type="button"
-          >
-            {optionLabel}
-          </button>
-        ))}
-      </fieldset>
-    </div>
-  );
-}
-
-function AppearanceRow({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="ap-row">
-      <div>
-        <strong>{title}</strong>
-        {description ? <p>{description}</p> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function SwitchControl({
-  label,
-  checked,
-  onChange,
-  testId,
-  disabled = false,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  testId: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      aria-checked={checked}
-      aria-label={label}
-      className="ap-switch"
-      data-testid={testId}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      role="switch"
-      type="button"
-    >
-      <i aria-hidden="true" />
-    </button>
-  );
-}
-
-export function AppearanceSettingsPanel({
-  onOpenThemeCatalog,
-  onBackToWorkspace,
-}: AppearanceSettingsPanelProps) {
+export function AppearanceSettingsPanel() {
   const theme = useTheme();
   const { activeCommunity } = useCommunities();
   const identity = useIdentityQuery();
   const personId = identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
   const businessId = activeCommunity?.id ?? "local-business";
-  const businessName = activeCommunity?.name ?? "your business";
   const businessKey = appearanceSnapshotKey(personId, businessId);
   const lastBusinessKey = appearanceLastBusinessKey(personId);
   const globalKey = appearanceSnapshotKey(personId, "global-conversations");
@@ -282,10 +200,6 @@ export function AppearanceSettingsPanel({
     JSON.stringify(preferences) !== JSON.stringify(appliedPreferences);
   const [undoSnapshot, setUndoSnapshot] =
     React.useState<AppearanceSnapshot | null>(null);
-  const [hexDrafts, setHexDrafts] = React.useState<[string, string]>(() => [
-    ...preferences.customLight,
-  ]);
-  const isDark = theme.isDark;
 
   React.useEffect(() => {
     const business = readAppearanceSnapshot(businessKey);
@@ -302,7 +216,6 @@ export function AppearanceSettingsPanel({
     const next = loadPreferences(base, business, global);
     setPreferences(next);
     setAppliedPreferences(next);
-    setHexDrafts([...next.customLight]);
     if (!business) {
       let snapshotWritten = false;
       try {
@@ -349,28 +262,17 @@ export function AppearanceSettingsPanel({
       ...previous,
       theme: theme.selectedThemeName,
       accent: theme.accentColor,
+      field: [...theme.fieldColors] as FieldColors,
       followSystem: theme.followSystem,
     });
     setPreferences(update);
     setAppliedPreferences(update);
-  }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
-
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (appliedPreferences.custom) {
-      const [first, second] = customGradientStops(
-        appliedPreferences.customLight,
-        isDark ? "dark" : "light",
-      );
-      root.style.setProperty("--w20-custom-gradient-start", first);
-      root.style.setProperty("--w20-custom-gradient-end", second);
-      root.classList.add("w20-custom-appearance");
-    } else {
-      root.style.removeProperty("--w20-custom-gradient-start");
-      root.style.removeProperty("--w20-custom-gradient-end");
-      root.classList.remove("w20-custom-appearance");
-    }
-  }, [isDark, appliedPreferences]);
+  }, [
+    theme.selectedThemeName,
+    theme.accentColor,
+    theme.fieldColors,
+    theme.followSystem,
+  ]);
 
   const applyCommit = React.useCallback(
     (
@@ -395,7 +297,6 @@ export function AppearanceSettingsPanel({
         } else {
           setPreferences(next);
           setAppliedPreferences(next);
-          setHexDrafts([...next.customLight]);
         }
       } catch {
         setSaved(false);
@@ -405,11 +306,13 @@ export function AppearanceSettingsPanel({
       if (
         patch.theme !== undefined ||
         patch.accent !== undefined ||
+        patch.field !== undefined ||
         patch.followSystem !== undefined
       ) {
         theme.applyAppearance({
           theme: next.theme as SyntaxThemeName,
           accent: next.accent,
+          field: next.field,
           followSystem: next.followSystem,
         });
       }
@@ -453,7 +356,6 @@ export function AppearanceSettingsPanel({
     }
     const next = { ...preferences, ...patch };
     setPreferences(next);
-    setHexDrafts([...next.customLight]);
     setSaved(true);
   }
 
@@ -461,8 +363,9 @@ export function AppearanceSettingsPanel({
     return applyCommit({
       theme: snapshot.theme,
       accent: snapshot.accent,
+      field: snapshot.field,
       followSystem: snapshot.followSystem,
-      custom: snapshot.custom,
+      custom: false,
       customLight: snapshot.customLight,
       glassBackground: snapshot.glassBackground,
       glassOpacity: snapshot.glassOpacity,
@@ -477,7 +380,6 @@ export function AppearanceSettingsPanel({
 
   function cancelDraft() {
     setPreferences(appliedPreferences);
-    setHexDrafts([...appliedPreferences.customLight]);
     setSaved(true);
   }
 
@@ -488,13 +390,6 @@ export function AppearanceSettingsPanel({
     });
   }
 
-  function updateColor(index: 0 | 1, value: string) {
-    const colors: [string, string] = [...preferences.customLight];
-    colors[index] = value;
-    setHexDrafts([...colors]);
-    commit({ customLight: colors, custom: true });
-  }
-
   function resetAppearance() {
     setUndoSnapshot(preferences);
     const resetTheme = SYNTAX_THEMES.includes("buzz" as SyntaxThemeName)
@@ -502,10 +397,11 @@ export function AppearanceSettingsPanel({
       : preferences.theme;
     commit({
       theme: resetTheme,
-      accent: "#895AF6",
+      accent: DEFAULT_ACCENT,
+      field: [...DEFAULT_FIELD_COLORS],
       followSystem: true,
       custom: false,
-      customLight: [...DEFAULT_CUSTOM_COLORS],
+      customLight: [...LEGACY_CUSTOM_COLORS],
       glassBackground: false,
       glassOpacity: 65,
       prominentActiveTab: false,
@@ -519,31 +415,6 @@ export function AppearanceSettingsPanel({
   }
 
   const mode = currentMode(preferences.followSystem, preferences.theme);
-  const [accentTint, accentSoft] = React.useMemo(() => {
-    const accent = preferences.accent;
-    const tint = isDark ? "#ffffff" : "#000000";
-    const softBase = isDark ? "#1c1c1c" : "#ffffff";
-    const blend = (hex: string, base: string, amount: number) => {
-      const parse = (value: string) =>
-        [1, 3, 5].map((offset) =>
-          Number.parseInt(value.slice(offset, offset + 2), 16),
-        );
-      const a = parse(hex);
-      const b = parse(base);
-      return `#${a
-        .map((channel, index) =>
-          Math.round(channel * amount + b[index] * (1 - amount))
-            .toString(16)
-            .padStart(2, "0"),
-        )
-        .join("")}`;
-    };
-    return [
-      blend(accent, tint, isDark ? 0.5 : 0.65),
-      blend(accent, softBase, isDark ? 0.14 : 0.12),
-    ];
-  }, [isDark, preferences.accent]);
-
   React.useEffect(() => {
     document.documentElement.style.setProperty(
       "--w20-appearance-accent",
@@ -551,394 +422,262 @@ export function AppearanceSettingsPanel({
     );
   }, [appliedPreferences.accent]);
 
+  const [typeface, setTypefaceState] = React.useState<Typeface>(readTypeface);
+  const accentHex =
+    ACCENTS.find(
+      ([, hex]) => hex.toLowerCase() === preferences.accent.toLowerCase(),
+    )?.[1] ?? preferences.accent;
+
   return (
     <div
-      className="ap-page ap-appearance w20-appearance"
+      className="cs-appearance"
       data-testid="settings-appearance"
       style={
         {
-          "--ap-accent": accentTint,
-          "--ap-soft": accentSoft,
-          "--ap-glass-alpha": `${preferences.glassOpacity}%`,
-          "--ap-t1": customGradientStops(
-            preferences.customLight,
-            isDark ? "dark" : "light",
-          )[0],
-          "--ap-t2": customGradientStops(
-            preferences.customLight,
-            isDark ? "dark" : "light",
-          )[1],
+          "--cs-accent": accentHex,
+          "--cs-accent-soft": "#f7f4fd",
         } as React.CSSProperties
       }
     >
-      <header className="ap-heading">
-        <div>
-          <h1 className="text-settings-title">Make yourself at home.</h1>
-          <p data-settings-subcopy>Your appearance in {businessName}.</p>
-        </div>
-        <span className="ap-scope">
-          <UsersRound aria-hidden="true" className="icon" /> Only you
-        </span>
-      </header>
-      <div className="ap-appearance-grid">
-        <section
-          aria-label="Appearance controls"
-          className="ap-controls-scroll"
-        >
+      <div className="cs-appearance-controls">
+        <SettingsCard title="Theme" titleId="appearance-theme-title">
+          <SettingsRow label="Colour mode">
+            <fieldset className="cs-choice">
+              <legend className="sr-only">Colour mode</legend>
+              {(["system", "light", "dark"] as const).map((option) => (
+                <button
+                  aria-pressed={mode === option}
+                  data-testid={`appearance-mode-${option}`}
+                  key={option}
+                  onClick={() => selectMode(option)}
+                  type="button"
+                >
+                  {option === "system"
+                    ? "System"
+                    : option === "light"
+                      ? "Light"
+                      : "Dark"}
+                </button>
+              ))}
+            </fieldset>
+          </SettingsRow>
+          <SettingsRow label="Accent colour">
+            <fieldset className="cs-accents">
+              <legend className="sr-only">Accent colour</legend>
+              {ACCENTS.map(([label, hex]) => (
+                <button
+                  aria-label={`${label} accent`}
+                  aria-pressed={
+                    preferences.accent.toLowerCase() === hex.toLowerCase()
+                  }
+                  className="cs-accent"
+                  data-testid={`appearance-accent-${label.toLowerCase()}`}
+                  key={label}
+                  onClick={() => commit({ accent: hex })}
+                  style={{ "--cs-swatch": hex } as React.CSSProperties}
+                  title={label}
+                  type="button"
+                />
+              ))}
+            </fieldset>
+          </SettingsRow>
+        </SettingsCard>
+
+        <AppearanceFieldColours
+          colors={preferences.field}
+          onChange={(field) => commit({ field })}
+        />
+
+        <SettingsCard title="Window" titleId="appearance-window-title">
+          <SettingsSwitchRow
+            checked={glassBackgroundSupported && preferences.glassBackground}
+            disabled={!glassBackgroundSupported}
+            help={
+              glassBackgroundSupported
+                ? "Let the desktop show softly through the window."
+                : "Not available in this app"
+            }
+            id="appearance-glass"
+            label="Glass background"
+            onCheckedChange={(glassBackground) => commit({ glassBackground })}
+            testId="appearance-glass"
+          />
+          {glassBackgroundSupported ? (
+            <SettingsRow
+              htmlFor="appearance-glass-opacity"
+              label="Glass opacity"
+            >
+              <span className="cs-range">
+                <input
+                  data-testid="appearance-glass-opacity"
+                  id="appearance-glass-opacity"
+                  max={90}
+                  min={30}
+                  onChange={(event) =>
+                    commit({ glassOpacity: Number(event.target.value) })
+                  }
+                  type="range"
+                  value={preferences.glassOpacity}
+                />
+                <output>{preferences.glassOpacity}%</output>
+              </span>
+            </SettingsRow>
+          ) : null}
+          <SettingsSwitchRow
+            checked={preferences.prominentActiveTab}
+            help="Give the open tab a stronger fill."
+            id="appearance-prominent"
+            label="Prominent selected tab"
+            onCheckedChange={(prominentActiveTab) =>
+              commit({ prominentActiveTab })
+            }
+            testId="appearance-prominent"
+          />
+        </SettingsCard>
+
+        <SettingsCard title="Conversations" titleId="appearance-conv-title">
+          <SettingsRow label="Message size">
+            <SettingsChoice
+              label="Message size"
+              onChange={(messageSize) =>
+                commit({ messageSize }, "conversations")
+              }
+              options={[
+                ["smaller", "Smaller"],
+                ["default", "Default"],
+                ["larger", "Larger"],
+              ]}
+              testId="appearance-message-size"
+              value={preferences.messageSize}
+            />
+          </SettingsRow>
+          <SettingsRow label="Link previews">
+            <SettingsChoice
+              label="Link previews"
+              onChange={(linkPreview) =>
+                commit({ linkPreview }, "conversations")
+              }
+              options={[
+                ["compact", "Compact"],
+                ["rich", "Rich"],
+              ]}
+              testId="appearance-links"
+              value={preferences.linkPreview}
+            />
+          </SettingsRow>
+          <SettingsRow label="Thread layout">
+            <SettingsChoice
+              label="Thread layout"
+              onChange={(threadLayout) =>
+                commit({ threadLayout }, "conversations")
+              }
+              options={[
+                ["split", "Side by side"],
+                ["focus", "Focused"],
+              ]}
+              testId="appearance-threads"
+              value={preferences.threadLayout}
+            />
+          </SettingsRow>
+          <SettingsRow htmlFor="appearance-typeface" label="Typeface">
+            <select
+              className="cs-select cs-select-inline"
+              data-testid="appearance-typeface"
+              id="appearance-typeface"
+              onChange={(event) => {
+                const next = event.target.value as Typeface;
+                setTypefaceState(next);
+                setTypeface(next);
+              }}
+              value={typeface}
+            >
+              <option value="manrope">Manrope</option>
+              <option value="inter">Inter</option>
+              <option value="system">System</option>
+            </select>
+          </SettingsRow>
+        </SettingsCard>
+
+        <div className="cs-reset">
           <button
-            className="ap-named-themes"
-            data-testid="appearance-open-themes"
-            onClick={onOpenThemeCatalog}
+            className="cs-text-button"
+            data-testid="appearance-reset"
+            onClick={resetAppearance}
             type="button"
           >
-            <span>
-              <strong>Named themes</strong>
-              <small>Browse 62 palettes. Preview before applying.</small>
-            </span>
-            <span>Browse themes →</span>
+            Reset appearance
           </button>
-          <section className="ap-section">
-            <h2>Appearance</h2>
-            <AppearanceRow title="Colour mode">
-              <div className="ap-control">
-                <fieldset className="ap-segment">
-                  <legend className="sr-only">Colour mode</legend>
-                  {(["system", "light", "dark"] as const).map((option) => (
-                    <button
-                      aria-pressed={mode === option}
-                      data-testid={`appearance-mode-${option}`}
-                      key={option}
-                      onClick={() => selectMode(option)}
-                      type="button"
-                    >
-                      {option === "system"
-                        ? "System"
-                        : option === "light"
-                          ? "Light"
-                          : "Dark"}
-                    </button>
-                  ))}
-                </fieldset>
-              </div>
-            </AppearanceRow>
-            <div className="ap-style-row">
-              <strong>Theme style</strong>
-              <fieldset className="ap-style-options">
-                <legend className="sr-only">Theme style</legend>
-                {([false, true] as const).map((custom) => (
-                  <button
-                    aria-label={`${custom ? "Custom" : "Default"} theme style`}
-                    aria-pressed={preferences.custom === custom}
-                    className="ap-style-option"
-                    data-testid={`appearance-theme-${custom ? "custom" : "default"}`}
-                    key={String(custom)}
-                    onClick={() => commit({ custom })}
-                    type="button"
-                  >
-                    <MiniTheme custom={custom} />
-                    <span>
-                      {custom ? "Custom" : "Default"}
-                      <i>
-                        {preferences.custom === custom ? (
-                          <Check aria-hidden="true" className="icon" />
-                        ) : null}
-                      </i>
-                    </span>
-                  </button>
-                ))}
-              </fieldset>
-            </div>
-            {preferences.custom ? (
-              <div className="ap-colours">
-                {([0, 1] as const).map((index) => (
-                  <label key={index}>
-                    {index === 0 ? "First colour" : "Second colour"}
-                    <span>
-                      <input
-                        aria-label={
-                          index === 0
-                            ? "Pick first gradient colour"
-                            : "Pick second gradient colour"
-                        }
-                        data-testid={`appearance-color-picker-${index + 1}`}
-                        onChange={(event) =>
-                          updateColor(index, event.target.value)
-                        }
-                        type="color"
-                        value={preferences.customLight[index]}
-                      />
-                      <input
-                        aria-invalid={!isValidHexColor(hexDrafts[index])}
-                        aria-label={
-                          index === 0
-                            ? "First gradient colour"
-                            : "Second gradient colour"
-                        }
-                        data-testid={`appearance-color-hex-${index + 1}`}
-                        maxLength={7}
-                        onBlur={() => {
-                          if (!isValidHexColor(hexDrafts[index])) {
-                            setHexDrafts([...preferences.customLight]);
-                          }
-                        }}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setHexDrafts((currentDrafts) => {
-                            const next: [string, string] = [...currentDrafts];
-                            next[index] = value;
-                            return next;
-                          });
-                          if (isValidHexColor(value)) updateColor(index, value);
-                        }}
-                        pattern="#[a-fA-F0-9]{6}"
-                        spellCheck={false}
-                        type="text"
-                        value={hexDrafts[index].toUpperCase()}
-                      />
-                    </span>
-                  </label>
-                ))}
-                <p
-                  className="ap-colour-error"
-                  role="alert"
-                  hidden={hexDrafts.every(isValidHexColor)}
-                >
-                  Use a six-digit hex colour, such as #895AF6.
-                </p>
-              </div>
-            ) : null}
-            <AppearanceRow title="Accent colour">
-              <fieldset className="ap-accents">
-                <legend className="sr-only">Accent colour</legend>
-                {ACCENTS.map(([label, hex]) => (
-                  <button
-                    aria-label={`${label} accent`}
-                    aria-pressed={
-                      preferences.accent.toLowerCase() === hex.toLowerCase()
-                    }
-                    className="ap-accent"
-                    data-testid={`appearance-accent-${label.toLowerCase()}`}
-                    key={label}
-                    onClick={() => commit({ accent: hex })}
-                    title={label}
-                    type="button"
-                  >
-                    <i style={{ backgroundColor: hex }} />
-                  </button>
-                ))}
-              </fieldset>
-            </AppearanceRow>
-          </section>
-          <section className="ap-section">
-            <h2>Window</h2>
-            <AppearanceRow
-              description={
-                glassBackgroundSupported
-                  ? "Translucent navigation. Solid content."
-                  : "Not available in this app"
-              }
-              title="Glass background"
-            >
-              <SwitchControl
-                checked={
-                  glassBackgroundSupported && preferences.glassBackground
-                }
-                label="Glass background"
-                onChange={(glassBackground) => commit({ glassBackground })}
-                testId="appearance-glass"
-                disabled={!glassBackgroundSupported}
-              />
-            </AppearanceRow>
-            {glassBackgroundSupported && preferences.glassBackground ? (
-              <AppearanceRow title="Glass opacity">
-                <div className="ap-control ap-range-control">
-                  <input
-                    aria-label="Glass opacity"
-                    data-testid="appearance-glass-opacity"
-                    max={90}
-                    min={30}
-                    onChange={(event) =>
-                      commit({ glassOpacity: Number(event.target.value) })
-                    }
-                    type="range"
-                    value={preferences.glassOpacity}
-                  />
-                  <output>{preferences.glassOpacity}%</output>
-                </div>
-              </AppearanceRow>
-            ) : null}
-            <AppearanceRow title="Prominent selected tab">
-              <SwitchControl
-                checked={preferences.prominentActiveTab}
-                label="Prominent selected tab"
-                onChange={(prominentActiveTab) =>
-                  commit({ prominentActiveTab })
-                }
-                testId="appearance-prominent"
-              />
-            </AppearanceRow>
-          </section>
-          <section className="ap-section">
-            <h2>
-              Conversations <small>All businesses</small>
-            </h2>
-            <AppearanceRow title="Message size">
-              <label className="ap-control ap-select-label">
-                <span className="sr-only">Message size</span>
-                <select
-                  aria-label="Message size"
-                  data-testid="appearance-message-size"
-                  onChange={(event) =>
-                    commit(
-                      {
-                        messageSize: event.target
-                          .value as AppearanceSnapshot["messageSize"],
-                      },
-                      "conversations",
-                    )
-                  }
-                  value={preferences.messageSize}
-                >
-                  <option value="smaller">Smaller</option>
-                  <option value="default">Default</option>
-                  <option value="larger">Larger</option>
-                </select>
-                <ChevronDown aria-hidden="true" className="icon" />
-              </label>
-            </AppearanceRow>
-            <AppearanceRow title="Link previews">
-              <SegmentedChoices
-                label="Link previews"
-                onChange={(linkPreview) =>
-                  commit(
-                    { linkPreview: linkPreview as LinkPreviewStyle },
-                    "conversations",
-                  )
-                }
-                options={[
-                  ["compact", "Compact"],
-                  ["rich", "Rich"],
-                ]}
-                testId="appearance-links"
-                value={preferences.linkPreview}
-              />
-            </AppearanceRow>
-            <AppearanceRow title="Thread layout">
-              <SegmentedChoices
-                label="Thread layout"
-                onChange={(threadLayout) =>
-                  commit(
-                    { threadLayout: threadLayout as ThreadViewMode },
-                    "conversations",
-                  )
-                }
-                options={[
-                  ["split", "Side by side"],
-                  ["focus", "Focused"],
-                ]}
-                testId="appearance-threads"
-                value={preferences.threadLayout}
-              />
-            </AppearanceRow>
-            <AppearanceRow title="Typeface">
-              <span className="ap-value">Manrope</span>
-            </AppearanceRow>
-          </section>
-          <div className="ap-reset">
+          {undoSnapshot ? (
             <button
-              className="ap-text-button"
-              data-testid="appearance-reset"
-              onClick={resetAppearance}
+              className="cs-text-button"
+              onClick={undoReset}
               type="button"
             >
-              Reset appearance
+              Undo reset
             </button>
-            {undoSnapshot ? (
+          ) : null}
+        </div>
+      </div>
+
+      <aside aria-label="Appearance preview" className="cs-appearance-preview">
+        <div className="cs-preview-card">
+          <LiveAppearancePreview preferences={preferences} />
+          <div className="cs-preview-foot">
+            <span
+              className="cs-preview-status"
+              data-state={
+                !saved ? "error" : appearancePending ? "pending" : "applied"
+              }
+            >
+              {saved && !appearancePending ? (
+                <CheckSmallIcon size={14} strokeWidth={2.6} />
+              ) : (
+                <i aria-hidden="true" />
+              )}
+              <span data-testid="appearance-apply-status" role="status">
+                {!saved
+                  ? "Unable to save locally"
+                  : appearancePending
+                    ? "Preview only"
+                    : "Applied"}
+              </span>
+            </span>
+            {appearancePending ? (
               <button
-                className="ap-text-button"
-                onClick={undoReset}
+                className="cs-preview-ghost"
+                data-testid="appearance-cancel"
+                onClick={cancelDraft}
                 type="button"
               >
-                Undo reset
+                Cancel
               </button>
             ) : null}
+            {previousAppearance ? (
+              <button
+                className="cs-preview-outline"
+                data-testid="appearance-revert"
+                onClick={() => {
+                  if (applyBusinessAppearance(previousAppearance)) {
+                    setPreviousAppearance(null);
+                  }
+                }}
+                type="button"
+              >
+                Revert
+              </button>
+            ) : null}
+            <button
+              className="cs-preview-apply"
+              data-testid="appearance-apply"
+              disabled={!appearancePending}
+              onClick={applyDraft}
+              type="button"
+            >
+              Apply
+            </button>
           </div>
-        </section>
-        <aside aria-label="Appearance preview" className="ap-preview-column">
-          <div className="ap-preview-label">
-            <span>Live preview</span>
-            <span>
-              <PanelRight aria-hidden="true" className="icon" /> Conversation
-            </span>
-          </div>
-          <LiveAppearancePreview isDark={isDark} preferences={preferences} />
-          <p className="ap-preview-note">
-            {preferences.glassBackground
-              ? "Glass is illustrated here. Desktop blur requires the native app."
-              : "Colours stay in the window; your work stays easy to read."}
-          </p>
-          {onBackToWorkspace ? (
-            <button
-              className="ap-preview-link"
-              data-testid="appearance-try-workspace"
-              onClick={onBackToWorkspace}
-              type="button"
-            >
-              Try it in your workspace{" "}
-              <ArrowRight aria-hidden="true" className="icon" />
-            </button>
-          ) : null}
-        </aside>
-      </div>
-      <footer className="ap-foot">
-        <span>
-          {saved && !appearancePending ? (
-            <CheckCircle2 aria-hidden="true" className="icon" />
-          ) : null}
-          <span role="status" data-testid="appearance-apply-status">
-            {!saved
-              ? "Unable to save locally"
-              : appearancePending
-                ? "Preview only"
-                : "Applied"}
-          </span>
-        </span>
-        <div className="ap-apply-actions">
-          {appearancePending ? (
-            <button
-              data-testid="appearance-cancel"
-              type="button"
-              onClick={cancelDraft}
-            >
-              Cancel
-            </button>
-          ) : previousAppearance ? (
-            <button
-              data-testid="appearance-revert"
-              type="button"
-              onClick={() => {
-                if (applyBusinessAppearance(previousAppearance)) {
-                  setPreviousAppearance(null);
-                }
-              }}
-            >
-              Revert
-            </button>
-          ) : null}
-          <button
-            className="ap-apply-button"
-            data-testid="appearance-apply"
-            type="button"
-            disabled={
-              !appearancePending ||
-              hexDrafts.some((color) => !isValidHexColor(color))
-            }
-            onClick={applyDraft}
-          >
-            Apply
-          </button>
         </div>
-      </footer>
+      </aside>
     </div>
   );
 }

@@ -1,11 +1,10 @@
+import type * as React from "react";
+
 import { agentPresenceStartBlockReason } from "@/features/agents/lib/useAgentAvailability";
 import {
-  Activity,
   Ban,
-  Bot,
   CircleSlash,
   Clock,
-  Ellipsis,
   Pencil,
   Play,
   RotateCcw,
@@ -27,7 +26,6 @@ import {
   MANAGED_AGENT_PAIR_ACTION_LABELS,
   type ManagedAgentPairAction,
 } from "@/features/agents/managedAgentRuntimeStatus";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import type {
   ChannelMember,
   ManagedAgent,
@@ -35,7 +33,7 @@ import type {
   PresenceStatus,
 } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { Badge } from "@/shared/ui/badge";
+import { MoreHorizontalGlyph } from "./dialogIcons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,11 +70,9 @@ type MembersSidebarMemberCardProps = {
   onTimeout: (member: ChannelMember, expiresAtSecs: number) => void;
   onUnban: (member: ChannelMember) => void;
   onUntimeout: (member: ChannelMember) => void;
-  onViewActivity?: (pubkey: string) => void;
   presenceStatus?: PresenceStatus | null;
   profileAvatarUrl?: string | null;
   profileOwnerPubkey?: string | null;
-  viewerIsOwner: boolean;
 };
 
 /** Whether a member is currently banned / timed out (from the restriction read). */
@@ -92,19 +88,57 @@ const TIMEOUT_PRESETS: { label: string; seconds: number }[] = [
   { label: "7 days", seconds: 7 * 24 * 60 * 60 },
 ];
 
-const MEMBER_ROW_INSET_DIVIDER_CLASS =
-  "after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-0 after:h-px after:bg-border/60 after:content-[''] last:after:hidden";
-
 function formatRoleLabel(member: ChannelMember, memberIsBot: boolean) {
   if (memberIsBot) {
     return "agent";
   }
 
-  if (member.role === "owner" || member.role === "admin") {
-    return member.role;
-  }
+  return member.role;
+}
 
-  return null;
+type StatusTone = "good" | "live" | "need" | "quiet";
+
+const STATUS_TONE_CLASS: Record<StatusTone, string> = {
+  good: "bg-colony-success-bg text-colony-success",
+  live: "bg-colony-accent-soft text-colony-accent-ink",
+  need: "bg-colony-need-bg text-colony-need",
+  quiet: "bg-colony-idle text-colony-fg-secondary",
+};
+
+/** The 24px pill under an agent's name: availability, then who it answers. */
+function StatusChip({
+  children,
+  testId,
+  tone,
+}: {
+  children: React.ReactNode;
+  testId?: string;
+  tone: StatusTone;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-[calc(12.5*var(--colony-px))] font-extrabold",
+        STATUS_TONE_CLASS[tone],
+      )}
+      data-testid={testId}
+    >
+      {tone === "live" ? (
+        <span
+          aria-hidden="true"
+          className="size-1.5 animate-pulse rounded-full bg-colony-accent"
+        />
+      ) : null}
+      {children}
+    </span>
+  );
+}
+
+function availabilityTone(label: string): StatusTone {
+  if (label === "Here" || label === "Running") return "good";
+  if (label === "Waking") return "live";
+  if (label === "Needs setup on this device") return "need";
+  return "quiet";
 }
 
 function formatRespondToLabel(agent: ManagedAgent) {
@@ -141,64 +175,57 @@ export function MembersSidebarMemberCard({
   onTimeout,
   onUnban,
   onUntimeout,
-  onViewActivity,
   presenceStatus,
   profileAvatarUrl,
   profileOwnerPubkey,
-  viewerIsOwner,
 }: MembersSidebarMemberCardProps) {
   const roleLabel = formatRoleLabel(member, memberIsBot);
   const disabled = isActionPending || isArchived;
-  const canViewActivity =
-    memberIsBot &&
-    (viewerIsOwner || managedAgent?.backend.type === "local") &&
-    Boolean(onViewActivity);
   // Community ban/timeout applies to people, never bots, and never the community
   // owner (whom no moderator can restrict).
   const canModerateMember =
     canModerate && !memberIsBot && member.role !== "owner";
   const hasActions = memberIsBot
-    ? Boolean(managedAgent) || canRemoveMember || canViewActivity
+    ? Boolean(managedAgent) || canRemoveMember
     : canRemoveMember || canChangeRole || canModerateMember;
+
+  const availabilityLabel = managedAgentRuntime
+    ? agentCommunityAvailability(managedAgentRuntime)
+    : managedAgent
+      ? isManagedAgentActive(managedAgent)
+        ? "Running"
+        : "Stopped"
+      : null;
 
   const memberIdentity = (
     <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
       <div className="relative shrink-0">
         <ProfileAvatar
           avatarUrl={profileAvatarUrl ?? null}
-          className="h-8 w-8 text-xs shadow-none"
+          className={cn(
+            "text-xs shadow-none",
+            memberIsBot ? "size-10" : "size-[2.375rem]",
+          )}
           iconClassName="h-4 w-4"
           label={memberAvatarLabel}
           shape={memberIsBot ? "squircle" : "circle"}
         />
         {presenceStatus ? (
           <span
-            className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background"
+            className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-colony-pop"
             data-testid={`sidebar-member-presence-${member.pubkey}`}
           >
             <PresenceDot className="h-2 w-2" status={presenceStatus} />
           </span>
         ) : null}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         {memberIsBot ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2 transition-opacity duration-150 ease-out group-hover/member:opacity-0 group-focus-within/member:opacity-0">
-                <span className="truncate text-sm font-medium tracking-tight">
-                  {memberLabel}
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                  <Bot aria-hidden="true" className="h-4 w-4" />
-                  {roleLabel}
-                </span>
-              </div>
-              <span className="absolute inset-0 flex items-center opacity-0 transition-opacity duration-150 ease-out group-hover/member:opacity-100 group-focus-within/member:opacity-100">
-                <span className="truncate font-mono text-sm text-muted-foreground">
-                  {truncateNpub(member.pubkey)}
-                </span>
-              </span>
-            </div>
+          <div className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold">
+            <span className="truncate">{memberLabel}</span>
+            <span className="shrink-0 text-xs font-semibold text-colony-muted">
+              {roleLabel}
+            </span>
             <AgentManagementMarker
               pubkey={member.pubkey}
               ownerPubkey={profileOwnerPubkey}
@@ -206,46 +233,34 @@ export function MembersSidebarMemberCard({
             />
           </div>
         ) : (
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium tracking-tight">
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-extrabold">
               {memberLabel}
             </span>
             {roleLabel ? (
-              <span className="inline-flex shrink-0 items-center text-xs text-muted-foreground">
+              <span className="text-xs font-semibold text-colony-muted">
                 {roleLabel}
               </span>
             ) : null}
           </div>
         )}
-        {managedAgentRuntime || managedAgent ? (
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge
-              className="normal-case tracking-normal"
-              data-testid={`sidebar-managed-agent-status-${member.pubkey}`}
-              variant={
-                managedAgentRuntime
-                  ? agentCommunityAvailability(managedAgentRuntime) === "Here"
-                    ? "default"
-                    : "secondary"
-                  : managedAgent && isManagedAgentActive(managedAgent)
-                    ? "default"
-                    : "secondary"
-              }
-            >
-              {managedAgentRuntime
-                ? agentCommunityAvailability(managedAgentRuntime)
-                : managedAgent && isManagedAgentActive(managedAgent)
-                  ? "Running"
-                  : "Stopped"}
-            </Badge>
+        {availabilityLabel || managedAgent ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {availabilityLabel ? (
+              <StatusChip
+                testId={`sidebar-managed-agent-status-${member.pubkey}`}
+                tone={availabilityTone(availabilityLabel)}
+              >
+                {availabilityLabel}
+              </StatusChip>
+            ) : null}
             {managedAgent ? (
-              <Badge
-                className="normal-case tracking-normal"
-                data-testid={`sidebar-managed-agent-respond-to-${member.pubkey}`}
-                variant="outline"
+              <StatusChip
+                testId={`sidebar-managed-agent-respond-to-${member.pubkey}`}
+                tone="quiet"
               >
                 {formatRespondToLabel(managedAgent)}
-              </Badge>
+              </StatusChip>
             ) : null}
           </div>
         ) : null}
@@ -256,8 +271,8 @@ export function MembersSidebarMemberCard({
   return (
     <div
       className={cn(
-        "group/member relative isolate flex min-h-14 items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 ease-out hover:bg-muted/40 focus-within:bg-muted/40",
-        MEMBER_ROW_INSET_DIVIDER_CLASS,
+        "group/member relative isolate flex items-center gap-3 border-b border-colony-border py-2 text-left",
+        memberIsBot ? "min-h-16" : "min-h-[3.75rem]",
       )}
       data-testid={`sidebar-member-${member.pubkey}`}
     >
@@ -278,11 +293,11 @@ export function MembersSidebarMemberCard({
           canChangeRole={canChangeRole}
           canModerateMember={canModerateMember}
           canRemoveMember={canRemoveMember}
-          canViewActivity={canViewActivity}
           disabled={disabled}
           managedAgent={managedAgent}
           member={member}
           memberIsBot={memberIsBot}
+          memberLabel={memberLabel}
           moderationState={moderationState}
           onBan={onBan}
           onChangeRole={onChangeRole}
@@ -292,7 +307,6 @@ export function MembersSidebarMemberCard({
           onTimeout={onTimeout}
           onUnban={onUnban}
           onUntimeout={onUntimeout}
-          onViewActivity={onViewActivity}
           pairAction={pairAction}
           availability={presenceStatus ?? undefined}
         />
@@ -308,11 +322,11 @@ function MemberActionsMenu({
   canChangeRole,
   canModerateMember,
   canRemoveMember,
-  canViewActivity,
   disabled,
   managedAgent,
   member,
   memberIsBot,
+  memberLabel,
   moderationState,
   onBan,
   onChangeRole,
@@ -322,18 +336,17 @@ function MemberActionsMenu({
   onTimeout,
   onUnban,
   onUntimeout,
-  onViewActivity,
   pairAction,
 }: {
   canChangeRole: boolean;
   availability: PresenceStatus | undefined;
   canModerateMember: boolean;
   canRemoveMember: boolean;
-  canViewActivity: boolean;
   disabled: boolean;
   managedAgent?: ManagedAgent;
   member: ChannelMember;
   memberIsBot: boolean;
+  memberLabel: string;
   moderationState?: MemberModerationState;
   onBan: (member: ChannelMember) => void;
   onChangeRole: (member: ChannelMember, role: string) => void;
@@ -343,7 +356,6 @@ function MemberActionsMenu({
   onTimeout: (member: ChannelMember, expiresAtSecs: number) => void;
   onUnban: (member: ChannelMember) => void;
   onUntimeout: (member: ChannelMember) => void;
-  onViewActivity?: (pubkey: string) => void;
   pairAction?: ManagedAgentPairAction;
 }) {
   const showChangeRole =
@@ -362,29 +374,20 @@ function MemberActionsMenu({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button
-          className="invisible relative z-20 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground group-hover/member:visible hover:bg-muted hover:text-foreground data-[state=open]:visible"
+          aria-label={`Actions for ${memberLabel}`}
+          className="relative z-20 flex size-9 shrink-0 items-center justify-center rounded-[0.625rem] text-colony-fg-secondary hover:bg-colony-track hover:text-colony-fg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40 data-[state=open]:bg-colony-track"
           data-testid={`sidebar-member-menu-${member.pubkey}`}
           type="button"
         >
-          <Ellipsis className="h-4 w-4" />
+          <MoreHorizontalGlyph size={17} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        {canViewActivity ? (
-          <DropdownMenuItem
-            data-testid={`sidebar-view-activity-${member.pubkey}`}
-            onClick={() => onViewActivity?.(member.pubkey)}
-          >
-            <Activity className="h-4 w-4" />
-            View activity
-          </DropdownMenuItem>
-        ) : null}
         {memberIsBot && managedAgent ? (
           <>
-            {canViewActivity ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               data-testid={`sidebar-agent-action-${member.pubkey}`}
               disabled={disabled || Boolean(startBlockReason)}

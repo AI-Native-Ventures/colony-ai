@@ -586,8 +586,9 @@ px:
   interface text. All of these derive from the virtual typography rem and
   therefore follow the user's font-size preference and Cmd +/- zoom.
 - ✅ Conversation text uses the named `text-message` token. Its
-  **Smaller / Default / Larger contract is 14 / 15 / 16px** before keyboard
-  zoom. Author names use the neighboring `text-xs` step; timestamps, system
+  **Smaller / Default / Larger contract is 15.87 / 17 / 18.13px** (the
+  Colony 3.0 design's 17px message text, one fifteenth either way) before
+  keyboard zoom. Author names use the neighboring `text-xs` step; timestamps, system
   rows, code, and reactions are deliberate neighboring steps on the shared
   virtual-rem ramp. Keep those relationships tokenized rather than restoring a
   fixed 16px chat baseline or hardcoding preference-specific values in
@@ -612,6 +613,16 @@ rather than an arbitrary literal. A CI guard (`pnpm check:px-text`, in
 new arbitrary text-size literal — px **or** rem/em. Genuinely decorative glyphs
 (e.g. the `text-[6rem]` avatar emoji) are allowlisted by `path:line` in that
 script.
+
+### Sidebar destinations are data
+
+Every destination row in the sidebar (Company, Business, Software Factory,
+Library and whatever follows) and every matching icon on the collapsed rail is
+one entry in `SIDEBAR_DESTINATIONS`
+(`desktop/src/features/sidebar/ui/sidebarDestinations.tsx`). The renderers
+(`SidebarDestinationList`, `SidebarCollapsedNav`) only walk that list, so a
+destination is added, moved or dropped by editing the list. Do not name a
+destination in a component.
 
 ### Community Switching
 

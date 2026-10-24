@@ -17,7 +17,6 @@ import { UpdaterProvider } from "@/features/settings/hooks/UpdaterProvider";
 import { migrateLegacyCommunityStorageBeforeRender } from "@/features/communities/legacyCommunityStorage";
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { CommunityOnboardingProvider } from "@/features/onboarding/communityOnboarding";
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 import { AvatarClipPaths } from "@/shared/ui/AvatarClipPaths";
@@ -28,6 +27,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { recoverLocalStorageQuotaOnStartup } from "@/shared/lib/localStorageQuota";
 import { startLocalStorageSweep } from "@/shared/lib/localStorageSweep";
 import { initializeConversationDensityPreference } from "@/shared/lib/conversationDensityPreference";
+import { initializeTypefacePreference } from "@/shared/lib/typefacePreference";
 import { initializeFontSizePreference } from "@/shared/lib/fontSizePreference";
 
 type E2eWindow = Window & {
@@ -93,9 +93,7 @@ function renderApp() {
       <RootErrorBoundary>
         <AvatarClipPaths />
         <CommunitiesProvider>
-          <CommunityOnboardingProvider
-            enabled={huddleWindowChannelId() === null}
-          >
+          <CommunityOnboardingProvider>
             <ThemeProvider defaultTheme="buzz">
               <TooltipProvider>
                 <EmojiBurstProvider>
@@ -130,6 +128,52 @@ async function installE2eBridgeIfConfigured() {
   maybeInstallE2eTauriMocks();
 }
 
+/**
+ * Test-only: mounts the Colony 3.0 foundations showcase instead of the app.
+ * The same gate as the mock bridge keeps it out of production builds.
+ */
+async function renderShowcaseIfRequested(): Promise<boolean> {
+  if (
+    (import.meta.env.DEV || import.meta.env.MODE === "e2e") &&
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-ask-outcomes"
+  ) {
+    const { renderAskOutcomesShowcase } = await import(
+      "@/testing/colony3AskOutcomes"
+    );
+    renderAskOutcomesShowcase();
+    return true;
+  }
+  if (
+    (import.meta.env.DEV || import.meta.env.MODE === "e2e") &&
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-business-states"
+  ) {
+    const { renderBusinessStatesShowcase } = await import(
+      "@/testing/colony3BusinessShowcase"
+    );
+    renderBusinessStatesShowcase();
+    return true;
+  }
+  if (
+    !(import.meta.env.DEV || import.meta.env.MODE === "e2e") ||
+    !["colony3", "colony3-notices"].includes(
+      (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+        .__BUZZ_E2E__?.showcase ?? "",
+    )
+  ) {
+    return false;
+  }
+  const { renderColony3Showcase } = await import("@/testing/colony3Showcase");
+  renderColony3Showcase(
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-notices"
+      ? "notices"
+      : "foundations",
+  );
+  return true;
+}
+
 async function bootstrap() {
   resetDevWebviewStateFromUrl();
   configureDevE2eBridgeFromUrl();
@@ -137,11 +181,13 @@ async function bootstrap() {
   initializeConversationDensityPreference();
   initializeFontSizePreference();
   initializeAccessibilityPreference();
+  initializeTypefacePreference();
   startLocalStorageSweep();
   await installE2eBridgeIfConfigured();
   if (supportsNativeCapability("legacy-migration")) {
     await migrateLegacyCommunityStorageBeforeRender();
   }
+  if (await renderShowcaseIfRequested()) return;
   renderApp();
 }
 

@@ -36,22 +36,16 @@ type RelayConnectionState =
   | "stalled";
 
 async function openOwnedCommunityReconnect(page: Page) {
-  await page.getByTestId("community-choice-existing").click();
-  await page.getByTestId("existing-choice-owner").click();
+  // "I already have a community" reconnects in place; the owner list shows
+  // for the owner choice, which is the default.
+  await page.getByTestId("existing-choice-owner").check();
 }
 
 async function captureOwnerChoice(page: Page, prefix: string) {
   await page.waitForTimeout(350);
-  const focusedHeading = page.locator(
-    ".colony-onboarding-root .form-content h1:focus, .colony-onboarding-root .form-content h2:focus",
-  );
-  if (await focusedHeading.count()) {
-    await expect(focusedHeading).toHaveCSS("outline-style", "none");
-  } else {
-    await page.evaluate(() => {
-      (document.activeElement as HTMLElement | null)?.blur();
-    });
-  }
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
   await captureReskinState(page, prefix);
 }
 
@@ -107,11 +101,6 @@ const BLANK_AVATAR_PLACEHOLDER_IDENTITY = {
   pubkey: "1".repeat(64),
   username: "",
 };
-const BLANK_AVATAR_EMOJI_IDENTITY = {
-  ...TEST_IDENTITIES.tyler,
-  pubkey: "2".repeat(64),
-  username: "",
-};
 async function commandCount(page: Page, command: string) {
   return page.evaluate((commandName) => {
     const bridgeWindow = window as Window & {
@@ -134,25 +123,6 @@ async function seedOnboardingCompletion(page: Page, pubkey: string) {
       storageKey: `buzz-onboarding-complete.v1:${pubkey}`,
     },
   );
-}
-
-async function selectFirstEmojiFromPicker(page: Page) {
-  const picker = page.locator("em-emoji-picker");
-  await expect(picker).toBeVisible();
-  await expect
-    .poll(() =>
-      picker.evaluate((element) =>
-        Boolean(element.shadowRoot?.querySelector(".scroll button")),
-      ),
-    )
-    .toBe(true);
-  await picker.evaluate((element) => {
-    const button = element.shadowRoot?.querySelector(".scroll button");
-    if (!(button instanceof HTMLElement)) {
-      throw new Error("Emoji picker did not render an emoji button.");
-    }
-    button.click();
-  });
 }
 
 async function expectShellHidden(page: Page) {
@@ -320,9 +290,7 @@ async function expectIncompleteOnboarding(page: Page) {
 async function completeProfileOnboarding(page: Page) {
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page
-    .getByTestId("onboarding-avatar-url")
-    .fill("https://example.com/onboarding-avatar.png");
+  // The step starts on a colour, so Next saves it.
   await page.getByTestId("onboarding-next").click();
 }
 
@@ -351,7 +319,7 @@ test("signed-out R17 entry offers email account access", async ({ page }) => {
     page.getByRole("button", { name: "Forgot password?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Create an account" }),
+    page.getByRole("button", { name: "Create an account" }).first(),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText(
     /\bkey\b|nsec1|backup file|pairing code/i,
@@ -363,7 +331,7 @@ test("R17 signup continues to six-digit email verification", async ({
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("signup@example.com");
   await page
@@ -384,7 +352,7 @@ test("R17 signup blocks passwords shorter than the designed minimum", async ({
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("short-password@example.com");
   const password = page.getByRole("textbox", { name: "Password" });
@@ -441,7 +409,7 @@ test("R17 verified signup continues through business and provider setup", async 
   page,
 }) => {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("verified@example.com");
   await page
@@ -459,9 +427,11 @@ test("R17 verified signup continues through business and provider setup", async 
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await completeR17BusinessSetup(page);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  // There is no Skip: the connection test is the way into the app.
   await expect(
     page.getByRole("button", { name: "Skip for now", exact: true }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 });
 test("R17 password recovery returns to sign in without backup import", async ({
@@ -593,17 +563,16 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(welcomeHeading).toHaveCSS("outline-style", "none");
   await captureOwnerChoice(page, "welcome-choice");
   const joinChoice = page.getByTestId("community-choice-join");
-  const unfocusedShadow = await joinChoice.evaluate(
-    (element) => getComputedStyle(element).boxShadow,
-  );
   await page.keyboard.press("Tab");
   await expect(joinChoice).toBeFocused();
   expect(
     await joinChoice.evaluate((element) => element.matches(":focus-visible")),
   ).toBe(true);
   expect(
-    await joinChoice.evaluate((element) => getComputedStyle(element).boxShadow),
-  ).not.toBe(unfocusedShadow);
+    await joinChoice.evaluate(
+      (element) => getComputedStyle(element).outlineStyle,
+    ),
+  ).not.toBe("none");
 
   await expect(
     page.getByRole("button", { name: /Join a community/ }),
@@ -611,68 +580,40 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("button", { name: /Create a community/ }),
   ).toBeVisible();
-  const existing = page.getByRole("button", {
-    name: /I already have a community/,
-  });
-  await expect(existing).toBeVisible();
-  await existing.click();
-  // Owner/member split lives on its own page, mirroring the hub layout.
-  await expect(
-    page.getByRole("heading", { name: "Reconnect to your community" }),
-  ).toBeVisible();
+  // "I already have a community" reconnects in place, as owner or member.
+  const existing = page.getByTestId("community-choice-existing");
+  await expect(existing).toContainText("I already have a community");
   await captureOwnerChoice(page, "welcome-existing-choice");
-  await expect(
-    page.getByRole("button", { name: "I own the business" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "I’m a member or admin" }),
-  ).toBeVisible();
+  await expect(page.getByLabel("I own the business")).toBeChecked();
+  await expect(page.getByLabel("I’m a member or admin")).not.toBeChecked();
 
-  await page.getByRole("button", { name: "I’m a member or admin" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Reconnect to your community" }),
-  ).toBeVisible();
+  await page.getByLabel("I’m a member or admin").check();
   await captureOwnerChoice(page, "welcome-member-form");
-  const accessInput = page.getByTestId("invite-redeem-input");
-  await expect(accessInput).toHaveAttribute(
-    "placeholder",
-    "Paste your invite link or community link",
-  );
+  const accessInput = existing.getByTestId("invite-redeem-input");
+  await expect(accessInput).toHaveAttribute("placeholder", "https://");
   await accessInput.fill("https://default.example.com");
-  await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
-  // Back from the member form returns to the role choice, then to the hub.
-  const memberBack = page.getByTestId("welcome-member-back");
-  await memberBack.focus();
-  await memberBack.press("Enter");
+  await expect(existing.getByTestId("invite-redeem-submit")).toBeEnabled();
+  // The owner choice swaps the paste row for the business list again.
+  await page.getByLabel("I own the business").check();
   await expect(
-    page.getByRole("button", { name: "I own the business" }),
+    page.getByText("Your businesses", { exact: true }),
   ).toBeVisible();
-  await page.getByTestId("existing-back").click();
 
+  // Join and Create both open the Add a community card: create on the left,
+  // join on the right.
   await page.getByRole("button", { name: /Join a community/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Join a community" }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
   await captureOwnerChoice(page, "welcome-join-form");
-  await expect(page.getByText("Joining a private community?")).toBeVisible();
+  await expect(page.getByLabel("Community URL or invite link")).toBeVisible();
+  await page.getByTestId("add-community-close").click();
+  await expect(welcomeHeading).toBeVisible();
+  await page.getByRole("button", { name: /Create a community/ }).click();
   await expect(
-    page.getByRole("button", { name: "Technical details" }),
-  ).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
-  await expect(page.locator("body")).not.toContainText(/npub1/i);
-  await page.getByRole("button", { name: "Technical details" }).click();
-  await expect(
-    page.getByRole("button", { name: "Technical details" }),
-  ).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByTestId("welcome-join-npub")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Copy account code" }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
-  await captureOwnerChoice(page, "welcome-join-technical-details");
-  await page.getByRole("button", { name: "Technical details" }).press("Space");
-  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
-  await accessInput.fill("https://default.example.com/invite/abc123");
-  await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
+  await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
 });
 
 test("Welcome owner path connects AI, then opens a Colony business", async ({
@@ -687,7 +628,15 @@ test("Welcome owner path connects AI, then opens a Colony business", async ({
   }, BLANK_TYLER_IDENTITY.pubkey);
   await installMockBridge(
     page,
-    {},
+    {
+      acpRuntimesCatalog: [
+        r17Runtime("opencode", "not_installed", { status: "unknown" }),
+      ],
+      acpRuntimesCatalogAfterInstall: [
+        r17Runtime("opencode", "available", { status: "not_applicable" }),
+      ],
+      installAcpRuntimeResult: { success: true, steps: [] },
+    },
     {
       relayWsUrl: "ws://localhost:3000",
       skipOnboardingSeed: true,
@@ -714,7 +663,7 @@ test("Welcome owner path connects AI, then opens a Colony business", async ({
 
   await openOwnedCommunityReconnect(page);
   await expect(
-    page.getByRole("heading", { name: "Your businesses" }),
+    page.getByText("Your businesses", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByTestId("welcome-owned-business-owned-business"),
@@ -725,7 +674,7 @@ test("Welcome owner path connects AI, then opens a Colony business", async ({
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
   await expect(
-    page.getByRole("heading", { name: "Your businesses" }),
+    page.getByText("Your businesses", { exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
@@ -733,7 +682,12 @@ test("Welcome owner path connects AI, then opens a Colony business", async ({
     ),
   ).toBeNull();
   await page.getByTestId("welcome-owned-business-owned-business").click();
-  await page.getByTestId("start-free-skip").click();
+  // Start free is the default on a device with no app; the reply opens the business.
+  await page.getByTestId("onboarding-test-connection").click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -908,40 +862,13 @@ test("first-community shows the scenario cards for localhost", async ({
 
   await page.getByTestId("community-choice-join").click();
   await expect(
-    page
-      .getByTestId("welcome-setup")
-      .locator(".buzz-onboarding-transition-line"),
-  ).toHaveAttribute("data-onboarding-direction", "forward");
-  await expect(
-    page
-      .getByTestId("welcome-setup")
-      .locator(".buzz-onboarding-transition-line"),
-  ).toHaveAttribute("data-onboarding-effect", "line-slide");
-  const joinBack = page.getByTestId("welcome-join-back");
-  await expect(joinBack).toBeVisible();
-  await waitForAnimations(page);
-  await joinBack.click();
-  await expect(
-    page
-      .getByTestId("welcome-setup")
-      .locator(".buzz-onboarding-transition-line"),
-  ).toHaveAttribute("data-onboarding-direction", "backward");
-
-  await page.getByTestId("welcome-setup-back").click();
-  await expect(page.getByTestId("onboarding-page-config")).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: "Choose your AI defaults",
-    }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
-  await expect(page.getByTestId("global-agent-default-harness")).toHaveText(
-    "Claude Code",
-  );
-  await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
-  await captureOwnerChoice(page, "machine-onboarding-config");
-  await page.getByTestId("onboarding-back").click();
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await captureOwnerChoice(page, "machine-onboarding-setup");
+  await waitForAnimations(page);
+  await page.getByTestId("add-community-close").click();
+  await expect(
+    page.getByRole("heading", { name: "Join or create a community" }),
+  ).toBeVisible();
 });
 
 test("first-community direct join recovery can cancel community edits safely", async ({
@@ -1201,7 +1128,7 @@ test("no-event profile cached then reloaded still sees onboarding", async ({
   await expectIncompleteOnboarding(page);
 });
 
-test("avatar step uses an add-image placeholder before an avatar is chosen", async ({
+test("avatar step previews the initials on a preselected colour, and a swatch changes it", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_AVATAR_PLACEHOLDER_IDENTITY);
@@ -1214,34 +1141,10 @@ test("avatar step uses an add-image placeholder before an avatar is chosen", asy
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
   const preview = page.getByTestId("onboarding-avatar-preview");
   await expect(preview).toBeVisible();
-  await expect(preview).toHaveAttribute("aria-label", "Add a display image");
-  await expect(preview).toHaveClass(/border-dashed/);
-});
-
-test("avatar step reveals preset backgrounds after the first emoji pick", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_AVATAR_EMOJI_IDENTITY);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
-  await page.goto("/");
-
-  await page.getByTestId("onboarding-display-name").fill("Morty QA");
-  await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-
-  await page.getByTestId("onboarding-avatar-mode-emoji").click();
-
-  const colorGridShell = page.getByTestId("onboarding-avatar-color-grid-shell");
-  await expect(colorGridShell).toHaveAttribute("aria-hidden", "true");
-
-  await selectFirstEmojiFromPicker(page);
-
-  await expect(colorGridShell).toHaveAttribute("aria-hidden", "false");
-  await expect(page.getByTestId("onboarding-avatar-color-grid")).toBeVisible();
-  await expect(page.getByTestId("onboarding-avatar-preview")).not.toHaveCSS(
-    "background-color",
-    "rgb(255, 255, 255)",
-  );
+  await expect(preview).toHaveAttribute("aria-label", "Your avatar preview");
+  await expect(preview).toHaveText("MQ");
+  await page.getByLabel("Rose").check({ force: true });
+  await expect(page.getByLabel("Rose")).toBeChecked();
 });
 
 test("R17 business logo upload is retained on the connection screen", async ({
@@ -1256,7 +1159,7 @@ test("R17 business logo upload is retained on the connection screen", async ({
   expect(savedBusiness.logoDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 });
-test("R17 provider discovery failure keeps workspace entry available", async ({
+test("R17 provider discovery failure keeps the other connection paths available", async ({
   page,
 }) => {
   await startR17AccountAuth(page, { discoveryError: true });
@@ -1272,12 +1175,15 @@ test("R17 provider discovery failure keeps workspace entry available", async ({
   await expect(page.getByRole("alert")).toContainText(
     "We couldn’t check this computer.",
   );
+  // The other paths stay open, but there is no Skip: only a tested connection
+  // opens the app.
+  await expect(
+    page.getByRole("radio", { name: "Start free", exact: true }),
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Skip for now", exact: true }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 test("avatar upload rejects a file whose server-detected MIME is not an image", async ({
   page,
@@ -1309,7 +1215,7 @@ test("avatar upload rejects a file whose server-detected MIME is not an image", 
   await page.getByTestId("onboarding-display-name").fill("Morty QA");
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page.getByTestId("onboarding-avatar-input").setInputFiles({
+  await page.getByTestId("onboarding-avatar-upload-input").setInputFiles({
     name: "looks-like.png",
     mimeType: "image/png",
     buffer: Buffer.from("not really a png"),
@@ -1318,7 +1224,11 @@ test("avatar upload rejects a file whose server-detected MIME is not an image", 
   await expect(page.getByRole("alert")).toContainText(
     "Choose a PNG, JPG, GIF, or WebP image.",
   );
-  await expect(page.getByTestId("onboarding-avatar-url")).toHaveValue("");
+  // The rejected file never becomes the avatar: the colour preview stays.
+  await expect(page.getByTestId("onboarding-avatar-preview")).toHaveAttribute(
+    "aria-label",
+    "Your avatar preview",
+  );
 });
 
 test("avatar upload accepts a file whose server-detected MIME is an image", async ({
@@ -1346,17 +1256,14 @@ test("avatar upload accepts a file whose server-detected MIME is an image", asyn
   await page.getByTestId("onboarding-display-name").fill("Morty QA");
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page.getByTestId("onboarding-avatar-input").setInputFiles({
+  await page.getByTestId("onboarding-avatar-upload-input").setInputFiles({
     name: "avatar.png",
     mimeType: "image/png",
     buffer: Buffer.from("png bytes"),
   });
 
-  await expect(page.getByTestId("onboarding-avatar-url")).toHaveValue("");
-  await expect(
-    page.getByTestId("onboarding-avatar-preview-fallback"),
-  ).toHaveText("MQ");
-  await expect(page.getByTestId("onboarding-avatar-error")).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-avatar-preview")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("R17 keeps the workspace shell hidden until account setup is opened", async ({
@@ -1373,8 +1280,10 @@ test("R17 keeps the workspace shell hidden until account setup is opened", async
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
   await completeR17BusinessSetup(page);
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  // Only a tested connection opens the shell: with no app ready the Test
+  // button on Start free is the way in.
+  await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 });
 test("failed public starter channel setup does not show a retry toast", async ({
   page,
@@ -1534,7 +1443,7 @@ test("R17 connection setup opens the designed workspace route", async ({
   await openR17BusinessSetup(page);
   await completeR17BusinessSetup(page);
   await expect(
-    page.getByRole("heading", { name: "Let’s connect your first agent." }),
+    page.getByRole("heading", { name: "Connect your AI." }),
   ).toBeVisible();
   await page.getByTestId("onboarding-mode-own").click();
   await expect(
@@ -1546,8 +1455,12 @@ test("R17 connection setup opens the designed workspace route", async ({
   await expect(
     page.getByRole("radio", { name: "Bring your own key" }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "Start free", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Skip for now", exact: true }),
+  ).toHaveCount(0);
 });
 test("welcome-everywhere banner: X dismiss removes the guidance surface", async ({
   page,
@@ -2190,7 +2103,9 @@ test("membership denied shows recovery choices and business editing is non-destr
   const denied = page.getByTestId("membership-denied");
   await expect(denied).toBeVisible();
   await expect(
-    denied.getByRole("heading", { name: "You’re not in this business yet" }),
+    denied.getByRole("heading", {
+      name: /You’re not in this (community|business) yet/,
+    }),
   ).toBeVisible();
   await expect(denied.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(denied.getByRole("button", { name: "Back" })).toHaveCount(0);
@@ -2202,19 +2117,15 @@ test("membership denied shows recovery choices and business editing is non-destr
     page.getByTestId("membership-denied-redeem-invite"),
   ).toBeVisible();
   await captureOwnerChoice(page, "membership-denied-standalone");
-  const technicalDetails = denied.getByRole("button", {
-    name: "Technical details",
-  });
-  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
-  await technicalDetails.click();
-  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
-  await expect(denied.getByText("Your account code")).toBeVisible();
+  // The account code to share sits on the card with Copy beside it.
+  await expect(denied.getByLabel("Your account code")).toBeVisible();
+  await expect(
+    denied.getByRole("button", { name: "Copy account code" }),
+  ).toBeVisible();
   await captureOwnerChoice(
     page,
     "membership-denied-standalone-technical-details",
   );
-  await technicalDetails.press("Space");
-  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
 
   // Change business opens the existing community editor.
   await denied.getByRole("button", { name: "Change business" }).click();
@@ -2390,11 +2301,9 @@ test("denied on relay A then paste relay B invite URL switches community to B", 
     .getByTestId("invite-redeem-input")
     .fill(`${relayBHttpUrl}/invite/test-invite-code`);
   await page.getByTestId("invite-redeem-submit").click();
-  await expect(page.getByText("I am 18 years of age or older.")).toBeVisible();
-  await page.getByLabel("I am 18 years of age or older.").check();
-  await page
-    .getByLabel("I agree to the Colony Terms of Service and Privacy Policy.")
-    .check();
+  await expect(page.getByText("I’m 18 or older")).toBeVisible();
+  await page.getByLabel("I’m 18 or older").check();
+  await page.getByLabel(/I agree to the/).check();
   await page.getByTestId("invite-redeem-submit").click();
 
   // After successful claim, relay B is added and becomes active; relay A remains

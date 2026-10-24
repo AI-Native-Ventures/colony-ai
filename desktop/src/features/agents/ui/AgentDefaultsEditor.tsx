@@ -288,7 +288,7 @@ export function AgentDefaultsEditor({
               className="text-sm font-medium text-foreground"
               htmlFor="global-agent-default-harness"
             >
-              Default harness
+              Harness
             </label>
             <AgentDropdownSelect
               className={flatLayout ? PERSONA_SELECT_TRIGGER_CLASS : undefined}
@@ -332,9 +332,9 @@ export function AgentDefaultsEditor({
             <span className="flex min-w-0 items-center gap-1 text-sm text-green-600 dark:text-green-400">
               <Check className="size-3.5 shrink-0" />
               {restartedCount > 0
-                ? `Saved. Restarted ${restartedCount} agent${restartedCount === 1 ? "" : "s"}.${failedRestartCount > 0 ? ` ${failedRestartCount} couldn't restart — check the Agents page.` : ""}`
+                ? `Saved. Restarted ${restartedCount} agent${restartedCount === 1 ? "" : "s"}.${failedRestartCount > 0 ? ` ${failedRestartCount} couldn't restart, check the Agents page.` : ""}`
                 : failedRestartCount > 0
-                  ? `Saved. ${failedRestartCount} agent${failedRestartCount === 1 ? "" : "s"} couldn't restart — check the Agents page.`
+                  ? `Saved. ${failedRestartCount} agent${failedRestartCount === 1 ? "" : "s"} couldn't restart, check the Agents page.`
                   : "Saved."}
             </span>
           )}

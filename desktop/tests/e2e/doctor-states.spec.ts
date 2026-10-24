@@ -97,6 +97,12 @@ const CODEX_NOT_INSTALLED = {
   auth_status: { status: "unknown" },
 };
 
+async function rowHeight(page: Page, runtimeId: string) {
+  return page
+    .getByTestId(`doctor-runtime-${runtimeId}`)
+    .evaluate((element) => Math.round(element.getBoundingClientRect().height));
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe("Doctor panel state screenshots", () => {
@@ -133,9 +139,6 @@ test.describe("Doctor panel state screenshots", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await openSettings(page, "harnesses");
 
-    await expect(
-      page.getByRole("heading", { name: "Agent harnesses", exact: true }),
-    ).toBeVisible();
     const runtimeList = page.getByTestId("doctor-runtime-list");
     await expect(runtimeList).toBeVisible({ timeout: 10_000 });
     await expect(
@@ -195,8 +198,8 @@ test.describe("Doctor panel state screenshots", () => {
     }
     const sectionHeader = page
       .getByTestId("settings-harnesses")
-      .locator('[data-slot="settings-section-header"]');
-    await expect(sectionHeader).toHaveCSS("align-items", "flex-end");
+      .locator(".cs-harness-head");
+    await expect(sectionHeader).toHaveCSS("align-items", "center");
     for (const runtimeId of ["goose", "claude", "buzz-agent"]) {
       await expect(
         page.getByTestId(`doctor-runtime-menu-${runtimeId}`),
@@ -260,7 +263,7 @@ test.describe("Doctor panel state screenshots", () => {
     const row = page.getByTestId("doctor-runtime-claude");
     await expect(row).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("doctor-runtime-ready-claude")).toHaveText(
-      "Ready",
+      "Signed in",
     );
     await expect(row).not.toContainText("Authenticated");
     await expect(row).not.toContainText("Available");
@@ -310,7 +313,11 @@ test.describe("Doctor panel state screenshots", () => {
     await expect(page.getByTestId("doctor-runtime-ready-codex")).toHaveCount(0);
     await expect(row).not.toContainText("Not authenticated");
     await expect(row).not.toContainText("Run `codex login` to authenticate.");
-    await expect(row).toHaveCSS("min-height", "64px");
+    expect(
+      Math.abs(
+        (await rowHeight(page, "codex")) - (await rowHeight(page, "claude")),
+      ),
+    ).toBeLessThanOrEqual(1);
     await page.getByTestId("doctor-runtime-menu-codex").click();
     await expect(
       page.getByRole("menuitem", { name: "CLI setup guide" }),
@@ -656,7 +663,11 @@ test.describe("Doctor panel state screenshots", () => {
     );
     await expect(page.getByTestId("doctor-runtime-ready-codex")).toHaveCount(0);
     await expect(row).not.toContainText("Not authenticated");
-    await expect(row).toHaveCSS("min-height", "64px");
+    expect(
+      Math.abs(
+        (await rowHeight(page, "codex")) - (await rowHeight(page, "goose")),
+      ),
+    ).toBeLessThanOrEqual(1);
     await page.getByTestId("doctor-runtime-menu-codex").click();
     await expect(
       page.getByRole("menuitem", { name: "Sign in with ChatGPT" }),
@@ -704,7 +715,11 @@ test.describe("Doctor panel state screenshots", () => {
     const row = page.getByTestId("doctor-runtime-claude");
     await expect(row).toBeVisible({ timeout: 10_000 });
     await expect(row).not.toContainText("Not authenticated");
-    await expect(row).toHaveCSS("min-height", "64px");
+    expect(
+      Math.abs(
+        (await rowHeight(page, "claude")) - (await rowHeight(page, "goose")),
+      ),
+    ).toBeLessThanOrEqual(1);
     await page.getByTestId("doctor-runtime-menu-claude").click();
     await expect(
       page.getByRole("menuitem", { name: "CLI setup guide" }),

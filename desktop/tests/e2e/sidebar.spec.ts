@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
 const COMMUNITY_ONBOARDING_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const DEFAULT_SIDEBAR_WIDTH = 260;
+const DEFAULT_SIDEBAR_WIDTH = 280;
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
@@ -86,11 +86,11 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   await page.mouse.move(600, 100);
   await expect(selectedRow).toHaveCSS(
     "background-color",
-    "rgba(255, 255, 255, 0.56)",
+    "rgba(255, 255, 255, 0.84)",
   );
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "650");
+  await expect(selectedRow).toHaveCSS("font-weight", "800");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -104,7 +104,8 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     const followingBox = following.getBoundingClientRect();
     return followingBox.top - selectedBox.bottom;
   });
-  expect(rowGap).toBe(0);
+  // Rows are 38px tall on a 40px pitch in the designed sidebar.
+  expect(rowGap).toBe(2);
 
   const idleHoverRowBackground = await hoverRow.evaluate(
     (row) => getComputedStyle(row).backgroundColor,
@@ -182,23 +183,7 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     .toBe("none");
 });
 
-test("add community starts with create and join choices", async ({ page }) => {
-  await installMockBridge(page, {});
-  await page.goto("/");
-
-  await openAddCommunityDialog(page);
-
-  await expect(
-    page.getByRole("heading", { name: "Add community" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("add-community-create")).toContainText(
-    "Create a new community",
-  );
-  await expect(page.getByTestId("add-community-join")).toContainText(
-    "Join an existing community",
-  );
-  await expect(page.getByLabel("API Token")).toHaveCount(0);
-  await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
+test("add community shows create and join side by side", async ({ page }) => {
   await page.route("**/api/communities/config", (route) =>
     route.fulfill({
       json: {
@@ -209,18 +194,23 @@ test("add community starts with create and join choices", async ({ page }) => {
       },
     }),
   );
+  await installMockBridge(page, {});
+  await page.goto("/");
 
-  await page.getByTestId("add-community-join").click();
+  await openAddCommunityDialog(page);
+
   await expect(
-    page.getByRole("heading", { name: "Join an existing community" }),
+    page.getByRole("heading", { name: "Add a community" }),
   ).toBeVisible();
+  await expect(page.getByTestId("self-serve-community-create")).toContainText(
+    "Create a new community",
+  );
+  await expect(page.getByTestId("add-community-join")).toContainText(
+    "Join an existing community",
+  );
+  await expect(page.getByLabel("API Token")).toHaveCount(0);
+  await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
   await expect(page.getByLabel("Community URL or invite link")).toBeVisible();
-  await page.getByTestId("add-community-back").click();
-
-  await page.getByTestId("add-community-create").click();
-  await expect(
-    page.getByRole("heading", { name: "Create a community" }),
-  ).toBeVisible();
   await expect(page.getByLabel("Community address")).toBeVisible();
 });
 
@@ -239,15 +229,12 @@ test("automatically shows community join requirements near the community URL", a
   await page.goto("/");
 
   await openAddCommunityDialog(page);
-  await page.getByTestId("add-community-join").click();
   await page
     .getByLabel("Community URL or invite link")
     .fill("https://policy.example.com");
 
-  const ageConfirmation = page.getByLabel("I am 18 years of age or older.");
-  const agreementConfirmation = page.getByLabel(
-    "I agree to the Colony Terms of Service and Privacy Policy.",
-  );
+  const ageConfirmation = page.getByLabel("I’m 18 or older");
+  const agreementConfirmation = page.getByLabel(/I agree to the/);
   await expect(ageConfirmation).toBeVisible();
   await expect(agreementConfirmation).toBeVisible();
   await expect(
@@ -258,7 +245,6 @@ test("automatically shows community join requirements near the community URL", a
   const joinCommunityButton = page.getByTestId("invite-redeem-submit");
   await expect(joinCommunityButton).toBeDisabled();
   await ageConfirmation.check();
-  await expect(ageConfirmation.locator("svg path")).toBeVisible();
   await expect(joinCommunityButton).toBeDisabled();
   await agreementConfirmation.check();
   await expect(joinCommunityButton).toBeEnabled();
@@ -288,7 +274,6 @@ test("joins a community URL without an API token field", async ({ page }) => {
   await page.goto("/");
 
   await openAddCommunityDialog(page);
-  await page.getByTestId("add-community-join").click();
 
   await page
     .getByLabel("Community URL or invite link")
@@ -496,7 +481,7 @@ for (const theme of ["buzz", "github-light", "catppuccin-mocha"]) {
     expect(chromeStyles.headerBoxShadow).toBe("none");
     expect(chromeStyles.headerIsolation).toBe("auto");
     expect(chromeStyles.headerMarginBottom).toBe(0);
-    expect(chromeStyles.headerZIndex).toBe("auto");
+    expect(chromeStyles.headerZIndex).toBe("1");
     expect(chromeStyles.footerBackground).toBe("none");
     expect(chromeStyles.footerBackgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(chromeStyles.footerBeforeBackground).toBe("none");
@@ -510,7 +495,7 @@ for (const theme of ["buzz", "github-light", "catppuccin-mocha"]) {
   });
 }
 
-test("aligns the sidebar search with the channel title outside the Buzz theme", async ({
+test("keeps the sidebar search at its design offset from the channel title outside the Buzz theme", async ({
   page,
 }) => {
   await loadTheme(page, "github-light");
@@ -535,7 +520,9 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
   expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(
-    process.platform === "darwin" ? 22.265625 : 4.265625,
+    // The conversation header (title row, then the channel views) sits above
+    // the search row, as drawn on the Channel board.
+    process.platform === "darwin" ? 89 : 61,
     2,
   );
 });
@@ -600,7 +587,7 @@ test("collapses the sidebar to its icon rail and restores it", async ({
   await expect.poll(() => sidebarWidth(page)).toBeLessThan(expandedWidth);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
-  await expect(page.getByTestId("channel-general")).toBeVisible();
+  await expect(page.getByTestId("sidebar-collapsed-channels")).toBeVisible();
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
   await expect(
@@ -651,18 +638,18 @@ test("resizes, persists, and snaps to the default sidebar width", async ({
   await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH);
   await expect.poll(() => storedSidebarWidth(page)).toBeNull();
 
-  await dragSidebarRail(page, 64);
+  await dragSidebarRail(page, 40);
 
-  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 40);
   await expect
     .poll(() => storedSidebarWidth(page))
-    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 64));
+    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 40));
 
   await page.reload();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 40);
 
-  await dragSidebarRail(page, -60);
+  await dragSidebarRail(page, -40);
 
   await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH);
   await expect

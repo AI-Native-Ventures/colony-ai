@@ -387,12 +387,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     { channelId: thread.channelId, pubkey: TEST_IDENTITIES.outsider.pubkey },
   );
 
-  await page.goto("/#/power");
-  const requestAllowance = page.getByRole("link", {
-    name: "Request allowance change",
-  });
-  await expect(requestAllowance).toBeVisible();
-  await requestAllowance.click();
+  await page.goto("/#/asks/new?type=money");
   await expect(
     page.getByRole("heading", {
       name: "Request an allowance or cost approval",
@@ -421,7 +416,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   await page
     .getByLabel("Employee or budget", { exact: true })
     .selectOption(employeePubkey);
-  await page.getByLabel("Change duration").selectOption("permanent");
+  await page.getByLabel("Permanent").check();
   await page.getByLabel("Requested amount, USD").fill("8.75");
   await page
     .getByLabel("Reason", { exact: true })
@@ -468,12 +463,21 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   ).toBeVisible();
   await page.getByRole("button", { name: "Open decision" }).click();
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  // The thread card is the compact budget card; the allowance and the reason
+  // live on the decision page it opens.
+  await expect(
+    page.getByTestId("message-thread-head").getByTestId("ask-card"),
+  ).toBeVisible();
+  await page
+    .getByTestId("message-thread-head")
+    .getByTestId("ask-detail-link")
+    .click();
   await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
     "USD 8.75 / week",
   );
-  await expect(
-    page.getByTestId("message-thread-head").getByTestId("ask-card"),
-  ).toContainText("The employee needs more capacity for the approved work.");
+  await expect(page.getByTestId("ask-card")).toContainText(
+    "The employee needs more capacity for the approved work.",
+  );
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
 
@@ -615,7 +619,7 @@ test("busy Needs me groups the full deadline-sorted queue", async ({
 
   await page.goto("/#/today");
   const needsMe = page.getByRole("region", { name: "Needs me" });
-  await expect(needsMe.getByText("Needs me · 18 open decisions")).toBeVisible();
+  await expect(needsMe.getByText("18 open decisions")).toBeVisible();
   await expect(page.locator('[data-testid^="today-ask-"]')).toHaveCount(6);
   await expect(needsMe.getByRole("heading", { name: "Overdue" })).toBeVisible();
   await expect(needsMe.getByText("3 asks are overdue")).toBeVisible();

@@ -39,12 +39,11 @@ import {
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
-import { resetCompanyRoleDraftStore } from "@/features/agents/companyRoleDraftStore";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
 import { resetAvatarProfileSync } from "@/features/profile/avatarProfileSync";
 import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
-import { resetFactorySessionRequests } from "@/features/factory/lib/factorySessionRequest";
+import { resetDiscoveryRuntime } from "@/features/discovery/discoveryRuntimeRegistry";
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
@@ -80,7 +79,6 @@ async function resetCommunityState({
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();
   resetAgentWorkingSignal();
-  resetCompanyRoleDraftStore();
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();
   }
@@ -90,7 +88,7 @@ async function resetCommunityState({
   }
   resetSidebarRelayConnectionCardState();
   resetMembershipDenialGate();
-  resetFactorySessionRequests();
+  resetDiscoveryRuntime();
   resetWorkAreaState();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();

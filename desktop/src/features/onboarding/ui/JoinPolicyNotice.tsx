@@ -2,8 +2,7 @@ import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { joinPolicyDocumentUrl, type JoinPolicy } from "@/shared/api/invites";
-import { Button } from "@/shared/ui/button";
-import { Checkbox } from "@/shared/ui/checkbox";
+import "./firstRun.css";
 
 type JoinPolicyNoticeProps = {
   ageConfirmed: boolean;
@@ -35,71 +34,58 @@ export function JoinPolicyNotice({
 }: JoinPolicyNoticeProps) {
   const ageConfirmationId = React.useId();
   const agreementConfirmationId = React.useId();
+  const open = (kind: "terms" | "privacy") => (event: React.MouseEvent) => {
+    event.preventDefault();
+    void openUrl(joinPolicyDocumentUrl(relayWsUrl, kind));
+  };
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4 text-left">
+    <div className="c3fr-checks">
       {policy.ageAttestationRequired ? (
-        <div className="flex items-start gap-3">
-          <Checkbox
+        <div className="c3fr-check">
+          <input
             checked={ageConfirmed}
-            className="mt-0.5"
             id={ageConfirmationId}
-            onCheckedChange={(checked) =>
-              onAgeConfirmedChange(checked === true)
+            onChange={(event) =>
+              onAgeConfirmedChange(event.currentTarget.checked)
             }
+            type="checkbox"
           />
-          <label
-            className="cursor-pointer text-xs leading-5 text-muted-foreground"
-            htmlFor={ageConfirmationId}
-          >
-            I am 18 years of age or older.
-          </label>
+          <label htmlFor={ageConfirmationId}>I’m 18 or older</label>
         </div>
       ) : null}
 
       {policy.termsMarkdown || policy.privacyMarkdown ? (
-        <div className="flex items-start gap-3">
-          <Checkbox
+        <div className="c3fr-check">
+          <input
             checked={agreementConfirmed}
-            className="mt-0.5"
             id={agreementConfirmationId}
-            onCheckedChange={(checked) =>
-              onAgreementConfirmedChange(checked === true)
+            onChange={(event) =>
+              onAgreementConfirmedChange(event.currentTarget.checked)
             }
+            type="checkbox"
           />
-          <label
-            className="cursor-pointer text-xs leading-5 text-muted-foreground"
-            htmlFor={agreementConfirmationId}
-          >
-            I agree to the Colony{" "}
+          <label htmlFor={agreementConfirmationId}>
+            I agree to the{" "}
             {policy.termsMarkdown ? (
-              <Button
-                className="h-auto p-0 align-baseline text-xs no-underline hover:underline focus-visible:no-underline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  void openUrl(joinPolicyDocumentUrl(relayWsUrl, "terms"));
-                }}
+              <button
+                className="c3fr-link"
+                onClick={open("terms")}
                 type="button"
-                variant="link"
               >
-                Terms of Service
-              </Button>
+                Terms
+              </button>
             ) : null}
             {policy.termsMarkdown && policy.privacyMarkdown ? " and " : null}
             {policy.privacyMarkdown ? (
-              <Button
-                className="h-auto p-0 align-baseline text-xs no-underline hover:underline focus-visible:no-underline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  void openUrl(joinPolicyDocumentUrl(relayWsUrl, "privacy"));
-                }}
+              <button
+                className="c3fr-link"
+                onClick={open("privacy")}
                 type="button"
-                variant="link"
               >
                 Privacy Policy
-              </Button>
+              </button>
             ) : null}
-            .
           </label>
         </div>
       ) : null}

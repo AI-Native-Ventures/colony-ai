@@ -3,10 +3,6 @@ import type { Locator, Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 
-const WATERCOOLER_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
-const FORUM_THREAD_ID = "mock-forum-release-thread";
-const FORUM_DEEPLINK_REPLY_ID = "mock-forum-release-deeplink";
-
 // Mock-mode current-user pubkey (DEFAULT_MOCK_IDENTITY). Custom channel
 // sections persist under buzz-channel-sections.v1:<pubkey>, so shot 6 seeds two
 // sections for this key before the app boots.
@@ -98,77 +94,6 @@ async function dragOver(page: Page, source: Locator, target: Locator) {
 }
 
 test.describe("list virtualization", () => {
-  test("01 — Pulse windowed feed with sticky composer pinned mid-scroll", async ({
-    page,
-  }) => {
-    await installMockBridge(page);
-    await page.goto("/");
-    // R17 moves Pulse into Today > Updates.
-    await page
-      .getByTestId("sidebar-primary-menu")
-      .getByRole("button", { name: "Today", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Team updates" }),
-    ).toHaveCount(0);
-    await page.goto("/#/today/updates");
-
-    // The seeded feed overflows the viewport (30 notes), so the windowed list
-    // renders a subset and the composer stays pinned. Wait for virtual rows.
-    const rows = page.locator("[data-index]");
-    await expect(rows.first()).toBeVisible();
-    const composer = page.locator(".pulse-composer");
-    await expect(composer).toBeVisible();
-
-    // Scroll the feed mid-list, then prove the sticky composer is still pinned
-    // at the top of its scroll container — this exercises the
-    // translateY(start - scrollMargin) offset under a non-zero scrollTop.
-    const scroller = composer.locator(
-      "xpath=ancestor::*[contains(@class,'overflow-y-auto')][1]",
-    );
-    await scroller.evaluate((el) => {
-      el.scrollTop = 600;
-    });
-    await expect
-      .poll(async () =>
-        composer.evaluate(
-          (el, scrollEl) => {
-            const composerTop = el.getBoundingClientRect().top;
-            const scrollTop = (scrollEl as HTMLElement).getBoundingClientRect()
-              .top;
-            return Math.abs(composerTop - scrollTop);
-          },
-          await scroller.elementHandle(),
-        ),
-      )
-      .toBeLessThan(80);
-  });
-
-  test("02 — forum deep-link lands on an offscreen reply", async ({ page }) => {
-    await installMockBridge(page);
-    await page.goto(
-      `/#/channels/${WATERCOOLER_CHANNEL_ID}/posts/${FORUM_THREAD_ID}?replyId=${FORUM_DEEPLINK_REPLY_ID}`,
-    );
-
-    // The deep-link target is the last of 25 replies — offscreen at open. Under
-    // content-visibility the row stays queryable, so scrollIntoView lands it.
-    const target = page.locator(
-      `[data-forum-event-id="${FORUM_DEEPLINK_REPLY_ID}"]`,
-    );
-    await expect(target).toBeVisible();
-    await expect(target).toContainText("Deep-link target");
-    // Assert the row sits within the viewport vertically — proves the scroll
-    // actually moved to it rather than leaving it below the fold.
-    await expect
-      .poll(async () =>
-        target.evaluate((el) => {
-          const rect = el.getBoundingClientRect();
-          return rect.top >= 0 && rect.bottom <= window.innerHeight;
-        }),
-      )
-      .toBe(true);
-  });
-
   test("03 — members search shows both sticky titles under content-visibility", async ({
     page,
   }) => {

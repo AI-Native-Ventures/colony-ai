@@ -4,6 +4,8 @@ import { relayClient } from "@/shared/api/relayClient";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import {
   DEFAULT_COMMUNITY_THEME,
+  communityThemeFieldColors,
+  communityThemeFieldMember,
   cacheAndApplyCommunityTheme,
   clearCommunityThemeOutbox,
   communityThemeApplyExpectation,
@@ -27,17 +29,34 @@ import {
   shouldSeedCommunityTheme,
   type RemoteCommunityTheme,
 } from "./communityThemeSync";
+import { sameFieldColors } from "./sidebarField";
 import { useTheme } from "./ThemeProvider";
 import {
   appearanceSnapshotKey,
-  customGradientStops,
-  readAppearanceSnapshot,
   isValidHexColor,
+  readAppearanceSnapshot,
+  snapshotFieldColors,
   updateAppearanceSnapshotTheme,
 } from "@/features/settings/lib/appearanceSnapshot";
 import { applyConversationMessageSize } from "@/features/settings/lib/conversationMessageSizePreference";
 import { preferenceWriteTime } from "@/shared/lib/preferenceWriteTime";
 import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
+
+/** The person's current choice, as the provider holds it right now. */
+function currentPreference(
+  theme: Pick<
+    ReturnType<typeof useTheme>,
+    "selectedThemeName" | "accentColor" | "followSystem" | "fieldColors"
+  >,
+): CommunityThemePreference {
+  return {
+    version: 1,
+    theme: theme.selectedThemeName as CommunityThemePreference["theme"],
+    accent: theme.accentColor,
+    followSystem: theme.followSystem,
+    ...communityThemeFieldMember(theme.fieldColors),
+  };
+}
 
 export function CommunityThemeController() {
   const { activeCommunity } = useCommunities();
@@ -50,25 +69,14 @@ export function CommunityThemeController() {
   const expectedAppliedRef = useRef<CommunityThemePreference | null>(null);
   const scopedPreferenceRef = useRef<CommunityThemePreference | null>(null);
   const lastRemoteRef = useRef({ createdAt: 0, eventId: "" });
-  const initialPreferenceRef = useRef<CommunityThemePreference>({
-    version: 1,
-    theme: theme.selectedThemeName as CommunityThemePreference["theme"],
-    accent: theme.accentColor,
-    followSystem: theme.followSystem,
-  });
+  const initialPreferenceRef = useRef<CommunityThemePreference>(
+    currentPreference(theme),
+  );
 
-  const currentPreferenceRef = useRef<CommunityThemePreference>({
-    version: 1,
-    theme: theme.selectedThemeName as CommunityThemePreference["theme"],
-    accent: theme.accentColor,
-    followSystem: theme.followSystem,
-  });
-  currentPreferenceRef.current = {
-    version: 1,
-    theme: theme.selectedThemeName as CommunityThemePreference["theme"],
-    accent: theme.accentColor,
-    followSystem: theme.followSystem,
-  };
+  const currentPreferenceRef = useRef<CommunityThemePreference>(
+    currentPreference(theme),
+  );
+  currentPreferenceRef.current = currentPreference(theme);
 
   const applyPreference = useCallback(
     (preference: CommunityThemePreference) => {
@@ -103,6 +111,7 @@ export function CommunityThemeController() {
             theme: snapshot.theme as SyntaxThemeName,
             accent: snapshot.accent,
             followSystem: snapshot.followSystem,
+            ...communityThemeFieldMember(snapshotFieldColors(snapshot)),
           }
         : null;
     const localTime = readCommunityThemeWriteTime(pubkey, relayUrl);
@@ -165,29 +174,11 @@ export function CommunityThemeController() {
     const global = readAppearanceSnapshot(
       appearanceSnapshotKey(pubkey, "global-conversations"),
     );
-    const root = document.documentElement;
-    const colors = business?.customLight;
-    if (
-      business?.custom &&
-      Array.isArray(colors) &&
-      colors.length === 2 &&
-      colors.every(isValidHexColor)
-    ) {
-      const mode = theme.isDark ? "dark" : "light";
-      const [first, second] = customGradientStops(colors, mode);
-      root.style.setProperty("--w20-custom-gradient-start", first);
-      root.style.setProperty("--w20-custom-gradient-end", second);
-      root.classList.add("w20-custom-appearance");
-    } else {
-      root.style.removeProperty("--w20-custom-gradient-start");
-      root.style.removeProperty("--w20-custom-gradient-end");
-      root.classList.remove("w20-custom-appearance");
-    }
     const conversations = global ?? business;
     const size = conversations?.messageSize;
     if (size === "smaller" || size === "default" || size === "larger")
       applyConversationMessageSize(size);
-  }, [pubkey, activeCommunity?.id, theme.isDark]);
+  }, [pubkey, activeCommunity?.id]);
 
   useEffect(() => {
     if (!pubkey || !relayUrl) return;
@@ -224,7 +215,11 @@ export function CommunityThemeController() {
           snapshot &&
           (snapshot.theme !== published.preference.theme ||
             snapshot.accent !== published.preference.accent ||
-            snapshot.followSystem !== published.preference.followSystem)
+            snapshot.followSystem !== published.preference.followSystem ||
+            !sameFieldColors(
+              snapshotFieldColors(snapshot),
+              communityThemeFieldColors(published.preference),
+            ))
         )
           return;
       }
@@ -327,12 +322,12 @@ export function CommunityThemeController() {
 
   useEffect(() => {
     if (!pubkey || !relayUrl) return;
-    const preference: CommunityThemePreference = {
-      version: 1,
-      theme: theme.selectedThemeName as CommunityThemePreference["theme"],
-      accent: theme.accentColor,
+    const preference = currentPreference({
+      selectedThemeName: theme.selectedThemeName,
+      accentColor: theme.accentColor,
       followSystem: theme.followSystem,
-    };
+      fieldColors: theme.fieldColors,
+    });
     const persistenceAction = communityThemePersistenceAction(
       expectedAppliedRef.current,
       preference,
@@ -363,6 +358,7 @@ export function CommunityThemeController() {
     theme.selectedThemeName,
     theme.accentColor,
     theme.followSystem,
+    theme.fieldColors,
   ]);
 
   return null;

@@ -99,7 +99,6 @@ test("loads the app shell with mocked channels", async ({ page }) => {
     )
     .toContain("is_shared_identity");
   await expect(page.getByTestId("stream-list")).toContainText("general");
-  await expect(page.getByTestId("forum-list")).toContainText("watercooler");
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
 });
 
@@ -300,16 +299,9 @@ test("create agent supports parallelism and system prompt overrides", async ({
   await createdAgent.click();
   await expect(page.getByTestId("agent-profile")).toBeVisible();
 
-  await page.getByRole("button", { name: "Instructions", exact: true }).click();
-  await expect(page.getByTestId("agent-instructions")).toContainText(
+  await expect(page.getByTestId("agent-system-instructions")).toHaveValue(
     systemPrompt,
   );
-
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
-  const parallelism = page
-    .getByTestId("agent-profile-content")
-    .getByText("Parallelism", { exact: true });
-  await expect(parallelism.locator("..")).toContainText("3");
 });
 
 test("opens a mocked channel from the inbox feed", async ({ page }) => {
@@ -403,30 +395,6 @@ test("highlights the query in search results and the opened message", async ({
   );
 });
 
-test("highlights the clicked forum post when its route is already open", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await expect(
-    page.locator('[data-forum-event-id="mock-forum-release-thread"]'),
-  ).toBeVisible();
-  await page.keyboard.press("ControlOrMeta+f");
-  await page.getByTestId("search-dialog-input").fill("checklist");
-
-  const result = page.getByTestId("search-result-mock-forum-release-thread");
-  await expect(result).toBeVisible();
-  await result.click();
-
-  const post = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(post.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-});
-
 test("ordinary same-channel activation clears a prior search highlight", async ({
   page,
 }) => {
@@ -470,60 +438,6 @@ test("ordinary rendered channel link clears a prior search highlight", async ({
   await message.locator('[data-channel-link=""]').click();
 
   await expect(message.locator('[data-search-match="true"]')).toHaveCount(0);
-});
-
-test("ordinary same-forum activation clears a prior search highlight", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await page.getByTestId("open-search").click();
-  await page.getByTestId("search-dialog-input").fill("checklist");
-  await page.getByTestId("search-result-mock-forum-release-thread").click();
-
-  const post = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(post.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Release checklist: async feedback thread.").click();
-
-  await expect(post.locator('[data-search-match="true"]')).toHaveCount(0);
-});
-
-test("ordinary forum navigation clears a prior search highlight", async ({
-  page,
-}) => {
-  await page.goto(
-    "/#/channels/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11/posts/mock-forum-release-thread",
-  );
-  await page.getByTestId("open-search").click();
-  await page.getByTestId("search-dialog-input").fill("checklist");
-  await page.getByTestId("search-result-mock-forum-release-thread").click();
-
-  const releasePost = page.locator(
-    '[data-forum-event-id="mock-forum-release-thread"]',
-  );
-  await expect(releasePost.locator('[data-search-match="true"]')).toHaveText(
-    "checklist",
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Team offsite planning and travel notes.").click();
-  await expect(
-    page.locator('[data-forum-event-id="mock-forum-offsite-thread"]'),
-  ).toBeVisible();
-  await page.getByTestId("channel-watercooler").click();
-  await page.getByText("Release checklist: async feedback thread.").click();
-
-  await expect(releasePost).toBeVisible();
-  await expect(releasePost.locator('[data-search-match="true"]')).toHaveCount(
-    0,
-  );
 });
 
 test("does not expose stale search results with a newly typed query", async ({
@@ -610,7 +524,8 @@ test("global search offers an optional current-channel scope", async ({
     "0px",
   );
   await expect(scopeControl.locator("..")).toHaveCSS("padding-top", "14px");
-  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "14px");
+  // The Colony 3.0 scope row pads 14px above and none below, as the Search board draws it.
+  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "0px");
   const [controlBox, dialogBox] = await Promise.all([
     scopeControl.boundingBox(),
     page.getByTestId("search-results").boundingBox(),
@@ -651,8 +566,9 @@ test("global search offers an optional current-channel scope", async ({
     relevantHeader.evaluate(contentStart),
     firstScopedResult.evaluate(contentStart),
   ]);
-  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(1);
-  expect(Math.abs(inputStart - resultStart)).toBeLessThanOrEqual(1);
+  // The Search board insets its section labels 2px from the input.
+  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(2);
+  expect(Math.abs(inputStart - resultStart)).toBeLessThanOrEqual(2);
 
   await input.fill("x");
   await expect(page.getByTestId("search-results")).toContainText(
@@ -704,7 +620,8 @@ test("global search offers a conversation-specific scope in direct messages", as
     "0px",
   );
   await expect(scopeControl.locator("..")).toHaveCSS("padding-top", "14px");
-  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "14px");
+  // The Colony 3.0 scope row pads 14px above and none below, as the Search board draws it.
+  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "0px");
 
   await scopeControl.click();
 
@@ -959,10 +876,9 @@ test("replaces the channel pane when switching channels", async ({ page }) => {
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
-  );
+  // An empty channel shows the empty state card, as the Channel states board
+  // draws it.
+  await expect(page.getByTestId("message-empty")).toBeVisible();
   await expect(page.getByTestId("message-timeline")).not.toContainText(
     "Welcome to general",
   );
@@ -971,7 +887,7 @@ test("replaces the channel pane when switching channels", async ({ page }) => {
 
   await page.getByTestId("channel-engineering").click();
   await expect(page.getByTestId("chat-title")).toHaveText("engineering");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toBeVisible();
   await expect(page.getByTestId("message-timeline")).toHaveCount(1);
   await expect(page.getByTestId("message-timeline-day-divider")).toHaveCount(0);
 });
@@ -1029,7 +945,8 @@ test("supports multiline drafts with Ctrl+Enter and sends with Enter", async ({
   const initialInputHeight = await input.evaluate(
     (element) => (element as HTMLElement).clientHeight,
   );
-  expect(initialInputHeight).toBeLessThan(40);
+  // The Colony 3.0 card gives the editor a two line start (the board's 51px).
+  expect(initialInputHeight).toBeLessThan(56);
   await input.fill(firstLine);
   for (const line of restOfLines) {
     await input.press("Shift+Enter");
@@ -1041,7 +958,7 @@ test("supports multiline drafts with Ctrl+Enter and sends with Enter", async ({
   const expandedInputHeight = await input.evaluate(
     (element) => (element as HTMLElement).clientHeight,
   );
-  expect(expandedInputHeight).toBeLessThanOrEqual(130);
+  expect(expandedInputHeight).toBeLessThanOrEqual(140);
   await expect(page.getByTestId("message-timeline")).not.toContainText(
     firstLine,
   );

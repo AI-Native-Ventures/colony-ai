@@ -25,55 +25,33 @@ import {
   useClientRecordsQuery,
   useSubmitBusinessRecordMutation,
 } from "@/features/clients/useBusinessRecords";
+import { clockTime, onDayLabel } from "@/features/clients/lib/formatWhen";
+import { useLatestChannelMessage } from "@/features/clients/lib/useLatestChannelMessage";
+import { usePeople } from "@/features/clients/lib/usePeople";
+import { WorkDeliverableCard } from "@/features/clients/ui/WorkDeliverableCard";
+import {
+  PersonAvatar,
+  PlusIcon,
+  workStatusLabel,
+  WorkStatusPill,
+} from "@/features/clients/ui/BusinessBits";
+import { StateButton } from "@/features/clients/ui/BusinessStates";
+import { BusinessTrail } from "@/features/clients/ui/BusinessTrail";
 import {
   ClientWorkspace,
-  RecordCard,
-  RecordField,
   RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
 import { signRelayEvent } from "@/shared/api/tauri";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
-import { Button } from "@/shared/ui/button";
 import { toast } from "sonner";
 import { WorkDetailDialogs } from "@/features/clients/ui/WorkDetailDialogs";
 
-const WORK_STATUS_LABELS: Record<string, string> = {
-  active: "In progress",
-  review: "Needs review",
-  blocked: "Blocked",
-  paused: "Paused",
-  complete: "Complete",
-  archived: "Archived",
-};
-const MAX_DELIVERABLE_PREVIEW_CHARS = 12_000;
-
-function displayStatus(status: string): string {
-  return WORK_STATUS_LABELS[status] ?? status;
-}
-
-function jsonBodyParts(body: unknown): { title: string; content: string } {
-  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
-    const record = body as Record<string, unknown>;
-    return {
-      title: typeof record.title === "string" ? record.title : "",
-      content:
-        typeof record.content === "string"
-          ? record.content
-          : JSON.stringify(body, null, 2),
-    };
-  }
-  return { title: "", content: JSON.stringify(body, null, 2) };
-}
-
-function eventTime(createdAt: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(createdAt * 1_000));
+/** "today, 14:05" or "on 21 Oct, 14:05". */
+function sinceLabel(seconds: number): string {
+  return `${onDayLabel(seconds)}, ${clockTime(seconds)}`;
 }
 
 function mutationTemplate(
@@ -266,6 +244,18 @@ export function WorkDetailScreen({
         "decision" in record.value,
     );
   }, [deliverableQuery.data]);
+
+  const latestMessage = useLatestChannelMessage(head ? exactClientId : null);
+  const { person } = usePeople([
+    ...(head?.assignedPubkeys ?? []),
+    ...(head?.approverPubkeys ?? []),
+    ...versions.map((record) => record.event.pubkey),
+    ...approvals.map((record) => record.event.pubkey),
+    ...(latestMessage.data ? [latestMessage.data.pubkey] : []),
+  ]);
+  const personName = (pubkey: string) =>
+    memberByPubkey.get(pubkey.toLowerCase())?.displayName ??
+    person(pubkey).name;
 
   React.useEffect(() => {
     if (!editHead || !editOpen) return;
@@ -537,7 +527,7 @@ export function WorkDetailScreen({
   if (!normalizedClientId && globalWorkQuery.isPending) {
     return (
       <ClientWorkspace title="Work">
-        <RecordMessage>Loading work</RecordMessage>
+        <RecordMessage kind="loading">Loading work</RecordMessage>
       </ClientWorkspace>
     );
   }
@@ -547,9 +537,7 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           This work record could not be resolved to one client.
         </RecordMessage>
-        <Button onClick={() => void goWork()} variant="outline">
-          All work
-        </Button>
+        <StateButton onClick={() => void goWork()}>All work</StateButton>
       </ClientWorkspace>
     );
   }
@@ -559,12 +547,9 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           Work records could not be loaded.
         </RecordMessage>
-        <Button
-          onClick={() => void globalWorkQuery.refetch()}
-          variant="outline"
-        >
+        <StateButton onClick={() => void globalWorkQuery.refetch()}>
           Retry
-        </Button>
+        </StateButton>
       </ClientWorkspace>
     );
   }
@@ -574,9 +559,7 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           This work item was not found in your client channels.
         </RecordMessage>
-        <Button onClick={() => void goWork()} variant="outline">
-          All work
-        </Button>
+        <StateButton onClick={() => void goWork()}>All work</StateButton>
       </ClientWorkspace>
     );
   }
@@ -586,9 +569,7 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           This client is unavailable to the current identity in this business.
         </RecordMessage>
-        <Button onClick={() => void goWork()} variant="outline">
-          All work
-        </Button>
+        <StateButton onClick={() => void goWork()}>All work</StateButton>
       </ClientWorkspace>
     );
   }
@@ -599,7 +580,7 @@ export function WorkDetailScreen({
   ) {
     return (
       <ClientWorkspace title="Work">
-        <RecordMessage>Loading work item</RecordMessage>
+        <RecordMessage kind="loading">Loading work item</RecordMessage>
       </ClientWorkspace>
     );
   }
@@ -622,9 +603,7 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           No client record exists in the selected private channel.
         </RecordMessage>
-        <Button onClick={() => void goWork()} variant="outline">
-          All work
-        </Button>
+        <StateButton onClick={() => void goWork()}>All work</StateButton>
       </ClientWorkspace>
     );
   }
@@ -634,12 +613,9 @@ export function WorkDetailScreen({
         <RecordMessage kind="error">
           This work item was not found in the selected client channel.
         </RecordMessage>
-        <Button
-          onClick={() => void goWork(clientHead.clientId)}
-          variant="outline"
-        >
+        <StateButton onClick={() => void goWork(clientHead.clientId)}>
           All work for this client
-        </Button>
+        </StateButton>
       </ClientWorkspace>
     );
   }
@@ -657,60 +633,96 @@ export function WorkDetailScreen({
   });
   const hasCurrentOutput = head.deliverables.length > 0;
   const editingDisabled = submitMutation.isPending || submitMutation.isError;
+  const ownerPubkey = head.assignedPubkeys[0] ?? null;
+  const ownerName = ownerPubkey ? personName(ownerPubkey) : null;
+  const channelName = clientRecords.channel?.name ?? clientHead.displayName;
+  const sinceSeconds = headRecord.event.created_at;
+  const canReopen =
+    (head.status === "review" || head.status === "complete") &&
+    isAdmin &&
+    clientIsActive &&
+    !workIsArchived;
 
   return (
     <ClientWorkspace
-      action={
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            onClick={() => void goWork(clientHead.clientId)}
-            variant="outline"
-          >
-            All work
-          </Button>
-          {clientIsActive && clientRecords.channel ? (
-            <Button
-              disabled={isSharingWork || !identityQuery.isSuccess}
-              onClick={() => void shareWorkInClientChannel()}
-              variant="outline"
+      header={
+        <div className="b3-work-head">
+          <div className="b3-work-head-copy">
+            <div className="b3-chip-row">
+              <WorkStatusPill status={head.status} />
+              <span className="b3-chip">{clientHead.displayName}</span>
+            </div>
+            <h1 className="b3-title" data-tight="true">
+              {head.title}
+            </h1>
+          </div>
+          <div className="b3-work-actions">
+            <button
+              className="b3-btn"
+              data-size="md"
+              onClick={() => void goWork(clientHead.clientId)}
+              type="button"
             >
-              Share in client channel
-            </Button>
-          ) : null}
-          {isAdmin && clientIsActive && !workIsArchived && !workIsComplete ? (
-            <Button onClick={() => setEditOpen(true)} variant="outline">
-              Edit work
-            </Button>
-          ) : null}
+              All work
+            </button>
+            {clientIsActive && clientRecords.channel ? (
+              <button
+                className="b3-btn"
+                data-size="md"
+                disabled={isSharingWork || !identityQuery.isSuccess}
+                onClick={() => void shareWorkInClientChannel()}
+                type="button"
+              >
+                Share in client channel
+              </button>
+            ) : null}
+            {isAdmin && clientIsActive && !workIsArchived && !workIsComplete ? (
+              <button
+                className="b3-btn"
+                data-size="md"
+                data-variant="primary"
+                onClick={() => setEditOpen(true)}
+                type="button"
+              >
+                Edit work
+              </button>
+            ) : null}
+          </div>
         </div>
       }
       title={head.title}
+      variant="work-detail"
     >
+      <BusinessTrail
+        crumbs={[
+          { label: "Company" },
+          { label: "Work", onClick: () => void goWork() },
+          { label: head.title },
+        ]}
+      />
       {submitMutation.isError ? (
         <RecordMessage kind="error">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{submitMutation.error.message}</span>
-            <span className="flex gap-2">
-              <Button
-                disabled={submitMutation.isPending || !submitMutation.variables}
-                onClick={retrySameUpdate}
-                size="sm"
-                variant="outline"
-              >
-                Retry same update
-              </Button>
-              {isBusinessRecordCommandRejection(submitMutation.error) ? (
-                <Button
-                  disabled={submitMutation.isPending}
-                  onClick={() => void reloadLatest()}
-                  size="sm"
-                  variant="outline"
-                >
-                  Reload latest
-                </Button>
-              ) : null}
-            </span>
-          </div>
+          <span className="b3-grow">{submitMutation.error.message}</span>
+          <button
+            className="b3-btn"
+            data-size="action"
+            disabled={submitMutation.isPending || !submitMutation.variables}
+            onClick={retrySameUpdate}
+            type="button"
+          >
+            Retry same update
+          </button>
+          {isBusinessRecordCommandRejection(submitMutation.error) ? (
+            <button
+              className="b3-btn"
+              data-size="action"
+              disabled={submitMutation.isPending}
+              onClick={() => void reloadLatest()}
+              type="button"
+            >
+              Reload latest
+            </button>
+          ) : null}
         </RecordMessage>
       ) : null}
       {clientRecords.membersQuery.isError ? (
@@ -725,49 +737,64 @@ export function WorkDetailScreen({
         </RecordMessage>
       ) : null}
       {clientRecords.membersQuery.isPending ? (
-        <RecordMessage>Loading client access</RecordMessage>
+        <RecordMessage kind="loading">Loading client access</RecordMessage>
       ) : null}
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.85fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
-          <RecordCard title="Brief">
-            <dl className="grid gap-5 sm:grid-cols-2">
-              <RecordField label="Client">
-                <button
-                  className="text-left underline-offset-4 hover:text-primary hover:underline"
-                  onClick={() => void goClient(clientHead.clientId)}
-                  type="button"
-                >
-                  {clientHead.displayName}
-                </button>
-              </RecordField>
-              <RecordField label="Status">
-                {displayStatus(head.status)}
-              </RecordField>
-              <RecordField label="Owner">
-                {head.assignedPubkeys
-                  .map(
-                    (pubkey) =>
-                      memberByPubkey.get(pubkey.toLowerCase())?.displayName ??
-                      truncateNpub(pubkey),
-                  )
-                  .join(", ") || "No owner assigned"}
-              </RecordField>
-              <RecordField label="Client reviewers">
-                {head.approverPubkeys
-                  .map(
-                    (pubkey) =>
-                      memberByPubkey.get(pubkey.toLowerCase())?.displayName ??
-                      truncateNpub(pubkey),
-                  )
-                  .join(", ") || "No reviewer assigned"}
-              </RecordField>
+      <div className="b3-work-body">
+        <div className="b3-work-main">
+          <section aria-labelledby="work-brief" className="b3-card b3-panel">
+            <h2 className="b3-panel-title" id="work-brief">
+              Brief
+            </h2>
+            <dl className="b3-brief-grid">
+              <div className="b3-fact">
+                <dt>Client</dt>
+                <dd>
+                  <button
+                    onClick={() => void goClient(clientHead.clientId)}
+                    type="button"
+                  >
+                    {clientHead.displayName}
+                  </button>
+                </dd>
+              </div>
+              <div className="b3-fact">
+                <dt>Status</dt>
+                <dd>{workStatusLabel(head.status)}</dd>
+              </div>
+              <div className="b3-fact">
+                <dt>Owner</dt>
+                <dd data-person={ownerPubkey ? "true" : undefined}>
+                  {ownerPubkey ? (
+                    <PersonAvatar person={person(ownerPubkey)} size={26} />
+                  ) : null}
+                  {head.assignedPubkeys.map(personName).join(", ") ||
+                    "No owner assigned"}
+                </dd>
+              </div>
+              <div className="b3-fact">
+                <dt>Client reviewers</dt>
+                <dd>
+                  {head.approverPubkeys.map(personName).join(", ") ||
+                    "No reviewer assigned"}
+                </dd>
+              </div>
             </dl>
-          </RecordCard>
+          </section>
 
-          <RecordCard
-            action={
-              canMutateWork && !editingDisabled ? (
-                <Button
+          <section
+            aria-labelledby="work-deliverables"
+            className="b3-card b3-deliverables"
+          >
+            <div className="b3-deliverables-head">
+              <h2 className="b3-panel-title" id="work-deliverables">
+                Deliverables
+              </h2>
+              <span className="b3-deliverables-count">
+                {head.deliverables.length}
+              </span>
+              {canMutateWork && !editingDisabled ? (
+                <button
+                  className="b3-btn"
                   onClick={() => {
                     setVersionTitle("");
                     setVersionContent("");
@@ -776,297 +803,211 @@ export function WorkDetailScreen({
                       newDeliverableId: crypto.randomUUID(),
                     });
                   }}
-                  size="sm"
+                  type="button"
                 >
+                  <PlusIcon size={15} />
                   Add deliverable
-                </Button>
-              ) : null
-            }
-            title="Deliverables"
-          >
+                </button>
+              ) : null}
+            </div>
             {deliverableQuery.isPending ? (
-              <RecordMessage>Loading deliverables</RecordMessage>
+              <div className="b3-deliverable-card">
+                <RecordMessage kind="loading">
+                  Loading deliverables
+                </RecordMessage>
+              </div>
             ) : null}
             {deliverableQuery.isError ? (
-              <RecordMessage kind="error">
-                Deliverable history could not be loaded.
-              </RecordMessage>
+              <div className="b3-deliverable-card">
+                <RecordMessage kind="error">
+                  Deliverable history could not be loaded.
+                </RecordMessage>
+              </div>
             ) : null}
             {currentDeliverableRecords.length === 0 ? (
-              <RecordMessage>
-                No deliverables are attached to this work item.
-              </RecordMessage>
+              <div className="b3-deliverable-card">
+                <RecordMessage>
+                  No deliverables are attached to this work item.
+                </RecordMessage>
+              </div>
             ) : null}
-            <div className="flex flex-col gap-3">
-              {currentDeliverableRecords.map(
-                ({ pointer, versionRecord, versionApprovals }) => {
-                  const body = versionRecord
-                    ? jsonBodyParts(versionRecord.value.body)
-                    : null;
-                  const currentApproval = versionApprovals[0] ?? null;
-                  const canReview = Boolean(
+            {currentDeliverableRecords.map(
+              ({ pointer, versionRecord, versionApprovals }) => (
+                <WorkDeliverableCard
+                  allVersions={versions
+                    .filter(
+                      (record) =>
+                        record.value.deliverableId === pointer.deliverableId,
+                    )
+                    .sort(
+                      (left, right) => right.value.version - left.value.version,
+                    )}
+                  approvals={approvals}
+                  canMutateWork={canMutateWork}
+                  canReview={Boolean(
                     isApprover &&
                       clientIsActive &&
                       !workIsArchived &&
                       versionRecord,
-                  );
-                  return (
-                    <article
-                      className="rounded-lg border border-border/70 bg-background p-4"
-                      key={pointer.deliverableId}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="text-base font-semibold">
-                            {body?.title ||
-                              `Deliverable ${truncatePubkey(pointer.deliverableId)}`}
-                          </h3>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {versionRecord
-                              ? `Version ${versionRecord.value.version}`
-                              : "Current version unavailable"}
-                            {currentApproval
-                              ? ` · ${displayStatus(currentApproval.value.decision)}`
-                              : " · Review required"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {canMutateWork &&
-                          versionRecord &&
-                          !editingDisabled ? (
-                            <Button
-                              onClick={() => {
-                                setVersionTitle(body?.title ?? "");
-                                setVersionContent(body?.content ?? "");
-                                setVersionDraft({
-                                  deliverableId: pointer.deliverableId,
-                                  newDeliverableId: null,
-                                });
-                              }}
-                              size="sm"
-                              variant="outline"
-                            >
-                              New version
-                            </Button>
-                          ) : null}
-                          {canReview && !editingDisabled ? (
-                            <>
-                              <Button
-                                onClick={() => {
-                                  if (!versionRecord) return;
-                                  setApprovalNote("");
-                                  setApprovalDraft({
-                                    pointer,
-                                    version: versionRecord,
-                                    decision: "approved",
-                                  });
-                                }}
-                                size="sm"
-                                variant="outline"
-                              >
-                                Approve version
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  if (!versionRecord) return;
-                                  setApprovalNote("");
-                                  setApprovalDraft({
-                                    pointer,
-                                    version: versionRecord,
-                                    decision: "changes_requested",
-                                  });
-                                }}
-                                size="sm"
-                                variant="outline"
-                              >
-                                Request changes
-                              </Button>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                      {body?.content ? (
-                        <div className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/30 p-3 text-sm">
-                          {body.content.slice(0, MAX_DELIVERABLE_PREVIEW_CHARS)}
-                          {body.content.length >
-                          MAX_DELIVERABLE_PREVIEW_CHARS ? (
-                            <p className="mt-3 text-muted-foreground">
-                              Preview truncated. Open the exact version in the
-                              client channel for the complete record.
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {currentApproval?.value.note ? (
-                        <div className="mt-3 rounded-md border border-border/70 px-3 py-2 text-sm">
-                          <p className="text-xs text-muted-foreground">
-                            Latest review from{" "}
-                            {memberByPubkey.get(
-                              currentApproval.event.pubkey.toLowerCase(),
-                            )?.displayName ??
-                              truncateNpub(currentApproval.event.pubkey)}{" "}
-                            · {eventTime(currentApproval.event.created_at)}
-                          </p>
-                          <p className="mt-1 whitespace-pre-wrap">
-                            {currentApproval.value.note}
-                          </p>
-                        </div>
-                      ) : null}
-                      <details className="mt-4 border-t border-border/70 pt-3">
-                        <summary className="cursor-pointer text-sm text-muted-foreground">
-                          Version history
-                        </summary>
-                        <div className="mt-3 flex flex-col gap-3">
-                          {versions
-                            .filter(
-                              (record) =>
-                                record.value.deliverableId ===
-                                pointer.deliverableId,
-                            )
-                            .sort(
-                              (left, right) =>
-                                right.value.version - left.value.version,
-                            )
-                            .map((record) => {
-                              const versionBody = jsonBodyParts(
-                                record.value.body,
-                              );
-                              const versionReview = approvals
-                                .filter(
-                                  (approval) =>
-                                    approval.value.versionEventId ===
-                                    record.event.id,
-                                )
-                                .sort(
-                                  (left, right) =>
-                                    right.event.created_at -
-                                    left.event.created_at,
-                                )[0];
-                              return (
-                                <div
-                                  className="border-l-2 border-border pl-3"
-                                  key={record.event.id}
-                                >
-                                  <p className="text-sm font-medium">
-                                    Version {record.value.version}
-                                    {record.event.id === pointer.versionEventId
-                                      ? " · Current"
-                                      : ""}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {eventTime(record.event.created_at)}
-                                    {versionReview
-                                      ? ` · ${displayStatus(versionReview.value.decision)}`
-                                      : " · Review required"}
-                                  </p>
-                                  {versionBody.title ? (
-                                    <p className="mt-1 text-sm">
-                                      {versionBody.title}
-                                    </p>
-                                  ) : null}
-                                  {versionReview?.value.note ? (
-                                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                                      {versionReview.value.note}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                          {versions.filter(
-                            (record) =>
-                              record.value.deliverableId ===
-                              pointer.deliverableId,
-                          ).length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                              No version event is available for this pointer.
-                            </p>
-                          ) : null}
-                        </div>
-                      </details>
-                    </article>
-                  );
-                },
-              )}
-            </div>
-          </RecordCard>
+                  )}
+                  editingDisabled={editingDisabled}
+                  key={pointer.deliverableId}
+                  onNewVersion={(target, body) => {
+                    setVersionTitle(body?.title ?? "");
+                    setVersionContent(body?.content ?? "");
+                    setVersionDraft({
+                      deliverableId: target.deliverableId,
+                      newDeliverableId: null,
+                    });
+                  }}
+                  onReview={(target, version, nextDecision) => {
+                    setApprovalNote("");
+                    setApprovalDraft({
+                      pointer: target,
+                      version,
+                      decision: nextDecision,
+                    });
+                  }}
+                  person={person}
+                  personName={personName}
+                  pointer={pointer}
+                  versionApprovals={versionApprovals}
+                  versionRecord={versionRecord}
+                />
+              ),
+            )}
+          </section>
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-6">
-          <RecordCard title="Move the work forward">
+        <aside aria-label="Work actions" className="b3-work-side">
+          <section
+            aria-labelledby="work-forward"
+            className="b3-card b3-panel"
+            data-size="side"
+          >
+            <h2 className="b3-panel-title" id="work-forward">
+              Move the work forward
+            </h2>
             {workIsArchived ? (
               <RecordMessage>
                 This work item is archived and read-only.
               </RecordMessage>
-            ) : head.status === "complete" ? (
-              isAdmin && clientIsActive ? (
-                <Button
-                  disabled={editingDisabled}
-                  onClick={() => updateStatus("active")}
-                  variant="outline"
-                >
-                  Reopen work
-                </Button>
-              ) : (
-                <RecordMessage>
-                  Completion evidence is not recorded here.
-                </RecordMessage>
-              )
             ) : (
-              <div className="flex flex-col gap-3">
-                <Button
-                  disabled={
-                    !canMutateWork ||
-                    head.status === "review" ||
-                    !hasCurrentOutput ||
-                    editingDisabled
-                  }
-                  onClick={() => updateStatus("review")}
-                >
-                  Request review
-                </Button>
-                <Button
-                  disabled={!canMutateWork || editingDisabled}
-                  onClick={() => updateStatus("paused")}
-                  variant="outline"
-                >
-                  Pause work
-                </Button>
-                {head.status === "paused" ? (
-                  <Button
-                    disabled={!canMutateWork || editingDisabled}
-                    onClick={() => updateStatus("active")}
-                    variant="outline"
-                  >
-                    Resume work
-                  </Button>
+              <>
+                {head.status === "review" ? (
+                  <p className="b3-forward-help">
+                    In review since {sinceLabel(sinceSeconds)}. Approve the
+                    latest version or ask {ownerName ?? "the owner"} for
+                    changes.
+                  </p>
                 ) : null}
-                {!hasCurrentOutput ? (
-                  <p className="text-sm text-muted-foreground">
+                {head.status === "complete" ? (
+                  isAdmin && clientIsActive ? null : (
+                    <RecordMessage>
+                      Completion evidence is not recorded here.
+                    </RecordMessage>
+                  )
+                ) : (
+                  <button
+                    className="b3-wide-btn"
+                    disabled={
+                      !canMutateWork ||
+                      head.status === "review" ||
+                      !hasCurrentOutput ||
+                      editingDisabled
+                    }
+                    onClick={() => updateStatus("review")}
+                    type="button"
+                  >
+                    Request review
+                  </button>
+                )}
+                <div className="b3-forward-grid">
+                  {head.status === "complete" ? null : head.status ===
+                    "paused" ? (
+                    <button
+                      className="b3-wide-btn"
+                      disabled={!canMutateWork || editingDisabled}
+                      onClick={() => updateStatus("active")}
+                      type="button"
+                    >
+                      Resume
+                    </button>
+                  ) : (
+                    <button
+                      className="b3-wide-btn"
+                      disabled={!canMutateWork || editingDisabled}
+                      onClick={() => updateStatus("paused")}
+                      type="button"
+                    >
+                      Pause
+                    </button>
+                  )}
+                  {canReopen ? (
+                    <button
+                      className="b3-wide-btn"
+                      disabled={editingDisabled}
+                      onClick={() => updateStatus("active")}
+                      type="button"
+                    >
+                      Reopen
+                    </button>
+                  ) : null}
+                </div>
+                {head.status !== "complete" && !hasCurrentOutput ? (
+                  <p className="b3-fine">
                     Add a deliverable before requesting review.
                   </p>
                 ) : null}
-                {!isAdmin && !isAssigned ? (
+                {head.status !== "complete" && !isAdmin && !isAssigned ? (
                   <RecordMessage>
                     Only an assigned person or client channel admin can update
                     this work item.
                   </RecordMessage>
                 ) : null}
-                {head.approverPubkeys.length === 0 ? (
+                {head.status !== "complete" &&
+                head.approverPubkeys.length === 0 ? (
                   <RecordMessage>
                     No client reviewer is assigned to this work item.
                   </RecordMessage>
                 ) : null}
-              </div>
+              </>
             )}
-            <div className="mt-4 border-t border-border/70 pt-4">
-              <Button
-                onClick={() => void goChannel(clientHead.clientId)}
-                variant="link"
-              >
-                Open client channel
-              </Button>
-            </div>
-          </RecordCard>
+          </section>
+
+          <section
+            aria-labelledby="work-conversation"
+            className="b3-card b3-panel"
+            data-size="side"
+          >
+            <h2 className="b3-panel-title" id="work-conversation">
+              Conversation
+            </h2>
+            {latestMessage.data ? (
+              <div className="b3-conversation">
+                <PersonAvatar
+                  person={person(latestMessage.data.pubkey)}
+                  size={32}
+                />
+                <span className="b3-conversation-copy">
+                  <span className="b3-conversation-text">
+                    {latestMessage.data.content}
+                  </span>
+                  <span className="b3-conversation-meta">
+                    {personName(latestMessage.data.pubkey)} · #{channelName} ·{" "}
+                    {clockTime(latestMessage.data.createdAt)}
+                  </span>
+                </span>
+              </div>
+            ) : null}
+            <button
+              className="b3-wide-btn"
+              onClick={() => void goChannel(clientHead.clientId)}
+              type="button"
+            >
+              Open #{channelName}
+            </button>
+          </section>
         </aside>
       </div>
 

@@ -20,16 +20,13 @@ import {
   MEMBER_POSITION_HEAD_QUERY_LIMIT,
   mergeTeamMembers,
   memberPositionDTag,
-  parseMemberPositionActionEvent,
   parseMemberPositionHeadEvent,
   type MemberPositionAction,
-  type MemberPositionActionRecord,
   type MemberPositionHeadRecord,
   type TeamMember,
 } from "./teamModels";
 
 const MEMBER_LIST_KIND = 13_534;
-const MEMBER_POSITION_HISTORY_LIMIT = 500;
 
 export type CompanyTeamData = {
   members: TeamMember[];
@@ -47,27 +44,6 @@ export const companyTeamQueryKey = (relayUrl: string | null) =>
   ["company-team", relayUrl] as const;
 export const companyTeamCountQueryKey = (relayUrl: string | null) =>
   ["company-team-count", relayUrl] as const;
-export const memberPositionHistoryQueryKey = (
-  relayUrl: string | null,
-  memberPubkey: string,
-) => ["company-member-position-history", relayUrl, memberPubkey] as const;
-
-async function fetchMemberPositionHistory(
-  memberPubkey: string,
-): Promise<MemberPositionActionRecord[]> {
-  const events = await relayClient.fetchEvents({
-    kinds: [KIND_MEMBER_POSITION_ACTION],
-    "#d": [memberPositionDTag(memberPubkey)],
-    limit: MEMBER_POSITION_HISTORY_LIMIT,
-  });
-  if (events.length >= MEMBER_POSITION_HISTORY_LIMIT) {
-    throw new Error("This member history exceeds the supported record limit.");
-  }
-  return events
-    .map((event) => parseMemberPositionActionEvent(event, memberPubkey))
-    .filter((record): record is MemberPositionActionRecord => record !== null)
-    .sort((first, second) => second.event.created_at - first.event.created_at);
-}
 
 async function fetchCompanyTeamCount(
   relayUrl: string,
@@ -180,22 +156,6 @@ export function useCompanyTeamCountQuery() {
   });
 }
 
-export function useMemberPositionHistoryQuery(
-  memberPubkey: string,
-  enabled = true,
-) {
-  const { activeCommunity } = useCommunities();
-  const relayUrl = activeCommunity?.relayUrl ?? null;
-  const normalizedPubkey = memberPubkey.toLowerCase();
-  return useQuery({
-    enabled: enabled && relayUrl !== null,
-    queryKey: memberPositionHistoryQueryKey(relayUrl, normalizedPubkey),
-    queryFn: () => fetchMemberPositionHistory(normalizedPubkey),
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
-  });
-}
-
 export function useMemberPositionActionMutation() {
   const queryClient = useQueryClient();
   const { activeCommunity } = useCommunities();
@@ -215,13 +175,10 @@ export function useMemberPositionActionMutation() {
       );
       return event;
     },
-    onSettled: async (_data, _error, action) => {
+    onSettled: async () => {
       if (relayUrl) {
         await queryClient.invalidateQueries({
           queryKey: companyTeamQueryKey(relayUrl),
-        });
-        await queryClient.invalidateQueries({
-          queryKey: memberPositionHistoryQueryKey(relayUrl, action.pubkey),
         });
       }
     },

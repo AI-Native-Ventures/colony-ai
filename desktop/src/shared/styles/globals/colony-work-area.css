@@ -1,9 +1,21 @@
 /*
- * Conversation work area dock. Quiet by design: it reuses the channel shell
- * tokens and the r15 work area proportions (43px header, 5px divider) and adds
- * no colour of its own. Text sizes come from the shared rem ramp so Cmd +/-
- * zoom scales the dock with the conversation.
+ * Conversation work area dock, drawn as the ChannelWorkArea board draws it
+ * (Colony 3.0): a 72px header holding the tabs, a one pixel line between the
+ * conversation and the dock, and a white reading surface. Geometry is in rem
+ * and text sizes use `--colony-px`, so Cmd +/- zoom scales the dock with the
+ * conversation.
  */
+/* The dock header's warm tint (#FBF8F6 on the board). Dark themes use their
+   raised surface. */
+:root {
+  --colony-dock-head: 24 38.5% 97.45%;
+}
+
+:root.dark,
+.dark {
+  --colony-dock-head: var(--colony-surface-raised);
+}
+
 @layer components {
   .colony-work-area-layout {
     position: relative;
@@ -21,8 +33,8 @@
 
   .colony-work-area-layout[data-open="true"][data-overlay="false"] {
     grid-template-columns:
-      minmax(21.25rem, 1fr) 5px
-      minmax(23.75rem, var(--colony-work-area-size, 64%));
+      minmax(21.25rem, 1fr) 1px
+      minmax(23.75rem, var(--colony-work-area-size, 68.85%));
   }
 
   .colony-work-area-conversation {
@@ -38,14 +50,15 @@
     z-index: 3;
     cursor: col-resize;
     touch-action: none;
-    background: hsl(var(--sidebar, var(--background)));
-    border-inline: 1px solid hsl(var(--border));
+    background: hsl(var(--colony-border));
   }
 
+  /* A wider grab area than the one pixel line that is drawn. */
   .colony-work-area-divider::after {
     content: "";
     position: absolute;
-    inset: 0;
+    inset-block: 0;
+    inset-inline: -0.25rem;
   }
 
   .colony-work-area-divider:hover::after,
@@ -64,7 +77,7 @@
     min-width: 0;
     flex-direction: column;
     overflow: hidden;
-    background: hsl(var(--background));
+    background: hsl(var(--colony-dock-head));
   }
 
   .colony-work-area-layout[data-overlay="true"] > .colony-work-area-panel {
@@ -80,21 +93,21 @@
   .colony-work-area-head {
     display: flex;
     flex: none;
-    height: 2.6875rem;
-    min-height: 2.6875rem;
-    align-items: center;
-    gap: 0.375rem;
-    padding-inline: 0.375rem;
-    border-bottom: 1px solid hsl(var(--border));
-    background: hsl(var(--sidebar, var(--background)));
+    height: 4.5rem;
+    box-sizing: border-box;
+    align-items: flex-end;
+    gap: 0.25rem;
+    padding: 0 0.75rem 0 0.875rem;
+    border-bottom: 1px solid hsl(var(--colony-border));
+    background: hsl(var(--colony-dock-head));
   }
 
   .colony-work-area-tabs {
     display: flex;
     min-width: 0;
     flex: 1;
-    align-items: center;
-    gap: 0.1875rem;
+    align-items: flex-end;
+    gap: 0.25rem;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -103,50 +116,184 @@
     display: none;
   }
 
-  .colony-work-area-tab {
+  .colony-work-area-tablist {
     display: flex;
-    min-width: 5.625rem;
-    max-width: 12.5rem;
-    flex-shrink: 0;
+    flex: none;
+    align-items: flex-end;
+    gap: 0.25rem;
+  }
+
+  .colony-work-area-tab {
+    position: relative;
+    display: flex;
+    flex: none;
     align-items: center;
-    border: 1px solid transparent;
-    border-radius: 0.4375rem;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding: 0 0.625rem 0 0.875rem;
+    border-radius: 0.75rem 0.75rem 0 0;
+    color: hsl(var(--colony-fg-secondary));
+    font-size: calc(15 * var(--colony-px));
+    font-weight: 600;
+  }
+
+  .colony-work-area-tab:hover {
+    background: hsl(var(--colony-fg) / 0.05);
   }
 
   .colony-work-area-tab[data-selected="true"] {
-    border-color: hsl(var(--border));
-    background: hsl(var(--background));
+    height: 2.875rem;
+    padding: 0 0.375rem 0 0.875rem;
+    background: var(--colony-pop);
+    box-shadow:
+      0 -1px 0 hsl(var(--colony-border)),
+      1px 0 0 hsl(var(--colony-border)),
+      -1px 0 0 hsl(var(--colony-border));
+    color: hsl(var(--colony-fg));
+    font-weight: 800;
   }
 
   .colony-work-area-tab-select {
     display: flex;
     min-width: 0;
-    flex: 1;
     align-items: center;
-    gap: 0.4375rem;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
     border: 0;
-    border-radius: 0.375rem;
     background: none;
-    padding: 0.4375rem 0.3125rem 0.4375rem 0.5rem;
-    color: hsl(var(--muted-foreground));
-    font-size: var(--text-sm);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
   }
 
-  .colony-work-area-tab[data-selected="true"] .colony-work-area-tab-select {
-    color: hsl(var(--foreground));
+  /* The whole tab selects it, not just the label. */
+  .colony-work-area-tab-select::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
   }
 
   .colony-work-area-tab-select > span {
+    max-width: 20rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .colony-work-area-tab-select svg,
-  .colony-work-area-icon-button svg {
-    width: 0.875rem;
-    height: 0.875rem;
+  .colony-work-area-tab-select svg {
+    width: 1rem;
+    height: 1rem;
     flex: none;
+  }
+
+  .colony-work-area-tab-count {
+    position: relative;
+    z-index: 1;
+    color: hsl(var(--colony-accent-ink));
+    font-size: calc(12.5 * var(--colony-px));
+    font-weight: 800;
+    pointer-events: none;
+  }
+
+  .colony-work-area-tab-close {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    place-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0.5rem;
+    background: none;
+    color: hsl(var(--colony-fg-secondary));
+    cursor: pointer;
+  }
+
+  .colony-work-area-tab-close svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+  }
+
+  .colony-work-area-tab-close:hover,
+  .colony-work-area-tab-close:focus-visible {
+    background: hsl(var(--colony-fg) / 0.07);
+    color: hsl(var(--colony-fg));
+  }
+
+  /* Only the open tab shows its close control, as on the board; the others
+     show theirs over their right edge while pointed at or focused. */
+  .colony-work-area-tab:not([data-selected="true"])
+  .colony-work-area-tab-close {
+    position: absolute;
+    top: 50%;
+    right: 0.1875rem;
+    transform: translateY(-50%);
+    background: hsl(var(--colony-dock-head));
+    opacity: 0;
+  }
+
+  .colony-work-area-tab:not([data-selected="true"]):hover
+    .colony-work-area-tab-close,
+  .colony-work-area-tab:not([data-selected="true"]):focus-within
+    .colony-work-area-tab-close {
+    opacity: 1;
+  }
+
+  .colony-work-area-tab-select:focus-visible,
+  .colony-work-area-icon-button:focus-visible,
+  .colony-work-area-add:focus-visible,
+  .colony-work-area-close:focus-visible,
+  .colony-work-area-tab-close:focus-visible {
+    outline: 2px solid hsl(var(--colony-focus));
+    outline-offset: -2px;
+  }
+
+  .colony-work-area-tab-select:focus-visible::after {
+    outline: 2px solid hsl(var(--colony-focus));
+    outline-offset: -2px;
+  }
+
+  .colony-work-area-tab-select:focus-visible {
+    outline: none;
+  }
+
+  .colony-work-area-add,
+  .colony-work-area-close {
+    display: grid;
+    width: 2.375rem;
+    height: 2.375rem;
+    flex: none;
+    place-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0.625rem;
+    background: none;
+    color: hsl(var(--colony-fg-secondary));
+    cursor: pointer;
+  }
+
+  .colony-work-area-add {
+    margin: 0 0 0.25rem 0.125rem;
+  }
+
+  .colony-work-area-close {
+    margin-bottom: 1.0625rem;
+  }
+
+  .colony-work-area-add svg,
+  .colony-work-area-close svg {
+    width: 1.0625rem;
+    height: 1.0625rem;
+  }
+
+  .colony-work-area-add:hover,
+  .colony-work-area-close:hover {
+    background: hsl(var(--colony-track));
+    color: hsl(var(--colony-fg));
   }
 
   .colony-work-area-icon-button {
@@ -161,22 +308,22 @@
     color: hsl(var(--muted-foreground));
   }
 
+  .colony-work-area-icon-button svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: none;
+  }
+
   .colony-work-area-icon-button:hover,
   .colony-work-area-icon-button:focus-visible {
     background: hsl(var(--foreground) / 0.06);
     color: hsl(var(--foreground));
   }
 
-  .colony-work-area-tab-select:focus-visible,
-  .colony-work-area-icon-button:focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: -2px;
-  }
-
   .colony-work-area-actions {
     display: flex;
     flex: none;
-    align-items: center;
+    align-items: flex-end;
   }
 
   .colony-work-area-body {
@@ -186,6 +333,7 @@
     min-width: 0;
     flex: 1;
     flex-direction: column;
+    background: var(--colony-pop);
   }
 
   .colony-work-area-tabpanel {
@@ -256,6 +404,338 @@
   .colony-work-area-choice svg {
     width: 0.9375rem;
     height: 0.9375rem;
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------- file reader -- */
+
+  .colony-doc-reader {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    background: var(--colony-pop);
+  }
+
+  .colony-doc-head {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 1.75rem;
+    border-bottom: 1px solid hsl(var(--colony-border));
+  }
+
+  .colony-doc-back {
+    display: inline-flex;
+    height: 2.25rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.625rem;
+    border: 0;
+    border-radius: 0.625rem;
+    background: hsl(var(--colony-track));
+    color: hsl(var(--colony-fg));
+    cursor: pointer;
+    font-size: calc(14 * var(--colony-px));
+    font-weight: 700;
+  }
+
+  .colony-doc-back:hover {
+    background: hsl(var(--colony-border));
+  }
+
+  .colony-doc-back:focus-visible {
+    outline: 2px solid hsl(var(--colony-focus));
+    outline-offset: 2px;
+  }
+
+  .colony-doc-back svg {
+    width: 0.9375rem;
+    height: 0.9375rem;
+  }
+
+  .colony-doc-path,
+  .colony-doc-author {
+    margin: 0;
+    color: hsl(var(--colony-muted));
+    font-size: calc(14 * var(--colony-px));
+    font-weight: 600;
+  }
+
+  .colony-doc-path {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .colony-doc-author {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
+  .colony-doc-scroll {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+  }
+
+  .colony-doc-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1.75rem;
+    color: hsl(var(--colony-muted));
+    font-size: calc(15 * var(--colony-px));
+  }
+
+  .colony-doc-text {
+    margin: 0;
+    padding: 2rem 1.75rem 3rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: calc(14 * var(--colony-px));
+  }
+
+  .colony-doc {
+    box-sizing: content-box;
+    display: flex;
+    max-width: 45rem;
+    flex-direction: column;
+    gap: 1.125rem;
+    padding: 2rem 1.75rem 3rem;
+    overflow-wrap: anywhere;
+    color: hsl(var(--colony-fg));
+  }
+
+  .colony-doc > * {
+    margin: 0;
+  }
+
+  .colony-doc h1 {
+    font-size: calc(34 * var(--colony-px));
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+  }
+
+  .colony-doc h2,
+  .colony-doc h3,
+  .colony-doc h4 {
+    margin-top: 0.625rem;
+    font-size: calc(21 * var(--colony-px));
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    line-height: normal;
+  }
+
+  .colony-doc p {
+    margin: 0;
+    font-size: calc(17 * var(--colony-px));
+    line-height: 1.65;
+  }
+
+  .colony-doc h1 + p {
+    color: hsl(var(--colony-fg-secondary));
+    line-height: 1.6;
+  }
+
+  .colony-doc ul,
+  .colony-doc ol {
+    display: flex;
+    margin: 0;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding-left: 1.375rem;
+    font-size: calc(17 * var(--colony-px));
+    line-height: 1.6;
+  }
+
+  .colony-doc ul {
+    list-style: disc;
+  }
+
+  .colony-doc ol {
+    list-style: decimal;
+  }
+
+  .colony-doc pre {
+    margin: 0;
+    padding: 0.75rem;
+    overflow: auto;
+    border-radius: 0.5rem;
+    background: hsl(var(--colony-surface-raised));
+  }
+
+  .colony-doc code {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.9em;
+  }
+
+  .colony-doc table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .colony-doc td,
+  .colony-doc th {
+    padding: 0.5rem;
+    border: 1px solid hsl(var(--colony-border));
+    text-align: left;
+  }
+
+  /* A section headed "Open questions". */
+  .colony-doc-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.125rem 1.25rem;
+    border-radius: 1rem;
+    background: hsl(var(--colony-wash));
+  }
+
+  .colony-doc-callout > * {
+    margin: 0;
+  }
+
+  .colony-doc .colony-doc-callout :is(h1, h2, h3, h4) {
+    margin: 0;
+    color: hsl(var(--colony-muted));
+    font-size: calc(13 * var(--colony-px));
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .colony-doc-callout p {
+    font-size: calc(16.5 * var(--colony-px));
+    line-height: 1.55;
+  }
+
+  /* Inline code in a heading is a status chip. */
+  .colony-doc-chip {
+    display: inline;
+    padding: 3px 0.625rem;
+    border-radius: 999px;
+    background: hsl(var(--colony-idle-bg));
+    color: hsl(var(--colony-fg-secondary));
+    font-size: calc(14 * var(--colony-px));
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: normal;
+    vertical-align: middle;
+  }
+
+  .colony-doc-chip[data-tone="ok"] {
+    background: hsl(var(--colony-success-bg));
+    color: hsl(var(--colony-success));
+  }
+
+  .colony-doc-chip[data-tone="need"] {
+    background: hsl(var(--colony-need-bg));
+    color: hsl(var(--colony-need));
+  }
+
+  .colony-doc-chip[data-tone="bad"] {
+    background: hsl(var(--colony-danger-bg));
+    color: hsl(var(--colony-danger));
+  }
+
+  /* -------------------------------------------------- message file card -- */
+
+  .colony-file-card {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    align-self: flex-start;
+    gap: 0.75rem;
+    box-sizing: border-box;
+    padding: 0.625rem 0.875rem 0.625rem 0.625rem;
+    border-radius: 0.875rem;
+    background: var(--colony-pop);
+    box-shadow: 0 0 0 1px hsl(var(--colony-border));
+    color: hsl(var(--colony-fg));
+    text-decoration: none;
+  }
+
+  .colony-file-card:hover {
+    box-shadow: 0 0 0 1px hsl(var(--colony-border-strong));
+  }
+
+  .colony-file-card:focus-visible {
+    outline: 2px solid hsl(var(--colony-focus));
+    outline-offset: 2px;
+  }
+
+  .colony-file-card-icon {
+    display: grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: none;
+    place-items: center;
+    border-radius: 0.625rem;
+    background: hsl(var(--colony-wash));
+    color: hsl(var(--colony-fg-secondary));
+  }
+
+  .colony-file-card-icon svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .colony-file-card-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .colony-file-card-name {
+    font-size: calc(15 * var(--colony-px));
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+
+  .colony-file-card-hint {
+    color: hsl(var(--colony-muted));
+    font-size: calc(13.5 * var(--colony-px));
+    font-weight: 600;
+  }
+
+  /* While its file is open in the work area the card is the lilac pill. */
+  .colony-file-card[data-active="true"] {
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    background: hsl(var(--colony-accent-soft));
+    box-shadow: inset 0 0 0 1.5px hsl(256 65.5% 88.6%);
+  }
+
+  .colony-file-card[data-active="true"] .colony-file-card-icon {
+    width: auto;
+    height: auto;
+    background: none;
+    color: hsl(var(--colony-accent-ink));
+  }
+
+  .colony-file-card[data-active="true"] .colony-file-card-icon svg {
+    width: 1.0625rem;
+    height: 1.0625rem;
+  }
+
+  .colony-file-card[data-active="true"] .colony-file-card-name {
+    font-size: calc(14.5 * var(--colony-px));
+  }
+
+  .colony-file-card[data-active="true"] .colony-file-card-hint {
+    color: hsl(var(--colony-accent-ink));
+    font-size: calc(13 * var(--colony-px));
+    font-weight: 700;
   }
 }
 

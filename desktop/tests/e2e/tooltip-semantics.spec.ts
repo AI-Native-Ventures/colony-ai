@@ -78,7 +78,10 @@ for (const theme of THEMES) {
     await expectPopoverSurface(simpleTooltip);
 
     await page.mouse.move(0, 0);
-    await page.getByTestId("channel-intro-action-create-agent").click();
+    // The intro action cards are gone; Add agents lives in the members dialog.
+    await page.getByTestId("channel-members-trigger").click();
+    await page.getByTestId("members-sidebar-agent-actions").click();
+    await page.getByTestId("members-sidebar-add-agents").click();
     const dialog = page.getByTestId("add-channel-bot-dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Contrast Crew" }).hover();
@@ -114,12 +117,9 @@ for (const theme of THEMES) {
     await page.goto("/");
     await page.getByTestId("channel-general").click();
     const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
-    const owner = "a".repeat(64);
-    const issueId = "b".repeat(64);
     const links = [
       `buzz://channel/${channelId}`,
       `buzz://message?channel=${channelId}&id=mock-general-welcome`,
-      `buzz://issue?id=${issueId}&owner=${owner}&d=buzz-world`,
     ].join(" ");
     const composer = page.getByTestId("message-input");
     await composer.evaluate((element, text) => {
@@ -135,7 +135,7 @@ for (const theme of THEMES) {
     }, links);
 
     const composerChips = composer.locator('[data-composer-buzz-link=""]');
-    await expect(composerChips).toHaveCount(3);
+    await expect(composerChips).toHaveCount(2);
     await page.getByTestId("send-message").click();
 
     const row = page.getByTestId("message-row").last();
@@ -148,13 +148,6 @@ for (const theme of THEMES) {
     await expectMutedSupportingText(
       row.getByRole("button", { name: "Open message in channel general" }),
       /#general · .+ · (just now|\d+[mhdw] ago)/,
-    );
-    await page.mouse.move(0, 0);
-    await expectMutedSupportingText(
-      row.getByRole("button", {
-        name: /Open issue .* in repository buzz-world/,
-      }),
-      "Issue · buzz-world",
     );
   });
 }

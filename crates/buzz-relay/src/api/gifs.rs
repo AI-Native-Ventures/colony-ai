@@ -118,7 +118,7 @@ fn klipy_share_request(
         .json(&serde_json::json!({ "customer_id": request.customer_id })))
 }
 
-async fn authenticate(
+pub(super) async fn authenticate(
     state: &Arc<AppState>,
     headers: &HeaderMap,
     path: &str,

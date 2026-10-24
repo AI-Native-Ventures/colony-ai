@@ -1,6 +1,7 @@
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { cn } from "@/shared/lib/cn";
 
 export type DirectMessageIntroParticipant = {
   avatarUrl: string | null;
@@ -32,28 +33,27 @@ export function DirectMessageIntroAvatarStack({
           role={participant.isAgent ? "bot" : undefined}
         >
           <span
-            className={index > 0 ? "-ml-5" : ""}
+            className={index > 0 ? "-ml-3 mt-[3px]" : ""}
             data-testid="message-dm-intro-avatar-stack-participant"
             style={{ zIndex: index + 1 }}
           >
-            <UserAvatar
-              accent={participant.isAgent === true}
+            <ProfileAvatar
               avatarUrl={participant.avatarUrl}
-              className={
-                index < stackItemCount - 1
-                  ? "h-[60px] w-[60px] text-base ring-2 ring-background"
-                  : "h-[60px] w-[60px] text-base"
-              }
-              displayName={participant.displayName}
+              className={cn(
+                participant.isAgent
+                  ? "size-[calc(64*var(--colony-px))] text-2xl"
+                  : "size-[calc(58*var(--colony-px))] text-xl",
+                index > 0 && "ring-[3px] ring-colony-surface",
+              )}
+              label={participant.displayName}
               shape={participant.isAgent ? "squircle" : "circle"}
-              size="md"
             />
           </span>
         </UserProfilePopover>
       ))}
       {hiddenCount > 0 ? (
         <div
-          className={visibleParticipants.length > 0 ? "-ml-5" : ""}
+          className={visibleParticipants.length > 0 ? "-ml-3" : ""}
           data-testid="message-dm-intro-avatar-stack-more"
           style={{ zIndex: stackItemCount }}
         >
@@ -63,5 +63,33 @@ export function DirectMessageIntroAvatarStack({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The start of a direct message: who it is with and where it begins. */
+export function DirectMessageIntroBlock({
+  className,
+  displayName,
+  participants,
+}: {
+  className?: string;
+  displayName: string;
+  participants: DirectMessageIntroParticipant[];
+}) {
+  return (
+    <section
+      aria-label="Start of conversation"
+      className={cn(
+        "flex w-full flex-col items-start gap-3 text-left",
+        className,
+      )}
+      data-testid="message-dm-intro"
+    >
+      <DirectMessageIntroAvatarStack participants={participants} />
+      <h2 className="c3c-dm-intro-title max-w-full truncate">{displayName}</h2>
+      <p className="c3c-dm-intro-text max-w-full">
+        This is the beginning of your direct message with {displayName}.
+      </p>
+    </section>
   );
 }

@@ -40,13 +40,14 @@ async function firstNavButtonX(page: import("@playwright/test").Page) {
 
 // The chrome buttons are styled to visually match the fixed-size native
 // controls, so their box must not follow the rem text scale either. The
-// back/forward history buttons are 24px wide and 28px high.
-const HISTORY_BUTTON_WIDTH = 24;
+// back/forward history buttons are 36px square in the Colony 3.0 top bar.
+const HISTORY_BUTTON_WIDTH = 36;
 
 // The grabber/drag strip hosting the buttons must hold its height too —
 // otherwise Cmd+ balloons the bar around the fixed-size buttons and Cmd-
 // collapses it.
-const TOP_CHROME_BAR_HEIGHT = 40;
+// 64px of content plus the 1px bottom border (Colony 3.0 top bar).
+const TOP_CHROME_BAR_HEIGHT = 65;
 
 async function expectTopChromeFixedHeight(
   page: import("@playwright/test").Page,
@@ -61,7 +62,10 @@ async function expectTopChromeFixedHeight(
 async function expectNavButtonsFixedSize(
   page: import("@playwright/test").Page,
 ) {
-  const buttons = page.locator('[data-testid="app-top-chrome"] button:visible');
+  // The bar's own history buttons; a screen's actions sit inside its content slot.
+  const buttons = page.locator(
+    '[data-testid="app-top-chrome"] > button:visible',
+  );
   const count = await buttons.count();
   expect(count).toBeGreaterThan(0);
   for (let i = 0; i < count; i += 1) {
@@ -71,7 +75,7 @@ async function expectNavButtonsFixedSize(
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
     expect(box?.width ?? 0).toBe(HISTORY_BUTTON_WIDTH);
-    expect(box?.height ?? 0).toBe(28);
+    expect(box?.height ?? 0).toBe(36);
   }
 }
 
@@ -104,7 +108,7 @@ test.describe("top chrome macOS traffic-light clearance under text zoom", () => 
   }) => {
     await spoofMacPlatform(page);
     await installMockBridge(page);
-    await page.goto("/");
+    await page.goto("/#/today");
 
     // Lock the native and webview placements together: removing this explicit
     // Tauri inset or shifting the nav row regresses the macOS chrome alignment.
@@ -127,7 +131,7 @@ test.describe("top chrome macOS traffic-light clearance under text zoom", () => 
     // fixed-position native controls.
     await seedTextScale(page, 0.75);
     await installMockBridge(page);
-    await page.goto("/");
+    await page.goto("/#/today");
 
     // Confirm the zoomed-out scale reached the root.
     await expectRootFontSize(page, "12px");
@@ -145,7 +149,7 @@ test.describe("top chrome macOS traffic-light clearance under text zoom", () => 
     // here) grew visibly taller than the fixed-size traffic lights.
     await seedTextScale(page, 1.5);
     await installMockBridge(page);
-    await page.goto("/");
+    await page.goto("/#/today");
 
     await expectRootFontSize(page, "24px");
 

@@ -5,14 +5,6 @@ import type { EditorView } from "@tiptap/pm/view";
 import { find as findLinks } from "linkifyjs";
 
 import {
-  buildGoalLink,
-  buildIssueLink,
-  buildProjectLink,
-  buildPullRequestLink,
-  buildRepoLink,
-  parseEntityLink,
-} from "@/shared/lib/entityLink";
-import {
   inlineChipIconClasses,
   inlineChipLeadingEnd,
   type InlineChipIconKind,
@@ -20,6 +12,7 @@ import {
   truncateInlineChipLabel,
   WRAPPING_INLINE_CHIP_CLASSES,
 } from "@/shared/ui/mentionChip";
+import { buildLeadLink, parseEntityLink } from "@/shared/lib/entityLink";
 import { buildChannelLink, parseChannelLink } from "./channelLink";
 import { getMessageLinkLabel } from "./messageLinkLabel";
 import { buildMessageLink, parseMessageLink } from "./messageLink";
@@ -36,9 +29,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -82,43 +75,21 @@ export function resolveComposerMessageLinkAttributes(
   }
 
   const entity = parseEntityLink(href);
-  if (!entity.ok) return null;
-  switch (entity.value.type) {
-    case "goal":
-      return {
-        channelName: "",
-        href: buildGoalLink(entity.value.id),
-      };
-    case "repo":
-      return {
-        channelName: "",
-        href: buildRepoLink(entity.value),
-      };
-    case "project":
-      return {
-        channelName: "",
-        href: buildProjectLink(entity.value),
-      };
-    case "pr":
-      return {
-        channelName: "",
-        href: buildPullRequestLink(entity.value),
-      };
-    case "issue":
-      return {
-        channelName: "",
-        href: buildIssueLink(entity.value),
-      };
+  if (entity.ok && entity.value.type === "lead") {
+    return { channelName: "", href: buildLeadLink(entity.value.id) };
   }
+
+  return null;
 }
 
 function unwrapExactBuzzLink(text: string): string | null {
   const href =
     text.startsWith("<") && text.endsWith(">") ? text.slice(1, -1) : text;
   if (!href || /\s/.test(href)) return null;
+  const entity = parseEntityLink(href);
   return parseMessageLink(href).ok ||
     parseChannelLink(href).ok ||
-    parseEntityLink(href).ok
+    (entity.ok && entity.value.type === "lead")
     ? href
     : null;
 }
@@ -387,43 +358,26 @@ function composerLinkPresentation(
   }
 
   const entity = parseEntityLink(href);
-  if (!entity.ok) {
+  if (entity.ok && entity.value.type === "lead") {
+    // A lead chip shows the lead's name when the picker supplied one (the
+    // draft keeps only the link, so a restored draft falls back to the id).
+    const shortId = entity.value.id.slice(0, 8);
+    const leadName = channelName.trim();
     return {
-      ariaLabel: "Colony link",
-      channelName: "",
-      dataAttributes: {},
-      icon: "message",
-      label: "Colony link",
+      ariaLabel: leadName ? `Open lead ${leadName}` : `Open lead ${shortId}`,
+      channelName: leadName,
+      dataAttributes: { "data-buzz-link-kind": "lead" },
+      icon: "lead",
+      label: leadName || `Lead ${shortId}`,
     };
   }
 
-  const shortId =
-    entity.value.type === "repo" || entity.value.type === "project"
-      ? ""
-      : entity.value.id.slice(0, 8);
-  if (entity.value.type === "goal") {
-    return {
-      ariaLabel: `Open goal ${shortId}`,
-      channelName: "",
-      dataAttributes: { "data-buzz-link-kind": "goal" },
-      icon: "goal",
-      label: `Goal ${shortId}`,
-    };
-  }
   return {
-    ariaLabel:
-      entity.value.type === "repo"
-        ? `Open repository ${entity.value.dtag}`
-        : entity.value.type === "project"
-          ? `Open project ${entity.value.dtag}`
-          : `Open ${entity.value.type === "pr" ? "pull request" : "issue"} ${shortId} in repository ${entity.value.dtag}`,
+    ariaLabel: "Colony link",
     channelName: "",
-    dataAttributes: { "data-buzz-link-kind": entity.value.type },
-    icon: entity.value.type,
-    // Entity chips use only stable link-derived identity. Fetched metadata is
-    // reserved for sent-message tooltips/cards, so every composer chip keeps the
-    // same label after send and throughout metadata resolution.
-    label: entity.value.dtag,
+    dataAttributes: {},
+    icon: "message",
+    label: "Colony link",
   };
 }
 

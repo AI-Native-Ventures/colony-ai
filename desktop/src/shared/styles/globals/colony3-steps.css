@@ -1,0 +1,92 @@
+/*
+ * Colony 3.0 step tracker (`ColonySteps`): the Hire and Ask boards.
+ * 30px circles, 2px connectors, 15px labels.
+ */
+
+.colony-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.colony-steps[data-align="center"] {
+  justify-content: center;
+}
+
+.colony-steps[data-align="end"] {
+  margin-left: auto;
+}
+
+.colony-step {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-step[data-state="active"] {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.colony-step[data-state="done"] {
+  color: hsl(var(--colony-fg));
+  font-weight: 700;
+}
+
+.colony-step-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.colony-step-marker {
+  display: grid;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px hsl(var(--colony-border-strong));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-step[data-state="active"] .colony-step-marker {
+  background: hsl(var(--colony-fg));
+  box-shadow: none;
+  color: hsl(var(--colony-surface));
+}
+
+.colony-step[data-state="done"] .colony-step-marker {
+  background: hsl(var(--colony-success-bg));
+  box-shadow: none;
+  color: hsl(var(--colony-success));
+}
+
+.colony-step-connector {
+  width: 2.25rem;
+  height: 0.125rem;
+  border-radius: 0.125rem;
+  background: hsl(var(--colony-border-strong));
+}
+
+.colony-steps[data-connector="32"] .colony-step-connector {
+  width: 2rem;
+}
+
+.colony-step-connector[data-done="true"] {
+  background: hsl(var(--colony-success));
+}

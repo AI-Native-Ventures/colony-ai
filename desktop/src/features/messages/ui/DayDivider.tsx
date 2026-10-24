@@ -14,19 +14,15 @@ export function DayDivider({
     <section
       aria-label={label}
       className={cn(
-        sticky
-          ? cn(
-              "pointer-events-none sticky z-20 flex justify-center",
-              channelChrome.stickyTimelineTop,
-            )
-          : "pointer-events-none flex justify-center",
+        "pointer-events-none flex items-center gap-3.5",
+        sticky && cn("sticky z-20", channelChrome.stickyTimelineTop),
       )}
       data-testid={testId}
       data-day-label={label}
     >
-      <p className="relative z-10 shrink-0 rounded-full border border-border/70 bg-background px-2.5 py-1 text-2xs font-medium tracking-[0.02em] text-muted-foreground/70">
-        {label}
-      </p>
+      <span aria-hidden className="h-px flex-1 bg-colony-border" />
+      <p className="c3c-day-label relative z-10 shrink-0">{label}</p>
+      <span aria-hidden className="h-px flex-1 bg-colony-border" />
     </section>
   );
 }

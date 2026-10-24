@@ -40,6 +40,7 @@ export function profileLookupsEqual(
       prev.name !== next.name ||
       prev.avatarUrl !== next.avatarUrl ||
       prev.nip05Handle !== next.nip05Handle ||
+      prev.jobTitle !== next.jobTitle ||
       prev.ownerPubkey !== next.ownerPubkey ||
       prev.isAgent !== next.isAgent
     ) {
@@ -64,7 +65,8 @@ function getResolvedProfile(
 export function mergeCurrentProfileIntoLookup(
   profiles: UserProfileLookup | undefined,
   currentProfile:
-    | Pick<Profile, "pubkey" | "displayName" | "avatarUrl" | "nip05Handle">
+    | (Pick<Profile, "pubkey" | "displayName" | "avatarUrl" | "nip05Handle"> &
+        Partial<Pick<Profile, "jobTitle">>)
     | null
     | undefined,
 ) {
@@ -81,6 +83,14 @@ export function mergeCurrentProfileIntoLookup(
       name: profiles?.[normalizePubkey(currentProfile.pubkey)]?.name ?? null,
       avatarUrl: currentProfile.avatarUrl,
       nip05Handle: currentProfile.nip05Handle,
+      ...(currentProfile.jobTitle ||
+      profiles?.[normalizePubkey(currentProfile.pubkey)]?.jobTitle
+        ? {
+            jobTitle:
+              currentProfile.jobTitle ??
+              profiles?.[normalizePubkey(currentProfile.pubkey)]?.jobTitle,
+          }
+        : {}),
       isAgent: profiles?.[normalizePubkey(currentProfile.pubkey)]?.isAgent,
       ownerPubkey:
         profiles?.[normalizePubkey(currentProfile.pubkey)]?.ownerPubkey ?? null,

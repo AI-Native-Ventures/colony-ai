@@ -12,7 +12,7 @@ function advancedEntry(page: Page) {
 
 async function openCreateAccount(page: Page) {
   await startR17AccountAuth(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
 }
 
@@ -21,13 +21,13 @@ async function openSignIn(page: Page) {
   await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
 }
 
+// The designed advanced screen shows every way in on one page.
 async function expectAdvancedScreens(page: Page) {
   await expect(
-    page.getByRole("button", { name: "Create a Colony sign-in" }),
+    page.getByRole("heading", { name: "Advanced sign-in options" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Use a sign-in I already have" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("advanced-create")).toBeVisible();
+  await expect(page.getByTestId("advanced-import")).toBeVisible();
 }
 
 async function tabTo(page: Page, target: ReturnType<typeof advancedEntry>) {
@@ -50,8 +50,9 @@ test("Sign in offers Advanced sign-in options that open the advanced screens", a
   await advancedEntry(page).click();
   await expectAdvancedScreens(page);
 
+  // Back returns to the screen the person came from.
   await page.getByTestId("account-auth-back-from-advanced").click();
-  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
 });
 
 test("Create account offers Advanced sign-in options that open the advanced screens", async ({
@@ -62,6 +63,9 @@ test("Create account offers Advanced sign-in options that open the advanced scre
 
   await advancedEntry(page).click();
   await expectAdvancedScreens(page);
+
+  await page.getByTestId("account-auth-back-from-advanced").click();
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
 });
 
 test("the advanced entry is reachable and operable from the keyboard", async ({
@@ -75,7 +79,7 @@ test("the advanced entry is reachable and operable from the keyboard", async ({
   await expectAdvancedScreens(page);
 
   await page.getByTestId("account-auth-back-from-advanced").click();
-  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await tabTo(page, advancedEntry(page));
   await page.keyboard.press("Space");
   await expectAdvancedScreens(page);
@@ -107,20 +111,26 @@ async function openAdvancedFromSignIn(page: Page) {
   await expectAdvancedScreens(page);
 }
 
-async function connectAiLater(page: Page) {
-  await expect(
-    page.getByRole("heading", { name: "Connect Colony to AI" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Set up later" }).click();
+async function nameThenPhoto(page: Page) {
+  // After an advanced sign-in the order is name and photo, business, connect.
+  await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
+  await page.getByTestId("onboarding-display-name").fill("Lerato Molefe");
+  await page.getByTestId("onboarding-next").click();
+  await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
+  await page.getByTestId("onboarding-next").click();
 }
 
-test("an existing key continues through AI setup to the community choice", async ({
+test("an existing key continues to name and photo, then the business form", async ({
   page,
 }) => {
   await openAdvancedFromSignIn(page);
-  await page
-    .getByRole("button", { name: "Use a sign-in I already have" })
-    .click();
+  // The business list is read for the imported key, not the mock account's.
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: { owner_pubkey: TEST_IDENTITIES.tyler.pubkey, communities: [] },
+    }),
+  );
+  await page.getByTestId("advanced-tab-key").click();
   await page
     .getByTestId("nostr-import-nsec-input")
     .fill(
@@ -130,26 +140,22 @@ test("an existing key continues through AI setup to the community choice", async
     );
   await page.getByTestId("nostr-import-submit").click();
 
-  await connectAiLater(page);
-  await expect(
-    page.getByRole("heading", { name: "Join or create a community" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("community-choice-join")).toBeVisible();
-  await expect(page.getByTestId("community-choice-create")).toBeVisible();
-  await expect(page.getByTestId("community-choice-existing")).toBeVisible();
+  await nameThenPhoto(page);
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
 });
 
-test("a new sign-in continues through backup and AI setup, then opens a new community", async ({
+test("a new sign-in continues to name and photo, business, then Connect", async ({
   page,
 }) => {
   await openAdvancedFromSignIn(page);
-  await page.getByRole("button", { name: "Create a Colony sign-in" }).click();
-  await page.getByTestId("onboarding-create-private-key").click();
-  await page.getByTestId("onboarding-next").click();
+  await page.getByTestId("advanced-create").click();
 
-  await connectAiLater(page);
-  await page.getByTestId("community-choice-create").click();
-  await page.getByLabel("Community address").fill("north-star");
-  await page.getByRole("button", { name: "Create community" }).click();
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await nameThenPhoto(page);
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await page.getByLabel("Business name").fill("North Star");
+  await page
+    .getByLabel("What does your business do?")
+    .fill("An independent design studio.");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 });

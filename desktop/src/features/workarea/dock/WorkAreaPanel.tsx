@@ -64,6 +64,7 @@ export function WorkAreaPanel({
       <header className="colony-work-area-head" onKeyDown={onHeaderKeyDown}>
         <WorkAreaTabStrip
           activeTabId={activeTabId}
+          channelId={channelId}
           onClose={onCloseTab}
           onOpenKind={onOpenKind}
           onSelect={onSelect}
@@ -72,12 +73,12 @@ export function WorkAreaPanel({
         <div className="colony-work-area-actions">
           <button
             aria-label="Close work area"
-            className="colony-work-area-icon-button"
+            className="colony-work-area-close"
             data-testid="work-area-close"
             onClick={onClose}
             type="button"
           >
-            <X aria-hidden="true" />
+            <X aria-hidden="true" strokeWidth={2.4} />
           </button>
         </div>
       </header>
@@ -87,8 +88,8 @@ export function WorkAreaPanel({
             <h2>Keep the work beside the conversation.</h2>
             <p>
               {isBrowserHostAvailable()
-                ? "Open a page, a terminal or a file, or see this channel's work and knowledge."
-                : "Open a terminal, read a file, or see this channel's work and knowledge."}
+                ? "Open a page, a terminal or a file, or see this channel's knowledge."
+                : "Open a terminal, read a file, or see this channel's knowledge."}
             </p>
             <div className="colony-work-area-choices">
               {listOpenableWorkAreaTabs().map((definition) => {

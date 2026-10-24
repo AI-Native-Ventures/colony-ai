@@ -1,11 +1,5 @@
 import { isMacPlatform } from "@/shared/lib/platform";
 
-export const HUDDLE_SHORTCUT_EVENT = "buzz:huddle-shortcut";
-
-export type HuddleShortcutDetail = {
-  channelId: string;
-};
-
 export type ShortcutCategory =
   | "Navigation"
   | "Messages"
@@ -180,11 +174,11 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "Messages",
   },
   {
-    id: "publish-note",
-    label: "Publish note",
-    description: "Publish a Pulse note",
-    keys: "⌘Enter",
-    keysWindows: "Ctrl+Enter",
+    id: "open-terminal",
+    label: "Colony Term",
+    description: "Open or close Colony Term",
+    keys: "⌘J",
+    keysWindows: "Ctrl+J",
     category: "Messages",
   },
   {
@@ -193,23 +187,6 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: "Close the current dialog or settings",
     keys: "Escape",
     keysWindows: "Escape",
-    category: "Messages",
-  },
-  {
-    id: "toggle-huddle",
-    label: "Start or leave huddle",
-    description:
-      "Start or join a huddle in the current channel; leave when connected",
-    keys: "Ctrl+Shift+Space",
-    keysWindows: "Ctrl+Shift+Space",
-    category: "Messages",
-  },
-  {
-    id: "push-to-talk",
-    label: "Push to talk",
-    description: "Hold to unmute in a huddle",
-    keys: "Ctrl+Space",
-    keysWindows: "Ctrl+Space",
     category: "Messages",
   },
 

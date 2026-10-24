@@ -1,5 +1,6 @@
 import { getAccountAuthClient } from "./accountAuthAdapter";
 import { getProfile, updateProfile } from "@/shared/api/tauriProfiles";
+import { clearPendingProfile, readPendingProfile } from "./pendingProfile";
 
 const SIGNUP_NAME_KEY = "colony-signup-name.v1";
 
@@ -66,6 +67,19 @@ export async function ensureOnboardingProfile(
   );
   if (!isCurrent()) throw new Error("Community setup cancelled.");
   if (profile.hasProfileEvent) return profile;
+  // A name and avatar picked right after an advanced sign-in, before there was
+  // a relay to publish them to.
+  const pending = readPendingProfile(profile.pubkey, dependencies.storage);
+  if (pending?.displayName) {
+    if (!isCurrent()) throw new Error("Community setup cancelled.");
+    const saved = await dependencies.write({
+      displayName: pending.displayName,
+      ...(pending.avatarUrl ? { avatarUrl: pending.avatarUrl } : {}),
+    });
+    // Cleared only after the relay has it, so a failed publish retries.
+    clearPendingProfile(profile.pubkey, dependencies.storage);
+    return saved;
+  }
   const account = await readWithDeadline(
     dependencies.account(),
     dependencies.timeoutMs ?? 10_000,

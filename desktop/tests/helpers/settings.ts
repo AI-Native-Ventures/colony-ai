@@ -4,12 +4,9 @@ type SettingsSection =
   | "profile"
   | "security"
   | "notifications"
-  | "voice"
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "channel-templates"
-  | "compute"
   | "privacy"
   | "appearance"
   | "accessibility"
@@ -17,13 +14,7 @@ type SettingsSection =
   | "people"
   | "shortcuts"
   | "community-members"
-  | "moderation"
-  | "audit"
   | "custom-emoji"
-  | "local-archive"
-  | "archived-records"
-  | "recovery"
-  | "storage"
   | "app"
   | "mobile"
   | "updates"
@@ -36,15 +27,9 @@ const sectionRoute: Record<
   profile: { group: "account", section: "profile" },
   security: { group: "account", section: "security" },
   notifications: { group: "preferences", section: "notifications" },
-  voice: { group: "preferences", section: "voice" },
   agents: { group: "agents-group", section: "agent-defaults" },
   "agent-defaults": { group: "agents-group", section: "agent-defaults" },
   harnesses: { group: "agents-group", section: "harnesses" },
-  "channel-templates": {
-    group: "blocks-templates",
-    section: "channel-templates",
-  },
-  compute: { group: "app-devices", section: "compute" },
   privacy: { group: "app-devices", section: "privacy" },
   appearance: { group: "appearance-group", section: "appearance" },
   accessibility: { group: "appearance-group", section: "accessibility" },
@@ -52,13 +37,7 @@ const sectionRoute: Record<
   people: { group: "business", section: "people" },
   shortcuts: { group: "preferences", section: "shortcuts" },
   "community-members": { group: "business", section: "people" },
-  moderation: { group: "administration", section: "moderation" },
-  audit: { group: "administration", section: "audit" },
   "custom-emoji": { group: "blocks-templates", section: "custom-emoji" },
-  "local-archive": { group: "storage-group", section: "storage" },
-  "archived-records": { group: "storage-group", section: "archived-records" },
-  recovery: { group: "storage-group", section: "recovery" },
-  storage: { group: "storage-group", section: "storage" },
   app: { group: "app-devices", section: "app" },
   mobile: { group: "app-devices", section: "mobile" },
   updates: { group: "app-devices", section: "updates" },
@@ -80,8 +59,9 @@ export async function openSettings(page: Page, section?: SettingsSection) {
   }
 }
 
+/** The footer person opens the Account page, where Change photo lives. */
+/** The Account page carries the photo and its Change photo button itself. */
 export async function openAvatarProfileContext(page: Page) {
-  await page.getByTestId("settings-profile-avatar-context").click();
   await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
 }
 
@@ -94,9 +74,12 @@ export async function selectSettingsSection(
   await groupButton.click();
   await expect(groupButton).toHaveAttribute("aria-pressed", "true");
 
+  // A page with one section has no tab bar.
   const sectionTab = page.getByTestId(`settings-inner-${route.section}`);
-  await sectionTab.click();
-  await expect(sectionTab).toHaveAttribute("aria-selected", "true");
+  if ((await sectionTab.count()) > 0) {
+    await sectionTab.click();
+    await expect(sectionTab).toHaveAttribute("aria-selected", "true");
+  }
   await expect(
     page.getByTestId(`settings-panel-${route.section}`),
   ).toBeVisible();

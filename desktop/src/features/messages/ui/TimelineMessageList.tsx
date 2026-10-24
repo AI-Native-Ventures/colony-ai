@@ -33,7 +33,6 @@ import { UnreadDivider } from "./UnreadDivider";
 import { useTimelineRetention } from "./useTimelineRetention";
 import { useUpwardPaginationWheel } from "./useUpwardPaginationWheel";
 import { useVirtualizedBottomSettle } from "./useVirtualizedBottomSettle";
-import { CompanyWorkTrackingProvider } from "@/features/company-work/companyWorkTrackingContext";
 
 export type TimelineVirtualizerApi = {
   cancelBottomIntent: () => void;
@@ -51,8 +50,6 @@ type TimelineMessageListProps = {
   channelName?: string;
   channelType?: ChannelType | null;
   currentPubkey?: string;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
   /** Event id of the oldest unread top-level message; renders a "New" divider above it. */
   firstUnreadMessageId?: string | null;
   followThreadById?: (rootId: string) => void;
@@ -106,13 +103,13 @@ type TimelineMessageListProps = {
   threadUnreadCounts?: ReadonlyMap<string, number>;
   /** Content rendered as the first virtual row before channel history. */
   leadingContent?: React.ReactNode;
-  /** Hide date boundaries for a huddle's live transcript. */
+  /** Hide date boundaries between message groups. */
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
   /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
-  /** Hide agent access-policy badges in the purpose-built Huddle chat. */
+  /** Hide agent access-policy badges. */
   hideAgentAccessBadges?: boolean;
   /**
    * True when the loaded window provably starts at the channel's beginning.
@@ -137,8 +134,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   firstUnreadMessageId = null,
   followThreadById,
   highlightedMessageId = null,
-  huddleMemberPubkeys,
-  huddleMemberPubkeysPending = false,
   isFollowingThreadById,
   isMessageUnreadById,
   entranceMessageId = null,
@@ -260,8 +255,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               followThreadById={followThreadById}
               footer={messageFooters?.[item.entry.message.id] ?? null}
               highlightedMessageId={highlightedMessageId}
-              huddleMemberPubkeys={huddleMemberPubkeys}
-              huddleMemberPubkeysPending={huddleMemberPubkeysPending}
               hideAgentAccessBadges={hideAgentAccessBadges}
               isContinuation={
                 alwaysShowMessageIdentity ? false : item.isContinuation
@@ -303,8 +296,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       currentPubkey,
       followThreadById,
       highlightedMessageId,
-      huddleMemberPubkeys,
-      huddleMemberPubkeysPending,
       hideAgentAccessBadges,
       isFollowingThreadById,
       isMessageUnreadById,
@@ -331,57 +322,53 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
 
   if (useVirtualizer) {
     return (
-      <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
-        <VirtualizedTimelineRows
-          dayGroups={dayGroups}
-          historyExhausted={historyExhausted}
-          hideDayDividers={hideDayDividers}
-          leadingContent={leadingContent}
-          onAtBottomStateChange={onAtBottomStateChange}
-          onStartReached={onStartReached}
-          onVirtualizerApiChange={onVirtualizerApiChange}
-          onVirtualizerRangeChanged={onVirtualizerRangeChanged}
-          onVirtualizerScrollerChange={onVirtualizerScrollerChange}
-          renderItem={renderItem}
-        />
-      </CompanyWorkTrackingProvider>
+      <VirtualizedTimelineRows
+        dayGroups={dayGroups}
+        historyExhausted={historyExhausted}
+        hideDayDividers={hideDayDividers}
+        leadingContent={leadingContent}
+        onAtBottomStateChange={onAtBottomStateChange}
+        onStartReached={onStartReached}
+        onVirtualizerApiChange={onVirtualizerApiChange}
+        onVirtualizerRangeChanged={onVirtualizerRangeChanged}
+        onVirtualizerScrollerChange={onVirtualizerScrollerChange}
+        renderItem={renderItem}
+      />
     );
   }
 
   return (
-    <CompanyWorkTrackingProvider enabled={channelType === "stream"}>
-      <div className="flex flex-col">
-        {dayGroups.map((group) => (
-          <section
-            className={cn(
-              "relative flex flex-col",
-              !hideDayDividers &&
-                group.headingTimestamp !== null &&
-                "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
-            )}
-            data-day-label={
-              group.headingTimestamp === null
-                ? undefined
-                : formatDayGroupLabel(group.headingTimestamp)
-            }
-            data-testid="message-timeline-day-group"
-            key={group.key}
-          >
-            {hideDayDividers || group.headingTimestamp === null ? null : (
-              <DayDivider
-                label={formatDayGroupLabel(group.headingTimestamp)}
-                sticky={stickyDayDividers}
-              />
-            )}
-            {group.items.map((item) => (
-              <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
-                {renderItem(item)}
-              </TimelineRowShell>
-            ))}
-          </section>
-        ))}
-      </div>
-    </CompanyWorkTrackingProvider>
+    <div className="flex flex-col">
+      {dayGroups.map((group) => (
+        <section
+          className={cn(
+            "relative flex flex-col",
+            !hideDayDividers &&
+              group.headingTimestamp !== null &&
+              "before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']",
+          )}
+          data-day-label={
+            group.headingTimestamp === null
+              ? undefined
+              : formatDayGroupLabel(group.headingTimestamp)
+          }
+          data-testid="message-timeline-day-group"
+          key={group.key}
+        >
+          {hideDayDividers || group.headingTimestamp === null ? null : (
+            <DayDivider
+              label={formatDayGroupLabel(group.headingTimestamp)}
+              sticky={stickyDayDividers}
+            />
+          )}
+          {group.items.map((item) => (
+            <TimelineRowShell item={item} key={getTimelineItemKey(item)}>
+              {renderItem(item)}
+            </TimelineRowShell>
+          ))}
+        </section>
+      ))}
+    </div>
   );
 });
 
@@ -429,7 +416,7 @@ function VirtualizedTimelineItemShell({
       ref={ref}
       style={preserveVisibility ? style : { ...style, visibility: undefined }}
     >
-      {children}
+      <div className="c3c-timeline-column">{children}</div>
     </div>
   );
 }
@@ -515,6 +502,20 @@ function VirtualizedTimelineRows({
       if (!list || !(scroller instanceof HTMLDivElement) || !pinnedLabel) {
         return;
       }
+      // Item offsets start below the scroller's top padding. The handoff maths
+      // below was written for the channel chrome inset; the conversation column
+      // pads further (header height plus a gutter), so shift by the difference.
+      const styles = getComputedStyle(scroller);
+      const rootFontPx = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      const chromeInsetPx =
+        Number.parseFloat(
+          styles.getPropertyValue("--channel-top-chrome-height"),
+        ) * rootFontPx;
+      const insetDelta = Number.isFinite(chromeInsetPx)
+        ? Number.parseFloat(styles.paddingTop) - chromeInsetPx
+        : 0;
 
       const pinnedTop =
         pinnedLabel.getBoundingClientRect().top -
@@ -522,7 +523,18 @@ function VirtualizedTimelineRows({
         pinnedDayTranslateYRef.current;
       const [pinnedPill, incomingPinnedPill] =
         pinnedLabel.querySelectorAll<HTMLParagraphElement>("p");
-      const pinnedPillHeight = pinnedPill?.offsetHeight ?? 0;
+      // An empty floating pill has no height (the label is plain text), so
+      // measure a real divider pill, or fall back to one text line, or the
+      // label would never get its first value.
+      const pinnedPillHeight =
+        pinnedPill?.offsetHeight ||
+        scroller.querySelector<HTMLElement>(
+          '[data-testid="message-timeline-day-divider"] p',
+        )?.offsetHeight ||
+        Number.parseFloat(
+          getComputedStyle(pinnedPill ?? pinnedLabel).lineHeight,
+        ) ||
+        28;
       if (pinnedPillHeight === 0) return;
       const renderedDividerPillTop = (
         divider: (typeof dayDividerItems)[number],
@@ -552,7 +564,8 @@ function VirtualizedTimelineRows({
 
       let activeDividerIndex = -1;
       for (const [index, divider] of dayDividerItems.entries()) {
-        if (list.getItemOffset(divider.index) > offset + pinnedTop) break;
+        if (list.getItemOffset(divider.index) > offset + pinnedTop - insetDelta)
+          break;
         activeDividerIndex = index;
       }
       const candidateDivider = dayDividerItems[activeDividerIndex];
@@ -570,7 +583,7 @@ function VirtualizedTimelineRows({
       const nextDivider = dayDividerItems[activeDividerIndex + 1];
       const nextDividerTop = nextDivider
         ? (renderedDividerPillTop(nextDivider) ??
-          list.getItemOffset(nextDivider.index) - offset)
+          list.getItemOffset(nextDivider.index) - offset + insetDelta)
         : null;
       const nextTranslateY =
         nextDividerTop === null
@@ -757,7 +770,7 @@ function VirtualizedTimelineRows({
       <PreserveVirtualizedItemVisibilityContext value={isPrepend}>
         <VList
           ref={listRef}
-          className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-2 pt-[var(--channel-top-chrome-height,4.5rem)]"
+          className="c3c-timeline-scroller h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain pt-[var(--channel-top-chrome-height,4.5rem)]"
           data={items}
           item={VirtualizedTimelineItemShell}
           itemSize={estimateItemSize}
@@ -785,7 +798,7 @@ function VirtualizedTimelineRows({
               const dayLabel = formatDayGroupLabel(item.headingTimestamp);
               return (
                 <div
-                  className="relative flex flex-col before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
+                  className="relative flex flex-col pb-6"
                   data-day-label={dayLabel}
                   data-testid="message-timeline-day-group"
                   key={virtualizedItemKey(item)}

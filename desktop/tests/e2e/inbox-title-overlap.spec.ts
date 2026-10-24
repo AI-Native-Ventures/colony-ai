@@ -41,7 +41,7 @@ type MockWindow = Window & {
 
 test.describe("inbox detail title overflow", () => {
   // Narrow window matching the report; the list pane is widened to its
-  // resizable maximum so the detail pane is squeezed to its 300px minimum
+  // resizable maximum (440px in Colony 3.0) so the detail pane is squeezed
   // and "Message in #engineering" cannot fit next to the header controls.
   test.use({ viewport: { width: 1046, height: 838 } });
 
@@ -51,7 +51,7 @@ test.describe("inbox detail title overflow", () => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem(
         "buzz.desktop.home-inbox-list-width",
-        "520",
+        "440",
       );
     });
     await installMockBridge(page, { mode: "mock" });

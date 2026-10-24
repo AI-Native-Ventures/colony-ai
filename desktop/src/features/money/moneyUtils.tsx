@@ -7,9 +7,7 @@ import {
 import {
   formatMoneyMinor,
   type InvoiceLine,
-  type MoneyAdjustment as MoneyAdjustmentPayload,
   type MoneyInvoiceHead,
-  type MoneyWorkspaceRecords,
 } from "./lib/moneyRecords";
 
 export type InvoiceLineDraft = Omit<
@@ -29,7 +27,7 @@ export function filterInvoiceRecords(
   return invoices.filter(
     ({ event, value }) =>
       (clientId === "all" || value.clientId === clientId) &&
-      periodForTimestamp(value.issuedAt ?? event.created_at) === period,
+      periodMatches(period, value.issuedAt ?? event.created_at),
   );
 }
 
@@ -41,31 +39,12 @@ export function formatCurrencyTotals(
     .sort(([left], [right]) => left.localeCompare(right));
   if (!entries.length) return "-";
   return (
-    <span className="money-currency-totals">
+    <span className="b3-currency-totals">
       {entries.map(([currency, amount]) => (
         <span key={currency}>{formatMoneyMinor(amount, currency)}</span>
       ))}
     </span>
   );
-}
-
-export function sumAdjustments(
-  adjustments: MoneyWorkspaceRecords["adjustments"],
-  type: MoneyAdjustmentPayload["adjustmentType"],
-) {
-  return adjustments.reduce(
-    (total, { value }) =>
-      total + (value.adjustmentType === type ? value.amountMinor : 0),
-    0,
-  );
-}
-
-export function creditAvailableForRefund(invoice: MoneyInvoiceHead) {
-  const remainingObligation = Math.max(
-    0,
-    invoice.totalMinor - invoice.creditedMinor - invoice.writtenOffMinor,
-  );
-  return Math.max(0, invoice.collectedMinor - remainingObligation);
 }
 
 export function lineTotalMinor(line: InvoiceLine) {
@@ -198,12 +177,105 @@ export function periodForTimestamp(timestamp: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** A period is one month ("2026-09") or a span of months ("2026-08..2026-09"). */
+export function periodMatches(period: string, timestamp: number) {
+  const [from, to = from] = period.split("..");
+  const month = periodForTimestamp(timestamp);
+  return month >= from && month <= to;
+}
+
+export function periodRange(from: string, to: string) {
+  return `${from}..${to}`;
+}
+
+export function isPeriodRange(period: string) {
+  return period.includes("..");
+}
+
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 export function formatPeriod(period: string) {
+  if (isPeriodRange(period)) {
+    const [from, to] = period.split("..");
+    const [fromYear, fromMonth] = from.split("-").map(Number);
+    const [toYear, toMonth] = to.split("-").map(Number);
+    const start =
+      fromYear === toYear
+        ? MONTHS[fromMonth - 1]
+        : `${MONTHS[fromMonth - 1]} ${fromYear}`;
+    return `${start} – ${MONTHS[toMonth - 1]} ${toYear}`;
+  }
   const [year, month] = period.split("-").map(Number);
   return new Intl.DateTimeFormat("en-ZA", {
     month: "long",
     year: "numeric",
   }).format(new Date(year, month - 1, 1));
+}
+
+/** "20 Sep 2026", or a dash when there is no date. */
+export function formatDisplayDate(timestamp: number | null) {
+  if (timestamp === null) return "-";
+  const date = new Date(timestamp * 1_000);
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** "CC" for Cedar Café, "OH" for The Olive House. */
+export function clientInitials(name: string) {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter((word, index) => index > 0 || word.toLowerCase() !== "the");
+  return words
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join("");
+}
+
+/** The short reference shown as "Invoice 0027": the end of the invoice id. */
+export function invoiceNumber(invoiceId: string) {
+  return invoiceId.slice(-4).toUpperCase();
+}
+
+export type InvoiceChip =
+  | "draft"
+  | "awaiting"
+  | "part"
+  | "overdue"
+  | "paid"
+  | "void";
+
+export const INVOICE_CHIP_LABELS: Record<InvoiceChip, string> = {
+  draft: "Draft",
+  awaiting: "Awaiting payment",
+  part: "Part paid",
+  overdue: "Overdue",
+  paid: "Paid",
+  void: "Void",
+};
+
+/** Every status an invoice shows: a part paid invoice can also be overdue. */
+export function invoiceChips(invoice: MoneyInvoiceHead): InvoiceChip[] {
+  if (invoice.status === "void") return ["void"];
+  if (invoice.status === "draft") return ["draft"];
+  if (invoice.outstandingMinor === 0) return ["paid"];
+  const chips: InvoiceChip[] = [
+    invoice.collectedMinor > 0 ? "part" : "awaiting",
+  ];
+  if (isOverdue(invoice)) chips.push("overdue");
+  return chips;
 }
 
 export function formatTimestamp(timestamp: number | null) {

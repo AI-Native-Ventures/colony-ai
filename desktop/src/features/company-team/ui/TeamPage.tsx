@@ -1,46 +1,34 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { NavigationHistoryControls } from "@/shared/ui/workspace-topbar";
+import "./TeamScreen.css";
 
-/** Page frame shared by the company Team routes. */
+/**
+ * Page frame shared by the company Team routes. The breadcrumb lives in the
+ * shell's top bar, so the page is only the scrolling content column.
+ */
 export function TeamPage({
-  title,
   children,
   testId,
 }: {
-  title: string;
+  /** Kept for callers that name the page; the top bar shows the trail. */
+  title?: string;
   children: ReactNode;
   testId?: string;
 }) {
   return (
-    <section
-      className="min-h-0 w-full flex-1 overflow-y-auto"
-      data-testid={testId}
-    >
-      <header className="flex h-[4.875rem] items-center gap-3 border-b border-border px-6">
-        {title === "Team" ? <NavigationHistoryControls /> : null}
-        <nav aria-label="Breadcrumb" className="text-sm font-semibold">
-          Company / {title}
-        </nav>
-      </header>
-      <div className="mx-auto w-full max-w-[76.875rem] px-5 pb-[3.125rem] pt-[2.1875rem] sm:px-10">
-        {children}
-      </div>
+    <section className="team-page" data-testid={testId}>
+      <div className="team-page-inner">{children}</div>
     </section>
   );
 }
 
-/** The frozen company page title, using the named zoom-safe type scale. */
+/** The Colony 3.0 page title: 40/800 with tight tracking. */
 export function TeamPageTitle({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     ref.current?.focus({ preventScroll: true });
   }, []);
   return (
-    <h1
-      ref={ref}
-      tabIndex={-1}
-      className="text-company-title font-semibold tracking-tight outline-none"
-    >
+    <h1 className="team-page-title" ref={ref} tabIndex={-1}>
       {children}
     </h1>
   );

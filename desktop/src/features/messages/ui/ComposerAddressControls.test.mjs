@@ -69,46 +69,21 @@ test("mention control expands with automatically mentioned agents", async () => 
   view.rerender(renderButton([agent, secondAgent, thirdAgent]));
 
   assert.ok(view.getByTestId("composer-address-locks"));
-  const avatar = view.getByTestId("composer-address-lock-agent-pubkey");
-  assert.ok(avatar);
-  const manage = view.getByRole("button", {
-    name: "Manage mentions",
-  });
-  assert.match(manage.className, /(?:^|\s)-ml-2(?:\s|$)/);
-  assert.match(manage.className, /(?:^|\s)pl-2(?:\s|$)/);
-  assert.match(manage.parentElement?.className ?? "", /(?:^|\s)pl-2(?:\s|$)/);
-  assert.match(
-    manage.parentElement?.className ?? "",
-    /(?:^|\s)pr-1\.5(?:\s|$)/,
-  );
-  assert.match(
-    view.getByRole("button", { name: "Manage mentions" }).parentElement
-      ?.className ?? "",
-    /(?:^|\s)bg-primary\/15(?:\s|$)/,
-  );
-  assert.match(
-    view.getByRole("button", { name: "Manage mentions" }).parentElement
-      ?.className ?? "",
-    /(?:^|\s)text-primary(?:\s|$)/,
-  );
-  assert.doesNotMatch(
-    view.getByRole("button", { name: "Manage mentions" }).parentElement
-      ?.className ?? "",
-    /(?:^|\s)bg-accent\/70(?:\s|$)/,
-  );
-  assert.doesNotMatch(
-    avatar.querySelector("span")?.className ?? "",
-    /(?:^|\s)ring(?:-|\s)/,
-  );
+  // Colony 3.0: the mention tool is a toolbar button; addressed agents are
+  // chips beside it, each with its own remove button.
+  const chip = view.getByTestId("composer-address-chip-agent-pubkey");
+  assert.ok(chip);
+  const manage = view.getByRole("button", { name: "Manage mentions" });
+  assert.equal(manage.className, "c3c-tool");
+  assert.equal(manage.getAttribute("data-active"), "true");
+  assert.equal(manage.parentElement?.className, "c3c-mention");
+  assert.equal(manage.parentElement?.getAttribute("data-active"), "true");
   for (const addedAgent of [secondAgent, thirdAgent]) {
-    const addedAvatar = view.getByTestId(
-      `composer-address-lock-${addedAgent.pubkey}`,
+    const addedChip = view.getByTestId(
+      `composer-address-chip-${addedAgent.pubkey}`,
     );
-    assert.equal(addedAvatar.parentElement?.style.opacity, "0");
-    assert.match(
-      addedAvatar.parentElement?.style.transform ?? "",
-      /scale\(0.8\)/,
-    );
+    assert.equal(addedChip.style.opacity, "0");
+    assert.match(addedChip.style.transform ?? "", /scale\(0.8\)/);
   }
   const remove = view.getByRole("button", {
     name: "Don't automatically mention Agent Ada in this thread",
@@ -117,25 +92,14 @@ test("mention control expands with automatically mentioned agents", async () => 
     remove.getAttribute("aria-label")?.includes("conversation"),
     false,
   );
-  const removeChrome = remove.querySelector("span.absolute");
-  assert.match(
-    removeChrome?.className ?? "",
-    /group-hover\/address:opacity-100/,
-  );
-  assert.match(removeChrome?.className ?? "", /(?:^|\s)bg-foreground(?:\s|$)/);
-  assert.doesNotMatch(
-    removeChrome?.className ?? "",
-    /(?:^|\s)bg-foreground\/80(?:\s|$)/,
-  );
+  assert.equal(remove.className, "c3c-chip-remove");
   fireEvent.click(remove);
   assert.deepEqual(removed, ["agent-pubkey"]);
   view.rerender(renderButton([]));
-  const exitingLocks = view.getByTestId("composer-address-locks");
-  assert.match(exitingLocks.className, /(?:^|\s)overflow-hidden(?:\s|$)/);
-  assert.match(
+  assert.equal(
     view.getByRole("button", { name: "Mention someone" }).parentElement
-      ?.className ?? "",
-    /(?:^|\s)pr-1\.5(?:\s|$)/,
+      ?.className,
+    "c3c-mention",
   );
   fireEvent.click(view.getByRole("button", { name: "Mention someone" }));
   assert.equal(opened, 1);

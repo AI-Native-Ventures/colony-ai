@@ -25,14 +25,6 @@ function ask(
   };
 }
 
-function approval(approvalRef, expiresAt, createdAt, id = approvalRef) {
-  return {
-    approval: { approvalRef, expiresAt, createdAt },
-    workflow: { id: `workflow-${id}` },
-    run: { id: `run-${id}` },
-  };
-}
-
 test("Needs me sorts by deadline, then creation time and stable record id", () => {
   const items = buildNeedsMeItems({
     asks: [
@@ -61,18 +53,11 @@ test("Needs me sorts by deadline, then creation time and stable record id", () =
         "2026-09-27T11:00:00Z",
       ),
     ],
-    workflowApprovals: [
-      approval("approval-late", "2026-09-27T15:00:00+02:00", 1_790_500_000),
-    ],
   });
 
   assert.deepEqual(
-    items.map((item) =>
-      item.kind === "ask"
-        ? item.record.head.askId
-        : item.record.approval.approvalRef,
-    ),
-    ["ask-earliest", "ask-a", "ask-z", "ask-b", "approval-late"],
+    items.map((item) => item.record.head.askId),
+    ["ask-earliest", "ask-a", "ask-z", "ask-b"],
   );
 });
 
@@ -88,7 +73,6 @@ test("Needs me places missing and invalid deadlines after dated records", () => 
         "2026-09-27T10:00:00Z",
       ),
     ],
-    workflowApprovals: [],
   });
 
   assert.deepEqual(
@@ -132,7 +116,6 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
       ),
       ask("channel-c", "unassigned", null, "2026-09-27T14:00:00.000Z"),
     ],
-    workflowApprovals: [],
   });
 
   const byType = groupNeedsMeItems(items, "type", { now });
@@ -155,9 +138,10 @@ test("Needs me grouping keeps overdue records and groups in deadline order", () 
   );
 
   const byDeadline = groupNeedsMeItems(items, "deadline", { now });
-  assert.deepEqual(
-    byDeadline.groups.slice(0, 2).map((group) => group.label),
-    ["Today", "Tomorrow"],
+  assert.equal(byDeadline.groups[0].label, "Today");
+  assert.match(
+    byDeadline.groups[1].label,
+    /^Tomorrow · [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2,3}$/,
   );
   assert.match(byDeadline.groups[2].label, /30/);
   assert.equal(byDeadline.groups[3].label, "No deadline");

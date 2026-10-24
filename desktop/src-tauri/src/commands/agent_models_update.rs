@@ -165,6 +165,19 @@ pub async fn update_managed_agent(
         let record = find_managed_agent_mut(&mut records, &input.pubkey)?;
         let previous_record = record.clone();
 
+        // Relink to another definition (copy-on-write edits of a shared
+        // definition). The target must exist and be active, like at create.
+        if let Some(persona_id) = input
+            .persona_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let personas = load_personas(&app)?;
+            crate::managed_agents::ensure_persona_is_active(&personas, persona_id)?;
+            record.persona_id = Some(persona_id.to_string());
+        }
+
         let mut name_changed = false;
         if let Some(name_update) = input.name {
             let trimmed = name_update.trim().to_string();

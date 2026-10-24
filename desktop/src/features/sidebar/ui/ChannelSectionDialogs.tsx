@@ -1,6 +1,7 @@
 import * as React from "react";
 
-import { X } from "lucide-react";
+import { FolderIcon } from "@/shared/ui/colonyIcons";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
 
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
 import {
@@ -30,6 +31,8 @@ import {
   useDeleteChannelMutation,
   useLeaveChannelMutation,
 } from "@/features/channels/hooks";
+import { ChannelConfirmDialog } from "@/features/channels/ui/ChannelConfirmDialog";
+import { LeaveGlyph } from "@/features/channels/ui/dialogIcons";
 import { ChannelDeleteConfirmationDialog } from "@/features/channels/ui/ChannelManagementModerationActions";
 
 export type SectionDialogValue = {
@@ -45,8 +48,12 @@ type SectionNameDialogProps = {
   initialValue: string;
   initialIcon?: string;
   confirmLabel: string;
+  /** Keeps the description for screen readers only (the designed dialog has none on screen). */
+  descriptionHidden?: boolean;
   isConfirmDisabled: (trimmed: string, icon: string) => boolean;
   onConfirm: (value: SectionDialogValue) => void;
+  /** Dialog width: 410px to create a section, 400px to rename one. */
+  widthClass?: string;
 };
 
 function SectionNameDialog({
@@ -57,8 +64,10 @@ function SectionNameDialog({
   initialValue,
   initialIcon = "",
   confirmLabel,
+  descriptionHidden = false,
   isConfirmDisabled,
   onConfirm,
+  widthClass = "max-w-[25.625rem]",
 }: SectionNameDialogProps) {
   const [name, setName] = React.useState(initialValue);
   const [icon, setIcon] = React.useState(initialIcon);
@@ -97,10 +106,14 @@ function SectionNameDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
+      <DialogContent className={widthClass} showCloseButton={false}>
+        <DialogHeader className="space-y-1.5">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription
+            className={descriptionHidden ? "sr-only" : undefined}
+          >
+            {description}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="flex items-center gap-2">
@@ -109,27 +122,27 @@ function SectionNameDialog({
                 <PopoverTrigger asChild>
                   <button
                     aria-label="Choose section icon"
-                    className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-lg transition-colors hover:bg-accent"
+                    className="flex size-12 items-center justify-center rounded-colony-control-lg border border-colony-border-strong bg-colony-pop text-lg text-colony-fg-secondary transition-colors hover:bg-colony-track"
                     type="button"
                   >
                     {icon ? (
                       <StatusEmoji className="h-5 w-5" value={icon} />
                     ) : (
-                      <span className="text-sm font-medium">#</span>
+                      <FolderIcon size={20} />
                     )}
                   </button>
                 </PopoverTrigger>
                 {icon ? (
                   <button
                     aria-label="Clear section icon"
-                    className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full border border-colony-pop bg-colony-track text-colony-fg-secondary hover:bg-colony-border hover:text-colony-fg"
                     onClick={(event) => {
                       event.stopPropagation();
                       setIcon("");
                     }}
                     type="button"
                   >
-                    <X className="h-3 w-3" />
+                    <CloseIcon size={10} />
                   </button>
                 ) : null}
               </div>
@@ -145,7 +158,7 @@ function SectionNameDialog({
               autoCapitalize="none"
               autoComplete="off"
               autoCorrect="off"
-              className="flex-1"
+              className="h-12 flex-1 font-semibold"
               onChange={(event) => setName(event.target.value)}
               placeholder="Section name"
               ref={inputRef}
@@ -153,15 +166,16 @@ function SectionNameDialog({
               value={name}
             />
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-4.5 flex justify-end gap-2.5">
             <DialogClose asChild>
-              <Button variant="ghost" type="button">
+              <Button size="dialog" type="button" variant="outline">
                 Cancel
               </Button>
             </DialogClose>
             <Button
               type="submit"
               disabled={isConfirmDisabled(name.trim(), icon.trim())}
+              size="dialog"
             >
               {confirmLabel}
             </Button>
@@ -218,6 +232,8 @@ export function RenameSectionDialog({
       onOpenChange={onOpenChange}
       title="Rename section"
       description="Enter a new name for this section."
+      descriptionHidden
+      widthClass="max-w-[25rem]"
       initialValue={sectionName}
       initialIcon={sectionIcon}
       confirmLabel="Save"
@@ -291,25 +307,15 @@ export function LeaveChannelAlertDialog({
   onConfirm,
 }: LeaveChannelAlertDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Leave channel</AlertDialogTitle>
-          <AlertDialogDescription>
-            {`Leave "${channelName}"? You'll stop receiving its messages and can rejoin later.`}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onConfirm}
-          >
-            Leave
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ChannelConfirmDialog
+      confirmLabel="Leave"
+      description={`Leave “${channelName}”? You’ll stop receiving its messages and can rejoin later.`}
+      icon={<LeaveGlyph size={20} />}
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Leave channel"
+    />
   );
 }
 

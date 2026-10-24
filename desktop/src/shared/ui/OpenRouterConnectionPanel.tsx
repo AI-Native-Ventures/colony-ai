@@ -22,6 +22,7 @@ const formatUsd = (amount: number) =>
 /** Shared OAuth connection UI. The native layer owns credentials and persistence. */
 export function OpenRouterConnectionPanel({
   onboarding = false,
+  hideTest = false,
   onSaved,
   onReadyChange,
   onStateChange,
@@ -29,6 +30,8 @@ export function OpenRouterConnectionPanel({
   testDisabled = false,
 }: {
   onboarding?: boolean;
+  /** Leave the test to the screen that hosts the panel (onboarding's Test the connection). */
+  hideTest?: boolean;
   onTestConnection?: () => void;
   testDisabled?: boolean;
   onSaved?: () => void;
@@ -413,26 +416,28 @@ export function OpenRouterConnectionPanel({
               </p>
             </div>
           ) : null}
-          <div className="power-cta">
-            <button
-              className={button(true)}
-              type="button"
-              disabled={
-                pending !== null ||
-                testDisabled ||
-                exhausted ||
-                account.status === "linked"
-              }
-              onClick={() =>
-                onTestConnection
-                  ? onTestConnection()
-                  : void act("test", testOpenRouterConnection)
-              }
-            >
-              {pending === "test" ? "Testing connection" : "Test connection"}
-            </button>
-            <p>Uses the selected OpenRouter model.</p>
-          </div>
+          {hideTest ? null : (
+            <div className="power-cta">
+              <button
+                className={button(true)}
+                type="button"
+                disabled={
+                  pending !== null ||
+                  testDisabled ||
+                  exhausted ||
+                  account.status === "linked"
+                }
+                onClick={() =>
+                  onTestConnection
+                    ? onTestConnection()
+                    : void act("test", testOpenRouterConnection)
+                }
+              >
+                {pending === "test" ? "Testing connection" : "Test connection"}
+              </button>
+              <p>Uses the selected OpenRouter model.</p>
+            </div>
+          )}
           {!onboarding || account.status === "linked" ? (
             <button
               className="link"

@@ -384,7 +384,9 @@ for (const [claim, wording] of [
     await page.getByTestId("invite-use-another-link").click();
     await expect(page.getByLabel("Invite link or code")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+    // Signed in with no business yet: leaving the invite step lands on the
+    // business form, not the sign-up screen.
+    await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
     expect(counts.creates).toBe(0);
   });
 }

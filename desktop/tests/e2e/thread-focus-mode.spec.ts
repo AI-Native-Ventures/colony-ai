@@ -156,6 +156,32 @@ async function expectChannelHeaderUnobscured(
     .toBe(true);
 }
 
+// The thread keeps re-pinning its reading row while rows realize their true
+// heights; read the position only once it has held still.
+async function expectAnchorSettled(
+  body: import("@playwright/test").Locator,
+  anchorId: string,
+) {
+  let previous: number | null = null;
+  let stableSamples = 0;
+  await expect
+    .poll(
+      async () => {
+        const top = await body
+          .locator(`[data-message-id="${anchorId}"]`)
+          .evaluate((element) => element.getBoundingClientRect().top);
+        stableSamples =
+          previous !== null && Math.abs(top - previous) < 1
+            ? stableSamples + 1
+            : 0;
+        previous = top;
+        return stableSamples;
+      },
+      { intervals: [100], timeout: 5_000 },
+    )
+    .toBeGreaterThanOrEqual(4);
+}
+
 test("focus and split preserve reading context and interaction ownership", async ({
   page,
 }) => {
@@ -223,12 +249,26 @@ test("focus and split preserve reading context and interaction ownership", async
   await expect(
     body.locator(`[data-message-id="${anchorId}"]`),
   ).not.toHaveAttribute("data-highlighted", "true");
+  await expectAnchorSettled(body, anchorId);
 
   // Sidebar background dismissal belongs to the overlay presentation only.
   await page
     .getByTestId("app-sidebar-scroll-anchor")
     .evaluate((element) => (element as HTMLElement).click());
   await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+
+  // The thread keeps the reply at the top of the view (the one being read), so
+  // that is the row to follow through the next switch.
+  const readingRowId = await body.evaluate((element) => {
+    const top = element.getBoundingClientRect().top;
+    return (
+      Array.from(
+        element.querySelectorAll<HTMLElement>("[data-message-id]"),
+      ).find((row) => row.getBoundingClientRect().bottom > top)?.dataset
+        .messageId ?? null
+    );
+  });
+  expect(readingRowId).not.toBeNull();
 
   const splitModeToggle = page.getByRole("button", { name: "Expand thread" });
   await splitModeToggle.focus();
@@ -237,7 +277,7 @@ test("focus and split preserve reading context and interaction ownership", async
   await expect(channel).toHaveAttribute("inert", "");
   await expect(page.getByTestId("thread-view-mode-toggle")).toBeFocused();
   await expect(
-    body.locator(`[data-message-id="${anchorId}"]`),
+    body.locator(`[data-message-id="${readingRowId}"]`),
   ).toBeInViewport();
 
   // Focus mode owns Escape even while the rich-text composer and one of its
@@ -304,14 +344,15 @@ test("narrow thread overlays reopen with keyboard and restore trigger focus", as
     ),
   );
   const drawerBounds = await drawer.boundingBox();
-  expect(drawerBounds?.x).toBeGreaterThanOrEqual(415);
-  expect(drawerBounds?.x).toBeLessThanOrEqual(425);
-  expect(drawerBounds?.y).toBeGreaterThanOrEqual(236);
-  expect(drawerBounds?.y).toBeLessThanOrEqual(246);
+  expect(drawerBounds?.x).toBeGreaterThanOrEqual(425);
+  expect(drawerBounds?.x).toBeLessThanOrEqual(435);
+  // The drawer starts under the Colony 3.0 one-row channel header.
+  expect(drawerBounds?.y).toBeGreaterThanOrEqual(184);
+  expect(drawerBounds?.y).toBeLessThanOrEqual(194);
   expect(drawerBounds?.width).toBeGreaterThanOrEqual(500);
   expect(drawerBounds?.width).toBeLessThanOrEqual(520);
-  expect(drawerBounds?.height).toBeGreaterThan(560);
-  expect(drawerBounds?.height).toBeLessThan(610);
+  expect(drawerBounds?.height).toBeGreaterThan(600);
+  expect(drawerBounds?.height).toBeLessThan(660);
   await expect
     .poll(() =>
       drawer.evaluate((element) => element.contains(document.activeElement)),

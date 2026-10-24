@@ -1,75 +1,19 @@
-import * as React from "react";
-
 import { useHomeDrafts } from "@/features/home/useHomeDrafts";
-import {
-  countDueReminders,
-  useRemindersQuery,
-} from "@/features/reminders/hooks";
-import { groupReminders } from "@/features/reminders/lib/reminderFilters";
 
 type UseHomePersonalInboxOptions = {
-  allowMixedSelection: boolean;
-  currentPubkey?: string;
   isDrafts: boolean;
   isNarrowHomeViewport: boolean;
-  isReminders: boolean;
   viewportWidthPx: number;
 };
 
+/** Personal items the Activity list can show next to messages: drafts. */
 export function useHomePersonalInbox({
-  allowMixedSelection,
-  currentPubkey,
   isDrafts,
   isNarrowHomeViewport,
-  isReminders,
   viewportWidthPx,
 }: UseHomePersonalInboxOptions) {
-  const remindersQuery = useRemindersQuery(currentPubkey);
-  const dueReminderCount = countDueReminders(remindersQuery.data ?? []);
-  const pendingReminders = React.useMemo(
-    () =>
-      groupReminders(remindersQuery.data ?? []).flatMap(
-        (group) => group.reminders,
-      ),
-    [remindersQuery.data],
-  );
-  const [selectedReminderId, selectReminder] = React.useState<string | null>(
-    null,
-  );
-  const selectedReminder =
-    pendingReminders.find((reminder) => reminder.id === selectedReminderId) ??
-    null;
-
-  React.useEffect(() => {
-    const selectionEnabled = isReminders || allowMixedSelection;
-    if (!selectionEnabled) {
-      selectReminder(null);
-      return;
-    }
-    if (
-      selectedReminderId !== null &&
-      !pendingReminders.some((reminder) => reminder.id === selectedReminderId)
-    ) {
-      selectReminder(null);
-      return;
-    }
-    if (!isReminders) return;
-    if (viewportWidthPx === 0 || selectedReminder !== null) return;
-    selectReminder(
-      isNarrowHomeViewport ? null : (pendingReminders[0]?.id ?? null),
-    );
-  }, [
-    allowMixedSelection,
-    isNarrowHomeViewport,
-    isReminders,
-    pendingReminders,
-    selectedReminderId,
-    selectedReminder,
-    viewportWidthPx,
-  ]);
-
   // Drafts are only listed (and selectable) under the dedicated Drafts
-  // filter — they never appear in the mixed All view.
+  // filter: they never appear in the mixed All view.
   const drafts = useHomeDrafts({
     autoSelect: isDrafts,
     isNarrowHomeViewport,
@@ -77,14 +21,5 @@ export function useHomePersonalInbox({
     viewportWidthPx,
   });
 
-  return {
-    drafts,
-    dueReminderCount,
-    pendingReminders,
-    reminders: {
-      selectedId: selectedReminderId,
-      selectedItem: selectedReminder,
-      select: selectReminder,
-    },
-  };
+  return { drafts };
 }

@@ -1,7 +1,5 @@
 import {
   AlertCircle,
-  Bell,
-  Clock,
   Ellipsis,
   ExternalLink,
   LoaderCircle,
@@ -15,22 +13,18 @@ import {
   type InboxItem,
   type InboxTypeLabel,
 } from "@/features/home/lib/inbox";
-import { buildInboxListRows } from "@/features/home/lib/inboxListRows";
 import { hasRenderedVideoAttachment } from "@/features/messages/lib/videoReviewContext";
 import { getThreadReference } from "@/features/messages/lib/threading";
-import { InboxFilterMenu } from "@/features/home/ui/InboxFilterMenu";
+import {
+  InboxFilterChips,
+  InboxFilterMenu,
+} from "@/features/home/ui/InboxFilterMenu";
 import {
   DraftsPanel,
   type DraftViewItem,
 } from "@/features/messages/ui/DraftsPanel";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import type { Reminder } from "@/features/reminders/lib/reminderTypes";
-import { isDue } from "@/features/reminders/lib/reminderFilters";
-import {
-  RemindersPanel,
-  useReminderSources,
-} from "@/features/reminders/ui/RemindersPanel";
-import { TopChromeInsetHeader } from "@/shared/layout/TopChromeInsetHeader";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
@@ -41,45 +35,33 @@ import {
   ContextMenuTrigger,
 } from "@/shared/ui/context-menu";
 import { VideoReviewCommentMarkdown } from "@/shared/ui/VideoReviewCommentMarkdown";
-import {
-  MENTION_CHIP_BASE_CLASSES,
-  MESSAGE_MARKDOWN_CLASS,
-} from "@/shared/ui/mentionChip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Separator } from "@/shared/ui/separator";
 import { Switch } from "@/shared/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { VirtualizedList } from "@/shared/ui/VirtualizedList";
+import "./ActivityScreen.css";
 
 const INBOX_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No activity yet",
-  project: "No project work found",
   mention: "No mentions found",
   thread: "No threads found",
   needs_action: "Nothing needs action",
   agent_activity: "No agent updates found",
-  reminders: "No reminders",
   drafts: "No drafts",
 };
 
 const INBOX_UNREAD_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No unread activity",
-  project: "No unread project work",
   mention: "No unread mentions",
   thread: "No unread threads",
   needs_action: "No unread items needing action",
   agent_activity: "No unread agent updates",
-  reminders: "No unread reminders",
   drafts: "No unread drafts",
 };
 
-const INBOX_HEADER_ICON_BUTTON_CLASS =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-muted/70 data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
-const INBOX_PANE_RIGHT_DIVIDER_CLASS =
-  "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-40 after:w-px after:bg-border/35 after:content-['']";
-
-function InboxLabel({
+/** "Needs action in #Sales": what the item is and where it happened. */
+function InboxKindLine({
   isDone,
   isActionRequired,
   label,
@@ -88,47 +70,21 @@ function InboxLabel({
   isActionRequired: boolean;
   label: InboxTypeLabel;
 }) {
+  const text = label.channelLabel
+    ? label.separator
+      ? `${label.text} ${label.separator} #${label.channelLabel}`
+      : `${label.text} #${label.channelLabel}`
+    : label.text;
   return (
     <div
-      className={cn(
-        MESSAGE_MARKDOWN_CLASS,
-        "mt-0 flex min-h-[var(--inline-chip-min-height)] min-w-0 items-center gap-1.5 text-2xs leading-3 group-hover/inbox-item:pr-[6.75rem] group-focus-within/inbox-item:pr-[6.75rem]",
-        isActionRequired && !isDone
-          ? "font-medium text-amber-600/80 dark:text-amber-300/80"
-          : isDone
-            ? "font-normal text-muted-foreground/70"
-            : "font-medium text-muted-foreground/80",
-      )}
+      className="ca-row-kind"
+      data-done={isDone ? "true" : undefined}
       data-inbox-type-label=""
+      data-tone={isActionRequired && !isDone ? "need" : undefined}
     >
-      <span className="shrink-0">{label.text}</span>
-      {label.channelLabel ? (
-        <span
-          className={cn(
-            MENTION_CHIP_BASE_CLASSES,
-            "inbox-channel-chip min-w-0 max-w-full overflow-hidden",
-          )}
-          data-channel-link=""
-        >
-          <span className="truncate">#{label.channelLabel}</span>
-        </span>
-      ) : null}
+      {text}
     </div>
   );
-}
-
-function formatReminderStatus(notBefore: number | undefined) {
-  if (notBefore === undefined) return "Pending";
-  const secondsUntil = notBefore - Math.floor(Date.now() / 1_000);
-  if (secondsUntil <= 0) return "Reminder due";
-  if (secondsUntil < 60) return "Reminder in less than a minute";
-  if (secondsUntil < 3_600) {
-    return `Reminder in ${Math.floor(secondsUntil / 60)}m`;
-  }
-  if (secondsUntil < 86_400) {
-    return `Reminder in ${Math.floor(secondsUntil / 3_600)}h`;
-  }
-  return `Reminder in ${Math.floor(secondsUntil / 86_400)}d`;
 }
 
 function getInboxVideoReviewCommentRootId(item: InboxItem) {
@@ -159,59 +115,7 @@ function getInboxVideoReviewCommentRootId(item: InboxItem) {
   return undefined;
 }
 
-function PersonalItemRow({
-  id,
-  location,
-  onClick,
-  preview,
-  selected,
-  status,
-}: {
-  id: string;
-  location: InboxTypeLabel | null;
-  onClick: () => void;
-  preview: string;
-  selected: boolean;
-  status: string;
-}) {
-  return (
-    <button
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "flex w-full items-center gap-3 border-b border-border/45 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden",
-        selected && "bg-muted/40",
-      )}
-      data-testid={`home-all-reminders-${id}`}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Bell className="h-4 w-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-foreground">
-          Reminder
-        </span>
-        {location ? (
-          <InboxLabel
-            isActionRequired={false}
-            isDone={false}
-            label={location}
-          />
-        ) : null}
-        <span className="block truncate text-sm text-muted-foreground">
-          {preview}
-        </span>
-      </span>
-      <span className="shrink-0 text-xs font-medium text-muted-foreground">
-        {status}
-      </span>
-    </button>
-  );
-}
-
 type InboxListPaneProps = {
-  activeReminderEventIds?: ReadonlySet<string>;
   agentPubkeys?: ReadonlySet<string>;
   activeDraftCount: number;
   draftItems: DraftViewItem[];
@@ -225,23 +129,16 @@ type InboxListPaneProps = {
   onOpenDirect: (item: InboxItem) => void;
   isReopenPending?: (channelId: string | null | undefined) => boolean;
   isReopenErrored?: (channelId: string | null | undefined) => boolean;
-  onRemindLater: (item: InboxItem) => void;
   onSelect: (itemId: string) => void;
   onSelectDraft: (draftKey: string) => void;
-  onSelectReminder: (reminderId: string) => void;
   onUnreadOnlyChange: (checked: boolean) => void;
   selectedConversationId: string | null;
   selectedDraftKey: string | null;
   showRightDivider?: boolean;
-  dueReminderCount: number;
-  reminderPubkey?: string;
-  reminders: readonly Reminder[];
-  selectedReminderId: string | null;
   unreadOnly: boolean;
 };
 
 export function InboxListPane({
-  activeReminderEventIds,
   agentPubkeys,
   activeDraftCount,
   draftItems,
@@ -255,44 +152,16 @@ export function InboxListPane({
   onOpenDirect,
   isReopenPending,
   isReopenErrored,
-  onRemindLater,
   onSelect,
   onSelectDraft,
-  onSelectReminder,
   onUnreadOnlyChange,
   selectedConversationId,
   selectedDraftKey,
   showRightDivider = false,
-  dueReminderCount,
-  reminderPubkey,
-  reminders,
-  selectedReminderId,
   unreadOnly,
 }: InboxListPaneProps) {
-  const isReminders = filter === "reminders";
   const isDrafts = filter === "drafts";
-  const isMixedInboxView = filter === "all";
   const scrollRef = React.useRef<HTMLDivElement>(null);
-  const inboxRows = React.useMemo(
-    () =>
-      buildInboxListRows({
-        items,
-        reminders: unreadOnly
-          ? []
-          : reminders.filter((reminder) =>
-              isDue(reminder, Math.floor(Date.now() / 1_000)),
-            ),
-      }),
-    [items, reminders, unreadOnly],
-  );
-  const visibleInboxRows = React.useMemo(
-    () =>
-      isMixedInboxView
-        ? inboxRows
-        : inboxRows.filter((row) => row.kind === "inbox"),
-    [inboxRows, isMixedInboxView],
-  );
-  const reminderSources = useReminderSources(reminders);
   const unreadVisibleItemCount = React.useMemo(
     () =>
       items.reduce((count, item) => count + (doneSet.has(item.id) ? 0 : 1), 0),
@@ -306,14 +175,9 @@ export function InboxListPane({
     }
   }, [doneSet, items, onMarkRead]);
 
-  const renderItem = (item: InboxItem, dueReminder?: Reminder) => {
+  const renderItem = (item: InboxItem) => {
     const isSelected = item.conversationId === selectedConversationId;
     const isDone = doneSet.has(item.id);
-    const hasActiveReminder =
-      dueReminder !== undefined ||
-      [item.id, ...item.groupItems.map((groupItem) => groupItem.id)].some(
-        (eventId) => activeReminderEventIds?.has(eventId) ?? false,
-      );
     const hasChannelTarget = Boolean(item.item.channelId);
     const isReopening = isReopenPending?.(item.item.channelId) ?? false;
     const hasReopenError = isReopenErrored?.(item.item.channelId) ?? false;
@@ -328,9 +192,6 @@ export function InboxListPane({
     const isSenderAgent =
       agentPubkeys?.has(normalizePubkey(item.item.pubkey)) === true;
     const profileRole = isSenderAgent ? "bot" : undefined;
-    const rowHighlightColor = isSelected
-      ? "color-mix(in srgb, hsl(var(--background)) 70%, hsl(var(--muted)) 30%)"
-      : "color-mix(in srgb, hsl(var(--background)) 75%, hsl(var(--muted)) 25%)";
     const handleRowContentClick = (event: React.MouseEvent<HTMLElement>) => {
       const target = event.target;
       if (
@@ -341,218 +202,199 @@ export function InboxListPane({
       }
       onSelect(item.id);
     };
+    const markAction = isDone ? (
+      <button
+        aria-label="Mark unread"
+        className="ca-row-action"
+        onClick={(event) => {
+          event.stopPropagation();
+          onMarkUnread(item.id);
+        }}
+        type="button"
+      >
+        Mark unread
+      </button>
+    ) : (
+      <button
+        aria-label="Mark as read"
+        className="ca-row-action"
+        onClick={(event) => {
+          event.stopPropagation();
+          onMarkRead(item.id);
+        }}
+        type="button"
+      >
+        Mark as read
+      </button>
+    );
     const row = (
       <div
         aria-current={isSelected ? "true" : undefined}
-        className="group/inbox-item relative"
+        className="ca-row group/inbox-item"
+        data-selected={isSelected ? "true" : undefined}
         data-testid={`home-inbox-item-${item.id}`}
-        style={
-          {
-            "--inbox-row-highlight-bg": rowHighlightColor,
-          } as React.CSSProperties
-        }
       >
         <button
           aria-label={`Open inbox item from ${item.senderLabel}`}
-          className="absolute inset-0 z-0 block w-full border-l border-l-transparent text-left"
+          className="ca-row-hit"
           onClick={() => onSelect(item.id)}
           type="button"
-        >
-          <span
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-y-0 left-0 right-0 transition-colors",
-              isSelected
-                ? "bg-[var(--inbox-row-highlight-bg)]"
-                : "group-hover/inbox-item:bg-[var(--inbox-row-highlight-bg)] group-focus-within/inbox-item:bg-[var(--inbox-row-highlight-bg)] group-active/inbox-item:bg-muted/40",
-            )}
-          />
-        </button>
+        />
 
         {/* biome-ignore lint/a11y: The sibling full-row button provides keyboard/screen-reader row activation; this wrapper delegates pointer selection while allowing nested profile triggers. */}
-        <div
-          className="relative z-10 block w-full cursor-pointer px-3 py-4 text-left"
-          onClick={handleRowContentClick}
-        >
-          <div className="flex min-w-0 items-start gap-2.5">
-            <div
-              className="relative shrink-0"
-              data-inbox-profile-trigger="true"
+        <div className="ca-row-inner" onClick={handleRowContentClick}>
+          <div className="ca-row-lead" data-inbox-profile-trigger="true">
+            <UserProfilePopover
+              botIdenticonValue={item.senderLabel}
+              pubkey={item.item.pubkey}
+              role={profileRole}
+              triggerClassName={cn(
+                "shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                isSenderAgent ? "rounded-[30%]" : "rounded-full",
+              )}
+              triggerElement="span"
+              triggerTestId={`home-inbox-avatar-${item.id}`}
             >
-              <UserProfilePopover
-                botIdenticonValue={item.senderLabel}
-                pubkey={item.item.pubkey}
-                role={profileRole}
-                triggerClassName={cn(
-                  "shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                  isSenderAgent ? "rounded-[30%]" : "rounded-full",
-                )}
-                triggerElement="span"
-                triggerTestId={`home-inbox-avatar-${item.id}`}
-              >
-                <span className="inline-flex shrink-0">
-                  <UserAvatar
-                    avatarUrl={item.avatarUrl}
-                    className="h-9 w-9"
-                    displayName={item.senderLabel}
-                    shape={isSenderAgent ? "squircle" : "circle"}
-                    size="md"
-                  />
-                </span>
-              </UserProfilePopover>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-start gap-2">
-                <span
-                  className="flex min-w-0 flex-1 items-start leading-4"
-                  data-inbox-profile-trigger="true"
-                >
-                  <UserProfilePopover
-                    botIdenticonValue={item.senderLabel}
-                    pubkey={item.item.pubkey}
-                    role={profileRole}
-                    triggerElement="span"
-                  >
-                    <span className="block max-w-full truncate rounded text-sm font-semibold leading-4 text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
-                      {item.senderLabel}
-                    </span>
-                  </UserProfilePopover>
-                </span>
-                <span
-                  className={cn(
-                    "flex shrink-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground/70 transition-opacity group-hover/inbox-item:opacity-0 group-focus-within/inbox-item:opacity-0",
-                    isDone ? "font-normal" : "font-medium",
-                  )}
-                >
-                  {!isDone ? (
-                    <span
-                      aria-hidden="true"
-                      className="h-1.5 w-1.5 rounded-full bg-primary"
-                    />
-                  ) : null}
-                  {item.unreadCount > 1 ? (
-                    <span data-testid="home-inbox-unread-count">
-                      {item.unreadCount} unread
-                    </span>
-                  ) : null}
-                  {item.timestampLabel}
-                </span>
-              </div>
-              <InboxLabel
-                isActionRequired={item.isActionRequired}
-                isDone={isDone}
-                label={typeLabel}
-              />
-              {dueReminder ? (
-                <div
-                  className="mt-1 flex items-center gap-1 text-2xs font-medium text-amber-600/80 dark:text-amber-300/80"
-                  data-testid="home-inbox-reminder-due"
-                >
-                  <Bell className="h-3 w-3" />
-                  Reminder due
-                </div>
-              ) : null}
-
-              {isReopening || hasReopenError ? (
-                <div
-                  aria-live="polite"
-                  className={cn(
-                    "mt-1 flex items-center gap-1 text-2xs font-medium",
-                    hasReopenError
-                      ? "text-destructive"
-                      : "text-muted-foreground",
-                  )}
-                  data-testid={`home-inbox-reopen-status-${item.id}`}
-                  role="status"
-                >
-                  {isReopening ? (
-                    <>
-                      <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" />
-                      Reopening…
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="h-3 w-3 shrink-0" />
-                      Couldn’t reopen
-                      {canOpen ? (
-                        <button
-                          className="ml-0.5 rounded font-semibold underline underline-offset-2 hover:no-underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          data-testid={`home-inbox-reopen-retry-${item.id}`}
-                          onClick={(event) => {
-                            // The row wrapper selects on click; stop it so
-                            // Retry only re-issues the reopen for this row.
-                            event.stopPropagation();
-                            onOpenDirect(item);
-                          }}
-                          type="button"
-                        >
-                          Retry
-                        </button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ) : null}
-
-              <div
-                className={cn(
-                  "mt-1.5 text-message [&_a]:font-medium [&_a]:text-current",
-                  isDone
-                    ? "font-normal text-muted-foreground"
-                    : "font-semibold text-foreground",
-                )}
-              >
-                <VideoReviewCommentMarkdown
-                  className="inbox-preview-markdown text-inherit"
-                  content={item.preview}
-                  interactive={false}
-                  mentionNames={item.mentionNames}
-                  videoReviewCommentRootId={videoReviewCommentRootId}
+              <span className="inline-flex shrink-0">
+                <ProfileAvatar
+                  avatarUrl={item.avatarUrl}
+                  className="ca-row-avatar"
+                  label={item.senderLabel}
+                  shape={isSenderAgent ? "squircle" : "circle"}
                 />
-              </div>
+              </span>
+            </UserProfilePopover>
+          </div>
+
+          <div className="ca-row-body">
+            <div className="ca-row-top">
+              <span className="ca-row-name" data-inbox-profile-trigger="true">
+                <UserProfilePopover
+                  botIdenticonValue={item.senderLabel}
+                  pubkey={item.item.pubkey}
+                  role={profileRole}
+                  triggerElement="span"
+                >
+                  <span className="ca-row-name-text">{item.senderLabel}</span>
+                </UserProfilePopover>
+              </span>
+              <span className="ca-row-meta">
+                {!isDone && item.unreadCount <= 1 ? (
+                  <span aria-hidden="true" className="ca-row-dot" />
+                ) : null}
+                {item.unreadCount > 1 ? (
+                  <span
+                    className="ca-row-unread"
+                    data-testid="home-inbox-unread-count"
+                  >
+                    {item.unreadCount} unread
+                  </span>
+                ) : null}
+                <span className="ca-row-time">{item.timestampLabel}</span>
+              </span>
             </div>
+            <InboxKindLine
+              isActionRequired={item.isActionRequired}
+              isDone={isDone}
+              label={typeLabel}
+            />
+
+            {isReopening || hasReopenError ? (
+              <div
+                aria-live="polite"
+                className="ca-row-status"
+                data-tone={hasReopenError ? "bad" : undefined}
+                data-testid={`home-inbox-reopen-status-${item.id}`}
+                role="status"
+              >
+                {isReopening ? (
+                  <>
+                    <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" />
+                    Reopening…
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    Couldn’t reopen
+                    {canOpen ? (
+                      <button
+                        className="ml-0.5 rounded font-semibold underline underline-offset-2 hover:no-underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid={`home-inbox-reopen-retry-${item.id}`}
+                        onClick={(event) => {
+                          // The row wrapper selects on click; stop it so
+                          // Retry only re-issues the reopen for this row.
+                          event.stopPropagation();
+                          onOpenDirect(item);
+                        }}
+                        type="button"
+                      >
+                        Retry
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            <div
+              className="ca-row-preview"
+              data-done={isDone ? "true" : undefined}
+            >
+              <VideoReviewCommentMarkdown
+                className="inbox-preview-markdown text-inherit"
+                content={item.preview}
+                interactive={false}
+                mentionNames={item.mentionNames}
+                videoReviewCommentRootId={videoReviewCommentRootId}
+              />
+            </div>
+
+            {isSelected ? (
+              <div className="ca-row-actions">
+                {markAction}
+                <button
+                  aria-label={openLabel}
+                  className="ca-row-action"
+                  disabled={!canOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (canOpen) onOpenDirect(item);
+                  }}
+                  type="button"
+                >
+                  {openLabel}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="pointer-events-none absolute right-3 top-2 z-10 flex items-center gap-0.5 rounded-full bg-[var(--inbox-row-highlight-bg)] p-1 opacity-0 transition-opacity duration-150 ease-out group-hover/inbox-item:pointer-events-auto group-hover/inbox-item:opacity-100 group-focus-within/inbox-item:pointer-events-auto group-focus-within/inbox-item:opacity-100">
-          {isDone ? (
+        {isSelected ? null : (
+          <div className="ca-row-hover-actions">
+            {isDone ? (
+              <InboxRowActionButton
+                label="Mark unread"
+                onClick={() => onMarkUnread(item.id)}
+              >
+                <MailOpen className="!h-4 !w-4" />
+              </InboxRowActionButton>
+            ) : (
+              <InboxRowActionButton
+                label="Mark as read"
+                onClick={() => onMarkRead(item.id)}
+              >
+                <MailOpen className="!h-4 !w-4" />
+              </InboxRowActionButton>
+            )}
             <InboxRowActionButton
-              label="Mark unread"
-              onClick={() => onMarkUnread(item.id)}
+              disabled={!canOpen}
+              label={openLabel}
+              onClick={() => onOpenDirect(item)}
             >
-              <MailOpen className="!h-4 !w-4" />
+              <ExternalLink className="!h-4 !w-4" />
             </InboxRowActionButton>
-          ) : (
-            <InboxRowActionButton
-              label="Mark as read"
-              onClick={() => onMarkRead(item.id)}
-            >
-              <MailOpen className="!h-4 !w-4" />
-            </InboxRowActionButton>
-          )}
-          <InboxRowActionButton
-            disabled={!canOpen}
-            label={openLabel}
-            onClick={() => onOpenDirect(item)}
-          >
-            <ExternalLink className="!h-4 !w-4" />
-          </InboxRowActionButton>
-          <InboxRowActionButton
-            active={hasActiveReminder}
-            disabled={!hasChannelTarget}
-            label={
-              hasChannelTarget
-                ? hasActiveReminder
-                  ? "Reminder set"
-                  : "Remind me later"
-                : "Cannot remind without a channel"
-            }
-            onClick={() => onRemindLater(item)}
-          >
-            <Clock className="!h-4 !w-4" />
-          </InboxRowActionButton>
-        </div>
+          </div>
+        )}
       </div>
     );
 
@@ -583,17 +425,6 @@ export function InboxListPane({
             <ExternalLink className="h-4 w-4" />
             {openLabel}
           </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!hasChannelTarget}
-            onClick={() => {
-              if (hasChannelTarget) {
-                onRemindLater(item);
-              }
-            }}
-          >
-            <Clock className="h-4 w-4" />
-            {hasActiveReminder ? "Reminder set" : "Remind me later"}
-          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );
@@ -601,97 +432,76 @@ export function InboxListPane({
 
   return (
     <section
-      className={cn(
-        "relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-background/60",
-        showRightDivider && INBOX_PANE_RIGHT_DIVIDER_CLASS,
-      )}
+      className="ca-list"
+      data-divider={showRightDivider ? "true" : undefined}
+      data-testid="home-inbox-list-pane"
     >
-      <TopChromeInsetHeader flush transparent>
-        <div className="px-5 py-2">
-          <div className="flex min-h-9 w-full min-w-0 items-center justify-between gap-3">
-            <div className="order-2 ml-auto flex shrink-0 items-center justify-end">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    aria-label="Inbox options"
-                    className={cn(INBOX_HEADER_ICON_BUTTON_CLASS, "-mr-4")}
-                    data-testid="inbox-options-trigger"
-                    type="button"
-                  >
-                    <Ellipsis className="h-4 w-4" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-60 p-2">
-                  <div
-                    className={cn(
-                      "flex min-h-9 items-center justify-between gap-3 rounded-lg px-2 py-1.5",
-                      (isReminders || isDrafts) && "opacity-50",
-                    )}
-                  >
-                    <label
-                      className="text-sm font-medium text-foreground"
-                      htmlFor="inbox-unread-only-switch"
-                    >
-                      Show unread only
-                    </label>
-                    <Switch
-                      checked={unreadOnly}
-                      className="shadow-none [&>span]:shadow-none"
-                      data-testid="inbox-unread-only-toggle"
-                      disabled={isReminders || isDrafts}
-                      id="inbox-unread-only-switch"
-                      onCheckedChange={onUnreadOnlyChange}
-                    />
-                  </div>
-                  <Separator className="my-1 bg-muted" />
-                  <button
-                    className="flex min-h-9 w-full items-center rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
-                    disabled={unreadVisibleItemCount === 0}
-                    onClick={handleMarkAllRead}
-                    type="button"
-                  >
-                    <span>Mark all as read</span>
-                    {unreadVisibleItemCount > 0 ? (
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {unreadVisibleItemCount}
-                      </span>
-                    ) : null}
-                  </button>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="order-1 flex shrink-0 items-center justify-start">
-              <InboxFilterMenu
-                activeDraftCount={activeDraftCount}
-                dueReminderCount={dueReminderCount}
-                filter={filter}
-                onFilterChange={onFilterChange}
-                reminderCount={reminders.length}
-              />
-            </div>
-          </div>
+      <header className="ca-list-head" data-tauri-drag-region>
+        <div className="ca-title-row">
+          <h1>Activity</h1>
+          <InboxFilterMenu
+            activeDraftCount={activeDraftCount}
+            filter={filter}
+            onFilterChange={onFilterChange}
+          />
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                aria-label="Inbox options"
+                className="ca-options-button"
+                data-testid="inbox-options-trigger"
+                type="button"
+              >
+                <Ellipsis aria-hidden="true" size={18} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-60 p-2">
+              <div
+                className={cn(
+                  "flex min-h-9 items-center justify-between gap-3 rounded-lg px-2 py-1.5",
+                  isDrafts && "opacity-50",
+                )}
+              >
+                <label
+                  className="text-sm font-medium text-foreground"
+                  htmlFor="inbox-unread-only-switch"
+                >
+                  Show unread only
+                </label>
+                <Switch
+                  checked={unreadOnly}
+                  data-testid="inbox-unread-only-toggle"
+                  disabled={isDrafts}
+                  id="inbox-unread-only-switch"
+                  onCheckedChange={onUnreadOnlyChange}
+                />
+              </div>
+              <Separator className="my-1 bg-muted" />
+              <button
+                className="flex min-h-9 w-full items-center rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:pointer-events-none disabled:opacity-50"
+                disabled={unreadVisibleItemCount === 0}
+                onClick={handleMarkAllRead}
+                type="button"
+              >
+                <span>Mark all as read</span>
+                {unreadVisibleItemCount > 0 ? (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {unreadVisibleItemCount}
+                  </span>
+                ) : null}
+              </button>
+            </PopoverContent>
+          </Popover>
         </div>
-      </TopChromeInsetHeader>
+        <InboxFilterChips
+          activeDraftCount={activeDraftCount}
+          filter={filter}
+          onFilterChange={onFilterChange}
+        />
+      </header>
 
-      {isReminders ? (
-        <div
-          className="-mt-13 flex min-h-0 flex-1 flex-col overflow-hidden pt-13"
-          data-testid="home-inbox-reminders"
-        >
-          {reminderPubkey ? (
-            <RemindersPanel
-              onSelectReminder={onSelectReminder}
-              presentation="inbox-list"
-              pubkey={reminderPubkey}
-              selectedReminderId={selectedReminderId}
-            />
-          ) : null}
-        </div>
-      ) : isDrafts ? (
-        <div
-          className="-mt-13 flex min-h-0 flex-1 flex-col overflow-hidden pt-13"
-          data-testid="home-inbox-drafts"
-        >
+      {isDrafts ? (
+        <div className="ca-list-drafts" data-testid="home-inbox-drafts">
           <DraftsPanel
             items={draftItems}
             onDeleteDraft={onDeleteDraft}
@@ -701,51 +511,20 @@ export function InboxListPane({
         </div>
       ) : (
         <div
-          className="-mt-13 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pt-13"
+          className="ca-list-body"
           data-testid="home-inbox-list"
           ref={scrollRef}
         >
-          {visibleInboxRows.length > 0 ? (
+          {items.length > 0 ? (
             <VirtualizedList
-              estimateSize={96}
-              getItemKey={(row) => row.key}
-              items={visibleInboxRows}
-              renderItem={(row) => {
-                if (row.kind === "inbox") {
-                  return renderItem(row.item, row.dueReminder);
-                }
-
-                const source = reminderSources.get(row.reminder.id);
-                return (
-                  <PersonalItemRow
-                    id={row.reminder.id}
-                    location={
-                      source?.channel
-                        ? source.channel.channelType === "dm"
-                          ? {
-                              text: `In DM with ${source.channelLabel}`,
-                              channelLabel: null,
-                            }
-                          : { text: "In", channelLabel: source.channelLabel }
-                        : null
-                    }
-                    onClick={() => {
-                      onSelectReminder(row.reminder.id);
-                    }}
-                    preview={
-                      row.reminder.content.target?.preview ||
-                      row.reminder.content.note ||
-                      "Reminder"
-                    }
-                    selected={selectedReminderId === row.reminder.id}
-                    status={formatReminderStatus(row.reminder.notBefore)}
-                  />
-                );
-              }}
+              estimateSize={112}
+              getItemKey={(item) => `inbox:${item.conversationId}`}
+              items={items}
+              renderItem={(item) => renderItem(item)}
               scrollRef={scrollRef}
             />
           ) : (
-            <div className="flex h-full min-h-64 items-center justify-center px-6 text-center">
+            <div className="ca-list-empty">
               <div>
                 <p className="text-sm font-medium text-foreground">
                   {unreadOnly
