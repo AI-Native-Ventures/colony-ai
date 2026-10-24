@@ -190,7 +190,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
         )}
       >
         {onKeepMentionedAgentsPinnedChange ? (
-          // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard, no behavior of its own — an unprevented mousedown on this surface (its padding, the switch's label) blurs the editor, and the focus gate above would unmount the overlay before the click lands.
+          // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard, no behavior of its own: an unprevented mousedown on this surface (its padding, the switch's label) blurs the editor, and the focus gate above would unmount the overlay before the click lands.
           <div
             className="c3c-mention-head"
             data-testid="mention-options-settings"
