@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
@@ -19,7 +19,13 @@ const OUT =
 const DOMAIN = "colony.ainative.ventures";
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 
-type Capture = { name: string; board: string; title: string };
+type Capture = {
+  name: string;
+  board: string;
+  title: string;
+  /** The part of the board the capture is judged against, when it is one card. */
+  refRect?: [number, number, number, number];
+};
 const captures: Capture[] = [];
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
@@ -35,13 +41,15 @@ test.afterAll(() => {
   writeFileSync(`${OUT}/captures.json`, JSON.stringify(captures, null, 2));
 });
 
-async function shot(page: Page, capture: Capture) {
+async function shot(page: Page, capture: Capture, target?: Locator) {
   await waitForAnimations(page);
   await page.waitForTimeout(250);
-  await page.screenshot({
-    animations: "disabled",
+  const options = {
+    animations: "disabled" as const,
     path: `${OUT}/${capture.name}.png`,
-  });
+  };
+  if (target) await target.screenshot(options);
+  else await page.screenshot(options);
   captures.push(capture);
 }
 
@@ -299,6 +307,13 @@ test("connected and no reply", async ({ page }) => {
 });
 
 test("returning user", async ({ page }) => {
+  // The name typed at sign-up on this device greets the person by first name.
+  await page.addInitScript(() =>
+    window.localStorage.setItem(
+      "colony-signup-name.v1:lerato@example.com",
+      "Lerato Molefe",
+    ),
+  );
   await openFirstRun(page, { businesses: [LERATO] });
   await signIn(page);
   await expect(page.getByTestId("onboarding-business-list")).toBeVisible();
@@ -348,7 +363,7 @@ test("fixture scenes: ready, invite, startup", async ({ page }) => {
     board: "OnboardingReady",
     title: "Getting your Colony ready",
   });
-  await visual("invite");
+  await page.goto("/tests/visual/onboarding.html?reskin=invite");
   await expect(page.getByTestId("onboarding-scene-invite")).toBeVisible();
   await shot(page, {
     name: "14-invite",
@@ -433,7 +448,7 @@ test("community start and add", async ({ page }) => {
   });
 });
 
-test("community failed and edit", async ({ page }) => {
+test("community failed", async ({ page }) => {
   const colony = {
     id: "colony3-lerato",
     name: "Lerato Social",
@@ -463,13 +478,44 @@ test("community failed and edit", async ({ page }) => {
     board: "CommunityFailed",
     title: "Community connection failed",
   });
-  await page.getByTestId("community-apply-error-edit").click();
-  await expect(
-    page.getByRole("heading", { name: "Change community" }),
-  ).toBeVisible();
-  await shot(page, {
-    name: "19-community-edit",
-    board: "CommunityEdit",
-    title: "Edit community",
-  });
+});
+
+test("community edit", async ({ page }) => {
+  const communities = [
+    {
+      id: "colony3-lerato",
+      name: "Lerato Social",
+      relayUrl: `wss://lerato-social.${DOMAIN}`,
+      addedAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "colony3-rosebank",
+      name: "Rosebank Studio",
+      relayUrl: `wss://rosebank-studio.${DOMAIN}`,
+      addedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  await page.addInitScript((list) => {
+    window.localStorage.setItem("buzz-communities", JSON.stringify(list));
+    window.localStorage.setItem("buzz-active-community-id", list[0].id);
+  }, communities);
+  await installMockBridge(page, undefined, { skipCommunitySeed: true });
+  await page.goto("/");
+  await page
+    .getByTestId(`community-rail-button-${communities[0].id}`)
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Community settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Community" });
+  await expect(dialog).toBeVisible();
+  await shot(
+    page,
+    {
+      name: "19-community-edit",
+      board: "CommunityEdit",
+      title: "Edit community",
+      // The board also draws the reconnect page beside it: only the dialog is compared.
+      refRect: [956, 163, 422, 730],
+    },
+    dialog,
+  );
 });

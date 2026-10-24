@@ -4,7 +4,7 @@ import { downscaleIconToDataUrl } from "@/features/communities/lib/downscaleIcon
 import { savePendingProfile } from "../pendingProfile";
 import { AvatarStep } from "./AvatarStep";
 import { FirstRunLink } from "./firstRunControls";
-import { ProfileFrame } from "./ProfileFrame";
+import { ProfileDoneCard, ProfileFrame, ProfilePair } from "./ProfileFrame";
 import { ProfileStep } from "./ProfileStep";
 import type { ProfileStepState } from "./types";
 
@@ -72,19 +72,22 @@ export function PendingProfileStep({
           state={state}
         />
       ) : (
-        <AvatarStep
-          actions={{
-            advanceWithoutSaving: () => finish(true, false),
-            back: () => setPage("name"),
-            onUploadingChange: () => undefined,
-            skipForNow: () => finish(true, false),
-            submit: () => finish(true, true),
-            updateAvatarUrl: setAvatarUrl,
-          }}
-          processImage={downscaleIconToDataUrl}
-          showAlwaysSkip
-          state={state}
-        />
+        <ProfilePair>
+          <ProfileDoneCard name={displayName.trim()} />
+          <AvatarStep
+            actions={{
+              advanceWithoutSaving: () => finish(true, false),
+              back: () => setPage("name"),
+              onUploadingChange: () => undefined,
+              skipForNow: () => finish(true, false),
+              submit: () => finish(true, true),
+              updateAvatarUrl: setAvatarUrl,
+            }}
+            processImage={downscaleIconToDataUrl}
+            showAlwaysSkip
+            state={state}
+          />
+        </ProfilePair>
       )}
     </ProfileFrame>
   );

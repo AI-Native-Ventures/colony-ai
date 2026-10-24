@@ -43,7 +43,7 @@ export function StartupProblem({
   children?: React.ReactNode;
 }) {
   return (
-    <div data-testid={testId}>
+    <div className="c3fr-gate" data-testid={testId}>
       <StartupWindowDragRegion />
       <FirstRunFrame
         layout="startup"

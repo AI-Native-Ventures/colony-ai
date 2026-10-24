@@ -23,7 +23,7 @@ import {
 } from "./NostrKeyImportForm";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
-import { ProfileFrame } from "./ProfileFrame";
+import { ProfileDoneCard, ProfileFrame, ProfilePair } from "./ProfileFrame";
 import { ProfileStep } from "./ProfileStep";
 import type {
   OnboardingActions,
@@ -563,20 +563,28 @@ export function OnboardingFlow({
               />
             </div>
           ) : (
-            <AvatarStep
-              actions={{
-                advanceWithoutSaving: complete,
-                back: showProfilePage,
-                onUploadingChange: setIsUploadingAvatar,
-                skipForNow,
-                submit: () => {
-                  void saveProfileAndContinue("complete");
-                },
-                updateAvatarUrl: updateAvatarUrlDraft,
-              }}
-              showAlwaysSkip={true}
-              state={avatarStepState}
-            />
+            <ProfilePair>
+              <ProfileDoneCard
+                name={
+                  profileStepState.name.draftValue.trim() ||
+                  profileStepState.name.savedValue
+                }
+              />
+              <AvatarStep
+                actions={{
+                  advanceWithoutSaving: complete,
+                  back: showProfilePage,
+                  onUploadingChange: setIsUploadingAvatar,
+                  skipForNow,
+                  submit: () => {
+                    void saveProfileAndContinue("complete");
+                  },
+                  updateAvatarUrl: updateAvatarUrlDraft,
+                }}
+                showAlwaysSkip={true}
+                state={avatarStepState}
+              />
+            </ProfilePair>
           )}
         </div>
       </ProfileFrame>

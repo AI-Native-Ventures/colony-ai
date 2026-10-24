@@ -42,6 +42,7 @@
 .c3fr-gate {
   position: fixed;
   inset: 0;
+  z-index: 40;
   pointer-events: none;
 }
 
@@ -3910,4 +3911,33 @@
     var(--fr-surface) 72%,
     rgb(255 253 250 / 0%)
   );
+}
+
+/* Step 2 shows the finished name card beside the photo card. */
+.c3fr-profile-pair {
+  display: grid;
+  grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(calc(360 * var(--u)), 100%), 1fr)
+    );
+  gap: calc(22 * var(--u));
+  align-items: start;
+}
+
+.c3fr-profile-pair > .c3fr-profile-card {
+  max-width: none;
+  margin-inline: 0;
+}
+
+.c3fr-eyebrow-done {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  font-size: calc(13 * var(--t));
+  color: #2b7350;
+}
+
+.c3fr-input-done {
+  display: flex;
+  align-items: center;
 }

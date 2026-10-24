@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 import { AdvancedSignIn } from "./AdvancedSignIn";
+import { InviteSampleScene } from "./InviteScenes";
 import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
 import {
   OnboardingScenePresentation,
@@ -65,6 +66,8 @@ createRoot(document.getElementById("root") as HTMLElement).render(
           onRetry={() => undefined}
           title="Colony could not start"
         />
+      ) : requestedReskin === "invite" ? (
+        <InviteSampleScene />
       ) : requestedReskin === "advanced" ? (
         <AdvancedSignIn
           error={null}

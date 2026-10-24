@@ -52,6 +52,13 @@ function isConnectScene(scene: OnboardingSceneId) {
   return CONNECT_SCENE.test(scene);
 }
 
+/** The business form scenes; the returning-user list ("businesses") is not one. */
+function isBusinessFormScene(scene: OnboardingSceneId) {
+  return (
+    scene === "business" || scene === "business-error" || scene === "additional"
+  );
+}
+
 function isVerifyScene(scene: OnboardingSceneId) {
   return scene.startsWith("verify");
 }
@@ -290,8 +297,7 @@ function layoutFor(scene: OnboardingSceneId): {
   width: number;
 } {
   if (resetStepIndex(scene) !== null) return { layout: "reset", width: 480 };
-  if (scene.includes("business") || scene === "additional")
-    return { layout: "business", width: 460 };
+  if (isBusinessFormScene(scene)) return { layout: "business", width: 460 };
   if (isConnectScene(scene)) return { layout: "tight", width: 500 };
   if (scene === "businesses") return { layout: "default", width: 500 };
   if (
@@ -359,10 +365,9 @@ export function OnboardingScenePresentation(props: PresentationProps) {
     tone: guidance.tone ?? scoutTone(guidance.status),
     pose: guidance.pose,
     bubble: guidance.bubble,
-    extra:
-      scene.includes("business") || scene === "additional" ? (
-        <BusinessPreview data={data} onLogoError={props.onLogoError} />
-      ) : undefined,
+    extra: isBusinessFormScene(scene) ? (
+      <BusinessPreview data={data} onLogoError={props.onLogoError} />
+    ) : undefined,
     footer:
       scene === "signin" ? (
         <AccountHelpChip label="How your account stays yours" />

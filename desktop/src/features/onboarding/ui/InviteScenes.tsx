@@ -74,17 +74,22 @@ function InviteLinkForm({
   autoFocus,
   onContinue,
   onEscape,
+  sample,
   submitLabel = "Continue",
 }: {
   autoFocus?: boolean;
   /** Returns an error to show, or null once the invite was accepted. */
   onContinue: (target: InviteTarget) => string | null;
   onEscape?: () => void;
+  /** Starting values, for the visual proof. */
+  sample?: { value: string; address: string; error: string };
   submitLabel?: string;
 }) {
-  const [value, setValue] = React.useState("");
-  const [address, setAddress] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
+  const [value, setValue] = React.useState(sample?.value ?? "");
+  const [address, setAddress] = React.useState(sample?.address ?? "");
+  const [error, setError] = React.useState<string | null>(
+    sample?.error ?? null,
+  );
   const inputRef = React.useRef<HTMLInputElement>(null);
   const parsed = React.useMemo(() => parseInviteInput(value), [value]);
   const needsAddress = parsed !== null && !("relayWsUrl" in parsed);
@@ -462,7 +467,10 @@ export function InviteJoinScene({
           <FirstRunSectionDivider>
             Have a different invite?
           </FirstRunSectionDivider>
-          <InviteLinkForm onContinue={onUseAnotherInvite} />
+          <InviteLinkForm
+            onContinue={onUseAnotherInvite}
+            submitLabel="Check invite"
+          />
         </>
       ) : null}
     </div>
@@ -491,6 +499,55 @@ export function InviteJoinScene({
       }}
       scene="invite"
       topOverride={top}
+    />
+  );
+}
+
+/** The invite screen with sample data, for the visual proof of the board. */
+export function InviteSampleScene() {
+  const content = (
+    <div
+      className="c3fr-form"
+      style={{ "--c3fr-gap": 22 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        lede="Join your team, their agents and the work already in motion."
+        title="You’re invited."
+      />
+      <InviteCard
+        invite={{ businessName: "Rosebank Studio", inviter: "Ayesha" }}
+      />
+      <FirstRunButton kind="primary">Join Rosebank Studio</FirstRunButton>
+      <FirstRunLink className="c3fr-center-link">
+        Create my own business instead
+      </FirstRunLink>
+      <FirstRunSectionDivider>Have a different invite?</FirstRunSectionDivider>
+      <InviteLinkForm
+        onContinue={() => null}
+        sample={{
+          value: "RB-7KQ2",
+          address: "rosebank-studio",
+          error:
+            "That invite didn’t work. Check the link, or ask for a new one.",
+        }}
+        submitLabel="Check invite"
+      />
+    </div>
+  );
+  return (
+    <OnboardingScenePresentation
+      contentOverride={content}
+      data={{
+        ...EMPTY_DATA,
+        scoutGuidance: undefined,
+        inviteScene: { businessName: "Rosebank Studio", inviter: "Ayesha" },
+      }}
+      scene="invite"
+      topOverride={
+        <span>
+          Already have an account? <FirstRunLink>Sign in</FirstRunLink>
+        </span>
+      }
     />
   );
 }
