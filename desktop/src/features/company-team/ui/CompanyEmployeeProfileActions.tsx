@@ -15,6 +15,7 @@ export function CompanyEmployeeProfileActions({
   onOpenReport,
   onTerminate,
   position,
+  profilePage = false,
 }: {
   canManage: boolean;
   children?: React.ReactNode;
@@ -24,6 +25,8 @@ export function CompanyEmployeeProfileActions({
   onOpenReport: (pubkey: string) => void;
   onTerminate: () => void;
   position: MemberPositionHead | undefined;
+  /** True on the employee profile page, which already offers rehire review. */
+  profilePage?: boolean;
 }) {
   const companyTeamQuery = useCompanyTeamQuery();
   const directReportMembers = React.useMemo(
@@ -66,7 +69,7 @@ export function CompanyEmployeeProfileActions({
     <section
       aria-label="Company employee overview"
       className={
-        children
+        children || profilePage
           ? "grid gap-[3.125rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]"
           : "mt-8 grid gap-8 border-t border-border/60 pt-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]"
       }
@@ -139,7 +142,10 @@ export function CompanyEmployeeProfileActions({
         </div>
         <div className="mt-6">
           <h3 className="text-sm font-semibold">Manager actions</h3>
-          {!children && canManage && position?.status === "terminated" ? (
+          {!children &&
+          !profilePage &&
+          canManage &&
+          position?.status === "terminated" ? (
             <Button
               className="mt-3 bg-colony-info text-xs"
               onClick={() => onOpenReport(employeePubkey)}

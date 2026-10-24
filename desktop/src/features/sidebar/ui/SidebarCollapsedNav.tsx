@@ -8,12 +8,7 @@ import {
 } from "@/features/sidebar/ui/sidebarDestinations";
 import type { SidebarDmParticipant } from "@/features/sidebar/ui/SidebarSection";
 import type { Channel } from "@/shared/api/types";
-import {
-  ActivityIcon,
-  HashIcon,
-  SavedIcon,
-  TodayIcon,
-} from "@/shared/ui/colonyIcons";
+import { ActivityIcon, HashIcon, TodayIcon } from "@/shared/ui/colonyIcons";
 
 type CollapsedDirectMessage = {
   channel: Channel;
@@ -29,13 +24,11 @@ type SidebarCollapsedNavProps = {
   directMessages: CollapsedDirectMessage[];
   homeBadgeCount: number;
   isActivityActive: boolean;
-  isSavedForLaterActive: boolean;
   isTodayActive: boolean;
   hasUnreadChannels: boolean;
   onExpand: () => void;
   onSelectChannel: (channelId: string) => void;
   onSelectHome: () => void;
-  onSelectSavedForLater: () => void;
   onSelectToday: () => void;
 };
 
@@ -79,13 +72,11 @@ export function SidebarCollapsedNav({
   directMessages,
   homeBadgeCount,
   isActivityActive,
-  isSavedForLaterActive,
   isTodayActive,
   hasUnreadChannels,
   onExpand,
   onSelectChannel,
   onSelectHome,
-  onSelectSavedForLater,
   onSelectToday,
 }: SidebarCollapsedNavProps) {
   return (
@@ -112,14 +103,6 @@ export function SidebarCollapsedNav({
             {Math.min(homeBadgeCount, 99)}
           </span>
         ) : null}
-      </CollapsedItem>
-      <CollapsedItem
-        active={isSavedForLaterActive}
-        ariaLabel="Saved for later"
-        onClick={onSelectSavedForLater}
-        testId="sidebar-collapsed-saved"
-      >
-        <SavedIcon size={20} />
       </CollapsedItem>
       <span aria-hidden="true" className="colony-collapsed-divider" />
       {SIDEBAR_DESTINATIONS.map((entry) => {

@@ -292,7 +292,7 @@ export function ChannelScreenHeader({
       tabs={
         activeChannel?.channelType === "stream" &&
         !referenceThreadPresentation ? (
-          <ChannelWorkspaceTabs channelId={activeChannel.id} />
+          <ChannelWorkspaceTabs />
         ) : undefined
       }
       title={activeChannelTitle}

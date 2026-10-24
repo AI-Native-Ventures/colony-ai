@@ -26,8 +26,6 @@ export type BotActivityAgent = Pick<ManagedAgent, "pubkey" | "name">;
 type BotActivityBarProps = {
   agents: BotActivityAgent[];
   channelId?: string | null;
-  onOpenAgentSession: (pubkey: string, channelId?: string | null) => void;
-  openAgentSessionPubkey: string | null;
   profiles?: UserProfileLookup;
   workingBotPubkeys: string[];
   variant?: "toolbar" | "inline";
@@ -39,8 +37,6 @@ const HEADLINE_ROTATION_MS = 2200;
 export function BotActivityComposerAction({
   agents,
   channelId = null,
-  onOpenAgentSession,
-  openAgentSessionPubkey,
   profiles,
   workingBotPubkeys,
   variant = "toolbar",
@@ -179,7 +175,6 @@ export function BotActivityComposerAction({
 
   const agentAvatarUrl = (agent: BotActivityAgent) =>
     profiles?.[agent.pubkey.toLowerCase()]?.avatarUrl ?? null;
-  const selectedPubkey = openAgentSessionPubkey?.toLowerCase() ?? null;
   const triggerLabel =
     workingAgents.length === 1
       ? `${workingAgents[0]?.name ?? "Agent"} is working`
@@ -198,7 +193,7 @@ export function BotActivityComposerAction({
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
           <button
-            aria-label={`${triggerLabel}. View activity.`}
+            aria-label={triggerLabel}
             className={cn(
               "inline-flex items-center justify-center rounded-full border border-border/60 bg-background font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-primary/10 data-[state=open]:text-primary",
               isInline
@@ -271,41 +266,23 @@ export function BotActivityComposerAction({
             Agents working
           </div>
           <div className="mt-1 flex flex-col gap-1">
-            {workingAgents.map((agent) => {
-              const isSelected = selectedPubkey === agent.pubkey.toLowerCase();
-
-              return (
-                <button
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                    isSelected
-                      ? "bg-primary/10 text-primary"
-                      : "text-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                  data-testid={`bot-activity-composer-item-${agent.pubkey}`}
-                  key={agent.pubkey}
-                  onClick={() => {
-                    clearHoverTimer();
-                    setOpen(false);
-                    onOpenAgentSession(agent.pubkey, channelId);
-                  }}
-                  type="button"
-                >
-                  <UserAvatar
-                    avatarUrl={agentAvatarUrl(agent)}
-                    className="shrink-0"
-                    displayName={agent.name}
-                    shape="squircle"
-                    size="sm"
-                  />
-                  <span className="min-w-0 flex-1 truncate">{agent.name}</span>
-                  <span className="shrink-0 whitespace-nowrap text-xs font-medium opacity-80">
-                    View activity
-                  </span>
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground/70" />
-                </button>
-              );
-            })}
+            {workingAgents.map((agent) => (
+              <div
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground"
+                data-testid={`bot-activity-composer-item-${agent.pubkey}`}
+                key={agent.pubkey}
+              >
+                <UserAvatar
+                  avatarUrl={agentAvatarUrl(agent)}
+                  className="shrink-0"
+                  displayName={agent.name}
+                  shape="squircle"
+                  size="sm"
+                />
+                <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground/70" />
+              </div>
+            ))}
           </div>
         </PopoverContent>
       </Popover>

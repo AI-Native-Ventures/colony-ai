@@ -144,50 +144,6 @@ async function sendChannelMessage(
   );
 }
 
-async function joinChannel(
-  page: import("@playwright/test").Page,
-  channelName: string,
-) {
-  await page.evaluate(async (targetChannelName) => {
-    const tauriWindow = window as Window & {
-      __TAURI_INTERNALS__?: {
-        invoke: (
-          command: string,
-          payload?: Record<string, unknown>,
-        ) => Promise<unknown>;
-      };
-    };
-
-    const invoke = tauriWindow.__TAURI_INTERNALS__?.invoke;
-    if (!invoke) {
-      throw new Error("Tauri invoke bridge is unavailable.");
-    }
-
-    const memberPayload = (await invoke("get_channels")) as {
-      channels: Array<{ id: string; name: string }> | null;
-    };
-    let channel = (memberPayload.channels ?? []).find(
-      ({ name }) => name === targetChannelName,
-    );
-    if (!channel) {
-      // get_channels is member-only; fall back to the open-channel
-      // directory for a joinable non-member channel like watercooler.
-      const directory = (await invoke("get_open_channel_directory")) as Array<{
-        id: string;
-        name: string;
-      }>;
-      channel = directory.find(({ name }) => name === targetChannelName);
-    }
-    if (!channel) {
-      throw new Error(`Channel not found: ${targetChannelName}`);
-    }
-
-    await invoke("join_channel", {
-      channelId: channel.id,
-    });
-  }, channelName);
-}
-
 async function getLoggedNotifications(page: import("@playwright/test").Page) {
   return page.evaluate(() => {
     const win = window as Window & {
@@ -364,64 +320,6 @@ test("live mentions refetch the home feed without waiting for polling", async ({
   }
 });
 
-test("live forum mentions refetch the home feed without waiting for polling", async ({
-  browser,
-}: {
-  browser: Browser;
-}) => {
-  const stamp = Date.now();
-  const targetContext = await browser.newContext();
-  const senderContext = await browser.newContext();
-  const targetPage = await targetContext.newPage();
-  const senderPage = await senderContext.newPage();
-
-  try {
-    await installRelayBridge(targetPage, "tyler");
-    await installRelayBridge(senderPage, "alice");
-
-    await targetPage.goto("/");
-    await senderPage.goto("/");
-    await enableDesktopMessagePreviews(targetPage);
-    await assertDesktopNotificationsEnabled(targetPage);
-
-    await targetPage.getByTestId("channel-general").click();
-    await expect(targetPage.getByTestId("chat-title")).toHaveText("general");
-    await joinChannel(senderPage, "watercooler");
-
-    const message = `Forum ping @tyler ${stamp}`;
-    await sendChannelMessage(senderPage, {
-      channelName: "watercooler",
-      content: message,
-      kind: 45001,
-      mentionPubkeys: [TEST_IDENTITIES.tyler.pubkey],
-    });
-
-    await expect(targetPage.getByTestId("sidebar-home-count")).toHaveText("1");
-
-    await expectLoggedNotifications(targetPage, [
-      {
-        body: message,
-        title: "alice mentioned you in #watercooler",
-      },
-    ]);
-
-    await targetPage
-      .getByTestId("app-sidebar")
-      .getByRole("button", { name: "Activity", exact: true })
-      .click();
-    await expect(targetPage.getByTestId("home-inbox-list")).toBeVisible();
-    await expect(targetPage.getByTestId("home-inbox-list")).toBeVisible();
-    await expect(targetPage.getByTestId("home-inbox-list")).toContainText(
-      message.replace("@tyler", "tyler"),
-    );
-    await expect(targetPage.getByTestId("sidebar-home-count")).toHaveCount(0);
-    await expect.poll(() => getLoggedNotificationCount(targetPage)).toBe(1);
-  } finally {
-    await targetContext.close();
-    await senderContext.close();
-  }
-});
-
 test("DM channel appears in sidebar", async ({ page }) => {
   await installRelayBridge(page, "tyler");
   await page.goto("/");
@@ -441,13 +339,6 @@ test("send message to DM", async ({ page }) => {
   await page.getByTestId("send-message").click();
 
   await expect(page.getByTestId("message-timeline")).toContainText(message);
-});
-
-test("forum channel appears in sidebar", async ({ page }) => {
-  await installRelayBridge(page, "tyler");
-  await page.goto("/");
-
-  await expect(page.getByTestId("forum-list")).toContainText("watercooler");
 });
 
 test("create channel with description", async ({ page }) => {

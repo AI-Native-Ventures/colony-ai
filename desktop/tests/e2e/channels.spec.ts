@@ -13,13 +13,11 @@ import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
-const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
 const CACHED_PROFILE_LABELS_TAG = "@cached-profile-labels";
 // Relay-only agent owned by the mock viewer (see e2eBridge.ts
 // OWNED_RELAY_AGENT_PUBKEY). Classified as a bot via mockRelayAgents and
-// owned-by-viewer via its mockProfiles owner_pubkey, so the sidebar
-// view-activity gate (memberIsBot && viewerIsOwner) opens for it.
+// owned-by-viewer via its mockProfiles owner_pubkey.
 const OWNED_RELAY_AGENT_PUBKEY =
   "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00";
 const DM_RELAY_AGENT_PUBKEY =
@@ -467,11 +465,6 @@ test("sidebar shows all channel types", async ({ page }) => {
   await expect(streamList).toContainText("random");
   await expect(streamList).toContainText("engineering");
   await expect(streamList).toContainText("agents");
-
-  // Forums
-  const forumList = page.getByTestId("forum-list");
-  await expect(forumList).toContainText("watercooler");
-  await expect(forumList).toContainText("announcements");
 
   // DMs
   const dmList = page.getByTestId("dm-list");
@@ -1701,7 +1694,6 @@ test("ephemeral countdown refreshes when switching channels after a clock jump",
 
 test("archived channels stay out of all sidebar sections", async ({ page }) => {
   const archivedStreamName = `archived-stream-${Date.now()}`;
-  const archivedForumName = `archived-forum-${Date.now()}`;
 
   await page.goto("/");
   await page.waitForFunction(() => {
@@ -1715,11 +1707,9 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
   });
   await page.evaluate(
     async ({
-      archivedForumName,
       archivedStreamName,
       outsiderPubkey,
     }: {
-      archivedForumName: string;
       archivedStreamName: string;
       outsiderPubkey: string;
     }) => {
@@ -1741,21 +1731,15 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
         name: archivedStreamName,
         visibility: "open",
       });
-      const forum = await invoke("create_channel", {
-        channelType: "forum",
-        name: archivedForumName,
-        visibility: "open",
-      });
       const directMessage = await invoke("open_dm", {
         pubkeys: [outsiderPubkey],
       });
 
-      for (const channel of [stream, forum, directMessage]) {
+      for (const channel of [stream, directMessage]) {
         await invoke("archive_channel", { channelId: channel.id });
       }
     },
     {
-      archivedForumName,
       archivedStreamName,
       outsiderPubkey: TEST_IDENTITIES.outsider.pubkey,
     },
@@ -1765,9 +1749,6 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
 
   await expect(page.getByTestId("stream-list")).not.toContainText(
     archivedStreamName,
-  );
-  await expect(page.getByTestId("forum-list")).not.toContainText(
-    archivedForumName,
   );
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
   await expect(page.getByTestId("dm-list")).not.toContainText("outsider");
@@ -1807,10 +1788,6 @@ test("switch between channel types", async ({ page }) => {
   // Stream
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
-
-  // Forum
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
 
   // DM
   await page.getByTestId("channel-alice-tyler").click();
@@ -2103,190 +2080,6 @@ test("agent typing does not show a live activity strip above the composer", asyn
   await expect(page.getByTestId("message-composer")).toBeVisible();
 });
 
-test("members sidebar exposes view-activity for a viewer-owned relay agent", async ({
-  page,
-}) => {
-  // nadia is no longer in the default relay-agent seeds (the no-relay-record
-  // owner path claims that fixture), so seed her relay registry entry here to
-  // exercise the relay-bot classification.
-  await installMockBridge(page, {
-    relayAgents: [
-      {
-        pubkey: OWNED_RELAY_AGENT_PUBKEY,
-        name: "nadia",
-        agentType: "goose",
-        capabilities: ["search", "summaries"],
-        channelNames: ["agents"],
-        respondTo: "anyone",
-      },
-    ],
-  });
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-
-  // nadia is a relay-only agent (no local managed record) owned by the mock
-  // viewer. The view-activity affordance must open via the declared-owner
-  // path, not the local-managed path.
-  await expect(
-    page.getByTestId(`sidebar-member-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-  await openMemberMenu(page, OWNED_RELAY_AGENT_PUBKEY);
-  await expect(
-    page.getByTestId(`sidebar-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-});
-
-test("profile renders live activity for a viewer-owned relay agent", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-  await page
-    .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
-    .click();
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-
-  await page.waitForFunction(
-    () =>
-      typeof (window as MockFeedWindow).__BUZZ_E2E_SEED_ACTIVE_TURNS__ ===
-      "function",
-  );
-  await page.evaluate(
-    ({ agentPubkey, channelId }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-      seedActiveTurns({
-        agentPubkey,
-        channelId,
-        turnId: "owned-relay-profile-turn",
-      });
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channelId: AGENTS_CHANNEL_ID,
-    },
-  );
-
-  const liveActivity = page.getByTestId(
-    `user-profile-live-activity-${OWNED_RELAY_AGENT_PUBKEY}`,
-  );
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Latest Activity");
-  await expect(liveActivity).toContainText("#agents");
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${AGENTS_CHANNEL_ID}`),
-  ).toHaveCount(0);
-
-  await page.evaluate(
-    ({ agentPubkey, channelId, turnId }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-      seedActiveTurns({
-        agentPubkey,
-        channelId,
-        turnId,
-        kind: "turn_completed",
-      });
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channelId: AGENTS_CHANNEL_ID,
-      turnId: "owned-relay-profile-turn",
-    },
-  );
-
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Latest Activity");
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).not.toBeVisible();
-});
-
-test("profile activity carousel switches channels via progress dots", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-  await page
-    .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
-    .click();
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-
-  await page.waitForFunction(
-    () =>
-      typeof (window as MockFeedWindow).__BUZZ_E2E_SEED_ACTIVE_TURNS__ ===
-      "function",
-  );
-
-  await page.evaluate(
-    ({ agentPubkey, channels }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-
-      for (const [index, channelId] of channels.entries()) {
-        seedActiveTurns({
-          agentPubkey,
-          channelId,
-          turnId: `owned-relay-profile-turn-${index}`,
-        });
-      }
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channels: [AGENTS_CHANNEL_ID, GENERAL_CHANNEL_ID],
-    },
-  );
-
-  const liveActivity = page.getByTestId(
-    `user-profile-live-activity-${OWNED_RELAY_AGENT_PUBKEY}`,
-  );
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("#agents");
-
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${AGENTS_CHANNEL_ID}`),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${GENERAL_CHANNEL_ID}`),
-  ).toBeVisible();
-
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${GENERAL_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "false");
-
-  await page
-    .getByTestId(`user-profile-activity-dot-${GENERAL_CHANNEL_ID}`)
-    .click();
-
-  await expect(
-    page.getByTestId("user-profile-activity-channel-label"),
-  ).toContainText("#general");
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${GENERAL_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "true");
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${AGENTS_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "true");
-});
-
 test("typing indicator shows avatars and maintains stable name order", async ({
   page,
 }) => {
@@ -2389,39 +2182,6 @@ test("sidebar shows unread indicator for newly active channels", async ({
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
 });
 
-test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
-  await waitForMockLiveSubscription(page, "watercooler");
-
-  // Emit as alice - the unread tracker ignores self-authored messages.
-  await page.evaluate(
-    ({ pubkey }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "watercooler",
-        content: "Unread update for the forum",
-        kind: 45001,
-        pubkey,
-      });
-    },
-    { pubkey: TEST_IDENTITIES.alice.pubkey },
-  );
-
-  await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
-    "font-weight",
-    "600",
-  );
-  await expectUnreadBadgeCount(
-    page.getByTestId("channel-unread-watercooler"),
-    1,
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
-});
-
 test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
   await page.goto("/");
 
@@ -2469,10 +2229,6 @@ test("sidebar persists after channel switch", async ({ page }) => {
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
@@ -3012,27 +2768,6 @@ test("manage channel places canvas between channel info and actions", async ({
   expect(canvasBox?.y).toBeLessThan(leaveBox?.y);
 });
 
-test("channel settings never offers workflows", async ({ page }) => {
-  await page.goto("/");
-  await openChannelManagement(page, "general");
-
-  await expect(page.getByTestId("channel-management-sheet")).toBeVisible();
-  await expect(page.getByTestId("channel-workflows-ingress")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        (
-          window as Window & {
-            __BUZZ_E2E_COMMAND_LOG__?: Array<{ command: string }>;
-          }
-        ).__BUZZ_E2E_COMMAND_LOG__?.some(
-          ({ command }) => command === "get_channel_workflows",
-        ),
-      ),
-    )
-    .toBe(false);
-});
-
 test("channel settings opens the pinned messages page", async ({ page }) => {
   await page.goto("/");
   await openChannelManagement(page, "general");
@@ -3265,9 +3000,7 @@ test("Inbox type labels keep the same height with and without a channel chip", a
   ).toBeLessThan(0.5);
 });
 
-test("Inbox All never lists drafts and unread-only hides reminders", async ({
-  page,
-}) => {
+test("Inbox All never lists drafts", async ({ page }) => {
   const draftKey = `channel:${GENERAL_CHANNEL_ID}`;
   await page.addInitScript(
     ({ draftStoreKey, draftStorageKey }) => {
@@ -3300,43 +3033,10 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
     return typeof win.__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__ === "function";
   });
 
-  const reminderId = "inbox-unread-only-reminder";
   const messageId = "inbox-unread-only-message";
   await page.evaluate(
-    async ({
-      channelId,
-      currentPubkey,
-      messageId,
-      reminderId,
-      senderPubkey,
-    }) => {
+    async ({ channelId, currentPubkey, messageId, senderPubkey }) => {
       const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id: reminderId,
-          pubkey: currentPubkey,
-          created_at: now - 120,
-          kind: 30300,
-          tags: [
-            ["d", reminderId],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-general-alice",
-              channelId,
-              preview: "Due reminder in mixed Inbox",
-              authorPubkey: senderPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-
       const pushFeedItem = (window as MockFeedWindow)
         .__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__;
       if (!pushFeedItem) throw new Error("Mock feed helper is not installed.");
@@ -3360,16 +3060,13 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
       channelId: GENERAL_CHANNEL_ID,
       currentPubkey: MOCK_IDENTITY_PUBKEY,
       messageId,
-      reminderId,
       senderPubkey: TEST_IDENTITIES.alice.pubkey,
     },
   );
 
   const messageRow = page.getByTestId(`home-inbox-item-${messageId}`);
-  const reminderRow = page.getByTestId(`home-all-reminders-${reminderId}`);
   const draftRow = page.getByTestId(`home-all-drafts-${draftKey}`);
   await expect(messageRow).toBeVisible();
-  await expect(reminderRow).toBeVisible();
   // Drafts belong to the dedicated Drafts filter - never the mixed All view.
   await expect(draftRow).toHaveCount(0);
 
@@ -3377,7 +3074,6 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
   await page.getByRole("switch", { name: "Show unread only" }).click();
 
   await expect(messageRow).toBeVisible();
-  await expect(reminderRow).toHaveCount(0);
   await expect(draftRow).toHaveCount(0);
 
   // The draft is still reachable under the Drafts filter.
@@ -3385,180 +3081,6 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
   await page.getByTestId("inbox-filter-trigger").click();
   await page.getByRole("menuitemradio", { name: "Drafts" }).click();
   await expect(page.getByTestId("home-inbox-drafts")).toBeVisible();
-});
-
-test("Inbox merges a due reminder into its represented conversation", async ({
-  page,
-}) => {
-  const messageId = "inbox-reminder-merge-message";
-  const reminderId = "inbox-reminder-merge";
-  await seedHomeInboxMention(page, messageId);
-
-  await page.evaluate(
-    async ({
-      authorPubkey,
-      channelId,
-      messageId: targetEventId,
-      pubkey,
-      reminderId: id,
-    }) => {
-      const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id,
-          pubkey,
-          created_at: now - 600,
-          kind: 30300,
-          tags: [
-            ["d", id],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: targetEventId,
-              channelId,
-              preview: "Please review the home panel routing.",
-              authorPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      authorPubkey: TEST_IDENTITIES.alice.pubkey,
-      channelId: GENERAL_CHANNEL_ID,
-      messageId,
-      pubkey: MOCK_IDENTITY_PUBKEY,
-      reminderId,
-    },
-  );
-
-  const conversationRow = page.getByTestId(`home-inbox-item-${messageId}`);
-  await expect(conversationRow.getByText("Reminder due")).toBeVisible();
-  await expect(
-    page.getByTestId(`home-all-reminders-${reminderId}`),
-  ).toHaveCount(0);
-
-  await page.getByTestId("inbox-filter-trigger").click();
-  await page.getByRole("menuitemradio", { name: "Mentions" }).click();
-  await expect(conversationRow.getByText("Reminder due")).toBeVisible();
-});
-
-test("Inbox All keeps its filter when opening a due reminder", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await expect(page.getByTestId("home-inbox")).toBeVisible();
-
-  const reminderId = "inbox-stable-reminder";
-  await page.evaluate(
-    async ({ channelId, id, pubkey }) => {
-      const now = Math.floor(Date.now() / 1000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id,
-          pubkey,
-          created_at: now - 300,
-          kind: 30300,
-          tags: [
-            ["d", id],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-general-alice",
-              channelId,
-              preview: "Review the Inbox behavior",
-              authorPubkey: pubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      channelId: GENERAL_CHANNEL_ID,
-      id: reminderId,
-      pubkey: MOCK_IDENTITY_PUBKEY,
-    },
-  );
-
-  const reminderRow = page.getByTestId(`home-all-reminders-${reminderId}`);
-  await expect(reminderRow).toBeVisible();
-  await reminderRow.click();
-
-  await expect(page.getByTestId("inbox-filter-trigger")).toContainText("All");
-  await expect(page.getByTestId("home-reminder-detail")).toBeVisible();
-  await expect(page.getByTestId("home-inbox-list")).toBeVisible();
-});
-
-test("Inbox reminder rows and detail identify DM context", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("home-inbox")).toBeVisible();
-
-  const reminderId = "inbox-dm-reminder";
-  const dmChannelId = "f48efb06-0c93-5025-aac9-2e646bb6bfa8";
-  await page.evaluate(
-    async ({ authorPubkey, channelId, currentPubkey, reminderId }) => {
-      const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id: reminderId,
-          pubkey: currentPubkey,
-          created_at: now - 300,
-          kind: 30300,
-          tags: [
-            ["d", reminderId],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-dm-alice",
-              channelId,
-              preview: "Follow up with Alice",
-              authorPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      authorPubkey: TEST_IDENTITIES.alice.pubkey,
-      channelId: dmChannelId,
-      currentPubkey: MOCK_IDENTITY_PUBKEY,
-      reminderId,
-    },
-  );
-
-  await page.getByTestId("inbox-filter-trigger").click();
-  await page.getByRole("menuitemradio", { name: "Reminders" }).click();
-  const reminderRow = page.getByTestId(`home-reminder-item-${reminderId}`);
-  await expect(
-    reminderRow.getByText("DM with alice-tyler", { exact: true }),
-  ).toBeVisible();
-  await reminderRow.getByRole("button").click();
-
-  const detail = page.getByTestId("home-reminder-detail");
-  await expect(
-    detail.getByText("DM with alice-tyler", { exact: true }),
-  ).toBeVisible();
-  await expect(detail.getByText("#alice-tyler", { exact: true })).toHaveCount(
-    0,
-  );
 });
 
 test("Inbox detail title and source action navigate to the conversation", async ({

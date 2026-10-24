@@ -23,8 +23,7 @@ export function CreateChannelFormFields({
 }: {
   form: CreateChannelFormState;
 }) {
-  const { channelKind, kindLabel, isCreating } = form;
-
+  const { kindLabel, isCreating } = form;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-[7px]">
@@ -54,9 +53,7 @@ export function CreateChannelFormFields({
             disabled={isCreating}
             id="create-channel-name"
             onChange={(event) => form.setName(event.target.value)}
-            placeholder={
-              channelKind === "forum" ? "design-discussions" : "release-notes"
-            }
+            placeholder="release-notes"
             ref={form.nameInputRef}
             spellCheck={false}
             value={form.name}

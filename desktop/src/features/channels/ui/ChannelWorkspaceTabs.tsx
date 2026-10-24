@@ -1,4 +1,3 @@
-import { useChannelOpenWorkCount } from "@/features/workarea/dock/tabs/WorkAreaWorkCountBadge";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { showWorkspaceFiles } from "@/features/workarea/workspaceFiles";
 import { cn } from "@/shared/lib/cn";
@@ -7,12 +6,7 @@ const TAB_CLASS =
   "c3c-tab flex h-[calc(42*var(--colony-px))] items-center gap-1.5 border-b-[2.5px] border-transparent px-3.5 text-colony-fg-secondary transition-colors hover:text-colony-fg focus-visible:outline-2 focus-visible:outline-ring";
 
 /** The channel's views, as in the Colony 3.0 header: Discussion is this screen. */
-export function ChannelWorkspaceTabs({
-  channelId = null,
-}: {
-  channelId?: string | null;
-}) {
-  const workCount = useChannelOpenWorkCount(channelId ?? "");
+export function ChannelWorkspaceTabs() {
   return (
     <nav
       aria-label="Channel views"
@@ -29,22 +23,6 @@ export function ChannelWorkspaceTabs({
       >
         Discussion
       </span>
-      <button
-        className={TAB_CLASS}
-        data-testid="channel-view-tab-work"
-        onClick={() => requestWorkAreaTab("work")}
-        type="button"
-      >
-        Work
-        {workCount ? (
-          <span
-            className="c3c-tab-count text-colony-accent-ink"
-            data-testid="channel-view-tab-work-count"
-          >
-            {workCount}
-          </span>
-        ) : null}
-      </button>
       <button
         className={TAB_CLASS}
         data-testid="channel-view-tab-knowledge"

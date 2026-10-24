@@ -1,6 +1,5 @@
 import { ArrowUpRight, CircleAlert, UserPlus } from "lucide-react";
 
-import { MemorySection } from "@/features/agent-memory/ui/MemorySection";
 import { ManagedAgentLogPanel } from "@/features/agents/ui/ManagedAgentLogPanel";
 import {
   type ProfileField,
@@ -12,32 +11,6 @@ import type { ProfileChannelLink } from "@/features/profile/ui/UserProfilePanelU
 import type { ManagedAgent } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
-
-export function MemoryFocusedView({
-  agentPubkey,
-  variant = "focused",
-  viewerIsOwner,
-}: {
-  agentPubkey: string;
-  variant?: "embedded" | "focused";
-  viewerIsOwner: boolean | undefined;
-}) {
-  if (viewerIsOwner !== true) {
-    return null;
-  }
-
-  return (
-    <div className={variant === "focused" ? "pt-4" : undefined}>
-      <ProfileSectionGroup testId="user-profile-memories-section">
-        <MemorySection
-          agentPubkey={agentPubkey}
-          variant="grouped"
-          viewerIsOwner={viewerIsOwner}
-        />
-      </ProfileSectionGroup>
-    </div>
-  );
-}
 
 export function ChannelsFocusedView({
   canAddToChannel,

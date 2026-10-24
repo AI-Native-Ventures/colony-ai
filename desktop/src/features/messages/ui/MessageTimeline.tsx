@@ -46,8 +46,6 @@ type MessageTimelineProps = {
   channelIntro?: ChannelIntro | null;
   channelName?: string;
   channelType?: ChannelType | null;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
   messages: TimelineMessage[];
   mainEntries?: MainTimelineEntry[];
   /** Relay thread summaries (root id → summary) for the deferred-pass entry
@@ -79,13 +77,13 @@ type MessageTimelineProps = {
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   /** True when the timeline has the composer overlay below it. */
   hasComposerOverlay?: boolean;
-  /** Companion huddle transcripts are live conversations, not channel history. */
+  /** Hide the day dividers between message groups. */
   hideDayDividers?: boolean;
   /** Show speaker identity on every row instead of grouping consecutive messages. */
   alwaysShowMessageIdentity?: boolean;
   /** Adjust thread summaries for the compact conversation row avatar. */
   compactThreadSummaryAvatars?: boolean;
-  /** Hide agent access-policy badges in the purpose-built Huddle chat. */
+  /** Hide agent access-policy badges. */
   hideAgentAccessBadges?: boolean;
   /** Stable context rendered above the timeline, including when it is empty. */
   pinnedIntro?: React.ReactNode;
@@ -193,8 +191,6 @@ const MessageTimelineBase = React.forwardRef<
     historyExhausted = false,
     isFetchingOlder = false,
     followThreadById,
-    huddleMemberPubkeys,
-    huddleMemberPubkeysPending = false,
     isFollowingThreadById,
     isMessageUnreadById,
     messageFooters,
@@ -687,8 +683,6 @@ const MessageTimelineBase = React.forwardRef<
       firstUnreadMessageId={firstUnreadMessageId}
       followThreadById={followThreadById}
       highlightedMessageId={highlightedMessageId}
-      huddleMemberPubkeys={huddleMemberPubkeys}
-      huddleMemberPubkeysPending={huddleMemberPubkeysPending}
       isFollowingThreadById={isFollowingThreadById}
       isMessageUnreadById={isMessageUnreadById}
       entranceMessageId={entranceMessageId}

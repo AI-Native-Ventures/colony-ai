@@ -88,21 +88,15 @@ export function resolveSnapshotCard(
   const lower = filename.toLowerCase();
   const isJson = lower.endsWith(".agent.json");
   const isPng = lower.endsWith(".agent.png");
-  const isTeamJson = lower.endsWith(".team.json");
-  const isTeamPng = lower.endsWith(".team.png");
 
-  if (!isJson && !isPng && !isTeamJson && !isTeamPng) return null;
-
-  const isAnyPng = isPng || isTeamPng;
+  if (!isJson && !isPng) return null;
 
   // For PNG: MIME must be image/png when present; other MIMEs are inconsistent.
-  if (isAnyPng && entry.m && entry.m !== "image/png") return null;
+  if (isPng && entry.m && entry.m !== "image/png") return null;
 
   // SHA-256 is required for the bounded verified fetch.
   const sha256 = entry.x?.trim();
   if (sha256?.length !== 64) return null;
-
-  const snapshotKind: "agent" | "team" = isJson || isPng ? "agent" : "team";
 
   return {
     displayName: snapshotDisplayName(filename, childText),
@@ -110,9 +104,8 @@ export function resolveSnapshotCard(
     filename,
     size: entry.size,
     sha256,
-    snapshotKind,
-    // Agent PNG snapshots carry the avatar card image. Team PNG snapshots use
-    // a transport placeholder, so render the team icon instead of that image.
+    snapshotKind: "agent",
+    // Agent PNG snapshots carry the avatar card image.
     thumb: isPng ? rewriteRelayUrl(href) : undefined,
   };
 }

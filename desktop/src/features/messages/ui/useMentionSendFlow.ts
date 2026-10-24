@@ -26,7 +26,6 @@ import {
 import { useActivePreparedLinkPreviews } from "./useActivePreparedLinkPreviews";
 import { useDetachedAgentStart } from "./useDetachedAgentStart";
 import { useEnsureAgentMentionsReady } from "./useEnsureAgentMentionsReady";
-import { invokeTauri } from "@/shared/api/tauri";
 import type { AcpRuntime, ManagedAgent } from "@/shared/api/types";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 import { buildCustomEmojiTags } from "@/shared/lib/customEmojiTags";
@@ -507,24 +506,6 @@ export function useMentionSendFlow({
           setNonMemberPromptError(message);
           toast.error(message);
           return restoreComposerAfterFailure();
-        }
-        if (preparedAgentPubkeys.length > 0 && sendChannelId) {
-          try {
-            await invokeTauri("sync_agents_to_active_huddle", {
-              channelId: sendChannelId,
-              agentPubkeys: preparedAgentPubkeys,
-            });
-            if (isSendCancelled()) return restoreComposerAfterFailure();
-          } catch (error) {
-            if (isSendCancelled()) return restoreComposerAfterFailure();
-            const message = `Could not add mentioned agent to the Huddle: ${getErrorMessage(
-              error,
-              "Huddle enrollment failed.",
-            )}`;
-            setNonMemberPromptError(message);
-            toast.error(message);
-            return restoreComposerAfterFailure();
-          }
         }
         const send = onSendRef.current;
         const finishSend = async (

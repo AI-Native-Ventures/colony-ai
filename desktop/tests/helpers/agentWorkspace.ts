@@ -11,20 +11,28 @@ export async function openAgentsDirectoryView(page: Page): Promise<void> {
   });
 }
 
-export async function openAgentTemplatesView(page: Page): Promise<void> {
-  await openAgentsDirectoryView(page);
-  await showAgentTemplates(page);
+/** Opens an agent's profile side panel on the agents route by deep link. */
+export async function openAgentProfilePanel(
+  page: Page,
+  pubkey: string,
+): Promise<void> {
+  await page.evaluate((target) => {
+    window.location.hash = `/agents?profile=${target}`;
+  }, pubkey);
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
+    timeout: 10_000,
+  });
 }
 
-/** Switches an open Agents workspace from its directory to the Templates tab. */
-export async function showAgentTemplates(page: Page): Promise<void> {
-  const templatesTab = page.getByRole("button", {
-    name: "Templates",
-    exact: true,
-  });
-  await expect(templatesTab).toBeVisible({ timeout: 10_000 });
-  await templatesTab.click();
-  await expect(page.getByTestId("agents-library-personas")).toBeVisible({
+/** Opens an agent definition's profile side panel on the agents route by deep link. */
+export async function openPersonaProfilePanel(
+  page: Page,
+  personaId: string,
+): Promise<void> {
+  await page.evaluate((target) => {
+    window.location.hash = `/agents?profilePersona=${target}`;
+  }, personaId);
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
     timeout: 10_000,
   });
 }

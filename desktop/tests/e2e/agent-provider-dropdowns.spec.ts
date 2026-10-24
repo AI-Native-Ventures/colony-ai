@@ -19,7 +19,10 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentsDirectoryView,
+  openPersonaProfilePanel,
+} from "../helpers/agentWorkspace";
 import { waitForAnimations } from "../helpers/animations";
 import { selectSettingsSection } from "../helpers/settings";
 
@@ -150,6 +153,7 @@ test.describe("agent provider dropdown screenshots", () => {
     await installMockBridge(page, {
       personas: [
         {
+          id: "persona-null-runtime-e2e",
           displayName: "Null Runtime Agent",
           systemPrompt: "An agent with no runtime configured.",
           // runtime/provider/model not set → all null in the mock, so the
@@ -159,16 +163,11 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await openAgentTemplatesView(page);
+    await openAgentsDirectoryView(page);
 
-    // Open the persona's actions menu (visible for non-builtin personas).
-    const actionsBtn = page.getByRole("button", {
-      name: "Open actions for Null Runtime Agent",
-    });
-    await expect(actionsBtn).toBeVisible({ timeout: 8_000 });
-    await actionsBtn.click();
-
-    await page.getByRole("menuitem", { name: "Edit" }).click();
+    // Open the persona's profile panel (editable for non-builtin personas).
+    await openPersonaProfilePanel(page, "persona-null-runtime-e2e");
+    await page.getByTestId("user-profile-edit-agent").click();
 
     const dialog = page.getByTestId("persona-dialog");
     await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -221,6 +220,7 @@ test.describe("agent provider dropdown screenshots", () => {
       },
       personas: [
         {
+          id: "persona-codex-definition-e2e",
           displayName: "Codex Definition",
           systemPrompt: "A Codex-backed definition.",
           runtime: "codex",
@@ -229,11 +229,9 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await openAgentTemplatesView(page);
-    await page
-      .getByRole("button", { name: "Open actions for Codex Definition" })
-      .click();
-    await page.getByRole("menuitem", { name: "Edit" }).click();
+    await openAgentsDirectoryView(page);
+    await openPersonaProfilePanel(page, "persona-codex-definition-e2e");
+    await page.getByTestId("user-profile-edit-agent").click();
 
     const dialog = page.getByTestId("persona-dialog");
     await expect(dialog).toBeVisible({ timeout: 10_000 });

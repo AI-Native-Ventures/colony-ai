@@ -3,7 +3,10 @@ import { npubEncode } from "nostr-tools/nip19";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 const SHOTS = "test-results/agent-access-warning";
 
@@ -327,8 +330,8 @@ test("persona-backed edit warns before saving open access", async ({
     ],
   });
   await page.goto("/");
-  await openAgentTemplatesView(page);
-  await page.getByRole("button", { name: "Tyler Agent agent profile" }).click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agent.pubkey);
   await page.getByTestId("user-profile-edit-agent").click();
 
   const dialog = page.getByTestId("edit-agent-dialog");

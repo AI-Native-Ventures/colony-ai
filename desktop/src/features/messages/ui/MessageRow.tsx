@@ -13,13 +13,11 @@ import {
 import { getThreadReference } from "@/features/messages/lib/threading";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
-import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { MessageAuthorWithIndicators } from "@/features/messages/ui/MessageAuthorWithIndicators";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import {
   getThreadReplyAvatarCenterRem,
   getThreadReplyAvatarCenterYRem,
@@ -67,11 +65,8 @@ import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
-import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkMessageContext";
-import { CompanyWorkSuggestionMessageCard } from "@/features/company-work/ui/CompanyWorkSuggestionMessageCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
@@ -94,8 +89,6 @@ export const MessageRow = React.memo(
     highlightReplyConnector = false,
     highlightThreadLineDepths,
     hoverBackground = true,
-    huddleMemberPubkeys,
-    huddleMemberPubkeysPending = false,
     hideAgentAccessBadge = false,
     actionBarPlacement = "floating",
     collapseDescendantsLabel,
@@ -136,8 +129,6 @@ export const MessageRow = React.memo(
     highlightReplyConnector?: boolean;
     highlightThreadLineDepths?: ReadonlyArray<number>;
     hoverBackground?: boolean;
-    huddleMemberPubkeys?: readonly string[];
-    huddleMemberPubkeysPending?: boolean;
     hideAgentAccessBadge?: boolean;
     actionBarPlacement?: "floating" | "inside";
     collapseDescendantsLabel?: string;
@@ -231,8 +222,6 @@ export const MessageRow = React.memo(
       errorMessage: reactionErrorMessage,
       select: handleReactionSelect,
     } = useReactionHandler(message, onToggleReaction);
-    const { openReminder, activeReminderEventIds } = useRemindLater();
-    const hasActiveReminder = activeReminderEventIds.has(message.id);
     // The hover/focus action rail is absolutely positioned over the row, so it
     // takes no layout space of its own. Its rendered footprint is published as
     // `--message-action-rail-width` on the row; the Colony 3.0 header does not
@@ -244,17 +233,6 @@ export const MessageRow = React.memo(
       resetValue: "0px",
       targetRef: articleRef,
     });
-    const handleRemindLater = React.useCallback(
-      (msg: TimelineMessage) => {
-        openReminder({
-          eventId: msg.id,
-          channelId: channelId ?? "",
-          preview: msg.body.slice(0, 100),
-          authorPubkey: msg.pubkey ?? "",
-        });
-      },
-      [channelId, openReminder],
-    );
     const sendToChannelAllowed = canSendMessageToChannel(
       message,
       currentPubkey,
@@ -303,7 +281,6 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
-    const { goTeamMemberHistory } = useAppNavigation();
     const memberQuery = useCompanyTeamMemberQuery(
       message.pubkey ?? "",
       Boolean(
@@ -467,12 +444,11 @@ export const MessageRow = React.memo(
             </React.Suspense>
           );
         case KIND_HUDDLE_STARTED:
+          // Huddles are gone; sessions recorded earlier stay as a plain line.
           return (
-            <HuddleAttachment
-              channelId={channelId}
-              className="mt-2"
-              message={message}
-            />
+            <p className="mt-1 text-sm text-muted-foreground">
+              Started a huddle.
+            </p>
           );
         case KIND_ASK_ACTION: {
           const askId = askIdFromAction(message.body);
@@ -493,10 +469,7 @@ export const MessageRow = React.memo(
           if (waveMessage) {
             return (
               <WaveMessageAttachment
-                channelId={channelId}
                 fallbackText={waveMessage.fallbackText}
-                huddleMemberPubkeys={huddleMemberPubkeys}
-                huddleMemberPubkeysPending={huddleMemberPubkeysPending}
                 searchQuery={searchQuery}
               />
             );
@@ -644,7 +617,6 @@ export const MessageRow = React.memo(
           onReactionSelect={
             canToggleReactions ? handleReactionSelect : undefined
           }
-          onRemindLater={handleRemindLater}
           onRaiseAsk={
             channelId &&
             !message.pending &&
@@ -759,33 +731,7 @@ export const MessageRow = React.memo(
           </p>
         ) : null}
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {channelId && message.pubkey && !message.pending ? (
-          <CompanyWorkMessageProvider
-            value={{
-              channelId,
-              sourceEventId: message.id,
-              threadRootEventId:
-                getThreadReference(message.tags ?? []).rootId ?? message.id,
-            }}
-          >
-            {renderBody()}
-            <CompanyWorkSuggestionMessageCard />
-          </CompanyWorkMessageProvider>
-        ) : (
-          renderBody()
-        )}
-        {employeeStatus && !isDisplayedAsContinuation ? (
-          <button
-            className="mt-1 inline-flex min-h-8 items-center rounded-md border border-border bg-background px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="open-employee-history"
-            onClick={() =>
-              void goTeamMemberHistory(memberQuery.data?.pubkey ?? "")
-            }
-            type="button"
-          >
-            Open employee history
-          </button>
-        ) : null}
+        {renderBody()}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}
@@ -1006,7 +952,6 @@ export const MessageRow = React.memo(
             playEntrance && "motion-enter-conversation",
             "flex gap-3.5",
             isDisplayedAsContinuation ? "items-center" : "items-start",
-            hasActiveReminder ? "c3c-row--reminder" : "",
             highlighted ? "c3c-row--highlighted" : "",
           )}
           data-message-id={message.id}
@@ -1089,8 +1034,6 @@ export const MessageRow = React.memo(
       next.highlightThreadLineDepths,
     ) &&
     prev.hoverBackground === next.hoverBackground &&
-    prev.huddleMemberPubkeys === next.huddleMemberPubkeys &&
-    prev.huddleMemberPubkeysPending === next.huddleMemberPubkeysPending &&
     prev.hideAgentAccessBadge === next.hideAgentAccessBadge &&
     prev.isContinuation === next.isContinuation &&
     prev.isFollowedByContinuation === next.isFollowedByContinuation &&

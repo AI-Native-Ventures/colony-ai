@@ -9,7 +9,6 @@ import {
   DEFAULT_EPHEMERAL_TTL_SECONDS,
   formatTtlDuration,
 } from "@/features/channels/lib/ephemeralChannel";
-import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
 import type { Channel } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -64,9 +63,7 @@ export function ChannelTypeDetailRow({
   channel: Channel;
   onEdit?: () => void;
 }) {
-  const projectHome = useIsProjectHomeChannel(channel.id);
   const lifecycle = channelLifecycle({
-    projectHome,
     temporary: channel.ttlSeconds !== null,
   });
 
@@ -82,7 +79,6 @@ export function ChannelTypeDetailRow({
 }
 
 export function ChannelTypeSettings({
-  channelId,
   disabled,
   label = "Channel type",
   onOpenChange,
@@ -94,7 +90,6 @@ export function ChannelTypeSettings({
   ttlSeconds,
   variant = "dropdown",
 }: {
-  channelId?: string | null;
   disabled?: boolean;
   label?: string;
   onOpenChange?: (open: boolean) => void;
@@ -106,8 +101,7 @@ export function ChannelTypeSettings({
   ttlSeconds: number;
   variant?: "dropdown" | "segmented" | "form" | "card";
 }) {
-  const projectHome = useIsProjectHomeChannel(channelId);
-  const lifecycle = channelLifecycle({ projectHome, temporary });
+  const lifecycle = channelLifecycle({ temporary });
   const shouldReduceMotion = useReducedMotion();
   const channelTypeResizeTransition = shouldReduceMotion
     ? { duration: 0 }
@@ -151,7 +145,7 @@ export function ChannelTypeSettings({
             value={temporary ? "temporary" : "ongoing"}
           />
         </div>
-        {temporary && !projectHome ? (
+        {temporary ? (
           <>
             <div className="mx-3.5 h-px bg-colony-border" />
             <div
@@ -257,7 +251,7 @@ export function ChannelTypeSettings({
             })}
           </div>
         </fieldset>
-        {temporary && !projectHome ? (
+        {temporary ? (
           <div
             className="flex min-w-0 flex-[1_1_11.25rem] flex-col gap-[7px]"
             data-testid={`${testIdPrefix}-ephemeral-settings`}
@@ -348,7 +342,6 @@ export function ChannelTypeSettings({
         ) : (
           <ChannelTypePicker
             align="end"
-            allowProject={projectHome}
             className="-mr-2.5"
             disabled={disabled}
             lifecycle={lifecycle}
@@ -362,7 +355,7 @@ export function ChannelTypeSettings({
         )}
       </div>
       <AnimatePresence initial={false}>
-        {temporary && !projectHome ? (
+        {temporary ? (
           <motion.div
             animate={{ height: "auto", opacity: 1 }}
             className="overflow-hidden"

@@ -69,17 +69,7 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
         reason: "No real Scout roster row was available.",
       };
     await scout.click();
-    const tabs = [
-      "overview",
-      "instructions",
-      "model-runtime",
-      "tools-access",
-      "salary",
-      "workers",
-      "duties",
-      "lessons",
-      "history",
-    ];
+    const tabs = ["overview", "instructions", "model-runtime"];
     const pages = [];
     for (const tab of tabs) {
       const started = Date.now();

@@ -13,7 +13,6 @@ import {
   FileTabIcon,
   TerminalTabIcon,
   type WorkAreaTabIcon,
-  WorkTabIcon,
 } from "./workAreaIcons";
 import { workAreaFileName } from "./workAreaFileTab";
 import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
@@ -22,8 +21,6 @@ import { WorkAreaFileTab } from "./tabs/WorkAreaFileTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
-import { WorkAreaWorkCountBadge } from "./tabs/WorkAreaWorkCountBadge";
-import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -120,14 +117,6 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: CanvasTabIcon,
     available: true,
     Panel: WorkAreaCanvasTab,
-  },
-  work: {
-    kind: "work",
-    label: "Work",
-    icon: WorkTabIcon,
-    available: true,
-    Badge: WorkAreaWorkCountBadge,
-    Panel: WorkAreaWorkTab,
   },
   knowledge: {
     kind: "knowledge",

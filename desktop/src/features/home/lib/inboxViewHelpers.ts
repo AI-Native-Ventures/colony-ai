@@ -4,7 +4,6 @@ import {
   type InboxFilter,
   type InboxItem,
 } from "@/features/home/lib/inbox";
-import { isProjectInboxItem } from "@/features/home/lib/projectInbox";
 import {
   getChannelIdFromTags,
   getThreadReference,
@@ -16,7 +15,17 @@ import type {
   RelayEvent,
   UserProfileSummary,
 } from "@/shared/api/types";
-import { KIND_REMINDER } from "@/shared/constants/kinds";
+import {
+  KIND_GIT_ISSUE,
+  KIND_GIT_PATCH,
+  KIND_GIT_PR_UPDATE,
+  KIND_GIT_PULL_REQUEST,
+  KIND_GIT_STATUS_CLOSED,
+  KIND_GIT_STATUS_DRAFT,
+  KIND_GIT_STATUS_MERGED,
+  KIND_GIT_STATUS_OPEN,
+  KIND_REMINDER,
+} from "@/shared/constants/kinds";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveMentionProps } from "@/shared/lib/resolveMentionNames";
 
@@ -25,8 +34,22 @@ function hasThreadReplyTags(tags: string[][]) {
   return thread.parentId !== null && !isBroadcastReply(tags);
 }
 
+// Reminders and repository work have no surface in the app, so their feed
+// events never become Inbox rows.
+const HIDDEN_INBOX_KINDS: ReadonlySet<number> = new Set([
+  KIND_REMINDER,
+  KIND_GIT_PATCH,
+  KIND_GIT_PULL_REQUEST,
+  KIND_GIT_PR_UPDATE,
+  KIND_GIT_ISSUE,
+  KIND_GIT_STATUS_OPEN,
+  KIND_GIT_STATUS_MERGED,
+  KIND_GIT_STATUS_CLOSED,
+  KIND_GIT_STATUS_DRAFT,
+]);
+
 export function filterInboxItems(items: InboxItem[]) {
-  return items.filter((item) => item.item.kind !== KIND_REMINDER);
+  return items.filter((item) => !HIDDEN_INBOX_KINDS.has(item.item.kind));
 }
 
 export function hasInboxThreadContext(
@@ -59,12 +82,6 @@ export function matchesInboxFilter(
     );
   }
 
-  if (filter === "project") {
-    return [item.item, ...(item.groupItems ?? [])].some(
-      (groupItem) => groupItem && isProjectInboxItem(groupItem),
-    );
-  }
-
   if (filter === "agent_activity" && ownedAgentPubkeys) {
     const representative = item.item ?? item.groupItems?.at(-1);
     return representative
@@ -89,9 +106,6 @@ export function matchesInboxAllView(
     item.categories.includes("mention") ||
     [item.item, ...(item.groupItems ?? [])].some((groupItem) =>
       groupItem ? hasThreadReplyTags(groupItem.tags) : false,
-    ) ||
-    [item.item, ...(item.groupItems ?? [])].some(
-      (groupItem) => groupItem && isProjectInboxItem(groupItem),
     ) ||
     item.categories.includes("needs_action") ||
     Boolean(

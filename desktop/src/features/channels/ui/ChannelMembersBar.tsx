@@ -1,28 +1,14 @@
 import { EllipsisVertical, Settings2, Users } from "lucide-react";
 import * as React from "react";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useHuddle } from "@/features/huddle";
-import { HuddleIndicator } from "@/features/huddle/components/HuddleIndicator";
-import { formatHuddleActionError } from "@/features/huddle/lib/huddleError";
-import { buildHuddleChannelName } from "@/features/huddle/lib/huddleChannelName";
 import {
   useAvailableAcpRuntimes,
   useManagedAgentsQuery,
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
-import { mergeChannelKnownAgentPubkeys } from "@/features/agents/knownAgentPubkeys";
 import { requestOpenCreateAgent } from "@/features/agents/openCreateAgentEvent";
 import { useChannelMembersQuery } from "@/features/channels/hooks";
-import {
-  getDmHuddleMemberPubkeys,
-  hasOtherDmParticipant,
-} from "@/features/channels/lib/dmHuddleMembers";
-import { canStartHuddleInChannel } from "@/features/channels/lib/huddleAvailability";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel } from "@/shared/api/types";
-import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
@@ -46,7 +32,6 @@ type ChannelMembersBarProps = {
 
 export function ChannelMembersBar({
   channel,
-  currentPubkey,
   endActions,
   isAddBotOpen: isAddBotOpenProp,
   onAddBotOpenChange,
@@ -67,12 +52,9 @@ export function ChannelMembersBar({
     },
     [isAddBotOpenProp, onAddBotOpenChange],
   );
-  const { startHuddle, isStarting: isStartingHuddle } = useHuddle();
-  const queryClient = useQueryClient();
-  // The roster is only needed for DM huddle composition (agent detection and
-  // participant naming). Streams/forums render the count from the channel
-  // summary and gate huddle access on `channel.isMember`, so mounting this
-  // bar must not put a full-roster fetch on the channel-switch path.
+  // The roster is only needed for DMs. Streams render the count from the
+  // channel summary, so mounting this bar must not put a full-roster fetch on
+  // the channel-switch path.
   const membersQuery = useChannelMembersQuery(
     channel.id,
     channel.channelType === "dm",
@@ -80,42 +62,6 @@ export function ChannelMembersBar({
   const providersQuery = useAvailableAcpRuntimes();
   const managedAgentsQuery = useManagedAgentsQuery();
   const relayAgentsQuery = useRelayAgentsQuery();
-  const members = membersQuery.data ?? [];
-  const dmProfilesQuery = useUsersBatchQuery(
-    channel.channelType === "dm" ? channel.participantPubkeys : [],
-    { enabled: channel.channelType === "dm" },
-  );
-  const huddleAgentPubkeys = React.useMemo(() => {
-    const pubkeys = new Set(
-      mergeChannelKnownAgentPubkeys(
-        membersQuery.data,
-        managedAgentsQuery.data,
-        relayAgentsQuery.data,
-      ),
-    );
-    for (const [pubkey, profile] of Object.entries(
-      dmProfilesQuery.data?.profiles ?? {},
-    )) {
-      if (profile.isAgent) pubkeys.add(normalizePubkey(pubkey));
-    }
-    return pubkeys;
-  }, [
-    dmProfilesQuery.data?.profiles,
-    managedAgentsQuery.data,
-    membersQuery.data,
-    relayAgentsQuery.data,
-  ]);
-  const huddleMemberPubkeys = React.useMemo(
-    () => getDmHuddleMemberPubkeys(channel, huddleAgentPubkeys, currentPubkey),
-    [channel, currentPubkey, huddleAgentPubkeys],
-  );
-  const huddleMemberPubkeysPending =
-    hasOtherDmParticipant(channel, currentPubkey) &&
-    (membersQuery.isPending ||
-      managedAgentsQuery.isPending ||
-      relayAgentsQuery.isPending ||
-      dmProfilesQuery.isPending ||
-      dmProfilesQuery.isPlaceholderData);
   const memberCount = membersQuery.data?.length ?? channel.memberCount;
   const providers = React.useMemo(
     () =>
@@ -130,18 +76,6 @@ export function ChannelMembersBar({
       }),
     [providersQuery.data],
   );
-  const normalizedCurrentPubkey = currentPubkey
-    ? normalizePubkey(currentPubkey)
-    : null;
-  const selfMember =
-    members.find(
-      (member) => normalizePubkey(member.pubkey) === normalizedCurrentPubkey,
-    ) ?? null;
-  const canStartHuddle = canStartHuddleInChannel({
-    channel,
-    currentPubkey,
-    selfMember,
-  });
   const previousChannelIdRef = React.useRef(channel.id);
 
   React.useEffect(() => {
@@ -161,41 +95,6 @@ export function ChannelMembersBar({
         : relayAgentsQuery.error instanceof Error
           ? relayAgentsQuery.error.message
           : null;
-
-  const huddleIndicator = (
-    <HuddleIndicator
-      channelId={channel.id}
-      onStart={async () => {
-        try {
-          await startHuddle(
-            channel.id,
-            [...huddleMemberPubkeys],
-            buildHuddleChannelName({
-              channel,
-              currentPubkey,
-              members,
-            }),
-          );
-          // Keep the channel cache current so the ephemeral transcript is
-          // available immediately if the huddle returns to the in-app drawer.
-          void queryClient.invalidateQueries({ queryKey: ["channels"] });
-        } catch (e) {
-          console.error("Failed to start huddle:", e);
-          toast.error(formatHuddleActionError(e, "start"));
-        }
-      }}
-      renderMode={
-        variant === "compact"
-          ? "menu-item"
-          : variant === "reference"
-            ? "labeled-button"
-            : "button"
-      }
-      startDisabled={
-        !canStartHuddle || isStartingHuddle || huddleMemberPubkeysPending
-      }
-    />
-  );
 
   const controls =
     variant === "compact" ? (
@@ -223,7 +122,6 @@ export function ChannelMembersBar({
                 {memberCount}
               </span>
             </DropdownMenuItem>
-            {huddleIndicator}
             <DropdownMenuItem
               data-testid="channel-management-trigger"
               onSelect={onManageChannel}
@@ -251,7 +149,6 @@ export function ChannelMembersBar({
         >
           Pins
         </Button>
-        {huddleIndicator}
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>
             <Button
@@ -289,8 +186,6 @@ export function ChannelMembersBar({
           </TooltipTrigger>
           <TooltipContent>Channel members</TooltipContent>
         </Tooltip>
-
-        {huddleIndicator}
 
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>

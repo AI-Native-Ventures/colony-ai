@@ -12,7 +12,6 @@ import {
 
 import {
   type CreateChannelInput,
-  type CreateChannelFormDraft,
   useCreateChannelForm,
 } from "@/features/sidebar/lib/useCreateChannelForm";
 import {
@@ -21,7 +20,7 @@ import {
   CreateChannelFormFooter,
 } from "@/features/sidebar/ui/CreateChannelFormFields";
 
-type ChannelKind = "stream" | "forum";
+type ChannelKind = "stream";
 
 type CreateChannelDialogProps = {
   /** Which kind of channel to create, or null when closed. */
@@ -29,18 +28,12 @@ type CreateChannelDialogProps = {
   children?: ReactNode;
   description?: string;
   isCreating: boolean;
-  initialDraft?: CreateChannelFormDraft | null;
-  /** Channel templates are cut. Still accepted so the sidebar compiles; ignored. */
-  initialTemplateId?: string | null;
   onOpenChange: (open: boolean) => void;
-  /** Channel templates are cut. Still accepted so the sidebar compiles; ignored. */
-  onBrowseTemplates?: (draft: CreateChannelFormDraft) => void;
   onCreate: (input: {
     name: string;
     description?: string;
     visibility: ChannelVisibility;
     ttlSeconds?: number;
-    templateId?: string;
   }) => Promise<void>;
   testId?: string;
   title?: string;
@@ -51,7 +44,6 @@ export function CreateChannelDialog({
   children,
   description,
   isCreating,
-  initialDraft,
   onOpenChange,
   onCreate,
   testId = "create-channel-dialog",
@@ -63,12 +55,11 @@ export function CreateChannelDialog({
     channelKind: channelKind ?? "stream",
     active: open,
     isCreating,
-    initialDraft,
     onCreate: onCreate as (input: CreateChannelInput) => Promise<void>,
     onCreated: () => onOpenChange(false),
   });
 
-  const kindLabel = channelKind === "forum" ? "forum" : "channel";
+  const kindLabel = "channel";
 
   return (
     <Dialog
@@ -90,9 +81,7 @@ export function CreateChannelDialog({
             </DialogTitle>
             <DialogDescription className="leading-normal text-colony-muted">
               {description ??
-                (channelKind === "forum"
-                  ? "Forums organize threaded discussions around a topic."
-                  : "Channels are real-time streams for team conversation.")}
+                "Channels are real-time streams for team conversation."}
             </DialogDescription>
           </div>
           <DialogClose

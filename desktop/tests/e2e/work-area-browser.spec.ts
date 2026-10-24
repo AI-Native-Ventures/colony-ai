@@ -639,7 +639,7 @@ test.describe("work area Browser tab", () => {
     await trigger(page).click();
     await expect(page.getByTestId("work-area-open-browser")).toHaveCount(0);
     await expect(page.getByTestId("work-area-empty")).toContainText(
-      "Open a terminal, read a file, or see this channel's work and knowledge.",
+      "Open a terminal, read a file, or see this channel's knowledge.",
     );
     await page.getByTestId("work-area-open-files").click();
     await page.getByTestId("work-area-add-tab").click();

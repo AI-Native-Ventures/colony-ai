@@ -9,8 +9,6 @@ import {
   isWelcomeChannel,
   isWelcomeExperienceChannel,
 } from "@/features/onboarding/welcome";
-import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
-import { ProjectChannelIcon } from "@/features/projects/ui/ProjectChannelIcon";
 import type { Channel } from "@/shared/api/types";
 import { HashSearch } from "@/shared/ui/icons";
 
@@ -44,8 +42,6 @@ export function useChannelIntro({
   onOpenMembers?: () => void;
   onWelcomeAddAgent?: () => void;
 }) {
-  const projectHome = useIsProjectHomeChannel(activeChannel?.id);
-
   return React.useMemo(() => {
     if (!activeChannel || activeChannel.channelType === "dm") {
       return null;
@@ -87,7 +83,7 @@ export function useChannelIntro({
         visibility: activeChannel.visibility,
         channelKindLabel: isWelcomeChannel(activeChannel)
           ? "private welcome channel"
-          : getChannelIntroKind(activeChannel, projectHome),
+          : getChannelIntroKind(activeChannel),
         channelName: activeChannel.name,
         description: isWelcomeChannel(activeChannel)
           ? null
@@ -100,13 +96,9 @@ export function useChannelIntro({
       actions,
       channelId: activeChannel.id,
       currentPubkey,
-      channelKindLabel: getChannelIntroKind(activeChannel, projectHome),
+      channelKindLabel: getChannelIntroKind(activeChannel),
       channelName: activeChannel.name,
       description: getChannelIntroDescription(activeChannel),
-      hideBeginning: projectHome,
-      icon: projectHome ? (
-        <ProjectChannelIcon className="h-7 w-7" />
-      ) : undefined,
       visibility: activeChannel.visibility,
     };
   }, [
@@ -115,6 +107,5 @@ export function useChannelIntro({
     onBrowseChannels,
     onCreateChannel,
     onWelcomeAddAgent,
-    projectHome,
   ]);
 }

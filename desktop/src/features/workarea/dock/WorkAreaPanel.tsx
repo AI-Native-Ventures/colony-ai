@@ -88,8 +88,8 @@ export function WorkAreaPanel({
             <h2>Keep the work beside the conversation.</h2>
             <p>
               {isBrowserHostAvailable()
-                ? "Open a page, a terminal or a file, or see this channel's work and knowledge."
-                : "Open a terminal, read a file, or see this channel's work and knowledge."}
+                ? "Open a page, a terminal or a file, or see this channel's knowledge."
+                : "Open a terminal, read a file, or see this channel's knowledge."}
             </p>
             <div className="colony-work-area-choices">
               {listOpenableWorkAreaTabs().map((definition) => {

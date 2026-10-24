@@ -1663,33 +1663,6 @@ body:has(.w20-settings-shell) {
   font-size: var(--text-xs);
 }
 
-.w20-appearance .ap-named-themes {
-  display: flex;
-  width: 100%;
-  min-height: 77px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 25px;
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--ink);
-  font-size: var(--text-xs);
-  text-align: left;
-}
-
-.w20-appearance .ap-named-themes strong,
-.w20-appearance .ap-named-themes small {
-  display: block;
-}
-
-.w20-appearance .ap-named-themes small {
-  margin-top: 6px;
-  color: var(--muted);
-}
-
 .w20-appearance .ap-text-button {
   display: inline-flex;
   align-items: center;

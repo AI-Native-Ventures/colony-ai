@@ -501,7 +501,6 @@ export function ChannelManagementSheet({
                     data-testid="channel-management-lifecycle"
                   >
                     <ChannelTypeSettings
-                      channelId={resolvedChannel.id}
                       disabled={isSavingChannelEdits}
                       onTemporaryChange={(temporary) => {
                         setIsEphemeralDraft(temporary);

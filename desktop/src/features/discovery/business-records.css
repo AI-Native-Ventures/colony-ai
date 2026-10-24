@@ -570,8 +570,7 @@
 }
 
 .w10-detail-main,
-.w10-detail-side,
-.w10-proposal-side {
+.w10-detail-side {
   display: grid;
   gap: 1.375rem;
   min-width: 0;
@@ -688,10 +687,6 @@
   gap: 0.8rem;
 }
 
-.w10-service-form > .w10-button {
-  justify-self: end;
-}
-
 .w10-field {
   display: grid;
   gap: 0.4375rem;
@@ -797,127 +792,6 @@
   justify-content: flex-end;
   gap: 0.55rem;
   margin-top: 0.3rem;
-}
-
-.w10-checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
-  color: var(--w10-ink);
-  font-size: 0.68rem;
-  line-height: 1.5;
-}
-
-.w10-checkbox-row input {
-  width: 0.9rem;
-  height: 0.9rem;
-  flex: none;
-  accent-color: var(--w10-accent);
-}
-
-.w10-service-layout {
-  grid-template-columns: minmax(0, 1.65fr) minmax(17.5rem, 1fr);
-}
-
-.w10-proposal-layout {
-  grid-template-columns: minmax(0, 1.65fr) minmax(17.5rem, 1fr);
-}
-
-.w10-document {
-  min-width: 0;
-  border: 1px solid var(--w10-line);
-  border-radius: 0.625rem;
-  padding: 2.375rem;
-  background: var(--w10-paper);
-}
-
-.w10-document > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-  margin: 0 0 2.1875rem;
-  border-bottom: 1px solid var(--w10-line);
-  padding: 0 0 0.8rem;
-}
-
-.w10-document > small {
-  color: var(--w10-muted);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-}
-
-.w10-document > h2 {
-  margin: 0.7rem 0;
-  font-size: 1.65rem;
-  line-height: 1.35;
-  letter-spacing: -0.04em;
-}
-
-.w10-document > p {
-  margin: 1.375rem 0;
-  color: var(--w10-muted);
-  font-size: 0.9rem;
-  line-height: 1.9;
-  white-space: pre-wrap;
-}
-
-.w10-document-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--w10-line);
-  border-radius: 0.75rem;
-  margin: 1.15rem 0;
-}
-
-.w10-document-metrics .w10-metric {
-  padding: 1.375rem;
-}
-
-.w10-document-metrics .w10-metric strong {
-  font-size: 1.8rem;
-}
-
-.w10-document-metrics .w10-metric:last-child {
-  border: 0;
-  background:
-    radial-gradient(at 90% 95%, #d8e1f25c, transparent 80%),
-    radial-gradient(at 0 0, #ead4d952, transparent 85%);
-}
-
-.w10-version-history {
-  display: grid;
-}
-
-.w10-version-history article {
-  display: flex;
-  align-items: center;
-  gap: 0.9375rem;
-  border-bottom: 1px solid var(--w10-line);
-  padding: 1rem 0.25rem;
-}
-
-.w10-version-history article:first-child {
-  padding-top: 0;
-}
-
-.w10-version-history strong,
-.w10-version-history small {
-  display: block;
-}
-
-.w10-version-history strong {
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-
-.w10-version-history small {
-  margin-top: 0.25rem;
-  color: var(--w10-muted);
-  font-size: 0.74rem;
-  line-height: 1.6;
 }
 
 .w10-discovery-intro {
@@ -1814,9 +1688,7 @@
   .w10-industry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .w10-detail-grid,
-  .w10-proposal-layout,
-  .w10-service-layout {
+  .w10-detail-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1894,9 +1766,6 @@
   }
   .w10-campaign-resume .w10-pill {
     display: none;
-  }
-  .w10-document-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .w10-field-grid {
     grid-template-columns: minmax(0, 1fr);

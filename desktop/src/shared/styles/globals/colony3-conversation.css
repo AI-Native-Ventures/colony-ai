@@ -217,10 +217,6 @@
   font-weight: 500;
 }
 
-.c3c-row--reminder {
-  --c3c-row-bg: hsl(var(--colony-info-bg));
-}
-
 /* A routed-to message: its surface fades out, the row itself stays. */
 .c3c-row--highlighted::before {
   animation: route-target-highlight-fade 2s ease-out forwards;

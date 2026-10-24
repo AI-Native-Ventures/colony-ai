@@ -3,24 +3,13 @@ import * as React from "react";
 import { DEFAULT_EPHEMERAL_TTL_SECONDS } from "@/features/channels/lib/ephemeralChannel";
 import type { ChannelVisibility } from "@/shared/api/types";
 
-export type CreateChannelKind = "stream" | "forum";
+export type CreateChannelKind = "stream";
 
 export type CreateChannelInput = {
   name: string;
   description?: string;
   visibility: ChannelVisibility;
   ttlSeconds?: number;
-  /** Channel templates are cut; callers may still carry the field. Never set here. */
-  templateId?: string;
-};
-
-export type CreateChannelFormDraft = {
-  name: string;
-  description: string;
-  visibility: ChannelVisibility;
-  ephemeral: boolean;
-  ttlSeconds: number;
-  visibilityTouched: boolean;
 };
 
 type UseCreateChannelFormOptions = {
@@ -31,7 +20,6 @@ type UseCreateChannelFormOptions = {
    */
   active: boolean;
   initialName?: string;
-  initialDraft?: CreateChannelFormDraft | null;
   isCreating: boolean;
   onCreate: (input: CreateChannelInput) => Promise<void>;
   onCreated?: () => void;
@@ -55,7 +43,6 @@ export type CreateChannelFormState = {
   nameInputRef: React.RefObject<HTMLInputElement | null>;
   isCreating: boolean;
   canSubmit: boolean;
-  getDraft: () => CreateChannelFormDraft;
   handleSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 };
 
@@ -68,7 +55,6 @@ export function useCreateChannelForm({
   channelKind,
   active,
   initialName,
-  initialDraft,
   isCreating,
   onCreate,
   onCreated,
@@ -83,19 +69,16 @@ export function useCreateChannelForm({
   );
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const nameInputRef = React.useRef<HTMLInputElement>(null);
-  const visibilityTouchedRef = React.useRef(false);
-
-  const kindLabel = channelKind === "forum" ? "forum" : "channel";
+  const kindLabel = "channel";
   React.useEffect(() => {
     if (!active) return;
 
-    setName(initialDraft?.name ?? initialName ?? "");
-    setDescription(initialDraft?.description ?? "");
-    setVisibility(initialDraft?.visibility ?? "open");
-    setEphemeral(initialDraft?.ephemeral ?? false);
-    setTtlSeconds(initialDraft?.ttlSeconds ?? DEFAULT_EPHEMERAL_TTL_SECONDS);
+    setName(initialName ?? "");
+    setDescription("");
+    setVisibility("open");
+    setEphemeral(false);
+    setTtlSeconds(DEFAULT_EPHEMERAL_TTL_SECONDS);
     setErrorMessage(null);
-    visibilityTouchedRef.current = initialDraft?.visibilityTouched ?? false;
 
     if (!autoFocusName) return;
 
@@ -116,7 +99,7 @@ export function useCreateChannelForm({
       input.setSelectionRange(end, end);
     }, 50);
     return () => globalThis.clearTimeout(timerId);
-  }, [active, autoFocusName, initialDraft, initialName]);
+  }, [active, autoFocusName, initialName]);
 
   const handleSubmit = React.useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -145,28 +128,7 @@ export function useCreateChannelForm({
         }
       })();
     },
-    [
-      description,
-      ephemeral,
-      kindLabel,
-      name,
-      onCreate,
-      onCreated,
-      ttlSeconds,
-      visibility,
-    ],
-  );
-
-  const getDraft = React.useCallback(
-    (): CreateChannelFormDraft => ({
-      name,
-      description,
-      visibility,
-      ephemeral,
-      ttlSeconds,
-      visibilityTouched: visibilityTouchedRef.current,
-    }),
-    [description, ephemeral, name, ttlSeconds, visibility],
+    [description, ephemeral, name, onCreate, onCreated, ttlSeconds, visibility],
   );
 
   return {
@@ -183,10 +145,7 @@ export function useCreateChannelForm({
       setErrorMessage(null);
     },
     visibility,
-    setVisibility: (value: ChannelVisibility) => {
-      visibilityTouchedRef.current = true;
-      setVisibility(value);
-    },
+    setVisibility,
     ephemeral,
     setEphemeral,
     ttlSeconds,
@@ -195,7 +154,6 @@ export function useCreateChannelForm({
     nameInputRef,
     isCreating,
     canSubmit: name.trim().length > 0 && !isCreating,
-    getDraft,
     handleSubmit,
   };
 }

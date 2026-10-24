@@ -7,11 +7,9 @@ type HomePaneLayoutOptions = {
   isDrafts: boolean;
   isMessagesMode: boolean;
   isNarrow: boolean;
-  isReminders: boolean;
   isSinglePanelAuxiliaryView: boolean;
   selectedDraft: boolean;
   selectedEvent: boolean;
-  selectedReminder: boolean;
   threadPanelWidthPx: number;
 };
 
@@ -26,21 +24,12 @@ export function getHomePaneLayout(options: HomePaneLayoutOptions) {
     options.isNarrow &&
     options.selectedDraft &&
     !options.isSinglePanelAuxiliaryView;
-  const singleReminder =
-    options.isReminders &&
-    options.isNarrow &&
-    options.selectedReminder &&
-    !options.isSinglePanelAuxiliaryView;
   const showList =
-    !singleMessage &&
-    !singleDraft &&
-    !singleReminder &&
-    !options.isSinglePanelAuxiliaryView;
+    !singleMessage && !singleDraft && !options.isSinglePanelAuxiliaryView;
   const showDetail =
     !options.isSinglePanelAuxiliaryView &&
     ((options.isMessagesMode && (!options.isNarrow || singleMessage)) ||
-      (options.isDrafts && (!options.isNarrow || singleDraft)) ||
-      (options.isReminders && (!options.isNarrow || singleReminder)));
+      (options.isDrafts && (!options.isNarrow || singleDraft)));
   const auxiliaryWidth = options.isSinglePanelAuxiliaryView
     ? options.homeWidthPx
     : options.threadPanelWidthPx;
@@ -65,7 +54,6 @@ export function getHomePaneLayout(options: HomePaneLayoutOptions) {
         : options.inboxListWidthPx,
     isSinglePanelDetailView: singleMessage,
     isSinglePanelDraftDetailView: singleDraft,
-    isSinglePanelReminderDetailView: singleReminder,
     showDetailPane: showDetail,
     showListPane: showList,
   };

@@ -1,30 +1,15 @@
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
 
 import type { SearchHighlightNavigation } from "@/app/navigation/searchHighlightNavigation";
 import { getCachedSearchHitEvent } from "@/app/navigation/searchHitEventCache";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useOpenChannelDirectoryQuery } from "@/features/channels/openChannelDirectory";
 import { ChannelScreen } from "@/features/channels/ui/ChannelScreen";
-import { HuddleStartingView } from "@/features/huddle/components/HuddleStartingView";
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import {
   getThreadReference,
   isBroadcastReply,
 } from "@/features/messages/lib/threading";
 import { useProfileQuery } from "@/features/profile/hooks";
-import {
-  useProjectHomeForChannelQuery,
-  useProjectsQuery,
-} from "@/features/projects/hooks";
-import { findProjectHomeByChannelId } from "@/features/projects/lib/projectHomeChannel";
-import {
-  isProjectCollectionAuthoritative,
-  isProjectRelayValidated,
-  shouldUseScopedProjectHomeLookup,
-} from "@/features/projects/projectSnapshot";
-import { ProjectChannelHome } from "@/features/projects/ui/ProjectChannelHome";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { getEventById } from "@/shared/api/tauri";
 import type { RelayEvent } from "@/shared/api/types";
@@ -34,9 +19,7 @@ type ChannelRouteScreenProps = {
   autoSendDraftKey: string | null;
   channelId: string;
   searchHighlight: SearchHighlightNavigation | null | undefined;
-  selectedPostId: string | null;
   targetMessageId: string | null;
-  targetReplyId: string | null;
   targetThreadRootId: string | null;
 };
 
@@ -115,16 +98,10 @@ export function ChannelRouteScreen({
   autoSendDraftKey,
   channelId,
   searchHighlight,
-  selectedPostId,
   targetMessageId,
-  targetReplyId,
   targetThreadRootId,
 }: ChannelRouteScreenProps) {
-  const isHuddleTranscript = huddleWindowChannelId() !== null;
-  const queryClient = useQueryClient();
-  const { closeForumPost, goForumPost } = useAppNavigation();
   const channelsQuery = useChannelsQuery();
-  const projectsQuery = useProjectsQuery();
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
   const channels = channelsQuery.data ?? [];
@@ -134,31 +111,18 @@ export function ChannelRouteScreen({
   // member-only poll list. Fall back to the discovery directory — but only for
   // that case, so a normal in-membership route never triggers the all-open
   // scan. React Query dedups the shared directory key across surfaces.
-  const needsDirectoryFallback =
-    !memberChannel && channelsQuery.isSuccess && !isHuddleTranscript;
+  const needsDirectoryFallback = !memberChannel && channelsQuery.isSuccess;
   const openDirectoryQuery = useOpenChannelDirectoryQuery({
     enabled: needsDirectoryFallback,
   });
-  const activeChannel =
+  const resolvedChannel =
     memberChannel ??
     openDirectoryQuery.data?.find((channel) => channel.id === channelId) ??
     null;
-  const enumeratedProjectHome = findProjectHomeByChannelId(
-    channelId,
-    projectsQuery.data ?? [],
-  );
-  const projectCollectionIsAuthoritative =
-    isProjectCollectionAuthoritative(queryClient);
-  const projectHomeLookupQuery = useProjectHomeForChannelQuery(
-    channelId,
-    shouldUseScopedProjectHomeLookup({
-      collectionIsAuthoritative: projectCollectionIsAuthoritative,
-      hasEnumeratedProjectHome: Boolean(enumeratedProjectHome),
-      isHuddleTranscript,
-    }),
-  );
-  const projectHome =
-    enumeratedProjectHome ?? projectHomeLookupQuery.data ?? null;
+  // Forums are cut from the app: a forum channel left in the data is treated
+  // like an unknown channel instead of opening a surface that no longer exists.
+  const activeChannel =
+    resolvedChannel?.channelType === "forum" ? null : resolvedChannel;
   const [targetMessageEvents, setTargetMessageEvents] = React.useState<
     RelayEvent[]
   >(() => {
@@ -181,12 +145,9 @@ export function ChannelRouteScreen({
       return;
     }
     if (!searchHighlight) {
-      const ordinaryTargetIds = [
-        selectedPostId,
-        targetMessageId,
-        targetReplyId,
-        targetThreadRootId,
-      ].filter((targetId): targetId is string => targetId !== null);
+      const ordinaryTargetIds = [targetMessageId, targetThreadRootId].filter(
+        (targetId): targetId is string => targetId !== null,
+      );
       if (
         ordinaryTargetIds.length > 0 &&
         activeSearchHighlight &&
@@ -206,9 +167,7 @@ export function ChannelRouteScreen({
   }, [
     activeSearchHighlight,
     searchHighlight,
-    selectedPostId,
     targetMessageId,
-    targetReplyId,
     targetThreadRootId,
   ]);
 
@@ -234,9 +193,9 @@ export function ChannelRouteScreen({
     // cleared (e.g. `onTargetReached` clears the `messageId` URL param once the
     // row is centered). In a channel whose feed doesn't already contain the
     // deep-linked message, the spliced event is the only copy — dropping it on
-    // param-clear blanks the timeline. Resetting on channel / forum-post change
+    // param-clear blanks the timeline. Resetting on channel change
     // is handled by the effect below; here we only fetch when there's a target.
-    if ((!targetMessageId && !targetThreadRootId) || selectedPostId) {
+    if (!targetMessageId && !targetThreadRootId) {
       return () => {
         isCancelled = true;
       };
@@ -277,35 +236,14 @@ export function ChannelRouteScreen({
     return () => {
       isCancelled = true;
     };
-  }, [selectedPostId, targetMessageId, targetThreadRootId]);
+  }, [targetMessageId, targetThreadRootId]);
 
   if (
     !activeChannel &&
     (channelsQuery.isPending ||
       (needsDirectoryFallback && openDirectoryQuery.isPending))
   ) {
-    if (isHuddleTranscript) {
-      return <HuddleStartingView />;
-    }
-    return (
-      <ViewLoadingFallback
-        includeHeader
-        kind={selectedPostId ? "forum" : "channel"}
-      />
-    );
-  }
-
-  if (projectHome && !isHuddleTranscript) {
-    return (
-      <ProjectChannelHome
-        allowRepositoryHealing={isProjectRelayValidated(projectHome)}
-        autoSendDraftKey={autoSendDraftKey}
-        project={projectHome}
-        projects={projectsQuery.data ?? [projectHome]}
-        targetMessageEvents={targetMessageEvents}
-        targetMessageId={targetMessageId}
-      />
-    );
+    return <ViewLoadingFallback includeHeader kind="channel" />;
   }
 
   return (
@@ -314,14 +252,6 @@ export function ChannelRouteScreen({
       autoSendDraftKey={autoSendDraftKey}
       currentIdentity={identityQuery.data}
       currentProfile={profileQuery.data}
-      onCloseForumPost={() => {
-        void closeForumPost(channelId);
-      }}
-      onSelectForumPost={(postId) => {
-        void goForumPost(channelId, postId);
-      }}
-      selectedForumPostId={selectedPostId}
-      targetForumReplyId={targetReplyId}
       targetMessageEvents={targetMessageEvents}
       targetMessageId={targetMessageId}
       targetSearchMessageId={activeSearchHighlight?.messageId}

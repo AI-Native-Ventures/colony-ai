@@ -1,6 +1,3 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
-
 import { expect, test } from "@playwright/test";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
@@ -12,7 +9,6 @@ import {
 import { KIND_HIRE_HEAD } from "../../src/shared/constants/kinds";
 import type { RelayEvent } from "../../src/shared/api/types";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { waitForAnimations } from "../helpers/animations";
 
 const PERSONA_ID = "company-role-hospitality-research";
 const HIRE_ASK_ID = "7245ba1a-e078-42ef-b896-00be34a94f11";
@@ -27,7 +23,7 @@ function newRelayKey() {
   };
 }
 
-test("owner hires from a role pack and the configured draft survives reload", async ({
+test("owner hires from a role and the configured draft survives reload", async ({
   page,
 }) => {
   const relay = newRelayKey();
@@ -63,21 +59,6 @@ test("owner hires from a role pack and the configured draft survives reload", as
   await page.goto("/#/team");
   await page.getByRole("button", { name: "Hire employee" }).click();
   await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
-  await page.getByRole("button", { name: "Edit pack" }).click();
-  const roleEditor = page.getByTestId("company-role-editor");
-  await expect(roleEditor).toBeVisible();
-  await expect(page.getByLabel("Role title")).toHaveValue(
-    "Hospitality researcher",
-  );
-  await expect(page.getByLabel("Job description")).toHaveValue(
-    "Hospitality research",
-  );
-  await expect(page.getByLabel("Skills, one per line")).toHaveValue(
-    "Market research\nSynthesis",
-  );
-
-  await page.goto("/#/hire/roles");
-  await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
   await page.getByRole("button", { name: "Configure this role" }).click();
 
   const name = page.getByTestId("hire-employee-name");
@@ -111,238 +92,6 @@ test("owner hires from a role pack and the configured draft survives reload", as
   await expect(page.getByText("Mina joined the team.")).toBeVisible();
   await expect(page.getByText("Hire approved.", { exact: true })).toBeVisible();
   await expect(page.getByText(/Hello team\. I’ll coordinate/)).toBeVisible();
-});
-
-test("empty role catalog opens a blank role pack editor", async ({ page }) => {
-  await installMockBridge(page, {
-    relayRequiresMembership: true,
-    personas: [],
-  });
-  await page.goto("/#/hire/roles");
-
-  await expect(
-    page.getByRole("heading", { name: "Your role catalog starts here" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("There are no built-in role packs."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Create role pack" }).click();
-
-  await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Role catalog", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Back", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByTestId("community-catalog-dialog")).toHaveCount(0);
-  await expect(page.getByTestId("company-role-editor")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Edit a role pack" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Role title")).toHaveValue("");
-  await expect(page.getByLabel("Job description")).toHaveValue("");
-  await expect(page.getByLabel("Skills, one per line")).toHaveValue("");
-  const toolScope = page.getByLabel("Tool scope");
-  await expect(toolScope).toBeDisabled();
-  await expect(toolScope).toHaveValue("");
-  const workerModel = page.getByLabel("Allowed worker model");
-  await expect(workerModel).toBeVisible();
-  await expect(workerModel).toHaveValue("");
-  await expect(page.getByLabel("Default allowance")).toHaveCount(0);
-  await expect(workerModel.locator("option")).toHaveText([
-    "Choose worker model",
-    "Goose",
-    "Colony Agent",
-  ]);
-  const roleEditor = page.getByTestId("company-role-editor");
-  const formPanel = await roleEditor
-    .locator(":scope > div")
-    .first()
-    .boundingBox();
-  const reviewPanel = await roleEditor.locator(":scope > aside").boundingBox();
-  if (!formPanel || !reviewPanel) {
-    throw new Error("Role pack panels must both be visible.");
-  }
-  expect(reviewPanel.height).toBeLessThan(formPanel.height);
-  const backButton = page.getByRole("button", { name: "Back", exact: true });
-  await backButton.focus();
-  await page.keyboard.press("Tab");
-  await expect(page.getByLabel("Role title")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByLabel("Job description")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByLabel("Skills, one per line")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(workerModel).toBeFocused();
-  const rootFontSizeBeforeZoom = await page.evaluate(() =>
-    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-  );
-  const zoomModifier = await page.evaluate(() =>
-    /mac|iphone|ipad|ipod/i.test(navigator.platform) ? "Meta" : "Control",
-  );
-  await page.keyboard.press(`${zoomModifier}+Equal`);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-      ),
-    )
-    .toBeGreaterThan(rootFontSizeBeforeZoom);
-  await page.keyboard.press(`${zoomModifier}+Minus`);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-      ),
-    )
-    .toBeCloseTo(rootFontSizeBeforeZoom, 0);
-  const visualCaptureDirectory = process.env.COMPANY_ROLE_VISUAL_CAPTURE_DIR;
-  if (visualCaptureDirectory) {
-    await mkdir(visualCaptureDirectory, { recursive: true });
-    for (const viewport of [
-      { width: 1440, height: 900 },
-      { width: 1728, height: 1117 },
-    ]) {
-      await page.setViewportSize(viewport);
-      for (const theme of ["light", "dark"] as const) {
-        await page.emulateMedia({ colorScheme: theme });
-        await page.waitForFunction(
-          (shouldBeDark) =>
-            document.documentElement.classList.contains("dark") ===
-            shouldBeDark,
-          theme === "dark",
-        );
-        await waitForAnimations(page);
-        await page.screenshot({
-          path: join(
-            visualCaptureDirectory,
-            `role-pack-${viewport.width}x${viewport.height}-${theme}.png`,
-          ),
-        });
-      }
-    }
-    await page.emulateMedia({ colorScheme: "light" });
-    await page.waitForFunction(
-      () => !document.documentElement.classList.contains("dark"),
-    );
-    await page.setViewportSize({ width: 1280, height: 720 });
-  }
-
-  await page.getByLabel("Role title").fill("Research assistant");
-  await page
-    .getByLabel("Job description")
-    .fill("Research current hospitality accounts.");
-  await page.getByLabel("Skills, one per line").fill("Research\nSynthesis");
-  await workerModel.selectOption("goose");
-  await expect(
-    page.getByRole("button", { name: "Save role pack" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Save role pack" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Role pack saved" }),
-  ).toBeVisible();
-});
-
-test("runtime recovery returns to the role editor with its draft intact", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    relayRequiresMembership: true,
-    personas: [],
-    acpRuntimesCatalog: [],
-  });
-  await page.goto("/#/agents?rolePack=create");
-
-  const runtimeRecovery = page.getByTestId("company-role-runtime-recovery");
-  await expect(runtimeRecovery).toBeVisible();
-  await expect(
-    runtimeRecovery.getByRole("heading", {
-      name: "No runtime is available",
-    }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Keep draft and return" }).click();
-
-  const roleEditor = page.getByTestId("company-role-editor");
-  await expect(roleEditor).toBeVisible();
-  await page.getByLabel("Role title").fill("Research assistant");
-  await page
-    .getByLabel("Job description")
-    .fill("Research current hospitality accounts.");
-  await page.getByLabel("Skills, one per line").fill("Research\nSynthesis");
-
-  await page.goto("/#/hire/roles?roleRecovery=runtime-empty&rolePersonaId=new");
-  await expect(page.getByTestId("company-role-runtime-recovery")).toBeVisible();
-  await page.getByRole("button", { name: "Keep draft and return" }).click();
-
-  await expect(page.getByTestId("company-role-editor")).toBeVisible();
-  await expect(page.getByLabel("Role title")).toHaveValue("Research assistant");
-  await expect(page.getByLabel("Job description")).toHaveValue(
-    "Research current hospitality accounts.",
-  );
-  await expect(page.getByLabel("Skills, one per line")).toHaveValue(
-    "Research\nSynthesis",
-  );
-});
-
-test("role pack edits retain input after a failed save and then update the real persona", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    relayRequiresMembership: true,
-    personas: [
-      {
-        id: PERSONA_ID,
-        displayName: "Hospitality researcher",
-        systemPrompt: "Research hospitality accounts and report findings.",
-        isActive: true,
-        runtime: "claude",
-        companyRole: {
-          job: "Hospitality research",
-          skills: ["Market research"],
-          tools: [{ name: "Web search", risk: "low" }],
-          workerMenu: ["buzz-agent"],
-        },
-      },
-    ],
-    personaWriteErrors: ["Temporary persona write failure"],
-  });
-  await page.goto("/#/hire/roles");
-  await page.getByRole("button", { name: "Edit pack" }).click();
-  await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
-  await expect(page.getByTestId("community-catalog-dialog")).toHaveCount(0);
-  await expect(page.getByLabel("Allowed worker model")).toHaveValue(
-    "buzz-agent",
-  );
-
-  const job = page.getByLabel("Job description");
-  await job.fill("Research hospitality accounts and summarize evidence.");
-  await page.getByRole("button", { name: "Save role pack" }).click();
-  await expect(page.getByTestId("company-role-save-error")).toBeVisible();
-  await expect(job).toHaveValue(
-    "Research hospitality accounts and summarize evidence.",
-  );
-  await expect(
-    page.getByText(
-      "Your inputs are kept. Review them or retry without starting again.",
-    ),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Save role pack" }).click();
-  await expect(page.getByTestId("company-role-save-error")).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Role pack saved" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Research hospitality accounts and summarize evidence."),
-  ).toBeVisible();
-  await page.goto("/#/hire/roles");
-  await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toContainText(
-    "Research hospitality accounts and summarize evidence.",
-  );
-  await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toContainText(
-    "No default amount",
-  );
 });
 
 async function seedHireAsk(
@@ -733,24 +482,6 @@ test("a member can view the hire proposal but cannot resolve it", async ({
     page.getByRole("button", { name: "Back to the record" }),
   ).toBeVisible();
   await expect(page.getByTestId("hire-handoff-form")).toHaveCount(0);
-});
-
-test("a member cannot open the role-pack curation route", async ({ page }) => {
-  await installMockBridge(page, {
-    relayRequiresMembership: true,
-    relayRole: "member",
-    personas: [],
-  });
-  await page.goto("/#/hire/roles");
-
-  await expect(
-    page.getByRole("heading", {
-      name: "You do not have permission for this action",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create role pack" }),
-  ).toHaveCount(0);
 });
 
 test("resolved hire ask card explains that the requester has the outcome", async ({

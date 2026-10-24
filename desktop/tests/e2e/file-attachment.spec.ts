@@ -584,48 +584,6 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
   });
 }
 
-test("forum posts emit a FileCard for generic attachments, not a broken image", async ({
-  page,
-}) => {
-  // Regression guard for the ForumComposer bug: it used to hand-build content
-  // as `![image](url)` for every non-video attachment (and omit the `filename`
-  // imeta tag), so a PDF posted in a forum rendered as a broken inline image
-  // and lost its label. The fix routes forum/notes posts through the same
-  // `buildOutgoingMessage` builder as chat. This test would fail (no FileCard)
-  // if ForumComposer ever drifts back to hand-building media markdown.
-  await page.goto("/");
-
-  // "watercooler" is a seeded forum the mock identity is a member of.
-  await page.getByTestId("channel-watercooler").click();
-
-  // Open the new-post composer ("Start a new post...").
-  await page.getByRole("button", { name: "Start a new post..." }).click();
-
-  // Paperclip → mocked pick_and_upload_media returns the PDF descriptor.
-  await page.getByRole("button", { name: "Attach file" }).click();
-
-  // Submit the (attachment-only) forum post.
-  await page.getByTestId("send-message").click();
-
-  // The post renders through the shared Markdown component as a FileCard —
-  // a button carrying the filename that downloads via the native
-  // `download_file` command — NOT an inline image and NOT a bare link.
-  const card = page.getByTestId("file-card");
-  await expect(card).toBeVisible();
-  await expect(card).toContainText("quarterly-report.pdf");
-
-  await card.click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
-            .__BUZZ_E2E_COMMANDS__ ?? [],
-      ),
-    )
-    .toContain("download_file");
-});
-
 test("a queued attachment can be removed without a mouse", async ({ page }) => {
   // Regression: the queued remove badge is revealed on hover, but hiding it
   // with `display: none` made it unfocusable, leaving keyboard-only users no

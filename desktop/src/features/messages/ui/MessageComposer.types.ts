@@ -109,8 +109,6 @@ export type MessageComposerProps = {
     body: string;
     id: string;
   } | null;
-  /** Goals are cut; kept so existing call sites compile. Has no effect. */
-  showGoalReference?: boolean;
   showTopBorder?: boolean;
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;

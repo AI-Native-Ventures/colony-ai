@@ -520,7 +520,7 @@ test.describe("channel activity hover preview", () => {
     ).toHaveCount(0);
   });
 
-  test("supports row actions and opens an agent's scoped activity", async ({
+  test("supports row actions and opens the channel from a working agent", async ({
     page,
   }) => {
     await seedChannelActivity(page);
@@ -533,24 +533,10 @@ test.describe("channel activity hover preview", () => {
     await firstRow.getByRole("button", { name: "Mark as read" }).click();
     await expect(popover.getByTestId(/^channel-activity-item-/)).toHaveCount(1);
 
-    const remainingRow = popover.getByTestId(/^channel-activity-item-/).first();
-    await remainingRow.hover();
-    await remainingRow.getByRole("button", { name: "Remind me later" }).click();
-    await expect(
-      page.getByRole("dialog").getByText("Remind me later"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Cancel" }).click();
-
     popover = await openActivityPopover(page);
     await popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`).click();
 
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await expect(page.getByTestId("agent-session-agent-name")).toContainText(
-      "Charlie",
-    );
-    await expect(page.getByTestId("agent-session-scope-label")).toContainText(
-      "#general",
-    );
   });
 
   test("keeps multiple Inbox threads visible after opening their channel", async ({

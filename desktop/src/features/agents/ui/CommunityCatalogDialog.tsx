@@ -1,10 +1,9 @@
 import * as React from "react";
-import { ChevronDown, Plus, Upload } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 
 import { isCatalogPersonaSelected } from "@/features/agents/lib/catalog";
 import { effectiveAgentDescription } from "@/features/agents/lib/agentDescription";
 import { isCatalogPersona } from "@/features/agents/lib/personaCatalogRelay";
-import type { CatalogTeam } from "@/features/agents/lib/teamCatalogRelay";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type { AgentPersona } from "@/shared/api/types";
@@ -24,42 +23,20 @@ import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { PageHeader } from "@/shared/ui/PageHeader";
 
 import agentOutlineUrl from "../assets/agent-outline.svg";
 import { AgentDefinitionMetadata } from "./AgentDefinitionMetadata";
 import { PersonaAddedBy } from "./PersonaAddedBy";
 import { resolveCatalogOwnerLabel } from "./catalogOwnerLabel";
-import {
-  HireBackButton,
-  HirePageHeader,
-} from "@/features/company-hiring/ui/HirePresentation";
 
-// ── Type-tagged selection keys ────────────────────────────────────────────────
+// ── Selection keys ────────────────────────────────────────────────────────────
 
-// The detail pane is a single-select surface across four kinds of content:
-// the "create" and "import" panes carried from the unified add-agent dialog
-// (#5015), plus a persona or team browsed from the community catalog. Persona
-// IDs and team coordinates are prefixed so they cannot collide with each other
-// or with the fixed "create"/"import" keys.
-type CatalogSelectionKey =
-  | { kind: "persona"; id: string }
-  | { kind: "team"; key: string };
-
-function teamSelectionKey(team: CatalogTeam): string {
-  return `${team.ownerPubkey}:${team.teamDTag}`;
-}
-
-function encodeKey(k: CatalogSelectionKey): string {
-  return k.kind === "persona" ? `p:${k.id}` : `t:${k.key}`;
-}
-
+// The detail pane is a single-select surface: the "create" and "import" panes
+// carried from the unified add-agent dialog (#5015), plus a persona browsed
+// from the community catalog. Persona IDs are prefixed so they cannot collide
+// with the fixed "create"/"import" keys.
 function personaKey(persona: AgentPersona): string {
-  return encodeKey({ kind: "persona", id: persona.id });
-}
-
-function teamKey(team: CatalogTeam): string {
-  return encodeKey({ kind: "team", key: teamSelectionKey(team) });
+  return `p:${persona.id}`;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -84,19 +61,8 @@ type CommunityCatalogDialogProps = {
   onClearFeedback: () => void;
   onSelectPersona: (persona: AgentPersona, active: boolean) => void;
 
-  // Team side
-  teams: CatalogTeam[];
-  teamsError: Error | null;
-  teamsLoading: boolean;
-  teamsAdding: boolean;
-  onAddTeam: (team: CatalogTeam) => void;
-
   // Dialog
   open: boolean;
-  rolePackMode?: boolean;
-  createTitle?: string;
-  createDescription?: string;
-  preferSection: "agents" | "teams";
   onOpenChange: (open: boolean) => void;
 };
 
@@ -117,41 +83,25 @@ export function CommunityCatalogDialog({
   feedbackNoticeMessage,
   onClearFeedback,
   onSelectPersona,
-  teams,
-  teamsError,
-  teamsLoading,
-  teamsAdding,
-  onAddTeam,
   open,
-  rolePackMode = false,
-  createTitle = "Add agent",
-  createDescription = "Create, discover, and import agents and teams.",
-  preferSection,
   onOpenChange,
 }: CommunityCatalogDialogProps) {
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const dragDepthRef = React.useRef(0);
   const createDirtyRef = React.useRef(false);
-  const didInitRef = React.useRef(false);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [pendingNavigation, setPendingNavigation] =
     React.useState<PendingNavigation | null>(null);
 
   // Active detail selection. Defaults to the create pane (the unified
-  // add-agent entry point); a teams-launch may switch to the first team once
-  // the teams query settles.
+  // add-agent entry point).
   const [selection, setSelection] = React.useState("create");
-  const [userHasSelected, setUserHasSelected] = React.useState(false);
-
-  const firstTeamKey = teams.length > 0 ? teamKey(teams[0]) : null;
 
   // Reset to a fresh create-pane state each time the dialog opens.
   React.useEffect(() => {
     if (open) {
       createDirtyRef.current = false;
-      didInitRef.current = false;
-      setUserHasSelected(false);
       setSelection("create");
       setPendingNavigation(null);
       dragDepthRef.current = 0;
@@ -159,44 +109,20 @@ export function CommunityCatalogDialog({
     }
   }, [open]);
 
-  // Teams-launch: once the teams query settles, select the first team so the
-  // catalog opens on browsable content rather than the create pane. Runs at
-  // most once per open and never overrides an explicit user navigation.
-  React.useEffect(() => {
-    if (!open || didInitRef.current || userHasSelected) return;
-    if (preferSection !== "teams") {
-      didInitRef.current = true;
-      return;
-    }
-    if (teamsLoading) return;
-    didInitRef.current = true;
-    if (firstTeamKey) setSelection(firstTeamKey);
-  }, [open, preferSection, teamsLoading, firstTeamKey, userHasSelected]);
-
   // Drop a selected catalog item that a live refresh retracted so the detail
   // pane never points at something that no longer exists.
   React.useEffect(() => {
     if (selection.startsWith("p:")) {
       const id = selection.slice(2);
       if (!personas.some((p) => p.id === id)) setSelection("create");
-    } else if (selection.startsWith("t:")) {
-      const key = selection.slice(2);
-      if (!teams.some((t) => teamSelectionKey(t) === key))
-        setSelection("create");
     }
-  }, [personas, teams, selection]);
+  }, [personas, selection]);
 
   useFeedbackToasts(feedbackNoticeMessage, feedbackErrorMessage);
 
   // Resolve current selection.
   const selectedPersona = selection.startsWith("p:")
     ? (personas.find((p) => p.id === selection.slice(2)) ?? null)
-    : null;
-  const selectedTeamKey = selection.startsWith("t:")
-    ? selection.slice(2)
-    : null;
-  const selectedTeam = selectedTeamKey
-    ? (teams.find((t) => teamSelectionKey(t) === selectedTeamKey) ?? null)
     : null;
 
   const isCreateSelected = selection === "create";
@@ -205,14 +131,9 @@ export function CommunityCatalogDialog({
   const selectedPersonaIsActive = selectedPersona
     ? isCatalogPersonaSelected(selectedPersona)
     : false;
-  const selectedTeamIsAdded = selectedTeam?.localTeam != null;
 
-  const bothEmpty =
-    !personasLoading &&
-    !teamsLoading &&
-    personas.length === 0 &&
-    teams.length === 0;
-  const noError = !personasError && !teamsError;
+  const bothEmpty = !personasLoading && personas.length === 0;
+  const noError = !personasError;
 
   const handleCreateDirtyChange = React.useCallback((dirty: boolean) => {
     createDirtyRef.current = dirty;
@@ -256,11 +177,6 @@ export function CommunityCatalogDialog({
     onSelectPersona(selectedPersona, true);
   }
 
-  function handleAddTeam() {
-    if (!selectedTeam || selectedTeamIsAdded) return;
-    onAddTeam(selectedTeam);
-  }
-
   React.useEffect(() => {
     if (!isImportSelected) {
       dragDepthRef.current = 0;
@@ -295,14 +211,9 @@ export function CommunityCatalogDialog({
     >
       <AlertDialogContent data-testid="discard-create-agent-dialog">
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {rolePackMode
-              ? "Discard role pack changes?"
-              : "Discard agent changes?"}
-          </AlertDialogTitle>
+          <AlertDialogTitle>Discard agent changes?</AlertDialogTitle>
           <AlertDialogDescription>
-            Your changes to this {rolePackMode ? "role pack" : "agent"} will be
-            lost.
+            Your changes to this agent will be lost.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -316,30 +227,6 @@ export function CommunityCatalogDialog({
       </AlertDialogContent>
     </AlertDialog>
   );
-
-  if (rolePackMode) {
-    return (
-      <>
-        <section
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
-          data-testid="company-role-pack-page"
-        >
-          <HirePageHeader title="Role catalog" />
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[74.5rem] px-12 pb-12 2xl:px-6">
-              <HireBackButton onClick={requestClose} />
-              <PageHeader className="mb-7" title="Role catalog" />
-              {createContent({
-                onDirtyChange: handleCreateDirtyChange,
-                onRequestClose: requestClose,
-              })}
-            </div>
-          </div>
-        </section>
-        {discardDialog}
-      </>
-    );
-  }
 
   return (
     <>
@@ -355,14 +242,10 @@ export function CommunityCatalogDialog({
         open={open}
       >
         <ChooserDialogContent
-          className={
-            rolePackMode
-              ? "h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[1300px]"
-              : "h-[42rem] max-w-4xl"
-          }
+          className="h-[42rem] max-w-4xl"
           contentClassName="flex min-h-0 min-w-0 flex-1 p-0"
           data-testid="community-catalog-dialog"
-          description={createDescription}
+          description="Create, discover, and import agents."
           headerClassName="bg-sidebar pb-3 text-sidebar-foreground"
           headerTestId="community-catalog-dialog-header"
           onOpenAutoFocus={(event) => {
@@ -373,7 +256,7 @@ export function CommunityCatalogDialog({
           scrollAreaClassName="flex min-h-0 overflow-hidden px-0"
           scrollAreaTestId="community-catalog-dialog-body"
           tabIndex={-1}
-          title={createTitle}
+          title="Add agent"
           onDragEnter={(event) => {
             if (!isImportSelected || !hasFiles(event)) return;
             event.preventDefault();
@@ -460,10 +343,7 @@ export function CommunityCatalogDialog({
                             )}
                             data-testid={`community-catalog-agent-${persona.id}`}
                             key={persona.id}
-                            onClick={() => {
-                              setUserHasSelected(true);
-                              requestSelection(key);
-                            }}
+                            onClick={() => requestSelection(key)}
                             type="button"
                           >
                             <ProfileAvatar
@@ -492,47 +372,6 @@ export function CommunityCatalogDialog({
                   </div>
                 ) : null}
 
-                {teamsLoading ? <CatalogListSkeleton /> : null}
-
-                {!teamsLoading && teams.length > 0 ? (
-                  <div className="mb-1">
-                    <p className="px-4 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-                      Teams
-                    </p>
-                    <div className="space-y-1">
-                      {teams.map((team) => {
-                        const key = teamKey(team);
-                        const isCurrent = key === selection;
-                        return (
-                          <button
-                            aria-current={isCurrent ? "true" : undefined}
-                            className={cn(
-                              "flex w-full items-center gap-2 rounded-lg px-4 py-1.5 text-left transition-[background-color,color,box-shadow] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                              isCurrent
-                                ? "bg-sidebar-active text-sidebar-active-foreground"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                            )}
-                            data-testid={`community-catalog-team-${teamSelectionKey(team)}`}
-                            key={teamSelectionKey(team)}
-                            onClick={() => {
-                              setUserHasSelected(true);
-                              requestSelection(key);
-                            }}
-                            type="button"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                              {team.name}
-                            </span>
-                            <span className="shrink-0 text-xs tabular-nums opacity-70">
-                              {team.members.length}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
                 {bothEmpty && noError ? <CatalogEmptyState /> : null}
               </div>
             </div>
@@ -552,60 +391,33 @@ export function CommunityCatalogDialog({
                 />
               ) : null}
 
-              {selectedPersona || selectedTeam ? (
+              {selectedPersona ? (
                 <>
                   <div
                     className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto px-5 pb-24 pt-5"
                     data-testid="community-catalog-detail-pane"
                   >
-                    {selectedPersona ? (
-                      <PersonaCatalogDetail persona={selectedPersona} />
-                    ) : null}
-                    {selectedTeam ? (
-                      <TeamCatalogDetail team={selectedTeam} />
-                    ) : null}
+                    <PersonaCatalogDetail persona={selectedPersona} />
                   </div>
 
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-background via-background/95 to-transparent px-5 pb-4 pt-12">
-                    {selectedPersona ? (
-                      <Button
-                        aria-label={
-                          selectedPersonaIsActive
-                            ? `${selectedPersona.displayName} is already in My Agents`
-                            : `Add ${selectedPersona.displayName} from Community Catalog`
-                        }
-                        className="pointer-events-auto"
-                        data-testid={`community-catalog-use-agent-${selectedPersona.id}`}
-                        disabled={selectedPersonaIsActive || personasPending}
-                        onClick={handleUseAgent}
-                        size="sm"
-                        type="button"
-                      >
-                        {selectedPersonaIsActive
-                          ? "Added to My Agents"
-                          : "Add agent"}
-                      </Button>
-                    ) : selectedTeam ? (
-                      <Button
-                        aria-label={
-                          selectedTeamIsAdded
-                            ? `${selectedTeam.name} is already in your teams`
-                            : `Add ${selectedTeam.name} from Community Catalog`
-                        }
-                        className="pointer-events-auto"
-                        data-testid="community-catalog-add-team"
-                        disabled={selectedTeamIsAdded || teamsAdding}
-                        onClick={handleAddTeam}
-                        size="sm"
-                        type="button"
-                      >
-                        {selectedTeamIsAdded
-                          ? "Added to my teams"
-                          : teamsAdding
-                            ? "Adding…"
-                            : "Add team"}
-                      </Button>
-                    ) : null}
+                    <Button
+                      aria-label={
+                        selectedPersonaIsActive
+                          ? `${selectedPersona.displayName} is already in My Agents`
+                          : `Add ${selectedPersona.displayName} from Community Catalog`
+                      }
+                      className="pointer-events-auto"
+                      data-testid={`community-catalog-use-agent-${selectedPersona.id}`}
+                      disabled={selectedPersonaIsActive || personasPending}
+                      onClick={handleUseAgent}
+                      size="sm"
+                      type="button"
+                    >
+                      {selectedPersonaIsActive
+                        ? "Added to My Agents"
+                        : "Add agent"}
+                    </Button>
                   </div>
                 </>
               ) : null}
@@ -614,11 +426,6 @@ export function CommunityCatalogDialog({
               {personasError ? (
                 <p className="m-5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {personasError.message}
-                </p>
-              ) : null}
-              {teamsError ? (
-                <p className="m-5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                  {teamsError.message}
                 </p>
               ) : null}
             </div>
@@ -722,7 +529,7 @@ function CatalogEmptyState() {
         Nothing shared yet
       </p>
       <p className="mt-1 text-xs text-sidebar-foreground/60">
-        Shared agents and teams will appear here.
+        Shared agents will appear here.
       </p>
     </div>
   );
@@ -833,129 +640,5 @@ function PersonaCatalogDetail({ persona }: { persona: AgentPersona }) {
         <AgentInstructionReview instructions={persona.systemPrompt} />
       </div>
     </div>
-  );
-}
-
-// ── Team detail ───────────────────────────────────────────────────────────────
-
-function TeamCatalogDetail({ team }: { team: CatalogTeam }) {
-  const ownerPubkey = team.isOwn ? undefined : team.ownerPubkey;
-  const ownerBatchQuery = useUsersBatchQuery(ownerPubkey ? [ownerPubkey] : [], {
-    enabled: !!ownerPubkey,
-  });
-
-  let addedByLabel: string;
-  if (team.isOwn) {
-    addedByLabel = "You";
-  } else {
-    const summary = ownerPubkey
-      ? ownerBatchQuery.data?.profiles[ownerPubkey.toLowerCase()]
-      : undefined;
-    addedByLabel = resolveCatalogOwnerLabel(summary);
-  }
-
-  const hasInstructions =
-    team.instructions !== null && team.instructions.trim().length > 0;
-
-  return (
-    <div className="w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
-      <div className="min-w-0">
-        <h3 className="truncate text-xl font-semibold leading-snug">
-          {team.name}
-        </h3>
-        <PersonaAddedBy className="mt-0.5" label={addedByLabel} />
-        {team.description ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            {team.description}
-          </p>
-        ) : null}
-      </div>
-
-      {hasInstructions ? (
-        <div className="min-w-0 max-w-full pt-3">
-          <p className="text-base font-semibold text-foreground">
-            Team instructions
-          </p>
-          <AgentInstructionReview instructions={team.instructions ?? ""} />
-        </div>
-      ) : null}
-
-      <div className="min-w-0">
-        <p className="text-base font-semibold text-foreground">
-          {team.members.length}{" "}
-          {team.members.length === 1 ? "member" : "members"}
-        </p>
-        <ul className="mt-3 space-y-2">
-          {team.members.map((member) => (
-            <TeamCatalogMemberRow key={member.memberKey} member={member} />
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-type TeamCatalogMemberRowProps = {
-  member: CatalogTeam["members"][number];
-};
-
-function TeamCatalogMemberRow({ member }: TeamCatalogMemberRowProps) {
-  const [expanded, setExpanded] = React.useState(false);
-
-  return (
-    <li
-      className="overflow-hidden rounded-lg border border-border/70 bg-card/70"
-      data-testid={`community-catalog-member-${member.memberKey}`}
-    >
-      <button
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/30 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
-        data-testid={`community-catalog-member-expand-${member.memberKey}`}
-        onClick={() => setExpanded((v) => !v)}
-        type="button"
-      >
-        <ProfileAvatar
-          avatarUrl={member.avatarUrl}
-          className="h-8 w-8 shrink-0 text-3xs"
-          label={member.displayName}
-          untrusted
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{member.displayName}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {member.model ?? "Use app default"}
-          </p>
-        </div>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            expanded && "rotate-180",
-          )}
-        />
-      </button>
-
-      {expanded ? (
-        <div className="space-y-4 border-t border-border/60 px-3 pb-4 pt-3">
-          <AgentDefinitionMetadata
-            isBuiltIn={false}
-            model={member.model}
-            provider={member.provider}
-            runtime={member.runtime}
-          />
-          <div className="min-w-0 max-w-full">
-            <p className="text-sm font-semibold text-foreground">
-              Agent instructions
-            </p>
-            {member.systemPrompt.trim().length > 0 ? (
-              <AgentInstructionReview instructions={member.systemPrompt} />
-            ) : (
-              <p className="mt-3 text-sm italic text-muted-foreground/60">
-                No instructions
-              </p>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </li>
   );
 }

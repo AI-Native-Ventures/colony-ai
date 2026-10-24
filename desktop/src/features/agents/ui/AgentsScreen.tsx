@@ -22,11 +22,6 @@ import { useHistorySearchState } from "@/shared/hooks/useHistorySearchState";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
 import { parseAgentProfileTab, type AgentProfileTab } from "./AgentProfileView";
-import type { AgentWorkspaceView } from "./AgentsView";
-
-function workspaceViewFromSearch(value: string | null): AgentWorkspaceView {
-  return value === "teams" || value === "templates" ? value : "directory";
-}
 
 const AgentsView = React.lazy(async () => {
   const module = await import("@/features/agents/ui/AgentsView");
@@ -40,15 +35,11 @@ type ProfilePanelTarget =
 const AGENTS_PROFILE_SEARCH_KEYS = [
   "agent",
   "agentTab",
-  "editRolePack",
   "profile",
   "profilePersona",
   "profileTab",
   "profileView",
-  "rolePack",
-  "resumeRolePack",
   "rows",
-  "view",
 ] as const;
 
 export function AgentsScreen() {
@@ -77,7 +68,7 @@ export function AgentsScreen() {
   }, [personasQuery.data, values.profile, values.profilePersona]);
   const threadPanelWidth = useThreadPanelWidth();
   const openDmMutation = useOpenDmMutation();
-  const { goChannel, goSupervision } = useAppNavigation();
+  const { goChannel } = useAppNavigation();
 
   const handleOpenProfilePanel = React.useCallback(
     (pubkey: string, options?: ProfilePanelOpenOptions) => {
@@ -123,7 +114,6 @@ export function AgentsScreen() {
         profilePersona: null,
         profileTab: null,
         profileView: null,
-        view: null,
       }),
     [applyPatch],
   );
@@ -133,15 +123,6 @@ export function AgentsScreen() {
   );
   const handleAgentTabChange = React.useCallback(
     (agentTab: AgentProfileTab) => applyPatch({ agentTab }),
-    [applyPatch],
-  );
-  const handleWorkspaceViewChange = React.useCallback(
-    (view: AgentWorkspaceView) =>
-      applyPatch({
-        agent: null,
-        agentTab: null,
-        view: view === "directory" ? null : view,
-      }),
     [applyPatch],
   );
   const handleProfilePanelViewChange = React.useCallback(
@@ -179,13 +160,7 @@ export function AgentsScreen() {
               onMessageAgent={(pubkey) => handleOpenDm([pubkey])}
               onOpenAgent={handleOpenAgent}
               onOpenChannel={(channelId) => void goChannel(channelId)}
-              onOpenSupervision={() => void goSupervision()}
-              onWorkspaceViewChange={handleWorkspaceViewChange}
               pageSize={values.rows ?? undefined}
-              createRolePack={values.rolePack === "create"}
-              editRolePackPersonaId={values.editRolePack ?? undefined}
-              resumeRolePack={values.resumeRolePack === "1"}
-              view={workspaceViewFromSearch(values.view)}
             />
           </React.Suspense>
           {profilePanelTarget ? (
