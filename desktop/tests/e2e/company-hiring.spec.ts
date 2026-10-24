@@ -107,7 +107,10 @@ test("owner hires from a role pack and the configured draft survives reload", as
 test("a business with no role personas is offered the built-in roles", async ({
   page,
 }) => {
+  const relay = newRelayKey();
   await installMockBridge(page, {
+    relaySelf: relay.relaySelf,
+    companyHireRelayPrivateKeyHex: relay.privateKeyHex,
     relayRequiresMembership: true,
     personas: [],
     discoverAgentModels: {
