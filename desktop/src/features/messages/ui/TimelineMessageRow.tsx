@@ -192,7 +192,7 @@ export function MessageRowItem({
             summaryIndentOffsetRem={-THREAD_REPLY_ROW_MARGIN_INLINE_REM}
             unreadCount={threadUnreadCounts?.get(message.id)}
           />
-          {footer}
+          {footer ? <div className="relative z-20">{footer}</div> : null}
         </div>
       </div>
     );
@@ -232,7 +232,7 @@ export function MessageRowItem({
         showDepthGuides={false}
         videoReviewContext={videoReviewContext}
       />
-      {footer}
+      {footer ? <div className="relative z-20">{footer}</div> : null}
     </div>
   );
 }
