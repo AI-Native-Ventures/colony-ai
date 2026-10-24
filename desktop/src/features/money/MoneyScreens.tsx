@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Navigate } from "@tanstack/react-router";
 
 import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { useMoneyRecordsQuery } from "@/features/clients/useBusinessRecords";
@@ -41,9 +40,7 @@ export type MoneySection =
   | "revenue"
   | "revenue-invoice"
   | "invoices"
-  | "invoice"
-  | "adjustments"
-  | "follow-ups";
+  | "invoice";
 
 const SUBTITLES = {
   overview: "Invoices and payments recorded in your client channels.",
@@ -83,9 +80,6 @@ export function MoneyRouteScreen({
   const [createOpen, setCreateOpen] = React.useState(false);
   const records = query.data;
 
-  if (section === "adjustments" || section === "follow-ups") {
-    return <Navigate replace to="/money" />;
-  }
   if (directory.isPending || query.isPending) {
     return (
       <ClientWorkspace title="Money">

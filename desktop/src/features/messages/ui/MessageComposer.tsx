@@ -1,5 +1,4 @@
 import * as React from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
 import { EditorContent } from "@tiptap/react";
 import {
   useChannelLinks,
@@ -64,16 +63,10 @@ import { useImplicitAgentMentionProvenance } from "./useImplicitAgentMentionProv
 import { useThreadAgentAudience } from "./useThreadAgentAudience";
 import { submitMessageEdit } from "./submitMessageEdit";
 import { prepareBackgroundLinkPreviews } from "@/features/messages/lib/linkPreviewPreparationStore";
-import {
-  COMPOSER_MESSAGE_LINK_NODE_NAME,
-  resolveComposerMessageLinkAttributes,
-} from "@/features/messages/lib/composerMessageLinkNode";
 import { useComposerLinkPreviews } from "./useComposerLinkPreviews";
 import { useAddressedAgentMentionRestore } from "./useAddressedAgentMentionRestore";
 import { scheduleSettleGatedAutoSubmit } from "./messageComposerAutoSubmit";
 import type { MessageComposerProps } from "./MessageComposer.types";
-import { buildGoalLink } from "@/shared/lib/entityLink";
-import { GoalReferenceComposerButton } from "@/features/goals/ui/GoalReferenceComposerButton";
 import { LeadReferenceComposerButton } from "@/features/leads/LeadReferenceComposerButton";
 function MessageComposerImpl({
   audienceContext = null,
@@ -105,7 +98,6 @@ function MessageComposerImpl({
   replyTarget = null,
   mediaController,
   showBackgroundUploadProgress = true,
-  showGoalReference = true,
   showLeadReference = true,
   showTopBorder = false,
   toolbarExtraActions,
@@ -113,8 +105,6 @@ function MessageComposerImpl({
   typingParentEventId = null,
   typingRootEventId = null,
 }: MessageComposerProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
   const {
     contentRef,
     isContentEmpty,
@@ -233,7 +223,6 @@ function MessageComposerImpl({
       syncComposerContentFromEditor,
       getImplicitAgentMentionPrefix: implicitAgentMentionProvenance.getPrefix,
     });
-  const pendingGoalReferenceAppliedRef = React.useRef<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: effectiveDraftKey is the sole trigger
   React.useEffect(() => {
     media.setUploadState({ status: "idle" });
@@ -328,62 +317,6 @@ function MessageComposerImpl({
       }
     },
   });
-  React.useEffect(() => {
-    const locationState = location.state as
-      | {
-          pendingGoalReference?: { goalId?: unknown; token?: unknown };
-        }
-      | undefined;
-    const pendingReference = locationState?.pendingGoalReference;
-    const goalId = pendingReference?.goalId;
-    const token = pendingReference?.token;
-    const editor = richText.editor;
-    if (
-      typeof goalId !== "string" ||
-      typeof token !== "string" ||
-      !editor ||
-      editor.isDestroyed ||
-      pendingGoalReferenceAppliedRef.current === token
-    ) {
-      return;
-    }
-
-    const attrs = resolveComposerMessageLinkAttributes(
-      buildGoalLink(goalId),
-      () => undefined,
-    );
-    if (!attrs || !editor.schema.nodes[COMPOSER_MESSAGE_LINK_NODE_NAME]) return;
-
-    const text = editor.getText();
-    const content: Array<Record<string, unknown>> = [];
-    if (text.length > 0 && !/\s$/.test(text)) {
-      content.push({ type: "text", text: " " });
-    }
-    content.push({ type: COMPOSER_MESSAGE_LINK_NODE_NAME, attrs });
-    content.push({ type: "text", text: " " });
-    pendingGoalReferenceAppliedRef.current = token;
-    const inserted = editor.chain().focus("end").insertContent(content).run();
-    if (!inserted) {
-      pendingGoalReferenceAppliedRef.current = null;
-      return;
-    }
-
-    const { pendingGoalReference: _consumed, ...nextState } =
-      locationState ?? {};
-    void navigate({
-      to: location.pathname,
-      search: location.search,
-      state: Object.keys(nextState).length > 0 ? nextState : undefined,
-      replace: true,
-      resetScroll: false,
-    } as never);
-  }, [
-    location.pathname,
-    location.search,
-    location.state,
-    navigate,
-    richText.editor,
-  ]);
   const linkEditor = useLinkEditor(richText);
   syncContentRefFromEditorRef.current = () => {
     const markdown = richText.getMarkdown();
@@ -1040,12 +973,6 @@ function MessageComposerImpl({
               editor={richText.editor}
               extraActions={
                 <>
-                  {showGoalReference &&
-                  channelId &&
-                  channelType !== "forum" &&
-                  editTarget == null ? (
-                    <GoalReferenceComposerButton />
-                  ) : null}
                   {showLeadReference &&
                   channelId &&
                   channelType !== "forum" &&

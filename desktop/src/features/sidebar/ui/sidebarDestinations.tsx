@@ -2,20 +2,13 @@ import type * as React from "react";
 
 import { useCompanyTeamCountQuery } from "@/features/company-team/teamRelay";
 import type { AppSidebarProps } from "@/features/sidebar/ui/AppSidebar.types";
-import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
-import type { FactoryScope } from "@/shared/api/factoryRuntime";
-import {
-  BusinessIcon,
-  CompanyIcon,
-  FactoryIcon,
-  LibraryIcon,
-} from "@/shared/ui/colonyIcons";
+import { BusinessIcon, CompanyIcon } from "@/shared/ui/colonyIcons";
 import { SidebarMenuBadge } from "@/shared/ui/sidebar";
 
 /**
  * The sidebar's destinations, as data.
  *
- * Every row under Today, Activity and Saved for later, and every icon on the
+ * Every row under Today and Activity, and every icon on the
  * collapsed rail that opens a part of the app, is one entry in
  * `SIDEBAR_DESTINATIONS`. `SidebarDestinationList` and `SidebarCollapsedNav`
  * only render this list, so a destination is added, moved or dropped by
@@ -24,17 +17,13 @@ import { SidebarMenuBadge } from "@/shared/ui/sidebar";
 
 /** What an entry needs to know about the app to draw itself. */
 export type SidebarDestinationContext = {
-  factoryScope: FactoryScope;
   handlers: Pick<
     AppSidebarProps,
     | "onSelectAgents"
     | "onSelectClients"
-    | "onSelectFactory"
-    | "onSelectGoals"
     | "onSelectSettings"
     | "onSelectTeam"
     | "onSelectWork"
-    | "onSelectWorkflows"
   >;
   pathname: string;
   selectedChannelId: string | null;
@@ -132,10 +121,8 @@ function isDiscoveryPath(pathname: string): boolean {
 
 const COMPANY_VIEWS: readonly AppSidebarProps["selectedView"][] = [
   "agents",
-  "goals",
   "team",
   "work",
-  "workflows",
 ];
 
 const company: SidebarDestination = {
@@ -170,26 +157,11 @@ const company: SidebarDestination = {
       onSelect: ({ handlers }) => handlers.onSelectAgents(),
     },
     {
-      id: "goals",
-      testId: "sidebar-company-goals",
-      label: "Goals",
-      isActive: ({ selectedView }) => selectedView === "goals",
-      onSelect: ({ handlers }) => handlers.onSelectGoals(),
-    },
-    {
       id: "work",
       testId: "sidebar-company-work",
       label: "Work",
       isActive: ({ selectedView }) => selectedView === "work",
       onSelect: ({ handlers }) => handlers.onSelectWork(),
-    },
-    {
-      id: "workflows",
-      testId: "open-workflows-view",
-      label: "Workflows",
-      feature: "workflows",
-      isActive: ({ selectedView }) => selectedView === "workflows",
-      onSelect: ({ handlers }) => handlers.onSelectWorkflows(),
     },
   ],
 };
@@ -254,50 +226,8 @@ const business: SidebarDestination = {
   ],
 };
 
-const softwareFactory: SidebarDestination = {
-  kind: "custom",
-  id: "software-factory",
-  rail: {
-    testId: "sidebar-collapsed-factory",
-    label: "Software Factory",
-    Icon: FactoryIcon,
-    isActive: ({ selectedView }) => selectedView === "factory",
-    onSelect: ({ handlers }) => handlers.onSelectFactory(),
-  },
-  render: ({ factoryScope, handlers, selectedChannelId, selectedView }) => (
-    <SidebarSoftwareFactoryGroup
-      isActive={selectedView === "factory"}
-      isProjectsActive={selectedView === "projects"}
-      onSelectFactory={handlers.onSelectFactory}
-      scope={factoryScope}
-      selectedChannelId={selectedChannelId}
-    />
-  ),
-};
-
-const library: SidebarDestination = {
-  kind: "row",
-  id: "library",
-  feature: "channel-templates",
-  testId: "sidebar-nav-library",
-  rowTestId: "sidebar-blocks-templates",
-  label: "Library",
-  Icon: LibraryIcon,
-  isActive: () => false,
-  onSelect: ({ handlers }) => handlers.onSelectSettings("channel-templates"),
-  rail: {
-    testId: "sidebar-collapsed-library",
-    label: "Library",
-    Icon: LibraryIcon,
-    isActive: () => false,
-    onSelect: ({ handlers }) => handlers.onSelectSettings("channel-templates"),
-  },
-};
-
 /** The destinations, top to bottom. Edit this list to change the sidebar. */
 export const SIDEBAR_DESTINATIONS: readonly SidebarDestination[] = [
   company,
   business,
-  softwareFactory,
-  library,
 ];

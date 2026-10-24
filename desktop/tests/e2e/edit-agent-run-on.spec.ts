@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const SHOTS = "test-results/edit-agent-run-on";
@@ -27,13 +30,11 @@ const KUBERNETES_CONFIG = {
 
 async function openEditDialog(
   page: import("@playwright/test").Page,
-  agentName: string,
+  agentPubkey: string,
 ) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible();
 }
@@ -58,7 +59,7 @@ test("editing a kubernetes agent shows its saved run-on settings", async ({
       },
     ],
   });
-  await openEditDialog(page, "Remote Helper");
+  await openEditDialog(page, agent.pubkey);
 
   const runOn = page.getByTestId("edit-agent-run-on");
   await expect(runOn).toBeVisible();
@@ -114,7 +115,7 @@ test("editing a local agent names this computer, with no config rows", async ({
       },
     ],
   });
-  await openEditDialog(page, "Local Helper");
+  await openEditDialog(page, agent.pubkey);
 
   const runOn = page.getByTestId("edit-agent-run-on");
   await expect(runOn.getByTestId("edit-agent-run-on-location")).toHaveText(
@@ -151,7 +152,7 @@ test("a blox agent's single saved field renders with a humanized label", async (
       },
     ],
   });
-  await openEditDialog(page, "Blox Helper");
+  await openEditDialog(page, agent.pubkey);
 
   const runOn = page.getByTestId("edit-agent-run-on");
   await expect(runOn.getByTestId("edit-agent-run-on-location")).toHaveText(
@@ -191,7 +192,7 @@ test("secret-shaped keys from an untrusted provider render redacted", async ({
       },
     ],
   });
-  await openEditDialog(page, "Future Provider Agent");
+  await openEditDialog(page, agent.pubkey);
 
   const runOn = page.getByTestId("edit-agent-run-on");
   await expect(runOn.getByTestId("edit-agent-run-on-endpoint")).toContainText(

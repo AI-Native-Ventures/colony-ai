@@ -44,7 +44,6 @@ function formatChannelActivity(timestamp: string): string | null {
 export function channelTooltipFooter(channel: Channel) {
   const details = [
     channel.visibility === "private" ? "Private channel" : "Public channel",
-    channel.channelType === "forum" ? "Forum" : null,
     channel.archivedAt ? "Archived" : null,
     channel.lastMessageAt ? formatChannelActivity(channel.lastMessageAt) : null,
   ];

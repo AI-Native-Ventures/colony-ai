@@ -1,6 +1,5 @@
 import {
   BookOpen,
-  Diamond,
   FileText,
   Globe,
   Pencil,
@@ -21,7 +20,6 @@ import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
-import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -99,13 +97,6 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: Pencil,
     available: true,
     Panel: WorkAreaCanvasTab,
-  },
-  work: {
-    kind: "work",
-    label: "Work",
-    icon: Diamond,
-    available: true,
-    Panel: WorkAreaWorkTab,
   },
   knowledge: {
     kind: "knowledge",

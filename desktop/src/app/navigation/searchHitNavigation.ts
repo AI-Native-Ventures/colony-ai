@@ -15,15 +15,6 @@ type SearchHitNavigationActions = {
       threadRootId?: string | null;
     },
   ) => Promise<unknown>;
-  goForumPost: (
-    channelId: string,
-    postId: string,
-    options?: {
-      force?: boolean;
-      replyId?: string;
-      searchHighlight?: ReturnType<typeof createSearchHighlightNavigation>;
-    },
-  ) => Promise<unknown>;
   signal?: AbortSignal;
 };
 
@@ -54,14 +45,6 @@ export async function openSearchHitWithNavigation(
     // Delay community-scoped writes for notification routing until async
     // destination resolution completes and its owner is still current.
     cacheSearchHitEvent(hit);
-  }
-
-  if (destination.kind === "forum-post") {
-    return actions.goForumPost(destination.channelId, destination.postId, {
-      force: actions.force || Boolean(searchHighlight),
-      replyId: destination.replyId,
-      searchHighlight,
-    });
   }
 
   return actions.goChannel(destination.channelId, {

@@ -1,28 +1,21 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  Archive,
   BellRing,
   Bot,
   ChevronDown,
-  Cpu,
   Download,
   FlaskConical,
   Keyboard,
-  LayoutTemplate,
   MonitorCog,
   Moon,
-  ShieldAlert,
   Smartphone,
   Smile,
   Sun,
   SunMoon,
   Ticket,
   UserRound,
-  Volume2,
   BriefcaseBusiness,
-  HardDrive,
-  Layers3,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
@@ -33,10 +26,10 @@ import type {
 import type { SoundName, SoundSlot } from "@/features/notifications/lib/sound";
 import { CommunityMembersSettingsCard } from "@/features/community-members/ui/CommunityMembersSettingsCard";
 import { CustomEmojiSettingsCard } from "@/features/custom-emoji/ui/CustomEmojiSettingsCard";
-import { LocalArchiveSettingsCard } from "@/features/local-archive/ui/LocalArchiveSettingsCard";
 import { cn } from "@/shared/lib/cn";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { Badge } from "@/shared/ui/badge";
+import { desktopFeatures } from "@/shared/features";
 import { isBuzzTheme, useTheme } from "@/shared/theme/ThemeProvider";
 import {
   LIGHT_THEMES,
@@ -64,12 +57,9 @@ import {
   ProminentActiveTabSetting,
   ThreadLayoutSetting,
 } from "./AppearanceSettingsControls";
-import { ChannelTemplatesSettingsCard } from "./ChannelTemplatesSettingsCard";
 import { ExperimentalFeaturesCard } from "./ExperimentalFeaturesCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
-import { MeshComputeWorkspace } from "@/features/mesh-compute/ui/MeshComputeWorkspace";
 import { MobilePairingCard } from "./MobilePairingCard";
-import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
 import {
   SettingsOptionGroup,
@@ -82,7 +72,6 @@ import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
 import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
-import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
 import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
@@ -90,7 +79,6 @@ import {
   AccessibilitySettingsPanel,
   AppPreferencesSettingsPanel,
   ArchivedRecordsSettingsPanel,
-  AuditSettingsPanel,
   BusinessProfileSettingsPanel,
   DraftRecoverySettingsPanel,
   FeedbackSettingsPanel,
@@ -101,13 +89,10 @@ export type SettingsSection =
   | "profile"
   | "security"
   | "notifications"
-  | "voice"
   | "experimental"
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "channel-templates"
-  | "compute"
   | "privacy"
   | "appearance"
   | "accessibility"
@@ -115,20 +100,12 @@ export type SettingsSection =
   | "people"
   | "shortcuts"
   | "community-members"
-  | "moderation"
-  | "audit"
-  | "settings/admin"
   | "custom-emoji"
-  | "local-archive"
   | "archived-records"
   | "recovery"
-  | "storage"
   | "app"
   | "mobile"
   | "updates"
-  | "settings/themes"
-  | "settings/theme-preview"
-  | "settings/theme-applied"
   | "feedback";
 
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = "profile";
@@ -139,10 +116,7 @@ export type SettingsGroupId =
   | "preferences"
   | "business"
   | "agents-group"
-  | "blocks-templates"
-  | "administration"
-  | "app-devices"
-  | "storage-group";
+  | "app-devices";
 
 export type SettingsInnerSection = {
   value: SettingsSection;
@@ -156,7 +130,7 @@ export type SettingsGroupDescriptor = {
   sections: SettingsInnerSection[];
 };
 
-/** The nine r17 categories and their one internal section bar. */
+/** The six categories and their one internal section bar. */
 export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "account",
@@ -165,6 +139,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     sections: [
       { value: "profile", label: "Profile" },
       { value: "security", label: "Sign-in & devices" },
+      { value: "archived-records", label: "Archived records" },
     ],
   },
   {
@@ -182,7 +157,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     icon: SlidersHorizontal,
     sections: [
       { value: "notifications", label: "Notifications & sounds" },
-      { value: "voice", label: "Voice & audio" },
       { value: "shortcuts", label: "Keyboard shortcuts" },
     ],
   },
@@ -193,6 +167,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     sections: [
       { value: "business-profile", label: "Profile" },
       { value: "people", label: "People & access" },
+      { value: "custom-emoji", label: "Custom emoji" },
     ],
   },
   {
@@ -205,24 +180,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     ],
   },
   {
-    id: "blocks-templates",
-    label: "Blocks & templates",
-    icon: Layers3,
-    sections: [
-      { value: "channel-templates", label: "Channel templates" },
-      { value: "custom-emoji", label: "Custom emoji" },
-    ],
-  },
-  {
-    id: "administration",
-    label: "Administration",
-    icon: ShieldAlert,
-    sections: [
-      { value: "moderation", label: "Moderation" },
-      { value: "audit", label: "Audit trail" },
-    ],
-  },
-  {
     id: "app-devices",
     label: "App & devices",
     icon: Smartphone,
@@ -231,18 +188,12 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
       { value: "privacy", label: "Privacy" },
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
-      { value: "experimental", label: "Experiments" },
-      { value: "compute", label: "Compute" },
-    ],
-  },
-  {
-    id: "storage-group",
-    label: "Storage",
-    icon: HardDrive,
-    sections: [
-      { value: "storage", label: "Local storage" },
-      { value: "archived-records", label: "Archived records" },
       { value: "recovery", label: "Draft recovery" },
+      // The preview-feature list can be empty; a tab with nothing under it
+      // would be a dead slot.
+      ...(desktopFeatures.length > 0
+        ? [{ value: "experimental" as const, label: "Experiments" }]
+        : []),
     ],
   },
 ];
@@ -251,9 +202,6 @@ const SETTINGS_SECTION_ALIASES: Partial<Record<string, SettingsSection>> = {
   agents: "agent-defaults",
   "community-members": "people",
   "custom-emoji": "custom-emoji",
-  "local-archive": "storage",
-  "channel-templates": "channel-templates",
-  "settings/admin": "audit",
 };
 
 export function canonicalSettingsSection(
@@ -262,17 +210,16 @@ export function canonicalSettingsSection(
   return SETTINGS_SECTION_ALIASES[section] ?? section;
 }
 
+// A stored or linked section that is not listed here (a removed one) is not a
+// valid section, so callers fall back to DEFAULT_SETTINGS_SECTION.
 const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "profile",
   "security",
   "notifications",
-  "voice",
   "experimental",
   "agents",
   "agent-defaults",
   "harnesses",
-  "channel-templates",
-  "compute",
   "privacy",
   "appearance",
   "accessibility",
@@ -280,20 +227,12 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "people",
   "shortcuts",
   "community-members",
-  "moderation",
-  "audit",
-  "settings/admin",
   "custom-emoji",
-  "local-archive",
   "archived-records",
   "recovery",
-  "storage",
   "app",
   "mobile",
   "updates",
-  "settings/themes",
-  "settings/theme-preview",
-  "settings/theme-applied",
   "feedback",
 ];
 
@@ -329,7 +268,6 @@ export type SettingsPanelProps = {
   onSetNotifyWhileViewing: (enabled: boolean) => void;
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
-  onOpenThemeCatalog?: () => void;
   onOpenDraftRecovery?: () => void;
   onEditAvatar?: () => void;
 };
@@ -351,11 +289,6 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     icon: BellRing,
   },
   {
-    value: "voice",
-    label: "Voice",
-    icon: Volume2,
-  },
-  {
     value: "experimental",
     label: "Experiments",
     icon: FlaskConical,
@@ -365,17 +298,6 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     label: "Agents",
     icon: Bot,
     featureGate: "managed-agents",
-  },
-  {
-    value: "channel-templates",
-    label: "Channel templates",
-    icon: LayoutTemplate,
-    featureGate: "channel-templates",
-  },
-  {
-    value: "compute",
-    label: "Compute",
-    icon: Cpu,
   },
   {
     value: "shortcuts",
@@ -388,20 +310,10 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     icon: Ticket,
   },
   {
-    value: "moderation",
-    label: "Moderation",
-    icon: ShieldAlert,
-  },
-  {
     value: "custom-emoji",
     label: "Custom emoji",
     icon: Smile,
     featureGate: "custom-emoji",
-  },
-  {
-    value: "local-archive",
-    label: "Local storage",
-    icon: Archive,
   },
   {
     value: "mobile",
@@ -1025,14 +937,6 @@ export function renderSettingsSection(
           onSetSoundForSlot={props.onSetSoundForSlot}
         />
       );
-    case "voice":
-      return (
-        <VoiceSettingsCard
-          onSectionChange={(nextSection) =>
-            props.onSectionChange?.(nextSection)
-          }
-        />
-      );
     case "experimental":
       return <ExperimentalFeaturesCard />;
     case "agents":
@@ -1040,17 +944,8 @@ export function renderSettingsSection(
       return <AgentDefaultsSettingsCard />;
     case "harnesses":
       return <HarnessLifecycleSettingsPanel />;
-    case "channel-templates":
-      return <ChannelTemplatesSettingsCard />;
-    case "compute":
-      return <MeshComputeWorkspace />;
     case "appearance":
-      return (
-        <AppearanceSettingsPanel
-          onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
-          onBackToWorkspace={props.onClose}
-        />
-      );
+      return <AppearanceSettingsPanel onBackToWorkspace={props.onClose} />;
     case "privacy":
       return (
         <DevicePrivacySettingsPanel
@@ -1077,18 +972,8 @@ export function renderSettingsSection(
           onBack={() => props.onSectionChange?.("business-profile")}
         />
       );
-    case "moderation":
-      return <ModerationQueueCard onBackToToday={props.onClose} />;
-    case "audit":
-      return <AuditSettingsPanel />;
-    case "settings/admin":
-      return <AuditSettingsPanel />;
     case "custom-emoji":
       return <CustomEmojiSettingsCard />;
-    case "local-archive":
-      return <LocalArchiveSettingsCard />;
-    case "storage":
-      return <LocalArchiveSettingsCard />;
     case "archived-records":
       return <ArchivedRecordsSettingsPanel onClose={props.onClose} />;
     case "recovery":
@@ -1101,10 +986,6 @@ export function renderSettingsSection(
       return <UpdateChecker />;
     case "feedback":
       return <FeedbackSettingsPanel />;
-    case "settings/themes":
-    case "settings/theme-preview":
-    case "settings/theme-applied":
-      return null;
     default: {
       const exhaustiveCheck: never = section;
       return exhaustiveCheck;

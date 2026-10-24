@@ -20,34 +20,34 @@ function installStorage(value) {
 
 test("getOverrides drops unknown feature IDs without writing to storage", () => {
   const { values, writes } = installStorage({
-    workflows: true,
+    agentManagedProfiles: true,
     removedFeature: false,
   });
 
-  assert.deepEqual(getOverrides(), { workflows: true });
+  assert.deepEqual(getOverrides(), { agentManagedProfiles: true });
   assert.deepEqual(writes, []);
   assert.equal(
     values.get(OVERRIDES_KEY),
-    JSON.stringify({ workflows: true, removedFeature: false }),
+    JSON.stringify({ agentManagedProfiles: true, removedFeature: false }),
   );
 });
 
 test("setOverride persists filtered overrides", () => {
   const { values } = installStorage({
-    workflows: true,
     removedFeature: false,
+    workflows: true,
   });
 
-  setOverride("projects", true);
+  setOverride("agentManagedProfiles", true);
 
   assert.equal(
     values.get(OVERRIDES_KEY),
-    JSON.stringify({ workflows: true, projects: true }),
+    JSON.stringify({ agentManagedProfiles: true }),
   );
 });
 
 test("getOverrides drops non-boolean values", () => {
-  installStorage({ workflows: "yes", projects: false });
+  installStorage({ agentManagedProfiles: "yes", removedFeature: false });
 
-  assert.deepEqual(getOverrides(), { projects: false });
+  assert.deepEqual(getOverrides(), {});
 });

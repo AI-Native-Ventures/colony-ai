@@ -153,9 +153,6 @@ export function LiveAppearancePreview({
               <span>
                 <AppearancePreviewIcon name="grid" /> Social
               </span>
-              <span>
-                <AppearancePreviewIcon name="folder" /> Library
-              </span>
               <div className="ap-live-person">
                 <span>LM</span> Lerato
               </div>

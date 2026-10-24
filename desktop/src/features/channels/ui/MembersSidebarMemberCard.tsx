@@ -1,6 +1,5 @@
 import { agentPresenceStartBlockReason } from "@/features/agents/lib/useAgentAvailability";
 import {
-  Activity,
   Ban,
   Bot,
   CircleSlash,
@@ -72,11 +71,9 @@ type MembersSidebarMemberCardProps = {
   onTimeout: (member: ChannelMember, expiresAtSecs: number) => void;
   onUnban: (member: ChannelMember) => void;
   onUntimeout: (member: ChannelMember) => void;
-  onViewActivity?: (pubkey: string) => void;
   presenceStatus?: PresenceStatus | null;
   profileAvatarUrl?: string | null;
   profileOwnerPubkey?: string | null;
-  viewerIsOwner: boolean;
 };
 
 /** Whether a member is currently banned / timed out (from the restriction read). */
@@ -141,24 +138,18 @@ export function MembersSidebarMemberCard({
   onTimeout,
   onUnban,
   onUntimeout,
-  onViewActivity,
   presenceStatus,
   profileAvatarUrl,
   profileOwnerPubkey,
-  viewerIsOwner,
 }: MembersSidebarMemberCardProps) {
   const roleLabel = formatRoleLabel(member, memberIsBot);
   const disabled = isActionPending || isArchived;
-  const canViewActivity =
-    memberIsBot &&
-    (viewerIsOwner || managedAgent?.backend.type === "local") &&
-    Boolean(onViewActivity);
   // Community ban/timeout applies to people, never bots, and never the community
   // owner (whom no moderator can restrict).
   const canModerateMember =
     canModerate && !memberIsBot && member.role !== "owner";
   const hasActions = memberIsBot
-    ? Boolean(managedAgent) || canRemoveMember || canViewActivity
+    ? Boolean(managedAgent) || canRemoveMember
     : canRemoveMember || canChangeRole || canModerateMember;
 
   const memberIdentity = (
@@ -278,7 +269,6 @@ export function MembersSidebarMemberCard({
           canChangeRole={canChangeRole}
           canModerateMember={canModerateMember}
           canRemoveMember={canRemoveMember}
-          canViewActivity={canViewActivity}
           disabled={disabled}
           managedAgent={managedAgent}
           member={member}
@@ -292,7 +282,6 @@ export function MembersSidebarMemberCard({
           onTimeout={onTimeout}
           onUnban={onUnban}
           onUntimeout={onUntimeout}
-          onViewActivity={onViewActivity}
           pairAction={pairAction}
           availability={presenceStatus ?? undefined}
         />
@@ -308,7 +297,6 @@ function MemberActionsMenu({
   canChangeRole,
   canModerateMember,
   canRemoveMember,
-  canViewActivity,
   disabled,
   managedAgent,
   member,
@@ -322,14 +310,12 @@ function MemberActionsMenu({
   onTimeout,
   onUnban,
   onUntimeout,
-  onViewActivity,
   pairAction,
 }: {
   canChangeRole: boolean;
   availability: PresenceStatus | undefined;
   canModerateMember: boolean;
   canRemoveMember: boolean;
-  canViewActivity: boolean;
   disabled: boolean;
   managedAgent?: ManagedAgent;
   member: ChannelMember;
@@ -343,7 +329,6 @@ function MemberActionsMenu({
   onTimeout: (member: ChannelMember, expiresAtSecs: number) => void;
   onUnban: (member: ChannelMember) => void;
   onUntimeout: (member: ChannelMember) => void;
-  onViewActivity?: (pubkey: string) => void;
   pairAction?: ManagedAgentPairAction;
 }) {
   const showChangeRole =
@@ -373,18 +358,8 @@ function MemberActionsMenu({
         align="end"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        {canViewActivity ? (
-          <DropdownMenuItem
-            data-testid={`sidebar-view-activity-${member.pubkey}`}
-            onClick={() => onViewActivity?.(member.pubkey)}
-          >
-            <Activity className="h-4 w-4" />
-            View activity
-          </DropdownMenuItem>
-        ) : null}
         {memberIsBot && managedAgent ? (
           <>
-            {canViewActivity ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               data-testid={`sidebar-agent-action-${member.pubkey}`}
               disabled={disabled || Boolean(startBlockReason)}

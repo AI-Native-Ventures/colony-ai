@@ -14,8 +14,6 @@ import type {
   InboxItem,
   InboxReply,
 } from "@/features/home/lib/inbox";
-import { getProjectInboxReference } from "@/features/home/lib/projectInbox";
-import { ProjectInboxDetail } from "@/features/home/ui/ProjectInboxDetail";
 import { ChannelMembersBar } from "@/features/channels/ui/ChannelMembersBar";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { formatInboxTypeLabel } from "@/features/home/lib/inbox";
@@ -143,19 +141,8 @@ type InboxDetailPaneProps = {
   ) => Promise<void>;
 };
 
-/** Routes Inbox selections to their canonical message or Buzz Git detail. */
+/** Renders an Inbox selection's message detail. */
 export function InboxDetailPane(props: InboxDetailPaneProps) {
-  if (props.item && getProjectInboxReference(props.item.item)) {
-    return (
-      <ProjectInboxDetail
-        isSinglePanelView={props.isSinglePanelView}
-        item={props.item}
-        onBack={props.onBack}
-        profiles={props.profiles}
-      />
-    );
-  }
-
   return (
     <VideoReviewNavigationProvider>
       <InboxMessageDetailPane {...props} />

@@ -18,14 +18,6 @@ export function ChannelWorkspaceTabs() {
       <button
         type="button"
         className={TAB_BUTTON_CLASS}
-        data-testid="channel-view-tab-work"
-        onClick={() => requestWorkAreaTab("work")}
-      >
-        Work
-      </button>
-      <button
-        type="button"
-        className={TAB_BUTTON_CLASS}
         data-testid="channel-view-tab-knowledge"
         onClick={() => requestWorkAreaTab("knowledge")}
       >

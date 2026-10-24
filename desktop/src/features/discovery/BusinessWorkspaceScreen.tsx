@@ -5,11 +5,6 @@ import { DiscoveryScreen } from "./DiscoveryScreen";
 import { CampaignScreen } from "./CampaignScreen";
 import { W10Error, W10Loading } from "./BusinessCommon";
 import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
-import {
-  ProposalDetailScreen,
-  ProposalsScreen,
-  ServiceScreen,
-} from "./ProposalScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
 
@@ -73,8 +68,6 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
   if (pathname === "/leads") return <LeadsScreen {...context} />;
   if (pathname === "/campaign") return <CampaignScreen {...context} />;
   if (pathname === "/pipeline") return <PipelineScreen {...context} />;
-  if (pathname === "/sales/proposals") return <ProposalsScreen {...context} />;
-  if (pathname === "/sales/service") return <ServiceScreen {...context} />;
   if (parts[0] === "sales" && parts[1] === "lead") {
     const prospectId = parts[2] ?? "";
     const prospect =
@@ -87,26 +80,6 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
             (candidate) => candidate.record.prospectId === prospectId,
           );
     return <LeadDetailScreen {...context} prospect={prospect ?? null} />;
-  }
-  if (parts[0] === "sales" && parts[1] === "proposal") {
-    const proposalId = parts[2] ?? "";
-    const prospectForAlias = business.records.prospects.find(
-      (candidate) =>
-        candidate.record.prospect.party.displayName === "Form & Field",
-    );
-    const matchedProposal =
-      proposalId === "proposal-form" && prospectForAlias
-        ? business.records.proposals.find(
-            (candidate) =>
-              candidate.version?.prospectPartyId ===
-              prospectForAlias.record.prospect.party.partyId,
-          )
-        : business.records.proposals.find(
-            (candidate) => candidate.head.proposalId === proposalId,
-          );
-    return (
-      <ProposalDetailScreen {...context} proposal={matchedProposal ?? null} />
-    );
   }
 
   return (

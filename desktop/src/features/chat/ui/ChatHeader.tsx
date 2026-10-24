@@ -1,15 +1,4 @@
-import {
-  Activity,
-  Bot,
-  CircleDot,
-  Copy,
-  FileText,
-  FolderGit2,
-  Hash,
-  House,
-  Lock,
-  Zap,
-} from "lucide-react";
+import { Bot, CircleDot, Copy, Hash, House, Lock } from "lucide-react";
 import type * as React from "react";
 import { toast } from "sonner";
 
@@ -31,7 +20,7 @@ type ChatHeaderProps = {
   channelType?: ChannelType;
   visibility?: ChannelVisibility;
   leadingContent?: React.ReactNode;
-  mode?: "home" | "channel" | "agents" | "workflows" | "pulse" | "projects";
+  mode?: "home" | "channel" | "agents";
   overlaysContent?: boolean;
   statusBadge?: React.ReactNode;
   showDescription?: boolean;
@@ -51,7 +40,7 @@ function ChannelIcon({
 }: {
   channelType?: ChannelType;
   visibility?: ChannelVisibility;
-  mode?: "home" | "channel" | "agents" | "workflows" | "pulse" | "projects";
+  mode?: "home" | "channel" | "agents";
 }) {
   if (mode === "home") {
     return <House className={HEADER_ICON_CLASS} />;
@@ -61,28 +50,12 @@ function ChannelIcon({
     return <Bot className={HEADER_ICON_CLASS} />;
   }
 
-  if (mode === "workflows") {
-    return <Zap className={HEADER_ICON_CLASS} />;
-  }
-
-  if (mode === "pulse") {
-    return <Activity className={HEADER_ICON_CLASS} />;
-  }
-
-  if (mode === "projects") {
-    return <FolderGit2 className={HEADER_ICON_CLASS} />;
-  }
-
   if (channelType === "dm") {
     return <CircleDot className={HEADER_ICON_CLASS} />;
   }
 
   if (visibility === "private") {
     return <Lock className={HEADER_ICON_CLASS} />;
-  }
-
-  if (channelType === "forum") {
-    return <FileText className={HEADER_ICON_CLASS} />;
   }
 
   return <Hash className={CHANNEL_HASH_ICON_CLASS} color="gray" />;

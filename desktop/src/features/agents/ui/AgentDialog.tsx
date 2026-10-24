@@ -31,7 +31,6 @@ import {
 type AgentDialogCreateProps = {
   mode: "definition";
   embedded?: boolean;
-  companyRoleMode?: boolean;
   submitLabel?: string;
   initialValues?: CreatePersonaInput | null;
   onDirtyChange?: (dirty: boolean) => void;
@@ -46,12 +45,6 @@ type AgentDialogCreateProps = {
     backendIntent: BackendIntent | null,
     onSavedPersona?: (persona: AgentPersona) => void,
   ) => Promise<boolean>;
-  onRolePackSaved?: (personaId: string) => void;
-  suppressRoleRecovery?: boolean;
-  onRoleRecovery?: (
-    kind: "runtime" | "provider" | "model",
-    draftPersonaId: string,
-  ) => void;
 };
 
 type AgentDialogInstanceEditProps = {
@@ -73,7 +66,6 @@ type AgentDialogInstanceEditProps = {
 type AgentDialogDefinitionEditProps = {
   mode: "definition-edit";
   embedded?: boolean;
-  companyRoleMode?: boolean;
   open: boolean;
   title: string;
   description: string;
@@ -91,11 +83,6 @@ type AgentDialogDefinitionEditProps = {
   ) => Promise<unknown>;
   onSavedPersona?: (persona: AgentPersona) => void;
   publishCatalogUpdatesOnSave?: boolean;
-  suppressRoleRecovery?: boolean;
-  onRoleRecovery?: (
-    kind: "runtime" | "provider" | "model",
-    draftPersonaId: string,
-  ) => void;
 };
 
 type AgentDialogProps =
@@ -135,35 +122,22 @@ export function AgentDialog(props: AgentDialogProps) {
     // A definition has no instance and no run draft, so the run location stays
     // unknown and the warning uses its local-wording fallback.
     const { mode: _mode, ...definitionProps } = props;
-    return (
-      <AgentDefinitionDialog
-        {...definitionProps}
-        title={
-          definitionProps.companyRoleMode
-            ? "Role catalog"
-            : definitionProps.title
-        }
-      />
-    );
+    return <AgentDefinitionDialog {...definitionProps} />;
   }
   return <AgentCreateDialogRouter {...props} />;
 }
 
 function AgentCreateDialogRouter({
   embedded,
-  companyRoleMode = false,
   initialValues: providedInitialValues,
   onOpenChange,
   definitionError,
   isDefinitionPending,
   runtimes,
   runtimeCatalogStatus,
-  suppressRoleRecovery,
-  onRoleRecovery,
   submitLabel,
   onDirtyChange,
   onSubmitDefinition,
-  onRolePackSaved,
 }: AgentDialogCreateProps) {
   const [runDraft, setRunDraft] = React.useState(emptyWhereToRunDraft);
   const initialValues = React.useMemo(
@@ -178,47 +152,29 @@ function AgentCreateDialogRouter({
     // because it owns the "Run on" draft.
     <AgentRunLocationProvider runLocation={runLocationForRunOn(runDraft.runOn)}>
       <AgentDefinitionDialog
-        companyRoleMode={companyRoleMode}
-        suppressRoleRecovery={suppressRoleRecovery}
-        onRoleRecovery={onRoleRecovery}
         createRunSection={
-          companyRoleMode ? undefined : (
-            <WhereToRunSection
-              draft={runDraft}
-              isPending={isDefinitionPending}
-              onDraftChange={(nextDraft) => {
-                setRunDraft(nextDraft);
-                onDirtyChange?.(true);
-              }}
-            />
-          )
+          <WhereToRunSection
+            draft={runDraft}
+            isPending={isDefinitionPending}
+            onDraftChange={(nextDraft) => {
+              setRunDraft(nextDraft);
+              onDirtyChange?.(true);
+            }}
+          />
         }
-        createSubmitBlocked={
-          companyRoleMode ? false : !canSubmitWhereToRun(runDraft)
-        }
-        description={
-          companyRoleMode
-            ? "Define the job, skills, scoped tools and allowed worker menu."
-            : copy.description
-        }
+        createSubmitBlocked={!canSubmitWhereToRun(runDraft)}
+        description={copy.description}
         embedded={embedded}
         error={definitionError}
         initialValues={initialValues}
         isPending={isDefinitionPending}
         onDirtyChange={onDirtyChange}
         onOpenChange={onOpenChange}
-        onSavedPersona={
-          companyRoleMode
-            ? (persona) => {
-                if (persona.companyRole) onRolePackSaved?.(persona.id);
-              }
-            : undefined
-        }
         onSubmit={async (input, _options, onSavedPersona) => {
           const submitted = await onSubmitDefinition(
             input,
-            companyRoleMode ? "definition" : "definition_start",
-            companyRoleMode ? null : resolveBackendIntent(runDraft),
+            "definition_start",
+            resolveBackendIntent(runDraft),
             onSavedPersona,
           );
           if (submitted) {
@@ -230,10 +186,8 @@ function AgentCreateDialogRouter({
         open
         runtimes={runtimes}
         runtimeCatalogStatus={runtimeCatalogStatus}
-        submitLabel={
-          companyRoleMode ? "Save role pack" : (submitLabel ?? copy.submitLabel)
-        }
-        title={companyRoleMode ? "Role catalog" : copy.title}
+        submitLabel={submitLabel ?? copy.submitLabel}
+        title={copy.title}
       />
     </AgentRunLocationProvider>
   );

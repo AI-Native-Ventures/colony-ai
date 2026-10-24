@@ -5,7 +5,6 @@ import { useOpenDmMutation } from "@/features/channels/hooks";
 import type { ProfilePanelOpenOptions } from "@/shared/context/ProfilePanelContext";
 
 type UseChannelProfilePanelOptions = {
-  closeAgentSession: () => void;
   openProfilePanel: (pubkey: string, options?: ProfilePanelOpenOptions) => void;
   requireThreadEditResolution: () => boolean;
   setChannelManagementOpen: (open: boolean) => void;
@@ -17,7 +16,6 @@ type UseChannelProfilePanelOptions = {
 };
 
 export function useChannelProfilePanel({
-  closeAgentSession,
   openProfilePanel,
   requireThreadEditResolution,
   setChannelManagementOpen,
@@ -37,12 +35,10 @@ export function useChannelProfilePanel({
       setExpandedThreadReplyIds(new Set());
       setThreadScrollTargetId(null);
       setThreadReplyTargetId(null);
-      closeAgentSession();
       setChannelManagementOpen(false);
       openProfilePanel(pubkey, options);
     },
     [
-      closeAgentSession,
       openProfilePanel,
       requireThreadEditResolution,
       setChannelManagementOpen,

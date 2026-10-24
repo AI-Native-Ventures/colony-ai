@@ -16,12 +16,10 @@ const INBOX_FILTER_OPTIONS: Array<{
   value: InboxFilter;
 }> = [
   { value: "all", label: "All" },
-  { value: "project", label: "Projects" },
   { value: "mention", label: "Mentions" },
   { value: "thread", label: "Threads" },
   { value: "needs_action", label: "Needs action" },
   { value: "agent_activity", label: "Agents" },
-  { value: "reminders", label: "Reminders" },
   { value: "drafts", label: "Drafts" },
 ];
 
@@ -30,28 +28,22 @@ const TRIGGER_CLASS =
 
 type InboxFilterMenuProps = {
   activeDraftCount: number;
-  dueReminderCount: number;
   filter: InboxFilter;
   onFilterChange: (value: InboxFilter) => void;
-  reminderCount: number;
 };
 
 export function InboxFilterMenu({
   activeDraftCount,
-  dueReminderCount,
   filter,
   onFilterChange,
-  reminderCount,
 }: InboxFilterMenuProps) {
   const activeFilter = INBOX_FILTER_OPTIONS.find(
     (option) => option.value === filter,
   );
   const statusLabel =
-    dueReminderCount > 0
-      ? `${dueReminderCount} due reminder${dueReminderCount === 1 ? "" : "s"}`
-      : activeDraftCount > 0
-        ? `${activeDraftCount} active draft${activeDraftCount === 1 ? "" : "s"}`
-        : null;
+    activeDraftCount > 0
+      ? `${activeDraftCount} active draft${activeDraftCount === 1 ? "" : "s"}`
+      : null;
 
   return (
     <DropdownMenu>
@@ -73,21 +65,14 @@ export function InboxFilterMenu({
         >
           {INBOX_FILTER_OPTIONS.map((option) => (
             <div key={option.value}>
-              {option.value === "reminders" ? (
+              {option.value === "drafts" ? (
                 <DropdownMenuSeparator className="my-2 bg-border/60" />
               ) : null}
               <DropdownMenuRadioItem value={option.value}>
                 <span className="flex flex-1 items-center gap-2">
                   <span>{option.label}</span>
                   <span className="ml-auto flex items-center gap-1.5">
-                    {option.value === "reminders" && reminderCount > 0 ? (
-                      <span
-                        className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold leading-none text-primary-foreground"
-                        data-testid="inbox-reminder-badge-option"
-                      >
-                        {reminderCount}
-                      </span>
-                    ) : option.value === "drafts" && activeDraftCount > 0 ? (
+                    {option.value === "drafts" && activeDraftCount > 0 ? (
                       <span
                         className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold leading-none text-primary-foreground"
                         data-testid="inbox-draft-badge-option"

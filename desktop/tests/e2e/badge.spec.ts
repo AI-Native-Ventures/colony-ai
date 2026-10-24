@@ -136,11 +136,10 @@ test("primary navigation rows share the same inactive emphasis", async ({
   await openSidebarGroup(page, "company");
 
   const primaryMenu = page.getByTestId("sidebar-primary-menu");
-  // Today, Activity and the Software Factory row carry an icon.
+  // Today and Activity carry an icon.
   const inactiveRows = [
     primaryMenu.getByRole("button", { name: "Today", exact: true }),
     page.getByTestId("sidebar-activity-button"),
-    page.getByTestId("open-factory-view"),
   ];
 
   for (const row of inactiveRows) {
@@ -151,21 +150,16 @@ test("primary navigation rows share the same inactive emphasis", async ({
     );
     await expect(row.locator("svg")).toHaveCSS("opacity", "1");
   }
-  // Workflows is a Company child: a label only, with the same emphasis.
-  const work = page.getByTestId("open-workflows-view");
-  await expect(work).toHaveAttribute("data-active", "false");
-  await expect(work.locator("[data-sidebar=menu-label]")).toHaveCSS(
-    "opacity",
-    "1",
-  );
 
-  await work.click();
-  await expect(work).toHaveAttribute("data-active", "true");
-  await expect(work.locator("[data-sidebar=menu-label]")).toHaveCSS(
+  const activity = page.getByTestId("sidebar-activity-button");
+  await activity.click();
+  await expect(activity).toHaveAttribute("data-active", "true");
+  await expect(activity.locator("[data-sidebar=menu-label]")).toHaveCSS(
     "opacity",
     "1",
   );
-  await expect(work).toHaveCSS("font-weight", "800");
+  await expect(activity.locator("svg")).toHaveCSS("opacity", "1");
+  await expect(activity).toHaveCSS("font-weight", "800");
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {

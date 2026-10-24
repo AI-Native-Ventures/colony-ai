@@ -674,10 +674,10 @@ test("buzzDeepLinkUrlTransform: strips malformed buzz://pr (unknown param)", () 
 
 // ── renderEntityLinkAnchor: clone-URL anchor origin gating ───────────────────
 //
-// `renderEntityLinkAnchor` now accepts `relayOrigin` and passes it to
-// `parseSupportedLinkPreview`. A clone URL is only treated as an in-app entity
-// link when the URL origin exactly matches the active relay origin. This covers
-// the inline anchor click path (not just card extraction).
+// `renderEntityLinkAnchor` accepts `relayOrigin` and passes it to
+// `parseSupportedLinkPreview`. A clone URL is only recognised as an entity
+// link when the URL origin exactly matches the active relay origin. Entity
+// links render as plain text: no chip, no button, no in-app navigation.
 
 import { renderEntityLinkAnchor } from "../ui/markdown/entityLinks.tsx";
 import { createMarkdownComponents } from "../ui/markdown.tsx";
@@ -686,8 +686,8 @@ import { MarkdownRuntimeContext } from "../ui/markdown/runtimeContext.ts";
 
 const CLONE_URL = `https://relay.example/git/${OWNER_HEX}/my-repo`;
 
-test("renderEntityLinkAnchor_matchingOriginCloneUrl_returnsEntityAnchor", () => {
-  // Origin matches active relay — anchor should navigate in-app (non-null).
+test("renderEntityLinkAnchor_matchingOriginCloneUrl_returnsPlainText", () => {
+  // Origin matches active relay: recognised as an entity link, rendered plain.
   const el = renderEntityLinkAnchor({
     children: React.createElement("span", null, "my-repo"),
     href: CLONE_URL,
@@ -697,16 +697,10 @@ test("renderEntityLinkAnchor_matchingOriginCloneUrl_returnsEntityAnchor", () => 
   assert.notEqual(
     el,
     null,
-    "matching-origin clone URL must produce an entity anchor",
+    "matching-origin clone URL must still be recognised as an entity link",
   );
   const html = renderToStaticMarkup(el);
-  // The entity anchor must be rendered — it carries the original href (for display)
-  // and navigates in-app via onClick. Verify the anchor is present with the cursor style.
-  assert.match(
-    html,
-    /cursor-pointer/,
-    "entity anchor must have the in-app navigation cursor style",
-  );
+  assert.equal(html, '<span data-entity-link=""><span>my-repo</span></span>');
 });
 
 test("renderEntityLinkAnchor_lookalikeDomainCloneUrl_returnsNull", () => {
@@ -739,8 +733,9 @@ test("renderEntityLinkAnchor_noRelayOrigin_cloneUrlReturnsNull", () => {
   );
 });
 
-test("renderEntityLinkAnchor_directEntityLink_returnsAnchorRegardlessOfOrigin", () => {
-  // A direct buzz://pr link always resolves in-app — it does not require origin.
+test("renderEntityLinkAnchor_directEntityLink_returnsPlainTextRegardlessOfOrigin", () => {
+  // A direct buzz://pr link is always recognised and rendered plain, with or
+  // without a known origin.
   const prLink = `buzz://pr?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`;
   const el = renderEntityLinkAnchor({
     children: React.createElement("span", null, "My PR"),
@@ -751,7 +746,11 @@ test("renderEntityLinkAnchor_directEntityLink_returnsAnchorRegardlessOfOrigin", 
   assert.notEqual(
     el,
     null,
-    "direct buzz://pr link must produce an entity anchor regardless of origin",
+    "direct buzz://pr link must be recognised regardless of origin",
+  );
+  assert.equal(
+    renderToStaticMarkup(el),
+    '<span data-entity-link=""><span>My PR</span></span>',
   );
 });
 
@@ -1077,6 +1076,7 @@ test("bare Buzz permalinks render cohesive icon-prefixed chips", () => {
     messageLink,
     compatibilityMessageLink,
     channelLink,
+    // Entity links render as plain text, never as chips.
     `buzz://pr?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`,
     `buzz://issue?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`,
     `buzz://repo?owner=${OWNER_HEX}&d=buzz-world`,
@@ -1107,7 +1107,8 @@ test("bare Buzz permalinks render cohesive icon-prefixed chips", () => {
   );
 
   const visibleText = html.replace(/<[^>]+>/g, "");
-  assert.equal((html.match(/data-buzz-link=""/g) ?? []).length, 6);
+  assert.equal((html.match(/data-buzz-link=""/g) ?? []).length, 3);
+  assert.equal((html.match(/data-entity-link=""/g) ?? []).length, 3);
   assert.equal(
     (
       html.match(
@@ -1122,66 +1123,12 @@ test("bare Buzz permalinks render cohesive icon-prefixed chips", () => {
   assert.match(html, /inline-chip-icon-channel/);
   assert.match(html, /wrapping-inline-chip/);
   assert.match(html, /inline-chip-leading-fragment[^>]*>engin</);
-  assert.match(html, /inline-chip-icon-pr/);
-  assert.match(html, /inline-chip-icon-issue/);
-  assert.match(html, /inline-chip-icon-repo/);
-  // PR, issue, and repository chips all use the stable repository identity;
-  // fetched subjects and event hashes never alter their inline width.
-  assert.equal((visibleText.match(/buzz-world/g) ?? []).length, 3);
-  assert.doesNotMatch(visibleText, /c3b589fa/);
-});
-
-test("inline issue and pull-request chips show the repository name without the event hash", () => {
-  const renderEntityChip = (href) =>
-    renderToStaticMarkup(
-      renderEntityLinkAnchor({
-        children: null,
-        href,
-        onOpenEntityLink: () => {},
-        relayOrigin: null,
-      }),
-    );
-
-  const issueHtml = renderEntityChip(
-    `buzz://issue?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`,
-  );
-  const issueText = issueHtml.replace(/<[^>]+>/g, "");
-  assert.equal(issueText, "buzz-world");
-  assert.doesNotMatch(issueText, /c3b589fa/);
-  assert.doesNotMatch(issueText, /·/);
-  // Identity, icon, and navigation affordances survive the shorter label.
-  assert.match(issueHtml, /data-buzz-link-kind="issue"/);
-  assert.match(issueHtml, /inline-chip-icon-issue/);
-  assert.match(
-    issueHtml,
-    /aria-label="Open issue c3b589fa in repository buzz-world"/,
-  );
-
-  // Pull-request chips follow the same stable inline identity policy.
-  const pullRequestText = renderEntityChip(
-    `buzz://pr?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`,
-  ).replace(/<[^>]+>/g, "");
-  assert.equal(pullRequestText, "buzz-world");
-  assert.doesNotMatch(pullRequestText, /c3b589fa/);
-  assert.doesNotMatch(pullRequestText, /·/);
-});
-
-test("inline entity chip labels are bounded without truncating their accessible names", () => {
-  const longRepository = `repo-${"x".repeat(50)}`;
-  const html = renderToStaticMarkup(
-    renderEntityLinkAnchor({
-      children: null,
-      href: `buzz://repo?owner=${OWNER_HEX}&d=${longRepository}`,
-      onOpenEntityLink: () => {},
-      relayOrigin: null,
-    }),
-  );
-  const visibleText = html.replace(/<[^>]+>/g, "");
-  assert.equal(Array.from(visibleText).length, 48);
-  assert.match(visibleText, /…$/);
-  assert.match(
-    html,
-    new RegExp(`aria-label="Open repository ${longRepository}"`),
+  assert.doesNotMatch(html, /inline-chip-icon-(pr|issue|repo)/);
+  assert.doesNotMatch(html, /data-buzz-link-kind=/);
+  // The entity links stay in the message as their literal text.
+  assert.equal(
+    (visibleText.match(/buzz:\/\/(pr|issue|repo)\?/g) ?? []).length,
+    3,
   );
 });
 
@@ -1268,8 +1215,9 @@ test("authored Buzz permalink labels remain ordinary links", () => {
   assert.match(html, />design discussion</);
   assert.match(html, /aria-label="Open channel: design discussion"/);
   assert.doesNotMatch(html, /\[object Object\]/);
-  assert.match(html, />the issue</);
-  assert.equal((html.match(/underline-offset-4/g) ?? []).length, 4);
+  // Entity link labels render as plain text, not as links.
+  assert.match(html, /<span data-entity-link="">the issue<\/span>/);
+  assert.equal((html.match(/underline-offset-4/g) ?? []).length, 3);
 });
 
 test("generic audio attachments render outside paragraph markup", () => {
@@ -1448,42 +1396,25 @@ test("agent mentions retain the bot treatment instead of the human icon", () => 
   assert.doesNotMatch(html, />@alice</);
 });
 
-test("renderEntityLinkAnchor renders Buzz entity links as chips", () => {
-  const prLink = `buzz://pr?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`;
-  const el = renderEntityLinkAnchor({
-    children: "PR · abc123",
-    href: prLink,
-    interactive: true,
-    onOpenEntityLink: () => {},
-    relayOrigin: null,
-  });
-  const html = renderToStaticMarkup(el);
-  assert.match(html, /data-buzz-link=""/);
-  assert.match(html, /<span/);
-  assert.match(html, /role="button"/);
-  assert.match(html, /tabindex="0"/);
-  assert.match(html, /data-buzz-link-kind="pr"/);
-  assert.match(html, /wrapping-inline-chip/);
-  assert.match(html, /inline-chip-leading-fragment[^>]*>buzz-</);
-  assert.doesNotMatch(html, /\btruncate\b/);
-  assert.doesNotMatch(html, /<a/);
-  assert.doesNotMatch(html, /<button/);
-});
-
-test("renderEntityLinkAnchor keeps chip styling when interaction is disabled", () => {
-  const repoLink = `buzz://repo?owner=${OWNER_HEX}&d=buzz-world`;
-  const el = renderEntityLinkAnchor({
-    children: "buzz-world",
-    href: repoLink,
-    interactive: false,
-    onOpenEntityLink: () => {},
-    relayOrigin: null,
-  });
-  const html = renderToStaticMarkup(el);
-  assert.match(html, /data-buzz-link=""/);
-  assert.match(html, /<span/);
-  assert.match(html, /class="mention-chip\s/);
-  assert.doesNotMatch(html, /<button/);
+test("renderEntityLinkAnchor renders entity links as plain text with or without interaction", () => {
+  const links = [
+    `buzz://pr?id=${EVENT_HEX}&owner=${OWNER_HEX}&d=buzz-world`,
+    `buzz://repo?owner=${OWNER_HEX}&d=buzz-world`,
+  ];
+  for (const href of links) {
+    for (const interactive of [true, false]) {
+      const html = renderToStaticMarkup(
+        renderEntityLinkAnchor({
+          children: "label",
+          href,
+          interactive,
+          onOpenEntityLink: () => {},
+          relayOrigin: null,
+        }),
+      );
+      assert.equal(html, '<span data-entity-link="">label</span>');
+    }
+  }
 });
 
 test("ambiguous longer aliases stay literal rather than rendering a shorter tagged chip", async () => {

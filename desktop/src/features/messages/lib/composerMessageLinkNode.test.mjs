@@ -32,6 +32,15 @@ const PR_ID = "c".repeat(64);
 const PR_HREF = `buzz://pr?id=${PR_ID}&owner=${OWNER}&d=buzz-world`;
 const GOAL_HREF = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
 const LEAD_HREF = "buzz://lead/123e4567-e89b-12d3-a456-426614174000";
+// Repositories, projects, pull requests, issues and goals are no longer part
+// of the app, so their links never become composer chips.
+const UNSUPPORTED_ENTITY_HREFS = [
+  REPO_HREF,
+  PROJECT_HREF,
+  ISSUE_HREF,
+  PR_HREF,
+  GOAL_HREF,
+];
 
 test("resolves a composer preview and canonicalizes the underlying href", () => {
   assert.deepEqual(
@@ -53,7 +62,7 @@ test("rejects malformed message links", () => {
   );
 });
 
-test("resolves channel and entity links as composer chips", () => {
+test("resolves channel and message links as composer chips", () => {
   assert.deepEqual(
     resolveComposerMessageLinkAttributes(CHANNEL_HREF, (channelId) =>
       channelId === CHANNEL_ID ? "general" : undefined,
@@ -69,18 +78,13 @@ test("resolves channel and entity links as composer chips", () => {
       href: `buzz://message?channel=${CHANNEL_ID}&id=${CHANNEL_MESSAGE_ID}`,
     },
   );
-  assert.deepEqual(
-    resolveComposerMessageLinkAttributes(REPO_HREF, () => undefined),
-    { channelName: "", href: REPO_HREF },
-  );
-  assert.deepEqual(
-    resolveComposerMessageLinkAttributes(ISSUE_HREF, () => undefined),
-    { channelName: "", href: ISSUE_HREF },
-  );
-  assert.deepEqual(
-    resolveComposerMessageLinkAttributes(GOAL_HREF, () => undefined),
-    { channelName: "", href: GOAL_HREF },
-  );
+  for (const href of UNSUPPORTED_ENTITY_HREFS) {
+    assert.equal(
+      resolveComposerMessageLinkAttributes(href, () => undefined),
+      null,
+      `${href} must stay plain text`,
+    );
+  }
 });
 
 const resolveKnownChannel = (channelId) =>
@@ -103,11 +107,6 @@ const EXACT_LINK_PASTE_ACCEPTED_CASES = [
     CHANNEL_MESSAGE_HREF,
     `buzz://message?channel=${CHANNEL_ID}&id=${CHANNEL_MESSAGE_ID}`,
   ],
-  ["repo", REPO_HREF, REPO_HREF],
-  ["project", PROJECT_HREF, PROJECT_HREF],
-  ["pull request", PR_HREF, PR_HREF],
-  ["issue", ISSUE_HREF, ISSUE_HREF],
-  ["goal", GOAL_HREF, GOAL_HREF],
   ["lead", LEAD_HREF, LEAD_HREF],
   [
     "lead with uppercase id",
@@ -121,6 +120,12 @@ for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {
     assert.deepEqual(exactLinkPaste(input), { href: expectedHref });
   });
 }
+
+test("exact link paste leaves entity links alone", () => {
+  for (const href of UNSUPPORTED_ENTITY_HREFS) {
+    assert.equal(exactLinkPaste(href), null, href);
+  }
+});
 
 test("exact link paste canonicalizes Colony links", () => {
   assert.deepEqual(
@@ -554,24 +559,21 @@ test("real markdown-it parsing materializes mixed Buzz permalink chips", () => {
       channelId === CHANNEL_ID ? "general" : undefined,
   });
 
-  const html = md.renderInline(`${HREF} ${CHANNEL_HREF} ${REPO_HREF}`);
-  assert.equal((html.match(/data-composer-buzz-link=""/g) ?? []).length, 3);
+  const html = md.renderInline(`${HREF} ${CHANNEL_HREF}`);
+  assert.equal((html.match(/data-composer-buzz-link=""/g) ?? []).length, 2);
   assert.match(html, /data-href="buzz:\/\/channel\/9a1657ac/);
-  assert.match(html, /data-href="buzz:\/\/repo\?owner=a{64}&amp;d=buzz-world/);
 });
 
-test("real markdown-it parsing preserves underscores in restored entity links", () => {
+test("real markdown-it parsing leaves entity links as plain text", () => {
   const md = new MarkdownIt();
   registerComposerMessageLinkMarkdownIt(md, {
     resolveChannelName: () => undefined,
   });
-  const href = `buzz://repo?owner=${OWNER}&d=my_repo`;
 
-  const html = md.renderInline(href);
-
-  assert.equal((html.match(/data-composer-buzz-link=""/g) ?? []).length, 1);
-  assert.match(html, /data-href="buzz:\/\/repo\?owner=a{64}&amp;d=my_repo"/);
-  assert.doesNotMatch(html, /<\/span>_repo/);
+  for (const href of UNSUPPORTED_ENTITY_HREFS) {
+    const html = md.renderInline(href);
+    assert.equal((html.match(/data-composer-buzz-link=""/g) ?? []).length, 0);
+  }
 });
 
 test("markdown parsing resumes after markdown-it consumes the buzz prefix", () => {
@@ -675,7 +677,7 @@ test("composer node truncates and preserves grapheme-safe leading fragments", ()
   }
 });
 
-test("composer node renders channel and entity chip presentations", () => {
+test("composer node renders channel chip presentations", () => {
   const render = (href) =>
     globalThis.structuredClone(
       ComposerMessageLinkNode.config.renderHTML.call(
@@ -691,33 +693,6 @@ test("composer node renders channel and entity chip presentations", () => {
   assert.equal(channel[1]["data-channel-deep-link"], "");
   assert.match(channel[1].class, /inline-chip-icon-channel/);
   assert.equal(renderedChipLabel(channel), "general");
-
-  const repo = render(REPO_HREF);
-  assert.equal(repo[1]["data-buzz-link-kind"], "repo");
-  assert.match(repo[1].class, /inline-chip-icon-repo/);
-  assert.equal(renderedChipLabel(repo), "buzz-world");
-
-  const project = render(PROJECT_HREF);
-  assert.equal(project[1]["data-buzz-link-kind"], "project");
-  assert.match(project[1].class, /inline-chip-icon-project/);
-  assert.equal(renderedChipLabel(project), "buzz-world");
-
-  const issue = render(ISSUE_HREF);
-  assert.equal(issue[1]["data-buzz-link-kind"], "issue");
-  assert.match(issue[1].class, /inline-chip-icon-issue/);
-  // Repository name only — the rendered chip never widens into the issue
-  // title, so the composer must not widen into the event hash either.
-  assert.equal(renderedChipLabel(issue), "buzz-world");
-
-  const pullRequest = render(PR_HREF);
-  assert.equal(pullRequest[1]["data-buzz-link-kind"], "pr");
-  assert.match(pullRequest[1].class, /inline-chip-icon-pr/);
-  assert.equal(renderedChipLabel(pullRequest), "buzz-world");
-
-  const goal = render(GOAL_HREF);
-  assert.equal(goal[1]["data-buzz-link-kind"], "goal");
-  assert.match(goal[1].class, /inline-chip-icon-goal/);
-  assert.equal(renderedChipLabel(goal), "Goal 123e4567");
 });
 
 test("composer node renders a lead chip with the lead name, or its short id", () => {

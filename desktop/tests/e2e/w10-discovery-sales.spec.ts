@@ -339,135 +339,6 @@ test.describe("W10 discovery and sales", () => {
     ).toBeVisible();
   });
 
-  test("proposal version and acceptance retry keep one client, work item, and draft invoice", async ({
-    page,
-  }) => {
-    await page.addInitScript(() => {
-      (
-        window as Window & {
-          __BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__?: boolean;
-          __BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__?: boolean;
-        }
-      ).__BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__ = true;
-      (
-        window as Window & {
-          __BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__?: boolean;
-        }
-      ).__BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__ = false;
-    });
-    await installMockBridge(page, REFERENCE_WORKSPACE);
-    await page.goto("/#/sales/proposal/proposal-form", {
-      waitUntil: "domcontentloaded",
-    });
-
-    const proposal = page.getByTestId("w10-proposal-page");
-    await expect(
-      proposal.getByRole("heading", { name: "Service proposal" }),
-    ).toBeVisible();
-    await expect(proposal.getByText("First service proposal.")).toBeVisible();
-    await proposal.getByRole("button", { name: "Request a revision" }).click();
-    const revisionDialog = page.getByTestId("w10-proposal-revision-dialog");
-    await revisionDialog
-      .getByLabel("What needs to change?")
-      .fill("Clarify the monthly reporting scope.");
-    await revisionDialog.getByRole("button", { name: "Save feedback" }).click();
-    await expect(
-      proposal.getByText("Clarify the monthly reporting scope."),
-    ).toBeVisible();
-    await expect(proposal.getByText("v1 · changes requested")).toBeVisible();
-
-    await proposal.getByRole("button", { name: "Edit proposal" }).click();
-    const editDialog = page.getByTestId("w10-proposal-edit-dialog");
-    await editDialog
-      .getByLabel("Title")
-      .fill("A steady social presence for Form & Field");
-    await editDialog.getByRole("button", { name: "Save proposal" }).click();
-    await expect(
-      page.getByRole("heading", {
-        name: "A steady social presence for Form & Field",
-      }),
-    ).toBeVisible();
-    await expect(page.getByText("v2 · draft")).toBeVisible();
-
-    await proposal
-      .getByRole("button", { name: "Record client acceptance" })
-      .click();
-    const acceptanceDialog = page.getByTestId("w10-acceptance-dialog");
-    await acceptanceDialog
-      .getByLabel("Evidence or reference")
-      .fill("Signed approval reference W10-TEST-001");
-    await acceptanceDialog
-      .getByRole("checkbox", {
-        name: "I have verified acceptance of this exact scope, price and version.",
-      })
-      .check();
-    await acceptanceDialog
-      .getByRole("button", { name: "Record acceptance" })
-      .click();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (
-              window as Window & {
-                __BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__?: boolean;
-              }
-            ).__BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__,
-        ),
-      )
-      .toBe(true);
-    await expect(acceptanceDialog).toBeVisible();
-    await expect(proposal.getByTestId("w10-conversion-receipt")).toHaveText(
-      "Client, first work and draft invoice are linked.",
-    );
-    const committedConversionCounts = await page.evaluate(
-      () =>
-        (
-          window as Window & {
-            __BUZZ_E2E_W10_CONVERSION_COUNTS__?: {
-              receipts: number;
-              clients: number;
-              workItems: number;
-              draftInvoices: number;
-            };
-          }
-        ).__BUZZ_E2E_W10_CONVERSION_COUNTS__,
-    );
-    expect(committedConversionCounts).toEqual({
-      receipts: 1,
-      clients: 1,
-      workItems: 1,
-      draftInvoices: 1,
-    });
-
-    await acceptanceDialog
-      .getByRole("button", { name: "Record acceptance" })
-      .click();
-    await expect(acceptanceDialog).toBeHidden();
-    await expect(
-      proposal.getByText("Client, first work and draft invoice are linked."),
-    ).toBeVisible();
-    const conversionCounts = await page.evaluate(
-      () =>
-        (
-          window as Window & {
-            __BUZZ_E2E_W10_CONVERSION_COUNTS__?: {
-              receipts: number;
-              clients: number;
-              workItems: number;
-              draftInvoices: number;
-            };
-          }
-        ).__BUZZ_E2E_W10_CONVERSION_COUNTS__,
-    );
-    expect(conversionCounts).toEqual({
-      receipts: 1,
-      clients: 1,
-      workItems: 1,
-      draftInvoices: 1,
-    });
-  });
-
   test("W10 reference routes resolve to their own screen", async ({ page }) => {
     await installMockBridge(page, REFERENCE_WORKSPACE);
     const routes = [
@@ -476,9 +347,6 @@ test.describe("W10 discovery and sales", () => {
       ["/leads", "w10-leads-page"],
       ["/pipeline", "w10-pipeline-page"],
       ["/sales/lead/form-field", "w10-prospect-page"],
-      ["/sales/service", "w10-service-page"],
-      ["/sales/proposal/proposal-form", "w10-proposal-page"],
-      ["/sales/proposals", "w10-proposals-page"],
     ] as const;
     for (const [path, testId] of routes) {
       await page.goto(`/#${path}`, { waitUntil: "domcontentloaded" });
@@ -498,23 +366,5 @@ test.describe("W10 discovery and sales", () => {
     await expect(page.getByRole("region", { name: "Proposal" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Won" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Lost" })).toBeVisible();
-  });
-
-  test("service scope and pricing save through the reference business stream", async ({
-    page,
-  }) => {
-    await installMockBridge(page, REFERENCE_WORKSPACE);
-    await page.goto("/#/sales/service", { waitUntil: "domcontentloaded" });
-    const service = page.getByTestId("w10-service-page");
-    await expect(service.getByLabel("Service name")).toHaveValue(
-      "Social media management",
-    );
-    await service.getByLabel("Monthly fee (ZAR)").fill("5200");
-    await service.getByLabel("Posts per month").fill("9");
-    await service.getByLabel("Revision rounds").fill("3");
-    await service.getByRole("button", { name: "Save service" }).click();
-    await expect(service.getByLabel("Monthly fee (ZAR)")).toHaveValue("5200");
-    await expect(service.getByLabel("Posts per month")).toHaveValue("9");
-    await expect(service.getByLabel("Revision rounds")).toHaveValue("3");
   });
 });

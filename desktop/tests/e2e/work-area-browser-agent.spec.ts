@@ -348,64 +348,6 @@ test("stream thread task reaches browser approval and updates while the dock sta
   );
 });
 
-test("forum post task reaches browser approval through the channel layout", async ({
-  page,
-}) => {
-  await boot(page, true, "watercooler");
-  const approve = controls(page).getByRole("button", {
-    name: "Allow an agent",
-  });
-  await expect(approve).toBeDisabled();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
-            channelName: "watercooler",
-          }) ?? false,
-      ),
-    )
-    .toBe(true);
-  const rootId = "e".repeat(64);
-  const channelId = await page.evaluate((id) => {
-    const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "watercooler",
-      id,
-      kind: 45001,
-      content: "Forum browser task",
-    });
-    return event?.tags.find((tag) => tag[0] === "h")?.[1];
-  }, rootId);
-  expect(channelId).toMatch(/^[0-9a-f-]{36}$/u);
-  await page
-    .getByRole("button")
-    .filter({ hasText: "Forum browser task" })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Back to posts" }),
-  ).toBeVisible();
-  await expect(approve).toBeEnabled();
-  await allow(page);
-  const payload = await page.evaluate(
-    () =>
-      window.colonyBrowserControlFixture?.calls
-        .filter((call) => call.action === "agent-grant")
-        .at(-1)?.payload,
-  );
-  expect(payload).toMatchObject({
-    taskId: `thread:${channelId}:${rootId}`,
-    agentId,
-  });
-  await controls(page)
-    .getByRole("button", { name: "Stop", exact: true })
-    .click();
-  await expect(page.getByTestId("browser-controller")).toHaveText(
-    "You’re browsing",
-  );
-  await page.getByRole("button", { name: "Back to posts" }).click();
-  await expect(approve).toBeDisabled();
-});
-
 test("a late host failure keeps the approved native page visible through confirmation", async ({
   page,
 }) => {

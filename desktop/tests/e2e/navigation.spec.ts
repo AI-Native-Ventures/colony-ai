@@ -1,20 +1,15 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSidebarGroup } from "../helpers/sidebarGroups";
 import { openSettings, selectSettingsSection } from "../helpers/settings";
-import {
-  createPlainWorkflow,
-  installWorkflowAdminBridge,
-} from "../helpers/workflows";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
-const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
-const FORUM_POST_ID = "mock-forum-release-thread";
-const FORUM_REPLY_ID = "mock-forum-release-reply";
 
 test.beforeEach(async ({ page }) => {
-  await installWorkflowAdminBridge(page);
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    relayRole: "owner",
+  });
 });
 
 /**
@@ -54,14 +49,6 @@ async function pressHistoryChord(
       : "Alt+ArrowRight";
 
   await page.keyboard.press(key);
-}
-
-async function navigateToWorkflows(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await openSidebarGroup(page, "company");
-  await page.getByTestId("open-workflows-view").click();
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
 
 test("back and forward move across channel routes", async ({ page }) => {
@@ -109,75 +96,6 @@ test("back/forward keyboard chords work while the composer has focus", async ({
 
   // preventDefault kept the chord out of the editor — no stray characters.
   await expect(page.getByTestId("message-input")).toHaveText("");
-});
-
-// FIXME: the forum post "Back to posts" header renders under the fixed top
-// chrome drag region, which intercepts the click. Pre-existing breakage —
-// this spec file was never registered in playwright.config.ts until now.
-// The header-chrome rework (PR #941) covers this overlap class.
-test.fixme("direct forum thread links close back to the forum route", async ({
-  page,
-}) => {
-  await page.goto(
-    `/#/channels/${WATERCOLOR_CHANNEL_ID}/posts/${FORUM_POST_ID}`,
-  );
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByRole("button", { name: "Back to posts" }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Back to posts" }).click();
-
-  await expect(page).toHaveURL(
-    /#\/channels\/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11$/,
-  );
-  await expect(
-    page.getByText("Release checklist: async feedback thread."),
-  ).toBeVisible();
-});
-
-test("direct workflow detail links return to workflows", async ({ page }) => {
-  const workflowName = `workflow_nav_${Date.now()}`;
-
-  await navigateToWorkflows(page);
-  const { workflowId } = await createPlainWorkflow(page, workflowName);
-  await page.getByRole("button", { name: "Back to workflows" }).click();
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await page.getByTestId(`workflow-card-${workflowId}`).click();
-
-  const detail = page.getByTestId("plain-workflow-detail");
-  await expect(page).toHaveURL(
-    new RegExp(`#\\/workflows\\/${workflowId}(?:\\?pane=trigger)?$`),
-  );
-  await expect(
-    page
-      .getByTestId("plain-workflow-builder")
-      .getByRole("heading", { name: workflowName }),
-  ).toBeVisible();
-  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Back to workflows" }).click();
-
-  await expect(page).toHaveURL(/#\/workflows$/);
-  await expect(page.getByTestId("workflows-view")).toBeVisible();
-});
-
-test("forum reply deep links survive reload", async ({ page }) => {
-  await page.goto(
-    `/#/channels/${WATERCOLOR_CHANNEL_ID}/posts/${FORUM_POST_ID}?replyId=${FORUM_REPLY_ID}`,
-  );
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByText("Looks good to me. We should ship it."),
-  ).toBeVisible();
-
-  await page.reload();
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByText("Looks good to me. We should ship it."),
-  ).toBeVisible();
 });
 
 test("back and forward restore open thread panels", async ({ page }) => {
@@ -376,15 +294,9 @@ test("mixed Buzz permalinks render as chips in the composer", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
-  const owner = "a".repeat(64);
-  const pullRequestId = "c".repeat(64);
-  const issueId = "b".repeat(64);
   const links = [
     `buzz://message?channel=${channelId}&id=mock-general-welcome`,
     `buzz://channel/${channelId}`,
-    `buzz://repo?owner=${owner}&d=buzz-world`,
-    `buzz://pr?id=${pullRequestId}&owner=${owner}&d=buzz-world`,
-    `buzz://issue?id=${issueId}&owner=${owner}&d=buzz-world`,
   ].join(" ");
   const composerInput = page.getByTestId("message-input");
   await composerInput.evaluate((element, text) => {
@@ -400,18 +312,11 @@ test("mixed Buzz permalinks render as chips in the composer", async ({
   }, links);
 
   const chips = composerInput.locator('[data-composer-buzz-link=""]');
-  await expect(chips).toHaveCount(5);
+  await expect(chips).toHaveCount(2);
   await expect(chips.nth(0)).toHaveText("general");
   await expect(chips.nth(1)).toHaveText("general");
-  await expect(chips.nth(2)).toHaveText("buzz-world");
-  // PR and issue chips both use repository identity only, matching rendered chips.
-  await expect(chips.nth(3)).toHaveText("buzz-world");
-  await expect(chips.nth(4)).toHaveText("buzz-world");
   await expect(chips.nth(1)).toHaveClass(/inline-chip-icon-channel/);
-  await expect(chips.nth(2)).toHaveClass(/inline-chip-icon-repo/);
-  await expect(chips.nth(3)).toHaveClass(/inline-chip-icon-pr/);
-  await expect(chips.nth(4)).toHaveClass(/inline-chip-icon-issue/);
-  for (const index of [0, 1, 2, 3, 4]) {
+  for (const index of [0, 1]) {
     const iconMask = await chips
       .nth(index)
       .evaluate((element) =>
@@ -422,243 +327,6 @@ test("mixed Buzz permalinks render as chips in the composer", async ({
     expect(iconMask).toContain("data:image/svg+xml");
   }
   await expect(composerInput).not.toContainText("buzz://");
-});
-
-test("composer Buzz chip labels wrap without orphaning their icons", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    window.__BUZZ_E2E_EXTRA_PROJECT_EVENTS__ = [
-      {
-        id: "mock-project-relaytoolsobservabilityconsole-main",
-        kind: 30617,
-        pubkey:
-          "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
-        created_at: Math.floor(Date.now() / 1000) - 60,
-        content:
-          "Operator tooling and observability console for relay deployments.",
-        tags: [
-          ["d", "relaytoolsobservabilityconsole-main"],
-          ["name", "relaytoolsobservabilityconsole-main"],
-          [
-            "description",
-            "Operator tooling and observability console for relay deployments.",
-          ],
-          ["clone", "https://github.com/block/relay-tools.git"],
-        ],
-      },
-    ];
-  });
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-
-  const composerInput = page.getByTestId("message-input");
-  const repoLink =
-    "buzz://repo?owner=953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f&d=relaytoolsobservabilityconsole-main";
-  await composerInput.evaluate((element, text) => {
-    const clipboardData = new DataTransfer();
-    clipboardData.setData("text/plain", text);
-    element.dispatchEvent(
-      new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData,
-      }),
-    );
-  }, repoLink);
-
-  const chip = composerInput.locator('[data-composer-buzz-link=""]');
-  const leadingFragment = chip.locator(".inline-chip-leading-fragment");
-  await expect(chip).toHaveText("relaytoolsobservabilityconsole-main");
-  const emptyLeadingFragmentHeight = await composerInput.evaluate((element) => {
-    const probe = document.createElement("span");
-    probe.className = "mention-chip wrapping-inline-chip";
-    const leading = document.createElement("span");
-    leading.className =
-      "inline-chip-leading-fragment inline-chip-with-icon inline-chip-icon-repo";
-    const remainder = document.createElement("span");
-    remainder.textContent = " leading-space";
-    probe.append(leading, remainder);
-    element.append(probe);
-    const height = leading.getBoundingClientRect().height;
-    probe.remove();
-    return height;
-  });
-  expect(emptyLeadingFragmentHeight).toBeGreaterThan(0);
-  const chipHeightAtWidth = async (width: number) => {
-    await composerInput.evaluate((element, nextWidth) => {
-      element.style.width = `${nextWidth}px`;
-    }, width);
-    return chip.evaluate((element) => {
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const rects = Array.from(range.getClientRects()).filter(
-        (rect) => rect.width > 0 && rect.height > 0,
-      );
-      return (
-        Math.max(...rects.map((rect) => rect.bottom)) -
-        Math.min(...rects.map((rect) => rect.top))
-      );
-    });
-  };
-  const wideHeight = await chipHeightAtWidth(420);
-  const mediumHeight = await chipHeightAtWidth(210);
-  const narrowHeight = await chipHeightAtWidth(90);
-  expect(mediumHeight).toBeGreaterThan(wideHeight);
-  expect(narrowHeight).toBeGreaterThan(mediumHeight);
-  await expect(chip).toHaveCSS("display", "inline");
-  await expect(chip).toHaveCSS("overflow-wrap", "anywhere");
-  await expect(leadingFragment).toHaveText("relay");
-  await expect
-    .poll(() =>
-      chip.evaluate((element) => {
-        const chipRange = document.createRange();
-        chipRange.selectNodeContents(element);
-        const leading = element.querySelector(".inline-chip-leading-fragment");
-        const composerBounds = element
-          .closest('[data-testid="message-input"]')
-          ?.getBoundingClientRect();
-        const leadingBounds = leading?.getBoundingClientRect();
-        return {
-          chipWraps:
-            new Set(
-              Array.from(chipRange.getClientRects(), (rect) =>
-                Math.round(rect.y),
-              ),
-            ).size >= 2,
-          leadingContained:
-            Boolean(composerBounds && leadingBounds) &&
-            leadingBounds.right <= composerBounds.right,
-          leadingLineBoxes: leading?.getClientRects().length ?? 0,
-        };
-      }),
-    )
-    .toMatchObject({
-      chipWraps: true,
-      leadingContained: true,
-      leadingLineBoxes: 1,
-    });
-
-  await expect(chip).toHaveAttribute(
-    "title",
-    "Open repository relaytoolsobservabilityconsole-main",
-  );
-  await chipHeightAtWidth(420);
-  await composerInput.press("End");
-  await composerInput.pressSequentially(" after");
-  await expect(composerInput).toContainText(
-    "relaytoolsobservabilityconsole-main after",
-  );
-  await expect(chip).toHaveText("relaytoolsobservabilityconsole-main");
-  await page.getByTestId("send-message").click();
-
-  const sentChip = page.getByTestId("message-row").last().getByRole("button", {
-    name: "Open repository relaytoolsobservabilityconsole-main",
-  });
-  await expect(sentChip).toBeVisible();
-  await expect(sentChip).toHaveClass(/wrapping-inline-chip/);
-  // The sent row can re-render (optimistic row replaced by the confirmed one)
-  // after the chip first appears, which drops a width set on the first
-  // container. Re-apply the width to whichever chip is current on every poll
-  // so the wrapped layout is measured, not a one-shot read of a stale node.
-  const measureWrappedSentChip = () =>
-    sentChip.evaluate((element) => {
-      const container = element.parentElement;
-      if (container) container.style.width = "220px";
-      const chipStyle = getComputedStyle(element);
-      const rects = Array.from(element.getClientRects(), (rect) => ({
-        bottom: rect.bottom,
-        height: rect.height,
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        width: rect.width,
-      })).filter((rect) => rect.width > 0 && rect.height > 0);
-      const fragmentTops = Array.from(
-        new Set(rects.map((rect) => Math.round(rect.top))),
-      ).sort((a, b) => a - b);
-      return {
-        boxDecorationBreak:
-          chipStyle.getPropertyValue("box-decoration-break") ||
-          chipStyle.getPropertyValue("-webkit-box-decoration-break"),
-        fragmentStep:
-          fragmentTops.length > 1 ? fragmentTops[1] - fragmentTops[0] : null,
-        lineHeight: Number.parseFloat(chipStyle.lineHeight),
-        rects,
-      };
-    });
-  await expect.poll(measureWrappedSentChip).toMatchObject({
-    boxDecorationBreak: "clone",
-    lineHeight: 25,
-    fragmentStep: 28,
-  });
-  expect((await measureWrappedSentChip()).rects.length).toBeGreaterThanOrEqual(
-    2,
-  );
-
-  const tooltip = page.getByRole("tooltip");
-  // Radix closes a tooltip when an ancestor of its trigger scrolls. Focusing
-  // a chip that is partly out of view scrolls the timeline to reveal it,
-  // which closed the focus-opened tooltip; it then stayed closed because the
-  // later pointer moves never left the chip. Reveal the chip and let the
-  // timeline settle first, so focusing it does not scroll.
-  await sentChip.scrollIntoViewIfNeeded();
-  await page.getByTestId("message-timeline").evaluate(async (element) => {
-    let prior = element.scrollTop;
-    let stableFrames = 0;
-    for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      stableFrames = element.scrollTop === prior ? stableFrames + 1 : 0;
-      prior = element.scrollTop;
-    }
-  });
-  await sentChip.focus();
-  await expect(tooltip).toBeVisible();
-  const positionOverFragment = async (index: number) => {
-    const fragment = await sentChip.evaluate((element, fragmentIndex) => {
-      const rects = Array.from(element.getClientRects()).filter(
-        (rect) => rect.width > 0 && rect.height > 0,
-      );
-      const rect = rects.at(fragmentIndex);
-      if (!rect) return null;
-      return {
-        height: rect.height,
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-      };
-    }, index);
-    if (!fragment) throw new Error(`Expected chip fragment ${index}`);
-    const cursorX = fragment.left + fragment.width / 2;
-    const cursorY = fragment.top + fragment.height / 2;
-    await page.mouse.move(cursorX, cursorY);
-    await expect(tooltip).toBeVisible();
-    let tooltipCenter = Number.NaN;
-    await expect
-      .poll(async () => {
-        const tooltipBox = await tooltip.boundingBox();
-        if (!tooltipBox) return Number.POSITIVE_INFINITY;
-        tooltipCenter = tooltipBox.x + tooltipBox.width / 2;
-        return Math.abs(tooltipCenter - cursorX);
-      })
-      .toBeLessThan(1);
-    return {
-      cursorX,
-      tooltipCenter,
-    };
-  };
-
-  const firstTooltip = await positionOverFragment(0);
-  const lastTooltip = await positionOverFragment(-1);
-  expect(
-    Math.abs(firstTooltip.tooltipCenter - firstTooltip.cursorX),
-  ).toBeLessThan(1);
-  expect(
-    Math.abs(lastTooltip.tooltipCenter - lastTooltip.cursorX),
-  ).toBeLessThan(1);
-  expect(
-    Math.abs(firstTooltip.tooltipCenter - lastTooltip.tooltipCenter),
-  ).toBeGreaterThan(1);
 });
 
 test("message links to visible root messages open the thread panel", async ({
@@ -1065,16 +733,16 @@ test("cold-start message deep link preserves its thread target", async ({
       {
         id: "navigation-message-1",
         kind: "message",
-        channelId: WATERCOLOR_CHANNEL_ID,
-        messageId: "mock-forum-release-reply",
-        threadRootId: "mock-forum-release-thread",
+        channelId: ENGINEERING_CHANNEL_ID,
+        messageId: "mock-thread-reply",
+        threadRootId: "mock-thread-root",
       },
     ],
   });
 
   await page.goto("/");
 
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(page).toHaveURL(/messageId=mock-forum-release-reply/);
-  await expect(page).toHaveURL(/threadRootId=mock-forum-release-thread/);
+  await expect(page.getByTestId("chat-title")).toHaveText("engineering");
+  await expect(page).toHaveURL(/messageId=mock-thread-reply/);
+  await expect(page).toHaveURL(/threadRootId=mock-thread-root/);
 });

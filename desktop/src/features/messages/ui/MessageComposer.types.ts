@@ -109,8 +109,6 @@ export type MessageComposerProps = {
     body: string;
     id: string;
   } | null;
-  /** Hide goal tools in the first-run Welcome conversation. */
-  showGoalReference?: boolean;
   /** Hide the "Reference lead" tool in the first-run Welcome conversation. */
   showLeadReference?: boolean;
   showTopBorder?: boolean;

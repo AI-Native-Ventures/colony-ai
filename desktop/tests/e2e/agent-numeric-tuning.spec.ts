@@ -17,7 +17,10 @@
 
 import { expect, test } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -37,19 +40,11 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
 
 async function openEditAgentDialog(
   page: import("@playwright/test").Page,
-  agentName: string,
+  agentPubkey: string,
 ) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-
-  const agentButton = page.getByRole("button", {
-    name: `${agentName} agent profile`,
-  });
-  await expect(agentButton).toBeVisible({ timeout: 10_000 });
-  await agentButton.click();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible({
     timeout: 10_000,
@@ -199,15 +194,8 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
   // agent. We use the app's Back link rather than page.goto("/") to preserve
   // the in-memory mock state (page.goto causes a full reload that resets it).
   await page.getByRole("button", { name: "Back to workspace" }).click();
-  await openAgentTemplatesView(page);
-  const agentButton = page.getByRole("button", {
-    name: "Tyler Agent agent profile",
-  });
-  await expect(agentButton).toBeVisible({ timeout: 10_000 });
-  await agentButton.click();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-    timeout: 10_000,
-  });
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, TEST_IDENTITIES.tyler.pubkey);
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible({
     timeout: 10_000,
@@ -281,7 +269,7 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
     ],
   });
 
-  await openEditAgentDialog(page, "Tyler Agent");
+  await openEditAgentDialog(page, TEST_IDENTITIES.tyler.pubkey);
 
   // Open Advanced before the catalog has settled (the dialog opens quickly;
   // the catalog query fires when the dialog opens and takes ~5 seconds).
@@ -347,7 +335,7 @@ test("failed_catalog_per_agent_saved_tuning_values_remain_visible_as_generic_row
     ],
   });
 
-  await openEditAgentDialog(page, "Tyler Agent");
+  await openEditAgentDialog(page, TEST_IDENTITIES.tyler.pubkey);
 
   // Open Advanced after a brief wait (query has had time to fail).
   await page.waitForTimeout(500);

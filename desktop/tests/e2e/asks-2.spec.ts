@@ -387,12 +387,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     { channelId: thread.channelId, pubkey: TEST_IDENTITIES.outsider.pubkey },
   );
 
-  await page.goto("/#/power");
-  const requestAllowance = page.getByRole("link", {
-    name: "Request allowance change",
-  });
-  await expect(requestAllowance).toBeVisible();
-  await requestAllowance.click();
+  await page.goto("/#/asks/new?type=money");
   await expect(
     page.getByRole("heading", {
       name: "Request an allowance or cost approval",

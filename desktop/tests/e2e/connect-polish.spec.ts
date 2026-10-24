@@ -4,10 +4,6 @@ import { installMockBridge } from "../helpers/bridge";
 import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 import { measureSidebarContrast } from "../helpers/sidebarContrast";
 import { waitForAnimations } from "../helpers/animations";
-import {
-  LIGHT_THEMES,
-  SYNTAX_THEMES,
-} from "../../src/shared/theme/theme-loader";
 
 test.use({ video: "off" });
 
@@ -169,7 +165,9 @@ for (const viewport of [
 
 test.describe("dark sidebar contrast", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
-  for (const theme of SYNTAX_THEMES.filter((name) => !LIGHT_THEMES.has(name))) {
+  // Named themes are no longer reachable (the theme catalog is cut), so only
+  // the dark Colony theme that Appearance's dark mode selects is covered.
+  for (const theme of ["buzz-dark"]) {
     test(`all sidebar text: ${theme}`, async ({ page }, testInfo) => {
       const relay = (
         process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"

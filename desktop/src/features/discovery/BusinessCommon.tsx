@@ -21,16 +21,10 @@ export function W10Page({
   );
 }
 
-export function BusinessTabs({
-  active,
-}: {
-  active: "leads" | "pipeline" | "proposals" | "service";
-}) {
+export function BusinessTabs({ active }: { active: "leads" | "pipeline" }) {
   const tabs = [
     ["leads", "Leads", "/leads"],
     ["pipeline", "Pipeline", "/pipeline"],
-    ["proposals", "Proposals", "/sales/proposals"],
-    ["service", "Services", "/sales/service"],
   ] as const;
   return (
     <nav aria-label="Business" className="w10-tabs">

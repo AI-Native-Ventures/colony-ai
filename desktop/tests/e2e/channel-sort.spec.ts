@@ -26,7 +26,6 @@ async function openApp(page: Page) {
   await page.goto("/");
   const conversations = page.getByTestId("sidebar-nav-conversations");
   await expect(conversations.getByTestId("stream-list")).toBeVisible();
-  await expect(conversations.getByTestId("forum-list")).toBeVisible();
   await expect(conversations.getByTestId("dm-list")).toBeVisible();
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -66,22 +65,6 @@ async function emitMockMessage(
     },
     { channelName, createdAt, pubkey: TEST_IDENTITIES.alice.pubkey },
   );
-}
-
-function forumNames(page: Page) {
-  return page
-    .getByTestId("forum-list")
-    .locator("[data-testid^='channel-']")
-    .evaluateAll((nodes) =>
-      nodes
-        .map((n) => n.getAttribute("data-testid") ?? "")
-        .filter(
-          (id) =>
-            !id.startsWith("channel-unread") &&
-            !id.startsWith("channel-working"),
-        )
-        .map((id) => id.replace(/^channel-/, "")),
-    );
 }
 
 function streamNames(page: Page) {
@@ -192,43 +175,21 @@ test.describe("per-group channel sort", () => {
       .toEqual(["all-replies", "deep-history"]);
   });
 
-  test("03 - group preferences are independent (seeded Channels=recent leaves Forums A–Z)", async ({
+  test("03 - a seeded Channels=recent preference applies on load", async ({
     page,
   }) => {
     await seedSortState(page, { channels: "recent" });
     await installMockBridge(page);
     await openApp(page);
 
-    // Channels reflects the seeded Recent order…
     await expect
       .poll(async () => (await streamNames(page)).slice(0, 2))
       .toEqual(["all-replies", "deep-history"]);
-
-    // …while Forums (unset) stays alphabetical.
-    const forumOrder = await forumNames(page);
-    const sortedForums = [...forumOrder].sort((a, b) => a.localeCompare(b));
-    expect(forumOrder).toEqual(sortedForums);
     await waitForAnimations(page);
-    await page.screenshot({ path: `${SHOTS}/04-independent-groups.png` });
+    await page.screenshot({ path: `${SHOTS}/04-seeded-recent.png` });
   });
 
-  test("04 - Forum Recent survives authoritative reload", async ({ page }) => {
-    await seedSortState(page, { forums: "recent" });
-    await installMockBridge(page);
-    await openApp(page);
-
-    await expect
-      .poll(async () => (await forumNames(page)).slice(0, 2))
-      .toEqual(["watercooler", "announcements"]);
-
-    await page.reload();
-    await expect(page.getByTestId("forum-list")).toBeVisible();
-    await expect
-      .poll(async () => (await forumNames(page)).slice(0, 2))
-      .toEqual(["watercooler", "announcements"]);
-  });
-
-  test("05 - DM group has its own sort trigger", async ({ page }) => {
+  test("04 - DM group has its own sort trigger", async ({ page }) => {
     await installMockBridge(page);
     await openApp(page);
 

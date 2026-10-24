@@ -48,12 +48,6 @@ export function PipelineScreen(context: LeadContext) {
           value={openProspects.length.toString()}
         />
         <Metric
-          label="Proposals"
-          value={context.records.proposals
-            .filter(({ acceptance }) => !acceptance)
-            .length.toString()}
-        />
-        <Metric
           label="New clients"
           value={prospects
             .filter(({ record }) => record.prospect.stage === "won")

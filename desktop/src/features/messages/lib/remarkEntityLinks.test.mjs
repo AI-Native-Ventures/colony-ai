@@ -20,7 +20,6 @@ test("turns every bare Buzz entity permalink family into a chip node", () => {
     `buzz://project?owner=${owner}&d=onboarding`,
     `buzz://pr?id=${id}&owner=${owner}&d=buzz`,
     `buzz://issue?id=${id}&owner=${owner}&d=buzz`,
-    "buzz://goal/123e4567-e89b-12d3-a456-426614174000",
     "buzz://lead/123e4567-e89b-12d3-a456-426614174000",
   ];
   for (const link of links) {
@@ -31,7 +30,7 @@ test("turns every bare Buzz entity permalink family into a chip node", () => {
 });
 
 test("keeps sentence punctuation outside entity chip nodes", () => {
-  const link = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
+  const link = `buzz://project?owner=${"ab".repeat(32)}&d=onboarding`;
   const children = run(`${link}.`);
   assert.equal(children[0].value, link);
   assert.equal(children[1].value, ".");
@@ -45,4 +44,11 @@ test("keeps sentence punctuation outside lead reference chip nodes", () => {
   assert.equal(children[1].value, link);
   assert.equal(children[2].value, ",");
   assert.equal(children[3].value, " then call.");
+});
+
+test("leaves goal links as plain text", () => {
+  const link = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
+  const children = run(link);
+  assert.equal(children[0].type, "text");
+  assert.equal(children[0].value, link);
 });

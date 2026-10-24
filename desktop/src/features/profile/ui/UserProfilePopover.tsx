@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, Headphones, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 
@@ -12,7 +12,7 @@ import {
   useRelayAgentsQuery,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
+import { useIsManagedAgent } from "@/features/agents/useIsManagedAgent";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useAgentWorking } from "@/features/agents/agentWorkingSignal";
 import {
@@ -27,7 +27,6 @@ import {
 } from "@/features/user-status/hooks";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
 import { ProfileAvatarWithStatus } from "@/features/profile/ui/ProfileAvatarWithStatus";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
@@ -282,7 +281,6 @@ function UserProfilePopoverBody({
   const { status: presenceStatus } = useAgentAvailability(pubkey);
   const userStatusQuery = useUserStatusQuery([pubkey]);
 
-  const { canOpenAgentActivity, openAgentActivity } = useOpenAgentActivity();
   const relayAgent = relayAgentsQuery.data?.find((a) => a.pubkey === pubkey);
   const managedAgent = managedAgentsQuery.data?.find(
     (a) => a.pubkey === pubkey,
@@ -314,8 +312,8 @@ function UserProfilePopoverBody({
   // runs elsewhere holds no local seckey, so key custody (`isOwner`) alone
   // wrongly hides the affordance from them — and gating on bot-ness alone shows
   // it to every viewer. Combine declared ownership with local management, same
-  // shape as the pane/sidebar/memory fixes. Every real boundary is server-side;
-  // this only decides whether to paint the "View activity log" button.
+  // shape as the pane/sidebar fixes. Every real boundary is server-side;
+  // this only decides whether to paint the owner-only message action.
   const isOwner = useIsManagedAgent(isBotProfile ? pubkey : null);
   const identityQuery = useIdentityQuery();
   const currentPubkey = identityQuery.data?.pubkey;
@@ -334,20 +332,11 @@ function UserProfilePopoverBody({
     showProfileActions && !isBotProfile && !isAgentClassificationPending;
   const isCurrentUserOwner = ownsAuthorAgent(profile, currentPubkey);
   const viewerIsOwner = isCurrentUserOwner || isOwner === true;
-  const showHuddleAction =
-    showHumanProfileActions ||
-    (showProfileActions &&
-      isBotProfile &&
-      viewerIsOwner &&
-      !isAgentClassificationPending);
   const showMessageAction =
     showProfileActions &&
     !isAgentClassificationPending &&
     (!isBotProfile || viewerIsOwner);
-  const showAnyProfileActions =
-    showHumanProfileActions || showMessageAction || showHuddleAction;
-  const canViewActivity =
-    isBotProfile && viewerIsOwner && canOpenAgentActivity(pubkey);
+  const showAnyProfileActions = showHumanProfileActions || showMessageAction;
   const userStatus = visibleUserStatus(
     userStatusQuery.data?.[pubkey.toLowerCase()],
   );
@@ -369,27 +358,20 @@ function UserProfilePopoverBody({
     () => setOpen(false),
     [setOpen],
   );
-  const {
-    handleHuddle,
-    handleMessage,
-    handleWave,
-    isOpeningDm,
-    isStartingHuddle,
-    pendingAction,
-  } = useProfileInteractionActions({
-    availability: {
-      huddle: showHuddleAction,
-      message: showMessageAction,
-      wave: showHumanProfileActions,
-    },
-    effectivePubkey: pubkey,
-    enabled: true,
-    isBot: isBotProfile,
-    isSelf,
-    onBeforeAction: onBeforeAction,
-    onClose: closeProfileActions,
-    viewerIsOwner,
-  });
+  const { handleMessage, handleWave, isOpeningDm, pendingAction } =
+    useProfileInteractionActions({
+      availability: {
+        message: showMessageAction,
+        wave: showHumanProfileActions,
+      },
+      effectivePubkey: pubkey,
+      enabled: true,
+      isBot: isBotProfile,
+      isSelf,
+      onBeforeAction: onBeforeAction,
+      onClose: closeProfileActions,
+      viewerIsOwner,
+    });
 
   const profileHeaderContent = (
     <>
@@ -506,21 +488,6 @@ function UserProfilePopoverBody({
           </div>
         ) : null}
 
-        {canViewActivity ? (
-          <button
-            className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted/50"
-            data-testid={`user-profile-view-activity-${pubkey}`}
-            onClick={() => {
-              setOpen(false);
-              openAgentActivity(pubkey);
-            }}
-            type="button"
-          >
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            View activity log
-          </button>
-        ) : null}
-
         {hasUserStatus || showAnyProfileActions ? (
           <>
             <div
@@ -591,31 +558,6 @@ function UserProfilePopoverBody({
                       <MessageSquare />
                     )}
                     Message
-                  </Button>
-                ) : null}
-                {showHuddleAction ? (
-                  <Button
-                    className="min-w-0 flex-1"
-                    data-testid={`user-profile-popover-huddle-${pubkey}`}
-                    disabled={
-                      pendingAction !== null || isOpeningDm || isStartingHuddle
-                    }
-                    onClick={() => {
-                      void handleHuddle();
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {pendingAction === "huddle" ? (
-                      <Spinner
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 border-2"
-                      />
-                    ) : (
-                      <Headphones />
-                    )}
-                    Huddle
                   </Button>
                 ) : null}
               </div>
