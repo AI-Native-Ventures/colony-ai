@@ -339,6 +339,7 @@ export function useRichTextEditor({
         customEmojiWiring.extension,
         messageLinkWiring.extension,
         Placeholder.configure({
+          showOnlyWhenEditable: false,
           placeholder: () => placeholderRef.current ?? "Write a message…",
         }),
         Link.extend({

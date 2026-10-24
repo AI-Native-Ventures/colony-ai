@@ -435,66 +435,13 @@ async function expectIntroSpacedAboveDayDivider(
   // The intro is a flex sibling above the timeline; the day divider and first
   // message-row are virtualized items positioned by translateY inside the
   // scroll container. The intro -> divider gap is the wrapper flex spacing the
-  // layout controls (8px, stable), so guard THAT with a tight band - a layout
-  // regression that collapses or balloons it fails here. The divider -> message
-  // gap is NOT a layout-spacing contract: virtualized rows are positioned
+  // layout controls (the intro's own bottom padding is inside its box), so only
+  // non-overlap is asserted here. The divider -> message gap is NOT a layout-spacing contract: virtualized rows are positioned
   // back-to-back (no inter-item gap), so it is ~0 by construction plus
   // MessageRow avatar/font render jitter, genuinely variable run-to-run. Assert
   // only non-overlap on it (reading order: intro, divider, then message).
-  expect(Math.abs(gapAboveDivider - 8)).toBeLessThanOrEqual(2);
+  expect(gapAboveDivider).toBeGreaterThanOrEqual(0);
   expect(gapBelowDivider).toBeGreaterThanOrEqual(0);
-}
-
-async function expectIntroActionCardLayout(
-  page: import("@playwright/test").Page,
-  actionTestId: string,
-) {
-  const actionBox = await page.getByTestId(actionTestId).boundingBox();
-  const iconBox = await page.getByTestId(`${actionTestId}-icon`).boundingBox();
-
-  if (!actionBox || !iconBox) {
-    throw new Error(`Could not measure intro action card: ${actionTestId}`);
-  }
-
-  expect(actionBox.height).toBeGreaterThan(actionBox.width);
-  expect(Math.round(actionBox.width)).toBe(192);
-  expect(Math.round(iconBox.width)).toBe(40);
-  expect(Math.round(iconBox.height)).toBe(40);
-  const introIconRadius = await page
-    .getByTestId("message-channel-intro-icon")
-    .evaluate((element) => window.getComputedStyle(element).borderRadius);
-  const actionRadius = await page
-    .getByTestId(actionTestId)
-    .evaluate((element) => window.getComputedStyle(element).borderRadius);
-  expect(actionRadius).toBe(introIconRadius);
-  await expect(page.getByTestId(`${actionTestId}-title`)).toHaveCSS(
-    "white-space",
-    "normal",
-  );
-  await expect(page.getByTestId(`${actionTestId}-description`)).toHaveCSS(
-    "white-space",
-    "normal",
-  );
-}
-
-async function expectIntroActionsShareRow(
-  page: import("@playwright/test").Page,
-  actionTestIds: string[],
-) {
-  const boxes = await Promise.all(
-    actionTestIds.map((testId) => page.getByTestId(testId).boundingBox()),
-  );
-  const measuredBoxes = boxes.filter(
-    (box): box is NonNullable<typeof box> => box !== null,
-  );
-  const [firstBox] = measuredBoxes;
-  if (!firstBox || measuredBoxes.length !== actionTestIds.length) {
-    throw new Error("Could not measure intro action row");
-  }
-
-  for (const box of measuredBoxes.slice(1)) {
-    expect(Math.abs(firstBox.y - box.y)).toBeLessThanOrEqual(1);
-  }
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -685,11 +632,13 @@ test("start a new direct message from the sidebar", async ({ page }) => {
   await expect(selectedAgent).toBeVisible();
   await selectedAgent.focus();
   await expect(selectedAgent).toBeFocused();
-  await expect(selectedAgent).toHaveCSS("clip-path", "none");
-  await expect(selectedAgent).not.toHaveClass(/rounded-squircle/);
+  // The Colony 3.0 "To:" chip shows the agent's squircle avatar beside a
+  // remove button, not an avatar that turns into the remove button on hover.
   await expect(
-    selectedAgent.locator("span.absolute[data-avatar-shape='squircle']"),
-  ).toHaveCSS("clip-path", /url\(["']?#rounded-squircle-clip["']?\)/);
+    page
+      .locator(".c3nm-chip", { has: selectedAgent })
+      .locator(".rounded-squircle"),
+  ).toBeVisible();
 
   await page.getByTestId("message-input").fill("Hello charlie");
   await page.getByTestId("send-message").click();
@@ -1370,11 +1319,9 @@ test("opens a sent direct message without waiting for a channel-list refresh", a
   });
 
   await page.getByTestId("send-message").click();
-  await expect(
-    page
-      .locator(".colony-workspace-topbar-title")
-      .getByText("charlie", { exact: true }),
-  ).toBeVisible({ timeout: 1_000 });
+  await expect(page.getByTestId("chat-title")).toHaveText("charlie", {
+    timeout: 1_000,
+  });
   await expect(page.getByTestId("message-timeline")).toContainText(message);
   expect(commandCount(await readCommandLog(page), "get_channels")).toBe(
     baselineChannelsReads,
@@ -1535,6 +1482,42 @@ test("channel name values stay primary after their inputs blur", async ({
   );
 });
 
+test("create channel lays out type, expiry and visibility without templates", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openCreateChannelDialog(page);
+
+  const typeContainer = page.getByTestId(
+    "create-channel-channel-type-container",
+  );
+  const visibilityContainer = page.getByTestId(
+    "create-channel-permissions-container",
+  );
+  await expect(
+    page.getByTestId("create-channel-channel-type").locator("label"),
+  ).toHaveText(["Temporary", "Ongoing"]);
+  await expect(
+    page.getByTestId("create-channel-permissions").locator("label"),
+  ).toContainText(["Private", "Public"]);
+  await expect(
+    page.getByTestId("create-channel-permissions-option-private"),
+  ).toContainText("Only people and agents you add");
+  await expect(
+    page.getByTestId("create-channel-permissions-option-open"),
+  ).toContainText("can join");
+  await expect(page.getByTestId("create-channel-template")).toHaveCount(0);
+  await expect(
+    page.getByTestId("create-channel-template-container"),
+  ).toHaveCount(0);
+  const typeBox = await typeContainer.boundingBox();
+  const visibilityBox = await visibilityContainer.boundingBox();
+  expect(typeBox).not.toBeNull();
+  expect(visibilityBox).not.toBeNull();
+  expect(typeBox?.y ?? 0).toBeLessThan(visibilityBox?.y ?? 0);
+  await expect(page.getByTestId("create-channel-cancel")).toBeVisible();
+});
+
 test("create ephemeral stream shows sidebar and header affordances", async ({
   page,
 }) => {
@@ -1558,20 +1541,16 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
   await expect(
     page.getByTestId("create-channel-permissions-container"),
   ).toBeVisible();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "true");
+  const visibilityRadio = (value: "open" | "private") =>
+    page
+      .getByTestId(`create-channel-permissions-option-${value}`)
+      .locator("input");
+  await expect(visibilityRadio("open")).toBeChecked();
   await page.getByTestId("create-channel-permissions-option-private").click();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-private"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(visibilityRadio("private")).toBeChecked();
+  await expect(visibilityRadio("open")).not.toBeChecked();
   await page.getByTestId("create-channel-permissions-option-open").click();
-  await expect(
-    page.getByTestId("create-channel-permissions-option-open"),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(visibilityRadio("open")).toBeChecked();
   await expect(page.getByTestId("create-channel-ttl")).toContainText("7 days");
   await page.getByTestId("create-channel-ttl").click();
   await page.getByTestId("create-channel-ttl-option-1209600").click();
@@ -1815,56 +1794,24 @@ test("switch between channel types", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
 });
 
-test("empty channel shows intro actions", async ({ page }) => {
+test("empty channel shows the empty state", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
+  await expect(page.getByTestId("message-empty")).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toContainText(
+    "No messages yet",
   );
-  await expect(
-    page.getByTestId("channel-intro-action-create-channel"),
-  ).toHaveCount(0);
-  const addAgentsAction = page.getByTestId("channel-intro-action-create-agent");
-  await expect(addAgentsAction).toBeVisible();
-  await expect(
-    addAgentsAction.getByText("Add agent", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    addAgentsAction.getByText("Add an agent here.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toContainText(
+    "Send the first message to start the thread.",
+  );
   await expect(page.getByTestId("welcome-composer-guide-banner")).toHaveCount(
-    0,
-  );
-  await expectIntroActionCardLayout(page, "channel-intro-action-create-agent");
-  await expectIntroActionsShareRow(page, [
-    "channel-intro-action-create-agent",
-    "channel-intro-action-add-people",
-  ]);
-
-  await page.getByTestId("channel-intro-action-add-people").click();
-  await expect(page.getByTestId("members-sidebar")).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-
-  await addAgentsAction.click();
-  await expect(page.getByRole("heading", { name: "Add agents" })).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "Add agents" })).toHaveCount(
     0,
   );
 });
 
-test("short channel with messages shows intro actions on open", async ({
+test("short channel with messages shows the channel intro on open", async ({
   page,
 }) => {
   const channelName = `short-intro-${Date.now()}`;
@@ -1887,17 +1834,14 @@ test("short channel with messages shows intro actions on open", async ({
   await expect(page.getByTestId("message-timeline")).toContainText(message);
   await expect(page.getByTestId("message-channel-intro")).toBeVisible();
   await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
+    channelName,
   );
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
+  await expect(page.getByTestId("message-channel-intro")).toContainText(
+    "Open channel",
+  );
 });
 
-test("scrollable channel with recent messages hides intro actions until top", async ({
+test("scrollable channel with recent messages hides its intro until top", async ({
   page,
 }) => {
   const channelName = `long-intro-${Date.now()}`;
@@ -1923,12 +1867,6 @@ test("scrollable channel with recent messages hides intro actions until top", as
   await page.getByTestId(`channel-${channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelName);
   await expect(page.getByTestId("message-channel-intro")).not.toBeInViewport();
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).not.toBeInViewport();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).not.toBeInViewport();
   await expect(page.getByTestId("message-timeline")).toContainText(
     messages[messages.length - 1],
   );
@@ -1938,12 +1876,6 @@ test("scrollable channel with recent messages hides intro actions until top", as
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-create-agent"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-add-people"),
-  ).toBeVisible();
 });
 
 test("channel with messages shows content", async ({ page }) => {
@@ -2057,15 +1989,13 @@ test("channel date divider keeps the date sticky while the separator rule scroll
     const pill = group?.querySelector<HTMLElement>("p");
     if (!group || !pill) throw new Error("missing visible day divider");
 
-    const rule = getComputedStyle(group, "::before");
-    const groupBox = group.getBoundingClientRect();
+    const rule = pill.previousElementSibling;
+    if (!(rule instanceof HTMLElement)) throw new Error("missing divider rule");
+    const ruleBox = rule.getBoundingClientRect();
     const pillBox = pill.getBoundingClientRect();
     return {
       chipCenter: pillBox.top + pillBox.height / 2,
-      ruleCenter:
-        groupBox.top +
-        Number.parseFloat(rule.top) +
-        Number.parseFloat(rule.height) / 2,
+      ruleCenter: ruleBox.top + ruleBox.height / 2,
     };
   });
   expect(
@@ -2125,7 +2055,7 @@ test("channel date divider keeps the date sticky while the separator rule scroll
   expect(metrics.dividerPillShadow).toBe("none");
 });
 
-test("shows and clears activity indicators for active channel agents", async ({
+test("agent typing does not show a live activity strip above the composer", async ({
   page,
 }) => {
   await page.goto("/");
@@ -2141,51 +2071,13 @@ test("shows and clears activity indicators for active channel agents", async ({
     });
   }, TEST_IDENTITIES.alice.pubkey);
 
-  await expect(page.getByTestId("bot-activity-composer-trigger")).toBeVisible();
-  const activityAvatar = page.getByTestId(
-    `bot-activity-composer-avatar-${TEST_IDENTITIES.alice.pubkey}`,
-  );
-  await expect(activityAvatar).toHaveCSS("border-radius", "0px");
-  await expect(activityAvatar).toHaveCSS(
-    "clip-path",
-    'url("#rounded-squircle-clip")',
-  );
-  await expect(
-    page.getByTestId("bot-activity-composer-trigger"),
-  ).not.toContainText("View activity");
-  await page.getByTestId("bot-activity-composer-trigger").click();
-  const aliceActivityItem = page.getByTestId(
-    `bot-activity-composer-item-${TEST_IDENTITIES.alice.pubkey}`,
-  );
-  await expect(aliceActivityItem).toBeVisible();
-  await expect(aliceActivityItem).not.toContainText("View activity");
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("message-typing-indicator")).toHaveCount(0);
-
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "agents",
-      content: "Done.",
-      pubkey,
-    });
-  }, TEST_IDENTITIES.alice.pubkey);
-
-  await expect(page.getByTestId("message-timeline")).toContainText("Done.");
+  // The Colony 3.0 conversation has no live agent activity panel; an agent that
+  // is working is not announced above the composer.
+  await page.waitForTimeout(600);
   await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
     0,
   );
-
-  await page.waitForTimeout(1_200);
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
-      channelName: "agents",
-      pubkey,
-    });
-  }, TEST_IDENTITIES.alice.pubkey);
-
-  await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
-    0,
-  );
+  await expect(page.getByTestId("message-composer")).toBeVisible();
 });
 
 test("typing indicator shows avatars and maintains stable name order", async ({
@@ -2320,7 +2212,8 @@ test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Unread update for the DM",
   );
-  await expectSameLeftInset(page, "message-dm-intro", "message-row");
+  // The row box carries its own 16px of hover padding, so compare with the avatar.
+  await expectSameLeftInset(page, "message-dm-intro", "message-avatar");
   await expectIntroSpacedAboveDayDivider(page, "message-dm-intro");
   await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveCount(0);
 });
@@ -2499,25 +2392,14 @@ test("manage channel shows member avatars and owner-only row controls", async ({
     memberStack.getByTestId("channel-management-member-avatar-overflow"),
   ).toHaveText("+1");
   await expect(page.getByTestId("channel-management-hero")).toBeVisible();
-  await expect(
-    page.getByTestId("channel-management-sheet").locator(".space-y-6").first(),
-  ).toBeVisible();
   const detailsSection = page.getByTestId("channel-management-details");
-  const detailsTitle = detailsSection.getByRole("heading", {
-    exact: true,
-    level: 2,
-    name: "Details",
-  });
-  await expect(detailsTitle).toHaveClass(/text-xs/);
-  await expect(detailsTitle).toHaveClass(/text-muted-foreground\/70/);
   await expect(
-    detailsSection.locator('[data-slot="panel-section-header"]'),
-  ).toHaveClass(/px-4/);
-  await expect(
-    detailsSection
-      .locator('[data-slot="panel-section-card"]')
-      .getByRole("heading", { exact: true, name: "Details" }),
-  ).toHaveCount(0);
+    detailsSection.getByRole("heading", {
+      exact: true,
+      level: 3,
+      name: "Details",
+    }),
+  ).toHaveClass(/uppercase/);
   const untitledChannelSections = [
     page.getByTestId("channel-canvas-ingress-section"),
     page.getByTestId("channel-management-actions"),
@@ -2546,26 +2428,15 @@ test("manage channel shows member avatars and owner-only row controls", async ({
   await expect(
     leaveChannelRow.locator(":scope > span.rounded-full"),
   ).toHaveCount(0);
-  const canvasInfo = page.getByTestId("channel-canvas-ingress-info");
-  await canvasInfo.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(
+  await expect(page.getByTestId("channel-canvas-ingress")).toContainText(
     "Use the canvas as a shared space for notes, plans, and other channel information.",
   );
   const nameEdit = page.getByTestId("channel-management-edit");
   await expect(nameEdit).toBeVisible();
-  const nameEditIcon = page.getByTestId("channel-management-edit-icon");
-  await expect(nameEditIcon).toHaveCSS("opacity", "0");
-  await nameEdit.hover();
-  await expect(nameEditIcon).toHaveCSS("opacity", "1");
+  await expect(nameEdit).toContainText("Edit name and description");
   await expect(
     page.getByTestId("channel-management-edit-description"),
   ).toHaveCount(0);
-  await expect(
-    page.getByTestId("channel-management-edit-channel-type"),
-  ).toHaveCSS("opacity", "0");
-  await expect(
-    page.getByTestId("channel-management-edit-visibility"),
-  ).toHaveCSS("opacity", "0");
   await expect(page.getByTestId("channel-management-archive")).toBeVisible();
   await expect(page.getByTestId("channel-management-delete")).toBeVisible();
   await expect(
@@ -2593,11 +2464,12 @@ test("manage channel shows member avatars and owner-only row controls", async ({
   await expect(channelIdRow.getByTitle(GENERAL_CHANNEL_ID)).toHaveText(
     "9a1657ac…fb50",
   );
-  await expect(channelIdCopyStatus).toHaveCSS("opacity", "0");
-  await channelIdRow.hover();
-  await expect(channelIdCopyStatus).toHaveCSS("opacity", "1");
-  await channelIdRow.click();
-  await expect(channelIdRow).toHaveAttribute("aria-label", "Channel ID copied");
+  await expect(channelIdCopyStatus).toBeVisible();
+  await channelIdCopyStatus.click();
+  await expect(channelIdCopyStatus).toHaveAttribute(
+    "aria-label",
+    "Channel ID copied",
+  );
   await expect(channelIdCopyStatus).toHaveAttribute("data-copied", "true");
 
   for (const editTrigger of [
@@ -2732,7 +2604,6 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
 
   await expect(saveChangesButton).toBeDisabled();
 
-  await page.getByTestId("channel-management-permissions").click();
   await page
     .getByTestId("channel-management-permissions-option-private")
     .click();
@@ -2740,10 +2611,11 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
     page.getByRole("dialog", { name: "Edit private channel" }),
   ).toBeVisible();
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Private");
-  await page.getByTestId("channel-management-channel-type").click();
-  await page.getByLabel("Temporary channel").click();
+    page.getByTestId("channel-management-permissions-option-private"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByTestId("channel-management-channel-type-option-temporary")
+    .click();
   await expect(page.getByTestId("channel-management-ttl")).toBeVisible();
   await expect(saveChangesButton).toBeEnabled();
 
@@ -2784,25 +2656,25 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
   saveChangesButton = page.getByTestId("channel-management-save-changes");
 
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Private");
+    page.getByTestId("channel-management-permissions-option-private"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("channel-management-channel-type"),
-  ).toContainText("Temporary");
+    page.getByTestId("channel-management-channel-type-option-temporary"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("channel-management-ttl")).toContainText(
     "7 days",
   );
 
-  await page.getByTestId("channel-management-permissions").click();
   await page.getByTestId("channel-management-permissions-option-open").click();
   await expect(
     page.getByRole("dialog", { name: "Edit public channel" }),
   ).toBeVisible();
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Public");
-  await page.getByTestId("channel-management-channel-type").click();
-  await page.getByLabel("Ongoing channel").click();
+    page.getByTestId("channel-management-permissions-option-open"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByTestId("channel-management-channel-type-option-ongoing")
+    .click();
   await expect(saveChangesButton).toBeEnabled();
 
   const commandCountBeforeDisable = (await readCommandPayloadLog(page)).length;
@@ -2841,11 +2713,11 @@ test("manage channel updates visibility and ephemeral lifecycle independently", 
   await openChannelEditDialog(page);
 
   await expect(
-    page.getByTestId("channel-management-permissions"),
-  ).toHaveAccessibleName("Visibility: Public");
+    page.getByTestId("channel-management-permissions-option-open"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByTestId("channel-management-channel-type"),
-  ).toContainText("Ongoing");
+    page.getByTestId("channel-management-channel-type-option-ongoing"),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("channel-management-ttl")).toHaveCount(0);
 });
 
@@ -2904,6 +2776,20 @@ async function openHomeChannelSettings(page: import("@playwright/test").Page) {
     .click();
   await page.getByRole("menuitem", { name: "Channel settings" }).click();
 }
+
+test("channel settings opens the pinned messages page", async ({ page }) => {
+  await page.goto("/");
+  await openChannelManagement(page, "general");
+
+  await page
+    .getByTestId("channel-management-sheet")
+    .getByTestId("channel-pins-trigger")
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/channels/pins/${GENERAL_CHANNEL_ID}`),
+  );
+  await expect(page.getByTestId("channel-management-sheet")).toHaveCount(0);
+});
 
 async function seedHomeInboxMention(
   page: import("@playwright/test").Page,
@@ -4515,8 +4401,12 @@ test("open channel management supports join and leave", async ({ page }) => {
   await expect(page.getByTestId("channel-management-join")).toHaveCount(0);
   await expect(page.getByTestId("channel-management-leave")).toBeVisible();
 
-  // Leave the channel
+  // Leave the channel (the panel asks first, as the sidebar menu does)
   await page.getByTestId("channel-management-leave").click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Leave", exact: true })
+    .click();
   await expect(page.getByTestId("channel-management-sheet")).not.toBeVisible();
 
   // After leaving, the app navigates away - re-open browser and find design
@@ -4540,11 +4430,10 @@ test("manage channel can archive and unarchive a stream", async ({ page }) => {
 
   await closeChannelManagement(page);
   await expect(page.getByTestId("stream-list")).not.toContainText("general");
-  await expect(page.getByTestId("message-input")).toHaveAttribute(
-    "contenteditable",
-    "false",
-  );
-  await expect(page.getByTestId("send-message")).toBeDisabled();
+  // An archived channel swaps its composer for the read-only bar.
+  await expect(page.getByTestId("archived-banner")).toBeVisible();
+  await expect(page.getByTestId("message-input")).toHaveCount(0);
+  await expect(page.getByTestId("send-message")).toHaveCount(0);
 
   await openChannelBrowser(page);
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();

@@ -1,21 +1,8 @@
 import * as React from "react";
 import type { Editor } from "@tiptap/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import {
-  ALargeSmall,
-  FileText,
-  Heart,
-  Image as ImageIcon,
-  Mic,
-  Paperclip,
-  Plus,
-  Upload,
-  Users,
-  X,
-} from "lucide-react";
 
 import type { MediaUploadController } from "@/features/messages/lib/useMediaUpload";
-import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   type ComposerAddressAgent,
@@ -23,33 +10,32 @@ import {
   ComposerSendButton,
 } from "./ComposerAddressControls";
 import { ComposerEmojiPicker } from "./ComposerEmojiPicker";
+import { AttachGlyph, EmojiGlyph, MicGlyph } from "./ComposerIcons";
 import { FormattingToolbar } from "./FormattingToolbar";
 import { SelectionFormattingTray } from "./SelectionFormattingTray";
 
-/** Spring for enter/exit of button groups — all fire simultaneously. */
-const presenceSpring = {
-  type: "spring",
-  stiffness: 400,
-  damping: 28,
-} as const;
-const ingressControlVariants = {
-  exit: {
-    opacity: 0,
-    x: -12,
-    transition: presenceSpring,
-  },
-} as const;
+/**
+ * Which tools a conversation's composer offers, as the Colony 3.0 boards draw
+ * them: a channel has mention, attach, emoji, formatting and voice; a direct
+ * message drops the mention button; a thread reply keeps attach, formatting
+ * and mention; a new message has no voice note.
+ */
+export type ComposerToolbarLayout = "channel" | "dm" | "thread" | "new-message";
+
 const NO_ADDRESSED_AGENTS: readonly ComposerAddressAgent[] = [];
 const ignoreAddressRemoval = () => {};
+
+const TOOL_BUTTON_CLASS = "c3c-tool";
 
 export const MessageComposerToolbar = React.memo(
   function MessageComposerToolbar({
     addressedAgents = NO_ADDRESSED_AGENTS,
+    askAction,
     autoPinConfirmationTitle,
     composerDisabled,
     editor,
     extraActions,
-    formattingDisabled,
+    formattingDisabled = false,
     gifMediaController,
     isEmojiPickerOpen,
     isFormattingOpen,
@@ -58,6 +44,8 @@ export const MessageComposerToolbar = React.memo(
     isVoiceNoteProcessing = false,
     isVoiceNoteRecording = false,
     hasVoiceNoteAttachment = false,
+    layout = "channel",
+    referenceSlot,
     voiceNoteRecorder,
     onCaptureSelection,
     onAutoPinConfirmationDismiss,
@@ -75,15 +63,19 @@ export const MessageComposerToolbar = React.memo(
     pulseVersionByPubkey,
     sendDisabled,
     shakeVersionByPubkey,
-    workspaceChrome = false,
-    onImagePicker,
   }: {
     addressedAgents?: readonly ComposerAddressAgent[];
+    /** "Raise an ask" pill that follows the formatting button in a channel. */
+    askAction?: React.ReactNode;
     autoPinConfirmationTitle?: string | null;
     composerDisabled: boolean;
     editor: Editor | null;
     extraActions?: React.ReactNode;
-    formattingDisabled: boolean;
+    /**
+     * Only for composers that keep the formatting row inside the toolbar
+     * (the forum composer): the message composer draws it above the editor.
+     */
+    formattingDisabled?: boolean;
     gifMediaController: Pick<MediaUploadController, "setPendingImeta">;
     isEmojiPickerOpen: boolean;
     isFormattingOpen: boolean;
@@ -92,6 +84,9 @@ export const MessageComposerToolbar = React.memo(
     isVoiceNoteProcessing?: boolean;
     isVoiceNoteRecording?: boolean;
     hasVoiceNoteAttachment?: boolean;
+    layout?: ComposerToolbarLayout;
+    /** The slot where a "Reference lead" button sits (see ComposerReferenceSlot). */
+    referenceSlot?: React.ReactNode;
     voiceNoteRecorder?: React.ReactNode;
     onCaptureSelection: () => void;
     onAutoPinConfirmationDismiss?: () => void;
@@ -100,7 +95,7 @@ export const MessageComposerToolbar = React.memo(
     onEmojiPickerOpenChange: (open: boolean) => void;
     onEmojiSelect: (emoji: string) => void;
     onFormattingToggle: (pressed: boolean) => void;
-    onLinkButton: () => void;
+    onLinkButton?: () => void;
     onOpenMentionPicker: () => void;
     onPaperclip: () => void;
     onFinishVoiceNote?: () => void;
@@ -109,370 +104,166 @@ export const MessageComposerToolbar = React.memo(
     pulseVersionByPubkey?: Readonly<Record<string, number>>;
     sendDisabled: boolean;
     shakeVersionByPubkey?: Readonly<Record<string, number>>;
-    workspaceChrome?: boolean;
-    onImagePicker?: () => void;
   }) {
-    const shouldReduceMotion = useReducedMotion();
+    const attachDisabled =
+      composerDisabled ||
+      isUploading ||
+      isVoiceNoteRecording ||
+      hasVoiceNoteAttachment;
+    const showMention = layout !== "dm";
+    const showEmoji = layout !== "thread";
+    const showVoice = Boolean(onVoiceNote) && layout !== "new-message";
+
+    const mentionButton = showMention ? (
+      <ComposerMentionButton
+        agents={addressedAgents}
+        confirmationTitle={autoPinConfirmationTitle}
+        disabled={composerDisabled}
+        onConfirmationDismiss={onAutoPinConfirmationDismiss}
+        onConfirmationHoverChange={onAutoPinConfirmationHoverChange}
+        onConfirmationTurnOff={onAutoPinConfirmationTurnOff}
+        onCaptureSelection={onCaptureSelection}
+        onOpen={onOpenMentionPicker}
+        onRemove={onRemoveAddressedAgent}
+        pulseVersionByPubkey={pulseVersionByPubkey}
+        shakeVersionByPubkey={shakeVersionByPubkey}
+        showAgents
+      />
+    ) : null;
+    const attachButton = (
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger asChild>
+          <button
+            aria-label="Attach file"
+            className={TOOL_BUTTON_CLASS}
+            disabled={attachDisabled}
+            onClick={onPaperclip}
+            onMouseDown={onCaptureSelection}
+            type="button"
+          >
+            <AttachGlyph />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Attach file</TooltipContent>
+      </Tooltip>
+    );
+    const emojiPicker = showEmoji ? (
+      <ComposerEmojiPicker
+        disabled={composerDisabled || isVoiceNoteRecording}
+        gifsDisabled={hasVoiceNoteAttachment}
+        gifMediaController={gifMediaController}
+        onClose={() => editor?.commands.focus()}
+        onEmojiSelect={onEmojiSelect}
+        onOpenChange={onEmojiPickerOpenChange}
+        onTriggerMouseDown={onCaptureSelection}
+        open={isEmojiPickerOpen}
+        triggerClassName={TOOL_BUTTON_CLASS}
+        triggerIcon={<EmojiGlyph />}
+      />
+    ) : null;
+    const formattingButton = (
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger asChild>
+          <button
+            aria-label="Toggle formatting"
+            aria-pressed={isFormattingOpen}
+            className={cn(TOOL_BUTTON_CLASS, "c3c-tool-text")}
+            disabled={composerDisabled}
+            onClick={() => onFormattingToggle(!isFormattingOpen)}
+            onMouseDown={onCaptureSelection}
+            type="button"
+          >
+            Aa
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Formatting</TooltipContent>
+      </Tooltip>
+    );
+
+    // Keys keep each tool mounted when the order changes (a thread composer
+    // moves its mention group first once an agent is addressed).
+    const tools = {
+      attach: { key: "attach", node: attachButton },
+      emoji: { key: "emoji", node: emojiPicker },
+      format: { key: "format", node: formattingButton },
+      mention: { key: "mention", node: mentionButton },
+    };
+    const orderedTools =
+      layout === "thread"
+        ? addressedAgents.length > 0
+          ? [tools.mention, tools.attach, tools.format]
+          : [tools.attach, tools.format, tools.mention]
+        : [tools.mention, tools.attach, tools.emoji, tools.format];
 
     return (
-      <div
-        className="mt-2 flex flex-wrap items-center justify-between gap-3"
-        data-testid="message-composer-toolbar"
-      >
-        <SelectionFormattingTray
-          disabled={formattingDisabled}
-          editor={editor}
-          onLinkButton={onLinkButton}
-        />
-        <div
-          className="-ml-2 flex min-h-10 min-w-0 flex-1 items-center gap-1 py-1"
-          data-testid="message-composer-tools"
-        >
-          {/*
-           * AnimatePresence with mode="popLayout" — exiting elements
-           * are popped out of flow immediately so entering elements
-           * can animate in simultaneously. No sequencing.
-           *
-           * The Aa toggle is duplicated inside both groups so
-           * AnimatePresence handles the crossfade.
-           */}
-          <AnimatePresence mode="popLayout" initial={false}>
-            {voiceNoteRecorder ? (
-              <motion.div
-                key="voice-note-controls"
-                className="flex min-w-0 flex-1 items-center"
-                data-testid="voice-note-controls"
-                initial={shouldReduceMotion ? false : { opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={
-                  shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: 12 }
-                }
-                transition={
-                  shouldReduceMotion ? { duration: 0 } : presenceSpring
-                }
+      <div className="c3c-toolbar" data-testid="message-composer-toolbar">
+        {onLinkButton ? (
+          <SelectionFormattingTray
+            disabled={formattingDisabled}
+            editor={editor}
+            onLinkButton={onLinkButton}
+          />
+        ) : null}
+        <div className="c3c-tools" data-testid="message-composer-tools">
+          {onLinkButton && isFormattingOpen && !voiceNoteRecorder ? (
+            <div className="c3c-fmt-row c3c-fmt-row-inline">
+              <button
+                aria-label="Toggle formatting"
+                aria-pressed="true"
+                className="c3c-fmt-btn c3c-fmt-toggle"
+                disabled={composerDisabled}
+                onClick={() => onFormattingToggle(false)}
+                type="button"
               >
-                {voiceNoteRecorder}
-              </motion.div>
-            ) : isFormattingOpen ? (
-              /*
-               * ── Expanded: [Aa] [✕] | [formatting buttons] ──
-               */
-              <motion.div
-                key="formatting-controls"
-                className="flex min-w-0 flex-1 items-center gap-1"
-                initial={false}
-                animate={{}}
-                exit={{ opacity: 0 }}
-                transition={presenceSpring}
-              >
-                <motion.div
-                  initial={{ x: 8, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: 8, opacity: 0 }}
-                  transition={presenceSpring}
-                >
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <Button
-                        aria-label="Toggle formatting"
-                        aria-pressed={isFormattingOpen}
-                        disabled={composerDisabled}
-                        onClick={() => onFormattingToggle(!isFormattingOpen)}
-                        onMouseDown={onCaptureSelection}
-                        size="icon"
-                        type="button"
-                        variant={isFormattingOpen ? "default" : "ghost"}
-                      >
-                        <ALargeSmall />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Formatting</TooltipContent>
-                  </Tooltip>
-                </motion.div>
-                <motion.div
-                  className="flex items-center gap-1"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ ...presenceSpring, delay: 0.15 }}
-                >
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <Button
-                        aria-label="Close formatting"
-                        disabled={composerDisabled}
-                        onClick={() => onFormattingToggle(false)}
-                        onMouseDown={onCaptureSelection}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                        className="shrink-0"
-                      >
-                        <X />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Close formatting</TooltipContent>
-                  </Tooltip>
-                  <div className="mx-1 h-5 w-px shrink-0 bg-border/60" />
-                </motion.div>
-                <motion.div
-                  className="min-w-0 flex-1 overflow-x-auto"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ ...presenceSpring, delay: 0.15 }}
-                >
-                  <FormattingToolbar
-                    editor={editor}
-                    disabled={formattingDisabled}
-                    onLinkButton={onLinkButton}
-                  />
-                </motion.div>
-              </motion.div>
-            ) : (
-              /*
-               * ── Passive: [@ 📎 😊] [Aa] ──
-               */
-              <motion.div
-                key="ingress-controls"
-                className={`flex items-center gap-1 ${workspaceChrome ? "colony-reference-composer-tools" : ""}`}
-                data-testid="composer-ingress-controls"
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit="exit"
-                variants={ingressControlVariants}
-                transition={presenceSpring}
-              >
-                {workspaceChrome ? (
-                  <>
-                    <Button
-                      aria-label="Upload file"
-                      className="colony-reference-composer-icon"
-                      disabled={
-                        composerDisabled ||
-                        isUploading ||
-                        isVoiceNoteRecording ||
-                        hasVoiceNoteAttachment
-                      }
-                      onClick={onPaperclip}
-                      onMouseDown={onCaptureSelection}
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Upload />
-                    </Button>
-                    <Button
-                      aria-label="Attach image"
-                      className="colony-reference-composer-icon"
-                      disabled={
-                        composerDisabled ||
-                        isUploading ||
-                        isVoiceNoteRecording ||
-                        hasVoiceNoteAttachment
-                      }
-                      onClick={() => onImagePicker?.()}
-                      onMouseDown={onCaptureSelection}
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <ImageIcon />
-                    </Button>
-                    <ComposerEmojiPicker
-                      disabled={composerDisabled || isVoiceNoteRecording}
-                      gifsDisabled={hasVoiceNoteAttachment}
-                      gifMediaController={gifMediaController}
-                      onClose={() => editor?.commands.focus()}
-                      onEmojiSelect={onEmojiSelect}
-                      onOpenChange={onEmojiPickerOpenChange}
-                      onTriggerMouseDown={onCaptureSelection}
-                      open={isEmojiPickerOpen}
-                      triggerIcon={<Heart />}
-                    />
-                    <Button
-                      aria-label="Attach file"
-                      className="colony-reference-composer-icon"
-                      disabled={
-                        composerDisabled ||
-                        isUploading ||
-                        isVoiceNoteRecording ||
-                        hasVoiceNoteAttachment
-                      }
-                      onClick={onPaperclip}
-                      onMouseDown={onCaptureSelection}
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <FileText />
-                    </Button>
-                    <Tooltip disableHoverableContent>
-                      <TooltipTrigger asChild>
-                        <Button
-                          aria-label="Toggle formatting"
-                          aria-pressed={isFormattingOpen}
-                          className="colony-reference-composer-icon"
-                          disabled={composerDisabled}
-                          onClick={() => onFormattingToggle(!isFormattingOpen)}
-                          onMouseDown={onCaptureSelection}
-                          size="icon"
-                          type="button"
-                          variant={isFormattingOpen ? "default" : "ghost"}
-                        >
-                          <Plus />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Formatting</TooltipContent>
-                    </Tooltip>
-                    <ComposerMentionButton
-                      agents={addressedAgents}
-                      confirmationTitle={autoPinConfirmationTitle}
-                      disabled={composerDisabled}
-                      onConfirmationDismiss={onAutoPinConfirmationDismiss}
-                      onConfirmationHoverChange={
-                        onAutoPinConfirmationHoverChange
-                      }
-                      onConfirmationTurnOff={onAutoPinConfirmationTurnOff}
-                      onCaptureSelection={onCaptureSelection}
-                      onOpen={onOpenMentionPicker}
-                      onRemove={onRemoveAddressedAgent}
-                      pulseVersionByPubkey={pulseVersionByPubkey}
-                      shakeVersionByPubkey={shakeVersionByPubkey}
-                      showAgents
-                      triggerIcon={
-                        <Users
-                          aria-hidden="true"
-                          className="h-4 w-4 shrink-0"
-                        />
-                      }
-                    />
-                    {onVoiceNote ? (
-                      <Tooltip disableHoverableContent>
-                        <TooltipTrigger asChild>
-                          <Button
-                            aria-label="Record voice note"
-                            className="colony-reference-composer-icon"
-                            disabled={composerDisabled || isUploading}
-                            onClick={onVoiceNote}
-                            onMouseDown={onCaptureSelection}
-                            size="icon"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <Mic />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Record voice note</TooltipContent>
-                      </Tooltip>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <ComposerMentionButton
-                      agents={addressedAgents}
-                      confirmationTitle={autoPinConfirmationTitle}
-                      disabled={composerDisabled}
-                      onConfirmationDismiss={onAutoPinConfirmationDismiss}
-                      onConfirmationHoverChange={
-                        onAutoPinConfirmationHoverChange
-                      }
-                      onConfirmationTurnOff={onAutoPinConfirmationTurnOff}
-                      onCaptureSelection={onCaptureSelection}
-                      onOpen={onOpenMentionPicker}
-                      onRemove={onRemoveAddressedAgent}
-                      pulseVersionByPubkey={pulseVersionByPubkey}
-                      shakeVersionByPubkey={shakeVersionByPubkey}
-                      showAgents
-                    />
-                    <Tooltip disableHoverableContent>
-                      <TooltipTrigger asChild>
-                        <Button
-                          aria-label="Attach file"
-                          disabled={
-                            composerDisabled ||
-                            isUploading ||
-                            isVoiceNoteRecording ||
-                            hasVoiceNoteAttachment
-                          }
-                          onClick={onPaperclip}
-                          onMouseDown={onCaptureSelection}
-                          size="icon"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Paperclip />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Attach file</TooltipContent>
-                    </Tooltip>
-                    {onVoiceNote ? (
-                      <Tooltip disableHoverableContent>
-                        <TooltipTrigger asChild>
-                          <Button
-                            aria-label="Record voice note"
-                            disabled={composerDisabled || isUploading}
-                            onClick={onVoiceNote}
-                            onMouseDown={onCaptureSelection}
-                            size="icon"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <span className="inline-flex">
-                              <Mic />
-                            </span>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Record voice note</TooltipContent>
-                      </Tooltip>
-                    ) : null}
-                    <ComposerEmojiPicker
-                      disabled={composerDisabled || isVoiceNoteRecording}
-                      gifsDisabled={hasVoiceNoteAttachment}
-                      gifMediaController={gifMediaController}
-                      onClose={() => editor?.commands.focus()}
-                      onEmojiSelect={onEmojiSelect}
-                      onOpenChange={onEmojiPickerOpenChange}
-                      onTriggerMouseDown={onCaptureSelection}
-                      open={isEmojiPickerOpen}
-                    />
-                    <motion.div
-                      initial={{ x: -8, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -8, opacity: 0 }}
-                      transition={presenceSpring}
-                    >
-                      <Tooltip disableHoverableContent>
-                        <TooltipTrigger asChild>
-                          <Button
-                            aria-label="Toggle formatting"
-                            aria-pressed={isFormattingOpen}
-                            disabled={composerDisabled}
-                            onClick={() =>
-                              onFormattingToggle(!isFormattingOpen)
-                            }
-                            onMouseDown={onCaptureSelection}
-                            size="icon"
-                            type="button"
-                            variant={isFormattingOpen ? "default" : "ghost"}
-                          >
-                            <ALargeSmall />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Formatting</TooltipContent>
-                      </Tooltip>
-                    </motion.div>
-                  </>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                Aa
+              </button>
+              <FormattingToolbar
+                disabled={formattingDisabled}
+                editor={editor}
+                onLinkButton={onLinkButton}
+              />
+            </div>
+          ) : voiceNoteRecorder ? (
+            <div
+              className="c3c-voice-controls"
+              data-testid="voice-note-controls"
+            >
+              {voiceNoteRecorder}
+            </div>
+          ) : (
+            <div
+              className="c3c-ingress"
+              data-layout={layout}
+              data-testid="composer-ingress-controls"
+            >
+              {orderedTools.map((tool) => (
+                <React.Fragment key={tool.key}>{tool.node}</React.Fragment>
+              ))}
+              {/* The reference slot sits where "Reference goal" used to; the
+                  ask pill follows it. Both are optional per conversation. */}
+              {referenceSlot}
+              {askAction}
+              {extraActions}
+            </div>
+          )}
         </div>
-
-        <div className="flex items-center gap-2">
-          {extraActions}
-          {workspaceChrome ? (
-            <kbd className="colony-composer-submit-hint">⌘ Enter</kbd>
+        <div className="c3c-send-group">
+          {showVoice && !voiceNoteRecorder ? (
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label="Record voice note"
+                  className={TOOL_BUTTON_CLASS}
+                  disabled={composerDisabled || isUploading}
+                  onClick={onVoiceNote}
+                  onMouseDown={onCaptureSelection}
+                  type="button"
+                >
+                  <MicGlyph />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Record voice note</TooltipContent>
+            </Tooltip>
           ) : null}
           <ComposerSendButton
             isSending={isSending}
@@ -482,7 +273,6 @@ export const MessageComposerToolbar = React.memo(
             sendDisabled={
               isVoiceNoteRecording ? isVoiceNoteProcessing : sendDisabled
             }
-            workspaceChrome={workspaceChrome}
           />
         </div>
       </div>

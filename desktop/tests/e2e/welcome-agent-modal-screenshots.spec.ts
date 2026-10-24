@@ -40,9 +40,16 @@ function commandCount(commands: string[], command: string) {
   return commands.filter((entry) => entry === command).length;
 }
 
+async function openAddAgents(page: import("@playwright/test").Page) {
+  // The intro's Add agent card is gone; Add agents lives in Channel members.
+  await page.getByTestId("channel-members-trigger").click();
+  await page.getByTestId("members-sidebar-agent-actions").click();
+  await page.getByTestId("members-sidebar-add-agents").click();
+}
+
 async function openAgentPicker(page: Page, channel = "random") {
   await openChannel(page, channel);
-  await page.getByTestId("channel-intro-action-create-agent").click();
+  await openAddAgents(page);
   const dialog = page.getByTestId("add-channel-bot-dialog");
   await expect(dialog).toBeVisible();
   await waitForAnimations(page);
@@ -133,7 +140,7 @@ test.describe("welcome and channel agent entry points", () => {
       addChannelMembersErrors: ["Relay unavailable.", null],
     });
     await openChannel(page, "random");
-    await page.getByTestId("channel-intro-action-create-agent").click();
+    await openAddAgents(page);
     await page.getByTestId("add-channel-create-agent").click();
 
     await expect(page).toHaveURL(/#\/channels\//);

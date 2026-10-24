@@ -42,8 +42,11 @@ async function seedNoShiftTimeline(page: Page) {
   });
 }
 
-async function snapshotAnchor(timeline: Locator): Promise<AnchorSnapshot> {
-  return timeline.evaluate((element) => {
+async function snapshotAnchor(
+  timeline: Locator,
+  anchorId?: string,
+): Promise<AnchorSnapshot> {
+  return timeline.evaluate((element, wantedId) => {
     const scroller = element as HTMLDivElement;
     const scrollerRect = scroller.getBoundingClientRect();
     const rows = Array.from(
@@ -53,11 +56,17 @@ async function snapshotAnchor(timeline: Locator): Promise<AnchorSnapshot> {
       const rect = row.getBoundingClientRect();
       return rect.bottom > scrollerRect.top && rect.top < scrollerRect.bottom;
     });
+    // A row whose box starts within a pixel of the edge can flip in or out with
+    // sub-pixel rounding, so anchor on the first row clearly inside.
     const anchor =
+      (wantedId
+        ? visibleRows.find((row) => row.dataset.messageId === wantedId)
+        : undefined) ??
       visibleRows.find((row) => {
         const rect = row.getBoundingClientRect();
-        return rect.top - scrollerRect.top >= 0;
-      }) ?? visibleRows[0];
+        return rect.top - scrollerRect.top >= 2;
+      }) ??
+      visibleRows[0];
 
     if (!anchor) {
       throw new Error("no visible message row to anchor");
@@ -84,7 +93,7 @@ async function snapshotAnchor(timeline: Locator): Promise<AnchorSnapshot> {
       oldestOlderIndex,
       scrollHeight: scroller.scrollHeight,
     };
-  });
+  }, anchorId);
 }
 
 async function getAnchorTop(
@@ -527,7 +536,9 @@ test("timeline prepend plus late row reflow keeps the reading row stable", async
     )
     .toBe("landed");
 
-  const afterPrepend = await snapshotAnchor(timeline);
+  // The oldest loaded row loses its author header once older rows land above
+  // it, so "the first row clear of the edge" can change; follow the same row.
+  const afterPrepend = await snapshotAnchor(timeline, before.anchorId);
   expect(afterPrepend.anchorId).toBe(before.anchorId);
   expect(
     await timeline.evaluate((element, anchorId) => {
@@ -586,7 +597,7 @@ test("timeline prepend plus late row reflow keeps the reading row stable", async
     )
     .toBeLessThanOrEqual(LATE_REFLOW_DRIFT_PX);
 
-  const afterReflow = await snapshotAnchor(timeline);
+  const afterReflow = await snapshotAnchor(timeline, before.anchorId);
   expect(afterReflow.anchorId).toBe(before.anchorId);
   expectAnchorOrderUnchanged(before, afterReflow);
 

@@ -3,7 +3,6 @@ import * as React from "react";
 import type { TimelineMessage } from "@/features/messages/types";
 import { cn } from "@/shared/lib/cn";
 import { setLocalStorageItemWithRecovery } from "@/shared/lib/localStorageQuota";
-import { Skeleton } from "@/shared/ui/skeleton";
 
 const TIMELINE_SKELETON_CACHE_PREFIX = "buzz-timeline-skeleton-shape.v1";
 const timelineSkeletonWidthClasses = [
@@ -209,38 +208,48 @@ export function TimelineSkeleton({ rows }: TimelineSkeletonProps) {
   const skeletonRows = rows?.length ? rows : fallbackTimelineSkeletonRows;
 
   return (
-    <>
-      {skeletonRows.map((row) => (
+    <div
+      className="flex flex-col gap-5 py-1"
+      data-testid="message-timeline-skeleton"
+      role="status"
+    >
+      <span className="sr-only">Loading messages</span>
+      {skeletonRows.map((row, rowIndex) => (
         <article
-          className="relative mx-1 flex items-start gap-2.5 rounded-2xl px-2 py-2"
+          aria-hidden="true"
+          className="c3c-live flex gap-2.5"
           key={row.key}
+          style={{ animationDelay: `${rowIndex * 0.2}s` }}
         >
-          <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
-          <div className="-mt-1 min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
-              <Skeleton className={cn("h-[15px]", row.authorWidthClass)} />
-              <Skeleton className="h-3 w-10" />
-            </div>
-            <div className="mt-1 space-y-1.5 pb-2">
-              {timelineSkeletonBodyLineKeys
-                .slice(0, row.bodyLineWidthClasses.length)
-                .map((lineKey, index) => (
-                  <Skeleton
-                    className={cn("h-4", row.bodyLineWidthClasses[index])}
-                    key={`${row.key}-body-${lineKey}`}
-                  />
-                ))}
-            </div>
-            <div className="flex items-center gap-4">
-              {timelineSkeletonActionKeys
-                .slice(0, row.actionCount)
-                .map((key) => (
-                  <Skeleton className="h-4 w-8 rounded-full" key={key} />
-                ))}
-            </div>
-          </div>
+          <span
+            className={cn(
+              "shrink-0 bg-colony-border",
+              rowIndex % 2 === 0
+                ? "size-[calc(34*var(--colony-px))] rounded-squircle"
+                : "size-[calc(32*var(--colony-px))] rounded-full",
+            )}
+          />
+          <span className="flex min-w-0 flex-1 flex-col gap-[calc(9*var(--colony-px))] pt-1">
+            <span
+              className={cn(
+                "h-[calc(11*var(--colony-px))] rounded-md bg-[#e8e2ec]",
+                row.authorWidthClass,
+              )}
+            />
+            {timelineSkeletonBodyLineKeys
+              .slice(0, row.bodyLineWidthClasses.length)
+              .map((lineKey, index) => (
+                <span
+                  className={cn(
+                    "h-[calc(11*var(--colony-px))] rounded-md bg-colony-track",
+                    row.bodyLineWidthClasses[index],
+                  )}
+                  key={`${row.key}-body-${lineKey}`}
+                />
+              ))}
+          </span>
         </article>
       ))}
-    </>
+    </div>
   );
 }

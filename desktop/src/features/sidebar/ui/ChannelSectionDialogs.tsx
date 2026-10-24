@@ -31,6 +31,8 @@ import {
   useDeleteChannelMutation,
   useLeaveChannelMutation,
 } from "@/features/channels/hooks";
+import { ChannelConfirmDialog } from "@/features/channels/ui/ChannelConfirmDialog";
+import { LeaveGlyph } from "@/features/channels/ui/dialogIcons";
 import { ChannelDeleteConfirmationDialog } from "@/features/channels/ui/ChannelManagementModerationActions";
 
 export type SectionDialogValue = {
@@ -305,25 +307,15 @@ export function LeaveChannelAlertDialog({
   onConfirm,
 }: LeaveChannelAlertDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Leave channel</AlertDialogTitle>
-          <AlertDialogDescription>
-            {`Leave "${channelName}"? You'll stop receiving its messages and can rejoin later.`}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onConfirm}
-          >
-            Leave
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ChannelConfirmDialog
+      confirmLabel="Leave"
+      description={`Leave “${channelName}”? You’ll stop receiving its messages and can rejoin later.`}
+      icon={<LeaveGlyph size={20} />}
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Leave channel"
+    />
   );
 }
 

@@ -17,6 +17,7 @@ export const WORK_AREA_TAB_KINDS = [
   "files",
   "canvas",
   "knowledge",
+  "file",
 ] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
@@ -28,9 +29,21 @@ export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
   "knowledge",
 ];
 
+/**
+ * A workspace file one `file` tab reads: whose workspace it is and the path in
+ * it. The relay it was resolved against is the community's own, so it is not
+ * stored; the reader adds the current relay origin when it reads.
+ */
+export type WorkAreaFileRef = {
+  agentPubkey: string;
+  path: string;
+};
+
 export type WorkAreaTab = {
   id: string;
   kind: WorkAreaTabKind;
+  /** Set on `file` tabs, one tab per file. */
+  file?: WorkAreaFileRef;
 };
 
 /** Everything the dock remembers about one channel. */
@@ -45,7 +58,11 @@ export type WorkAreaChannelState = {
 /** Bounds and defaults come from the frozen r15 work area reference. */
 export const WORK_AREA_MIN_WIDTH = 35;
 export const WORK_AREA_MAX_WIDTH = 75;
-export const WORK_AREA_DEFAULT_WIDTH = 64;
+/**
+ * 68.85 percent of the 1160px conversation area at the 1440px board is the
+ * design's 799px dock (ChannelWorkArea board), so the dock opens exactly there.
+ */
+export const WORK_AREA_DEFAULT_WIDTH = 68.85;
 export const WORK_AREA_KEY_STEP = 2;
 export const WORK_AREA_KEY_STEP_LARGE = 10;
 /** Below this layout width the dock overlays the conversation. */
@@ -70,7 +87,9 @@ export function isWorkAreaTabKind(value: unknown): value is WorkAreaTabKind {
 }
 
 export function clampWorkAreaWidth(value: number): number {
-  if (!Number.isFinite(value)) return WORK_AREA_DEFAULT_WIDTH;
+  if (!Number.isFinite(value) || value === WORK_AREA_DEFAULT_WIDTH) {
+    return WORK_AREA_DEFAULT_WIDTH;
+  }
   return Math.max(
     WORK_AREA_MIN_WIDTH,
     Math.min(WORK_AREA_MAX_WIDTH, Math.round(value)),

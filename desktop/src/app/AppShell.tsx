@@ -21,6 +21,7 @@ import { useChannelBrowserDialog } from "@/app/useChannelBrowserDialog";
 import { useMarkAsReadShortcuts } from "@/app/useMarkAsReadShortcuts";
 import { useSettingsShortcuts } from "@/app/useSettingsShortcuts";
 import { useAppShellKeyboardShortcuts } from "@/app/useAppShellKeyboardShortcuts";
+import { listenForChannelSearchRequests } from "@/shared/lib/channelSearchRequest";
 import { useAppShellDesktopNotifications } from "@/app/useAppShellDesktopNotifications";
 import { useAppShellLifecycleEffects } from "@/app/useAppShellLifecycleEffects";
 import { useChannelActivityProjection } from "@/app/useChannelActivityProjection";
@@ -168,6 +169,7 @@ export function AppShell() {
     // Activity draws its own header; on a narrow window the sidebar drawer's
     // only handle is the shell bar, so it stays there.
     (location.pathname !== "/" || isNarrowWindow) &&
+    location.pathname !== "/messages/new" &&
     selectedView !== "channel";
   const locationSearchSection = (location.search as { section?: unknown })
     .section;
@@ -503,6 +505,10 @@ export function AppShell() {
     setScopeSearchFocusRequest((request) => request + 1);
     void refetchChannels();
   }, [refetchChannels]);
+  React.useEffect(
+    () => listenForChannelSearchRequests(handleOpenChannelSearch),
+    [handleOpenChannelSearch],
+  );
 
   const handleBrowseChannelJoin = React.useCallback(
     async (channelId: string) => {

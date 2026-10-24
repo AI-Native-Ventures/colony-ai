@@ -8,6 +8,8 @@ export type ThreadPanelLayoutProps = {
   enterMotion?: boolean;
   headerLeading?: React.ReactNode;
   headerTitleSuffix?: string;
+  /** Focus drawer breadcrumb: show the lock beside a private channel's name. */
+  headerChannelPrivate?: boolean;
   /** Replaces the default "Thread" label. Channel threads leave this unset. */
   headerTitle?: string;
   headerTitleAriaLabel?: string;
@@ -24,6 +26,7 @@ export type ThreadPanelLayoutProps = {
 };
 
 type ThreadPanelLayoutOptions = {
+  headerChannelPrivate?: boolean;
   headerLeading?: React.ReactNode;
   headerTitleSuffix?: string;
   isFocusDrawer: boolean;
@@ -33,6 +36,7 @@ type ThreadPanelLayoutOptions = {
 
 /** Maps channel presentation into the shared thread-panel layout contract. */
 export function getThreadPanelLayout({
+  headerChannelPrivate,
   headerLeading,
   headerTitleSuffix,
   isFocusDrawer,
@@ -42,6 +46,7 @@ export function getThreadPanelLayout({
   return isFocusDrawer
     ? {
         columnMaxWidthPx: THREAD_FOCUS_COLUMN_MAX_WIDTH_PX,
+        headerChannelPrivate,
         headerLeading,
         headerTitleSuffix,
         isFocusMode: true,

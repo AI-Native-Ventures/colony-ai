@@ -45,7 +45,7 @@ export function SystemRow({
   if (!firstEntry) return null;
 
   return (
-    <div className="flex flex-col gap-1 pb-2.5">
+    <div className="flex flex-col gap-1 pb-6">
       <SystemMessageRow
         groupedMessages={groupedMessages}
         message={firstEntry.message}
@@ -135,58 +135,59 @@ export function MessageRowItem({
   if (summary && onOpenThread) {
     const isHighlighted = message.id === highlightedMessageId;
     return (
-      <div
-        className={cn(
-          "group/message relative mx-1 mb-1 flex flex-col gap-0 rounded-2xl px-0 py-1 transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
-          isHighlighted &&
-            "-mx-4 px-4 before:absolute before:-inset-y-1.5 before:inset-x-0 before:animate-[route-target-highlight-fade_2s_ease-out_forwards] before:bg-primary/10 before:content-[''] motion-reduce:before:animate-none sm:-mx-6 sm:px-6",
-        )}
-        data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
-      >
-        <MessageRow
-          channelId={channelId}
-          highlighted={false}
-          hoverBackground={false}
-          hideAgentAccessBadge={hideAgentAccessBadges}
-          isFollowingThread={
-            isFollowingThreadById
-              ? isFollowingThreadById(message.id)
-              : undefined
-          }
-          isUnread={isUnread}
-          isContinuation={isContinuation}
-          playEntrance={playEntrance}
-          onEntranceComplete={onEntranceComplete}
-          message={message}
-          onDelete={canDelete}
-          onEdit={canEdit}
-          onFollowThread={
-            followThreadById ? () => followThreadById(message.id) : undefined
-          }
-          onMarkRead={onMarkRead}
-          onMarkUnread={onMarkUnread}
-          onToggleReaction={onToggleReaction}
-          onReply={onReply}
-          onUnfollowThread={
-            unfollowThreadById
-              ? () => unfollowThreadById(message.id)
-              : undefined
-          }
-          profiles={profiles}
-          showDepthGuides={false}
-          videoReviewContext={videoReviewContext}
-        />
-        <MessageThreadSummaryRow
-          compactTimelineAvatar={compactThreadSummaryAvatars}
-          depth={message.depth}
-          message={message}
-          onOpenThread={onOpenThread}
-          showDepthGuides={false}
-          summary={summary}
-          summaryIndentOffsetRem={-THREAD_REPLY_ROW_MARGIN_INLINE_REM}
-          unreadCount={threadUnreadCounts?.get(message.id)}
-        />
-        {footer}
+      <div className="pb-6">
+        <div
+          className={cn(
+            "group/message c3c-row relative flex flex-col gap-0 transition-colors",
+            isHighlighted && "c3c-row--highlighted",
+          )}
+          data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
+        >
+          <MessageRow
+            channelId={channelId}
+            highlighted={false}
+            hoverBackground={false}
+            hideAgentAccessBadge={hideAgentAccessBadges}
+            isFollowingThread={
+              isFollowingThreadById
+                ? isFollowingThreadById(message.id)
+                : undefined
+            }
+            isUnread={isUnread}
+            isContinuation={isContinuation}
+            playEntrance={playEntrance}
+            onEntranceComplete={onEntranceComplete}
+            message={message}
+            onDelete={canDelete}
+            onEdit={canEdit}
+            onFollowThread={
+              followThreadById ? () => followThreadById(message.id) : undefined
+            }
+            onMarkRead={onMarkRead}
+            onMarkUnread={onMarkUnread}
+            onToggleReaction={onToggleReaction}
+            onReply={onReply}
+            onUnfollowThread={
+              unfollowThreadById
+                ? () => unfollowThreadById(message.id)
+                : undefined
+            }
+            profiles={profiles}
+            showDepthGuides={false}
+            videoReviewContext={videoReviewContext}
+          />
+          <MessageThreadSummaryRow
+            compactTimelineAvatar={compactThreadSummaryAvatars}
+            depth={message.depth}
+            message={message}
+            onOpenThread={onOpenThread}
+            showDepthGuides={false}
+            summary={summary}
+            summaryIndentOffsetRem={-THREAD_REPLY_ROW_MARGIN_INLINE_REM}
+            unreadCount={threadUnreadCounts?.get(message.id)}
+          />
+          {footer ? <div className="relative z-20">{footer}</div> : null}
+        </div>
       </div>
     );
   }
@@ -198,7 +199,7 @@ export function MessageRowItem({
     <div
       className={cn(
         "flex flex-col gap-1",
-        isFollowedByContinuation ? "pb-0" : "pb-2.5",
+        isFollowedByContinuation ? "pb-0" : "pb-6",
       )}
       data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
     >
@@ -207,6 +208,7 @@ export function MessageRowItem({
         highlighted={message.id === highlightedMessageId || isSearchActive}
         hideAgentAccessBadge={hideAgentAccessBadges}
         isContinuation={isContinuation}
+        isFollowedByContinuation={isFollowedByContinuation}
         isUnread={isUnread}
         playEntrance={playEntrance}
         onEntranceComplete={onEntranceComplete}
@@ -222,7 +224,7 @@ export function MessageRowItem({
         showDepthGuides={false}
         videoReviewContext={videoReviewContext}
       />
-      {footer}
+      {footer ? <div className="relative z-20">{footer}</div> : null}
     </div>
   );
 }

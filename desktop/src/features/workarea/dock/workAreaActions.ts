@@ -3,9 +3,10 @@ import {
   closeWorkAreaTab,
   getWorkAreaState,
   openWorkArea,
+  openWorkAreaFile,
   toggleWorkArea,
 } from "./workAreaStore";
-import type { WorkAreaTabKind } from "./workAreaTypes";
+import type { WorkAreaFileRef, WorkAreaTabKind } from "./workAreaTypes";
 
 /**
  * Focus bookkeeping for the dock. Whatever opened it (the Work area button,
@@ -67,6 +68,17 @@ export function openWorkAreaFrom(
 ) {
   rememberTrigger(source);
   openWorkArea(channelId, kind, tabId);
+  focusDockSoon();
+}
+
+/** Open the dock on one file's own tab, on behalf of `source` (a file link or card). */
+export function openWorkAreaFileFrom(
+  channelId: string,
+  file: WorkAreaFileRef,
+  source: Element | null | undefined,
+) {
+  rememberTrigger(source);
+  openWorkAreaFile(channelId, file);
   focusDockSoon();
 }
 

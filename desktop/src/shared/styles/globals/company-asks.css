@@ -1029,16 +1029,6 @@ button.colony-needs-me-row:hover {
   gap: 0.4rem;
 }
 
-.colony-ask-entry-button {
-  flex: none;
-  gap: 0.4rem;
-}
-
-.colony-ask-entry-button svg {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
 .colony-needs-me-copy .colony-needs-me-error {
   color: hsl(var(--destructive));
   white-space: normal;

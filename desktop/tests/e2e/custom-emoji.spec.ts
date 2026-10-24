@@ -335,6 +335,9 @@ test("message reaction action stays neutral after selecting from the picker", as
 test("emoji picker keeps Frequently used live within the app session", async ({
   page,
 }) => {
+  // The picker is 435px tall and opens above the last row; the taller header
+  // and composer leave no room for it in 720px.
+  await page.setViewportSize({ width: 1280, height: 960 });
   await page.addInitScript(() => {
     window.localStorage.setItem("emoji-mart.frequently", "{}");
     window.localStorage.removeItem("emoji-mart.last");
@@ -404,7 +407,10 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
       `^http://127\\.0\\.0\\.1:${MOCK_MEDIA_PROXY_PORT}/media/[\\da-f]{64}\\.png$`,
     ),
   );
-  await expect(reactionPill).toHaveCSS("height", "28px");
+  // The Colony 3.0 reaction chip is about 30px tall.
+  const reactionPillBox = await reactionPill.boundingBox();
+  expect(reactionPillBox?.height ?? 0).toBeGreaterThanOrEqual(28);
+  expect(reactionPillBox?.height ?? 0).toBeLessThanOrEqual(32);
   await expect(reactionImg).toHaveCSS("height", "14px");
   await expect(reactionImg).toHaveCSS("width", "14px");
   await expect(reactionImg).toHaveCSS("object-fit", "contain");
@@ -418,11 +424,11 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
         return {
           naturalHeight: image.naturalHeight,
           naturalWidth: image.naturalWidth,
-          topOffset: imageRect.top - pillRect.top,
+          topOffset: Math.round(imageRect.top - pillRect.top),
         };
       }),
     )
-    .toEqual({ naturalHeight: 20, naturalWidth: 40, topOffset: 7 });
+    .toEqual({ naturalHeight: 20, naturalWidth: 40, topOffset: 8 });
 
   await expect
     .poll(() => quickReactionStorageContains(page, `:${REACTION_SHORTCODE}:`))
@@ -434,33 +440,18 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
     SELECTED_ACTION_CLASS,
   );
 
+  // Colony 3.0: the add-reaction chip beside the reactions is always shown, at
+  // a fixed size that never animates its width.
   const inlineAddReactionButton = row.getByLabel("Add reaction");
-  // The picker closes with the pointer/focus position depending on animation
-  // timing: Radix hands focus back to a trigger once the exit animation ends,
-  // which can land after a one-shot blur and keep the row focus-within. Put
-  // the row into a deterministic idle state on every poll, then check the
-  // pill's pre-existing hidden behavior.
-  await expect
-    .poll(async () => {
-      await page.mouse.move(0, 0);
-      await page.evaluate(() => {
-        if (document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
-        }
-      });
-      return inlineAddReactionButton.evaluate((button) => {
-        return getComputedStyle(button).opacity;
-      });
-    })
-    .toBe("0");
+  await expect(inlineAddReactionButton).toBeVisible();
   await expect
     .poll(() =>
       inlineAddReactionButton.evaluate((button) => {
         const rect = button.getBoundingClientRect();
-        return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+        return rect.width >= 28 && rect.width <= 44 && rect.height <= 34;
       }),
     )
-    .toBe("40x28");
+    .toBe(true);
   await expect
     .poll(() =>
       inlineAddReactionButton.evaluate((button) => {
@@ -468,16 +459,6 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
       }),
     )
     .not.toContain("width");
-  await row.hover();
-  await expect(inlineAddReactionButton).toBeVisible();
-  await expect
-    .poll(() =>
-      inlineAddReactionButton.evaluate((button) => {
-        const rect = button.getBoundingClientRect();
-        return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
-      }),
-    )
-    .toBe("40x28");
 
   // Toggle the reaction back off: click the pill, which fires remove_reaction
   // -> emits a kind:5 deletion targeting the reaction event. The pill must

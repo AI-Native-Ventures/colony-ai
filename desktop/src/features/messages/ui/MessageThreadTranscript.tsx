@@ -25,6 +25,10 @@ type MessageThreadTranscriptProps = {
   testId?: string;
 };
 
+function AfterMessage({ content }: { content: React.ReactNode }) {
+  return content ? <div className="relative z-20">{content}</div> : null;
+}
+
 /**
  * Channel-thread message presentation without the panel header or composer.
  * Callers keep ownership of transport and compose semantics while sharing the
@@ -71,7 +75,8 @@ export function MessageThreadTranscript({
             profiles={profiles}
             showDepthGuides={false}
           />
-          {renderAfterMessage?.(message)}
+          {/* Above the row's hover padding, so controls under it stay clickable. */}
+          <AfterMessage content={renderAfterMessage?.(message)} />
         </React.Fragment>
       ))}
     </div>

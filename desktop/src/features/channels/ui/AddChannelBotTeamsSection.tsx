@@ -1,5 +1,4 @@
-import { Check, Users } from "lucide-react";
-import type * as React from "react";
+import { Check } from "lucide-react";
 
 import type { AgentPersona, AgentTeam } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
@@ -11,40 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/ui/tooltip";
-
-type SelectionChipButtonProps = {
-  disabled: boolean;
-  label: string;
-  onClick: () => void;
-  selected: boolean;
-  children: React.ReactNode;
-};
-
-function SelectionChipButton({
-  disabled,
-  label: _label,
-  onClick,
-  selected,
-  children,
-}: SelectionChipButtonProps) {
-  return (
-    <button
-      aria-pressed={selected}
-      className={cn(
-        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-          ? "border-primary bg-primary/10 text-foreground"
-          : "border-border/80 bg-background/60 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
+import { ADD_AGENTS_SECTION_LABEL_CLASS } from "./AddChannelBotPersonasSection";
 
 type AddChannelBotTeamsSectionProps = {
   canToggleSelections: boolean;
@@ -52,6 +18,8 @@ type AddChannelBotTeamsSectionProps = {
   isLoading: boolean;
   onToggleTeam: (personaIds: string[]) => void;
   personas: AgentPersona[];
+  /** Lowercased text from the "Find an agent" box. */
+  query?: string;
   selectedPersonaIds: readonly string[];
   teams: AgentTeam[];
 };
@@ -62,125 +30,131 @@ export function AddChannelBotTeamsSection({
   isLoading,
   onToggleTeam,
   personas,
+  query = "",
   selectedPersonaIds,
   teams,
 }: AddChannelBotTeamsSectionProps) {
-  if (isLoading || teams.length === 0) {
+  const visibleTeams = teams.filter(
+    (team) => query.length === 0 || team.name.toLowerCase().includes(query),
+  );
+  if (isLoading || visibleTeams.length === 0) {
     return null;
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <div className="text-sm font-medium">Teams</div>
-        <p className="text-xs text-muted-foreground">
-          Select a team to toggle all its agents at once.
-        </p>
-      </div>
+    <TooltipProvider>
+      <div className="flex flex-col gap-1.5">
+        <div className={ADD_AGENTS_SECTION_LABEL_CLASS}>Teams</div>
+        {visibleTeams.map((team) => {
+          const resolution = resolveTeamPersonas(team, personas);
+          const validIds = resolution.resolvedPersonaIds;
+          const allSelected =
+            validIds.length > 0 &&
+            validIds.every((id) => selectedPersonaIds.includes(id));
+          const inChannelCount = inChannelPersonaIds
+            ? validIds.filter((id) => inChannelPersonaIds.has(id)).length
+            : 0;
+          const allInChannel =
+            inChannelCount > 0 && inChannelCount === validIds.length;
+          const disabled =
+            !canToggleSelections || !resolution.isUsable || allInChannel;
 
-      <TooltipProvider>
-        <div className="flex flex-wrap gap-2">
-          {teams.map((team) => {
-            const resolution = resolveTeamPersonas(team, personas);
-            const validIds = resolution.resolvedPersonaIds;
-            const allSelected =
-              validIds.length > 0 &&
-              validIds.every((id) => selectedPersonaIds.includes(id));
-            const inChannelCount = inChannelPersonaIds
-              ? validIds.filter((id) => inChannelPersonaIds.has(id)).length
-              : 0;
-            const allInChannel =
-              inChannelCount > 0 && inChannelCount === validIds.length;
-
-            return (
-              <Tooltip key={team.id}>
-                <TooltipTrigger asChild>
-                  <div>
-                    <SelectionChipButton
-                      disabled={
-                        !canToggleSelections ||
-                        !resolution.isUsable ||
-                        allInChannel
-                      }
-                      label={team.name}
-                      onClick={() => onToggleTeam(validIds)}
-                      selected={allSelected}
-                    >
-                      <Users
-                        className={cn(
-                          "h-4 w-4",
-                          allSelected ? "text-primary" : "text-current",
-                        )}
-                      />
-                      {team.name}
-                      <span
-                        className={cn(
-                          "text-xs",
-                          allSelected ? "text-primary/70" : "text-current/70",
-                        )}
-                      >
-                        ({validIds.length})
-                      </span>
-                      {inChannelCount > 0 ? (
-                        <span
+          return (
+            <Tooltip key={team.id}>
+              <TooltipTrigger asChild>
+                <button
+                  aria-pressed={allSelected}
+                  className={cn(
+                    "flex min-h-[3.625rem] w-full items-center gap-3 rounded-colony-chip px-3.5 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40",
+                    allSelected
+                      ? "bg-colony-accent-soft shadow-[inset_0_0_0_1.5px_#B9A9EE]"
+                      : "shadow-[inset_0_0_0_1px_hsl(var(--colony-border))] hover:bg-colony-surface",
+                    disabled && "cursor-not-allowed opacity-50",
+                  )}
+                  data-testid={`add-channel-team-${team.id}`}
+                  disabled={disabled}
+                  onClick={() => onToggleTeam(validIds)}
+                  type="button"
+                >
+                  <input
+                    aria-hidden="true"
+                    checked={allSelected}
+                    className="pointer-events-none m-0 size-[1.125rem] shrink-0 accent-colony-accent"
+                    readOnly
+                    tabIndex={-1}
+                    type="checkbox"
+                  />
+                  <span className="flex shrink-0 items-center">
+                    {resolution.resolvedPersonas
+                      .slice(0, 3)
+                      .map((persona, index) => (
+                        <ProfileAvatar
+                          avatarUrl={persona.avatarUrl}
                           className={cn(
-                            "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-medium leading-none",
-                            allSelected
-                              ? "bg-primary/15 text-primary"
-                              : "bg-muted/60 text-muted-foreground",
+                            "size-[1.625rem] text-3xs",
+                            index > 0 && "-ml-2",
                           )}
+                          key={persona.id}
+                          label={persona.displayName}
+                          shape="squircle"
+                        />
+                      ))}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-extrabold text-colony-fg">
+                      {team.name}
+                    </span>
+                    <span className="truncate text-xs font-semibold text-colony-muted">
+                      {inChannelCount > 0
+                        ? allInChannel
+                          ? "All in channel"
+                          : `${inChannelCount} in channel`
+                        : `team · ${validIds.length} ${validIds.length === 1 ? "agent" : "agents"}`}
+                    </span>
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-left">
+                <div className="space-y-1.5">
+                  <p className="font-medium">{team.name}</p>
+                  {team.description ? (
+                    <p className="text-2xs text-secondary-foreground/80">
+                      {team.description}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-1">
+                    {resolution.resolvedPersonas.map((persona) => {
+                      const personaInChannel =
+                        inChannelPersonaIds?.has(persona.id) ?? false;
+                      return (
+                        <div
+                          className="flex items-center gap-1 rounded-full bg-secondary-foreground/10 px-1.5 py-0.5"
+                          data-testid="team-tooltip-persona-chip"
+                          key={persona.id}
                         >
-                          <Check className="h-4 w-4" />
-                          {allInChannel
-                            ? "All in channel"
-                            : `${inChannelCount} in channel`}
-                        </span>
-                      ) : null}
-                    </SelectionChipButton>
+                          <ProfileAvatar
+                            avatarUrl={persona.avatarUrl}
+                            className="h-4 w-4 text-3xs bg-secondary-foreground/20 text-secondary-foreground"
+                            label={persona.displayName}
+                            shape="squircle"
+                            testId="team-tooltip-persona-avatar"
+                          />
+                          <span className="text-2xs text-secondary-foreground">
+                            {persona.displayName}
+                          </span>
+                          {personaInChannel ? (
+                            <Check className="h-4 w-4 text-emerald-300" />
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs text-left">
-                  <div className="space-y-1.5">
-                    <p className="font-medium">{team.name}</p>
-                    {team.description ? (
-                      <p className="text-2xs text-secondary-foreground/80">
-                        {team.description}
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap gap-1">
-                      {resolution.resolvedPersonas.map((persona) => {
-                        const personaInChannel =
-                          inChannelPersonaIds?.has(persona.id) ?? false;
-                        return (
-                          <div
-                            className="flex items-center gap-1 rounded-full bg-secondary-foreground/10 px-1.5 py-0.5"
-                            data-testid="team-tooltip-persona-chip"
-                            key={persona.id}
-                          >
-                            <ProfileAvatar
-                              avatarUrl={persona.avatarUrl}
-                              className="h-4 w-4 text-3xs bg-secondary-foreground/20 text-secondary-foreground"
-                              label={persona.displayName}
-                              shape="squircle"
-                              testId="team-tooltip-persona-avatar"
-                            />
-                            <span className="text-2xs text-secondary-foreground">
-                              {persona.displayName}
-                            </span>
-                            {personaInChannel ? (
-                              <Check className="h-4 w-4 text-emerald-300" />
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </TooltipProvider>
-    </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }

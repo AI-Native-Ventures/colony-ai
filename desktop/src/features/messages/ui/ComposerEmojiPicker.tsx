@@ -25,6 +25,7 @@ type ComposerEmojiPickerProps = {
   onOpenChange: (open: boolean) => void;
   onTriggerMouseDown: () => void;
   open: boolean;
+  triggerClassName?: string;
   triggerIcon?: React.ReactNode;
 };
 
@@ -42,6 +43,7 @@ export const ComposerEmojiPicker = React.memo(function ComposerEmojiPicker({
   onOpenChange,
   onTriggerMouseDown,
   open,
+  triggerClassName,
   triggerIcon,
 }: ComposerEmojiPickerProps) {
   const [pickerTab, setPickerTab] = React.useState<ComposerPickerTab>("emoji");
@@ -94,6 +96,7 @@ export const ComposerEmojiPicker = React.memo(function ComposerEmojiPicker({
               aria-label={
                 gifsAvailable ? "Insert emoji or GIF" : "Insert emoji"
               }
+              className={triggerClassName}
               data-testid="composer-emoji-button"
               disabled={disabled}
               onMouseDown={onTriggerMouseDown}

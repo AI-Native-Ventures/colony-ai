@@ -19,6 +19,9 @@ import { COLONY3_NOW } from "./colony3Fixture";
  * here is specific to one board.
  */
 
+/** The signed-in user (Lerato Molefe) as a message author or tag target. */
+export const COLONY3_SELF = "self";
+
 /** People the conversation boards show besides Lerato and the reference agents. */
 export const COLONY3_PEOPLE = {
   noluthando: { name: "Noluthando Khumalo", pubkey: "e1".repeat(32) },
@@ -92,8 +95,9 @@ export function colony3Profiles(): NonNullable<Colony3Extras["profiles"]> {
  */
 export function colony3PositionOptions(
   titles: Record<string, string> = COLONY3_JOB_TITLES,
+  /** Pass a secret to sign other relay records (work heads) with the same relay key. */
+  relaySecret: Uint8Array = generateSecretKey(),
 ) {
-  const relaySecret = generateSecretKey();
   const events = Object.entries(titles).map(([pubkey, title]) =>
     finalizeEvent(
       {
@@ -133,7 +137,13 @@ export function colony3Extras(own: Partial<Colony3Extras> = {}): Colony3Extras {
     profiles: [...colony3Profiles(), ...(own.profiles ?? [])],
     channels: own.channels ?? [],
     members: [...colony3OliveMembers(), ...(own.members ?? [])],
+    patchChannels: own.patchChannels ?? [],
+    readChannelIds: own.readChannelIds ?? [],
     leaveChannelIds: own.leaveChannelIds ?? [],
+    clearMessageChannelIds: own.clearMessageChannelIds ?? [],
+    clearMessagesIn: own.clearMessagesIn ?? [],
     messages: own.messages ?? [],
+    ...(own.workspaceFiles ? { workspaceFiles: own.workspaceFiles } : {}),
+    ...(own.feed ? { feed: own.feed } : {}),
   };
 }

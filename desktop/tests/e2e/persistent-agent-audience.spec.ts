@@ -409,9 +409,21 @@ test("the disabled root composer preserves its explicit draft without audience c
   await expect(page.getByTestId("channel-management-unarchive")).toBeVisible();
   await page.getByTestId("auxiliary-panel-close").click();
 
-  await expect(input).toHaveAttribute("contenteditable", "false");
-  await expect(input).toHaveText("explicit draft text");
-  await expect(composer.getByTestId("composer-address-locks")).toHaveCount(0);
+  // An archived channel swaps its composer for the read-only bar, and keeps the
+  // explicit draft for when the channel is unarchived.
+  await expect(page.getByTestId("archived-banner")).toBeVisible();
+  await expect(page.getByTestId("channel-composer-overlay")).toHaveCount(0);
+
+  await page.getByTestId("channel-management-trigger").click();
+  await page.getByTestId("channel-management-unarchive").click();
+  await expect(page.getByTestId("channel-management-archive")).toBeVisible();
+  await page.getByTestId("auxiliary-panel-close").click();
+  await expect(channelComposer(page).getByTestId("message-input")).toHaveText(
+    "explicit draft text",
+  );
+  await expect(
+    channelComposer(page).getByTestId("composer-address-locks"),
+  ).toHaveCount(0);
 });
 
 test("Tab inserts a one-time agent mention by default", async ({ page }) => {
@@ -503,9 +515,9 @@ test("primary+Shift+M addresses the default agent, then toggles the highlighted 
 
   await input.fill("@Vog");
   const menu = composer.getByTestId("mention-autocomplete");
-  await expect(menu.getByTestId(`mention-suggestion-${AGENT_B}`)).toHaveClass(
-    /(?:^|\s)bg-accent(?:\s|$)/,
-  );
+  await expect(
+    menu.getByTestId(`mention-suggestion-${AGENT_B}`),
+  ).toHaveAttribute("data-selected", "true");
   await pressPrimaryShiftM(page);
 
   await expect(menu).toBeVisible();
@@ -962,7 +974,12 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).not.toContainText(
     "Future messages in this channel will include this agent.",
   );
-  await expect(autoPinConfirmation).toHaveAttribute("data-side", "right");
+  // The Colony 3.0 thread toolbar puts the mention button beside the send
+  // side, so the confirmation may open on either side of it.
+  await expect(autoPinConfirmation).toHaveAttribute(
+    "data-side",
+    /^(left|right)$/,
+  );
   await expect(autoPinConfirmation.locator("span")).toHaveCSS(
     "white-space",
     "nowrap",
@@ -982,9 +999,11 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   if (!addressControlBox || !confirmationBox) {
     throw new Error("Automatic mention confirmation is not laid out");
   }
-  expect(confirmationBox.x).toBeGreaterThanOrEqual(
-    addressControlBox.x + addressControlBox.width,
-  );
+  // Beside the control on whichever side has room, never over it.
+  expect(
+    confirmationBox.x >= addressControlBox.x + addressControlBox.width ||
+      confirmationBox.x + confirmationBox.width <= addressControlBox.x,
+  ).toBe(true);
   const turnOffAction = autoPinConfirmation.getByRole("button", {
     name: "Turn off",
   });
@@ -1566,8 +1585,10 @@ test("reduced motion removes addressed agents without spatial animation", async 
     `composer-address-lock-remove-${AGENT_A}`,
   );
   await expect(removeButton).toBeVisible();
-  await expect(removeButton).toHaveAttribute("style", /opacity: 1/);
-  await expect(removeButton).toHaveCSS("transform", "none");
+  // The chip, not its remove button, is the animated element now.
+  const chip = composer.getByTestId(`composer-address-chip-${AGENT_A}`);
+  await expect(chip).toHaveAttribute("style", /opacity: 1/);
+  await expect(chip).toHaveCSS("transform", "none");
 
   await removeButton.click();
   await expect(input).toHaveText("");

@@ -524,7 +524,8 @@ test("global search offers an optional current-channel scope", async ({
     "0px",
   );
   await expect(scopeControl.locator("..")).toHaveCSS("padding-top", "14px");
-  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "14px");
+  // The Colony 3.0 scope row pads 14px above and none below, as the Search board draws it.
+  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "0px");
   const [controlBox, dialogBox] = await Promise.all([
     scopeControl.boundingBox(),
     page.getByTestId("search-results").boundingBox(),
@@ -565,8 +566,9 @@ test("global search offers an optional current-channel scope", async ({
     relevantHeader.evaluate(contentStart),
     firstScopedResult.evaluate(contentStart),
   ]);
-  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(1);
-  expect(Math.abs(inputStart - resultStart)).toBeLessThanOrEqual(1);
+  // The Search board insets its section labels 2px from the input.
+  expect(Math.abs(inputStart - headerStart)).toBeLessThanOrEqual(2);
+  expect(Math.abs(inputStart - resultStart)).toBeLessThanOrEqual(2);
 
   await input.fill("x");
   await expect(page.getByTestId("search-results")).toContainText(
@@ -618,7 +620,8 @@ test("global search offers a conversation-specific scope in direct messages", as
     "0px",
   );
   await expect(scopeControl.locator("..")).toHaveCSS("padding-top", "14px");
-  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "14px");
+  // The Colony 3.0 scope row pads 14px above and none below, as the Search board draws it.
+  await expect(scopeControl.locator("..")).toHaveCSS("padding-bottom", "0px");
 
   await scopeControl.click();
 
@@ -873,10 +876,9 @@ test("replaces the channel pane when switching channels", async ({ page }) => {
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "This is the beginning of the regular channel.",
-  );
+  // An empty channel shows the empty state card, as the Channel states board
+  // draws it.
+  await expect(page.getByTestId("message-empty")).toBeVisible();
   await expect(page.getByTestId("message-timeline")).not.toContainText(
     "Welcome to general",
   );
@@ -885,7 +887,7 @@ test("replaces the channel pane when switching channels", async ({ page }) => {
 
   await page.getByTestId("channel-engineering").click();
   await expect(page.getByTestId("chat-title")).toHaveText("engineering");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
+  await expect(page.getByTestId("message-empty")).toBeVisible();
   await expect(page.getByTestId("message-timeline")).toHaveCount(1);
   await expect(page.getByTestId("message-timeline-day-divider")).toHaveCount(0);
 });
@@ -943,7 +945,8 @@ test("supports multiline drafts with Ctrl+Enter and sends with Enter", async ({
   const initialInputHeight = await input.evaluate(
     (element) => (element as HTMLElement).clientHeight,
   );
-  expect(initialInputHeight).toBeLessThan(40);
+  // The Colony 3.0 card gives the editor a two line start (the board's 51px).
+  expect(initialInputHeight).toBeLessThan(56);
   await input.fill(firstLine);
   for (const line of restOfLines) {
     await input.press("Shift+Enter");

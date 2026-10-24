@@ -266,7 +266,7 @@ export function createWorkspaceFileService({ invoke }) {
           (await realpath(currentRoot)) !== file.root
         )
           throw new Error("File is unavailable");
-        return { path: file.name, content };
+        return { path: file.name, content, modifiedAt: info.mtimeMs };
       } catch {
         throw new Error(
           "This file is no longer available in the agent's workspace.",

@@ -2,9 +2,12 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { MessageSquareOff, Pin } from "lucide-react";
 import { plainRelayErrorMessage } from "@/shared/lib/relayError";
 import { Button } from "@/shared/ui/button";
 
@@ -12,6 +15,20 @@ import { useChannelPinsQuery, useUnpinMessageMutation } from "../hooks";
 import { type ChannelPin, pinEventsBy, pinPreview } from "../pinModels";
 
 const TEST_ID = "pinned-messages";
+
+/** "3 Oct, 09:12": the workspace's 24 hour clock beside the message's day. */
+const MESSAGE_DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+});
+const MESSAGE_CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatMessageWhen(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1000);
+  return `${date.getDate()} ${MESSAGE_DAY_FORMATTER.format(date)}, ${MESSAGE_CLOCK_FORMATTER.format(date)}`;
+}
 
 function formatPinned(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
@@ -30,10 +47,13 @@ function formatPinned(unixSeconds: number): string {
 export function PinnedMessagesList({
   channelId,
   empty,
+  variant = "list",
 }: {
   channelId: string;
   /** Replaces the default empty text (the Pins screen keeps its own scene). */
   empty?: React.ReactNode;
+  /** `page` is the Pins screen's card per pin; `list` is the compact rows. */
+  variant?: "list" | "page";
 }) {
   const query = useChannelPinsQuery(channelId);
   const unpin = useUnpinMessageMutation(channelId);
@@ -63,6 +83,7 @@ export function PinnedMessagesList({
       preferResolvedSelfLabel: true,
     });
 
+  const lookupJobTitle = useJobTitleLookup(variant === "page");
   const failedError = query.isError ? query.error : null;
   React.useEffect(() => {
     // The raw text belongs in the log, never on screen.
@@ -141,6 +162,133 @@ export function PinnedMessagesList({
           find it.
         </p>
       )
+    );
+  }
+
+  if (variant === "page") {
+    return (
+      <div className="c3pin-list" data-testid={TEST_ID}>
+        {query.isError ? (
+          <div
+            className="c3pin-stale"
+            data-testid={`${TEST_ID}-stale`}
+            role="status"
+          >
+            <span>Pinned messages could not be refreshed.</span>
+            <Button
+              onClick={() => void query.refetch()}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              Retry
+            </Button>
+          </div>
+        ) : null}
+        <ul aria-label="Pinned messages" className="c3pin-cards">
+          {pins.map((pin) => {
+            const mine = pinEventsBy(pin, me).length > 0;
+            const pending = pin.pins.some((record) =>
+              record.pinEventId.startsWith("pending:"),
+            );
+            const target = pin.target;
+            const pinnedLine = `Pinned by ${label(pin.pinnedBy)}${
+              pin.pinnedAt ? ` · ${formatPinned(pin.pinnedAt)}` : ""
+            }`;
+            const pinnedByLine = (
+              <span className="c3pin-pinned">
+                <Pin aria-hidden="true" className="size-3.5" />
+                {pinnedLine}
+              </span>
+            );
+            if (target.state !== "message") {
+              return (
+                <li
+                  className="c3pin-card"
+                  data-state="unavailable"
+                  data-testid={`${TEST_ID}-row-${pin.targetId}`}
+                  key={pin.targetId}
+                >
+                  <div
+                    className="c3pin-unavailable"
+                    data-testid={`${TEST_ID}-unavailable-${pin.targetId}`}
+                  >
+                    <span className="c3pin-unavailable-icon">
+                      <MessageSquareOff aria-hidden="true" className="size-5" />
+                    </span>
+                    <div className="c3pin-card-body">
+                      <strong className="c3pin-unavailable-title">
+                        This message is no longer available
+                      </strong>
+                      <span className="c3pin-unavailable-sub">
+                        It was deleted, or you can't read it.
+                      </span>
+                      {pinnedByLine}
+                    </div>
+                  </div>
+                </li>
+              );
+            }
+            const author = target.author;
+            const authorProfile = profiles?.[author.toLowerCase()];
+            const title = lookupJobTitle(author);
+            const when = formatMessageWhen(target.createdAt);
+            return (
+              <li
+                className="c3pin-card"
+                data-testid={`${TEST_ID}-row-${pin.targetId}`}
+                key={pin.targetId}
+              >
+                <ProfileAvatar
+                  avatarUrl={authorProfile?.avatarUrl ?? null}
+                  className="c3pin-avatar"
+                  label={label(author)}
+                  shape={authorProfile?.isAgent ? "squircle" : "circle"}
+                />
+                <div className="c3pin-card-body">
+                  <div className="c3pin-card-head">
+                    <strong>{label(author)}</strong>
+                    <span>{title ? `${title} · ${when}` : when}</span>
+                  </div>
+                  <p className="c3pin-card-text">
+                    {pinPreview(target.content) || "Message with no text"}
+                  </p>
+                  <div className="c3pin-card-foot">
+                    {pinnedByLine}
+                    <span className="flex-1" />
+                    <button
+                      aria-label={`Open pinned message from ${label(author)}`}
+                      className="c3pin-open"
+                      data-testid={`${TEST_ID}-open-${pin.targetId}`}
+                      onClick={() =>
+                        void goChannel(channelId, { messageId: pin.targetId })
+                      }
+                      type="button"
+                    >
+                      Open message
+                    </button>
+                    {mine ? (
+                      <button
+                        aria-label={`Unpin the message from ${label(author)}`}
+                        className="c3pin-unpin"
+                        data-testid={`${TEST_ID}-unpin-${pin.targetId}`}
+                        disabled={pending || unpin.isPending}
+                        onClick={() => onUnpin(pin)}
+                        type="button"
+                      >
+                        Unpin
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {query.data?.truncated ? (
+          <p className="c3pin-truncated">Showing the most recent pins only.</p>
+        ) : null}
+      </div>
     );
   }
 
