@@ -1,23 +1,29 @@
 import * as React from "react";
-import {
-  CalendarClock,
-  Check,
-  ChevronDown,
-  Clock3,
-  SmilePlus,
-} from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
+import {
+  CommuteIcon,
+  HomeOfficeIcon,
+  MeetingIcon,
+  SickIcon,
+  StatusFaceIcon,
+  VacationIcon,
+} from "@/features/profile/ui/profileIcons";
 import {
   DEFAULT_USER_STATUS_EMOJI,
   StatusEmoji,
 } from "@/features/user-status/ui/StatusEmoji";
 import type { UserStatusInput } from "@/features/user-status/types";
-import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { Calendar } from "@/shared/ui/calendar";
-import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
-import { Dialog } from "@/shared/ui/dialog";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,22 +31,43 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import "@/features/profile/ui/ProfileMenus.css";
 
+/** Quick statuses: each has the board's glyph in its own colour. */
 const PRESETS = [
-  { text: "In a meeting", emoji: "\uD83D\uDDE3\uFE0F" },
-  { text: "Commuting", emoji: "\uD83D\uDE8C" },
-  { text: "Out sick", emoji: "\uD83E\uDD12" },
-  { text: "Vacationing", emoji: "\uD83C\uDFD6\uFE0F" },
-  { text: "Working remotely", emoji: "\uD83C\uDFE0" },
+  {
+    text: "In a meeting",
+    emoji: "\uD83D\uDDE3\uFE0F",
+    Icon: MeetingIcon,
+    color: "#4A36A6",
+  },
+  {
+    text: "Commuting",
+    emoji: "\uD83D\uDE8C",
+    Icon: CommuteIcon,
+    color: "#2B5899",
+  },
+  {
+    text: "Out sick",
+    emoji: "\uD83E\uDD12",
+    Icon: SickIcon,
+    color: "#A62E4E",
+  },
+  {
+    text: "Vacationing",
+    emoji: "\uD83C\uDFD6\uFE0F",
+    Icon: VacationIcon,
+    color: "#8A5300",
+  },
+  {
+    text: "Working remotely",
+    emoji: "\uD83C\uDFE0",
+    Icon: HomeOfficeIcon,
+    color: "#2B7350",
+  },
 ] as const;
 
-const DURATIONS = [
-  "1 hour",
-  "8 hours",
-  "Today",
-  "This week",
-  "Custom",
-] as const;
+const DURATIONS = ["Today", "This week", "Custom"] as const;
 
 type DurationLabel = (typeof DURATIONS)[number];
 
@@ -114,8 +141,6 @@ function inferredDuration(
   const updated = updatedAt * 1_000;
   const withinTwoMinutes = (expected: number) =>
     Math.abs(expiration - expected) <= 2 * 60_000;
-  if (withinTwoMinutes(updated + 60 * 60_000)) return "1 hour";
-  if (withinTwoMinutes(updated + 8 * 60 * 60_000)) return "8 hours";
   if (withinTwoMinutes(endOfToday(new Date(updated)).getTime())) return "Today";
   if (withinTwoMinutes(endOfWeek(new Date(updated)).getTime())) {
     return "This week";
@@ -154,32 +179,6 @@ function withCustomTime(current: Date, value: string) {
   next.setHours(hour, minute, 0, 0);
   return next;
 }
-
-function StatusSection({
-  label,
-  children,
-  className,
-}: {
-  label?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("space-y-1.5", className)}>
-      {label ? (
-        <h3 className="px-1 text-xs font-medium text-muted-foreground">
-          {label}
-        </h3>
-      ) : null}
-      <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-muted/20">
-        {children}
-      </div>
-    </section>
-  );
-}
-
-const ROW_CLASS =
-  "flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50 focus:outline-none focus-visible:bg-muted/50";
 
 export function SetStatusDialog({
   open,
@@ -281,10 +280,6 @@ export function SetStatusDialog({
     }
     const expiresAt = (() => {
       switch (duration) {
-        case "1 hour":
-          return new Date(now.getTime() + 60 * 60_000);
-        case "8 hours":
-          return new Date(now.getTime() + 8 * 60 * 60_000);
         case "Today":
           return endOfToday(now);
         case "This week":
@@ -342,124 +337,127 @@ export function SetStatusDialog({
     }
   }
 
+  function chooseDuration(option: DurationLabel) {
+    setDuration(option);
+    setDurationTouched(true);
+    setSaveError("");
+  }
+
+  /** Clear status: ends an existing status, or empties the draft. */
+  function handleClearStatus() {
+    if (baseline.hasExistingStatus) {
+      handleClear();
+      return;
+    }
+    setText("");
+    setEmoji("");
+    setDurationTouched(false);
+    setSaveError("");
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <ChooserDialogContent
-        className="sm:max-w-[420px]"
-        contentClassName="space-y-4 pt-3"
+      <DialogContent
+        aria-describedby="set-status-description"
+        className="ps-dialog"
         data-testid="set-status-dialog"
-        footer={
-          <div className="flex w-full items-center justify-between gap-3">
-            {baseline.hasExistingStatus ? (
-              <Button
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                data-testid="set-status-clear"
-                onClick={handleClear}
-                type="button"
-                variant="ghost"
-              >
-                Clear status
-              </Button>
-            ) : (
-              <span />
-            )}
-            <Button
-              aria-label="Save status"
-              data-testid="set-status-save"
-              disabled={!canSave}
-              onClick={handleSave}
-              type="button"
-            >
-              Save status
-            </Button>
-          </div>
-        }
-        footerClassName="border-t-0 pt-0"
-        headerClassName="pb-2"
-        headerSubtitle="Let others know what you're up to."
-        title="Set a status"
+        showCloseButton={false}
+        surface="none"
       >
-        <div className="flex min-h-12 items-stretch rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring">
-          <Popover onOpenChange={setPickerOpen} open={pickerOpen}>
-            <div className="shrink-0">
+        <form
+          className="ps-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSave();
+          }}
+        >
+          <div className="ps-head">
+            <div className="ps-head-copy">
+              <DialogTitle className="ps-title">Set a status</DialogTitle>
+              <DialogDescription className="ps-sub" id="set-status-description">
+                Let others know what you’re up to.
+              </DialogDescription>
+            </div>
+            <DialogClose aria-label="Close" className="ps-close">
+              <CloseIcon size={17} strokeWidth={2.4} />
+            </DialogClose>
+          </div>
+
+          <div className="ps-input-row">
+            <Popover onOpenChange={setPickerOpen} open={pickerOpen}>
               <PopoverTrigger asChild>
                 <button
                   aria-label="Choose a status emoji"
-                  className="flex h-12 w-12 items-center justify-center rounded-xl transition-colors hover:bg-accent"
+                  className="ps-emoji"
                   type="button"
                 >
                   {effectiveEmoji ? (
                     <StatusEmoji className="h-5 w-5" value={effectiveEmoji} />
                   ) : (
-                    <SmilePlus className="h-5 w-5 text-muted-foreground" />
+                    <StatusFaceIcon size={20} />
                   )}
                 </button>
               </PopoverTrigger>
-            </div>
-            <PopoverContent
-              align="start"
-              className="w-auto overflow-hidden rounded-2xl p-0"
-              sideOffset={4}
-            >
-              <EmojiPicker autoFocus onSelect={handleEmojiSelect} />
-            </PopoverContent>
-          </Popover>
-          <input
-            className="min-w-0 flex-1 bg-transparent px-1 pr-3 text-base outline-none placeholder:text-muted-foreground"
-            data-testid="set-status-input"
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="What’s your status?"
-            value={text}
-          />
-        </div>
-
-        <StatusSection label="Duration">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={ROW_CLASS}
-                data-testid="set-status-duration"
-                type="button"
+              <PopoverContent
+                align="start"
+                className="w-auto overflow-hidden rounded-2xl p-0"
+                sideOffset={4}
               >
-                <Clock3 className="h-5 w-5 text-muted-foreground" />
-                <span className="flex-1">Duration</span>
-                <span className="text-muted-foreground">{duration}</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-52">
+                <EmojiPicker autoFocus onSelect={handleEmojiSelect} />
+              </PopoverContent>
+            </Popover>
+            <input
+              aria-label="Status"
+              className="ps-input"
+              data-testid="set-status-input"
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="What’s your status?"
+              value={text}
+            />
+          </div>
+
+          <fieldset className="ps-duration" data-testid="set-status-duration">
+            <legend>Clear after</legend>
+            <div className="ps-track">
               {DURATIONS.map((option) => (
-                <DropdownMenuItem
-                  className="justify-between"
+                <label
+                  className="ps-segment"
+                  data-checked={duration === option ? "true" : undefined}
                   key={option}
-                  onSelect={() => {
-                    setDuration(option);
-                    setDurationTouched(true);
-                    setSaveError("");
-                  }}
                 >
+                  <input
+                    checked={duration === option}
+                    name="status-duration"
+                    onChange={() => chooseDuration(option)}
+                    // Choosing the option that is already selected still
+                    // counts as picking a duration (it applies Today to a
+                    // status saved without one), and a change event does not
+                    // fire for that.
+                    onClick={() => chooseDuration(option)}
+                    type="radio"
+                    value={option}
+                  />
                   {option}
-                  {duration === option ? <Check className="h-4 w-4" /> : null}
-                </DropdownMenuItem>
+                </label>
               ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </div>
+          </fieldset>
+
           {duration === "Custom" ? (
-            <div className={ROW_CLASS}>
-              <CalendarClock className="h-5 w-5 text-muted-foreground" />
+            <div className="ps-custom">
               <span>Until</span>
               <Popover onOpenChange={setCalendarOpen} open={calendarOpen}>
                 <PopoverTrigger asChild>
                   <button
                     aria-label="Status expiration date"
-                    className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    className="ps-picker"
                     type="button"
                   >
                     <span className="truncate">
                       {formattedDate(customUntil)}
                     </span>
-                    <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
+                    <ChevronDown className="ml-auto h-4 w-4 shrink-0" />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-auto p-0">
@@ -483,7 +481,7 @@ export function SetStatusDialog({
                 <DropdownMenuTrigger asChild>
                   <button
                     aria-label="Status expiration time"
-                    className="flex h-9 w-28 shrink-0 items-center rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    className="ps-picker ps-picker-time"
                     type="button"
                   >
                     <span>
@@ -491,7 +489,7 @@ export function SetStatusDialog({
                         (time) => time.value === toLocalTimeValue(customUntil),
                       )?.label ?? formattedTime(customUntil)}
                     </span>
-                    <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
+                    <ChevronDown className="ml-auto h-4 w-4 shrink-0" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -525,34 +523,49 @@ export function SetStatusDialog({
             </div>
           ) : null}
           {saveError || (!expirationIsFuture && isDirty) ? (
-            <p className="px-3 py-2 text-xs text-destructive" role="alert">
+            <p className="ps-error" role="alert">
               {saveError || "Choose a duration in the future."}
             </p>
           ) : null}
-        </StatusSection>
 
-        {!baseline.hasExistingStatus ? (
-          <StatusSection label="Quick statuses">
+          <div className="ps-quick">
+            <span className="ps-eyebrow">Quick statuses</span>
             {PRESETS.map((preset) => (
               <button
-                className={ROW_CLASS}
+                className="ps-quick-row"
                 data-testid={`set-status-preset-${preset.text.toLowerCase().replace(/\s+/g, "-")}`}
                 key={preset.text}
                 onClick={() => handlePresetClick(preset)}
                 type="button"
               >
-                <span
-                  aria-hidden="true"
-                  className="flex w-5 justify-center text-lg"
-                >
-                  {preset.emoji}
-                </span>
-                <span>{preset.text}</span>
+                <preset.Icon size={18} style={{ color: preset.color }} />
+                {preset.text}
               </button>
             ))}
-          </StatusSection>
-        ) : null}
-      </ChooserDialogContent>
+          </div>
+
+          <div className="ps-foot">
+            <button
+              className="ps-clear"
+              data-testid="set-status-clear"
+              onClick={handleClearStatus}
+              type="button"
+            >
+              Clear status
+            </button>
+            <span className="flex-1" />
+            <button
+              aria-label="Save status"
+              className="ps-save"
+              data-testid="set-status-save"
+              disabled={!canSave}
+              type="submit"
+            >
+              Save status
+            </button>
+          </div>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }

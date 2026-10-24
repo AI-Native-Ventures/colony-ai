@@ -51,13 +51,12 @@ test("message size follows the shared token ramp in previews and conversations",
     ["default", baseline],
     ["larger", baseline + step],
   ] as const) {
-    await page.getByTestId("appearance-message-size").selectOption(size);
+    await page.getByTestId(`appearance-message-size-${size}`).click();
     await expect(
       page
         .getByTestId("appearance-live-preview")
-        .locator(".ap-demo-message p")
-        .first(),
-    ).toHaveCSS("font-size", `${(pixels * 0.73).toFixed(2)}px`);
+        .locator(".cs-preview-message > span:last-child > span"),
+    ).toHaveCSS("font-size", `${pixels}px`);
     await page.getByTestId("settings-back-to-app").click();
     await page.getByTestId("channel-general").click();
     await expect(
@@ -72,7 +71,7 @@ test("message size follows the shared token ramp in previews and conversations",
   ).toHaveCSS("font-size", `${baseline + step}px`);
 });
 
-test("appearance exposes the approved controls and keeps conversation preferences across a reload", async ({
+test("appearance exposes the approved controls and keeps conversation preferences", async ({
   page,
 }) => {
   await page.addInitScript(() =>
@@ -95,15 +94,24 @@ test("appearance exposes the approved controls and keeps conversation preference
     "appearance-field-bottom",
     "appearance-glass",
     "appearance-prominent",
-    "appearance-message-size",
+    "appearance-message-size-larger",
     "appearance-links-rich",
     "appearance-threads-focus",
+    "appearance-typeface",
     "appearance-reset",
   ])
     await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId("appearance-density")).toHaveCount(0);
   await expect(page.getByTestId("appearance-open-themes")).toHaveCount(0);
-  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("appearance-message-size-larger").click();
+  await page.getByTestId("appearance-accent-teal").click();
+  await page.getByTestId("appearance-apply").click();
+  await expect
+    .poll(() => appearanceSnapshot(page))
+    .toMatchObject({
+      density: "compact",
+      accent: "#1F7A70",
+    });
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute(
     "data-conversation-density",
@@ -177,10 +185,10 @@ test("appearance controls remain usable at a narrow desktop width", async ({
   await page.setViewportSize({ width: 840, height: 900 });
   await openAppearance(page);
   await expect(page.getByTestId("appearance-density")).toHaveCount(0);
-  await page.getByTestId("appearance-message-size").selectOption("larger");
-  await expect(page.getByTestId("appearance-message-size")).toHaveValue(
-    "larger",
-  );
+  await page.getByTestId("appearance-message-size-larger").click();
+  await expect(
+    page.getByTestId("appearance-message-size-larger"),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("the person's sidebar colours survive the light/dark switch and a reload", async ({
@@ -227,7 +235,7 @@ test("channel preferences supersede stale Appearance conversation fields on relo
   await openAppearance(page);
   await page.getByTestId("appearance-links-compact").click();
   await page.getByTestId("appearance-threads-split").click();
-  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("appearance-message-size-larger").click();
   await page.evaluate(() => {
     localStorage.setItem("buzz.appearance.conversationDensity", "spacious");
     localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich");

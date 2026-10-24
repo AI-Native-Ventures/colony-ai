@@ -34,7 +34,7 @@ export function AppearanceFieldColours({
   return (
     <section
       aria-labelledby="appearance-field-title"
-      className="ap-field"
+      className="cs-card ap-field"
       data-testid="appearance-field"
       style={
         {

@@ -84,12 +84,15 @@ function deadlineGroupLabel(deadline: number | null, now: number) {
     first.getMonth() === second.getMonth() &&
     first.getDate() === second.getDate();
   if (sameDay(date, today)) return "Today";
-  if (sameDay(date, tomorrow)) return "Tomorrow";
-  return new Intl.DateTimeFormat("en-GB", {
+  const day = new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
     day: "numeric",
     month: "short",
-  }).format(date);
+  })
+    .format(date)
+    .replace(",", "");
+  if (sameDay(date, tomorrow)) return `Tomorrow · ${day}`;
+  return day;
 }
 
 export function isNeedsMeItemOverdue(item: NeedsMeItem, now = Date.now()) {

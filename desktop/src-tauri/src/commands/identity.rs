@@ -585,6 +585,40 @@ pub async fn sign_out(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Sign out of this computer and keep everything else on it.
+///
+/// Unlike [`sign_out`], nothing is wiped: only the identity (keyring entry,
+/// `identity.key` and its migration marker) is forgotten, so the app restarts
+/// into first-run sign-in while drafts, caches and the agents' folders stay
+/// for the same account to pick up again. Managed agents are stopped first,
+/// as in `sign_out`. Not available in shared-identity mode.
+#[tauri::command]
+pub async fn sign_out_keep_data(app: tauri::AppHandle) -> Result<(), String> {
+    if is_shared_identity() {
+        return Err(
+            "Sign out isn't available while BUZZ_SHARE_IDENTITY provides your identity. Unset BUZZ_SHARE_IDENTITY and BUZZ_PRIVATE_KEY, then relaunch to sign out."
+                .to_string(),
+        );
+    }
+
+    if let Err(e) = crate::shutdown::shutdown_managed_agents(&app) {
+        eprintln!("buzz-desktop sign-out (keep data): agent shutdown: {e}");
+    }
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::app_state::forget_persisted_identity(&data_dir)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))??;
+
+    app.request_restart();
+    Ok(())
+}
+
 fn nostr_bind_tag(name: &str, value: &str) -> Result<Tag, String> {
     Tag::parse(vec![name, value]).map_err(|error| format!("{name} tag failed: {error}"))
 }

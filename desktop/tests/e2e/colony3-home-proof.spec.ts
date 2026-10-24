@@ -1,0 +1,94 @@
+import { expect, test } from "@playwright/test";
+
+import { colony3TodayMockOptions } from "../helpers/colony3HomeFixture";
+import { r17Runtime } from "../helpers/onboarding";
+import {
+  dumpTexts,
+  openLerato,
+  shot,
+  waitForShell,
+  writeCaptures,
+} from "../helpers/colony3Proof";
+
+/**
+ * Colony 3.0 home, profile, settings and AI spend proof. Captures the app at
+ * each board's size with the Lerato Social fixture, so
+ * `scripts/colony3-proof-report.mjs` can lay every capture next to the design
+ * reference. Not a regression gate: it writes PNGs and checks that each state
+ * can be reached.
+ */
+test.describe.configure({ mode: "serial", timeout: 120_000 });
+
+test.afterAll(() => {
+  writeCaptures();
+});
+
+test("Today board", async ({ page }) => {
+  await openLerato(page, {
+    route: "/#/today",
+    mock: colony3TodayMockOptions(),
+  });
+  await waitForShell(page);
+  await expect(page.getByTestId("needs-me-show-more")).toBeVisible({
+    timeout: 20_000,
+  });
+  await dumpTexts(page, "Today", '[data-testid="today-screen"]');
+  await shot(page, {
+    name: "Today",
+    board: "Today",
+    title: "Today: Needs me and Moving forward",
+  });
+});
+
+for (const [section, board, title] of [
+  ["profile", "SettingsAccount", "Settings: Account"],
+  ["appearance", "SettingsAppearance", "Settings: Appearance"],
+  ["notifications", "SettingsPreferences", "Settings: Preferences"],
+  ["business-profile", "SettingsBusiness", "Settings: Business"],
+  ["agent-defaults", "SettingsAgents", "Settings: Agents"],
+  ["app", "SettingsDevice", "Settings: App and devices"],
+  ["mobile", "MobilePairing", "Settings: App and devices, Mobile"],
+] as const) {
+  test(`${board} board`, async ({ page }) => {
+    await openLerato(page, {
+      route: `/#/settings?section=${section}`,
+      // The Business board is drawn 1200 tall.
+      height: board === "SettingsBusiness" ? 1200 : undefined,
+      mock:
+        board === "SettingsAgents"
+          ? {
+              acpRuntimesCatalog: [
+                r17Runtime("claude", "available", { status: "logged_in" }),
+              ],
+              globalAgentConfig: {
+                env_vars: {},
+                provider: "anthropic",
+                model: null,
+                preferred_runtime: "claude",
+              },
+            }
+          : undefined,
+    });
+    await expect(page.getByTestId("settings-view")).toBeVisible();
+    // The design shows Appearance with a pending change: Light chosen, not yet applied.
+    if (board === "SettingsAppearance") {
+      await page.getByTestId("appearance-mode-light").click();
+      await expect(page.getByTestId("appearance-apply-status")).toContainText(
+        "Preview only",
+      );
+    }
+    await dumpTexts(page, board, '[data-testid="settings-view"]');
+    await shot(page, { name: board, board, title });
+  });
+}
+
+test("Main board", async ({ page }) => {
+  await openLerato(page, { route: "/" });
+  await page.getByTestId("channel-Welcome").click();
+  await page.waitForTimeout(1500);
+  await shot(page, {
+    name: "Main",
+    board: "Main",
+    title: "#Welcome on day one",
+  });
+});

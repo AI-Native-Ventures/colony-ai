@@ -1,5 +1,4 @@
 import * as React from "react";
-import { MessageSquare } from "lucide-react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 
@@ -19,14 +18,18 @@ import {
   formatOwnerLabel,
   ownsAuthorAgent,
 } from "@/features/profile/lib/identity";
-import { formatElapsed } from "@/features/agents/ui/agentSessionUtils";
+import { formatElapsedClock } from "@/features/agents/ui/agentSessionUtils";
 import { useAgentAvailability } from "@/features/agents/lib/useAgentAvailability";
 import {
   useUserStatusQuery,
   visibleUserStatus,
 } from "@/features/user-status/hooks";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
-import { ProfileAvatarWithStatus } from "@/features/profile/ui/ProfileAvatarWithStatus";
+import {
+  DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
+  ProfileAvatarWithStatus,
+  scaleProfileAvatarStatusGeometry,
+} from "@/features/profile/ui/ProfileAvatarWithStatus";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
@@ -38,10 +41,9 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/shared/ui/popover";
-import { BotIdenticon } from "@/features/messages/ui/BotIdenticon";
 import { useNow } from "@/shared/lib/useNow";
-import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/ui/spinner";
+import "@/features/profile/ui/ProfilePanel.css";
 import { resolveModelLabel } from "@/features/agents/lib/formatAgentModelLabel";
 
 type UserProfilePopoverProps = {
@@ -62,9 +64,9 @@ type UserProfilePopoverProps = {
   enableProfilePanel?: boolean;
   /** Set false when a smaller, context-specific hover treatment is provided. */
   enableHoverPopover?: boolean;
-  /** When set to "bot", a BotIdenticon badge renders next to the display name. */
+  /** When set to "bot", the profile is treated as an agent ("Agent" chip). */
   role?: string;
-  /** Value used to generate the BotIdenticon glyph (typically the author name). */
+  /** Accepted for existing callers; the hover card no longer draws a glyph. */
   botIdenticonValue?: string;
 };
 
@@ -81,57 +83,6 @@ function runtimeLabel(command: string): string {
   return RUNTIME_LABELS[command] ?? command;
 }
 
-function InfoBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
-      {children}
-    </span>
-  );
-}
-
-const TEXT_SWAP_BASE_CLASS =
-  "col-start-1 row-start-1 min-w-0 truncate transition-[opacity,filter] duration-[250ms] ease-in-out motion-reduce:transition-none";
-const TEXT_SWAP_VISIBLE_CLASS = "opacity-100 blur-0";
-const TEXT_SWAP_HIDDEN_CLASS = "opacity-0 blur-0";
-const TEXT_SWAP_HOVER_VISIBLE_CLASS =
-  "group-hover/name:opacity-100 group-hover/name:blur-0";
-const TEXT_SWAP_HOVER_HIDDEN_CLASS =
-  "group-hover/name:opacity-0 group-hover/name:blur-[2px]";
-
-function HoverPubkeyName({
-  displayName,
-  pubkey,
-}: {
-  displayName: string;
-  pubkey: string;
-}) {
-  return (
-    <span className="group/name inline-grid h-5 min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-5">
-      <span
-        className={`${TEXT_SWAP_BASE_CLASS} ${TEXT_SWAP_VISIBLE_CLASS} ${TEXT_SWAP_HOVER_HIDDEN_CLASS}`}
-      >
-        {displayName}
-      </span>
-      <span
-        className={`${TEXT_SWAP_BASE_CLASS} ${TEXT_SWAP_HIDDEN_CLASS} ${TEXT_SWAP_HOVER_VISIBLE_CLASS}`}
-      >
-        {truncateNpub(pubkey)}
-      </span>
-    </span>
-  );
-}
-
-function StatusLine({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="flex w-full min-w-0 items-center gap-1 py-1 text-xs leading-4 text-muted-foreground"
-      data-testid="user-profile-status"
-    >
-      {children}
-    </div>
-  );
-}
-
 export function UserProfilePopover({
   children,
   pubkey,
@@ -142,7 +93,6 @@ export function UserProfilePopover({
   enableProfilePanel = true,
   enableHoverPopover = true,
   role,
-  botIdenticonValue,
 }: UserProfilePopoverProps) {
   const [open, setOpen] = React.useState(false);
   const hoverTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
@@ -232,7 +182,6 @@ export function UserProfilePopover({
       </PopoverAnchor>
       {open ? (
         <UserProfilePopoverBody
-          botIdenticonValue={botIdenticonValue}
           canOpenProfilePanel={canOpenProfilePanel}
           onBeforeAction={clearHoverTimer}
           onContentMouseEnter={handleContentMouseEnter}
@@ -254,7 +203,6 @@ export function UserProfilePopover({
  * that render hundreds of instances (~40ms per card when this was eager).
  */
 function UserProfilePopoverBody({
-  botIdenticonValue,
   canOpenProfilePanel,
   onBeforeAction,
   onContentMouseEnter,
@@ -264,7 +212,6 @@ function UserProfilePopoverBody({
   role,
   setOpen,
 }: {
-  botIdenticonValue?: string;
   canOpenProfilePanel: boolean;
   onBeforeAction: () => void;
   onContentMouseEnter: () => void;
@@ -312,8 +259,8 @@ function UserProfilePopoverBody({
   // runs elsewhere holds no local seckey, so key custody (`isOwner`) alone
   // wrongly hides the affordance from them — and gating on bot-ness alone shows
   // it to every viewer. Combine declared ownership with local management, same
-  // shape as the pane/sidebar fixes. Every real boundary is server-side;
-  // this only decides whether to paint the owner-only message action.
+  // shape as the pane/sidebar/memory fixes. Every real boundary is server-side;
+  // this only decides whether the Message action is painted for an agent.
   const isOwner = useIsManagedAgent(isBotProfile ? pubkey : null);
   const identityQuery = useIdentityQuery();
   const currentPubkey = identityQuery.data?.pubkey;
@@ -344,6 +291,9 @@ function UserProfilePopoverBody({
   const hasUserStatus = Boolean(userStatusText || userStatus?.emoji);
   const profileDescription = profile?.about?.trim() ?? "";
   const profileSubheader = profileDescription || profile?.nip05Handle?.trim();
+  const jobTitle =
+    (profile as { jobTitle?: string | null } | undefined)?.jobTitle?.trim() ||
+    null;
   const activeTurns = useAgentWorking(isBotProfile ? pubkey : null).channels;
   const channelsQuery = useChannelsQuery();
   const channelIdToName = React.useMemo(() => {
@@ -376,58 +326,68 @@ function UserProfilePopoverBody({
   const profileHeaderContent = (
     <>
       <ProfileAvatarWithStatus
-        avatarClassName="text-xs"
+        avatarClassName="text-base"
         avatarUrl={profile?.avatarUrl ?? null}
-        className="h-10 w-10"
-        iconClassName="h-5 w-5"
+        className="h-12.5 w-12.5"
+        geometry={scaleProfileAvatarStatusGeometry(
+          DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
+          50,
+        )}
+        iconClassName="h-6 w-6"
         label={displayName}
         shape={isBotProfile ? "squircle" : "circle"}
-        size={40}
+        size={50}
         status={presenceStatus}
         statusTestId="user-profile-popover-presence-badge"
         testId="user-profile-popover-avatar"
       />
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <HoverPubkeyName displayName={displayName} pubkey={pubkey} />
+        <div className="ph-name-row">
+          <span className="ph-name">{displayName}</span>
+          {isBotProfile ? <span className="ph-agent-chip">Agent</span> : null}
           <AgentManagementMarker
             pubkey={pubkey}
             ownerPubkey={ownerPubkey}
             testId="user-profile-popover-agent-provenance"
           />
-          {isBotProfile && botIdenticonValue ? (
-            <BotIdenticon
-              value={botIdenticonValue}
-              size={20}
-              className="shrink-0 rounded"
-            />
-          ) : null}
         </div>
         {isBotProfile && ownerLabel ? (
           <p
-            className="mt-0.5 truncate text-xs leading-4 text-muted-foreground"
+            className="ph-owner"
             data-testid={`user-profile-popover-owner-${pubkey}`}
           >
             managed by {ownerLabel}
-          </p>
-        ) : null}
-        {profileSubheader ? (
-          <p
-            className="mt-0.5 truncate text-xs leading-4 text-muted-foreground"
-            data-testid="user-profile-description"
-          >
-            {profileSubheader}
           </p>
         ) : null}
       </div>
     </>
   );
 
+  // Runtime and model chips come from the agent's own record; the connection
+  // chip reads the managed agent's process state.
+  const agentChips: string[] = [];
+  if (isBotProfile) {
+    const runtime = managedAgent?.agentCommand ?? relayAgent?.agentType;
+    if (runtime) agentChips.push(runtimeLabel(runtime));
+    if (managedAgent?.model) {
+      agentChips.push(
+        resolveModelLabel(managedAgent.model, null, managedAgent.provider),
+      );
+    }
+    if (managedAgent) {
+      agentChips.push(
+        managedAgent.status === "running" || managedAgent.status === "deployed"
+          ? "ACP: connected"
+          : "ACP: stopped",
+      );
+    }
+  }
+
   return (
     <PopoverContent
       align="start"
-      className="w-80"
+      className="ph-card"
       data-testid="user-profile-popover"
       onMouseEnter={onContentMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -439,130 +399,105 @@ function UserProfilePopoverBody({
       side="top"
       sideOffset={8}
     >
-      <div className="flex flex-col gap-3">
+      <div className="ph-stack">
         {canOpenProfilePanel ? (
           <button
-            className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg text-left text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&_*]:cursor-pointer"
+            className="ph-head ph-head-button"
             onClick={onTriggerClick}
             type="button"
           >
             {profileHeaderContent}
           </button>
         ) : (
-          <div className="flex w-full min-w-0 items-center gap-3 text-left text-foreground">
-            {profileHeaderContent}
-          </div>
+          <div className="ph-head">{profileHeaderContent}</div>
         )}
 
-        {isBotProfile && (managedAgent || relayAgent) ? (
-          <div className="flex flex-wrap gap-1.5">
-            {managedAgent?.agentCommand ? (
-              <InfoBadge>{runtimeLabel(managedAgent.agentCommand)}</InfoBadge>
-            ) : relayAgent?.agentType ? (
-              <InfoBadge>{runtimeLabel(relayAgent.agentType)}</InfoBadge>
-            ) : null}
-            {managedAgent?.model ? (
-              <InfoBadge>
-                {resolveModelLabel(
-                  managedAgent.model,
-                  null,
-                  managedAgent.provider,
-                )}
-              </InfoBadge>
-            ) : null}
-            {managedAgent?.acpCommand ? (
-              <InfoBadge>ACP: {managedAgent.acpCommand}</InfoBadge>
-            ) : null}
-          </div>
+        {jobTitle || profileSubheader ? (
+          <p className="ph-about" data-testid="user-profile-description">
+            {[jobTitle, profileSubheader].filter(Boolean).join(". ")}
+          </p>
         ) : null}
 
-        {activeTurns.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {activeTurns.map(({ channelId, anchorAt }) => (
-              <PopoverWorkingBadge
-                key={channelId}
-                name={channelIdToName[channelId] ?? channelId}
-                anchorAt={anchorAt}
-              />
+        {agentChips.length > 0 ? (
+          <div className="ph-chips">
+            {agentChips.map((chip) => (
+              <span className="ph-chip" key={chip}>
+                {chip}
+              </span>
             ))}
           </div>
         ) : null}
 
-        {hasUserStatus || showAnyProfileActions ? (
-          <>
-            <div
-              aria-hidden="true"
-              className="my-1 border-t border-border/60"
-            />
-            {hasUserStatus ? (
-              <StatusLine>
-                {userStatus?.emoji ? (
-                  <StatusEmoji
-                    className="h-3.5 w-3.5 shrink-0"
-                    value={userStatus.emoji}
+        {activeTurns.map(({ channelId, anchorAt }) => (
+          <PopoverWorkingBadge
+            anchorAt={anchorAt}
+            key={channelId}
+            name={channelIdToName[channelId] ?? channelId}
+          />
+        ))}
+
+        {hasUserStatus ? (
+          <div className="ph-status" data-testid="user-profile-status">
+            {userStatus?.emoji ? (
+              <StatusEmoji
+                className="h-3.5 w-3.5 shrink-0"
+                value={userStatus.emoji}
+              />
+            ) : null}
+            {userStatusText ? (
+              <span className="truncate">{userStatusText}</span>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showAnyProfileActions ? (
+          <div className="ph-actions">
+            {showMessageAction ? (
+              <button
+                className="ph-message"
+                data-testid={`user-profile-popover-message-${pubkey}`}
+                disabled={pendingAction !== null || isOpeningDm}
+                onClick={() => {
+                  void handleMessage();
+                }}
+                type="button"
+              >
+                {pendingAction === "message" ? (
+                  <Spinner
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 border-2"
                   />
                 ) : null}
-                {userStatusText ? (
-                  <span className="truncate">{userStatusText}</span>
-                ) : null}
-              </StatusLine>
+                Message
+              </button>
             ) : null}
-            {showAnyProfileActions ? (
-              <div className="flex gap-2">
-                {showHumanProfileActions ? (
-                  <Button
-                    aria-label="Wave"
-                    className="buzz-wave-hover-trigger shrink-0 px-3 transition-transform duration-100 ease-out motion-reduce:transition-none motion-safe:active:scale-[0.97]"
-                    data-testid={`user-profile-popover-wave-${pubkey}`}
-                    disabled={pendingAction !== null || isOpeningDm}
-                    onClick={() => {
-                      void handleWave();
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
+            {showHumanProfileActions ? (
+              <button
+                aria-label="Wave"
+                className="ph-wave buzz-wave-hover-trigger"
+                data-testid={`user-profile-popover-wave-${pubkey}`}
+                disabled={pendingAction !== null || isOpeningDm}
+                onClick={() => {
+                  void handleWave();
+                }}
+                type="button"
+              >
+                {pendingAction === "wave" ? (
+                  <Spinner
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 border-2"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="buzz-wave-hand text-sm leading-none"
                   >
-                    {pendingAction === "wave" ? (
-                      <Spinner
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 border-2"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        className="buzz-wave-hand text-sm leading-none"
-                      >
-                        👋
-                      </span>
-                    )}
-                  </Button>
-                ) : null}
-                {showMessageAction ? (
-                  <Button
-                    className="min-w-0 flex-1"
-                    data-testid={`user-profile-popover-message-${pubkey}`}
-                    disabled={pendingAction !== null || isOpeningDm}
-                    onClick={() => {
-                      void handleMessage();
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {pendingAction === "message" ? (
-                      <Spinner
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 border-2"
-                      />
-                    ) : (
-                      <MessageSquare />
-                    )}
-                    Message
-                  </Button>
-                ) : null}
-              </div>
+                    👋
+                  </span>
+                )}
+              </button>
             ) : null}
-          </>
+          </div>
         ) : null}
       </div>
     </PopoverContent>
@@ -579,8 +514,9 @@ function PopoverWorkingBadge({
   const now = useNow(1000);
 
   return (
-    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary motion-safe:animate-pulse">
-      Working in #{name} · {formatElapsed(now - anchorAt)}
+    <span className="ph-working">
+      <i aria-hidden="true" />
+      Working in #{name} · {formatElapsedClock(now - anchorAt)}
     </span>
   );
 }

@@ -15,8 +15,6 @@ type SettingsSection =
   | "shortcuts"
   | "community-members"
   | "custom-emoji"
-  | "archived-records"
-  | "recovery"
   | "app"
   | "mobile"
   | "updates"
@@ -39,9 +37,7 @@ const sectionRoute: Record<
   people: { group: "business", section: "people" },
   shortcuts: { group: "preferences", section: "shortcuts" },
   "community-members": { group: "business", section: "people" },
-  "custom-emoji": { group: "business", section: "custom-emoji" },
-  "archived-records": { group: "account", section: "archived-records" },
-  recovery: { group: "app-devices", section: "recovery" },
+  "custom-emoji": { group: "blocks-templates", section: "custom-emoji" },
   app: { group: "app-devices", section: "app" },
   mobile: { group: "app-devices", section: "mobile" },
   updates: { group: "app-devices", section: "updates" },
@@ -63,8 +59,9 @@ export async function openSettings(page: Page, section?: SettingsSection) {
   }
 }
 
+/** The footer person opens the Account page, where Change photo lives. */
+/** The Account page carries the photo and its Change photo button itself. */
 export async function openAvatarProfileContext(page: Page) {
-  await page.getByTestId("settings-profile-avatar-context").click();
   await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
 }
 
@@ -77,9 +74,12 @@ export async function selectSettingsSection(
   await groupButton.click();
   await expect(groupButton).toHaveAttribute("aria-pressed", "true");
 
+  // A page with one section has no tab bar.
   const sectionTab = page.getByTestId(`settings-inner-${route.section}`);
-  await sectionTab.click();
-  await expect(sectionTab).toHaveAttribute("aria-selected", "true");
+  if ((await sectionTab.count()) > 0) {
+    await sectionTab.click();
+    await expect(sectionTab).toHaveAttribute("aria-selected", "true");
+  }
   await expect(
     page.getByTestId(`settings-panel-${route.section}`),
   ).toBeVisible();

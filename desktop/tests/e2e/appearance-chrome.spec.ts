@@ -95,6 +95,12 @@ for (const width of [1728, 1440]) {
         width,
         height: width === 1728 ? 1117 : 900,
       });
+      // A named theme is one the person already uses; the catalog is cut.
+      if (variant !== "default" && variant !== "field")
+        await page.addInitScript((theme) => {
+          localStorage.setItem("buzz-theme", theme);
+          localStorage.setItem("buzz-follow-system", "false");
+        }, variant);
       await start(page);
       await appearance(page);
       if (variant === "field") {
@@ -125,7 +131,9 @@ for (const width of [1728, 1440]) {
         const primary = await page
           .getByTestId("appearance-apply")
           .evaluate((element) => getComputedStyle(element).backgroundColor);
-        expect(primary).toBe("rgb(31, 122, 112)");
+        // The design's Apply is the dark primary; the accent colours pills
+        // and the preview, not this button.
+        expect(primary).toBe("rgb(37, 34, 44)");
       }
       await page.getByTestId("settings-back-to-app").click();
       await capture("workspace");
@@ -228,12 +236,9 @@ for (const auth of ["unknown", "logged_out"])
     await expect(connection).toContainText(
       auth === "unknown" ? "connection not confirmed" : "needs sign-in",
     );
-    await page
-      .getByTestId("agent-defaults-openrouter-alternative")
-      .locator("summary")
-      .click();
-    const bullets = page.getByTestId("openrouter-connection").locator("ul");
-    await expect(bullets).toHaveCSS("padding-left", "20px");
+    await expect(page.getByTestId("agent-way-openrouter")).toContainText(
+      "Not connected",
+    );
   });
 
 test("Agent Defaults shows the saved OpenRouter connection first", async ({

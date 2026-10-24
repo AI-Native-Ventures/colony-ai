@@ -1,72 +1,61 @@
 import { setAgentManagedProfiles } from "@/shared/api/tauriWorkspace";
 import { desktopFeatures, useFeatureToggle } from "@/shared/features";
 import type { FeatureDefinition } from "@/shared/features";
-import { Switch } from "@/shared/ui/switch";
-import { SettingsOptionGroup, SettingsOptionRow } from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
+import { SettingsSwitchRow } from "./SettingsKit";
+
+/** Preview features that are not in the lean app have no switch here. */
+const NOT_LISTED = new Set(["workflows", "projects", "pulse", "forum"]);
 
 function FeatureRow({ feature }: { feature: FeatureDefinition }) {
   const [enabled, toggle] = useFeatureToggle(feature.id);
   const switchId = `feature-toggle-${feature.id}`;
 
   return (
-    <SettingsOptionRow>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium" id={`${switchId}-label`}>
-          {feature.name}
-        </p>
-        <p className="text-xs text-muted-foreground/70" data-settings-subcopy>
-          {feature.description}
-        </p>
-      </div>
-      <Switch
-        aria-labelledby={`${switchId}-label`}
-        checked={enabled}
-        data-testid={switchId}
-        onCheckedChange={(value) => {
-          toggle(value);
-          if (feature.id === "agentManagedProfiles") {
-            void setAgentManagedProfiles(value).catch((error) => {
-              console.error(
-                "Failed to apply agent-managed profiles setting:",
-                error,
-              );
-            });
-          }
-        }}
-      />
-    </SettingsOptionRow>
+    <SettingsSwitchRow
+      checked={enabled}
+      help={feature.description}
+      id={switchId}
+      label={feature.name}
+      onCheckedChange={(value) => {
+        toggle(value);
+        if (feature.id === "agentManagedProfiles") {
+          void setAgentManagedProfiles(value).catch((error) => {
+            console.error(
+              "Failed to apply agent-managed profiles setting:",
+              error,
+            );
+          });
+        }
+      }}
+      testId={switchId}
+    />
   );
 }
 
 export function ExperimentalFeaturesCard() {
-  // Manifest is preview-only by definition; every desktop entry is a preview
-  // feature.
-  const previewFeatures = desktopFeatures;
+  // The manifest is preview-only by definition; every desktop entry is a
+  // preview feature.
+  const previewFeatures = desktopFeatures.filter(
+    (feature) => !NOT_LISTED.has(feature.id),
+  );
 
   return (
-    <section className="min-w-0" data-testid="settings-experimental">
-      <SettingsSectionHeader
-        title="Experiments"
-        description={
-          <>
-            These features are functional but still being refined. Enable them
-            to try new capabilities early.
-          </>
-        }
-      />
-
-      <SettingsOptionGroup title="Features">
-        {previewFeatures.length === 0 ? (
-          <SettingsOptionRow>
-            <p className="text-sm text-muted-foreground">
-              No experiments are available right now.
-            </p>
-          </SettingsOptionRow>
-        ) : (
-          previewFeatures.map((f) => <FeatureRow feature={f} key={f.id} />)
-        )}
-      </SettingsOptionGroup>
+    <section
+      aria-labelledby="experiments-title"
+      className="cs-card"
+      data-testid="settings-experimental"
+    >
+      <div className="cs-card-head">
+        <h2 className="cs-card-subtitle" id="experiments-title">
+          Experiments
+        </h2>
+        <span className="cs-row-help">
+          Preview features. Turning one on adds it to your sidebar.
+        </span>
+      </div>
+      {previewFeatures.map((f) => (
+        <FeatureRow feature={f} key={f.id} />
+      ))}
     </section>
   );
 }

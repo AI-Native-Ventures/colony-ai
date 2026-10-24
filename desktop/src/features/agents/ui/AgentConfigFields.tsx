@@ -750,7 +750,7 @@ export function AgentConfigFields({
         className={cn("text-sm font-medium", fieldLabelClassName)}
         htmlFor="global-agent-provider"
       >
-        Provider
+        LLM provider
       </label>
       {!useCustomSelect && useChevronSelectIcon ? (
         <div className="relative">

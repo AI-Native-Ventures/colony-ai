@@ -84,11 +84,11 @@ async function startOnProfilePanel(page: Page) {
   await page.goto("/");
   await installFailureSwitch(page);
   await openSettings(page, "profile");
-  await expect(page.getByTestId("profile-photo-change")).toBeVisible();
+  await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
 }
 
 async function openUploadWithPng(page: Page) {
-  await page.getByTestId("profile-photo-change").click();
+  await page.getByTestId("profile-avatar-edit").click();
   await expect(page.getByTestId("profile-avatar-dialog")).toBeVisible();
   await page.getByTestId("avatar-upload-open").click();
   await page.getByTestId("avatar-file-input").setInputFiles({
@@ -109,7 +109,7 @@ test.describe("profile photo is easy to find", () => {
   }) => {
     await startOnProfilePanel(page);
 
-    const control = page.getByTestId("profile-photo-change");
+    const control = page.getByTestId("profile-avatar-edit");
     await expect(control).toHaveText("Change photo");
     await expect(
       page
@@ -158,7 +158,7 @@ test.describe("profile photo is easy to find", () => {
     await footer.click();
     await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
     await page.getByTestId("settings-group-account").click();
-    await expect(page.getByTestId("profile-photo-change")).toBeVisible();
+    await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
   });
 
   for (const [role, caption] of [
@@ -190,7 +190,7 @@ test.describe("profile photo is easy to find", () => {
   }) => {
     await startOnProfilePanel(page);
 
-    const control = page.getByTestId("profile-photo-change");
+    const control = page.getByTestId("profile-avatar-edit");
     await page.getByTestId("settings-inner-profile").focus();
     let reached = false;
     for (let step = 0; step < 12 && !reached; step += 1) {
@@ -214,7 +214,7 @@ test.describe("avatar dialog never hides a failure", () => {
     page,
   }) => {
     await startOnProfilePanel(page);
-    await page.getByTestId("profile-photo-change").click();
+    await page.getByTestId("profile-avatar-edit").click();
     await page.getByTestId("avatar-upload-open").click();
     const input = page.getByTestId("avatar-file-input");
     await expect(input).toHaveAttribute(
@@ -242,7 +242,7 @@ test.describe("avatar dialog never hides a failure", () => {
     page,
   }) => {
     await startOnProfilePanel(page);
-    await page.getByTestId("profile-photo-change").click();
+    await page.getByTestId("profile-avatar-edit").click();
     await page.getByTestId("avatar-upload-open").click();
     await page.getByTestId("avatar-file-input").setInputFiles({
       buffer: Buffer.alloc(20 * 1024 * 1024 + 1),
@@ -329,8 +329,9 @@ test.describe("avatar dialog never hides a failure", () => {
   }) => {
     await startOnProfilePanel(page);
     await failCommand(page, "update_profile", "relay unreachable: offline");
-    await page.getByTestId("profile-photo-change").click();
+    await page.getByTestId("profile-avatar-edit").click();
     await page.getByTestId("avatar-option-star").click();
+    await page.getByTestId("avatar-save").click();
 
     const alert = page.getByTestId("avatar-save-error");
     await expect(alert).toBeVisible();
@@ -360,7 +361,7 @@ test.describe("avatar dialog never hides a failure", () => {
         },
       });
     });
-    await page.getByTestId("profile-photo-change").click();
+    await page.getByTestId("profile-avatar-edit").click();
     await page.getByTestId("avatar-camera-open").click();
 
     const alert = page.getByTestId("avatar-camera-error");

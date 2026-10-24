@@ -64,13 +64,10 @@ async function enableDesktopMessagePreviews(
   await openSettings(page, "privacy");
   const messagePreviews = page.getByTestId("privacy-message-text");
   if (!(await messagePreviews.isChecked())) {
+    // Privacy switches apply at once (SettingsDevice board), so there is no
+    // Save button to press.
     await messagePreviews.check();
-    await page
-      .getByRole("button", { name: "Save privacy preferences" })
-      .click();
-    await expect(page.getByRole("status")).toContainText(
-      "Privacy preferences saved",
-    );
+    await expect(messagePreviews).toBeChecked();
   }
   await page.getByTestId("settings-back-to-app").click();
 }

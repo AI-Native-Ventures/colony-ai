@@ -57,6 +57,12 @@ export type InboxItem = {
 export type InboxTypeLabel = {
   text: string;
   channelLabel: string | null;
+  /**
+   * What joins the text to the channel. Labels that already end in a
+   * preposition ("Mentioned in") leave it out; a bare headline ("Progress
+   * update") joins its channel with a middle dot.
+   */
+  separator?: "·";
 };
 
 export type InboxReply = {
@@ -252,18 +258,19 @@ export function getInboxTypeLabel(item: InboxItem): InboxTypeLabel {
   }
 
   return {
-    text: channelName
-      ? `${activityHeadline(item.item)} in`
-      : activityHeadline(item.item),
+    text: activityHeadline(item.item),
     channelLabel: channelName,
+    separator: "·",
   };
 }
 
+/** "Needs action in #Sales", "Progress update · #Operations", "DM from Aya". */
 export function formatInboxTypeLabel(item: InboxItem) {
   const label = getInboxTypeLabel(item);
-  return label.channelLabel
-    ? `${label.text} #${label.channelLabel}`
-    : label.text;
+  if (!label.channelLabel) return label.text;
+  return label.separator
+    ? `${label.text} ${label.separator} #${label.channelLabel}`
+    : `${label.text} #${label.channelLabel}`;
 }
 
 function categoryPriority(category: FeedItemCategory) {
@@ -342,8 +349,26 @@ export function findInboxItemByEventId(
   );
 }
 
+const CLOCK_24H_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function isSameLocalDay(first: Date, second: Date) {
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+/** A list row's time: "14:05" today, then "Yesterday", a weekday or a date. */
 function formatInboxTimestamp(unixSeconds: number) {
-  return formatItemTimestamp(unixSeconds);
+  const date = new Date(unixSeconds * 1_000);
+  return isSameLocalDay(date, new Date())
+    ? CLOCK_24H_FORMATTER.format(date)
+    : formatItemTimestamp(unixSeconds);
 }
 
 export function formatInboxFullTimestamp(unixSeconds: number) {

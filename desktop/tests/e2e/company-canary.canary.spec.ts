@@ -1126,7 +1126,7 @@ test.describe("signed-in canary company UI", () => {
       "05-team-list-read-only",
     );
 
-    for (const section of ["usage", "credits"]) {
+    for (const section of ["overview", "usage", "connections"]) {
       await inspectRoute(
         `Power ${section}`,
         `/#/power${section === "usage" ? "" : `?section=${section}`}`,

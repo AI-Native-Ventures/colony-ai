@@ -6,13 +6,14 @@ type UseHomePersonalInboxOptions = {
   viewportWidthPx: number;
 };
 
+/** Personal items the Activity list can show next to messages: drafts. */
 export function useHomePersonalInbox({
   isDrafts,
   isNarrowHomeViewport,
   viewportWidthPx,
 }: UseHomePersonalInboxOptions) {
   // Drafts are only listed (and selectable) under the dedicated Drafts
-  // filter - they never appear in the mixed All view.
+  // filter: they never appear in the mixed All view.
   const drafts = useHomeDrafts({
     autoSelect: isDrafts,
     isNarrowHomeViewport,

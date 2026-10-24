@@ -2,6 +2,11 @@ import type * as React from "react";
 
 import { cn } from "@/shared/lib/cn";
 
+/**
+ * A card of settings with an optional small title above its rows. Settings
+ * pages that have not moved to `SettingsKit` still compose these; they draw
+ * the same card.
+ */
 export function SettingsOptionGroup({
   children,
   className,
@@ -19,38 +24,20 @@ export function SettingsOptionGroup({
   const hasHeader = Boolean(title || description || headerAction);
 
   return (
-    <div className={cn("space-y-2", className)} {...props}>
+    <div className={cn("cs-group", className)} {...props}>
       {hasHeader ? (
-        <div
-          className="flex min-h-7 items-end gap-3 px-4"
-          data-slot="settings-section-header"
-        >
+        <div className="cs-group-head" data-slot="settings-section-header">
           <div className="min-w-0 flex-1">
-            {title ? (
-              <h2 className="text-sm font-semibold text-muted-foreground/70">
-                {title}
-              </h2>
-            ) : null}
-            {description ? (
-              <p
-                className="mt-0.5 text-sm font-normal text-muted-foreground/70"
-                data-settings-subcopy
-              >
-                {description}
-              </p>
-            ) : null}
+            {title ? <h2 className="cs-eyebrow">{title}</h2> : null}
+            {description ? <p className="cs-help">{description}</p> : null}
           </div>
           {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
         </div>
       ) : null}
       <div
-        className={cn(
-          "[container-type:inline-size]",
-          surface === "soft"
-            ? "overflow-hidden rounded-2xl bg-muted/20"
-            : "divide-y divide-border/55 overflow-hidden rounded-xl border border-border/70 bg-background/70",
-        )}
+        className="cs-card cs-group-card"
         data-slot="settings-section-card"
+        data-surface={surface}
       >
         {children}
       </div>
@@ -64,7 +51,7 @@ export function SettingsOptionGroupList({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("space-y-12", className)}
+      className={cn("cs-stack", className)}
       data-slot="settings-section-list"
       {...props}
     />
@@ -75,13 +62,5 @@ export function SettingsOptionRow({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-sm [@container(max-width:34rem)]:flex-col [@container(max-width:34rem)]:items-start [@container(max-width:34rem)]:[&>[data-slot=segmented-control]]:w-full",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <div className={cn("cs-row", className)} {...props} />;
 }

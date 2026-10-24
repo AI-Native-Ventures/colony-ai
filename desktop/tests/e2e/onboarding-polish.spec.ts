@@ -53,7 +53,7 @@ for (const size of sizes) {
         page.getByRole("heading", { name: "Today", exact: true }),
       ).toBeVisible();
       await expect(
-        needs.getByText("Needs me · 0 open decisions", { exact: true }),
+        needs.getByText("0 open decisions", { exact: true }),
       ).toBeVisible();
     }
     await capture(page, `today-${size.width}`);

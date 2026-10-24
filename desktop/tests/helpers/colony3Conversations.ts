@@ -143,5 +143,7 @@ export function colony3Extras(own: Partial<Colony3Extras> = {}): Colony3Extras {
     clearMessageChannelIds: own.clearMessageChannelIds ?? [],
     clearMessagesIn: own.clearMessagesIn ?? [],
     messages: own.messages ?? [],
+    ...(own.workspaceFiles ? { workspaceFiles: own.workspaceFiles } : {}),
+    ...(own.feed ? { feed: own.feed } : {}),
   };
 }

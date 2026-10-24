@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 
-test("launch flag OFF: AI spend shows Colony credits as Coming soon with nothing to buy", async ({
+test("Power offers no checkout or billing history and shows Coming soon", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -11,18 +11,22 @@ test("launch flag OFF: AI spend shows Colony credits as Coming soon with nothing
   await page.route("**/api/payments/**", (route) =>
     route.fulfill({ status: 404, json: { error: "not_found" } }),
   );
-  await page.goto("/#/power?section=credits");
-  const credits = page.getByTestId("power-credits");
-  await expect(credits).toContainText("Colony credits");
-  await expect(credits).toContainText("Coming soon");
-  await expect(page.getByRole("button", { name: "Add credits" })).toHaveCount(
-    0,
-  );
 
-  // Old billing and checkout links land on usage, with nothing to buy.
-  await page.goto("/#/power?section=checkout");
-  await expect(page.getByTestId("power-usage")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add credits" })).toHaveCount(
-    0,
-  );
+  // Billing history and checkout are not in the lean app: their old links
+  // land on Connections & billing with nothing to buy.
+  for (const section of ["history", "checkout", "connections"]) {
+    await page.goto(`/#/power?section=${section}`);
+    const connections = page.getByTestId("power-connections");
+    await expect(connections).toBeVisible();
+    await expect(connections).toContainText("Colony credits");
+    await expect(connections).toContainText("Coming soon");
+    await expect(page.getByTestId("power-history")).toHaveCount(0);
+    await expect(page.getByTestId("power-checkout")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add credits" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("link", { name: "Add credits" })).toHaveCount(
+      0,
+    );
+  }
 });
