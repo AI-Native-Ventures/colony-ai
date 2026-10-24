@@ -123,6 +123,8 @@ test.describe("community rail", () => {
       tileStyle(buttonA),
       tileStyle(buttonB),
     ]);
+    await expect(buttonA).toHaveCSS("opacity", "1");
+    await expect(buttonB).toHaveCSS("opacity", "1");
     // Same 40px rounded tile; the open community is the dark one.
     expect(activeStyle.width).toBe("40px");
     expect(inactiveStyle.width).toBe("40px");

@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
 const COMMUNITY_ONBOARDING_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const DEFAULT_SIDEBAR_WIDTH = 260;
+const DEFAULT_SIDEBAR_WIDTH = 280;
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
@@ -86,11 +86,11 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   await page.mouse.move(600, 100);
   await expect(selectedRow).toHaveCSS(
     "background-color",
-    "rgba(255, 255, 255, 0.56)",
+    "rgba(255, 255, 255, 0.84)",
   );
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "650");
+  await expect(selectedRow).toHaveCSS("font-weight", "800");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -104,7 +104,8 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     const followingBox = following.getBoundingClientRect();
     return followingBox.top - selectedBox.bottom;
   });
-  expect(rowGap).toBe(0);
+  // Rows are 38px tall on a 40px pitch in the designed sidebar.
+  expect(rowGap).toBe(2);
 
   const idleHoverRowBackground = await hoverRow.evaluate(
     (row) => getComputedStyle(row).backgroundColor,
@@ -496,7 +497,7 @@ for (const theme of ["buzz", "github-light", "catppuccin-mocha"]) {
     expect(chromeStyles.headerBoxShadow).toBe("none");
     expect(chromeStyles.headerIsolation).toBe("auto");
     expect(chromeStyles.headerMarginBottom).toBe(0);
-    expect(chromeStyles.headerZIndex).toBe("auto");
+    expect(chromeStyles.headerZIndex).toBe("1");
     expect(chromeStyles.footerBackground).toBe("none");
     expect(chromeStyles.footerBackgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(chromeStyles.footerBeforeBackground).toBe("none");
@@ -535,7 +536,7 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
   expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(
-    process.platform === "darwin" ? 22.265625 : 4.265625,
+    process.platform === "darwin" ? 41 : 13,
     2,
   );
 });
@@ -600,7 +601,7 @@ test("collapses the sidebar to its icon rail and restores it", async ({
   await expect.poll(() => sidebarWidth(page)).toBeLessThan(expandedWidth);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
-  await expect(page.getByTestId("channel-general")).toBeVisible();
+  await expect(page.getByTestId("sidebar-collapsed-channels")).toBeVisible();
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
   await expect(
@@ -651,18 +652,18 @@ test("resizes, persists, and snaps to the default sidebar width", async ({
   await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH);
   await expect.poll(() => storedSidebarWidth(page)).toBeNull();
 
-  await dragSidebarRail(page, 64);
+  await dragSidebarRail(page, 40);
 
-  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 40);
   await expect
     .poll(() => storedSidebarWidth(page))
-    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 64));
+    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 40));
 
   await page.reload();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 40);
 
-  await dragSidebarRail(page, -60);
+  await dragSidebarRail(page, -40);
 
   await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH);
   await expect

@@ -68,6 +68,8 @@ export type ActiveTurnSummary = {
 export type ActiveChannelTurnSummary = {
   channelId: string;
   anchorAt: number;
+  /** Each working agent's own earliest start in the channel, by agent key. */
+  agentAnchors?: Record<string, number>;
   agentCount: number;
   agentPubkeys: string[];
   agentNames?: string[];
@@ -539,7 +541,11 @@ export function getActiveTurnsByChannel(): ActiveChannelTurnSummary[] {
 
   const summaries = new Map<
     string,
-    { anchorAt: number; agentPubkeys: Set<string> }
+    {
+      agentAnchors: Map<string, number>;
+      anchorAt: number;
+      agentPubkeys: Set<string>;
+    }
   >();
 
   for (const [agentKey, agentTurns] of activeTurnsByAgent) {
@@ -551,6 +557,7 @@ export function getActiveTurnsByChannel(): ActiveChannelTurnSummary[] {
       const summary = summaries.get(turn.channelId);
       if (!summary) {
         summaries.set(turn.channelId, {
+          agentAnchors: new Map([[agentKey, anchorAt]]),
           anchorAt,
           agentPubkeys: new Set([agentKey]),
         });
@@ -558,6 +565,10 @@ export function getActiveTurnsByChannel(): ActiveChannelTurnSummary[] {
       }
 
       summary.agentPubkeys.add(agentKey);
+      const agentAnchor = summary.agentAnchors.get(agentKey);
+      if (agentAnchor === undefined || anchorAt < agentAnchor) {
+        summary.agentAnchors.set(agentKey, anchorAt);
+      }
       if (anchorAt < summary.anchorAt) {
         summary.anchorAt = anchorAt;
       }
@@ -568,6 +579,7 @@ export function getActiveTurnsByChannel(): ActiveChannelTurnSummary[] {
     .map(([channelId, summary]) => ({
       channelId,
       anchorAt: summary.anchorAt,
+      agentAnchors: Object.fromEntries(summary.agentAnchors),
       agentCount: summary.agentPubkeys.size,
       agentPubkeys: [...summary.agentPubkeys].sort(),
     }))

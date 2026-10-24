@@ -1821,12 +1821,18 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
   await page
     .getByRole("button", { name: "Toggle Sidebar", exact: true })
     .click();
+  // The designed collapsed sidebar is an icon rail with no channel rows, so
+  // the clock marker is not drawn there; it returns with the rows.
+  await expect(page.getByTestId("sidebar-collapsed-nav")).toBeVisible();
   await expect(
     page.getByTestId(`channel-ephemeral-${channelName}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Toggle Sidebar", exact: true })
     .click();
+  await expect(
+    page.getByTestId(`channel-ephemeral-${channelName}`),
+  ).toBeVisible();
 
   await page.evaluate(
     ({ channelName: targetChannelName, mentionPubkey, senderPubkey }) => {

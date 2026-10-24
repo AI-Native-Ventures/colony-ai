@@ -691,7 +691,7 @@ test("cancel closes the feedback form without submitting it", async ({
   const dialog = page.getByTestId("send-feedback-dialog");
   const message = dialog.getByTestId("feedback-message");
   await message.fill("Cancel this feedback draft.");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Close" }).last().click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("feedback-sent")).toHaveCount(0);
 });
@@ -2403,7 +2403,6 @@ test("settings subtitles share the Appearance secondary color", async ({
   }
 
   await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
   const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
   await expect(blocksAndTemplates).toBeVisible();
   await expect(blocksAndTemplates).toHaveCount(1);

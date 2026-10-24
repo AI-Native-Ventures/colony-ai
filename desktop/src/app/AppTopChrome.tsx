@@ -2,7 +2,13 @@ import * as React from "react";
 import { useLocation } from "@tanstack/react-router";
 
 import { breadcrumbForPath } from "@/app/topBarBreadcrumbs";
-import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui/colonyIcons";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ExpandSidebarIcon,
+} from "@/shared/ui/colonyIcons";
+import { useOptionalSidebar } from "@/shared/ui/sidebar";
 
 type AppTopChromeProps = {
   canGoBack: boolean;
@@ -31,6 +37,9 @@ export function AppTopChrome({
   const topChromeRef = React.useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const breadcrumb = breadcrumbForPath(pathname);
+  const sidebar = useOptionalSidebar();
+  // On a narrow window the sidebar is a drawer, and this is its only handle.
+  const isMobile = useIsMobile();
 
   React.useEffect(() => {
     const topChrome = topChromeRef.current;
@@ -52,6 +61,19 @@ export function AppTopChrome({
       data-testid="app-top-chrome"
       ref={topChromeRef}
     >
+      {isMobile ? (
+        <button
+          aria-label="Toggle Sidebar"
+          className="colony-topbar-button"
+          data-sidebar="trigger"
+          disabled={!sidebar}
+          onClick={() => sidebar?.toggleSidebar()}
+          type="button"
+        >
+          <ExpandSidebarIcon size={18} />
+          <span className="sr-only">Toggle Sidebar</span>
+        </button>
+      ) : null}
       <button
         aria-label="Go back"
         className="colony-topbar-button"

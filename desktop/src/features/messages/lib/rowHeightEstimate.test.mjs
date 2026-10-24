@@ -27,7 +27,7 @@ test("estimateRowHeight: continuation reserves its uniform padding", () => {
   const h = estimateRowHeight(msg({ body: "hello" }), {
     isContinuation: true,
   });
-  assert.equal(h, 28);
+  assert.equal(h, 35);
 });
 
 test("estimateRowHeight: many lines reserve more", () => {

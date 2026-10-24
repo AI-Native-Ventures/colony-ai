@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { invokeMockCommand } from "../helpers/welcomeTeam";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 import {
   AGENTS_CHANNEL_ID,
   createPlainWorkflow,
@@ -12,6 +13,7 @@ import {
 
 async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await page.goto("/");
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page).toHaveURL(/#\/workflows$/);
   await expect(page.getByTestId("workflows-view")).toBeVisible();
@@ -39,6 +41,7 @@ async function bootWithWorkflow(
 ) {
   await page.goto("/");
   const workflow = await seedWorkflow(page, name, { definition });
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId("workflows-view")).toBeVisible();
   await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();

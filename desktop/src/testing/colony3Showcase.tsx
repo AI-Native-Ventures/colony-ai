@@ -261,7 +261,7 @@ function NoticesBoard() {
       data-testid="colony3-notices"
     >
       <main className="flex-1 bg-[#FBF8F6] p-10">
-        <div className="flex w-[342px] flex-col gap-3">
+        <div className="colony-notice-gallery flex w-[342px] flex-col gap-3">
           <h2 className={`m-0 mb-0.5 ${EYEBROW}`}>Connection</h2>
           <Floating>
             <SidebarRelayConnectionCompactCard
