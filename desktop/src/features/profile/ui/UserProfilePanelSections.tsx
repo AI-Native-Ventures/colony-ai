@@ -11,7 +11,6 @@ import {
 import { RestartDiffBadge } from "@/features/agents/ui/RestartDiffBadge";
 import type { IdentityArchiveActions } from "@/features/identity-archive/hooks";
 import { getPresenceLabel } from "@/features/presence/lib/presence";
-import type { ProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
 import type { useUserProfileQuery } from "@/features/profile/hooks";
 import type { ProfileField } from "@/features/profile/ui/UserProfilePanelFields";
 import {
@@ -42,11 +41,9 @@ export { AgentInstructionsFocusedView } from "@/features/profile/ui/UserProfileP
 // ── Summary view ─────────────────────────────────────────────────────────────
 
 export type ProfileSummaryViewProps = {
-  activityAgent: ProfileActivityAgent | null;
   canAddToChannel: boolean;
   canDeleteAgent: boolean;
   canEditAgent: boolean;
-  canViewActivity: boolean;
   channelCount: number;
   channelIdToName: Record<string, string>;
   channels: ProfileChannelLink[];
@@ -126,11 +123,9 @@ function managerName(fields: ProfileField[]): string | null {
 }
 
 export function ProfileSummaryView({
-  activityAgent,
   canAddToChannel,
   canDeleteAgent,
   canEditAgent,
-  canViewActivity,
   channelCount,
   channelIdToName,
   channels,
@@ -332,12 +327,9 @@ export function ProfileSummaryView({
           <ProfileTabContentTransition activeTab={activeTab} tabs={tabIds}>
             {activeTab === "info" ? (
               <ProfileInfoTabContent
-                activeTurns={activeTurns}
-                activityAgent={activityAgent}
                 archiveActions={archiveActions}
                 canArchiveAgent={isBot && archiveActions.canArchive}
                 canDeleteAgent={canDeleteAgent}
-                channelIdToName={channelIdToName}
                 facts={facts}
                 isDeleteAgentPending={isAgentActionPending}
                 managedAgent={managedAgent}
@@ -351,7 +343,6 @@ export function ProfileSummaryView({
                     ? handleToggleAgentAutoStart
                     : undefined
                 }
-                showActivity={canViewActivity}
                 showInstructionBlock={showInstructionBlock}
                 startOnLaunchEnabled={managedAgent?.startOnAppLaunch}
                 startOnLaunchPending={isAgentActionPending}

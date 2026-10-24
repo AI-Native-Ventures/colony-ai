@@ -11,7 +11,7 @@ import {
   useRelayAgentsQuery,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
+import { useIsManagedAgent } from "@/features/agents/useIsManagedAgent";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useAgentWorking } from "@/features/agents/agentWorkingSignal";
 import {
@@ -311,7 +311,6 @@ function UserProfilePopoverBody({
   const { handleMessage, handleWave, isOpeningDm, pendingAction } =
     useProfileInteractionActions({
       availability: {
-        huddle: false,
         message: showMessageAction,
         wave: showHumanProfileActions,
       },

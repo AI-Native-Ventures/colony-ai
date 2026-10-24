@@ -211,10 +211,7 @@ export function usePersonaActions() {
         const runtime = availableRuntimes.find(
           (candidate) => candidate.id === input.runtime,
         );
-        const rolePackDefinitionOnly =
-          Boolean(input.companyRole) &&
-          resolveCreateIntent(intent) === "definition";
-        if (!runtime && !rolePackDefinitionOnly) {
+        if (!runtime) {
           setPersonaErrorMessage(
             "Choose an available provider for this agent.",
           );

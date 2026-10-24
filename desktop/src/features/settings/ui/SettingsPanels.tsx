@@ -7,7 +7,6 @@ import { CommunityMembersSettingsCard } from "@/features/community-members/ui/Co
 import { CustomEmojiSettingsCard } from "@/features/custom-emoji/ui/CustomEmojiSettingsCard";
 import { ExperimentalFeaturesCard } from "./ExperimentalFeaturesCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
-import { MeshComputeWorkspace } from "@/features/mesh-compute/ui/MeshComputeWorkspace";
 import { MobilePairingCard } from "./MobilePairingCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
@@ -22,7 +21,6 @@ import {
   SettingsAgentsIcon,
   SettingsBusinessIcon,
 } from "./settingsIcons";
-import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
 import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
@@ -38,12 +36,10 @@ export type SettingsSection =
   | "profile"
   | "security"
   | "notifications"
-  | "voice"
   | "experimental"
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "compute"
   | "privacy"
   | "appearance"
   | "accessibility"
@@ -120,7 +116,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     subtitle: "When Colony gets your attention, and how it sounds.",
     sections: [
       { value: "notifications", label: "Notifications & sounds" },
-      { value: "voice", label: "Voice & audio" },
       { value: "shortcuts", label: "Keyboard shortcuts" },
     ],
   },
@@ -168,7 +163,6 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
       { value: "experimental", label: "Experiments" },
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
-      { value: "compute", label: "Compute" },
     ],
   },
 ];
@@ -208,12 +202,10 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "profile",
   "security",
   "notifications",
-  "voice",
   "experimental",
   "agents",
   "agent-defaults",
   "harnesses",
-  "compute",
   "privacy",
   "appearance",
   "accessibility",
@@ -289,14 +281,6 @@ export function renderSettingsSection(
           onSetSoundForSlot={props.onSetSoundForSlot}
         />
       );
-    case "voice":
-      return (
-        <VoiceSettingsCard
-          onSectionChange={(nextSection) =>
-            props.onSectionChange?.(nextSection)
-          }
-        />
-      );
     case "experimental":
       return <ExperimentalFeaturesCard />;
     case "agents":
@@ -308,8 +292,6 @@ export function renderSettingsSection(
       );
     case "harnesses":
       return <HarnessLifecycleSettingsPanel />;
-    case "compute":
-      return <MeshComputeWorkspace />;
     case "appearance":
       return <AppearanceSettingsPanel />;
     case "privacy":

@@ -6,8 +6,6 @@
  */
 
 export const CHANNEL_SEARCH_KEYS = [
-  "agentSession",
-  "agentSessionChannel",
   "autoSend",
   "channelManagement",
   "messageId",

@@ -1,5 +1,4 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
 
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useAskHeadsQuery } from "@/features/company-asks/hooks";
@@ -7,21 +6,11 @@ import type { AskHeadRecord } from "@/features/company-asks/askRecords";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { Channel } from "@/shared/api/types";
-import { useFocusedRefetchInterval } from "@/shared/lib/useDocumentVisible";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-
-import {
-  fetchPendingWorkflowApprovals,
-  type PendingWorkflowApproval,
-} from "./needsMe";
 
 export type NeedsMeData = {
   asks: AskHeadRecord[];
-  workflowApprovals: PendingWorkflowApproval[];
 };
-
-export const TODAY_NEEDS_ME_QUERY_KEY = ["today-needs-me"] as const;
-export const TODAY_NEEDS_ME_REFETCH_INTERVAL_MS = 30_000;
 
 function asError(error: unknown, fallback: string): Error {
   if (error instanceof Error) return error;
@@ -47,30 +36,10 @@ export function useNeedsMeQuery() {
     () => memberChannelIds(channelsQuery.data),
     [channelsQuery.data],
   );
-  const channelIdsKey = channelIds.join(",");
   const canResolveToolConsent =
     membershipQuery.data?.role === "owner" ||
     membershipQuery.data?.role === "admin";
   const askHeads = useAskHeadsQuery(channelIds, canResolveToolConsent);
-  const refetchInterval = useFocusedRefetchInterval(
-    TODAY_NEEDS_ME_REFETCH_INTERVAL_MS,
-  );
-  const workflowApprovalsQuery = useQuery({
-    queryKey: [
-      ...TODAY_NEEDS_ME_QUERY_KEY,
-      "workflow-approvals",
-      currentPubkey,
-      channelIdsKey,
-    ],
-    queryFn: () => {
-      if (!currentPubkey) {
-        throw new Error("Your identity is unavailable.");
-      }
-      return fetchPendingWorkflowApprovals(channelIds, currentPubkey);
-    },
-    enabled: currentPubkey !== null && channelsQuery.data !== undefined,
-    refetchInterval,
-  });
 
   const baseError =
     identityQuery.error ??
@@ -104,14 +73,6 @@ export function useNeedsMeQuery() {
     (askHeads.query.isError
       ? asError(askHeads.query.error, "Ask records could not be loaded.")
       : null);
-  const workflowApprovalsError =
-    baseError ??
-    (workflowApprovalsQuery.isError
-      ? asError(
-          workflowApprovalsQuery.error,
-          "Workflow approvals could not be loaded.",
-        )
-      : null);
 
   const asks = React.useMemo(
     () =>
@@ -134,19 +95,10 @@ export function useNeedsMeQuery() {
       }),
     [askHeads.query.data, currentPubkey, membershipQuery.data?.role],
   );
-  const data = React.useMemo<NeedsMeData>(
-    () => ({
-      asks,
-      workflowApprovals: workflowApprovalsQuery.data ?? [],
-    }),
-    [asks, workflowApprovalsQuery.data],
-  );
+  const data = React.useMemo<NeedsMeData>(() => ({ asks }), [asks]);
   const isPending =
     identityQuery.isPending ||
     channelsQuery.isPending ||
-    (currentPubkey !== null &&
-      channelsQuery.data !== undefined &&
-      workflowApprovalsQuery.isPending) ||
     membershipQuery.isPending ||
     ((channelIds.length > 0 || canResolveToolConsent) &&
       !relaySelfError &&
@@ -159,7 +111,6 @@ export function useNeedsMeQuery() {
       askHeads.relaySelfQuery.refetch(),
       askHeads.query.refetch(),
       membershipQuery.refetch(),
-      workflowApprovalsQuery.refetch(),
     ]);
   }, [
     askHeads.query,
@@ -167,14 +118,12 @@ export function useNeedsMeQuery() {
     channelsQuery,
     identityQuery,
     membershipQuery,
-    workflowApprovalsQuery,
   ]);
 
   return {
     data,
     isPending,
     asksError,
-    workflowApprovalsError,
     refetch,
   };
 }

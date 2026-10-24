@@ -9,20 +9,12 @@
 type Crumb = { label: string };
 
 const MONEY_PAGES: Record<string, string> = {
-  adjustments: "Credit notes & refunds",
-  "follow-ups": "Follow-ups",
   invoices: "Invoices",
   invoice: "Invoice",
   revenue: "Revenue",
-  costs: "Costs",
-  profitability: "Profitability",
-  tax: "Tax",
 };
 
 const SALES_PAGES: Record<string, string> = {
-  proposals: "Proposals",
-  proposal: "Proposal",
-  service: "Service",
   lead: "Lead",
 };
 
@@ -37,24 +29,14 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
   switch (first) {
     case "agents":
       return trail("Company", "Agents");
-    case "supervision":
-      return trail("Company", "Supervision");
     case "team":
       return segments.length > 1
-        ? trail("Company", "Team", second === "org" ? "Org chart" : "Member")
+        ? trail("Company", "Team", "Member")
         : trail("Company", "Team");
     case "hire":
       return trail("Company", "Team", "Hire");
-    case "goals":
-      return segments.length > 1
-        ? trail("Company", "Goals", "Goal")
-        : trail("Company", "Goals");
     case "work":
       return trail("Company", "Work");
-    case "workflows":
-      return segments.length > 1
-        ? trail("Company", "Workflows", "Workflow")
-        : trail("Company", "Workflows");
     case "discovery":
       return trail("Business", "Discovery");
     case "campaign":
@@ -79,14 +61,6 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
         : trail("Business", "Money");
     case "power":
       return trail("Company", "AI spend & power");
-    case "reminders":
-      return trail("Saved for later");
-    case "pulse":
-      return trail("Pulse");
-    case "secrets":
-      return trail("Company", "Secrets");
-    case "projects":
-      return trail("Software Factory", "Projects");
     default:
       return null;
   }

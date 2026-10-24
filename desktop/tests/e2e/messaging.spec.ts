@@ -4,7 +4,6 @@ import { expect, test, type Locator } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
-import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
 import { openAvatarProfileContext, openSettings } from "../helpers/settings";
 
@@ -3297,7 +3296,6 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-actions-menu-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
 
   const rootMessage = page.locator('[data-message-id="mock-general-alice"]');
@@ -3307,7 +3305,6 @@ test("narrow thread view keeps the reference channel actions visible", async ({
   await page.getByTestId("reply-message-mock-general-alice").click();
   await expect(threadPanel).toBeVisible();
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
@@ -3663,8 +3660,6 @@ test("thread composer switches directly between visible reply edits", async ({
   await timelineRoot.getByRole("button", { name: "Reply" }).click();
 
   const threadPanel = page.getByTestId("message-thread-panel");
-  // Linked-work loading changes reply positions; settle it before hovering.
-  await waitForCompanyWorkThreadContextRead(page);
   const threadInput = threadPanel.getByTestId("message-input");
   const secondReply = threadPanel.locator(`[data-message-id="${secondId}"]`);
   await secondReply.hover();
@@ -4467,87 +4462,6 @@ test("a refused search result preserves the edit and retries after cancel", asyn
   await expect(page).toHaveURL(new RegExp(`thread=${destinationRootId}`));
 });
 
-test("a refused forum search result preserves the edit and retries after cancel", async ({
-  page,
-}) => {
-  const sourceRoot = `Forum guard source ${Date.now()}`;
-  const sourceReply = `Forum guard reply ${Date.now()}`;
-  const dirtyReply = `${sourceReply} unsaved byte-for-byte`;
-
-  await page.goto("/");
-  await page.waitForFunction(
-    () => typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function",
-  );
-  const sourceRootId = await page.evaluate(
-    ({ sourceReply, sourceRoot }) => {
-      const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
-      if (!emit) throw new Error("Mock message emitter is unavailable.");
-      const source = emit({ channelName: "general", content: sourceRoot });
-      emit({
-        channelName: "general",
-        content: sourceReply,
-        parentEventId: source.id,
-      });
-      return source.id;
-    },
-    { sourceReply, sourceRoot },
-  );
-
-  await page.getByTestId("channel-general").click();
-  const source = page
-    .getByTestId("message-timeline")
-    .locator(`[data-message-id="${sourceRootId}"]`);
-  await source.hover();
-  await source.getByRole("button", { name: "Reply" }).click();
-  const threadPanel = page.getByTestId("message-thread-panel");
-  const threadInput = threadPanel.getByTestId("message-input");
-  const reply = threadPanel
-    .getByTestId("message-row")
-    .filter({ hasText: sourceReply })
-    .last();
-  await reply.hover();
-  await reply.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit message" }).click();
-  await expectReplyEditReady(threadPanel, sourceReply);
-  await threadInput.fill(dirtyReply);
-
-  const threadUrl = page.url();
-  const editTarget = threadPanel.getByTestId("edit-target");
-  await expect(editTarget).toBeVisible();
-  await page.getByTestId("open-search").click();
-  await page
-    .getByTestId("search-dialog-input")
-    .fill("Release checklist: async feedback thread.");
-  const forumResult = page.getByTestId(
-    "search-result-mock-forum-release-thread",
-  );
-  await expect(forumResult).toBeVisible();
-  await forumResult.click();
-
-  const refusal = page.getByText(
-    "Finish or cancel your edit before leaving the thread.",
-  );
-  await expect(refusal).toHaveCount(1);
-  await expect(threadPanel).toBeVisible();
-  await expect(editTarget).toBeVisible();
-  await expect(threadInput).toHaveText(dirtyReply);
-  await expect(page).toHaveURL(threadUrl);
-
-  await threadInput.press("Escape");
-  await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-  await page.getByTestId("open-search").click();
-  await page
-    .getByTestId("search-dialog-input")
-    .fill("Release checklist: async feedback thread.");
-  await forumResult.click();
-  await expect(page).toHaveURL(
-    /#\/channels\/a27e1ee9-76a6-5bdf-a5d5-1d85610dad11\/posts\/mock-forum-release-thread$/,
-  );
-  await expect(
-    page.locator('[data-forum-event-id="mock-forum-release-thread"]'),
-  ).toContainText("Release checklist: async feedback thread.");
-});
-
 for (const targetKind of ["reply", "root"] as const) {
   test(`a refused same-thread ${targetKind} target preserves the edit and retries after cancel`, async ({
     page,
@@ -4587,7 +4501,6 @@ for (const targetKind of ["reply", "root"] as const) {
     await source.getByRole("button", { name: "Reply" }).click();
 
     const threadPanel = page.getByTestId("message-thread-panel");
-    await waitForCompanyWorkThreadContextRead(page);
     const threadInput = threadPanel.getByTestId("message-input");
     const reply = threadPanel.locator(`[data-message-id="${sourceReplyId}"]`);
     await reply.hover();

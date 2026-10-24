@@ -601,7 +601,7 @@ export function HomeView({
       currentPubkey,
       availableChannelIds,
     );
-  const detailMode = isDrafts ? "drafts" : "messages";
+  const detailMode = isDrafts || selectedDraftItem ? "drafts" : "messages";
   const {
     auxiliaryPaneWidthPx,
     effectiveInboxListWidthPx,

@@ -492,34 +492,6 @@ test("thread-surface: streaming-in rows paint nothing (pending), not empty", () 
   );
 });
 
-test("thread-surface: huddle transcripts collapse non-list surfaces to pending", () => {
-  // Huddle transcripts flatten replies into the chat timeline, so they never
-  // show the skeleton/error/empty affordances — only the list body or nothing.
-  for (const isError of [false, true]) {
-    for (const renderState of ["empty", "pending"]) {
-      assert.equal(
-        selectThreadRepliesSurface({
-          isPending: false,
-          isError,
-          renderState,
-          isHuddleTranscript: true,
-        }),
-        "pending",
-      );
-    }
-  }
-  // The list body still paints for a transcript with rows.
-  assert.equal(
-    selectThreadRepliesSurface({
-      isPending: false,
-      isError: false,
-      renderState: "list",
-      isHuddleTranscript: true,
-    }),
-    "list",
-  );
-});
-
 test("timeline-body-surface: loading and deferred-pending both paint the single static skeleton", () => {
   assert.equal(
     selectTimelineBodySurface({

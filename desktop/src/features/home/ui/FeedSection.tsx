@@ -6,16 +6,12 @@ import {
 } from "@/features/profile/lib/identity";
 import type { FeedItem } from "@/shared/api/types";
 import {
-  KIND_APPROVAL_REQUEST,
-  KIND_FORUM_COMMENT,
-  KIND_FORUM_POST,
   KIND_JOB_ACCEPTED,
   KIND_JOB_CANCEL,
   KIND_JOB_ERROR,
   KIND_JOB_PROGRESS,
   KIND_JOB_REQUEST,
   KIND_JOB_RESULT,
-  KIND_REMINDER,
 } from "@/shared/constants/kinds";
 import { resolveMentionProps } from "@/shared/lib/resolveMentionNames";
 import { Button } from "@/shared/ui/button";
@@ -60,8 +56,6 @@ function formatRelativeTime(unixSeconds: number) {
 
 function feedHeadline(item: FeedItem) {
   switch (item.kind) {
-    case KIND_REMINDER:
-      return "Reminder";
     case KIND_JOB_REQUEST:
       return "Job requested";
     case KIND_JOB_ACCEPTED:
@@ -74,12 +68,6 @@ function feedHeadline(item: FeedItem) {
       return "Job cancelled";
     case KIND_JOB_ERROR:
       return "Job failed";
-    case KIND_FORUM_POST:
-      return "Forum post";
-    case KIND_FORUM_COMMENT:
-      return "Forum reply";
-    case KIND_APPROVAL_REQUEST:
-      return "Approval requested";
     default:
       if (item.category === "mention") {
         return "Mention";
@@ -97,14 +85,6 @@ function feedContent(item: FeedItem) {
   const content = item.content.trim();
   if (content.length > 0) {
     return content;
-  }
-
-  if (item.kind === KIND_APPROVAL_REQUEST) {
-    return "A workflow is waiting for approval.";
-  }
-
-  if (item.kind === KIND_REMINDER) {
-    return "A reminder is waiting for you.";
   }
 
   return "No additional details were attached to this event.";

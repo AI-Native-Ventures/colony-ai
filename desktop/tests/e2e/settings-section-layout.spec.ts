@@ -53,11 +53,6 @@ test("settings use seven pages, find-a-setting search, remembered sections, and 
   await expect(page.getByTestId("settings-inner-ai-connections")).toHaveCount(
     0,
   );
-  await page.getByTestId("settings-group-blocks-templates").click();
-  await expect(page.getByTestId("settings-inner-blocks")).toHaveCount(0);
-  await page.getByTestId("settings-group-app-devices").click();
-  await selectSettingsSection(page, "compute");
-  await expect(page.getByTestId("settings-mesh-share-compute")).toBeVisible();
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(page.getByTestId("settings-view")).toHaveCount(0);
@@ -104,9 +99,18 @@ test("routes without a data-backed design fall back to Account profile", async (
     "business-connections",
     "ai-connections",
     "provider-connections",
-    "archived-records",
+    "voice",
     "channel-templates",
+    "compute",
+    "moderation",
+    "audit",
+    "settings/admin",
     "local-archive",
+    "storage",
+    "settings/themes",
+    "settings/theme-preview",
+    "settings/theme-applied",
+    "archived-records",
     "administration",
   ]) {
     await page.goto(`/#/settings?section=${section}`);

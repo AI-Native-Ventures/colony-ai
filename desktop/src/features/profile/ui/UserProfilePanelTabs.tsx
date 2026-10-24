@@ -9,14 +9,6 @@ import {
   AUTO_RESTART_ON_BLURB,
   RestartDiffList,
 } from "@/features/agents/ui/RestartDiffBadge";
-import type { ActiveTurnSummary } from "@/features/agents/activeAgentTurnsStore";
-import { ManagedAgentSessionPanel } from "@/features/agents/ui/ManagedAgentSessionPanel";
-import type { ProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
-import { resolveActivityChannelId } from "@/features/profile/lib/profileActivityCarousel";
-import {
-  type ProfileActivityFeedScope,
-  useProfileActivityFeedScope,
-} from "@/features/profile/lib/profileActivityFeedScope";
 import {
   CopyGlyphIcon,
   DocumentIcon,
@@ -31,12 +23,6 @@ import {
 } from "@/features/profile/ui/UserProfilePanelFields";
 import type { ProfilePanelTab } from "@/features/profile/ui/UserProfilePanelUtils";
 import { cn } from "@/shared/lib/cn";
-import {
-  Carousel,
-  type CarouselApi,
-  CarouselContent,
-  CarouselItem,
-} from "@/shared/ui/carousel";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { useCopyFeedback } from "@/shared/ui/HoverCopyIndicator";
 import { CheckIcon } from "@/shared/ui/colonyIcons";
@@ -192,12 +178,9 @@ export function ProfileTabBar({
 }
 
 export function ProfileInfoTabContent({
-  activeTurns,
-  activityAgent,
   archiveActions,
   canArchiveAgent,
   canDeleteAgent,
-  channelIdToName,
   facts,
   isDeleteAgentPending,
   managedAgent,
@@ -207,17 +190,13 @@ export function ProfileInfoTabContent({
   onEditAgent,
   onExportAgent,
   onToggleStartOnLaunch,
-  showActivity,
   showInstructionBlock,
   startOnLaunchEnabled,
   startOnLaunchPending = false,
 }: {
-  activeTurns: ActiveTurnSummary[];
-  activityAgent: ProfileActivityAgent | null;
   archiveActions: IdentityArchiveActions;
   canArchiveAgent: boolean;
   canDeleteAgent: boolean;
-  channelIdToName: Record<string, string>;
   /** The labelled facts, already in board order. */
   facts: ProfileField[];
   isDeleteAgentPending: boolean;
@@ -229,16 +208,12 @@ export function ProfileInfoTabContent({
   onEditAgent: () => void;
   onExportAgent?: () => void;
   onToggleStartOnLaunch?: () => void;
-  showActivity: boolean;
   showInstructionBlock: boolean;
   startOnLaunchEnabled?: boolean;
   startOnLaunchPending?: boolean;
 }) {
   const showArchiveAction =
     canArchiveAgent && archiveActions.isArchived !== undefined;
-  const feedScope = useProfileActivityFeedScope(activityAgent, activeTurns);
-  const showLiveActivityEmbed =
-    showActivity && (feedScope.isLive || feedScope.hasFeedContent);
 
   if (
     facts.length === 0 &&
@@ -247,7 +222,6 @@ export function ProfileInfoTabContent({
     !onCreateCard &&
     !onDuplicateAgent &&
     !onExportAgent &&
-    !showLiveActivityEmbed &&
     !showInstructionBlock
   ) {
     return null;
@@ -255,14 +229,6 @@ export function ProfileInfoTabContent({
 
   return (
     <div className="pp-info" data-testid="user-profile-info-sections">
-      {showLiveActivityEmbed && activityAgent ? (
-        <ProfileLiveActivityEmbed
-          activeTurns={activeTurns}
-          activityAgent={activityAgent}
-          channelIdToName={channelIdToName}
-          feedScope={feedScope}
-        />
-      ) : null}
       {showInstructionBlock ? (
         <button
           className="pp-link-row"
@@ -394,253 +360,6 @@ function ProfileFact({
           </button>
         ) : null}
       </dd>
-    </div>
-  );
-}
-
-function ProfileLiveActivityEmbed({
-  activeTurns,
-  activityAgent,
-  channelIdToName,
-  feedScope,
-}: {
-  activeTurns: ActiveTurnSummary[];
-  activityAgent: ProfileActivityAgent;
-  channelIdToName: Record<string, string>;
-  feedScope: ProfileActivityFeedScope;
-}) {
-  const [carouselApi, setCarouselApi] = React.useState<CarouselApi>();
-  const [selectedChannelId, setSelectedChannelId] = React.useState<
-    string | null
-  >(null);
-  const [mountedChannelIds, setMountedChannelIds] = React.useState<Set<string>>(
-    () => new Set(),
-  );
-
-  const slides = React.useMemo(() => {
-    const channelIds = feedScope.isLive
-      ? activeTurns.map((turn) => turn.channelId)
-      : feedScope.channelIds;
-    return [...new Set(channelIds)];
-  }, [activeTurns, feedScope.channelIds, feedScope.isLive]);
-
-  const activeChannelId = resolveActivityChannelId(
-    slides,
-    selectedChannelId,
-    feedScope.preferredChannelId,
-  );
-  const selectedIndex = activeChannelId ? slides.indexOf(activeChannelId) : 0;
-
-  React.useEffect(() => {
-    if (!carouselApi || !activeChannelId) {
-      return;
-    }
-
-    const syncSelectedChannel = () => {
-      setSelectedChannelId(slides[carouselApi.selectedScrollSnap()] ?? null);
-    };
-
-    carouselApi.on("select", syncSelectedChannel);
-    carouselApi.on("reInit", syncSelectedChannel);
-
-    return () => {
-      carouselApi.off("select", syncSelectedChannel);
-      carouselApi.off("reInit", syncSelectedChannel);
-    };
-  }, [activeChannelId, carouselApi, slides]);
-
-  React.useEffect(() => {
-    if (!carouselApi || !activeChannelId) {
-      return;
-    }
-
-    const targetIndex = slides.indexOf(activeChannelId);
-    if (targetIndex >= 0 && carouselApi.selectedScrollSnap() !== targetIndex) {
-      carouselApi.scrollTo(targetIndex, true);
-    }
-    setSelectedChannelId(activeChannelId);
-  }, [activeChannelId, carouselApi, slides]);
-
-  React.useEffect(() => {
-    if (!activeChannelId) {
-      return;
-    }
-
-    setMountedChannelIds((current) => {
-      if (current.has(activeChannelId)) {
-        return current;
-      }
-      const next = new Set(current);
-      next.add(activeChannelId);
-      return next;
-    });
-  }, [activeChannelId]);
-
-  const activeChannelName = activeChannelId
-    ? (channelIdToName[activeChannelId] ?? activeChannelId)
-    : null;
-  const emptyState = feedScope.isLive ? "loading" : "idle";
-  const emptyDescription = "Live activity will appear here.";
-  const handleDotSelect = React.useCallback(
-    (index: number) => {
-      const targetIndex =
-        slides.length === 2 && index === selectedIndex
-          ? (selectedIndex + 1) % slides.length
-          : index;
-      carouselApi?.scrollTo(targetIndex);
-    },
-    [carouselApi, selectedIndex, slides.length],
-  );
-
-  if (slides.length === 0) {
-    return (
-      <section
-        aria-label="Live activity"
-        className="pp-live"
-        data-testid={`user-profile-live-activity-${activityAgent.pubkey}`}
-      >
-        <span className="pp-eyebrow">Live activity</span>
-        <ManagedAgentSessionPanel
-          agent={activityAgent}
-          autoTail={true}
-          channelId={activeChannelId}
-          className="pp-live-transcript relative z-0 min-h-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none **:data-message-id:pointer-events-none"
-          emptyDescription={emptyDescription}
-          emptyState={emptyState}
-          panelPadding={false}
-          rawLayout="responsive"
-          showHeader={false}
-          showRaw={false}
-          transcriptContentClassName="py-1"
-          transcriptVariant="compactPreview"
-        />
-      </section>
-    );
-  }
-
-  return (
-    <div>
-      <section
-        aria-label="Live activity"
-        className="pp-live"
-        data-testid={`user-profile-live-activity-${activityAgent.pubkey}`}
-      >
-        <span className="pp-eyebrow">Live activity</span>
-        <Carousel
-          className="pp-live-carousel relative z-0 flex min-h-0 flex-1 flex-col"
-          opts={{
-            align: "start",
-            containScroll: "trimSnaps",
-            dragFree: false,
-            watchDrag: false,
-          }}
-          setApi={setCarouselApi}
-        >
-          <CarouselContent className="ml-0 h-full flex-1">
-            {slides.map((channelId) => {
-              const isMounted = mountedChannelIds.has(channelId);
-
-              return (
-                <CarouselItem
-                  className="h-full basis-full pl-0"
-                  data-mounted={isMounted ? "true" : "false"}
-                  data-testid={`user-profile-activity-slide-${channelId}`}
-                  key={channelId}
-                >
-                  {isMounted ? (
-                    <ManagedAgentSessionPanel
-                      agent={activityAgent}
-                      autoTail={true}
-                      channelId={channelId}
-                      className="pp-live-transcript h-full min-h-0 border-0 bg-transparent px-0 text-xs shadow-none **:data-message-id:pointer-events-none"
-                      emptyDescription={emptyDescription}
-                      emptyState={emptyState}
-                      panelPadding={false}
-                      rawLayout="responsive"
-                      showHeader={false}
-                      showRaw={false}
-                      transcriptContentClassName="py-1"
-                      transcriptVariant="compactPreview"
-                    />
-                  ) : (
-                    <div aria-hidden="true" className="h-full" />
-                  )}
-                </CarouselItem>
-              );
-            })}
-          </CarouselContent>
-        </Carousel>
-        {activeChannelName ? (
-          <span
-            className="pp-live-channel"
-            data-testid="user-profile-activity-channel-label"
-            title={`#${activeChannelName}`}
-          >
-            #{activeChannelName}
-          </span>
-        ) : null}
-      </section>
-      <ActivityCarouselDots
-        channelIdToName={channelIdToName}
-        onSelect={handleDotSelect}
-        selectedIndex={selectedIndex}
-        slides={slides}
-      />
-    </div>
-  );
-}
-
-function ActivityCarouselDots({
-  channelIdToName,
-  onSelect,
-  selectedIndex,
-  slides,
-}: {
-  channelIdToName: Record<string, string>;
-  onSelect: (index: number) => void;
-  selectedIndex: number;
-  slides: string[];
-}) {
-  if (slides.length <= 1) {
-    return null;
-  }
-
-  return (
-    <div
-      aria-label="Choose active channel feed"
-      className="mt-2 flex items-center justify-center gap-1.5"
-      role="tablist"
-    >
-      {slides.map((channelId, index) => {
-        const isSelected = index === selectedIndex;
-        const channelName = channelIdToName[channelId] ?? channelId;
-
-        return (
-          <button
-            aria-label={`Show #${channelName} activity`}
-            aria-selected={isSelected}
-            className="group relative flex items-center justify-center before:absolute before:-inset-2 before:content-['']"
-            data-testid={`user-profile-activity-dot-${channelId}`}
-            key={channelId}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(index);
-            }}
-            role="tab"
-            type="button"
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "relative z-10 block rounded-full bg-foreground transition-all",
-                isSelected
-                  ? "h-1 w-4"
-                  : "h-1 w-1 opacity-30 group-hover:opacity-60",
-              )}
-            />
-          </button>
-        );
-      })}
     </div>
   );
 }

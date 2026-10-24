@@ -9,10 +9,9 @@ import { installMockBridge } from "../helpers/bridge";
 const AGENT_PUBKEY =
   "554cef57437abac34522ac2c9f0490d685b72c80478cf9f7ed6f9570ee8624ea";
 
-// Channel IDs the seeded turns point at. The badge labels resolve these to
-// #general / #engineering via the channels query.
+// Channel ID the seeded turn points at. The badge label resolves it to
+// #general via the channels query.
 const CHANNEL_GENERAL = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
-const CHANNEL_ENGINEERING = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
 
 function seedAgent() {
   return {
@@ -82,55 +81,6 @@ function agentAvatar(page: import("@playwright/test").Page) {
 
 test.describe("profile active turn indicator", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
-
-  test("01 — profile panel: agent working in one channel", async ({ page }) => {
-    await installMockBridge(page, seedAgent());
-    await openAgentsChannel(page);
-    await seedActiveTurns(page, [
-      { channelId: CHANNEL_GENERAL, turnId: "turn-101" },
-    ]);
-
-    await agentAvatar(page).click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible();
-    const liveActivity = panel.getByTestId(
-      `user-profile-live-activity-${AGENT_PUBKEY}`,
-    );
-    await expect(liveActivity).toBeVisible({ timeout: 5_000 });
-    await expect(liveActivity).toContainText("Live activity");
-    await expect(
-      liveActivity.getByTestId("user-profile-activity-channel-label"),
-    ).toContainText("#general");
-  });
-
-  test("02 — profile panel: agent working in two channels", async ({
-    page,
-  }) => {
-    await installMockBridge(page, seedAgent());
-    await openAgentsChannel(page);
-    await seedActiveTurns(page, [
-      { channelId: CHANNEL_GENERAL, turnId: "turn-201" },
-      { channelId: CHANNEL_ENGINEERING, turnId: "turn-202" },
-    ]);
-
-    await agentAvatar(page).click();
-
-    const panel = page.getByTestId("user-profile-panel");
-    await expect(panel).toBeVisible();
-    const liveActivity = panel.getByTestId(
-      `user-profile-live-activity-${AGENT_PUBKEY}`,
-    );
-    await expect(liveActivity).toBeVisible({ timeout: 5_000 });
-    await expect(liveActivity).toContainText("Live activity");
-    // One carousel dot per working channel.
-    await expect(
-      panel.getByTestId(`user-profile-activity-dot-${CHANNEL_GENERAL}`),
-    ).toBeVisible();
-    await expect(
-      panel.getByTestId(`user-profile-activity-dot-${CHANNEL_ENGINEERING}`),
-    ).toBeVisible();
-  });
 
   test("03 — hover popover: agent working", async ({ page }) => {
     await installMockBridge(page, seedAgent());

@@ -88,7 +88,7 @@ function sidebarField(page: Page) {
   );
 }
 for (const width of [1728, 1440]) {
-  for (const variant of ["default", "catppuccin-latte", "dracula", "field"]) {
+  for (const variant of ["default", "field"]) {
     test(`chrome paint ${variant} ${width}`, async ({ page }) => {
       test.setTimeout(60_000);
       await page.setViewportSize({

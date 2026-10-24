@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { CopyButton } from "@/features/agents/ui/CopyButton";
-import { MemoryRefreshButton } from "@/features/agent-memory/ui/MemorySection";
 import {
   PROFILE_PANEL_VIEW_TITLES,
   type ProfilePanelView,
@@ -21,7 +20,6 @@ export function getUserProfilePanelHeaderContent({
   logSubtitle,
   onBack,
   view,
-  viewerIsOwner,
 }: {
   agentSettingsMenu: ReactNode;
   effectivePubkey: string | null;
@@ -30,7 +28,6 @@ export function getUserProfilePanelHeaderContent({
   logSubtitle?: string | null;
   onBack: () => void;
   view: ProfilePanelView;
-  viewerIsOwner: boolean;
 }) {
   const title = PROFILE_PANEL_VIEW_TITLES[view];
   const shouldShowLogDetails =
@@ -58,13 +55,6 @@ export function getUserProfilePanelHeaderContent({
   );
   const headerActions = (
     <AuxiliaryPanelHeaderActions>
-      {view === "memories" && viewerIsOwner && effectivePubkey ? (
-        <MemoryRefreshButton
-          agentPubkey={effectivePubkey}
-          variant="outline"
-          viewerIsOwner={viewerIsOwner}
-        />
-      ) : null}
       {view === "summary" ? agentSettingsMenu : null}
       {shouldShowLogDetails ? (
         <CopyButton

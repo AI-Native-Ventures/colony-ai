@@ -1,11 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import {
-  KIND_HUDDLE_ENDED,
-  KIND_HUDDLE_STARTED,
-  KIND_TYPING_INDICATOR,
-} from "../../src/shared/constants/kinds";
-import { FEATURE_OVERRIDES_STORAGE_KEY } from "../helpers/features";
+import { KIND_TYPING_INDICATOR } from "../../src/shared/constants/kinds";
 import {
   TEST_IDENTITIES,
   installMockBridge,
@@ -18,15 +13,11 @@ import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
-const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301";
 const MOCK_IDENTITY_PUBKEY = "deadbeef".repeat(8);
-const ALICE_PUBKEY =
-  "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f";
 const CACHED_PROFILE_LABELS_TAG = "@cached-profile-labels";
 // Relay-only agent owned by the mock viewer (see e2eBridge.ts
 // OWNED_RELAY_AGENT_PUBKEY). Classified as a bot via mockRelayAgents and
-// owned-by-viewer via its mockProfiles owner_pubkey, so the sidebar
-// view-activity gate (memberIsBot && viewerIsOwner) opens for it.
+// owned-by-viewer via its mockProfiles owner_pubkey.
 const OWNED_RELAY_AGENT_PUBKEY =
   "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00";
 const DM_RELAY_AGENT_PUBKEY =
@@ -527,11 +518,6 @@ test("sidebar shows all channel types", async ({ page }) => {
   await expect(streamList).toContainText("random");
   await expect(streamList).toContainText("engineering");
   await expect(streamList).toContainText("agents");
-
-  // Forums
-  const forumList = page.getByTestId("forum-list");
-  await expect(forumList).toContainText("watercooler");
-  await expect(forumList).toContainText("announcements");
 
   // DMs
   const dmList = page.getByTestId("dm-list");
@@ -1549,180 +1535,6 @@ test("channel name values stay primary after their inputs blur", async ({
   );
 });
 
-test("create channel template selector matches the lifecycle controls", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    channelTemplates: [
-      {
-        id: "project-kickoff",
-        name: "Project kickoff",
-        description: "Coordinate a new project from planning through launch.",
-        channelType: "stream",
-        visibility: "private",
-        canvasTemplate: "# {channel.name}\n\nKickoff notes",
-        agents: {
-          personas: [
-            {
-              personaId: "planner",
-              runtime: null,
-              model: null,
-              role: null,
-              backend: null,
-            },
-          ],
-          teams: [
-            {
-              teamId: "research-team",
-              runtime: null,
-              model: null,
-              backend: null,
-            },
-          ],
-        },
-        isBuiltin: false,
-        createdAt: "2026-07-23T00:00:00Z",
-        updatedAt: "2026-07-23T00:00:00Z",
-      },
-    ],
-  });
-
-  await page.goto("/");
-  await openCreateChannelDialog(page);
-
-  const templateControl = page.getByTestId("create-channel-template");
-  await expect(templateControl).toHaveRole("button");
-  await expect(templateControl).toHaveText("None");
-  await templateControl.click();
-  await expect(
-    page.getByRole("menuitem", { name: "Create new channel template…" }),
-  ).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "Project kickoff" }).click();
-
-  await expect(templateControl).toHaveText("Project kickoff");
-  await expect(page.getByTestId("create-channel-template-summary")).toHaveText(
-    "Private · Canvas included · 1 agent · 1 team",
-  );
-  await expect(page.getByTestId("create-channel-description")).toHaveValue(
-    "Coordinate a new project from planning through launch.",
-  );
-  await expect(
-    page.getByTestId("create-channel-permissions-option-private"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("create-channel-permissions-option-open").click();
-  await expect(page.getByTestId("create-channel-template-summary")).toHaveText(
-    "Open · Canvas included · 1 agent · 1 team",
-  );
-});
-
-test("template picker returns a real template to the channel creation flow", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    channelTemplates: [
-      {
-        id: "team-updates",
-        name: "Team updates",
-        description: "An async forum for your team.",
-        channelType: "forum",
-        visibility: "private",
-        canvasTemplate: null,
-        agents: { personas: [], teams: [] },
-        isBuiltin: true,
-        createdAt: "2026-09-26T07:00:00Z",
-        updatedAt: "2026-09-26T07:00:00Z",
-      },
-    ],
-  });
-
-  await page.goto("/");
-  await openCreateChannelDialog(page);
-  await page.getByTestId("create-channel-name").fill("weekly-updates");
-  await page.getByTestId("create-channel-template").click();
-  await page.getByTestId("create-channel-browse-templates").click();
-
-  const picker = page.getByTestId("channel-template-picker");
-  await expect(picker).toBeVisible();
-  await expect(picker.getByText("New channel", { exact: true })).toBeVisible();
-  await expect(picker.getByText("E2E Test", { exact: true })).toBeVisible();
-  await expect(
-    picker.getByRole("heading", { name: "Create from a template" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("settings-view")).toHaveCount(0);
-
-  const teamUpdates = page
-    .getByTestId("channel-template-card")
-    .filter({ hasText: "Team updates" });
-  const useTemplate = teamUpdates.getByTestId("channel-template-use");
-  await expect(useTemplate).toHaveCSS("background-color", "rgb(38, 85, 160)");
-  await useTemplate.click();
-
-  const createForum = page.getByTestId("create-channel-dialog");
-  await expect(createForum).toBeVisible();
-  await expect(createForum).toContainText("Create a new forum");
-  await expect(createForum.getByTestId("create-channel-name")).toHaveValue(
-    "weekly-updates",
-  );
-  await expect(createForum.getByTestId("create-channel-template")).toHaveText(
-    "Team updates",
-  );
-  await expect(
-    createForum.getByTestId("create-channel-description"),
-  ).toHaveValue("An async forum for your team.");
-});
-
-test("create channel exposes templates when the library is empty", async ({
-  page,
-}) => {
-  await installMockBridge(page, { channelTemplates: [] });
-  await page.goto("/");
-  await openCreateChannelDialog(page);
-
-  const typeContainer = page.getByTestId(
-    "create-channel-channel-type-container",
-  );
-  const visibilityContainer = page.getByTestId(
-    "create-channel-permissions-container",
-  );
-  const templateContainer = page.getByTestId(
-    "create-channel-template-container",
-  );
-  await expect(
-    page.getByTestId("create-channel-channel-type").getByRole("button"),
-  ).toHaveText(["Temporary", "Ongoing"]);
-  await expect(
-    page.getByTestId("create-channel-permissions").getByRole("button"),
-  ).toHaveText(["Private", "Public"]);
-  await expect(templateContainer).toContainText("TemplateOptional");
-  const typeBox = await typeContainer.boundingBox();
-  const visibilityBox = await visibilityContainer.boundingBox();
-  const templateBox = await templateContainer.boundingBox();
-  expect(typeBox).not.toBeNull();
-  expect(visibilityBox).not.toBeNull();
-  expect(templateBox).not.toBeNull();
-  expect(typeBox?.y ?? 0).toBeLessThan(visibilityBox?.y ?? 0);
-  expect(visibilityBox?.y ?? 0).toBeLessThan(templateBox?.y ?? 0);
-
-  const templateControl = page.getByTestId("create-channel-template");
-  await expect(templateControl).toHaveText("None");
-  await templateControl.click();
-  await page
-    .getByRole("menuitem", { name: "Create new channel template…" })
-    .click();
-
-  await expect(
-    page.getByText("Create template", { exact: true }),
-  ).toBeVisible();
-  await page.locator("#template-name").fill("Weekly planning");
-  await page.locator("#template-description").fill("Plan the next week.");
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-
-  await expect(templateControl).toHaveText("Weekly planning");
-  await expect(page.getByTestId("create-channel-description")).toHaveValue(
-    "Plan the next week.",
-  );
-});
-
 test("create ephemeral stream shows sidebar and header affordances", async ({
   page,
 }) => {
@@ -1903,7 +1715,6 @@ test("ephemeral countdown refreshes when switching channels after a clock jump",
 
 test("archived channels stay out of all sidebar sections", async ({ page }) => {
   const archivedStreamName = `archived-stream-${Date.now()}`;
-  const archivedForumName = `archived-forum-${Date.now()}`;
 
   await page.goto("/");
   await page.waitForFunction(() => {
@@ -1917,11 +1728,9 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
   });
   await page.evaluate(
     async ({
-      archivedForumName,
       archivedStreamName,
       outsiderPubkey,
     }: {
-      archivedForumName: string;
       archivedStreamName: string;
       outsiderPubkey: string;
     }) => {
@@ -1943,21 +1752,15 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
         name: archivedStreamName,
         visibility: "open",
       });
-      const forum = await invoke("create_channel", {
-        channelType: "forum",
-        name: archivedForumName,
-        visibility: "open",
-      });
       const directMessage = await invoke("open_dm", {
         pubkeys: [outsiderPubkey],
       });
 
-      for (const channel of [stream, forum, directMessage]) {
+      for (const channel of [stream, directMessage]) {
         await invoke("archive_channel", { channelId: channel.id });
       }
     },
     {
-      archivedForumName,
       archivedStreamName,
       outsiderPubkey: TEST_IDENTITIES.outsider.pubkey,
     },
@@ -1967,9 +1770,6 @@ test("archived channels stay out of all sidebar sections", async ({ page }) => {
 
   await expect(page.getByTestId("stream-list")).not.toContainText(
     archivedStreamName,
-  );
-  await expect(page.getByTestId("forum-list")).not.toContainText(
-    archivedForumName,
   );
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
   await expect(page.getByTestId("dm-list")).not.toContainText("outsider");
@@ -2009,10 +1809,6 @@ test("switch between channel types", async ({ page }) => {
   // Stream
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
-
-  // Forum
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
 
   // DM
   await page.getByTestId("channel-alice-tyler").click();
@@ -2362,24 +2158,8 @@ test("shows and clears activity indicators for active channel agents", async ({
     `bot-activity-composer-item-${TEST_IDENTITIES.alice.pubkey}`,
   );
   await expect(aliceActivityItem).toBeVisible();
-  await expect(aliceActivityItem).toContainText("View activity");
-  await aliceActivityItem.click({ force: true });
-  await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
-  await expect(page.getByTestId("agent-session-thread-panel")).toContainText(
-    "alice",
-  );
-  // Opened from the composer with no prior pane: there is nowhere to go
-  // "back" to, so the header shows only the close affordance.
-  await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
-  await expect(page.getByTestId("auxiliary-panel-close")).toBeVisible();
-  await expect(page.getByTestId("agent-transcript-now-summary")).toHaveCount(0);
-  await page.getByTestId("agent-session-settings-menu-trigger").click();
-  await expect(page.getByTestId("agent-session-stop-turn")).toBeVisible();
-  await expect(page.getByTestId("agent-session-stop-turn")).toBeDisabled();
+  await expect(aliceActivityItem).not.toContainText("View activity");
   await page.keyboard.press("Escape");
-  await expect(page.getByTestId("agent-session-thread-panel")).toContainText(
-    "No ACP activity yet",
-  );
   await expect(page.getByTestId("message-typing-indicator")).toHaveCount(0);
 
   await page.evaluate((pubkey) => {
@@ -2406,183 +2186,6 @@ test("shows and clears activity indicators for active channel agents", async ({
   await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
     0,
   );
-});
-
-test("members sidebar exposes view-activity for a viewer-owned relay agent", async ({
-  page,
-}) => {
-  // nadia is no longer in the default relay-agent seeds (the no-relay-record
-  // owner path claims that fixture), so seed her relay registry entry here to
-  // exercise the relay-bot classification.
-  await installMockBridge(page, {
-    relayAgents: [
-      {
-        pubkey: OWNED_RELAY_AGENT_PUBKEY,
-        name: "nadia",
-        agentType: "goose",
-        capabilities: ["search", "summaries"],
-        channelNames: ["agents"],
-        respondTo: "anyone",
-      },
-    ],
-  });
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-
-  // nadia is a relay-only agent (no local managed record) owned by the mock
-  // viewer. The view-activity affordance must open via the declared-owner
-  // path, not the local-managed path.
-  await expect(
-    page.getByTestId(`sidebar-member-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-  await openMemberMenu(page, OWNED_RELAY_AGENT_PUBKEY);
-  await expect(
-    page.getByTestId(`sidebar-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
-});
-
-test("profile renders live activity for a viewer-owned relay agent", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-  await page
-    .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
-    .click();
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-
-  await page.waitForFunction(
-    () =>
-      typeof (window as MockFeedWindow).__BUZZ_E2E_SEED_ACTIVE_TURNS__ ===
-      "function",
-  );
-  await page.evaluate(
-    ({ agentPubkey, channelId }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-      seedActiveTurns({
-        agentPubkey,
-        channelId,
-        turnId: "owned-relay-profile-turn",
-      });
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channelId: AGENTS_CHANNEL_ID,
-    },
-  );
-
-  const liveActivity = page.getByTestId(
-    `user-profile-live-activity-${OWNED_RELAY_AGENT_PUBKEY}`,
-  );
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Live activity");
-  await expect(liveActivity).toContainText("#agents");
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${AGENTS_CHANNEL_ID}`),
-  ).toHaveCount(0);
-
-  await page.evaluate(
-    ({ agentPubkey, channelId, turnId }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-      seedActiveTurns({
-        agentPubkey,
-        channelId,
-        turnId,
-        kind: "turn_completed",
-      });
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channelId: AGENTS_CHANNEL_ID,
-      turnId: "owned-relay-profile-turn",
-    },
-  );
-
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Live activity");
-});
-
-test("profile activity carousel switches channels via progress dots", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openMembersSidebar(page, "agents");
-  await page
-    .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
-    .click();
-  await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-
-  await page.waitForFunction(
-    () =>
-      typeof (window as MockFeedWindow).__BUZZ_E2E_SEED_ACTIVE_TURNS__ ===
-      "function",
-  );
-
-  await page.evaluate(
-    ({ agentPubkey, channels }) => {
-      const seedActiveTurns = (window as MockFeedWindow)
-        .__BUZZ_E2E_SEED_ACTIVE_TURNS__;
-      if (!seedActiveTurns) {
-        throw new Error("Mock active-turn helper is not installed.");
-      }
-
-      for (const [index, channelId] of channels.entries()) {
-        seedActiveTurns({
-          agentPubkey,
-          channelId,
-          turnId: `owned-relay-profile-turn-${index}`,
-        });
-      }
-    },
-    {
-      agentPubkey: OWNED_RELAY_AGENT_PUBKEY,
-      channels: [AGENTS_CHANNEL_ID, GENERAL_CHANNEL_ID],
-    },
-  );
-
-  const liveActivity = page.getByTestId(
-    `user-profile-live-activity-${OWNED_RELAY_AGENT_PUBKEY}`,
-  );
-  await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("#agents");
-
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${AGENTS_CHANNEL_ID}`),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-activity-dot-${GENERAL_CHANNEL_ID}`),
-  ).toBeVisible();
-
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${GENERAL_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "false");
-
-  await page
-    .getByTestId(`user-profile-activity-dot-${GENERAL_CHANNEL_ID}`)
-    .click();
-
-  await expect(
-    page.getByTestId("user-profile-activity-channel-label"),
-  ).toContainText("#general");
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${GENERAL_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "true");
-  await expect(
-    page.getByTestId(`user-profile-activity-slide-${AGENTS_CHANNEL_ID}`),
-  ).toHaveAttribute("data-mounted", "true");
 });
 
 test("typing indicator shows avatars and maintains stable name order", async ({
@@ -2687,39 +2290,6 @@ test("sidebar shows unread indicator for newly active channels", async ({
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
 });
 
-test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
-  await waitForMockLiveSubscription(page, "watercooler");
-
-  // Emit as alice - the unread tracker ignores self-authored messages.
-  await page.evaluate(
-    ({ pubkey }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "watercooler",
-        content: "Unread update for the forum",
-        kind: 45001,
-        pubkey,
-      });
-    },
-    { pubkey: TEST_IDENTITIES.alice.pubkey },
-  );
-
-  await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
-    "font-weight",
-    "600",
-  );
-  await expectUnreadBadgeCount(
-    page.getByTestId("channel-unread-watercooler"),
-    1,
-  );
-
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(page.getByTestId("channel-unread-watercooler")).toHaveCount(0);
-});
-
 test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
   await page.goto("/");
 
@@ -2766,10 +2336,6 @@ test("sidebar persists after channel switch", async ({ page }) => {
 
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
@@ -3330,115 +2896,6 @@ test("manage channel places canvas between channel info and actions", async ({
   expect(canvasBox?.y).toBeLessThan(leaveBox?.y);
 });
 
-test("channel settings hides workflows and skips its query when the experiment is disabled", async ({
-  page,
-}) => {
-  await page.addInitScript((key) => {
-    const overrides = JSON.parse(
-      window.localStorage.getItem(key) ?? "{}",
-    ) as Record<string, boolean>;
-    overrides.workflows = false;
-    window.localStorage.setItem(key, JSON.stringify(overrides));
-  }, FEATURE_OVERRIDES_STORAGE_KEY);
-
-  await page.goto("/");
-  await openChannelManagement(page, "general");
-
-  await expect(page.getByTestId("channel-management-sheet")).toBeVisible();
-  await expect(page.getByTestId("channel-workflows-ingress")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        (
-          window as Window & {
-            __BUZZ_E2E_COMMAND_LOG__?: Array<{ command: string }>;
-          }
-        ).__BUZZ_E2E_COMMAND_LOG__?.some(
-          ({ command }) => command === "get_channel_workflows",
-        ),
-      ),
-    )
-    .toBe(false);
-});
-
-test("channel workflow entries open a plain workflow and keep channel context", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await invokeMockCommand(page, "create_workflow", {
-    channelId: GENERAL_CHANNEL_ID,
-    yamlDefinition: `name: Welcome responder\ndescription: Prepare a welcome message and review it.\ntrigger:\n  on: schedule\n  cron: "0 6 * * 1"\nsteps:\n  - id: prepare\n    name: Prepare the welcome message\n    action: ask_agent\n    agent_pubkey: ${ALICE_PUBKEY}\n    instruction: Prepare a welcome message.\n    expected_result: A welcome message ready for review.\n  - id: review\n    name: Review the welcome message\n    action: request_approval\n    from: ${MOCK_IDENTITY_PUBKEY}\n    message: Review the welcome message.\n`,
-  });
-  await openChannelManagement(page, "general");
-
-  const sheet = page.getByTestId("channel-management-sheet");
-  const canvasBox = await sheet
-    .getByTestId("channel-canvas-ingress")
-    .boundingBox();
-  const workflowsBox = await sheet
-    .getByTestId("channel-workflows-ingress")
-    .boundingBox();
-  expect(canvasBox).not.toBeNull();
-  expect(workflowsBox).not.toBeNull();
-  expect(canvasBox?.y).toBeLessThan(workflowsBox?.y);
-
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-list")).toContainText(
-    "Welcome responder",
-  );
-
-  // The full workflow route owns plain-language viewing and editing.
-  const channelUrl = new RegExp(`/channels/${GENERAL_CHANNEL_ID}(?:\\?|$)`);
-  await sheet.getByTestId("channel-workflow-mock-wf-1").click();
-  const builder = page.getByTestId("plain-workflow-builder");
-  await expect(builder).toBeVisible();
-  await expect(page).toHaveURL(/#\/workflows\/mock-wf-1/);
-  await expect(
-    builder.getByRole("heading", { name: "Welcome responder" }),
-  ).toBeVisible();
-  await expect(builder.getByTestId("plain-workflow-detail")).toContainText(
-    "Every Monday at 08:00",
-  );
-  await expect(
-    builder.getByRole("button", { name: "Edit workflow" }),
-  ).toBeVisible();
-  await builder.getByRole("button", { name: "Back to workflows" }).click();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-list")).toContainText(
-    "Welcome responder",
-  );
-
-  await page.getByTestId("channel-workflows-new").click();
-
-  const createBuilder = page.getByTestId("plain-workflow-builder");
-  await expect(createBuilder).toBeVisible();
-  await expect(page).toHaveURL(/#\/workflows\?/);
-  await expect(
-    createBuilder.getByLabel("Give this workflow a name"),
-  ).toBeVisible();
-  expect(page.url()).toContain(GENERAL_CHANNEL_ID);
-  await createBuilder.getByRole("button", { name: "Cancel" }).click();
-  await expect(page).toHaveURL(channelUrl);
-  await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await expect(sheet).toBeVisible();
-  await sheet.getByTestId("channel-workflows-ingress").click();
-  await expect(sheet.getByText("Workflows", { exact: true })).toBeVisible();
-  await expect(sheet.getByTestId("channel-workflows-new")).toBeVisible();
-});
-
-/** The Activity header keeps channel settings in its overflow menu. */
-async function openHomeChannelSettings(page: import("@playwright/test").Page) {
-  await page
-    .getByTestId("home-inbox-detail")
-    .locator(".ca-more-button")
-    .click();
-  await page.getByRole("menuitem", { name: "Channel settings" }).click();
-}
-
 async function seedHomeInboxMention(
   page: import("@playwright/test").Page,
   itemId: string,
@@ -3655,9 +3112,7 @@ test("Inbox type labels keep the same height with and without a channel chip", a
   ).toBeLessThan(0.5);
 });
 
-test("Inbox All never lists drafts and unread-only keeps the unread message", async ({
-  page,
-}) => {
+test("Inbox All never lists drafts", async ({ page }) => {
   const draftKey = `channel:${GENERAL_CHANNEL_ID}`;
   await page.addInitScript(
     ({ draftStoreKey, draftStorageKey }) => {
@@ -3692,7 +3147,7 @@ test("Inbox All never lists drafts and unread-only keeps the unread message", as
 
   const messageId = "inbox-unread-only-message";
   await page.evaluate(
-    ({ channelId, currentPubkey, messageId, senderPubkey }) => {
+    async ({ channelId, currentPubkey, messageId, senderPubkey }) => {
       const now = Math.floor(Date.now() / 1_000);
       const pushFeedItem = (window as MockFeedWindow)
         .__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__;
@@ -4565,60 +4020,7 @@ test("channel header omits the add agent action", async ({ page }) => {
 
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
-  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
-});
-
-test("huddle rollback end event clears the active header action", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByTestId("channel-random").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("random");
-  await waitForMockLiveSubscription(page, "random", KIND_HUDDLE_STARTED);
-
-  const ephemeralChannelId = "10000000-0000-4000-8000-000000000001";
-  const createdAt = Math.floor(Date.now() / 1000);
-
-  await page.evaluate(
-    ({ createdAt, ephemeralChannelId, kind }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "random",
-        content: JSON.stringify({
-          ephemeral_channel_id: ephemeralChannelId,
-        }),
-        createdAt,
-        id: "1".repeat(64),
-        kind,
-      });
-    },
-    { createdAt, ephemeralChannelId, kind: KIND_HUDDLE_STARTED },
-  );
-
-  await expect(
-    page.getByRole("button", {
-      name: "Join active huddle (1 participant)",
-    }),
-  ).toBeVisible();
-
-  await page.evaluate(
-    ({ createdAt, ephemeralChannelId, kind }) => {
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "random",
-        content: JSON.stringify({
-          ephemeral_channel_id: ephemeralChannelId,
-        }),
-        createdAt,
-        id: "2".repeat(64),
-        kind,
-      });
-    },
-    { createdAt, ephemeralChannelId, kind: KIND_HUDDLE_ENDED },
-  );
-
-  await expect(
-    page.getByTestId("channel-start-huddle-trigger"),
-  ).toHaveAttribute("aria-label", "Start huddle");
 });
 
 test("channel header actions show tooltips", async ({ page }) => {
@@ -4628,7 +4030,6 @@ test("channel header actions show tooltips", async ({ page }) => {
 
   for (const [testId, label] of [
     ["channel-members-trigger", "Channel members"],
-    ["channel-huddle-tooltip-trigger", "Huddle"],
     ["channel-management-trigger", "Channel settings"],
   ] as const) {
     await page.getByTestId(testId).hover();

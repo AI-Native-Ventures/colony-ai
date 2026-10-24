@@ -1,14 +1,11 @@
 import type { AskHeadRecord } from "@/features/company-asks/askRecords";
-import type { PendingWorkflowApproval } from "./needsMe";
 import type { NeedsMeData } from "./needsMeHooks";
 
-export type NeedsMeItem =
-  | { kind: "ask"; record: AskHeadRecord; deadline: number | null }
-  | {
-      kind: "workflow_approval";
-      record: PendingWorkflowApproval;
-      deadline: number | null;
-    };
+export type NeedsMeItem = {
+  kind: "ask";
+  record: AskHeadRecord;
+  deadline: number | null;
+};
 
 export type NeedsMeGrouping = "deadline" | "type" | "channel";
 
@@ -25,17 +22,12 @@ function deadlineValue(deadline: number | null) {
 }
 
 function createdAtValue(item: NeedsMeItem) {
-  const createdAt =
-    item.kind === "ask"
-      ? Date.parse(item.record.head.createdAt)
-      : item.record.approval.createdAt * 1_000;
+  const createdAt = Date.parse(item.record.head.createdAt);
   return Number.isFinite(createdAt) ? createdAt : Number.POSITIVE_INFINITY;
 }
 
 function stableKey(item: NeedsMeItem) {
-  return item.kind === "ask"
-    ? `ask:${item.record.channelId}:${item.record.head.askId}`
-    : `workflow:${item.record.workflow.id}:${item.record.run.id}:${item.record.approval.approvalRef}`;
+  return `ask:${item.record.channelId}:${item.record.head.askId}`;
 }
 
 export function buildNeedsMeItems(
@@ -49,11 +41,6 @@ export function buildNeedsMeItems(
       deadline: record.head.ask.decideBy
         ? Date.parse(record.head.ask.decideBy)
         : null,
-    })),
-    ...data.workflowApprovals.map((record) => ({
-      kind: "workflow_approval" as const,
-      record,
-      deadline: Date.parse(record.approval.expiresAt),
     })),
   ];
 
@@ -77,9 +64,6 @@ function itemChannelId(item: NeedsMeItem) {
 }
 
 function itemTypeGroup(item: NeedsMeItem) {
-  if (item.kind === "workflow_approval") {
-    return { key: "approvals", label: "Approvals & consent" };
-  }
   if (item.record.head.ask.category === "money") {
     return { key: "funding", label: "Funding" };
   }

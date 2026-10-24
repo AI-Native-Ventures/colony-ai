@@ -1,11 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { npubEncode } from "nostr-tools/nip19";
 
-import {
-  createMockAgentMemoryListing,
-  installMockBridge,
-  TEST_IDENTITIES,
-} from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import {
   openAvatarProfileContext,
@@ -13,7 +9,11 @@ import {
   openSettings,
   selectSettingsSection,
 } from "../helpers/settings";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+  openPersonaProfilePanel,
+} from "../helpers/agentWorkspace";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -313,7 +313,6 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
   page,
 }) => {
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     oaOwnerIsMe: true,
   });
   await page.goto("/");
@@ -325,10 +324,8 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     "Keep every profile entry point in sync.",
   );
 
-  await openAgentTemplatesView(page);
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   await page.getByTestId("user-profile-message").click();
   await expect(page.getByTestId("chat-header-dm-avatar")).toBeVisible();
   const dmChannelId = await page.evaluate(() => {
@@ -366,10 +363,8 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     { dmChannelId, pubkey: agentPubkey },
   );
 
-  await openAgentTemplatesView(page);
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   const agentsSurface = await readOwnedAgentProfileContract(page);
 
   await page.getByTestId("user-profile-message").click();
@@ -744,7 +739,6 @@ test("renders the agent profile panel from the Playwright mock bridge", async ({
   test.setTimeout(60_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     // The viewer is the agent's verified NIP-OA owner, so archiveActions
     // grants the Archive row (canArchive gate; the relay re-verifies on submit).
     oaOwnerIsMe: true,
@@ -820,7 +814,6 @@ test("renders the agent profile panel from the Playwright mock bridge", async ({
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
   await expect(page.getByTestId("user-profile-message")).toBeVisible();
-  await expect(page.getByTestId("user-profile-huddle")).toHaveCount(0);
   await expect(page.getByTestId("user-profile-wave")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Follow" })).toHaveCount(0);
   await expectHashSearchParam(page, "profile", agentPubkey);
@@ -1121,7 +1114,6 @@ test("an older agent message stays exact while persona navigation selects the li
   const historicalPubkey = TEST_IDENTITIES.charlie.pubkey;
   const currentPubkey = "d".repeat(64);
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     managedAgents: [
       {
         channelNames: ["agents"],
@@ -1150,8 +1142,8 @@ test("an older agent message stays exact while persona navigation selects the li
   });
   await page.goto("/");
 
-  await openAgentTemplatesView(page);
-  await page.getByTestId(`persona-agent-row-${personaId}`).click();
+  await openAgentsDirectoryView(page);
+  await openPersonaProfilePanel(page, personaId);
   await expect(
     page.getByTestId("user-profile-agent-primary-action"),
   ).toHaveAttribute("aria-label", "Stop");

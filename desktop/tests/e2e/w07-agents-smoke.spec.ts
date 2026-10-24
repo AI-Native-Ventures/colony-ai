@@ -49,14 +49,7 @@ test.describe("W07 agent workspace smoke", () => {
       .click();
     const profile = page.getByTestId("agent-profile");
     await expect(profile).toBeVisible();
-    for (const label of [
-      "Model & runtime",
-      "Instructions",
-      "Tools & access",
-      "Activity",
-      "Advanced",
-      "Memory",
-    ]) {
+    for (const label of ["Instructions"]) {
       const tab = profile.getByRole("button", { name: label, exact: true });
       await expect(tab).toBeVisible();
       await tab.click();
@@ -77,46 +70,6 @@ test.describe("W07 agent workspace smoke", () => {
         ).toBeDisabled();
       }
     }
-  });
-
-  test("team review uses real team and persona records", async ({ page }) => {
-    await installMockBridge(page, {
-      personas: [
-        {
-          id: "mina",
-          displayName: "Mina",
-          description: "Social media manager",
-          systemPrompt: "Mina's instructions.",
-        },
-      ],
-      replaceDefaultTeams: true,
-      teams: [
-        {
-          id: "creative",
-          name: "Client creative team",
-          personaIds: ["mina"],
-        },
-      ],
-    });
-    await page.goto("/#/agents?view=teams", {
-      waitUntil: "domcontentloaded",
-    });
-
-    await expect(
-      page.getByRole("heading", { name: "Agent teams", level: 1 }),
-    ).toBeVisible();
-    const team = page.getByTestId("agent-team-creative");
-    await expect(team).toBeVisible();
-    await expect(
-      team.getByRole("button", {
-        name: "Mina, Social media manager",
-      }),
-    ).toBeVisible();
-    await team.getByRole("button", { name: "Edit team" }).click();
-    await expect(
-      page.getByRole("dialog").getByRole("heading", { name: "Edit team" }),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
   });
 
   test("persona-linked instructions stay read-only at the instance boundary", async ({
@@ -219,16 +172,5 @@ test.describe("W07 agent workspace smoke", () => {
     for (const name of channelNames) {
       await expect(overview.getByText(name, { exact: true })).toBeVisible();
     }
-  });
-
-  test("supervision shows only available backend state", async ({ page }) => {
-    await installMockBridge(page, {
-      managedAgents: [],
-    });
-    await page.goto("/#/supervision", { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("agent-supervision")).toBeVisible();
-    await expect(
-      page.getByText("No active sessions in this view."),
-    ).toBeVisible();
   });
 });

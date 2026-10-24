@@ -2,7 +2,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useIsManagedAgent } from "@/features/agent-memory/hooks";
+import { useIsManagedAgent } from "@/features/agents/useIsManagedAgent";
 import {
   type AttachManagedAgentToChannelResult,
   useAcpRuntimesQuery,
@@ -46,7 +46,6 @@ import {
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
 import { ownsAuthorAgent } from "@/features/profile/lib/identity";
-import { resolveProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
 import { useCanonicalManagedAgentProfile } from "@/features/profile/lib/useCanonicalManagedAgentProfile";
 import {
   AgentInstructionsFocusedView,
@@ -56,7 +55,6 @@ import {
   AgentInfoFocusedView,
   ChannelsFocusedView,
   DiagnosticsFocusedView,
-  MemoryFocusedView,
 } from "@/features/profile/ui/UserProfilePanelFocusedViews";
 import { AgentConfigurationFocusedView } from "@/features/profile/ui/UserProfilePanelAgentDetails";
 import { UserProfileAgentSettingsMenuSlot } from "@/features/profile/ui/UserProfileAgentActions";
@@ -81,7 +79,6 @@ import {
 } from "@/features/profile/ui/UserProfilePanelUtils";
 import { useProfileInteractionActions } from "@/features/profile/ui/useProfileInteractionActions";
 import { useUserStatusQuery } from "@/features/user-status/hooks";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
@@ -240,7 +237,6 @@ export function UserProfilePanel({
   const userStatusQuery = useUserStatusQuery(
     effectivePubkey ? [effectivePubkey] : [],
   );
-  const { canOpenAgentActivity } = useOpenAgentActivity();
   const { activeCommunity } = useCommunities();
   const { goChannel } = useAppNavigation();
   const profile = resolvePanelProfile({
@@ -273,7 +269,7 @@ export function UserProfilePanel({
   // Gates edit (which needs the key) and grants owner access when managed locally.
   const isOwner = resolvedPersona ? true : managedAgentOwner;
   // Is the viewer the agent's declared owner (NIP-OA `ownerPubkey == me`)? This
-  // is the right signal for viewing owner-scoped data (activity feed, memory):
+  // is the right signal for viewing owner-scoped data:
   // the relay routes and the client decrypts those frames with the owner's OWN
   // key, so the agent's seckey is never needed. Computed here (before the gates
   // that consume it) so visibility keys off declared ownership, not key custody.
@@ -283,28 +279,11 @@ export function UserProfilePanel({
   // real boundary is server-side, so this only controls what UI we paint.
   const viewerIsOwner = isCurrentUserOwner || isOwner === true;
 
-  const activityAgent = React.useMemo(
-    () =>
-      resolveProfileActivityAgent({
-        effectivePubkey,
-        isBot,
-        managedAgent,
-        profile: profile ?? null,
-        relayAgent,
-        viewerIsOwner,
-      }),
-    [effectivePubkey, isBot, managedAgent, profile, relayAgent, viewerIsOwner],
-  );
-  // Observer ingestion is owner-global across local and declared-owned agents.
   const canEditAgent = Boolean(isOwner && (managedAgent ?? resolvedPersona));
   const isSelf =
     currentPubkey !== undefined &&
     pubkeyLower.length > 0 &&
     pubkeyLower === currentPubkey.toLowerCase();
-  const canViewActivity =
-    viewerIsOwner &&
-    Boolean(effectivePubkey) &&
-    canOpenAgentActivity(effectivePubkey);
   const canOpenAgentLogs =
     isOwner === true && managedAgent?.backend.type === "local";
   const canInstantiateAgent =
@@ -721,7 +700,6 @@ export function UserProfilePanel({
       logSubtitle: logHeaderSubtitle,
       onBack: () => setView("summary"),
       view,
-      viewerIsOwner,
     },
   );
 
@@ -740,13 +718,11 @@ export function UserProfilePanel({
           agentInfoFields={agentInfoFields}
           agentInstruction={agentInstruction}
           agentSettingsFields={agentSettingsFields}
-          activityAgent={activityAgent}
           archiveActions={archiveActions}
           canAddToChannel={managedAgent !== undefined && isOwner === true}
           canDeleteAgent={canDeleteProfileAgent}
           canEditAgent={canEditAgent}
           canInstantiateAgent={canInstantiateAgent}
-          canViewActivity={canViewActivity}
           channelCount={profileChannels.length}
           channelIdToName={channelIdToName}
           channels={profileChannels}
@@ -787,12 +763,6 @@ export function UserProfilePanel({
           relayAgent={relayAgent}
           tab={tab}
           userStatus={userStatus}
-        />
-      ) : null}
-      {view === "memories" && effectivePubkey ? (
-        <MemoryFocusedView
-          agentPubkey={effectivePubkey}
-          viewerIsOwner={viewerIsOwner}
         />
       ) : null}
       {view === "info" ? (

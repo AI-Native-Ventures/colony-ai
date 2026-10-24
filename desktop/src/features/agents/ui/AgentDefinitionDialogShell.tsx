@@ -10,7 +10,6 @@ type AgentDefinitionDialogShellProps = {
   footer: React.ReactNode;
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  rolePackMode?: boolean;
   title: string;
 };
 
@@ -21,18 +20,9 @@ export function AgentDefinitionDialogShell({
   footer,
   onOpenChange,
   open,
-  rolePackMode = false,
   title,
 }: AgentDefinitionDialogShellProps) {
   if (embedded) {
-    if (rolePackMode) {
-      return (
-        <div className="min-w-0" data-testid="persona-dialog">
-          {children}
-        </div>
-      );
-    }
-
     return (
       <div
         className="relative flex min-h-0 min-w-0 flex-1 flex-col"
@@ -51,11 +41,7 @@ export function AgentDefinitionDialogShell({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <ChooserDialogContent
-        className={
-          rolePackMode
-            ? "h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[1300px] border-0"
-            : "max-w-3xl border-0"
-        }
+        className="max-w-3xl border-0"
         contentClassName="pt-3"
         data-testid="persona-dialog"
         description={description}

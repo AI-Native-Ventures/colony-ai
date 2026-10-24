@@ -3,12 +3,10 @@ import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
 import { formatElapsedClock } from "@/features/agents/ui/agentSessionUtils";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { buildInboxItems, type InboxItem } from "@/features/home/lib/inbox";
 import { getGroupedInboxItemIds } from "@/features/home/useHomeInboxReadState";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
-import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { Channel, FeedItem, HomeFeedResponse } from "@/shared/api/types";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
@@ -59,13 +57,11 @@ function ThreadPreviewRow({
   item,
   onMarkRead,
   onOpen,
-  onRemindLater,
 }: {
   isAgent: boolean;
   item: InboxItem;
   onMarkRead: () => void;
   onOpen: () => void;
-  onRemindLater: () => void;
 }) {
   return (
     <div
@@ -115,18 +111,6 @@ function ThreadPreviewRow({
           className="h-8.5 bg-colony-track px-3 text-xs font-bold text-colony-fg hover:bg-colony-border"
         >
           Mark as read
-        </Button>
-        <Button
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemindLater();
-          }}
-          size="xs"
-          type="button"
-          variant="ghost"
-          className="h-8.5 bg-colony-track px-3 text-xs font-bold text-colony-fg hover:bg-colony-border"
-        >
-          Remind me later
         </Button>
       </div>
     </div>
@@ -249,8 +233,6 @@ export function ChannelActivityPopover({
   const { undoUnread } = feedItemState;
   const identityQuery = useIdentityQuery();
   const { goChannel } = useAppNavigation();
-  const { openAgentActivity } = useOpenAgentActivity();
-  const { openReminder } = useRemindLater();
 
   const unreadChannelFeedItems = React.useMemo(() => {
     return unreadThreadFeedItems.filter(
@@ -419,9 +401,9 @@ export function ChannelActivityPopover({
                 <WorkingAgentRows
                   activeWorking={activeWorking}
                   channelId={channel.id}
-                  onOpen={(pubkey, channelId) => {
+                  onOpen={(_pubkey, channelId) => {
                     setOpen(false);
-                    openAgentActivity(pubkey, { channelId });
+                    void goChannel(channelId);
                   }}
                   profiles={profiles}
                 />
@@ -447,15 +429,6 @@ export function ChannelActivityPopover({
                       void goChannel(channel.id, {
                         messageId: item.id,
                         threadRootId: item.conversationId,
-                      });
-                    }}
-                    onRemindLater={() => {
-                      setOpen(false);
-                      openReminder({
-                        authorPubkey: item.item.pubkey,
-                        channelId: channel.id,
-                        eventId: item.id,
-                        preview: item.preview.slice(0, 100),
                       });
                     }}
                   />

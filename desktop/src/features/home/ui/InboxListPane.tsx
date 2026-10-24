@@ -44,23 +44,19 @@ import "./ActivityScreen.css";
 
 const INBOX_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No activity yet",
-  project: "No project work found",
   mention: "No mentions found",
   thread: "No threads found",
   needs_action: "Nothing needs action",
   agent_activity: "No agent updates found",
-  reminders: "No reminders",
   drafts: "No drafts",
 };
 
 const INBOX_UNREAD_EMPTY_STATE_TITLES: Record<InboxFilter, string> = {
   all: "No unread activity",
-  project: "No unread project work",
   mention: "No unread mentions",
   thread: "No unread threads",
   needs_action: "No unread items needing action",
   agent_activity: "No unread agent updates",
-  reminders: "No unread reminders",
   drafts: "No unread drafts",
 };
 

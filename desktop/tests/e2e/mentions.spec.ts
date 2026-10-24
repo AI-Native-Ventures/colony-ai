@@ -48,7 +48,6 @@ const PROFILE_ONLY_AGENT_PUBKEY =
   "8f83d6b7f3d74f7d933ae3a54dd8c6cc85c7f98e531c16e5a827b953441a8d67";
 const OWNED_AGENT_PROFILE_PUBKEY =
   "1212121212121212121212121212121212121212121212121212121212121212";
-const HUDDLE_EPHEMERAL_CHANNEL_ID = "3f9f2c4e-8b7a-4b1c-9d2e-5a6f7c8d9e0f";
 const ELROND_PUBKEY = "31".repeat(32);
 const LEGOLAS_PUBKEY = "32".repeat(32);
 const GIMLI_PUBKEY = "33".repeat(32);
@@ -416,9 +415,6 @@ async function expectOwnedAgentProfileActions(
   await expect(
     profilePopover.getByTestId(`user-profile-popover-wave-${pubkey}`),
   ).toHaveCount(0);
-  await expect(
-    profilePopover.getByTestId(`user-profile-popover-huddle-${pubkey}`),
-  ).toHaveCount(0);
 }
 
 async function expectAgentProfileActionsHidden(
@@ -430,9 +426,6 @@ async function expectAgentProfileActionsHidden(
   ).toHaveCount(0);
   await expect(
     profilePopover.getByTestId(`user-profile-popover-wave-${pubkey}`),
-  ).toHaveCount(0);
-  await expect(
-    profilePopover.getByTestId(`user-profile-popover-huddle-${pubkey}`),
   ).toHaveCount(0);
 }
 
@@ -1899,116 +1892,6 @@ test("cached relay-agent suggestions are removed when channel authorization disa
   await expect(aliceSuggestion).toHaveCount(0);
 });
 
-test("relay-only shared agents appear in forum mentions", async ({ page }) => {
-  await installMockBridge(page, {
-    relayAgents: [
-      {
-        pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-        name: "quinn",
-        respondTo: "allowlist",
-        respondToAllowlist: [MOCK_VIEWER_PUBKEY],
-        channelNames: ["watercooler"],
-      },
-    ],
-  });
-  await page.goto("/");
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await page.getByRole("button", { name: "Start a new post..." }).click();
-
-  await page.getByTestId("message-input").fill("@quinn");
-
-  await expect(
-    page.getByTestId("mention-autocomplete").getByText("quinn"),
-  ).toBeVisible();
-});
-
-test("forum sends revalidate relay-agent authorization before signing", async ({
-  page,
-}) => {
-  await installMockBridge(page, {
-    deferredComposerUploads: true,
-    uploadDescriptors: [
-      {
-        url: `https://mock.relay/media/${"f".repeat(64)}.pdf`,
-        sha256: "f".repeat(64),
-        size: 12345,
-        type: "application/pdf",
-        uploaded: Math.floor(Date.now() / 1000),
-        filename: "forum-race.pdf",
-      },
-    ],
-    relayAgents: [
-      {
-        pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-        name: "quinn",
-        respondTo: "allowlist",
-        respondToAllowlist: [MOCK_VIEWER_PUBKEY],
-        channelNames: ["watercooler"],
-      },
-    ],
-  });
-  await page.goto("/");
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await page.getByRole("button", { name: "Start a new post..." }).click();
-
-  await page.evaluate(
-    async ({ channelId, pubkey }) => {
-      const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
-      if (!invoke) throw new Error("Mock bridge is not installed.");
-      await invoke("add_channel_members", {
-        channelId,
-        pubkeys: [pubkey],
-        role: "bot",
-      });
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["channels", channelId, "members"],
-      });
-    },
-    {
-      channelId: "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11",
-      pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-    },
-  );
-
-  const input = page.getByTestId("message-input");
-  await input.fill("@quinn");
-  await page.getByTestId("mention-autocomplete").getByText("quinn").click();
-  await page.keyboard.type("hello");
-  await page.getByRole("button", { name: "Attach file" }).click();
-  const removeAttachment = page.getByRole("button", {
-    name: "Remove attachment",
-  });
-  await expect(removeAttachment).toBeVisible();
-  await page.evaluate(() => {
-    window.__BUZZ_E2E__.mock ??= {};
-    window.__BUZZ_E2E__.mock.agentListDelayMs = 1_000;
-    window.__BUZZ_E2E__.mock.relayAgentListErrors = Array(100).fill(
-      "mock forum directory revoked before send",
-    );
-  });
-
-  await page.getByTestId("send-message").click();
-  await expect(input).toHaveAttribute("contenteditable", "false");
-  await expect(removeAttachment).toBeDisabled();
-  await removeAttachment.evaluate((button: HTMLButtonElement) =>
-    button.click(),
-  );
-  await expect(removeAttachment).toBeVisible();
-  await input.focus();
-  await page.keyboard.type(" later edit");
-  await expect(input).toContainText("@quinn hello");
-  await expect(input).not.toContainText("later edit");
-
-  const outgoingContent = `@quinn hello\n[forum-race.pdf](https://mock.relay/media/${"f".repeat(64)}.pdf)`;
-  await expect(
-    page.getByText(/Could not authorize a mentioned agent/),
-  ).toBeVisible();
-  await expect(input).toContainText("@quinn hello");
-  expect(await readOutgoingMentionPubkeys(page, outgoingContent)).toBeNull();
-});
-
 test("managed agents use the channel roster for membership labels", async ({
   page,
 }) => {
@@ -2178,7 +2061,7 @@ test("relay-only allowlisted agents emit a p tag when sent", async ({
   const commands = await readCommandLog(page);
   // Two targeted revalidations: the pre-side-effect admission pass, then the
   // publish-boundary pass, which is unconditional , even this fast path (member
-  // agent, no deferred upload/preview, no DM expansion, no huddle) re-runs it.
+  // agent, no deferred upload/preview, no DM expansion) re-runs it.
   expect(commandCount(commands, "revalidate_relay_agents")).toBe(
     commandCount(baselineCommands, "revalidate_relay_agents") + 2,
   );
@@ -2298,7 +2181,6 @@ test("targeted revocation before send causes no agent side effects", async ({
     "add_channel_members",
     "start_managed_agent",
     "attach_managed_agent",
-    "sync_agents_to_active_huddle",
   ]) {
     expect(commandCount(commands, command)).toBe(
       commandCount(baselineCommands, command),
@@ -2517,179 +2399,6 @@ test("sends that attach a mentioned agent revalidate at the publish boundary", a
   );
 });
 
-test("sends that enroll agents into an active huddle revalidate at the publish boundary", async ({
-  page,
-}) => {
-  // With a huddle live on the channel, the awaited huddle enrollment is a
-  // relay round-trip between the authorization pass and the publish; the
-  // publish boundary re-validates rather than trusting the earlier pass.
-  await installMockBridge(page, {
-    huddle: {
-      parentChannelId: GENERAL_CHANNEL_ID,
-      ephemeralChannelId: HUDDLE_EPHEMERAL_CHANNEL_ID,
-      members: [{ pubkey: TEST_IDENTITIES.tyler.pubkey, role: "member" }],
-    },
-    relayAgents: [
-      {
-        pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-        name: "quinn",
-        respondTo: "allowlist",
-        respondToAllowlist: [MOCK_VIEWER_PUBKEY],
-        channelNames: ["general"],
-      },
-    ],
-  });
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-  await page.evaluate(
-    async ({ channelId, pubkey }) => {
-      const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
-      if (!invoke) throw new Error("Mock bridge is not installed.");
-      await invoke("add_channel_members", {
-        channelId,
-        pubkeys: [pubkey],
-        role: "bot",
-      });
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["channels"],
-      });
-    },
-    {
-      channelId: GENERAL_CHANNEL_ID,
-      pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-    },
-  );
-
-  const input = page.getByTestId("message-input");
-  await input.fill("@quinn");
-  const quinnRow = autocomplete(page).locator("button", { hasText: "quinn" });
-  await expect(quinnRow).toBeVisible();
-  await quinnRow.click();
-  await page.keyboard.type("hello");
-
-  const baselineCommands = await readCommandLog(page);
-  await page.getByTestId("send-message").click();
-
-  await expect
-    .poll(() => readOutgoingMentionPubkeys(page, "@quinn hello"))
-    .toContain(ALLOWLIST_RELAY_AGENT_PUBKEY);
-  const commands = await readCommandLog(page);
-  expect(commandCount(commands, "sync_agents_to_active_huddle")).toBe(
-    commandCount(baselineCommands, "sync_agents_to_active_huddle") + 1,
-  );
-  expect(commandCount(commands, "revalidate_relay_agents")).toBe(
-    commandCount(baselineCommands, "revalidate_relay_agents") + 2,
-  );
-});
-
-test("a send held open by a no-write step still revalidates at the publish boundary", async ({
-  page,
-}) => {
-  // The publish boundary revalidates unconditionally, however brief the gap:
-  // here the only thing separating the authorization pass from the publish is
-  // the huddle sync , which with no active huddle writes nothing to the relay
-  // , and the revocation is released with zero further hold. A revocation
-  // landing in any admission-to-publish gap must block publication; this is the
-  // reviewer's sub-threshold probe of the since-removed elapsed-time bound,
-  // which deliberately accepted this very staleness.
-  await installMockBridge(page, {
-    // Released on demand below; long enough that it is never waited out.
-    syncAgentsToActiveHuddleDelayMs: 45_000,
-    relayAgents: [
-      {
-        pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-        name: "quinn",
-        respondTo: "allowlist",
-        respondToAllowlist: [MOCK_VIEWER_PUBKEY],
-        channelNames: ["general"],
-      },
-    ],
-  });
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-  // Already a member, so readiness short-circuits: no access-policy read, no
-  // membership write, no wake.
-  await page.evaluate(
-    async ({ channelId, pubkey }) => {
-      const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
-      if (!invoke) throw new Error("Mock bridge is not installed.");
-      await invoke("add_channel_members", {
-        channelId,
-        pubkeys: [pubkey],
-        role: "bot",
-      });
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["channels"],
-      });
-    },
-    {
-      channelId: GENERAL_CHANNEL_ID,
-      pubkey: ALLOWLIST_RELAY_AGENT_PUBKEY,
-    },
-  );
-
-  const input = page.getByTestId("message-input");
-  await input.fill("@quinn");
-  const quinnRow = autocomplete(page).locator("button", { hasText: "quinn" });
-  await expect(quinnRow).toBeVisible();
-  await quinnRow.click();
-  await page.keyboard.type("hello");
-  await expect(input).toHaveText("@quinn hello");
-
-  const baselineCommands = await readCommandLog(page);
-  await page.getByTestId("send-message").click();
-
-  // The pre-side-effect pass has admitted quinn; the huddle sync now holds the
-  // publish open. Revoke before releasing, so the ordering is deterministic by
-  // construction rather than by timing.
-  await expect
-    .poll(async () =>
-      commandCount(await readCommandLog(page), "revalidate_relay_agents"),
-    )
-    .toBe(commandCount(baselineCommands, "revalidate_relay_agents") + 1);
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E__.mock ??= {};
-    window.__BUZZ_E2E__.mock.relayAgentRevalidationRevokedPubkeys = [pubkey];
-  }, ALLOWLIST_RELAY_AGENT_PUBKEY);
-
-  // Release immediately , no post-revocation hold. Any conditional reuse of
-  // the admission pass (a trigger enumeration, an elapsed-time bound) would
-  // publish quinn's stale p tag here.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => window.__BUZZ_E2E_RELEASE_HUDDLE_AGENT_SYNCS__?.() ?? 0,
-      ),
-    )
-    .toBeGreaterThan(0);
-
-  await expect(
-    page.getByText("Could not authorize a mentioned agent.", { exact: false }),
-  ).toBeVisible();
-  expect(await readOutgoingMentionPubkeys(page, "@quinn hello")).toBeNull();
-  await expect(input).toHaveText("@quinn hello");
-
-  const commands = await readCommandLog(page);
-  expect(commandCount(commands, "revalidate_relay_agents")).toBe(
-    commandCount(baselineCommands, "revalidate_relay_agents") + 2,
-  );
-  expect(commandCount(commands, "sync_agents_to_active_huddle")).toBe(
-    commandCount(baselineCommands, "sync_agents_to_active_huddle") + 1,
-  );
-  // Nothing on this leg wrote relay state , the second pass exists only
-  // because the publish boundary is unconditional.
-  for (const command of [
-    "add_channel_members",
-    "attach_managed_agent",
-    "update_managed_agent",
-    "start_managed_agent",
-  ]) {
-    expect(commandCount(commands, command)).toBe(
-      commandCount(baselineCommands, command),
-    );
-  }
-});
-
 test("selected relay agents are invited as bots before sending", async ({
   page,
 }) => {
@@ -2788,7 +2497,6 @@ test("selected relay agents revoked after the invite prompt cause no side effect
     "add_channel_members",
     "start_managed_agent",
     "attach_managed_agent",
-    "sync_agents_to_active_huddle",
   ]) {
     expect(commandCount(commands, command)).toBe(
       commandCount(baselineCommands, command),
@@ -4809,35 +4517,6 @@ test("mention text matching the kind-0 name alias resolves and opens the profile
   await expect(panel).toContainText("bob");
 });
 
-test("clicking a mention chip in a forum post opens the profile panel", async ({
-  page,
-}) => {
-  await page.goto("/");
-  // Seed the forum post before entering the channel , forum views load from
-  // the mock store on fetch, so no live subscription is needed.
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await emitMockMessage(page, "watercooler", "Welcome aboard @bob!", {
-    kind: 45001,
-    mentionPubkeys: [TEST_IDENTITIES.bob.pubkey],
-  });
-
-  await page.getByTestId("channel-watercooler").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-
-  const mentionChip = page.locator("[data-mention]", { hasText: "bob" });
-  await expect(mentionChip).toBeVisible();
-  await mentionChip.click();
-
-  const panel = page.getByTestId("user-profile-panel");
-  await expect(panel).toBeVisible();
-  await expect(panel).toContainText("bob");
-  // The chip click must not bubble into the card and open the thread view.
-  await expect(page.getByRole("button", { name: "Back to posts" })).toHaveCount(
-    0,
-  );
-});
-
 test("agent profile popover shows its owner", async ({ page }) => {
   await installMockBridge(page, {
     searchProfiles: [
@@ -5083,11 +4762,6 @@ test("profile popover wave sends a direct message for a human profile", async ({
   ).toBeVisible();
   await expect(
     profilePopover.getByTestId(
-      `user-profile-popover-huddle-${TEST_IDENTITIES.bob.pubkey}`,
-    ),
-  ).toHaveCount(0);
-  await expect(
-    profilePopover.getByTestId(
       `user-profile-popover-wave-${TEST_IDENTITIES.bob.pubkey}`,
     ),
   ).toBeVisible();
@@ -5102,10 +4776,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
   await waitForTimelineSettled(page);
   await expect(waveAttachment).toContainText("👋");
   await expect(waveAttachment).toContainText("npub1mock... waved at you.");
-  await expect(waveAttachment).toContainText("Start a huddle to talk to them.");
-  await expect(
-    waveAttachment.getByRole("button", { name: "Start huddle" }),
-  ).toBeVisible();
+  await expect(waveAttachment.getByRole("button")).toHaveCount(0);
 
   const commandLog = await readCommandPayloadLog(page);
   expect(commandLog).toEqual(
@@ -5178,11 +4849,6 @@ test("delayed inaccessible agent profile keeps all actions hidden", async ({
   await expect(
     profilePopover.getByTestId(
       `user-profile-popover-wave-${DELAYED_RELAY_AGENT_PUBKEY}`,
-    ),
-  ).toHaveCount(0);
-  await expect(
-    profilePopover.getByTestId(
-      `user-profile-popover-huddle-${DELAYED_RELAY_AGENT_PUBKEY}`,
     ),
   ).toHaveCount(0);
 });

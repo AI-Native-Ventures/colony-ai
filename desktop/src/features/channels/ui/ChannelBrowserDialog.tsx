@@ -85,13 +85,12 @@ function BrowseState({
 
 type ChannelBrowserDialogProps = {
   channels: Channel[];
-  channelTypeFilter?: "stream" | "forum";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onJoinChannel: (channelId: string) => Promise<void>;
   onSelectChannel: (channelId: string) => void;
   /**
-   * Create a new channel/forum from within the browser. When provided, the
+   * Create a new channel from within the browser. When provided, the
    * dialog surfaces a "Create …" affordance (Are.na style) so search and
    * create live behind a single entry point.
    */
@@ -101,7 +100,6 @@ type ChannelBrowserDialogProps = {
 
 export function ChannelBrowserDialog({
   channels,
-  channelTypeFilter,
   open,
   onOpenChange,
   onJoinChannel,
@@ -139,22 +137,15 @@ export function ChannelBrowserDialog({
   // can never disagree for a frame while the fuzzy filter catches up.
   const normalizedQuery = trimmedQuery.toLowerCase();
 
-  const isForumMode = channelTypeFilter === "forum";
   const canCreate = Boolean(onCreateChannel);
-  const createKind = isForumMode ? "forum" : "stream";
-  const browseTitle = isForumMode ? "Add a forum" : "Browse channels";
   const searchPlaceholder = canCreate
-    ? isForumMode
-      ? "Search or create a forum"
-      : "Search or create a channel"
-    : isForumMode
-      ? "Search forums by name or description"
-      : "Search channels by name or description";
-  const entityLabel = isForumMode ? "forum" : "channel";
+    ? "Search or create a channel"
+    : "Search channels by name or description";
+  const entityLabel = "channel";
 
   const noopCreate = React.useCallback(async () => {}, []);
   const createForm = useCreateChannelForm({
-    channelKind: createKind,
+    channelKind: "stream",
     active: open && mode === "create",
     initialName: createInitialName,
     isCreating: isCreatingChannel,
@@ -175,13 +166,15 @@ export function ChannelBrowserDialog({
   }, [channels, deferredQuery]);
 
   const matchingChannels = React.useMemo(() => {
+    // Forums are no longer part of the app; leftover forum channels stay out
+    // of the browse list.
     const filtered = channels.filter(
       (channel) =>
         channel.channelType !== "dm" &&
+        channel.channelType !== "forum" &&
         (channel.archivedAt
           ? channel.isMember
-          : channel.visibility === "open" || channel.isMember) &&
-        (channelTypeFilter ? channel.channelType === channelTypeFilter : true),
+          : channel.visibility === "open" || channel.isMember),
     );
 
     if (deferredQuery.length === 0) {
@@ -189,7 +182,7 @@ export function ChannelBrowserDialog({
     }
 
     return filtered.filter((channel) => matchScoreById.has(channel.id));
-  }, [channels, channelTypeFilter, deferredQuery, matchScoreById]);
+  }, [channels, deferredQuery, matchScoreById]);
 
   const currentChannels = React.useMemo(
     () => matchingChannels.filter((channel) => channel.archivedAt === null),
@@ -248,7 +241,7 @@ export function ChannelBrowserDialog({
     CHANNEL_SORT_OPTIONS.find((option) => option.value === sort)?.label ??
     "Alphabetical";
 
-  const allTabLabel = isForumMode ? "All forums" : "All channels";
+  const allTabLabel = "All channels";
 
   // Whether an exact name match already exists — if so we don't offer to
   // create a duplicate, mirroring how you'd never make two "#general"s.
@@ -257,12 +250,9 @@ export function ChannelBrowserDialog({
       channels.some(
         (channel) =>
           channel.channelType !== "dm" &&
-          channelNamesMatch(channel.name, normalizedQuery) &&
-          (channelTypeFilter
-            ? channel.channelType === channelTypeFilter
-            : true),
+          channelNamesMatch(channel.name, normalizedQuery),
       ),
-    [channels, channelTypeFilter, normalizedQuery],
+    [channels, normalizedQuery],
   );
 
   // The pinned create row (Are.na style) appears for any non-empty query that
@@ -418,9 +408,7 @@ export function ChannelBrowserDialog({
       <DialogContent
         aria-describedby={undefined}
         className="gap-0 overflow-hidden border-0 px-6 pb-0 pt-6"
-        data-testid={
-          isForumMode ? "forum-browser-dialog" : "channel-browser-dialog"
-        }
+        data-testid="channel-browser-dialog"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           if (mode === "browse") {
@@ -440,7 +428,7 @@ export function ChannelBrowserDialog({
           <>
             <DialogHeader className="space-y-0 pb-5">
               <div className="flex items-center justify-between gap-4">
-                <DialogTitle>{browseTitle}</DialogTitle>
+                <DialogTitle>Browse channels</DialogTitle>
                 <DialogClose className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring">
                   <X className="h-4 w-4" />
                   <span className="sr-only">Close</span>
@@ -502,21 +490,16 @@ export function ChannelBrowserDialog({
                               channelNamesMatch(
                                 channel.name,
                                 currentNormalizedQuery,
-                              ) &&
-                              (channelTypeFilter
-                                ? channel.channelType === channelTypeFilter
-                                : true),
+                              ),
                           );
                         const currentQueryChannels = channels.filter(
                           (channel) =>
                             channel.channelType !== "dm" &&
+                            channel.channelType !== "forum" &&
                             (channel.archivedAt
                               ? channel.isMember
                               : channel.visibility === "open" ||
                                 channel.isMember) &&
-                            (channelTypeFilter
-                              ? channel.channelType === channelTypeFilter
-                              : true) &&
                             (activeTab === "archived"
                               ? channel.archivedAt !== null
                               : activeTab === "joined"

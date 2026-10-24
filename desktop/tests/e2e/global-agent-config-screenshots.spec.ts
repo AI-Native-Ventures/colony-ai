@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { selectSettingsSection } from "../helpers/settings";
 
@@ -32,8 +35,8 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
  */
 async function openCreateDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await openAgentTemplatesView(page);
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
   await page.locator("#persona-display-name").fill("Test Agent");
 }
 
@@ -794,8 +797,8 @@ test.describe("global agent config screenshots", () => {
     await installMockBridge(page);
 
     await page.goto("/");
-    await openAgentTemplatesView(page);
-    await page.getByTestId("new-agent-card").click();
+    await openAgentsDirectoryView(page);
+    await page.getByTestId("agent-add-button").click();
 
     await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled({
       timeout: 10_000,
@@ -928,17 +931,10 @@ test.describe("global agent config screenshots", () => {
       ],
     });
 
-    // Agents view → persona-grouped agent card → Edit quick action.
+    // Agents route → profile panel deep link → Edit quick action.
     await page.goto("/");
-    await openAgentTemplatesView(page);
-    const agentButton = page.getByRole("button", {
-      name: "Codex Editor agent profile",
-    });
-    await expect(agentButton).toBeVisible({ timeout: 10_000 });
-    await agentButton.click();
-    await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-      timeout: 10_000,
-    });
+    await openAgentsDirectoryView(page);
+    await openAgentProfilePanel(page, TEST_IDENTITIES.tyler.pubkey);
     await page.getByTestId("user-profile-edit-agent").click();
 
     // The definition dialog opens in EDIT mode ("Save changes"), seeded from
@@ -1019,17 +1015,10 @@ test.describe("global agent config screenshots", () => {
       ],
     });
 
-    // Agents view → persona-grouped agent card → Edit quick action.
+    // Agents route → profile panel deep link → Edit quick action.
     await page.goto("/");
-    await openAgentTemplatesView(page);
-    const agentButton = page.getByRole("button", {
-      name: "Legacy Editor agent profile",
-    });
-    await expect(agentButton).toBeVisible({ timeout: 10_000 });
-    await agentButton.click();
-    await expect(page.getByTestId("user-profile-panel")).toBeVisible({
-      timeout: 10_000,
-    });
+    await openAgentsDirectoryView(page);
+    await openAgentProfilePanel(page, TEST_IDENTITIES.tyler.pubkey);
     await page.getByTestId("user-profile-edit-agent").click();
 
     // Confirm the real EDIT dialog, seeded from the persona.

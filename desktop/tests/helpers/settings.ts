@@ -4,11 +4,9 @@ type SettingsSection =
   | "profile"
   | "security"
   | "notifications"
-  | "voice"
   | "agents"
   | "agent-defaults"
   | "harnesses"
-  | "compute"
   | "privacy"
   | "appearance"
   | "accessibility"
@@ -29,11 +27,9 @@ const sectionRoute: Record<
   profile: { group: "account", section: "profile" },
   security: { group: "account", section: "security" },
   notifications: { group: "preferences", section: "notifications" },
-  voice: { group: "preferences", section: "voice" },
   agents: { group: "agents-group", section: "agent-defaults" },
   "agent-defaults": { group: "agents-group", section: "agent-defaults" },
   harnesses: { group: "agents-group", section: "harnesses" },
-  compute: { group: "app-devices", section: "compute" },
   privacy: { group: "app-devices", section: "privacy" },
   appearance: { group: "appearance-group", section: "appearance" },
   accessibility: { group: "appearance-group", section: "accessibility" },
