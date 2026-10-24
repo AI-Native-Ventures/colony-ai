@@ -14,7 +14,7 @@ jobs:
   # create the release objects all four platform jobs upload into.
   setup:
     name: Setup
-    if: github.repository == 'block/buzz'
+    if: github.repository == 'AI-Native-Ventures/colony-ai'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -51,7 +51,7 @@ jobs:
 
   release:
     name: Release
-    if: github.repository == 'block/buzz'
+    if: github.repository == 'AI-Native-Ventures/colony-ai'
     runs-on: macos-latest
     needs: setup
     timeout-minutes: 60
@@ -87,7 +87,7 @@ jobs:
         run: cd desktop && node scripts/build-release-config.mjs
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
 
       - name: Build sidecars
         run: |
@@ -138,7 +138,7 @@ jobs:
         run: cd desktop && pnpm tauri build --verbose --no-sign --features mesh-llm --config src-tauri/tauri.release.conf.json
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -266,7 +266,7 @@ jobs:
 
   release-macos-x64:
     name: Release macOS (Intel)
-    if: github.repository == 'block/buzz'
+    if: github.repository == 'AI-Native-Ventures/colony-ai'
     runs-on: macos-latest
     needs: setup
     timeout-minutes: 60
@@ -306,7 +306,7 @@ jobs:
         run: cd desktop && node scripts/build-release-config.mjs
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
 
       - name: Build sidecars
         run: |
@@ -317,7 +317,7 @@ jobs:
         run: cd desktop && pnpm tauri build --verbose --no-sign --target "$TARGET" --config src-tauri/tauri.release.conf.json
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -429,7 +429,7 @@ jobs:
 
   release-linux:
     name: Release Linux
-    if: github.repository == 'block/buzz'
+    if: github.repository == 'AI-Native-Ventures/colony-ai'
     runs-on: ubuntu-latest
     # Digest-pinned like the SHA-pinned actions below; Renovate keeps it fresh.
     container: ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
@@ -574,13 +574,13 @@ jobs:
         run: cd desktop && node scripts/build-release-config.mjs
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
 
       - name: Build Linux Tauri app
         run: cd desktop && pnpm tauri build --verbose --ci --bundles deb,appimage --features mesh-llm --config src-tauri/tauri.release.conf.json
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
@@ -713,7 +713,7 @@ jobs:
         run: cd desktop && node scripts/build-release-config.mjs
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
 
       - name: Build sidecars
         shell: bash
@@ -726,7 +726,7 @@ jobs:
         run: cd desktop && pnpm tauri build --verbose --target "$TARGET" --bundles nsis --config src-tauri/tauri.release.conf.json
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
-          BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          BUZZ_UPDATER_ENDPOINT: https://github.com/AI-Native-Ventures/colony-ai/releases/download/buzz-desktop-latest/latest.json
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -896,7 +896,7 @@ jobs:
           ARCHIVE_WIN: ${{ needs.release-windows.outputs.archive_name }}
         run: |
           set -euo pipefail
-          BASE="https://github.com/block/buzz/releases/download/desktop-v${VERSION}"
+          BASE="https://github.com/AI-Native-Ventures/colony-ai/releases/download/desktop-v${VERSION}"
           TRIPLES=()
 
           add_triple() {
