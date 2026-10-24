@@ -379,11 +379,12 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
 
   await expect(sectionLabel).toHaveCSS(
     "color",
-    // Dark keeps the smallest AA step over the field.
-    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
+    // The branded dark field is a mid-tone, so its soft ink is the lighter
+    // #dcd6e2 (colony3-field.css).
+    mode === "dark" ? "rgb(220, 214, 226)" : mutedColor,
   );
   await expect(
-    sidebar.locator('.w20-nav-item[data-active="true"]'),
+    sidebar.locator('.cs-nav-item[data-active="true"]'),
   ).not.toHaveCSS("color", mutedColor);
 
   await expectBuzzGradientPaint(page, mode);

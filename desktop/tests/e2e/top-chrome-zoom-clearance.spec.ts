@@ -62,7 +62,10 @@ async function expectTopChromeFixedHeight(
 async function expectNavButtonsFixedSize(
   page: import("@playwright/test").Page,
 ) {
-  const buttons = page.locator('[data-testid="app-top-chrome"] button:visible');
+  // The bar's own history buttons; a screen's actions sit inside its content slot.
+  const buttons = page.locator(
+    '[data-testid="app-top-chrome"] > button:visible',
+  );
   const count = await buttons.count();
   expect(count).toBeGreaterThan(0);
   for (let i = 0; i < count; i += 1) {
