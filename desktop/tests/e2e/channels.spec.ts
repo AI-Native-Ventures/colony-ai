@@ -4909,11 +4909,10 @@ test("manage channel can archive and unarchive a stream", async ({ page }) => {
 
   await closeChannelManagement(page);
   await expect(page.getByTestId("stream-list")).not.toContainText("general");
-  await expect(page.getByTestId("message-input")).toHaveAttribute(
-    "contenteditable",
-    "false",
-  );
-  await expect(page.getByTestId("send-message")).toBeDisabled();
+  // An archived channel swaps its composer for the read-only bar.
+  await expect(page.getByTestId("archived-banner")).toBeVisible();
+  await expect(page.getByTestId("message-input")).toHaveCount(0);
+  await expect(page.getByTestId("send-message")).toHaveCount(0);
 
   await openChannelBrowser(page);
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();

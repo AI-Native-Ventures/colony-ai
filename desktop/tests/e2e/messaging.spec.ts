@@ -4262,8 +4262,9 @@ test("a refused message deep link retries after the thread edit is canceled", as
     `thread=${await source.getAttribute("data-message-id")}`,
   );
   // The hover action bar floats over the right side of its row (as the Message
-  // actions board draws it), so press the link at its left edge.
-  await destinationLink.click({ position: { x: 4, y: 10 } });
+  // actions board draws it), so open the link from the keyboard.
+  await destinationLink.focus();
+  await page.keyboard.press("Enter");
   await expect(
     page.getByText("Finish or cancel your edit before leaving the thread."),
   ).toBeVisible();
@@ -4278,8 +4279,9 @@ test("a refused message deep link retries after the thread edit is canceled", as
   await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
   await expect(threadInput).toHaveText("");
   // The hover action bar floats over the right side of its row (as the Message
-  // actions board draws it), so press the link at its left edge.
-  await destinationLink.click({ position: { x: 4, y: 10 } });
+  // actions board draws it), so open the link from the keyboard.
+  await destinationLink.focus();
+  await page.keyboard.press("Enter");
   await expect(page).not.toHaveURL(threadUrl);
   const routedDestination = page
     .getByTestId("message-timeline")
@@ -4596,9 +4598,10 @@ for (const targetKind of ["reply", "root"] as const) {
         ).length,
     );
 
-    // The hover action bar floats over the right side of its row, so press the
-    // link at its left edge.
-    await targetLink.click({ position: { x: 4, y: 10 } });
+    // The hover action bar floats over the right side of its row, so open the
+    // link from the keyboard.
+    await targetLink.focus();
+    await page.keyboard.press("Enter");
 
     const refusal = page.getByText(
       "Finish or cancel your edit before leaving the thread.",
@@ -4623,9 +4626,10 @@ for (const targetKind of ["reply", "root"] as const) {
 
     await threadInput.press("Escape");
     await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-    // The hover action bar floats over the right side of its row, so press the
-    // link at its left edge.
-    await targetLink.click({ position: { x: 4, y: 10 } });
+    // The hover action bar floats over the right side of its row, so open the
+    // link from the keyboard.
+    await targetLink.focus();
+    await page.keyboard.press("Enter");
     await expect
       .poll(() => page.evaluate(() => history.length))
       .toBeGreaterThan(navigationBefore.historyLength);
