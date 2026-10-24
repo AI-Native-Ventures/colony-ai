@@ -253,6 +253,16 @@ export function createThemeVars(
   const huddleTooltipBg = huddleControlBg;
   const primaryFg = hexToHsl(primaryBg);
   const textFg = hexToHsl(syntaxFg);
+  // The open sidebar row sits on a white wash (15% in dark themes), so the
+  // sidebar foreground has to read there as well as on the plain sidebar.
+  const sidebarFg = hexToHsl(
+    isDark
+      ? sidebarSectionForeground(syntaxFg, [
+          chromeColor,
+          mix(chromeColor, "#ffffff", 0.15),
+        ])
+      : syntaxFg,
+  );
   const huddleControlFg = isDark ? textFg : "0 0% 98%";
 
   return {
@@ -295,7 +305,7 @@ export function createThemeVars(
 
       // Sidebar
       "--sidebar-background": hexToHsl(chromeColor),
-      "--sidebar-foreground": textFg,
+      "--sidebar-foreground": sidebarFg,
       "--sidebar-section-foreground": hexToHsl(
         isDark
           ? sidebarSectionForeground(
