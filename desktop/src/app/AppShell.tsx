@@ -9,6 +9,7 @@ import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
 import { AppHuddleShell } from "@/app/AppHuddleShell";
 import { AppTopChrome } from "@/app/AppTopChrome";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   type TerminalContextOverride,
   TerminalContextOverrideProvider,
@@ -192,12 +193,15 @@ export function AppShell() {
   });
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
+  const isNarrowWindow = useIsMobile();
   const showAppTopChrome =
     !isFactoryRoute &&
     !settingsOpen &&
     !isHuddleRoom &&
     selectedView !== "pins" &&
-    location.pathname !== "/" &&
+    // Activity draws its own header; on a narrow window the sidebar drawer's
+    // only handle is the shell bar, so it stays there.
+    (location.pathname !== "/" || isNarrowWindow) &&
     location.pathname !== "/team" &&
     location.pathname !== "/team/org" &&
     !location.pathname.startsWith("/today/updates") &&

@@ -1429,6 +1429,8 @@ test.describe("community rail", () => {
     // History controls live inside the inset content frame, clear of the
     // native traffic lights and aligned with the content left edge.
     const back = page.getByTestId("global-back");
+    // Today mounts its route after the shell, so wait for the controls.
+    await expect(back).toBeVisible();
     const backBox = await back.boundingBox();
     expect(backBox).not.toBeNull();
     expect(backBox?.x ?? 0).toBeGreaterThanOrEqual(contentBox?.x ?? 0);

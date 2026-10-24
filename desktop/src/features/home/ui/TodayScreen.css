@@ -1,5 +1,12 @@
 /* Colony 3.0 Today (`Today.dc.html`). Design pixels are written in rem. */
 
+/* Today fills the shell bar through its portal (icon, search, bell), so the bar
+   stays on this route even though other workspace routes hide it. */
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="app-top-chrome"]:has(.colony-topbar-content .ct-topbar-title) {
+  display: flex;
+}
+
 .ct-screen {
   display: flex;
   min-height: 0;
