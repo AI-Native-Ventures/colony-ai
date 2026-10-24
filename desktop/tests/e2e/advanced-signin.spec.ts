@@ -124,6 +124,12 @@ test("an existing key continues to name and photo, then the business form", asyn
   page,
 }) => {
   await openAdvancedFromSignIn(page);
+  // The business list is read for the imported key, not the mock account's.
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: { owner_pubkey: TEST_IDENTITIES.tyler.pubkey, communities: [] },
+    }),
+  );
   await page.getByTestId("advanced-tab-key").click();
   await page
     .getByTestId("nostr-import-nsec-input")
