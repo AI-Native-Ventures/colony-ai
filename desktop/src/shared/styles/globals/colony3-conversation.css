@@ -178,8 +178,6 @@
 }
 
 .c3c-author {
-  flex-shrink: 0;
-  max-width: 60%;
   font-size: calc(16.5 * var(--colony-px));
   font-weight: 800;
   line-height: normal;
@@ -390,6 +388,11 @@
 }
 
 /* Header: archived badge. Join bar. */
+.c3c-archived-bar {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
 .c3c-archived-badge {
   display: inline-flex;
   height: calc(26 * var(--colony-px));

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -812,6 +812,16 @@ export const ChannelPane = React.memo(function ChannelPane({
                     <JoinGlyph size={17} />
                     {isJoining ? "Joining..." : "Join to participate"}
                   </button>
+                </div>
+              ) : activeChannel?.archivedAt ? (
+                <div
+                  className="border-t border-colony-border px-7 py-4"
+                  data-testid="archived-banner"
+                >
+                  <div className="c3c-archived-bar flex items-center gap-2.5 rounded-2xl bg-colony-wash px-4 py-3.5 text-colony-muted">
+                    <Lock aria-hidden="true" className="size-4 shrink-0" />
+                    <span>Archived channels are read-only.</span>
+                  </div>
                 </div>
               ) : (
                 <div
