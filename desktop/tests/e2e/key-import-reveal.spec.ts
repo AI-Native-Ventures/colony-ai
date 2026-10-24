@@ -13,7 +13,7 @@ test("R17 account passwords stay masked while entering credentials", async ({
   await signInPassword.fill("correct-horse-12");
   await expect(signInPassword).toHaveAttribute("type", "password");
 
-  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByRole("button", { name: "Create an account" }).first().click();
   const signupPassword = page.getByRole("textbox", { name: "Password" });
   await expect(signupPassword).toHaveAttribute("type", "password");
   await signupPassword.fill("correct-horse-12");

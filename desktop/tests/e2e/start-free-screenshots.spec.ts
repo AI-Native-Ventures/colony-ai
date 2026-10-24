@@ -52,25 +52,25 @@ for (const viewport of [
       },
     });
 
-    await expect(page.getByTestId("start-free-continue")).toBeVisible();
+    await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/01-start-free-${viewport.width}.png`,
     });
 
-    await page.getByTestId("start-free-continue").click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(page.getByTestId("start-free-installing")).toBeVisible();
     await page.screenshot({
       path: `${SHOT_DIR}/02-installing-${viewport.width}.png`,
     });
 
-    await expect(page.getByTestId("start-free-retry")).toBeVisible();
+    await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/03-install-failed-${viewport.width}.png`,
     });
 
-    await page.getByTestId("start-free-retry").click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(
       page.getByText(
         "OpenCode's free AI has ended. Connect your own AI to continue.",
@@ -82,10 +82,7 @@ for (const viewport of [
     });
 
     await page.getByTestId("start-free-use-own").click();
-    await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/05-use-your-own-${viewport.width}.png`,

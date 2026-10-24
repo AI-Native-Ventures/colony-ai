@@ -41,7 +41,7 @@ for (const viewport of [
     await expect(page.getByLabel("What does your business do?")).toHaveValue(
       metadata.description,
     );
-    await expect(page.locator(".logo-editor img")).toHaveAttribute(
+    await expect(page.locator(".c3fr-logo-box img")).toHaveAttribute(
       "src",
       metadata.faviconDataUrl,
     );
@@ -122,7 +122,7 @@ test("a result for an old URL cannot overwrite the new URL's state", async ({
     "",
   );
   await expect(page.getByLabel("What does your business do?")).toHaveValue("");
-  await expect(page.locator(".logo-editor img")).toHaveCount(0);
+  await expect(page.locator(".c3fr-logo-box img")).toHaveCount(0);
 });
 
 test("an uploaded logo wins over an in-flight website icon", async ({
@@ -142,7 +142,7 @@ test("an uploaded logo wins over an in-flight website icon", async ({
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle r="8" cx="8" cy="8" fill="red"/></svg>',
     ),
   });
-  await expect(page.locator(".logo-editor img")).toHaveAttribute(
+  await expect(page.locator(".c3fr-logo-box img")).toHaveAttribute(
     "src",
     /^data:image\/svg\+xml/,
   );
@@ -152,7 +152,7 @@ test("an uploaded logo wins over an in-flight website icon", async ({
   await expect(
     page.getByRole("button", { name: "Read website", exact: true }),
   ).toBeEnabled();
-  await expect(page.locator(".logo-editor img")).toHaveAttribute(
+  await expect(page.locator(".c3fr-logo-box img")).toHaveAttribute(
     "src",
     /^data:image\/svg\+xml/,
   );

@@ -5,27 +5,13 @@ import { toast } from "sonner";
 import { SidebarRelayConnectionCompactCard } from "@/features/sidebar/ui/SidebarRelayConnectionCard";
 import { useRelayConnection } from "@/shared/api/useRelayConnection";
 import { useReconnectRelay } from "@/shared/api/useReconnectRelay";
-import { cn } from "@/shared/lib/cn";
 import { isRelayUnreachableError } from "@/shared/lib/relayError";
-import { Button } from "@/shared/ui/button";
-import { Spinner } from "@/shared/ui/spinner";
-import { ONBOARDING_PRIMARY_CTA_CLASS } from "./OnboardingChrome";
-import { useOnboardingCardLayout } from "./OnboardingCard";
-import { OnboardingFooter } from "./OnboardingFooter";
-import { OnboardingInput } from "./OnboardingInput";
-import {
-  type OnboardingTransitionDirection,
-  type OnboardingTransitionEffect,
-  OnboardingSlideTransition,
-} from "./OnboardingSlideTransition";
+import { FirstRunLink } from "./firstRunControls";
 import type { ProfileStepActions, ProfileStepState } from "./types";
 
 type ProfileStepProps = {
   actions: ProfileStepActions;
-  direction: OnboardingTransitionDirection;
-  transitionEffect?: OnboardingTransitionEffect;
   state: ProfileStepState;
-  usesExistingIdentity?: boolean;
 };
 
 const ONBOARDING_CONNECTIVITY_SUCCESS_AUTO_DISMISS_MS = 2_500;
@@ -163,7 +149,7 @@ function OnboardingRelayConnectionErrorCard({
   );
 }
 
-function ErrorBanner({
+export function ErrorBanner({
   isSaving,
   message,
 }: {
@@ -185,33 +171,20 @@ function ErrorBanner({
   }
 
   return (
-    <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+    <p className="c3fr-error" role="alert">
       {message}
     </p>
   );
 }
 
-export function ProfileStep({
-  actions,
-  direction,
-  transitionEffect = "line-slide",
-  state,
-  usesExistingIdentity = false,
-}: ProfileStepProps) {
-  const {
-    advanceWithoutSaving,
-    back,
-    importExistingKey,
-    skipForNow,
-    submit,
-    updateDisplayName,
-  } = actions;
+/** Step 1 of 2: the name people and agents will see. */
+export function ProfileStep({ actions, state }: ProfileStepProps) {
+  const { advanceWithoutSaving, skipForNow, submit, updateDisplayName } =
+    actions;
   const { isReadyToSubmit, isSaving, name, saveRecovery } = state;
   const displayNameDraft = name.draftValue;
-  const hasDisplayNameDraft = displayNameDraft.length > 0;
   const canSubmit =
     displayNameDraft.trim().length > 0 && isReadyToSubmit && !isSaving;
-  const cardLayout = useOnboardingCardLayout();
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useLayoutEffect(() => {
@@ -219,177 +192,78 @@ export function ProfileStep({
   }, []);
 
   return (
-    <OnboardingSlideTransition
-      className={cn(
-        "flex w-full flex-col",
-        cardLayout ? "items-stretch text-left" : "items-center text-center",
-      )}
+    <form
+      aria-labelledby="op-name-title"
+      className="c3fr-profile-card"
       data-testid="onboarding-page-1"
-      direction={direction}
-      effect={transitionEffect}
-      transitionKey={`profile-${direction}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSubmit) submit();
+      }}
     >
-      <div className="w-full max-w-2xl">
-        <h1 className="text-title font-normal text-foreground">
+      <span className="c3fr-eyebrow c3fr-eyebrow-accent">Step 1 of 2</span>
+      <div className="c3fr-head">
+        <h2
+          className="c3fr-title c3fr-title-profile"
+          id="op-name-title"
+          tabIndex={-1}
+        >
           What should we call you?
-        </h1>
-        <p className="mt-5 text-sm leading-6 text-muted-foreground">
+        </h2>
+        <p className="c3fr-lede c3fr-lede-card">
           Pick the name people and agents will see in Colony. You can change it
           anytime.
         </p>
       </div>
-
-      {cardLayout ? (
-        <label
-          className="mt-8 block w-full text-sm font-medium text-foreground"
-          htmlFor="onboarding-display-name"
-        >
-          <span className="mb-2 block">Name</span>
-          <OnboardingInput
-            aria-label="Name"
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
-            data-testid="onboarding-display-name"
-            disabled={isSaving}
-            id="onboarding-display-name"
-            onChange={(event) => updateDisplayName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && canSubmit) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            placeholder="Enter your name"
-            ref={inputRef}
-            spellCheck={false}
-            value={displayNameDraft}
-          />
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="onboarding-display-name">
+          Name
         </label>
-      ) : (
-        <label
-          className="mt-12 flex w-full cursor-text flex-col items-center"
-          htmlFor="onboarding-display-name"
-        >
-          <span className="sr-only">Name</span>
-          <div className="relative h-20 w-full max-w-[576px]">
-            {!hasDisplayNameDraft ? (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 flex select-none items-center justify-center"
-              >
-                <span className="relative inline-flex select-none items-center gap-0 text-4xl font-semibold text-muted-foreground/35 sm:text-5xl">
-                  <span
-                    aria-hidden="true"
-                    className="buzz-onboarding-name-placeholder-caret h-[0.9em] w-0.5 rounded-full bg-primary"
-                  />
-                  Enter your name
-                </span>
-              </div>
-            ) : null}
-            <input
-              aria-label="Name"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-              className={cn(
-                "h-full w-full border-0 bg-transparent px-0 py-0 text-center text-4xl font-semibold text-foreground shadow-none outline-none caret-foreground disabled:cursor-not-allowed disabled:opacity-50 sm:text-5xl",
-                !hasDisplayNameDraft && "text-transparent caret-transparent",
-              )}
-              data-testid="onboarding-display-name"
-              disabled={isSaving}
-              id="onboarding-display-name"
-              onChange={(event) => updateDisplayName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && canSubmit) {
-                  event.preventDefault();
-                  submit();
-                }
-              }}
-              ref={inputRef}
-              spellCheck={false}
-              value={displayNameDraft}
-            />
-          </div>
-        </label>
-      )}
-
+        <input
+          autoCapitalize="none"
+          autoComplete="off"
+          autoCorrect="off"
+          className="c3fr-input"
+          data-testid="onboarding-display-name"
+          disabled={isSaving}
+          id="onboarding-display-name"
+          onChange={(event) => updateDisplayName(event.target.value)}
+          placeholder="Enter your name"
+          ref={inputRef}
+          spellCheck={false}
+          value={displayNameDraft}
+        />
+      </div>
       {saveRecovery.errorMessage ? (
         <ErrorBanner isSaving={isSaving} message={saveRecovery.errorMessage} />
       ) : null}
-
-      <OnboardingFooter>
-        <Button
-          className={ONBOARDING_PRIMARY_CTA_CLASS}
+      <div className="c3fr-profile-actions">
+        <button
+          className="c3fr-pane-primary"
           data-testid="onboarding-next"
           disabled={!canSubmit}
-          onClick={submit}
-          type="button"
+          type="submit"
         >
-          {isSaving ? (
-            <Spinner aria-label="Saving profile" className="h-4 w-4 border-2" />
-          ) : usesExistingIdentity ? (
-            "Continue"
-          ) : (
-            "Create an identity key"
-          )}
-        </Button>
-
-        {back ? (
-          <Button
-            className="h-10 w-full text-muted-foreground hover:text-accent-foreground"
-            data-testid="onboarding-back"
-            disabled={isSaving}
-            onClick={back}
-            type="button"
-            variant="ghost"
+          {isSaving ? "Saving…" : "Continue"}
+        </button>
+        <FirstRunLink
+          className="c3fr-profile-skip"
+          data-testid="onboarding-skip"
+          disabled={isSaving}
+          onClick={skipForNow}
+        >
+          Skip for now
+        </FirstRunLink>
+        {saveRecovery.canAdvanceWithoutSaving ? (
+          <FirstRunLink
+            className="c3fr-profile-skip"
+            data-testid="onboarding-next-without-saving"
+            onClick={advanceWithoutSaving}
           >
-            Back
-          </Button>
+            Continue without saving
+          </FirstRunLink>
         ) : null}
-
-        {!usesExistingIdentity ? (
-          <Button
-            className="text-muted-foreground hover:text-accent-foreground"
-            data-testid="onboarding-import-key"
-            disabled={isSaving}
-            onClick={importExistingKey}
-            type="button"
-            variant="ghost"
-          >
-            I already have a key
-          </Button>
-        ) : null}
-
-        {saveRecovery.canSkipForNow || saveRecovery.canAdvanceWithoutSaving ? (
-          <div className="flex min-h-8 items-center gap-2">
-            <div className="flex-1" />
-            {saveRecovery.canSkipForNow ? (
-              <Button
-                className="text-muted-foreground hover:text-accent-foreground"
-                data-testid="onboarding-skip"
-                onClick={skipForNow}
-                type="button"
-                variant="ghost"
-              >
-                Skip for now
-              </Button>
-            ) : null}
-            {saveRecovery.canAdvanceWithoutSaving ? (
-              <Button
-                className="text-muted-foreground hover:text-accent-foreground"
-                data-testid="onboarding-next-without-saving"
-                onClick={advanceWithoutSaving}
-                type="button"
-                variant="ghost"
-              >
-                Continue without saving
-              </Button>
-            ) : null}
-            <div className="flex-1" />
-          </div>
-        ) : null}
-      </OnboardingFooter>
-    </OnboardingSlideTransition>
+      </div>
+    </form>
   );
 }

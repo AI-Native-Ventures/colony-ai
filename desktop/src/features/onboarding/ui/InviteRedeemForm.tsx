@@ -14,27 +14,12 @@ import {
 } from "@/shared/api/invites";
 import { normalizeRelayUrl } from "@/features/communities/relayProbe";
 import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
-import { Spinner } from "@/shared/ui/spinner";
+import { FirstRunButton, FirstRunError } from "./firstRunControls";
 import { JoinPolicyNotice } from "./JoinPolicyNotice";
-import {
-  ONBOARDING_KEY_ROW_CLASS,
-  ONBOARDING_KEY_TEXT_CLASS,
-} from "./NsecMaskedDisplay";
-import { ONBOARDING_PRIMARY_CTA_CLASS } from "./OnboardingChrome";
-import { OnboardingFooter } from "./OnboardingFooter";
+import "./firstRun.css";
 
 const POLICY_DISCOVERY_DELAY_MS = 250;
 const POLICY_REVEAL_EASE = [0.23, 1, 0.32, 1] as const;
-const SPOTLIGHT_TEXTURE_CONTENT_CLASS = "mx-auto w-full max-w-[920px]";
-const SPOTLIGHT_OVERFLOW_FADE = {
-  WebkitMaskImage:
-    "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
-  maskImage:
-    "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
-};
 
 function hasInviteRelay(
   invite: ParsedInvite,
@@ -86,6 +71,7 @@ export function InviteRedeemForm({
   const [policyError, setPolicyError] = React.useState<string | null>(null);
   const [isLoadingPolicy, setIsLoadingPolicy] = React.useState(false);
   const shouldReduceMotion = useReducedMotion();
+  const busy = isRedeeming || isLoadingPolicy;
 
   const parsed = React.useMemo(
     () => parseInviteInput(inviteInput),
@@ -282,158 +268,94 @@ export function InviteRedeemForm({
     setPolicyError(null);
   };
 
-  const submitButton = (
-    <Button
-      className={
-        isOnboardingSpotlight
-          ? ONBOARDING_PRIMARY_CTA_CLASS
-          : isAddCommunity
-            ? "h-10"
-            : "h-10 w-full"
-      }
-      data-testid="invite-redeem-submit"
-      disabled={
-        !canSubmit ||
-        isRedeeming ||
-        isLoadingPolicy ||
-        Boolean(joinPolicy?.ageAttestationRequired && !ageConfirmed) ||
-        Boolean(
-          joinPolicy &&
-            (joinPolicy.termsMarkdown || joinPolicy.privacyMarkdown) &&
-            !agreementConfirmed,
-        )
-      }
-      form={formId}
-      type="submit"
-    >
-      {isRedeeming || isLoadingPolicy ? (
-        <Spinner
-          aria-label={isRedeeming ? "Redeeming invite" : "Loading policy"}
-          className="h-4 w-4 border-2"
-        />
-      ) : isOnboardingSpotlight ? (
-        "Next"
-      ) : isAddCommunity ? (
-        joinPolicy ? (
-          "Accept and join"
-        ) : (
-          "Join community"
-        )
-      ) : joinPolicy ? (
-        "Accept and redeem invite"
-      ) : (
-        "Redeem invite"
-      )}
-    </Button>
-  );
+  const submitDisabled =
+    !canSubmit ||
+    isRedeeming ||
+    isLoadingPolicy ||
+    Boolean(joinPolicy?.ageAttestationRequired && !ageConfirmed) ||
+    Boolean(
+      joinPolicy &&
+        (joinPolicy.termsMarkdown || joinPolicy.privacyMarkdown) &&
+        !agreementConfirmed,
+    );
+  const submitLabel = busy
+    ? isRedeeming
+      ? "Redeeming invite…"
+      : "Checking…"
+    : isOnboardingSpotlight
+      ? "Continue"
+      : isAddCommunity
+        ? joinPolicy
+          ? "Accept and join"
+          : "Join community"
+        : joinPolicy
+          ? "Accept and redeem invite"
+          : "Redeem invite";
+  const inputLabel = isOnboardingSpotlight
+    ? "Or paste your invite link or community link"
+    : isAddCommunity
+      ? "Community URL or invite link"
+      : "Invite link or code";
+  const inputPlaceholder = isOnboardingSpotlight
+    ? (placeholder ?? "https://")
+    : isAddCommunity
+      ? "https://"
+      : "https://relay.example.com/invite/abc123 or paste a code";
 
-  const cancelButton = (
-    <Button
-      className={
-        isOnboardingSpotlight
-          ? "h-9 rounded-full bg-foreground/10 px-6 hover:bg-foreground/15"
-          : "h-10 w-full text-muted-foreground hover:text-accent-foreground"
-      }
+  const input = (
+    <input
+      autoCapitalize="none"
+      autoComplete="off"
+      autoCorrect="off"
+      className="c3fr-input"
+      data-testid="invite-redeem-input"
       disabled={isRedeeming}
-      onClick={onCancel}
-      type="button"
-      variant="ghost"
-    >
-      {isOnboardingSpotlight ? "Back" : "Cancel"}
-    </Button>
+      id="invite-input"
+      onChange={handleInviteInputChange}
+      placeholder={inputPlaceholder}
+      spellCheck={false}
+      type="text"
+      value={inviteInput}
+    />
   );
 
   return (
     <form
-      className={cn(
-        "flex w-full flex-col",
-        isOnboardingSpotlight
-          ? "relative items-center"
-          : isAddCommunity
-            ? "gap-4"
-            : "gap-3",
-      )}
+      className="c3fr-form c3fr-redeem"
+      data-variant={variant}
       id={formId}
       onSubmit={handleSubmit}
+      style={
+        { "--c3fr-gap": isOnboardingSpotlight ? 12 : 16 } as React.CSSProperties
+      }
     >
-      {isOnboardingSpotlight ? (
-        <Card
-          className="w-[min(calc(100%+12rem),calc(100vw-2rem))] max-w-[1120px] translate-y-8 px-8 py-6"
-          data-testid="invite-redeem-input-frame"
-        >
-          <div
-            className={SPOTLIGHT_TEXTURE_CONTENT_CLASS}
-            style={SPOTLIGHT_OVERFLOW_FADE}
-          >
-            <label className="block w-full" htmlFor="invite-input">
-              <span className="sr-only">Invite link or code</span>
-              <span className={ONBOARDING_KEY_ROW_CLASS}>
-                <input
-                  autoCapitalize="none"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  className={cn(
-                    ONBOARDING_KEY_TEXT_CLASS,
-                    "block border-0 bg-transparent p-0 text-center shadow-none outline-none placeholder:text-[var(--buzz-onboarding-backup-ink)] placeholder:opacity-40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-                  )}
-                  data-testid="invite-redeem-input"
-                  disabled={isRedeeming}
-                  id="invite-input"
-                  onChange={handleInviteInputChange}
-                  placeholder={
-                    placeholder ?? "https://relay.example.com/invite/abc123"
-                  }
-                  spellCheck={false}
-                  type="text"
-                  value={inviteInput}
-                />
-              </span>
-            </label>
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="invite-input">
+          {inputLabel}
+        </label>
+        {isOnboardingSpotlight ? (
+          <div className="c3fr-row">
+            {input}
+            <FirstRunButton
+              className="c3fr-inline-button"
+              data-testid="invite-redeem-submit"
+              disabled={submitDisabled}
+              form={formId}
+              type="submit"
+            >
+              {submitLabel}
+            </FirstRunButton>
           </div>
-        </Card>
-      ) : (
-        <div className="space-y-1.5 text-left">
-          <label
-            className="text-sm font-medium text-foreground"
-            htmlFor="invite-input"
-          >
-            {isAddCommunity
-              ? "Community URL or invite link"
-              : "Invite link or code"}
-          </label>
-          <Input
-            autoComplete="off"
-            autoCorrect="off"
-            autoFocus
-            className={
-              isAddCommunity
-                ? "h-11 rounded-xl border-input bg-muted/40 px-3 shadow-none transition-colors duration-150 ease-out hover:border-muted-foreground/40 focus-visible:border-muted-foreground/50 focus-visible:ring-0"
-                : "h-10 bg-background"
-            }
-            data-testid="invite-redeem-input"
-            disabled={isRedeeming}
-            id="invite-input"
-            onChange={handleInviteInputChange}
-            placeholder={
-              isAddCommunity
-                ? "https://community.example.com or paste an invite link"
-                : "https://relay.example.com/invite/abc123 or paste a code"
-            }
-            spellCheck={false}
-            type="text"
-            value={inviteInput}
-          />
-        </div>
-      )}
+        ) : (
+          input
+        )}
+      </div>
 
       {isOnboardingSpotlight ? (
         <p
           aria-hidden={!showInvalidInviteTip}
           aria-live="polite"
-          className={cn(
-            "absolute top-[calc(100%+2rem)] mt-4 min-h-5 w-full max-w-4xl text-center text-sm text-[#717106] transition-opacity duration-150 ease-out",
-            showInvalidInviteTip ? "opacity-100" : "opacity-0",
-          )}
+          className={cn("c3fr-note", !showInvalidInviteTip && "c3fr-hidden")}
           data-testid="invalid-invite-tip"
         >
           Please enter a valid invite link or community URL
@@ -441,20 +363,12 @@ export function InviteRedeemForm({
       ) : null}
 
       {needsRelayField ? (
-        <div
-          className={cn(
-            "space-y-1.5 text-left",
-            isOnboardingSpotlight && "w-full max-w-[500px]",
-          )}
-        >
-          <label
-            className="text-sm font-medium text-foreground"
-            htmlFor="invite-relay-url"
-          >
+        <div className="c3fr-field-group">
+          <label className="c3fr-label" htmlFor="invite-relay-url">
             Relay URL
           </label>
-          <Input
-            className="h-10 bg-background"
+          <input
+            className="c3fr-input"
             disabled={isRedeeming}
             id="invite-relay-url"
             onChange={handleRelayInputChange}
@@ -465,13 +379,9 @@ export function InviteRedeemForm({
         </div>
       ) : null}
 
-      {policyError ? (
-        <p className="text-center text-sm text-destructive">{policyError}</p>
-      ) : null}
+      {policyError ? <FirstRunError>{policyError}</FirstRunError> : null}
 
-      {error ? (
-        <p className="text-center text-sm text-destructive">{error}</p>
-      ) : null}
+      {error ? <FirstRunError>{error}</FirstRunError> : null}
 
       <AnimatePresence initial={false}>
         {joinPolicy && policyTarget ? (
@@ -482,7 +392,7 @@ export function InviteRedeemForm({
               opacity: 1,
               transform: "translateY(0rem)",
             }}
-            className="overflow-hidden"
+            className="c3fr-policy-reveal"
             exit={
               shouldReduceMotion
                 ? { height: 0, marginTop: "-0.75rem", opacity: 0 }
@@ -528,14 +438,32 @@ export function InviteRedeemForm({
         ) : null}
       </AnimatePresence>
 
-      {isOnboardingSpotlight ? (
-        <OnboardingFooter>{submitButton}</OnboardingFooter>
-      ) : isAddCommunity ? (
-        <div className="flex justify-end pt-1">{submitButton}</div>
+      {isOnboardingSpotlight ? null : isAddCommunity ? (
+        <div className="c3fr-redeem-actions">
+          <button
+            className="c3fr-accent-button"
+            data-testid="invite-redeem-submit"
+            disabled={submitDisabled}
+            form={formId}
+            type="submit"
+          >
+            {submitLabel}
+          </button>
+        </div>
       ) : (
         <>
-          {submitButton}
-          {cancelButton}
+          <FirstRunButton
+            data-testid="invite-redeem-submit"
+            disabled={submitDisabled}
+            form={formId}
+            kind="primary"
+            type="submit"
+          >
+            {submitLabel}
+          </FirstRunButton>
+          <FirstRunButton disabled={isRedeeming} onClick={onCancel}>
+            Cancel
+          </FirstRunButton>
         </>
       )}
     </form>
