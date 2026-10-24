@@ -468,7 +468,10 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   await expect(
     page.getByTestId("message-thread-head").getByTestId("ask-card"),
   ).toBeVisible();
-  await page.getByTestId("ask-detail-link").click();
+  await page
+    .getByTestId("message-thread-head")
+    .getByTestId("ask-detail-link")
+    .click();
   await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
     "USD 8.75 / week",
   );
