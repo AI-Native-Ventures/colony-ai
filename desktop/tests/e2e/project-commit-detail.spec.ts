@@ -630,16 +630,34 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expect(nestedChannel).toBeVisible();
 
   const sidebarScrollContent = page.getByTestId("sidebar-scroll-content");
-  const channelSidebarMetrics = await sidebarScrollContent.evaluate(
-    (element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        clientWidth: element.clientWidth,
-        left: bounds.left,
-        width: bounds.width,
-      };
-    },
-  );
+  // The sidebar's width eases (200ms) whenever its column resizes; sample only
+  // once two reads 300ms apart agree.
+  const settledSidebarMetrics = async () => {
+    const read = () =>
+      sidebarScrollContent.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          clientWidth: element.clientWidth,
+          left: bounds.left,
+          width: bounds.width,
+        };
+      });
+    let previous = await read();
+    await expect
+      .poll(
+        async () => {
+          await page.waitForTimeout(300);
+          const next = await read();
+          const settled = JSON.stringify(next) === JSON.stringify(previous);
+          previous = next;
+          return settled;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+    return previous;
+  };
+  const channelSidebarMetrics = await settledSidebarMetrics();
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(nestedChannel).toBeHidden();
@@ -648,16 +666,7 @@ test("project sidebar rows open the home channel and nest extra channels", async
   await expand.click();
   await expect(expand).toHaveAttribute("aria-expanded", "true");
   await expect(nestedChannel).toBeVisible();
-  const projectSidebarMetrics = await sidebarScrollContent.evaluate(
-    (element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        clientWidth: element.clientWidth,
-        left: bounds.left,
-        width: bounds.width,
-      };
-    },
-  );
+  const projectSidebarMetrics = await settledSidebarMetrics();
   expect(projectSidebarMetrics).toEqual(channelSidebarMetrics);
 
   await projectRow.click();
