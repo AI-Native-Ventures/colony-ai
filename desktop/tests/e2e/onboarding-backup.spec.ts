@@ -23,7 +23,7 @@ test("R17 signup verifies the account with a six-digit email code", async ({
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expect(
-    page.getByText("Enter the six-digit code sent to your email."),
+    page.getByText(/Enter the six-digit code we sent to/),
   ).toBeVisible();
   for (let index = 1; index <= 6; index += 1) {
     await expect(page.getByLabel(`Digit ${index} of 6`)).toBeVisible();

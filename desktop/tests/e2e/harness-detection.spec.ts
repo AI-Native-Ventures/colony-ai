@@ -239,12 +239,9 @@ for (const viewport of [
     });
     const codex = page.getByTestId("onboarding-connect-runtime-codex");
     await expect(codex).toBeVisible();
-    await expect(codex).toContainText("Weekly allowance");
-    await expect(codex.getByRole("meter")).toHaveAttribute(
-      "aria-valuenow",
-      "87",
-    );
-    await expect(codex).not.toContainText("5-hour allowance");
+    // An outdated connection is not ready, so no allowance shows until it is
+    // updated.
+    await expect(codex.getByRole("meter")).toHaveCount(0);
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
     ).toBeHidden();
@@ -268,6 +265,12 @@ for (const viewport of [
     await expect(
       codex.getByRole("button", { name: "Retry", exact: true }),
     ).toHaveCount(0);
+    await expect(codex).toContainText("Weekly allowance");
+    await expect(codex.getByRole("meter")).toHaveAttribute(
+      "aria-valuenow",
+      "87",
+    );
+    await expect(codex).not.toContainText("5-hour allowance");
     await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),

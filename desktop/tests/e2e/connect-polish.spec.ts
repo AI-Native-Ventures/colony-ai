@@ -28,6 +28,22 @@ for (const viewport of [
     await openR17ConnectionSetup(page, {
       runtimes: [r17Runtime("claude", "available", { status: "logged_in" })],
       mock: {
+        aiSubscriptions: [
+          {
+            id: "claude",
+            signedIn: true,
+            plan: "Max",
+            source: "live",
+            windows: [
+              {
+                label: "Weekly allowance",
+                remainingPercent: 70,
+                resetsAt: null,
+              },
+            ],
+            message: null,
+          },
+        ],
         discoverAgentModels: {
           supportsSwitching: true,
           models: [{ id: "actual-model", name: "Claude Sonnet" }],

@@ -395,7 +395,10 @@ export function ConnectSetupStep({
   const canTest =
     !saving &&
     !freeInstalling &&
-    (choice === "free" ? !(freeState === "ended") : aiReady);
+    (choice === "free"
+      ? freeState !== "ended" &&
+        !(freeState === "install-failed" && !freeCanRetry)
+      : aiReady);
   const testLabel =
     choice === "free" && freeState === "install-failed" && freeCanRetry
       ? "Try again"
@@ -523,7 +526,7 @@ export function ConnectSetupStep({
           ) : null}
         </ConnectCard>
       </ConnectChoices>
-      <div className="c3fr-actions">
+      <div className="c3fr-actions c3fr-actions-docked">
         <FirstRunButton disabled={saving || freeInstalling} onClick={onBack}>
           Back
         </FirstRunButton>

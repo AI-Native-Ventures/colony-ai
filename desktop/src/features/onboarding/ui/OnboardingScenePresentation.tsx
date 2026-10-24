@@ -307,10 +307,15 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   const rootRef = React.useRef<HTMLDivElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Focus follows rendered scene and new error feedback.
   React.useEffect(() => {
-    // Connection choices keep roving keyboard focus within the same form.
+    // A focused field (an autofocused one included) and the connection
+    // choices keep keyboard focus; the heading only takes it from nothing.
+    const active = document.activeElement;
     if (
-      rootRef.current?.contains(document.activeElement) &&
-      document.activeElement?.getAttribute("role") === "radio"
+      rootRef.current?.contains(active) &&
+      (active?.getAttribute("role") === "radio" ||
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement)
     )
       return;
     const heading = rootRef.current?.querySelector<HTMLElement>(

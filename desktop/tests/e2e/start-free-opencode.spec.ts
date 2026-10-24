@@ -108,7 +108,8 @@ test("mode choice is a keyboard radio group", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
   await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
   await expect(page.getByTestId("onboarding-mode-own")).toBeFocused();
-  await page.keyboard.press("Home");
+  // Native radios wrap: ArrowUp from the first card lands on the last.
+  await page.keyboard.press("ArrowUp");
   await expect(page.getByTestId("onboarding-mode-free")).toBeChecked();
 });
 
@@ -138,7 +139,7 @@ test("mode choice and Back are locked while Start free installs", async ({
   await page.getByTestId("onboarding-test-connection").click();
   await expect(page.getByTestId("start-free-installing")).toBeVisible();
   await expect(page.getByTestId("onboarding-mode-own")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Back" })).toBeDisabled();
   await expect(page.getByTestId("onboarding-test-connection")).toBeVisible();
   await expect(page.getByTestId("onboarding-mode-own")).toBeEnabled();
 });
@@ -170,7 +171,8 @@ test("an unsupported computer shows the reason and no retry", async ({
   await expect(
     page.getByText("Start free is not available on linux-riscv64 yet."),
   ).toBeVisible();
-  await expect(page.getByTestId("onboarding-test-connection")).toHaveCount(0);
+  // Nothing to retry: the Test button stays off, Use your own AI is the way on.
+  await expect(page.getByTestId("onboarding-test-connection")).toBeDisabled();
   await expect(page.getByTestId("start-free-use-own")).toBeVisible();
 });
 

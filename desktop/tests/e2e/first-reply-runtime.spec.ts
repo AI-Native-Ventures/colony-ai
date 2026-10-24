@@ -290,10 +290,10 @@ for (const route of ["Saved in Settings", "OpenRouter"]) {
         },
       },
     });
-    await page
-      .getByTestId("onboarding-connect-runtime-claude")
-      .getByRole("button", { name: /Claude Code/ })
-      .click();
+    // Claude is the only ready app, so it is already the one selected.
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-claude"),
+    ).toContainText("Installed · signed in");
     if (openRouter) await installOpenRouterAccount(page);
     await page
       .getByRole("radio", { name: "Colony Agent", exact: true })

@@ -532,7 +532,7 @@ test("forgot password requests a code and signs in after reset", async ({
   await expect(
     page.getByRole("heading", { name: "Password updated" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back to sign in" }).click();
+  await page.getByRole("button", { name: "Back to sign in" }).last().click();
   await page
     .getByLabel("Password", { exact: true })
     .fill("new-correct-horse-12");

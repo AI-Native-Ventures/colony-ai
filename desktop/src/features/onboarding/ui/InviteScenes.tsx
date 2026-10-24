@@ -208,6 +208,15 @@ export function InviteLinkScene({
   /** Returns an error to show, or null once the invite was accepted. */
   onContinue: (target: InviteTarget) => string | null;
 }) {
+  // Escape leaves the step wherever focus is, not only inside the field.
+  React.useEffect(() => {
+    const leave = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) onBack();
+    };
+    document.addEventListener("keydown", leave);
+    return () => document.removeEventListener("keydown", leave);
+  }, [onBack]);
+
   const content = (
     <div
       className="c3fr-form"
@@ -217,7 +226,7 @@ export function InviteLinkScene({
         lede="Paste the link your teammate sent you to join their workspace."
         title="Have an invite?"
       />
-      <InviteLinkForm autoFocus onContinue={onContinue} onEscape={onBack} />
+      <InviteLinkForm autoFocus onContinue={onContinue} />
       <FirstRunButton fit="content" onClick={onBack}>
         Back
       </FirstRunButton>

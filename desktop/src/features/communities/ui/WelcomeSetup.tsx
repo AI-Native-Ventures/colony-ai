@@ -93,6 +93,11 @@ export function WelcomeSetup({
     page === "welcome" && role === "owner",
   );
   const identityQuery = useIdentityQuery();
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  // The start page takes focus on its heading so a screen reader lands on it.
+  React.useEffect(() => {
+    if (page === "welcome") headingRef.current?.focus();
+  }, [page]);
 
   const startConnection = React.useCallback(
     (relayUrl: string) => {
@@ -249,7 +254,7 @@ export function WelcomeSetup({
           </FirstRunLink>
         ) : null}
         <div className="c3fr-head">
-          <h1 className="c3fr-page-title" tabIndex={-1}>
+          <h1 className="c3fr-page-title" ref={headingRef} tabIndex={-1}>
             Join or create a community
           </h1>
           <p className="c3fr-lede c3fr-muted-lede">

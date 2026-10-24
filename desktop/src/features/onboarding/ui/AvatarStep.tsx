@@ -44,6 +44,8 @@ export const AVATAR_SWATCHES = [
   { name: "Rose", color: "#FBE6EC" },
 ] as const;
 
+const DEFAULT_SWATCH = "#EFEAFB";
+
 /** "LM" for Lerato Molefe: the first letters of the first and last word. */
 export function initialsOf(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -66,7 +68,7 @@ export function AvatarStep({
   const initials = initialsOf(displayName);
   const parsed = parseEmojiAvatarDataUrl(draftUrl);
   const hasImage = draftUrl.trim().length > 0 && !parsed;
-  const activeColor = parsed?.color ?? (hasImage ? null : "#EFEAFB");
+  const activeColor = parsed?.color ?? (hasImage ? null : DEFAULT_SWATCH);
   const [cameraOpen, setCameraOpen] = React.useState(false);
   const upload = useAvatarUpload({
     fallbackErrorMessage: "Could not upload that photo.",
@@ -79,6 +81,13 @@ export function AvatarStep({
     onUploadingChange(isUploading);
   }, [isUploading, onUploadingChange]);
   const busy = isSaving || isUploadingAvatar || isUploading;
+
+  // The board starts on a colour, so Next saves that colour instead of nothing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the first render seeds the default.
+  React.useEffect(() => {
+    if (draftUrl.trim() === "")
+      actions.updateAvatarUrl(emojiAvatarDataUrl(initials, DEFAULT_SWATCH));
+  }, []);
 
   return (
     <form
@@ -119,7 +128,7 @@ export function AvatarStep({
             className="c3fr-avatar-preview"
             data-testid="onboarding-avatar-preview"
             role="img"
-            style={{ background: activeColor ?? "#EFEAFB" }}
+            style={{ background: activeColor ?? DEFAULT_SWATCH }}
           >
             {initials}
           </span>

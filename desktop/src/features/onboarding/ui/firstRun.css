@@ -3898,3 +3898,16 @@
   gap: calc(8 * var(--u)) calc(20 * var(--u));
   font-size: calc(15 * var(--t));
 }
+
+/* The Connect step can grow tall (a card opens); its buttons stay in reach. */
+.c3fr-actions-docked {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block: calc(12 * var(--u)) calc(16 * var(--u));
+  background: linear-gradient(
+    to top,
+    var(--fr-surface) 72%,
+    rgb(255 253 250 / 0%)
+  );
+}

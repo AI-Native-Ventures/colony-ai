@@ -87,7 +87,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   expect(logoSize?.width).toBeLessThanOrEqual(64);
   expect(logoSize?.height).toBeLessThanOrEqual(64);
   const selectStyle = await subscription
-    .locator(".runtime-select")
+    .locator(".c3fr-runtime-select")
     .evaluate((button) => {
       const style = getComputedStyle(button);
       return { alignment: style.textAlign, border: style.borderTopWidth };

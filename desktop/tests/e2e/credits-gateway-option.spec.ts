@@ -1,13 +1,11 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
-import {
-  mockOpenRouterUnlinked,
-  openR17ConnectionSetup,
-  r17Runtime,
-} from "../helpers/onboarding";
+import { r17Runtime } from "../helpers/onboarding";
 import { waitForAnimations } from "../helpers/animations";
 
-type Surface = "onboarding" | "settings";
+// Colony credits in onboarding are the board's "Coming soon" chip: the paid
+// option lives in Settings only.
+type Surface = "settings";
 const runtime = {
   ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
   provider_env_var: "BUZZ_AGENT_PROVIDER",
@@ -121,19 +119,10 @@ async function setup(
       ? [options.saveError]
       : undefined,
   };
-  if (surface === "onboarding") {
-    await openR17ConnectionSetup(page, { mock, runtimes: [runtime] });
-    await mockOpenRouterUnlinked(page);
-    await page
-      .getByRole("radio", { name: "Colony Agent", exact: true })
-      .click();
-  } else {
-    await installMockBridge(page, { ...mock, referenceWorkspace: true });
-    await page.goto("/#/settings?section=agent-defaults");
-    await expect(
-      page.getByTestId("settings-global-agent-config"),
-    ).toBeVisible();
-  }
+  void surface;
+  await installMockBridge(page, { ...mock, referenceWorkspace: true });
+  await page.goto("/#/settings?section=agent-defaults");
+  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
   return {
     checkoutCalls,
     capabilities: () => capabilityCalls,
@@ -187,30 +176,8 @@ async function capture(
   });
 }
 
-test("onboarding: flag OFF leaves Colony credits out of the Colony Agent path", async ({
-  page,
-}) => {
-  const state = await setup(page, "onboarding", { flag: false });
-  const colonyAgent = page.getByTestId("onboarding-colony-agent");
-  await expect(
-    colonyAgent.getByRole("button", {
-      name: "Connect OpenRouter",
-      exact: true,
-    }),
-  ).toBeEnabled();
-  await expect(colonyAgent).not.toContainText("Colony credits");
-  await expect(page.getByTestId("onboarding-credits-coming-soon")).toHaveCount(
-    0,
-  );
-  await expect(page.getByTestId("colony-credits-option")).toHaveCount(0);
-  expect(await saveCount(page)).toBe(0);
-  expect(state.capabilities()).toBe(0);
-});
-
-for (const surface of ["onboarding", "settings"] as const) {
+for (const surface of ["settings"] as const) {
   for (const gate of ["flag", "gateway", "stripe"] as const) {
-    // Onboarding hides the option entirely while the flag is off (above).
-    if (surface === "onboarding" && gate === "flag") continue;
     test(`${surface}: ${gate} OFF keeps Coming soon with no paid action`, async ({
       page,
     }) => {
@@ -307,14 +274,9 @@ for (const surface of ["onboarding", "settings"] as const) {
         "",
       );
     expect(await savedConfig(page)).toMatchObject(original);
-    if (surface === "onboarding")
-      await expect(
-        page.getByTestId("onboarding-scene-connected"),
-      ).toBeVisible();
-    else
-      await expect(page.getByTestId("agent-defaults-connection")).toContainText(
-        "Colony credits selected",
-      );
+    await expect(page.getByTestId("agent-defaults-connection")).toContainText(
+      "Colony credits selected",
+    );
     expect(await savedConfig(page)).toEqual({
       env_vars: {},
       provider: "colony-credits",
@@ -395,10 +357,6 @@ for (const surface of ["onboarding", "settings"] as const) {
     await expect(
       page.getByTestId("onboarding-credits-coming-soon"),
     ).toContainText("Coming soon");
-    if (surface === "onboarding")
-      await expect(
-        page.getByRole("button", { name: "Skip for now", exact: true }),
-      ).toBeEnabled();
   });
   for (const width of [1440, 390]) {
     test(`${surface}: configured credits at ${width}`, async ({
