@@ -596,8 +596,8 @@ test("shows presence in sidebar, DM header, and member list", async ({
   );
   await expect(page.getByTestId("channel-presence-alice-tyler")).toBeVisible();
   const dmAvatar = page.getByTestId("channel-avatar-alice-tyler");
-  await expect(dmAvatar).toHaveCSS("width", "18px");
-  await expect(dmAvatar).toHaveCSS("height", "18px");
+  await expect(dmAvatar).toHaveCSS("width", "24px");
+  await expect(dmAvatar).toHaveCSS("height", "24px");
   await expect(dmAvatar).toHaveClass(/rounded-squircle/);
   const dmRow = page.getByTestId("channel-alice-tyler");
   const [rowBounds, avatarBounds, presenceBounds] = await Promise.all([
@@ -1821,12 +1821,18 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
   await page
     .getByRole("button", { name: "Toggle Sidebar", exact: true })
     .click();
+  // The designed collapsed sidebar is an icon rail with no channel rows, so
+  // the clock marker is not drawn there; it returns with the rows.
+  await expect(page.getByTestId("sidebar-collapsed-nav")).toBeVisible();
   await expect(
     page.getByTestId(`channel-ephemeral-${channelName}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Toggle Sidebar", exact: true })
     .click();
+  await expect(
+    page.getByTestId(`channel-ephemeral-${channelName}`),
+  ).toBeVisible();
 
   await page.evaluate(
     ({ channelName: targetChannelName, mentionPubkey, senderPubkey }) => {
@@ -1847,7 +1853,7 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
 
   await expect(page.getByTestId(`channel-${channelName}`)).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(
     page.getByTestId(`channel-unread-${channelName}`),
@@ -2676,7 +2682,7 @@ test("sidebar shows unread indicator for newly active channels", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
@@ -2709,7 +2715,7 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
 
   await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(
     page.getByTestId("channel-unread-watercooler"),

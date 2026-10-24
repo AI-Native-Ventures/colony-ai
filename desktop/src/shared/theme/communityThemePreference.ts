@@ -1,5 +1,16 @@
 import { normalizeRelayUrl } from "@/features/profile/lib/selfProfileStorage";
-import { ACCENT_COLORS, DEFAULT_ACCENT } from "./ThemeProvider";
+import {
+  ACCENT_COLORS,
+  DEFAULT_ACCENT,
+  LEGACY_ACCENT_COLORS,
+} from "./ThemeProvider";
+import {
+  DEFAULT_FIELD_COLORS,
+  isDefaultFieldColors,
+  parseFieldColors,
+  sameFieldColors,
+  type FieldColors,
+} from "./sidebarField";
 import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
 import {
   nextPreferenceWriteTime,
@@ -15,7 +26,27 @@ export type CommunityThemePreference = {
   theme: SyntaxThemeName;
   accent: string;
   followSystem: boolean;
+  /**
+   * The person's three sidebar field colours. Absent means the default trio,
+   * so a preference saved before the field was customisable stays valid and
+   * a person who never changed it keeps the exact record they had.
+   */
+  field?: FieldColors;
 };
+
+/** The field trio a preference stands for, the default when it carries none. */
+export function communityThemeFieldColors(
+  preference: Pick<CommunityThemePreference, "field">,
+): FieldColors {
+  return preference.field ?? DEFAULT_FIELD_COLORS;
+}
+
+/** The `field` member to spread into a preference: nothing for the default. */
+export function communityThemeFieldMember(
+  colors: FieldColors,
+): { field: FieldColors } | Record<string, never> {
+  return isDefaultFieldColors(colors) ? {} : { field: colors };
+}
 
 export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
   version: 1,
@@ -27,6 +58,7 @@ export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
 const THEME_NAMES = new Set<string>(SYNTAX_THEMES);
 const ACCENTS = new Set<string>([
   ...ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
+  ...LEGACY_ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
   "#895af6",
   "#74717b",
 ]);
@@ -62,11 +94,15 @@ export function parseCommunityThemePreference(
   ) {
     return null;
   }
+  // An unreadable field never invalidates the rest of the choice: it falls
+  // back to the default trio instead.
+  const field = parseFieldColors(candidate.field);
   return {
     version: 1,
     theme: candidate.theme as SyntaxThemeName,
     accent: candidate.accent,
     followSystem: candidate.followSystem,
+    ...(field ? communityThemeFieldMember(field) : {}),
   };
 }
 
@@ -208,7 +244,11 @@ export function sameCommunityThemePreference(
   return (
     left.theme === right.theme &&
     left.accent === right.accent &&
-    left.followSystem === right.followSystem
+    left.followSystem === right.followSystem &&
+    sameFieldColors(
+      communityThemeFieldColors(left),
+      communityThemeFieldColors(right),
+    )
   );
 }
 

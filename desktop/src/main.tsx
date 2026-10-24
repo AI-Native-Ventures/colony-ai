@@ -130,6 +130,30 @@ async function installE2eBridgeIfConfigured() {
   maybeInstallE2eTauriMocks();
 }
 
+/**
+ * Test-only: mounts the Colony 3.0 foundations showcase instead of the app.
+ * The same gate as the mock bridge keeps it out of production builds.
+ */
+async function renderShowcaseIfRequested(): Promise<boolean> {
+  if (
+    !(import.meta.env.DEV || import.meta.env.MODE === "e2e") ||
+    !["colony3", "colony3-notices"].includes(
+      (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+        .__BUZZ_E2E__?.showcase ?? "",
+    )
+  ) {
+    return false;
+  }
+  const { renderColony3Showcase } = await import("@/testing/colony3Showcase");
+  renderColony3Showcase(
+    (window as E2eWindow & { __BUZZ_E2E__?: { showcase?: string } })
+      .__BUZZ_E2E__?.showcase === "colony3-notices"
+      ? "notices"
+      : "foundations",
+  );
+  return true;
+}
+
 async function bootstrap() {
   resetDevWebviewStateFromUrl();
   configureDevE2eBridgeFromUrl();
@@ -142,6 +166,7 @@ async function bootstrap() {
   if (supportsNativeCapability("legacy-migration")) {
     await migrateLegacyCommunityStorageBeforeRender();
   }
+  if (await renderShowcaseIfRequested()) return;
   renderApp();
 }
 

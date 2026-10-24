@@ -1,5 +1,6 @@
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+
+import { ChevronRightIcon } from "@/shared/ui/colonyIcons";
 
 /**
  * A reusable app-sidebar disclosure with an explicit expanded state and a
@@ -10,12 +11,15 @@ export function SidebarNavigationGroup({
   children,
   defaultExpanded,
   expandForActiveRoute = false,
+  icon,
   label,
   testId,
 }: {
   children: React.ReactNode;
   defaultExpanded: boolean;
   expandForActiveRoute?: boolean;
+  /** Row icon drawn before the label, as in the Colony 3.0 sidebar. */
+  icon?: React.ReactNode;
   label: string;
   testId: string;
 }) {
@@ -43,11 +47,9 @@ export function SidebarNavigationGroup({
           onClick={() => setExpanded((value) => !value)}
           type="button"
         >
+          {icon}
           <span data-sidebar-section-title>{label}</span>
-          <ChevronDown
-            aria-hidden="true"
-            className={expanded ? "rotate-0" : "-rotate-90"}
-          />
+          <ChevronRightIcon aria-hidden="true" size={16} />
         </button>
       </h2>
       <section

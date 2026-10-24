@@ -135,8 +135,12 @@ test("keeps the drawer open until the huddle is expanded", async ({ page }) => {
 
   await page.goto("/");
 
-  const gradientUnderlay = page.locator(".buzz-theme-gradient-underlay");
-  const openGradient = await gradientUnderlay.evaluate(
+  // The sidebar field is the theme paint behind the huddle; it must not change
+  // when the huddle opens or closes.
+  const fieldPaint = page.locator(
+    '[data-testid="app-sidebar"] .colony-field-base',
+  );
+  const openGradient = await fieldPaint.evaluate(
     (element) => getComputedStyle(element).backgroundImage,
   );
   expect(openGradient).not.toBe("none");
@@ -202,29 +206,19 @@ test("keeps the drawer open until the huddle is expanded", async ({ page }) => {
     .toBe(1);
   const huddleControl = page.getByTestId("profile-huddle-control");
   await expect(huddleControl).toBeVisible();
-  const mainContentSurface = page.locator(
-    "[data-buzz-content-surface]:not([data-buzz-content-unframed])",
+  // The huddle card is a white surface lifted off the sidebar field.
+  const surfaceTokenColor = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "hsl(var(--colony-surface))";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  const huddleCardColor = await huddleControl.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
   );
-  await expect(mainContentSurface).toBeVisible();
-  const [mainContentColor, huddleCardColor, backgroundTokenColor] =
-    await Promise.all([
-      mainContentSurface.evaluate(
-        (element) => getComputedStyle(element).backgroundColor,
-      ),
-      huddleControl.evaluate(
-        (element) => getComputedStyle(element).backgroundColor,
-      ),
-      page.evaluate(() => {
-        const probe = document.createElement("div");
-        probe.className = "bg-background";
-        document.body.append(probe);
-        const color = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return color;
-      }),
-    ]);
-  expect(huddleCardColor).toBe(backgroundTokenColor);
-  expect(huddleCardColor).not.toBe(mainContentColor);
+  expect(huddleCardColor).toBe(surfaceTokenColor);
   await expect(huddleControl).toHaveCSS("border-top-width", "1px");
   await expect(huddleControl).toContainText("In a huddle");
   await expect(huddleControl).toContainText("#general");
@@ -279,7 +273,7 @@ test("keeps the drawer open until the huddle is expanded", async ({ page }) => {
     "data-huddle-open",
     "false",
   );
-  const closedGradient = await gradientUnderlay.evaluate(
+  const closedGradient = await fieldPaint.evaluate(
     (element) => getComputedStyle(element).backgroundImage,
   );
   expect(closedGradient).toBe(openGradient);

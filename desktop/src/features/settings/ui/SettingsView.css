@@ -1572,7 +1572,6 @@ body:has(.w20-settings-shell) {
 }
 
 .w20-appearance .ap-segment legend,
-.w20-appearance .ap-style-options legend,
 .w20-appearance .ap-accents legend {
   float: none;
   padding: 0;
@@ -1595,175 +1594,6 @@ body:has(.w20-settings-shell) {
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
   color: var(--ink);
   font-weight: 600;
-}
-
-.w20-appearance .ap-style-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 12px 0 8px;
-}
-
-.w20-appearance .ap-style-row > strong {
-  padding-top: 6px;
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.w20-appearance .ap-style-options {
-  display: flex;
-  gap: 12px;
-}
-
-.w20-appearance .ap-style-option {
-  width: 146px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-}
-
-.w20-appearance .ap-style-option > span:last-child {
-  display: flex;
-  justify-content: space-between;
-  padding: 9px 2px;
-  font-size: var(--text-xs);
-}
-
-.w20-appearance .ap-mini {
-  display: flex;
-  width: 100%;
-  height: 94px;
-  padding: 4px 4px 4px 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background:
-    url("../../onboarding/ui/assets/colony-field-light.svg") center / cover;
-  box-shadow: 0 2px 4px rgb(0 0 0 / 2%);
-  transition: outline-color 0.2s;
-}
-
-.dark .w20-appearance .ap-mini {
-  background-image: url("../../onboarding/ui/assets/colony-field-dark.svg");
-}
-
-.w20-appearance .ap-mini.custom {
-  background: linear-gradient(155deg, var(--ap-t1), var(--ap-t2));
-}
-
-.w20-appearance .ap-mini-nav {
-  display: flex;
-  width: 29%;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 6px;
-}
-
-.w20-appearance .ap-mini-nav b {
-  height: 3px;
-  border-radius: 3px;
-  background: var(--ink);
-  opacity: 0.22;
-}
-
-.w20-appearance .ap-mini-nav b:first-child {
-  width: 65%;
-  margin-bottom: 4px;
-}
-
-.w20-appearance .ap-mini-content {
-  flex: 1;
-  padding: 11px 8px;
-  border-radius: 4px;
-  background: var(--paper);
-}
-
-.w20-appearance .ap-mini-content b,
-.w20-appearance .ap-mini-content span {
-  display: block;
-  height: 3px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  background: var(--ink);
-  opacity: 0.14;
-}
-
-.w20-appearance .ap-mini-content b {
-  width: 55%;
-  margin-bottom: 17px;
-  opacity: 0.3;
-}
-
-.w20-appearance .ap-mini-content span:last-of-type {
-  width: 80%;
-}
-
-.w20-appearance .ap-mini-content em {
-  display: block;
-  height: 14px;
-  margin-top: 13px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.w20-appearance .ap-colours {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  padding: 10px 0 16px;
-}
-
-.w20-appearance .ap-colours label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
-.w20-appearance .ap-colours label > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--paper);
-}
-
-.w20-appearance .ap-colours input[type="color"] {
-  width: 26px;
-  height: 27px;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.w20-appearance .ap-colours input[type="text"] {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--ink);
-  font-size: var(--text-xs);
-  letter-spacing: 0.03em;
-}
-
-.w20-appearance .ap-colours input[aria-invalid="true"] {
-  color: #a04f64;
-}
-
-.w20-appearance .ap-colour-error {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: #a04f64;
-  font-size: var(--text-xs);
 }
 
 .w20-appearance .ap-accents {
@@ -1926,17 +1756,27 @@ body:has(.w20-settings-shell) {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
   border-radius: 9px;
+  /* The person's three sidebar colours, as the field paints them. */
   background:
-    url("../../onboarding/ui/assets/colony-field-light.svg") center / cover;
+    linear-gradient(
+      172deg,
+      color-mix(in srgb, var(--ap-field-top) 55%, transparent) 0%,
+      color-mix(in srgb, var(--ap-field-middle) 50%, transparent) 50%,
+      color-mix(in srgb, var(--ap-field-bottom) 55%, transparent) 100%
+    ),
+    #f8f4f8;
   box-shadow: 0 13px 27px rgb(38 36 51 / 8%);
 }
 
 .dark .w20-appearance .ap-live-window {
-  background-image: url("../../onboarding/ui/assets/colony-field-dark.svg");
-}
-
-.w20-appearance .ap-custom .ap-live-window {
-  background: linear-gradient(155deg, var(--ap-t1), var(--ap-t2));
+  background:
+    linear-gradient(
+      172deg,
+      color-mix(in srgb, var(--ap-field-top) 40%, transparent) 0%,
+      color-mix(in srgb, var(--ap-field-middle) 36%, transparent) 50%,
+      color-mix(in srgb, var(--ap-field-bottom) 40%, transparent) 100%
+    ),
+    #2a2432;
 }
 
 .w20-appearance .ap-live-top {
@@ -2363,14 +2203,6 @@ body:has(.w20-settings-shell) {
     padding: 0 64px;
   }
 
-  .w20-appearance .ap-style-option {
-    width: 167px;
-  }
-
-  .w20-appearance .ap-mini {
-    height: 105px;
-  }
-
   .w20-appearance .ap-desktop {
     padding: 40px 23px;
   }
@@ -2521,25 +2353,9 @@ body:has(.w20-settings-shell) {
   .w20-appearance .ap-switch,
   .w20-appearance .ap-switch i,
   .w20-appearance .ap-segment button,
-  .w20-appearance .ap-mini {
+  .w20-appearance .ap-field-preset {
     transition: none;
   }
-}
-
-.w20-appearance .ap-style-option > span:last-child i {
-  width: 15px;
-  height: 15px;
-  color: var(--ap-accent);
-}
-
-.w20-appearance .ap-style-option > span:last-child svg {
-  width: 15px;
-  height: 15px;
-}
-
-.w20-appearance .ap-style-option[aria-pressed="true"] .ap-mini {
-  outline: 2px solid var(--ap-accent);
-  outline-offset: 3px;
 }
 
 .w20-route-scroll:has(.w20-route-content-r19) {

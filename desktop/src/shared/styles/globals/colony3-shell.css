@@ -1,0 +1,151 @@
+/*
+ * Colony 3.0 shell: the 64px top bar with its breadcrumb and the flat main
+ * area (`Today.dc.html`, `Main.dc.html`).
+ */
+
+/* ---------------------------------------------------------------- top bar -- */
+
+.colony-topbar {
+  position: relative;
+  z-index: 45;
+  display: flex;
+  /* Fixed px on purpose: the bar's height and buttons do not follow Cmd +/-
+     text zoom, so the chrome stays one size beside the native window buttons. */
+  height: 64px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  /* The design's bar is 64px of content plus its 1px bottom border. */
+  box-sizing: content-box;
+  padding: 0 24px;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  cursor: default;
+  user-select: none;
+}
+
+/* Screens that still draw their own header and history buttons (the Colony
+   workspace routes) keep the bar hidden, as they did before the new shell, so
+   there is one set of history buttons and one breadcrumb on them. */
+:root:has([data-colony-workspace-route="true"]) [data-testid="app-top-chrome"] {
+  display: none;
+}
+
+.colony-topbar-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.colony-topbar-button:disabled {
+  color: hsl(var(--colony-faint));
+  cursor: default;
+}
+
+.colony-topbar-button:not(:disabled):hover {
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg));
+}
+
+.colony-topbar-button:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: -2px;
+}
+
+.colony-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.colony-breadcrumb [data-current="true"] {
+  overflow: hidden;
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+  text-overflow: ellipsis;
+}
+
+.colony-topbar-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
+.colony-topbar:has(.colony-topbar-content > *) .colony-breadcrumb {
+  display: none;
+}
+
+/* A screen that still draws its own breadcrumb keeps the only one. */
+:root:has(nav[aria-label="Breadcrumb"]:not([data-testid="top-bar-breadcrumb"]))
+  .colony-topbar
+  .colony-breadcrumb {
+  display: none;
+}
+
+/* -------------------------------------------------------------- main area -- */
+
+:root[data-buzz-sidebar] [data-buzz-content-surface] {
+  --background: var(--colony-surface);
+}
+
+[data-testid="app-sidebar-layer"] {
+  background: hsl(var(--colony-surface));
+}
+
+/* Glass with a named theme: no field is drawn, so the sidebar and rail carry
+   the theme's own sidebar colour at the glass opacity over the vibrancy. */
+:root:not([data-buzz-sidebar])[data-glass-background]
+  :is([data-testid="app-sidebar-layer"], [data-testid="community-rail"]) {
+  background: hsl(
+    var(--sidebar-background) /
+    var(--glass-background-opacity, 65%)
+  );
+}
+
+/* On the field the section labels use the sidebar's soft ink; the pale grey
+   they had on a flat sidebar does not read on the pink. */
+:root[data-buzz-sidebar]:not(.dark) .w20-settings-sidebar .w20-nav-heading {
+  color: var(--colony-sidebar-ink-soft);
+}
+
+/* The Settings sidebar is the same field as the app sidebar, edge to edge. */
+.w20-settings-sidebar.w20-settings-sidebar.w20-settings-sidebar {
+  top: 0;
+  bottom: 0;
+  transform: none;
+}
+
+.w20-settings-sidebar [data-sidebar="sidebar"] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The field is the first child of the sidebar's content wrapper; everything
+   after it sits above it. */
+.w20-settings-sidebar .colony-field ~ * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The app surface is a fixed frame. `hidden` still lets a focus or
+   scroll-into-view call nudge it a pixel, shifting the top bar out of sight;
+   `clip` cannot be scrolled at all. */
+.buzz-huddle-app-surface {
+  overflow: clip;
+}

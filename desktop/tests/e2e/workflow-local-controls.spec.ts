@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { invokeMockCommand } from "../helpers/welcomeTeam";
+import { openSidebarGroup } from "../helpers/sidebarGroups";
 import {
   AGENTS_CHANNEL_ID,
   createPlainWorkflow,
@@ -11,6 +12,7 @@ import {
 
 async function openWorkflows(page: Page) {
   await page.goto("/");
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
@@ -22,6 +24,7 @@ async function bootWithDefinition(
 ) {
   await page.goto("/");
   const workflow = await seedWorkflow(page, name, { definition });
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   await expect(page.getByTestId(`workflow-card-${workflow.id}`)).toBeVisible();
   return workflow;
@@ -312,6 +315,7 @@ test("the workflow list uses a single batched workflow read", async ({
     "Batch summary three",
   ];
   for (const name of names) await seedWorkflow(page, name);
+  await openSidebarGroup(page, "company");
   await page.getByTestId("open-workflows-view").click();
   for (const name of names) {
     await expect(page.getByTestId("workflows-view")).toContainText(name);

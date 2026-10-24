@@ -44,6 +44,251 @@ async function seedTheme(page: Page, theme: string, followSystem = false) {
   );
 }
 
+function luminance(color: string) {
+  const [r, g, b] = (color.match(/[\d.]+/g) ?? ["0", "0", "0"])
+    .slice(0, 3)
+    .map((channel) => {
+      const value = Number(channel) / 255;
+      return value <= 0.03928
+        ? value / 12.92
+        : ((value + 0.055) / 1.055) ** 2.4;
+    });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio between two `rgb()` colours. */
+function contrastRatio(foreground: string, background: string) {
+  const [high, low] = [luminance(foreground), luminance(background)].sort(
+    (a, b) => b - a,
+  );
+  return (high + 0.05) / (low + 0.05);
+}
+
+/**
+ * The Colony 3.0 sidebar's palette and geometry: the checks the C1 sidebar had
+ * (text tones, search surface, header insets, row alignment, active and hover
+ * surfaces, row opacities), with the design's values.
+ */
+async function expectColonySidebarPalette(page: Page, mode: "light" | "dark") {
+  const inkSoft = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-ink-soft)",
+  );
+  const ink = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-ink)",
+  );
+  const glass = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--colony-sidebar-glass)",
+  );
+  const activeSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.84)"
+      : "rgba(255, 255, 255, 0.15)";
+  const search = page.getByTestId("open-search");
+  const pinnedHeader = page.getByTestId("sidebar-pinned-header");
+  const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
+  const scrollContent = page.getByTestId("sidebar-scroll-content");
+  const sectionLabel = page
+    .locator('[data-sidebar="group-label"]')
+    .filter({ hasText: "Channels" })
+    .first();
+
+  await expect(sectionLabel.locator("[data-sidebar-section-title]")).toHaveCSS(
+    "color",
+    inkSoft,
+  );
+  await expect(search).toHaveCSS("background-color", glass);
+  await expect(search).toHaveCSS("height", "42px");
+  await expect(search).toHaveCSS("padding-left", "12px");
+  await expect(search.locator("svg").first()).toHaveCSS("color", inkSoft);
+  await expect(search.locator("span").first()).toHaveCSS("color", inkSoft);
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  if (isMac)
+    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  else
+    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
+  // 2.75rem clears the window buttons on a Mac; 1rem elsewhere.
+  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "44px" : "16px");
+  await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
+  await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(pinnedHeader).toHaveCSS("margin-left", "0px");
+  await expect(pinnedHeader).toHaveCSS("margin-right", "0px");
+  await expect(pinnedHeader).toHaveCSS("padding-left", "14px");
+  await expect(pinnedHeader).toHaveCSS("padding-right", "14px");
+  await expect(sidebarScroller).toHaveCSS("padding-left", "0px");
+  await expect(sidebarScroller).toHaveCSS("padding-right", "0px");
+  await expect(scrollContent).toHaveCSS("padding-left", "14px");
+  await expect(scrollContent).toHaveCSS("padding-right", "14px");
+  const pinnedSpacerColor = await pinnedHeader.evaluate(
+    (element) => getComputedStyle(element, "::before").backgroundColor,
+  );
+  expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
+  const activityButton = page.getByTestId("sidebar-activity-button");
+  await expect(
+    sidebarScroller.getByTestId("sidebar-activity-button"),
+  ).toBeVisible();
+  await sidebarScroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const searchBox = await search.boundingBox();
+  const pinnedHeaderBox = await pinnedHeader.boundingBox();
+  const primaryRowBox = await activityButton.boundingBox();
+  const activeRowBox = await page.getByTestId("channel-general").boundingBox();
+  const hoverRowBox = await page.getByTestId("channel-random").boundingBox();
+  const scrollContentBox = await scrollContent.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { left: box.left, right: box.right };
+  });
+  if (
+    !searchBox ||
+    !pinnedHeaderBox ||
+    !primaryRowBox ||
+    !activeRowBox ||
+    !hoverRowBox
+  ) {
+    throw new Error("Sidebar search or primary navigation geometry is missing");
+  }
+  expect(
+    pinnedHeaderBox.y +
+      pinnedHeaderBox.height -
+      (searchBox.y + searchBox.height),
+  ).toBe(10);
+  // Every row lines up with the search box, with equal room either side.
+  for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
+    expect(Math.abs(rowBox.x - searchBox.x)).toBeLessThanOrEqual(1);
+    const rowLeftSpacing = rowBox.x - scrollContentBox.left;
+    const rowRightSpacing = scrollContentBox.right - (rowBox.x + rowBox.width);
+    expect(Math.abs(rowLeftSpacing - rowRightSpacing)).toBeLessThanOrEqual(1);
+  }
+  await expect(page.locator("[data-buzz-sidebar-secondary]").first()).toHaveCSS(
+    "color",
+    inkSoft,
+  );
+  await expect(
+    page.locator('[data-testid="app-sidebar"] [data-sidebar="trigger"]'),
+  ).toHaveCSS("color", inkSoft);
+  await expect(page.getByTestId("channel-general")).toHaveCSS("color", ink);
+  await expect(page.getByTestId("channel-general")).toHaveCSS(
+    "font-weight",
+    "800",
+  );
+  await expect(
+    page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
+  ).toHaveCSS("opacity", "1");
+  await page.mouse.move(600, 100);
+  await expect(page.getByTestId("channel-general")).toHaveCSS(
+    "background-color",
+    activeSurface,
+  );
+  const hoverChannel = page.getByTestId("channel-random");
+  await hoverChannel.hover();
+  await expect(hoverChannel).toHaveCSS("background-color", glass);
+
+  const firstDmItem = page
+    .getByTestId("dm-list")
+    .locator('[data-sidebar="menu-item"]')
+    .first();
+  const firstDmButton = firstDmItem.locator('[data-sidebar="menu-button"]');
+  const firstDmLabel = firstDmButton.locator("[data-sidebar-row-label]");
+  const closeDmButton = firstDmItem.getByRole("button", {
+    name: "Close direct message",
+  });
+  const hoverChannelLabel = hoverChannel.locator("[data-sidebar-row-label]");
+  const hoverChannelIcon = hoverChannel.locator("svg").first();
+  const activityLabel = activityButton.locator('[data-sidebar="menu-label"]');
+  const activityIcon = activityButton.locator("svg").first();
+  const sidebarForeground = await page
+    .getByTestId("app-sidebar")
+    .evaluate((element) => getComputedStyle(element).color);
+  const channelForeground = await hoverChannel.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  const directMessageForeground = await firstDmButton.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  expect(channelForeground).toBe(directMessageForeground);
+  await expect(activityButton).toHaveCSS("color", sidebarForeground);
+  await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
+  await expect(hoverChannelIcon).toHaveCSS("opacity", "1");
+  await expect(firstDmButton).toHaveCSS("opacity", "1");
+  await expect(firstDmLabel).toHaveCSS("opacity", "1");
+  await expect(activityLabel).toHaveCSS("opacity", "1");
+  await expect(activityIcon).toHaveCSS("opacity", "1");
+  await firstDmItem.hover();
+  await expect(closeDmButton).toBeVisible();
+  await closeDmButton.hover();
+  await expect(firstDmButton).toHaveCSS("background-color", glass);
+
+  const scrollbarTrackColor = await sidebarScroller.evaluate(
+    (element) =>
+      getComputedStyle(element, "::-webkit-scrollbar-track").backgroundColor,
+  );
+  expect(scrollbarTrackColor).toBe("rgba(0, 0, 0, 0)");
+}
+
+/** The Colony 3.0 shell: the person's field in the sidebar, a flat main area. */
+async function expectColonyShell(page: Page, mode: "light" | "dark") {
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-buzz-theme",
+    mode === "light" ? "buzz" : "buzz-dark",
+  );
+  const field = page.locator(
+    '[data-testid="app-sidebar"] [data-colony-field="sidebar"]',
+  );
+  await expect(field).toBeVisible();
+  const blobs = await field.evaluate((element) =>
+    ["top", "middle", "bottom"].map(
+      (name) =>
+        getComputedStyle(
+          element.querySelector(`.colony-field-blob-${name}`) as Element,
+        ).backgroundColor,
+    ),
+  );
+  expect(blobs).toEqual([
+    "rgb(245, 164, 213)",
+    "rgb(198, 179, 244)",
+    "rgb(148, 180, 250)",
+  ]);
+  // No app stroke around the shell and no card shadow under the main area.
+  expect(
+    await page.evaluate(() => {
+      const shell = document.querySelector(".buzz-huddle-shell");
+      return shell ? getComputedStyle(shell, "::before").boxShadow : "";
+    }),
+  ).toBe("none");
+  const content = page.locator("[data-buzz-content-surface]").first();
+  await expect(content).toHaveCSS("box-shadow", "none");
+  await expect(content).toHaveCSS("border-radius", "0px");
+  await expect(content).toHaveCSS(
+    "background-color",
+    mode === "light" ? "rgb(255, 253, 250)" : "rgb(33, 30, 38)",
+  );
+  // Section titles stay aligned with the rows' icons.
+  for (const list of ["stream-list", "dm-list"] as const) {
+    const title = await page
+      .getByTestId(`${list}-section-label`)
+      .locator("[data-sidebar-section-title]")
+      .boundingBox();
+    const rowIconX = await page
+      .getByTestId(list)
+      .locator('[data-sidebar="menu-button"]')
+      .first()
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.x + Number.parseFloat(getComputedStyle(element).paddingLeft);
+      });
+    expect(title).not.toBeNull();
+    expect(Math.abs((title?.x ?? 0) - rowIconX)).toBeLessThanOrEqual(1);
+  }
+}
+
 async function seedIconChannelSection(page: Page) {
   await page.addInitScript(
     ({ channelId, pubkey }) => {
@@ -95,369 +340,36 @@ async function resolveSidebarColor(
     );
 }
 
-async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
-  const mutedColor = await resolveSidebarColor(
-    page,
-    "color",
-    mode === "dark"
-      ? "var(--colony-sidebar-section-color)"
-      : "var(--colony-sidebar-muted-foreground)",
-  );
-  const secondaryTextColor = await resolveSidebarColor(
-    page,
-    "color",
-    "var(--colony-sidebar-muted-foreground)",
-  );
-  const searchSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.25)"
-      : "rgba(232, 227, 237, 0.06)";
-  const rowHoverSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.31)"
-      : "rgba(255, 255, 255, 0.075)";
-  const directMessageHoverSurface = await resolveSidebarColor(
-    page,
-    "background-color",
-    "var(--buzz-hover-surface)",
-  );
-  const activeSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.56)"
-      : "rgba(255, 255, 255, 0.075)";
-  const search = page.getByTestId("open-search");
-  const pinnedHeader = page.getByTestId("sidebar-pinned-header");
-  const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
-  const scrollContent = page.getByTestId("sidebar-scroll-content");
-  const primaryMenu = page.getByTestId("sidebar-primary-menu");
-  const sectionLabel = page
-    .locator('[data-sidebar="group-label"]')
-    .filter({ hasText: "Channels" })
-    .first();
-
-  await expect(sectionLabel.locator("[data-sidebar-section-title]")).toHaveCSS(
-    "color",
-    mutedColor,
-  );
-  await expect(search).toHaveCSS("background-color", searchSurface);
-  await expect(search.locator("svg").first()).toHaveClass(
-    /text-sidebar-foreground\/45/,
-  );
-  await expect(search.locator("span").first()).toHaveClass(
-    /text-sidebar-foreground\/55/,
-  );
-  const isMac = await page.evaluate(() =>
-    /mac|iphone|ipad|ipod/i.test(navigator.platform),
-  );
-  if (isMac)
-    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
-  else
-    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
-  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "39px" : "21px");
-  await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
-  await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
-  await expect(pinnedHeader).toHaveCSS("margin-right", "3px");
-  await expect(pinnedHeader).toHaveCSS("padding-left", "8px");
-  await expect(pinnedHeader).toHaveCSS("padding-right", "8px");
-  await expect(sidebarScroller).toHaveCSS("padding-left", "0px");
-  await expect(sidebarScroller).toHaveCSS("padding-right", "0px");
-  await expect(scrollContent).toHaveCSS("padding-left", "6px");
-  await expect(scrollContent).toHaveCSS("padding-right", "6px");
-  const pinnedSpacerColor = await pinnedHeader.evaluate(
-    (element) => getComputedStyle(element, "::before").backgroundColor,
-  );
-  expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
-  const activityButton = page.getByTestId("sidebar-activity-button");
-  await expect(
-    sidebarScroller.getByTestId("sidebar-activity-button"),
-  ).toBeVisible();
-  await sidebarScroller.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  const searchBox = await search.boundingBox();
-  const pinnedHeaderBox = await pinnedHeader.boundingBox();
-  const primaryMenuBox = await primaryMenu.boundingBox();
-  const primaryRowBox = await activityButton.boundingBox();
-  const activeRowBox = await page.getByTestId("channel-general").boundingBox();
-  const hoverRowBox = await page.getByTestId("channel-random").boundingBox();
-  const scrollContentBox = await scrollContent.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    return { left: box.left, right: box.right };
-  });
-  expect(searchBox).not.toBeNull();
-  expect(pinnedHeaderBox).not.toBeNull();
-  expect(primaryMenuBox).not.toBeNull();
-  expect(primaryRowBox).not.toBeNull();
-  expect(activeRowBox).not.toBeNull();
-  expect(hoverRowBox).not.toBeNull();
-  if (
-    !searchBox ||
-    !pinnedHeaderBox ||
-    !primaryMenuBox ||
-    !primaryRowBox ||
-    !activeRowBox ||
-    !hoverRowBox
-  ) {
-    throw new Error("Sidebar search or primary navigation geometry is missing");
-  }
-  expect(
-    Math.abs(primaryMenuBox.y - (searchBox.y + searchBox.height) - 10),
-  ).toBeLessThanOrEqual(1);
-  expect(
-    pinnedHeaderBox.y +
-      pinnedHeaderBox.height -
-      (searchBox.y + searchBox.height),
-  ).toBe(10);
-  expect(Math.abs(primaryRowBox.x - (searchBox.x - 3))).toBeLessThanOrEqual(1);
-  for (const rowBox of [activeRowBox, hoverRowBox]) {
-    expect(Math.abs(rowBox.x - (searchBox.x - 1))).toBeLessThanOrEqual(1);
-    // Linux CI reserves a classic scrollbar gutter while macOS uses an
-    // overlay scrollbar. Compare each row to its usable scroll area so the
-    // alignment check remains platform-independent.
-    const rowLeftSpacing = rowBox.x - scrollContentBox.left;
-    const rowRightSpacing = scrollContentBox.right - (rowBox.x + rowBox.width);
-    expect(Math.abs(rowLeftSpacing - rowRightSpacing)).toBeLessThanOrEqual(1);
-  }
-  await expect(page.locator("[data-buzz-sidebar-secondary]").first()).toHaveCSS(
-    "color",
-    secondaryTextColor,
-  );
-  await expect(page.locator('[data-sidebar="trigger"]')).toHaveClass(
-    /text-sidebar-foreground\/70/,
-  );
-  await expect(page.getByTestId("channel-general")).not.toHaveCSS(
-    "color",
-    mutedColor,
-  );
-  await expect(page.getByTestId("channel-general")).toHaveCSS(
-    "font-weight",
-    "650",
-  );
-  await expect(
-    page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
-  ).toHaveCSS("opacity", "1");
-  await page.mouse.move(600, 100);
-  await expect(page.getByTestId("channel-general")).toHaveCSS(
-    "background-color",
-    activeSurface,
-  );
-  const hoverChannel = page.getByTestId("channel-random");
-  await hoverChannel.hover();
-  await expect(hoverChannel).toHaveCSS("background-color", rowHoverSurface);
-
-  const firstDmItem = page
-    .getByTestId("dm-list")
-    .locator('[data-sidebar="menu-item"]')
-    .first();
-  const firstDmButton = firstDmItem.locator('[data-sidebar="menu-button"]');
-  const firstDmLabel = firstDmButton.locator("[data-sidebar-row-label]");
-  const closeDmButton = firstDmItem.getByRole("button", {
-    name: "Close direct message",
-  });
-  const hoverChannelLabel = hoverChannel.locator("[data-sidebar-row-label]");
-  const hoverChannelIcon = hoverChannel.locator("svg").first();
-  const activityLabel = activityButton.locator('[data-sidebar="menu-label"]');
-  const activityIcon = activityButton.locator("svg").first();
-  const sidebarForeground = await page
-    .getByTestId("app-sidebar")
-    .evaluate((element) => getComputedStyle(element).color);
-  const channelForeground = await hoverChannel.evaluate(
-    (element) => getComputedStyle(element).color,
-  );
-  const directMessageForeground = await firstDmButton.evaluate(
-    (element) => getComputedStyle(element).color,
-  );
-  expect(channelForeground).toBe(directMessageForeground);
-  await expect(activityButton).toHaveCSS("color", sidebarForeground);
-  await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
-  await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
-  await expect(firstDmButton).toHaveCSS("opacity", "1");
-  await expect(firstDmLabel).toHaveCSS("opacity", "1");
-  await expect(activityLabel).toHaveCSS("opacity", "1");
-  await expect(activityIcon).toHaveCSS("opacity", "0.8");
-  await firstDmItem.hover();
-  await expect(closeDmButton).toBeVisible();
-  await closeDmButton.hover();
-  await expect(firstDmButton).toHaveCSS(
-    "background-color",
-    directMessageHoverSurface,
-  );
-
-  const scrollbarTrackColor = await sidebarScroller.evaluate(
-    (element) =>
-      getComputedStyle(element, "::-webkit-scrollbar-track").backgroundColor,
-  );
-  expect(scrollbarTrackColor).toBe("rgba(0, 0, 0, 0)");
-}
-
-async function expectIconlessSectionTitleAligned(
-  page: Page,
-  listTestId: "stream-list" | "dm-list",
-) {
-  const sectionLabel = page.getByTestId(`${listTestId}-section-label`);
-  const title = sectionLabel.locator("[data-sidebar-section-title]");
-  const titleBox = await title.boundingBox();
-  const caretBox = await title
-    .locator("xpath=following-sibling::span[@aria-hidden='true']")
-    .boundingBox();
-  const firstRowIconX = await page
-    .getByTestId(listTestId)
-    .locator('[data-sidebar="menu-button"]')
-    .first()
-    .evaluate((element) => {
-      const box = element.getBoundingClientRect();
-      const paddingLeft = Number.parseFloat(
-        getComputedStyle(element).paddingLeft,
-      );
-      return box.x + paddingLeft;
-    });
-
-  expect(titleBox).not.toBeNull();
-  expect(caretBox).not.toBeNull();
-  if (!titleBox || !caretBox) {
-    throw new Error(`Sidebar section ${listTestId} is missing label geometry`);
-  }
-  expect(caretBox.x + caretBox.width).toBeLessThanOrEqual(titleBox.x);
-  expect(titleBox.x).toBeGreaterThan(firstRowIconX);
-}
-
-async function expectBuzzContentShadow(page: Page, mode: "light" | "dark") {
-  const effects = await page.evaluate(() => {
-    const shell = document.querySelector(".buzz-huddle-shell");
-    const content = document.querySelector("[data-buzz-content-surface]");
-    const shadowViewport = document.querySelector(
-      "[data-buzz-shadow-viewport]",
-    );
-    return {
-      appStroke: shell ? getComputedStyle(shell, "::before").boxShadow : "",
-      contentShadow: content ? getComputedStyle(content).boxShadow : "",
-      shadowViewportOverflow: shadowViewport
-        ? getComputedStyle(shadowViewport).overflow
-        : "",
-    };
-  });
-
-  expect(effects.appStroke).toBe("none");
-  if (mode === "light") {
-    expect(effects.contentShadow).toContain("5px 35px");
-    expect(effects.contentShadow).toContain("rgba(118, 96, 137, 0.043)");
-    expect(effects.shadowViewportOverflow).toBe("visible");
-  } else {
-    expect(effects.contentShadow).not.toContain("4px");
-    expect(effects.contentShadow).not.toContain("rgba(255, 255, 255, 0.07)");
-    expect(effects.shadowViewportOverflow).toBe("hidden");
-  }
-}
-
+/**
+ * The wall the sidebar field sits on: pale in the light theme, deep in the dark
+ * one. Returns it so a test can see a theme change move it.
+ */
 async function expectBuzzGradientPaint(
   page: Page,
   mode: "light" | "dark",
 ): Promise<string> {
-  if ((await page.getByTestId("settings-view").count()) > 0) {
-    const underlay = page.locator(".buzz-theme-gradient-underlay").first();
-    const backgroundImage = await underlay.evaluate(
-      (element) => getComputedStyle(element).backgroundImage,
-    );
-    expect(backgroundImage).toContain(`colony-field-${mode}.svg`);
-    return backgroundImage;
-  }
-
-  const paint = await page.evaluate(() => {
-    const root = document.documentElement;
-    const appSurface = document.querySelector(".buzz-huddle-app-surface");
-    const lightLayer = document.querySelector('[data-buzz-gradient="light"]');
-    const darkLayer = document.querySelector('[data-buzz-gradient="dark"]');
-    const underlay = document.querySelector(".buzz-theme-gradient-underlay");
-    const sidebarRoot = document.querySelector(
-      '[data-testid="app-sidebar"], [data-testid="settings-sidebar"]',
-    );
-    const sidebarSurface =
-      sidebarRoot?.querySelector('[data-sidebar="sidebar"]') ?? sidebarRoot;
-    const appStyles = appSurface ? getComputedStyle(appSurface) : null;
-    const lightStyles = lightLayer ? getComputedStyle(lightLayer) : null;
-    const darkStyles = darkLayer ? getComputedStyle(darkLayer) : null;
-    const underlayStyles = underlay ? getComputedStyle(underlay) : null;
-    return {
-      isDark: root.classList.contains("dark"),
-      theme: root.getAttribute("data-buzz-theme"),
-      hasFullAppShell:
-        document.querySelector('[data-colony-full-app-shell="true"]') !== null,
-      hasWorkspaceChrome:
-        document.querySelector('[data-colony-workspace-route="true"]') !== null,
-      surfaceImage: appStyles?.backgroundImage ?? "",
-      lightImage: lightStyles?.backgroundImage ?? "",
-      lightOpacity: lightStyles?.opacity ?? "",
-      darkImage: darkStyles?.backgroundImage ?? "",
-      darkOpacity: darkStyles?.opacity ?? "",
-      underlayImage: underlayStyles?.backgroundImage ?? "",
-      sidebarImage: sidebarSurface
-        ? getComputedStyle(sidebarSurface).backgroundImage
-        : "",
-    };
-  });
-
-  expect(paint.theme).toBe(mode === "light" ? "buzz" : "buzz-dark");
-  expect(paint.isDark).toBe(mode === "dark");
-  if (paint.hasFullAppShell) {
-    if (mode === "light") {
-      expect(paint.underlayImage).toContain("colony-field-light.svg");
-    } else {
-      expect(paint.underlayImage).toBe(
-        "linear-gradient(145deg, rgb(69, 55, 75), rgb(35, 40, 55))",
-      );
-    }
-    expect(paint.lightImage).toBe("none");
-    expect(paint.darkImage).toBe("none");
-    expect(paint.lightOpacity).toBe("0");
-    expect(paint.darkOpacity).toBe("0");
-    return paint.underlayImage;
-  }
-
-  if (paint.hasWorkspaceChrome) {
-    expect(paint.surfaceImage).toContain(
-      mode === "light" ? "colony-field-light.svg" : "colony-field-dark.svg",
-    );
-    expect(paint.underlayImage).toBe("none");
-    expect(paint.lightImage).toBe("none");
-    expect(paint.darkImage).toBe("none");
-    expect(paint.lightOpacity).toBe("0");
-    expect(paint.darkOpacity).toBe("0");
-    return paint.surfaceImage;
-  }
-
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-buzz-gradient="light"]')
-        .evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe(mode === "light" ? "1" : "0");
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-buzz-gradient="dark"]')
-        .evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe(mode === "dark" ? "1" : "0");
-
-  expect(paint.surfaceImage).toBe("none");
-  expect(paint.lightImage).not.toBe("");
-  expect(paint.lightImage).not.toBe("none");
-  expect(paint.darkImage).not.toBe("");
-  expect(paint.darkImage).not.toBe("none");
-  expect(paint.lightImage).not.toBe(paint.darkImage);
-  expect(paint.lightOpacity).toBe(mode === "light" ? "1" : "0");
-  expect(paint.darkOpacity).toBe(mode === "dark" ? "1" : "0");
-  expect(paint.sidebarImage).toBe("none");
-  return mode === "light" ? paint.lightImage : paint.darkImage;
+  const root = page.locator("html");
+  await expect(root).toHaveAttribute(
+    "data-buzz-theme",
+    mode === "light" ? "buzz" : "buzz-dark",
+  );
+  await expect(root).toHaveClass(
+    mode === "dark" ? /(^|\s)dark($|\s)/ : /(^|\s)light($|\s)/,
+  );
+  const wall = await page.evaluate(() =>
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--colony-field-wall")
+      .trim(),
+  );
+  expect(wall).toBe(mode === "light" ? "#f8f4f8" : "#2a2432");
+  return wall;
 }
 
 async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
   const mutedColor = await resolveSidebarColor(
     page,
     "color",
-    "var(--buzz-muted-foreground)",
+    "var(--colony-sidebar-ink-soft)",
   );
   const sidebar = page.getByTestId("settings-sidebar");
   const sectionLabel = sidebar
@@ -466,7 +378,7 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
 
   await expect(sectionLabel).toHaveCSS(
     "color",
-    // The reference is #a39aa9; the gradient needs this smallest AA step.
+    // Dark keeps the smallest AA step over the field.
     mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
   );
   await expect(
@@ -496,10 +408,8 @@ async function expectAppliedBuzzTheme(
           storedTheme: window.localStorage.getItem(storageKey),
           isDark: root.classList.contains("dark"),
           buzzTheme: root.getAttribute("data-buzz-theme"),
-          gradientTop: styles.getPropertyValue("--buzz-gradient-top").trim(),
-          gradientBottom: styles
-            .getPropertyValue("--buzz-gradient-bottom")
-            .trim(),
+          fieldTop: styles.getPropertyValue("--colony-field-top").trim(),
+          fieldBottom: styles.getPropertyValue("--colony-field-bottom").trim(),
         };
       }, THEME_STORAGE_KEY),
     )
@@ -507,8 +417,9 @@ async function expectAppliedBuzzTheme(
       storedTheme,
       isDark,
       buzzTheme: themeName,
-      gradientTop: isDark ? "#38273f" : "#fae7ed",
-      gradientBottom: isDark ? "#223570" : "#94b4fa",
+      // The default field colours: rose on top, periwinkle at the bottom.
+      fieldTop: "#f5a4d5",
+      fieldBottom: "#94b4fa",
     });
 }
 
@@ -540,9 +451,15 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
     await openChannel(page);
     await page.goto("/#/team");
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
-    await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
-      "color",
-      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+    // The brand mark is a solid tile: its letter must read against it.
+    const mark = await page
+      .locator(".colony-sidebar-brand-mark")
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, text: style.color };
+      });
+    expect(contrastRatio(mark.text, mark.background)).toBeGreaterThanOrEqual(
+      4.5,
     );
     await openSettings(page, "profile");
     await expect(page.locator(".w20-nav-person small")).toHaveCSS(
@@ -552,34 +469,24 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
   });
 }
 
-test("buzz light sidebar gradient", async ({ page }) => {
+test("buzz light sidebar field", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await openChannel(page);
-  await expectBuzzGradientPaint(page, "light");
-  await expectBuzzSidebarPalette(page, "light");
-  await expectBuzzContentShadow(page, "light");
-  await expectIconlessSectionTitleAligned(page, "stream-list");
-  await expectIconlessSectionTitleAligned(page, "dm-list");
+  await expectColonyShell(page, "light");
+  await expectColonySidebarPalette(page, "light");
   await waitForAnimations(page);
   await page
     .getByTestId("app-sidebar")
     .screenshot({ path: `${SHOTS}/01-buzz-light-sidebar.png` });
 });
 
-test("buzz dark sidebar gradient", async ({ page }) => {
+test("buzz dark sidebar field", async ({ page }) => {
   await seedTheme(page, "buzz-dark");
   await installMockBridge(page);
   await openChannel(page);
-  await expectBuzzGradientPaint(page, "dark");
-  await expectBuzzSidebarPalette(page, "dark");
-  await expectBuzzContentShadow(page, "dark");
-  await expectIconlessSectionTitleAligned(page, "stream-list");
-  await expectIconlessSectionTitleAligned(page, "dm-list");
-  await expect(page.locator("[data-buzz-content-surface]")).toHaveCSS(
-    "background-color",
-    "rgb(33, 30, 38)",
-  );
+  await expectColonyShell(page, "dark");
+  await expectColonySidebarPalette(page, "dark");
   await waitForAnimations(page);
   await page
     .getByTestId("app-sidebar")
@@ -600,10 +507,6 @@ test("custom section icon and name align with channel columns", async ({
   const sectionTitleBox = await page
     .getByTestId("section-title-alignment-section")
     .boundingBox();
-  const sectionCaretBox = await page
-    .getByTestId("section-title-alignment-section")
-    .locator("xpath=following-sibling::span[@aria-hidden='true']")
-    .boundingBox();
   const channelButton = page.getByTestId("channel-general");
   const channelIconBox = await channelButton
     .locator("svg")
@@ -615,22 +518,17 @@ test("custom section icon and name align with channel columns", async ({
 
   expect(sectionIconBox).not.toBeNull();
   expect(sectionTitleBox).not.toBeNull();
-  expect(sectionCaretBox).not.toBeNull();
   expect(channelIconBox).not.toBeNull();
   expect(channelTitleBox).not.toBeNull();
   if (
     !sectionIconBox ||
     !sectionTitleBox ||
-    !sectionCaretBox ||
     !channelIconBox ||
     !channelTitleBox
   ) {
     throw new Error("Custom section alignment geometry is missing");
   }
   expect(sectionIconBox.x + sectionIconBox.width).toBeLessThanOrEqual(
-    sectionCaretBox.x,
-  );
-  expect(sectionCaretBox.x + sectionCaretBox.width).toBeLessThanOrEqual(
     sectionTitleBox.x,
   );
   expect(channelIconBox.x + channelIconBox.width).toBeLessThanOrEqual(
@@ -841,14 +739,14 @@ test("workspace appearance keeps navigation controls within the frozen design", 
   const appearance = await openAppearance(page);
   const root = page.locator("html");
   await expect(appearance.getByTestId("appearance-prominent")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-accent-teal")).toBeVisible();
   await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
 
   await page.getByTestId("settings-close").click();
   await page.getByTestId("channel-general").click();
   const activeRow = page.getByTestId("channel-general");
-  const subtleSurface = "rgba(255, 255, 255, 0.56)";
+  const subtleSurface = "rgba(255, 255, 255, 0.84)";
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
 });
 
@@ -868,7 +766,7 @@ test("prominent channel and direct-message rows share one flat active state", as
   const activeSurface = await resolveSidebarColor(
     page,
     "background-color",
-    "var(--w20-appearance-accent, #2655a0)",
+    "hsl(var(--colony-accent))",
   );
 
   await expect(channelRow).toHaveCSS("background-color", activeSurface);
@@ -886,14 +784,14 @@ test("prominent channel and direct-message rows share one flat active state", as
 
 for (const { activeSurface, hoverSurface, mode, theme } of [
   {
-    activeSurface: "rgba(255, 255, 255, 0.56)",
-    hoverSurface: "rgba(255, 255, 255, 0.31)",
+    activeSurface: "rgba(255, 255, 255, 0.84)",
+    hoverSurface: "rgba(255, 255, 255, 0.62)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    activeSurface: "rgba(255, 255, 255, 0.075)",
-    hoverSurface: "rgba(255, 255, 255, 0.075)",
+    activeSurface: "rgba(255, 255, 255, 0.15)",
+    hoverSurface: "rgba(255, 255, 255, 0.09)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
@@ -921,11 +819,9 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
       "var(--colony-sidebar-foreground)",
     );
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
-    await expect(activeRow).toHaveCSS(
-      "box-shadow",
-      "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
-    );
-    await expect(activeRow).toHaveCSS("font-weight", "650");
+    // The open row lifts off the field with the designed soft shadow.
+    await expect(activeRow).not.toHaveCSS("box-shadow", "none");
+    await expect(activeRow).toHaveCSS("font-weight", "800");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     const inactiveRow = page.getByTestId("channel-random");
@@ -962,8 +858,8 @@ for (const { mode, theme } of [
 
     const expectedBackground =
       mode === "light"
-        ? "rgba(255, 255, 255, 0.56)"
-        : "rgba(255, 255, 255, 0.075)";
+        ? "rgba(255, 255, 255, 0.84)"
+        : "rgba(255, 255, 255, 0.15)";
     const expectedForeground = await resolveSidebarColor(
       page,
       "color",
@@ -971,7 +867,7 @@ for (const { mode, theme } of [
     );
     await expect(activeRow).toHaveCSS("background-color", expectedBackground);
     await expect(activeRow).toHaveCSS("color", expectedForeground);
-    await expect(activeRow).toHaveCSS("font-weight", "650");
+    await expect(activeRow).toHaveCSS("font-weight", "800");
   });
 }
 
@@ -1026,7 +922,10 @@ test("settings content uses the same inset surface as the main app", async ({
   const isMac = await page.evaluate(() =>
     /mac|iphone|ipad|ipod/i.test(navigator.platform),
   );
-  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69.25 : 51.25);
+  // The Colony 3.0 sidebar puts the search 78px down on a Mac (below the
+  // window buttons) and 50px down elsewhere; the settings sidebar starts at
+  // the window top, 8px higher than before.
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 86 : 58);
 
   // Header and content share one card. The frame carries the 8px margin;
   // the content starts directly below its 52px header.
@@ -1189,7 +1088,7 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
   await expect(root).toHaveAttribute("data-glass-background", "");
 
   const tint = await page
-    .locator(".buzz-theme-gradient-layer")
+    .getByTestId("app-sidebar-layer")
     .evaluate((element) => {
       const rootStyles = getComputedStyle(document.documentElement);
       const sidebar = rootStyles
@@ -1218,11 +1117,7 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
   expect(tint.sidebar).toBe(tint.appliedSidebar);
   expect(tint.actual).toBe(tint.expected);
   // An opaque chrome fill would hide native vibrancy even with the right tint.
-  for (const selector of [
-    ".buzz-theme-gradient-underlay",
-    ".buzz-huddle-app-surface",
-    ".buzz-huddle-shell",
-  ]) {
+  for (const selector of [".buzz-huddle-app-surface", ".buzz-huddle-shell"]) {
     await expect(page.locator(selector)).toHaveCSS("background-image", "none");
     await expect(page.locator(selector)).toHaveCSS(
       "background-color",
@@ -1411,7 +1306,7 @@ test("named appearance keeps density and theme in the same scoped snapshot", asy
   await installMockBridge(page);
   const panel = await openAppearance(page);
   await expect(panel.getByTestId("appearance-prominent")).toBeVisible();
-  await expect(panel.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(panel.getByTestId("appearance-accent-teal")).toBeVisible();
   await expect(panel.getByTestId("appearance-density")).toHaveCount(0);
   await panel.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-github-dark").click();

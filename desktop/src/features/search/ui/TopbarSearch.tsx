@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { SearchIcon } from "@/shared/ui/colonyIcons";
 import * as React from "react";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { getMinimumSearchQueryLength } from "@/features/search/hooks";
@@ -937,7 +937,7 @@ export function TopbarSearch({
           title="Find anything"
           type="button"
         >
-          <Search
+          <SearchIcon
             className={
               isIconVariant
                 ? "h-4 w-4 shrink-0"
@@ -957,7 +957,7 @@ export function TopbarSearch({
                 {query || "Find anything"}
               </span>
               <kbd className="shrink-0 text-3xs text-sidebar-foreground/45">
-                &#x2318; K
+                &#x2318;K
               </kbd>
             </>
           )}

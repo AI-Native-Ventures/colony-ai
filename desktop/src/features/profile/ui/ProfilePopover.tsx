@@ -49,6 +49,10 @@ interface ProfilePopoverProps {
   // Optional slot rendered before the profile actions. Used by the sidebar to
   // surface active-community actions inside the profile menu.
   communitySwitcherSlot?: React.ReactNode;
+  /** Colour mode of the app, for the light/dark switch row. */
+  isDark?: boolean;
+  /** Switches between the light and dark twin of the current theme. */
+  onToggleTheme?: () => void;
 }
 
 const MENU_ITEM_CLASS =
@@ -76,6 +80,8 @@ export function ProfilePopover({
   children,
   triggerContainerRef,
   communitySwitcherSlot,
+  isDark = false,
+  onToggleTheme,
 }: ProfilePopoverProps) {
   const [statusDialogOpen, setStatusDialogOpen] = React.useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = React.useState(false);
@@ -291,6 +297,26 @@ export function ProfilePopover({
                 type="button"
               >
                 <span className="flex-1">Send feedback</span>
+              </button>
+            ) : null}
+
+            {onToggleTheme ? (
+              <button
+                aria-label={
+                  isDark ? "Switch to light theme" : "Switch to dark theme"
+                }
+                className={MENU_ITEM_CLASS}
+                data-testid="sidebar-theme-toggle"
+                onClick={() => {
+                  closePopover();
+                  onToggleTheme();
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <span className="flex-1">
+                  {isDark ? "Switch to light theme" : "Switch to dark theme"}
+                </span>
               </button>
             ) : null}
 

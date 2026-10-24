@@ -69,14 +69,16 @@ function MoveToSectionSubmenu({
               deferMenuAction(() => onAssignChannel(channelId, section.id))
             }
           >
-            <ContextMenuIconSlot>
-              {currentSectionId === section.id ? (
-                <Check className="h-4 w-4" />
-              ) : section.icon ? (
-                <StatusEmoji className="h-4 w-4" value={section.icon} />
-              ) : null}
-            </ContextMenuIconSlot>
-            <span>{section.name}</span>
+            <span className="flex-1">{section.name}</span>
+            {currentSectionId === section.id ? (
+              <Check
+                aria-hidden="true"
+                className="text-colony-accent"
+                strokeWidth={2.8}
+              />
+            ) : section.icon ? (
+              <StatusEmoji className="h-4 w-4" value={section.icon} />
+            ) : null}
           </ContextMenuItem>
         ))}
         {sections.length > 0 ? <ContextMenuSeparator /> : null}
@@ -325,7 +327,6 @@ export function ChannelContextMenuItems({
       {showChannelActions ? <ContextMenuSeparator /> : null}
       {onLeaveChannel ? (
         <ContextMenuItem
-          className="text-destructive focus:text-destructive"
           onSelect={() => deferMenuAction(() => onLeaveChannel(channel))}
         >
           <ContextMenuIconSlot>

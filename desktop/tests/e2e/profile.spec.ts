@@ -669,11 +669,11 @@ test("opens Send feedback from the profile menu", async ({ page }) => {
   await expect(dialog.getByTestId("send-feedback-title")).toHaveText(
     "Send feedback",
   );
-  await expect(dialog.getByTestId("feedback-type")).toHaveValue("suggestion");
+  await expect(dialog.getByRole("radio", { name: "Suggestion" })).toBeChecked();
   await expect(dialog.getByTestId("feedback-message")).toBeVisible();
   await expect(dialog.getByTestId("feedback-include-logs")).not.toBeChecked();
 
-  await dialog.getByTestId("feedback-diagnostics-toggle").click();
+  // The designed form always shows what diagnostics include.
   await expect(
     dialog.getByTestId("feedback-diagnostics-details"),
   ).toBeVisible();
@@ -691,7 +691,7 @@ test("cancel closes the feedback form without submitting it", async ({
   const dialog = page.getByTestId("send-feedback-dialog");
   const message = dialog.getByTestId("feedback-message");
   await message.fill("Cancel this feedback draft.");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Close" }).last().click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("feedback-sent")).toHaveCount(0);
 });
@@ -2403,7 +2403,6 @@ test("settings subtitles share the Appearance secondary color", async ({
   }
 
   await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
   const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
   await expect(blocksAndTemplates).toBeVisible();
   await expect(blocksAndTemplates).toHaveCount(1);

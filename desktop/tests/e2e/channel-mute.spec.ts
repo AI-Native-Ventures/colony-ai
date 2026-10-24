@@ -85,7 +85,7 @@ test.describe("channel muting", () => {
     await expect(engRow).toBeVisible();
     await expect(engRow).toHaveCSS("opacity", "1");
     await expect(engLabel).toHaveCSS("opacity", "0.5");
-    await expect(engRow.locator("svg.lucide-hash")).toHaveCSS("opacity", "0.5");
+    await expect(engRow.locator("svg").first()).toHaveCSS("opacity", "0.5");
     await expect(engRow.locator("svg.lucide-bell-off")).toHaveCount(1);
   });
 
@@ -106,10 +106,7 @@ test.describe("channel muting", () => {
       "opacity",
       "0.45",
     );
-    await expect(engRow.locator("svg.lucide-hash")).toHaveCSS(
-      "opacity",
-      "0.45",
-    );
+    await expect(engRow.locator("svg").first()).toHaveCSS("opacity", "0.45");
   });
 
   test("03 - muted channel with a top-level @mention shows its unread count", async ({
@@ -152,7 +149,7 @@ test.describe("channel muting", () => {
 
     await expect(page.getByTestId("channel-engineering")).toHaveCSS(
       "font-weight",
-      "450",
+      "800",
     );
     await expectUnreadBadgeCount(
       page.getByTestId("channel-unread-engineering"),

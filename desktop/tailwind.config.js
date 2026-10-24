@@ -14,8 +14,19 @@ export default {
           "calc(var(--buzz-type-rem) * 1.625)",
           { lineHeight: "1.35" },
         ],
-        "2xs": "calc(var(--buzz-type-rem) * 0.6875)", // 11px at 16px type rem
-        "3xs": "calc(var(--buzz-type-rem) * 0.5)", // 8px at 16px type rem
+        menu: "calc(15 * var(--colony-px))", // menu rows and compact controls
+        hero: [
+          "calc(56 * var(--colony-px))",
+          { lineHeight: "1.02", letterSpacing: "-0.042em" },
+        ], // Foundations headline
+        chip: "calc(14.5 * var(--colony-px))", // choice chips
+        "title-md": [
+          "calc(24 * var(--colony-px))",
+          { lineHeight: "1.2", letterSpacing: "-0.02em" },
+        ], // dialog titles
+        control: "calc(15.5 * var(--colony-px))", // dialog and form buttons
+        "2xs": "var(--text-2xs)", // 13px label (Colony 3.0 ramp)
+        "3xs": "var(--text-3xs)", // 11px tiny count and glyph text
         "update-author": "calc(var(--buzz-type-rem) * 0.83)",
         "update-body": "calc(var(--buzz-type-rem) * 0.89)",
         "update-meta": "calc(var(--buzz-type-rem) * 0.72)",
@@ -149,6 +160,11 @@ export default {
         "colony-toast": "var(--colony-radius-toast)",
         "colony-frame": "var(--colony-radius-frame)",
         "colony-card": "var(--colony-radius-card)",
+        "colony-menu": "1.125rem",
+        "colony-menu-item": "0.625rem",
+        "colony-popover": "1.25rem",
+        "colony-control-lg": "0.75rem",
+        "colony-chip": "0.875rem",
         "colony-dialog": "var(--colony-radius-dialog)",
         "colony-onboarding-control": "var(--colony-radius-onboarding-control)",
         "colony-onboarding-dialog": "var(--colony-radius-onboarding-dialog)",
@@ -261,9 +277,25 @@ export default {
           hover: "hsl(var(--colony-hover) / <alpha-value>)",
           accent: "hsl(var(--colony-accent) / <alpha-value>)",
           "accent-soft": "hsl(var(--colony-accent-soft) / <alpha-value>)",
+          "accent-ink": "hsl(var(--colony-accent-ink) / <alpha-value>)",
+          "fg-secondary": "hsl(var(--colony-fg-secondary) / <alpha-value>)",
+          "border-strong": "hsl(var(--colony-border-strong) / <alpha-value>)",
+          wash: "hsl(var(--colony-wash) / <alpha-value>)",
+          track: "hsl(var(--colony-track) / <alpha-value>)",
           info: "hsl(var(--colony-info) / <alpha-value>)",
+          "info-bg": "hsl(var(--colony-info-bg) / <alpha-value>)",
           success: "hsl(var(--colony-success) / <alpha-value>)",
+          "success-bg": "hsl(var(--colony-success-bg) / <alpha-value>)",
           danger: "hsl(var(--colony-danger) / <alpha-value>)",
+          "danger-bg": "hsl(var(--colony-danger-bg) / <alpha-value>)",
+          need: "hsl(var(--colony-need) / <alpha-value>)",
+          "need-bg": "hsl(var(--colony-need-bg) / <alpha-value>)",
+          idle: "hsl(var(--colony-idle-bg) / <alpha-value>)",
+          person: "var(--colony-person)",
+          pop: "var(--colony-pop)",
+          scrim: "var(--colony-scrim)",
+          online: "var(--colony-presence-online)",
+          away: "var(--colony-presence-away)",
           canvas: "hsl(var(--colony-canvas) / <alpha-value>)",
           field: "hsl(var(--colony-field) / <alpha-value>)",
           focus: "hsl(var(--colony-focus) / <alpha-value>)",

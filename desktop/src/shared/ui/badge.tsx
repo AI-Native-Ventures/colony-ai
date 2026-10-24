@@ -4,18 +4,24 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/shared/lib/cn";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full px-2 pb-[3px] pt-[5px] text-2xs font-semibold uppercase leading-none tracking-[0.18em]",
+  "inline-flex h-7.5 items-center gap-2 rounded-full px-3 text-xs font-bold",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground",
-        secondary: "bg-muted text-muted-foreground",
+        // The five work states: Working, Needs you, Done, Blocked, Idle.
+        default: "bg-colony-accent-soft text-colony-accent-ink",
+        working: "bg-colony-accent-soft text-colony-accent-ink",
+        secondary: "bg-colony-idle text-colony-fg-secondary",
+        idle: "bg-colony-idle text-colony-fg-secondary",
         outline:
-          "border border-border/70 bg-background/80 text-muted-foreground",
-        destructive: "bg-destructive text-destructive-foreground",
-        warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-        success: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-        info: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+          "bg-colony-pop text-colony-fg-secondary shadow-[inset_0_0_0_1px_hsl(var(--colony-border-strong))]",
+        destructive: "bg-colony-danger-bg text-colony-danger",
+        blocked: "bg-colony-danger-bg text-colony-danger",
+        warning: "bg-colony-need-bg text-colony-need",
+        needs: "bg-colony-need-bg text-colony-need",
+        success: "bg-colony-success-bg text-colony-success",
+        done: "bg-colony-success-bg text-colony-success",
+        info: "bg-colony-info-bg text-colony-info",
       },
     },
     defaultVariants: {

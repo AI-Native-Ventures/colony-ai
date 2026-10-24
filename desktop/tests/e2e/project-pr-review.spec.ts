@@ -3117,9 +3117,9 @@ test("project without a checkout offers fetch feedback and cloning", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Remote", exact: true }),
-  ).toHaveClass(/\bborder-input\/40\b/);
+  ).toHaveClass(/\bborder-colony-border-strong\b/);
   await expect(page.getByRole("button", { name: /main/ })).toHaveClass(
-    /\bborder-input\/40\b/,
+    /\bborder-colony-border-strong\b/,
   );
   await expect(
     page.getByRole("button", { name: "Clone", exact: true }),

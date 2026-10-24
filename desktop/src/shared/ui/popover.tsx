@@ -60,7 +60,8 @@ const PopoverContent = React.forwardRef<
           "z-50 w-72 origin-(--radix-popover-content-transform-origin) outline-hidden",
           POPOVER_RADIX_MOTION_CLASS,
           POPOVER_RADIX_SIDE_MOTION_CLASS,
-          surface === "default" && cn("rounded-xl p-4", POPOVER_SURFACE_CLASS),
+          surface === "default" &&
+            cn("rounded-colony-popover p-4", POPOVER_SURFACE_CLASS),
           surface === "textured" &&
             texturedSurfaceClasses({
               size: textureSize,

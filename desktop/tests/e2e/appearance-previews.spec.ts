@@ -86,8 +86,13 @@ test("appearance exposes the approved controls and named themes preserve convers
     "appearance-mode-system",
     "appearance-mode-light",
     "appearance-mode-dark",
-    "appearance-theme-default",
-    "appearance-theme-custom",
+    "appearance-field",
+    "appearance-field-preset-dawn",
+    "appearance-field-preset-peach",
+    "appearance-field-preset-sea",
+    "appearance-field-top",
+    "appearance-field-middle",
+    "appearance-field-bottom",
     "appearance-glass",
     "appearance-prominent",
     "appearance-message-size",
@@ -128,7 +133,7 @@ test("appearance exposes the approved controls and named themes preserve convers
       theme: "github-light",
       density: "compact",
       followSystem: false,
-      accent: "#895AF6",
+      accent: "#5B45BE",
     });
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
@@ -226,35 +231,55 @@ test("failed theme save keeps the current theme and offers retry", async ({
   await expect(page.getByTestId("theme-use")).toBeEnabled();
 });
 
-test("custom colors validate, survive Default and reload, and reset can be undone", async ({
+test("sidebar colours are chosen from a preset or by slot, survive reload, and reset can be undone", async ({
   page,
 }) => {
   await openAppearance(page);
-  await page.getByTestId("appearance-theme-custom").click();
-  await page.getByTestId("appearance-color-hex-1").fill("#123");
-  await expect(page.getByTestId("appearance-color-hex-1")).toHaveAttribute(
-    "aria-invalid",
-    "true",
+  const names = page.locator(
+    '[data-testid^="appearance-field-"][data-testid$="-name"]',
   );
-  await page.getByTestId("appearance-color-hex-1").fill("#334455");
-  await page.getByTestId("appearance-theme-default").click();
-  await page.getByTestId("appearance-theme-custom").click();
-  await expect(page.getByTestId("appearance-color-hex-1")).toHaveValue(
+  await expect(names).toHaveText([
+    "Rose · #F5A4D5",
+    "Lilac · #C6B3F4",
+    "Periwinkle · #94B4FA",
+  ]);
+  await expect(
+    page.getByTestId("appearance-field-preset-dawn"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("appearance-field-preset-peach").click();
+  await expect(names).toHaveText([
+    "Peach · #FFC2A6",
+    "Rose · #F5A4D5",
+    "Lilac · #C6B3F4",
+  ]);
+  await page.getByTestId("appearance-field-middle").fill("#334455");
+  await expect(page.getByTestId("appearance-field-middle-name")).toHaveText(
+    "#334455",
+  );
+  // A hand-picked trio matches no preset.
+  for (const id of ["dawn", "peach", "sea"])
+    await expect(
+      page.getByTestId(`appearance-field-preset-${id}`),
+    ).toHaveAttribute("aria-pressed", "false");
+  await page.getByTestId("appearance-apply").click();
+  await expect(page.getByTestId("appearance-apply-status")).toHaveText(
+    "Applied",
+  );
+  await expect
+    .poll(() => appearanceSnapshot(page))
+    .toMatchObject({ field: ["#FFC2A6", "#334455", "#C6B3F4"] });
+  await page.reload();
+  await expect(page.getByTestId("appearance-field-middle-name")).toHaveText(
     "#334455",
   );
   await page.getByTestId("appearance-reset").click();
-  await expect(page.getByTestId("appearance-theme-default")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    page.getByTestId("appearance-field-preset-dawn"),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Undo reset" }).click();
-  await expect(page.getByTestId("appearance-theme-custom")).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByTestId("appearance-field-middle-name")).toHaveText(
+    "#334455",
   );
-  await page.getByTestId("appearance-apply").click();
-  await page.reload();
-  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
 });
 
 test("appearance controls remain usable at a narrow desktop width", async ({
@@ -281,6 +306,8 @@ test("a sidebar theme toggle supersedes an applied named theme across reload and
     .toMatchObject({ theme: "dracula" });
   const olderSnapshot = await appearanceSnapshot(page);
   await page.getByTestId("settings-back-to-app").click();
+  // The light/dark switch lives in the profile menu in Colony 3.0.
+  await page.getByTestId("sidebar-profile-avatar-button").click();
   await page.getByTestId("sidebar-theme-toggle").click();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
@@ -319,6 +346,59 @@ test("a sidebar theme toggle supersedes an applied named theme across reload and
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
     .toBe("buzz");
+});
+
+test("the person's sidebar colours survive the light/dark switch, a named theme and a reload", async ({
+  page,
+}) => {
+  const rootTop = () =>
+    page.evaluate(() =>
+      document.documentElement.style.getPropertyValue("--colony-field-top"),
+    );
+  await openAppearance(page);
+  await page.getByTestId("appearance-field-preset-peach").click();
+  await page.getByTestId("appearance-apply").click();
+  await expect(page.getByTestId("appearance-apply-status")).toHaveText(
+    "Applied",
+  );
+  await expect.poll(rootTop).toBe("#FFC2A6");
+  // It travels with the person's synced theme choice, like the accent does.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith("buzz-community-theme.v1:"))
+          .map((key) => JSON.parse(localStorage.getItem(key) ?? "null")?.field),
+      ),
+    )
+    .toContainEqual(["#FFC2A6", "#F5A4D5", "#C6B3F4"]);
+
+  // Light/dark switch in the profile menu.
+  await page.getByTestId("settings-back-to-app").click();
+  await page.getByTestId("sidebar-profile-avatar-button").click();
+  await page.getByTestId("sidebar-theme-toggle").click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
+    .toBe("buzz-dark");
+  await expect.poll(rootTop).toBe("#FFC2A6");
+
+  // Applying a named theme from the catalog.
+  await page.getByTestId("open-settings").click();
+  await page.getByTestId("profile-popover-settings").click();
+  await page.getByTestId("settings-group-appearance-group").click();
+  await page.getByTestId("appearance-open-themes").click();
+  await page.getByTestId("theme-catalog-dracula").click();
+  await page.getByTestId("theme-use").click();
+  await expect
+    .poll(() => appearanceSnapshot(page))
+    .toMatchObject({
+      theme: "dracula",
+      field: ["#FFC2A6", "#F5A4D5", "#C6B3F4"],
+    });
+  await expect.poll(rootTop).toBe("#FFC2A6");
+
+  await page.reload();
+  await expect.poll(rootTop).toBe("#FFC2A6");
 });
 
 test("channel preferences supersede stale Appearance conversation fields on reload and theme change", async ({
@@ -374,10 +454,10 @@ test("Appearance write failure retains the draft for retry and leaves the live t
       original.call(this, key, value);
     };
   });
-  await page.getByTestId("appearance-theme-custom").click();
+  await page.getByTestId("appearance-field-preset-sea").click();
   await page.getByTestId("appearance-mode-dark").click();
   await page.getByTestId("appearance-apply").click();
-  await expect(page.getByTestId("appearance-theme-custom")).toHaveAttribute(
+  await expect(page.getByTestId("appearance-field-preset-sea")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -389,10 +469,9 @@ test("Appearance write failure retains the draft for retry and leaves the live t
     "buzz",
   );
   await page.getByTestId("appearance-cancel").click();
-  await expect(page.getByTestId("appearance-theme-default")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    page.getByTestId("appearance-field-preset-dawn"),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Back to themes preserves the catalog search and filter", async ({

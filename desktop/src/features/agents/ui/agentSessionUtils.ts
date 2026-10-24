@@ -296,6 +296,16 @@ export function formatDuration(
  * Tiers: `<60s → "Ns"` · `<60m → "Nm Ns"` · `≥60m → "Nh Nm Ns"`.
  * Negative input clamps to 0; carries roll cleanly (e.g. 3600s → "1h 0m 0s").
  */
+/** Elapsed time as a clock (`2:13`, `1:02:09`), for compact badges. */
+export function formatElapsedClock(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}:${seconds}`;
+  const minutes = String(totalMinutes % 60).padStart(2, "0");
+  return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
+}
+
 export function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s`;

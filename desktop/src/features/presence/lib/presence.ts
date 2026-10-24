@@ -85,11 +85,11 @@ export function getPresenceLabel(status: PresenceStatus) {
 export function getPresenceDotClassName(status: PresenceStatus) {
   switch (status) {
     case "online":
-      return "bg-emerald-500";
+      return "bg-colony-online";
     case "away":
-      return "bg-amber-500";
+      return "bg-colony-away";
     case "offline":
-      return "bg-muted-foreground/35";
+      return "box-border border-2 border-colony-fg-secondary bg-transparent";
   }
 }
 

@@ -304,10 +304,10 @@ test("narrow thread overlays reopen with keyboard and restore trigger focus", as
     ),
   );
   const drawerBounds = await drawer.boundingBox();
-  expect(drawerBounds?.x).toBeGreaterThanOrEqual(415);
-  expect(drawerBounds?.x).toBeLessThanOrEqual(425);
-  expect(drawerBounds?.y).toBeGreaterThanOrEqual(236);
-  expect(drawerBounds?.y).toBeLessThanOrEqual(246);
+  expect(drawerBounds?.x).toBeGreaterThanOrEqual(425);
+  expect(drawerBounds?.x).toBeLessThanOrEqual(435);
+  expect(drawerBounds?.y).toBeGreaterThanOrEqual(229);
+  expect(drawerBounds?.y).toBeLessThanOrEqual(239);
   expect(drawerBounds?.width).toBeGreaterThanOrEqual(500);
   expect(drawerBounds?.width).toBeLessThanOrEqual(520);
   expect(drawerBounds?.height).toBeGreaterThan(560);

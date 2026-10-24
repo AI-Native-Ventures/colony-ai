@@ -99,6 +99,7 @@ export type AppSidebarProps = {
   onSelectToday: () => void;
   onSelectSavedForLater: () => void;
   onSelectFactory: () => void;
+  onSelectAgents: () => void;
   onSelectGoals: () => void;
   onSelectTeam: () => void;
   onSelectPower: () => void;

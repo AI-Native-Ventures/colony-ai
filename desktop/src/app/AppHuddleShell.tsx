@@ -1,6 +1,5 @@
 import * as React from "react";
 import { AppHuddleBar } from "@/app/AppHuddleBar";
-import * as BuzzTheme from "@/app/BuzzThemeSurfaces";
 import { HuddleProvider, useHuddle } from "@/features/huddle";
 import { HUDDLE_SHORTCUT_EVENT } from "@/shared/lib/keyboard-shortcuts";
 import { RemindMeLaterProvider } from "@/features/reminders/ui/RemindMeLaterProvider";
@@ -88,7 +87,6 @@ export function AppHuddleShell({
                     : "buzz-huddle-app-surface-open"),
               )}
             >
-              <BuzzTheme.GradientLayer />
               {children}
             </div>
             {isRoom || !isCompanionOpen ? (

@@ -8,6 +8,7 @@ import {
   customGradientStops,
   isValidHexColor,
   writeAppearanceSnapshot,
+  mergeAppearanceSnapshot,
   mergeLiveAppearanceSnapshot,
 } from "./appearanceSnapshot.ts";
 
@@ -123,4 +124,54 @@ test("opening Settings retains live theme and channel choices over an older full
     assert.equal(result[key], live[key]);
   assert.equal(result.custom, true);
   assert.equal(result.messageSize, "larger");
+});
+
+test("a snapshot saved before the field existed keeps its custom gradient as the field", () => {
+  const base = {
+    theme: "buzz",
+    accent: "#5B45BE",
+    followSystem: true,
+    customLight: ["#895AF6", "#5A9CF6"],
+    glassOpacity: 65,
+    messageSize: "default",
+  };
+  const legacy = mergeAppearanceSnapshot(base, {
+    custom: true,
+    customLight: ["#000000", "#ffffff"],
+  });
+  assert.deepEqual(legacy.field, ["#000000", "#808080", "#FFFFFF"]);
+  // Nothing custom saved: the default trio.
+  assert.deepEqual(mergeAppearanceSnapshot(base, { theme: "dracula" }).field, [
+    "#F5A4D5",
+    "#C6B3F4",
+    "#94B4FA",
+  ]);
+  // An explicit field always wins over the old gradient, even the default one.
+  const explicit = mergeAppearanceSnapshot(base, {
+    custom: true,
+    customLight: ["#000000", "#ffffff"],
+    field: ["#ffc2a6", "#f5a4d5", "#c6b3f4"],
+  });
+  assert.deepEqual(explicit.field, ["#FFC2A6", "#F5A4D5", "#C6B3F4"]);
+  // A damaged field falls back instead of throwing.
+  assert.deepEqual(
+    mergeAppearanceSnapshot(base, { field: ["x", "y", "z"] }).field,
+    ["#F5A4D5", "#C6B3F4", "#94B4FA"],
+  );
+});
+
+test("opening Settings keeps the live field over an older snapshot's", () => {
+  const live = {
+    theme: "buzz",
+    accent: "#5B45BE",
+    followSystem: true,
+    customLight: ["#895AF6", "#5A9CF6"],
+    field: ["#A3E3D3", "#9CC2F7", "#C6B3F4"],
+    glassOpacity: 65,
+    messageSize: "default",
+  };
+  const result = mergeLiveAppearanceSnapshot(live, {
+    field: ["#ffc2a6", "#f5a4d5", "#c6b3f4"],
+  });
+  assert.deepEqual(result.field, ["#A3E3D3", "#9CC2F7", "#C6B3F4"]);
 });

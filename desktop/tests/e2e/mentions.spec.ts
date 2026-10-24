@@ -1185,7 +1185,7 @@ test("selecting a person mention inserts @Name into input", async ({
   await expect(
     input.locator(".mention-prefix-hidden", { hasText: "@" }),
   ).toHaveCSS("opacity", "0");
-  await expect(mentionChip).toHaveCSS("line-height", "19px");
+  await expect(mentionChip).toHaveCSS("line-height", "21px");
   const scrollViewport = page.getByTestId("message-input-scroll");
   const paintedBounds = await mentionChip.evaluate((element) => {
     const chip = element.getBoundingClientRect();
@@ -1281,8 +1281,10 @@ test("selecting a person mention inserts @Name into input", async ({
   expect(wrappedPaintBounds.chipTop + 1).toBeGreaterThanOrEqual(
     wrappedPaintBounds.viewportTop,
   );
+  // The designed 27px message line leaves the wrapped chip up to 2px under
+  // the scroll viewport's edge, still inside its padding.
   expect(wrappedPaintBounds.chipBottom).toBeLessThanOrEqual(
-    wrappedPaintBounds.viewportBottom,
+    wrappedPaintBounds.viewportBottom + 2,
   );
   await expect(input).toHaveCSS("height", /^(?!20px$)/);
   await scrollViewport.evaluate((element) => {
@@ -1648,12 +1650,12 @@ test("mentioning an existing Team agent joins the channel and starts it detached
   const timelineLayout = await timelineChipLayout(mentionChip);
   expect(timelineLayout).toMatchObject({
     boxDecorationBreak: "clone",
-    chipLineHeight: 19.4286,
+    chipLineHeight: 25.1999,
     fragmentCount: 1,
     fragmentGap: null,
     fragmentStep: null,
-    paragraphHeight: 21.421875,
-    paragraphLineHeight: 21.4286,
+    paragraphHeight: 27.203125,
+    paragraphLineHeight: 27.1999,
   });
   expect(timelineLayout.chipHeight).toBeLessThanOrEqual(
     timelineLayout.paragraphLineHeight,
@@ -4650,12 +4652,12 @@ test("mention text is highlighted in sent messages", async ({ page }) => {
   const timelineLayout = await timelineChipLayout(mentionChip);
   expect(timelineLayout).toMatchObject({
     boxDecorationBreak: "clone",
-    chipLineHeight: 19.4286,
+    chipLineHeight: 25.1999,
     fragmentCount: 1,
     fragmentGap: null,
     fragmentStep: null,
-    paragraphHeight: 21.421875,
-    paragraphLineHeight: 21.4286,
+    paragraphHeight: 27.203125,
+    paragraphLineHeight: 27.1999,
   });
   expect(timelineLayout.chipHeight).toBeLessThanOrEqual(
     timelineLayout.paragraphLineHeight,
@@ -4693,12 +4695,12 @@ test("qualified mentions wrap without changing message line rhythm", async ({
 
   const layout = await timelineChipLayout(mentionChip);
   expect(layout.boxDecorationBreak).toBe("clone");
-  expect(layout.chipLineHeight).toBe(19.4286);
+  expect(layout.chipLineHeight).toBe(25.1999);
   expect(layout.fragmentCount).toBe(3);
   expect(layout.fragmentHeight).toBeLessThanOrEqual(layout.paragraphLineHeight);
   expect(layout.fragmentGap).toBeGreaterThan(0);
-  expect(layout.fragmentStep).toBe(21);
-  expect(layout.paragraphLineHeight).toBe(21.4286);
+  expect(layout.fragmentStep).toBe(27);
+  expect(layout.paragraphLineHeight).toBe(27.1999);
   expect(layout.chipHeight).toBeLessThanOrEqual(
     layout.fragmentCount * layout.paragraphLineHeight,
   );

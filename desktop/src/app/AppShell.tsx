@@ -168,6 +168,7 @@ export function AppShell() {
     goPower,
     goNewMessage,
     goFactory,
+    goAgents,
     goGoals,
     goTeam,
     goClients,
@@ -985,6 +986,7 @@ export function AppShell() {
                           ]}
                           onSelectHome={() => void goHome()}
                           onSelectFactory={() => void goFactory()}
+                          onSelectAgents={() => void goAgents()}
                           onSelectGoals={() => void goGoals()}
                           onSelectTeam={() => void goTeam()}
                           onSelectClients={() => void goClients()}

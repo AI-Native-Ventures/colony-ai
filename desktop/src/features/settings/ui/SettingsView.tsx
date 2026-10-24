@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ColonyField } from "@/shared/ui/ColonyField";
 import { ArrowLeft, ArrowRight, Search, Settings, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
@@ -13,7 +14,11 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
+import {
+  ACCENT_STORAGE_KEY,
+  DEFAULT_ACCENT,
+  useTheme,
+} from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -199,6 +204,7 @@ export function SettingsView({
   const theme = useTheme();
   const {
     accentColor,
+    fieldColors,
     followSystem,
     glassBackground,
     glassOpacity,
@@ -223,6 +229,7 @@ export function SettingsView({
   const initialAppearance = mergeLiveAppearanceSnapshot(
     currentAppearanceSnapshot({
       accentColor,
+      fieldColors,
       followSystem,
       glassBackground,
       glassOpacity,
@@ -262,6 +269,7 @@ export function SettingsView({
     const current = mergeLiveAppearanceSnapshot(
       currentAppearanceSnapshot({
         accentColor,
+        fieldColors,
         followSystem,
         glassBackground,
         glassOpacity,
@@ -280,6 +288,7 @@ export function SettingsView({
   }, [
     appearanceKey,
     accentColor,
+    fieldColors,
     followSystem,
     glassBackground,
     glassOpacity,
@@ -307,7 +316,7 @@ export function SettingsView({
         : storedAccent === "neutral" ||
             (storedAccent !== null && isValidHexColor(storedAccent))
           ? storedAccent
-          : theme.accentColor || "#895AF6";
+          : theme.accentColor || DEFAULT_ACCENT;
     const accent = accentValue === "neutral" ? "#74717B" : accentValue;
     document.documentElement.style.setProperty(
       "--w20-appearance-accent",
@@ -419,6 +428,7 @@ export function SettingsView({
     theme.applyAppearance({
       theme: selectedTheme,
       accent: next.accent,
+      field: next.field,
       followSystem: false,
     });
     setSavedAppearance({ theme: selectedTheme, density: selectedDensity });
@@ -437,6 +447,7 @@ export function SettingsView({
         data-testid="settings-sidebar"
         variant="sidebar"
       >
+        <ColonyField />
         <SidebarHeader className="w20-nav-header">
           <Button
             className="w20-nav-back"

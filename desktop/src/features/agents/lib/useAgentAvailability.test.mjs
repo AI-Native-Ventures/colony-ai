@@ -41,7 +41,7 @@ for (const presence of ["online", "away", "offline", undefined]) {
         `Agent: ${availability[0].toUpperCase()}${availability.slice(1)}`,
       ),
     );
-    assert.equal(html.includes("bg-emerald-500"), availability === "online");
+    assert.equal(html.includes("bg-colony-online"), availability === "online");
     assert.doesNotMatch(html, /data-testid="start"/);
   });
 }
