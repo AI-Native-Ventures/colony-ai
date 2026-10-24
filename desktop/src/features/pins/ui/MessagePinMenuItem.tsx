@@ -1,9 +1,10 @@
-import { Pin, PinOff } from "lucide-react";
+import { PinOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { PinGlyph } from "@/shared/ui/conversationIcons";
 import { DropdownMenuItem } from "@/shared/ui/dropdown-menu";
 
 import {
@@ -63,7 +64,7 @@ export function MessagePinMenuItem({
         data-testid={testId}
         disabled
       >
-        <Pin aria-hidden="true" className="h-4 w-4" />
+        <PinGlyph size={17} />
         Pinned by {name}
       </DropdownMenuItem>
     );
@@ -116,7 +117,7 @@ export function MessagePinMenuItem({
         );
       }}
     >
-      <Pin aria-hidden="true" className="h-4 w-4" />
+      <PinGlyph size={17} />
       Pin to channel
     </DropdownMenuItem>
   );

@@ -16,3 +16,16 @@ export const WorkAreaChannelContext =
 export function useWorkAreaChannel(): WorkAreaChannel | null {
   return React.useContext(WorkAreaChannelContext);
 }
+
+/**
+ * The channel whose conversation is on screen beside the dock. Provided by the
+ * layout around the conversation, so a message's file card can tell whether its
+ * file is the one open in that channel's dock.
+ */
+export const WorkAreaConversationContext = React.createContext<string | null>(
+  null,
+);
+
+export function useWorkAreaConversationChannelId(): string | null {
+  return React.useContext(WorkAreaConversationContext);
+}

@@ -416,7 +416,7 @@ function VirtualizedTimelineItemShell({
       ref={ref}
       style={preserveVisibility ? style : { ...style, visibility: undefined }}
     >
-      {children}
+      <div className="c3c-timeline-column">{children}</div>
     </div>
   );
 }
@@ -502,6 +502,20 @@ function VirtualizedTimelineRows({
       if (!list || !(scroller instanceof HTMLDivElement) || !pinnedLabel) {
         return;
       }
+      // Item offsets start below the scroller's top padding. The handoff maths
+      // below was written for the channel chrome inset; the conversation column
+      // pads further (header height plus a gutter), so shift by the difference.
+      const styles = getComputedStyle(scroller);
+      const rootFontPx = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      const chromeInsetPx =
+        Number.parseFloat(
+          styles.getPropertyValue("--channel-top-chrome-height"),
+        ) * rootFontPx;
+      const insetDelta = Number.isFinite(chromeInsetPx)
+        ? Number.parseFloat(styles.paddingTop) - chromeInsetPx
+        : 0;
 
       const pinnedTop =
         pinnedLabel.getBoundingClientRect().top -
@@ -509,7 +523,18 @@ function VirtualizedTimelineRows({
         pinnedDayTranslateYRef.current;
       const [pinnedPill, incomingPinnedPill] =
         pinnedLabel.querySelectorAll<HTMLParagraphElement>("p");
-      const pinnedPillHeight = pinnedPill?.offsetHeight ?? 0;
+      // An empty floating pill has no height (the label is plain text), so
+      // measure a real divider pill, or fall back to one text line, or the
+      // label would never get its first value.
+      const pinnedPillHeight =
+        pinnedPill?.offsetHeight ||
+        scroller.querySelector<HTMLElement>(
+          '[data-testid="message-timeline-day-divider"] p',
+        )?.offsetHeight ||
+        Number.parseFloat(
+          getComputedStyle(pinnedPill ?? pinnedLabel).lineHeight,
+        ) ||
+        28;
       if (pinnedPillHeight === 0) return;
       const renderedDividerPillTop = (
         divider: (typeof dayDividerItems)[number],
@@ -539,7 +564,8 @@ function VirtualizedTimelineRows({
 
       let activeDividerIndex = -1;
       for (const [index, divider] of dayDividerItems.entries()) {
-        if (list.getItemOffset(divider.index) > offset + pinnedTop) break;
+        if (list.getItemOffset(divider.index) > offset + pinnedTop - insetDelta)
+          break;
         activeDividerIndex = index;
       }
       const candidateDivider = dayDividerItems[activeDividerIndex];
@@ -557,7 +583,7 @@ function VirtualizedTimelineRows({
       const nextDivider = dayDividerItems[activeDividerIndex + 1];
       const nextDividerTop = nextDivider
         ? (renderedDividerPillTop(nextDivider) ??
-          list.getItemOffset(nextDivider.index) - offset)
+          list.getItemOffset(nextDivider.index) - offset + insetDelta)
         : null;
       const nextTranslateY =
         nextDividerTop === null
@@ -744,7 +770,7 @@ function VirtualizedTimelineRows({
       <PreserveVirtualizedItemVisibilityContext value={isPrepend}>
         <VList
           ref={listRef}
-          className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-2 pt-[var(--channel-top-chrome-height,4.5rem)]"
+          className="c3c-timeline-scroller h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain pt-[var(--channel-top-chrome-height,4.5rem)]"
           data={items}
           item={VirtualizedTimelineItemShell}
           itemSize={estimateItemSize}
@@ -772,7 +798,7 @@ function VirtualizedTimelineRows({
               const dayLabel = formatDayGroupLabel(item.headingTimestamp);
               return (
                 <div
-                  className="relative flex flex-col before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
+                  className="relative flex flex-col pb-6"
                   data-day-label={dayLabel}
                   data-testid="message-timeline-day-group"
                   key={virtualizedItemKey(item)}

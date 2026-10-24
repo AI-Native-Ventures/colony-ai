@@ -78,10 +78,10 @@ test("agent rows offer automatic mention controls", async () => {
   assert.equal(action.getAttribute("aria-pressed"), "false");
   assert.equal(action.getAttribute("data-state"), "off");
   const inactivePin = action.querySelector(
-    '[data-testid="mention-auto-pin-icon"]',
+    '[data-testid="mention-auto-pin-icon"] svg',
   );
-  assert.match(inactivePin?.getAttribute("class") ?? "", /\blucide-pin\b/);
-  assert.equal(inactivePin?.getAttribute("fill"), "none");
+  assert.ok(inactivePin);
+  assert.doesNotMatch(inactivePin.getAttribute("class") ?? "", /fill-current/);
   fireEvent.click(action);
   assert.deepEqual(toggled, [suggestion]);
   assert.deepEqual(selected, [suggestion]);
@@ -98,9 +98,9 @@ test("agent rows offer automatic mention controls", async () => {
   assert.equal(selectedAction.getAttribute("aria-pressed"), "true");
   assert.equal(selectedAction.getAttribute("data-state"), "on");
   const activePin = selectedAction.querySelector(
-    '[data-testid="mention-auto-pin-icon"]',
+    '[data-testid="mention-auto-pin-icon"] svg',
   );
-  assert.equal(activePin?.getAttribute("fill"), "currentColor");
+  assert.match(activePin?.getAttribute("class") ?? "", /fill-current/);
   fireEvent.click(selectedAction);
   assert.deepEqual(toggled, [suggestion, suggestion]);
 });
@@ -128,9 +128,7 @@ test("automatic mention setting is visible by default without an options ingress
   assert.equal(view.queryByRole("button", { name: "Options" }), null);
   assert.ok(view.getByTestId("mention-options-settings"));
   const settings = view.getByTestId("mention-options-settings");
-  assert.ok(settings.classList.contains("w-80"));
-  assert.ok(settings.classList.contains("max-w-full"));
-  assert.ok(settings.parentElement?.classList.contains("justify-end"));
+  assert.ok(settings.classList.contains("c3c-mention-head"));
   const toggle = view.getByRole("switch", {
     name: "Automatically mention agents",
   });
@@ -267,14 +265,12 @@ test("collision npubs sit inline with agent metadata", async () => {
   const agentIcons = view.getAllByTestId("mention-agent-icon");
   const collisionNpubs = view.getAllByTestId("mention-collision-npub");
   assert.equal(collisionNpubs.length, 2);
-  for (const [index, npub] of collisionNpubs.entries()) {
-    const agentMetadata = agentIcons[index].closest("span")?.parentElement;
-    assert.equal(npub.parentElement, agentMetadata);
-    assert.match(agentMetadata?.textContent ?? "", /agentmanaged by younpub1/);
-    assert.match(npub.className, /(?:^|\s)-translate-y-0\.5(?:\s|$)/);
-    assert.match(npub.className, /(?:^|\s)leading-none(?:\s|$)/);
-    assert.match(agentMetadata?.className ?? "", /(?:^|\s)min-h-3\.5(?:\s|$)/);
+  for (const npub of collisionNpubs) {
+    // The npub sits on the same line as the "managed by" subtitle.
+    assert.match(npub.parentElement?.textContent ?? "", /managed by younpub1/);
+    assert.match(npub.className, /(?:^|\s)font-mono(?:\s|$)/);
   }
+  assert.equal(agentIcons.length, 2);
 });
 
 test("does not intercept Tab from the editor", async () => {

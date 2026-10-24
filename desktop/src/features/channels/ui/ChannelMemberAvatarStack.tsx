@@ -4,6 +4,8 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { ChannelMember } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { cn } from "@/shared/lib/cn";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
 const MAX_VISIBLE_AVATARS = 3;
@@ -16,10 +18,17 @@ export function ChannelMemberAvatarStack({
 }: {
   currentPubkey?: string;
   members: ChannelMember[];
-  size?: "compact" | "default";
+  size?: "compact" | "default" | "header";
   testIdPrefix?: string;
 }) {
   const orderedMembers = React.useMemo(() => {
+    if (size === "header") {
+      // You first, then the agents working here, then everyone else.
+      const self = currentPubkey ? normalizePubkey(currentPubkey) : null;
+      const rank = (member: ChannelMember) =>
+        normalizePubkey(member.pubkey) === self ? 0 : member.isAgent ? 1 : 2;
+      return [...members].sort((left, right) => rank(left) - rank(right));
+    }
     if (size !== "compact" || !currentPubkey) return members;
     const normalizedCurrentPubkey = normalizePubkey(currentPubkey);
     return [
@@ -41,8 +50,10 @@ export function ChannelMemberAvatarStack({
   );
   const profilesQuery = useUsersBatchQuery(visiblePubkeys);
   const profiles = profilesQuery.data?.profiles;
-  const avatarSizeClass = size === "compact" ? "!h-6 !w-6" : "!h-8 !w-8";
-  const avatarOverlapClass = size === "compact" ? "-ml-1.5" : "-ml-2";
+  const avatarSizeClass =
+    size === "compact" ? "!h-6 !w-6" : size === "header" ? "" : "!h-8 !w-8";
+  const avatarOverlapClass =
+    size === "compact" || size === "header" ? "-ml-1.5" : "-ml-2";
   const overflowSizeClass = size === "compact" ? "size-6" : "size-8";
   const overflowCount = orderedMembers.length - visibleMembers.length;
   const stackItemCount = visibleMembers.length + (overflowCount > 0 ? 1 : 0);
@@ -53,7 +64,7 @@ export function ChannelMemberAvatarStack({
 
   return (
     <div
-      className="flex shrink-0 items-center pl-3"
+      className={`flex shrink-0 items-center ${size === "header" ? "" : "pl-3"}`}
       data-testid={`${testIdPrefix}-avatar-stack`}
     >
       {visibleMembers.map((member, index) => {
@@ -66,7 +77,7 @@ export function ChannelMemberAvatarStack({
           pubkey: member.pubkey,
         });
         const avatarLabel =
-          size === "compact" &&
+          (size === "compact" || size === "header") &&
           currentPubkey &&
           normalizedPubkey === normalizePubkey(currentPubkey)
             ? (member.displayName ?? label)
@@ -79,17 +90,31 @@ export function ChannelMemberAvatarStack({
             key={normalizedPubkey}
             style={{ zIndex: index + 1 }}
           >
-            <UserAvatar
-              avatarUrl={profile?.avatarUrl ?? null}
-              className={`${avatarSizeClass} border-2 border-background text-2xs`}
-              displayName={avatarLabel}
-              fallbackDelayMs={0}
-              shape={profile?.isAgent ? "squircle" : "circle"}
-            />
+            {size === "header" ? (
+              <ProfileAvatar
+                avatarUrl={profile?.avatarUrl ?? null}
+                className={cn(
+                  "text-3xs ring-2 ring-colony-surface",
+                  profile?.isAgent
+                    ? "h-[calc(30*var(--colony-px))] w-[calc(30*var(--colony-px))]"
+                    : "h-[calc(28*var(--colony-px))] w-[calc(28*var(--colony-px))]",
+                )}
+                label={avatarLabel}
+                shape={profile?.isAgent ? "squircle" : "circle"}
+              />
+            ) : (
+              <UserAvatar
+                avatarUrl={profile?.avatarUrl ?? null}
+                className={`${avatarSizeClass} border-2 border-background text-2xs`}
+                displayName={avatarLabel}
+                fallbackDelayMs={0}
+                shape={profile?.isAgent ? "squircle" : "circle"}
+              />
+            )}
           </span>
         );
       })}
-      {overflowCount > 0 ? (
+      {overflowCount > 0 && size !== "header" ? (
         <span
           className={`${avatarOverlapClass} ${overflowSizeClass} flex items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground`}
           data-testid={`${testIdPrefix}-avatar-overflow`}

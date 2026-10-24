@@ -78,7 +78,10 @@ for (const theme of THEMES) {
     await expectPopoverSurface(simpleTooltip);
 
     await page.mouse.move(0, 0);
-    await page.getByTestId("channel-intro-action-create-agent").click();
+    // The intro action cards are gone; Add agents lives in the members dialog.
+    await page.getByTestId("channel-members-trigger").click();
+    await page.getByTestId("members-sidebar-agent-actions").click();
+    await page.getByTestId("members-sidebar-add-agents").click();
     const dialog = page.getByTestId("add-channel-bot-dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Contrast Crew" }).hover();

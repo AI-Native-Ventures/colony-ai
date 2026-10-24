@@ -31,8 +31,9 @@ async function settle(page: import("@playwright/test").Page) {
 async function selectTemporaryChannelType(
   page: import("@playwright/test").Page,
 ) {
-  await page.getByTestId("channel-management-channel-type").click();
-  await page.getByLabel("Temporary channel").click();
+  await page
+    .getByTestId("channel-management-channel-type-option-temporary")
+    .click();
 }
 
 test.describe("channel controls", () => {
@@ -53,8 +54,8 @@ test.describe("channel controls", () => {
       page.getByTestId("channel-management-permissions-container"),
     ).toBeVisible();
     await expect(
-      page.getByTestId("channel-management-permissions"),
-    ).toHaveAccessibleName("Visibility: Public");
+      page.getByTestId("channel-management-permissions-option-open"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByTestId("channel-management-save-changes"),
     ).toBeDisabled();
@@ -62,8 +63,8 @@ test.describe("channel controls", () => {
       page.getByTestId("channel-management-channel-type"),
     ).toBeVisible();
     await expect(
-      page.getByTestId("channel-management-channel-type"),
-    ).toContainText("Ongoing");
+      page.getByTestId("channel-management-channel-type-option-ongoing"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByTestId("channel-management-ephemeral-settings"),
     ).toHaveCount(0);
@@ -101,42 +102,35 @@ test.describe("channel controls", () => {
     // Selecting a visibility only updates the local draft: the dialog title
     // reflects the pending choice and Save becomes enabled, but nothing is
     // persisted yet (no "Updating…" state).
-    await permissions.click();
     await page
       .getByTestId("channel-management-permissions-option-private")
       .click();
     await expect(
       page.getByRole("dialog", { name: "Edit private channel" }),
     ).toBeVisible();
-    await expect(permissions).toHaveAccessibleName("Visibility: Private");
+    await expect(
+      page.getByTestId("channel-management-permissions-option-private"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(permissions).not.toHaveAttribute("aria-busy", "true");
     await expect(
       page.getByTestId("channel-management-save-changes"),
     ).toBeEnabled();
-    // Wait for the dropdown to fully close before reopening it, so the
-    // trigger stays mounted/stable for the next interaction.
-    await expect(
-      page.getByTestId("channel-management-permissions-option-private"),
-    ).toHaveCount(0);
 
     // Toggling back to the original value clears the draft and disables Save.
-    await permissions.click();
     await page
       .getByTestId("channel-management-permissions-option-open")
       .click();
     await expect(
       page.getByRole("dialog", { name: "Edit public channel" }),
     ).toBeVisible();
-    await expect(permissions).toHaveAccessibleName("Visibility: Public");
+    await expect(
+      page.getByTestId("channel-management-permissions-option-open"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByTestId("channel-management-save-changes"),
     ).toBeDisabled();
-    await expect(
-      page.getByTestId("channel-management-permissions-option-open"),
-    ).toHaveCount(0);
 
     // Choose Private again and commit via Save.
-    await permissions.click();
     await page
       .getByTestId("channel-management-permissions-option-private")
       .click();
@@ -159,8 +153,8 @@ test.describe("channel controls", () => {
       page.getByRole("dialog", { name: "Edit private channel" }),
     ).toBeVisible();
     await expect(
-      page.getByTestId("channel-management-permissions"),
-    ).toHaveAccessibleName("Visibility: Private");
+      page.getByTestId("channel-management-permissions-option-private"),
+    ).toHaveAttribute("aria-pressed", "true");
     await settle(page);
   });
 
@@ -193,8 +187,9 @@ test.describe("channel controls", () => {
     await expect(
       page.getByTestId("channel-management-save-changes"),
     ).toBeEnabled();
-    await page.getByTestId("channel-management-channel-type").click();
-    await page.getByLabel("Ongoing channel").click();
+    await page
+      .getByTestId("channel-management-channel-type-option-ongoing")
+      .click();
     await expect(ephemeralSettings).toHaveCount(0);
     await expect(
       page.getByTestId("channel-management-save-changes"),
@@ -268,8 +263,6 @@ test.describe("channel controls", () => {
     await installMockBridge(page);
     await openManagementSheet(page);
     await openEditDialog(page);
-
-    await page.getByTestId("channel-management-permissions").click();
     await page
       .getByTestId("channel-management-permissions-option-private")
       .click();
@@ -297,11 +290,11 @@ test.describe("channel controls", () => {
     const lifecycle = page.getByTestId("channel-management-lifecycle");
     await lifecycle.scrollIntoViewIfNeeded();
     await expect(
-      page.getByTestId("channel-management-permissions"),
-    ).toHaveAccessibleName("Visibility: Private");
+      page.getByTestId("channel-management-permissions-option-private"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
-      page.getByTestId("channel-management-channel-type"),
-    ).toContainText("Temporary");
+      page.getByTestId("channel-management-channel-type-option-temporary"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("channel-management-ttl")).toContainText(
       "7 days",
     );
@@ -317,7 +310,6 @@ test.describe("channel controls", () => {
     await page
       .getByRole("textbox", { name: "Description" })
       .fill("This description should be discarded");
-    await page.getByTestId("channel-management-permissions").click();
     await page
       .getByTestId("channel-management-permissions-option-private")
       .click();
@@ -347,11 +339,11 @@ test.describe("channel controls", () => {
       page.getByRole("dialog", { name: "Edit public channel" }),
     ).toBeVisible();
     await expect(
-      page.getByTestId("channel-management-permissions"),
-    ).toHaveAccessibleName("Visibility: Public");
+      page.getByTestId("channel-management-permissions-option-open"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
-      page.getByTestId("channel-management-channel-type"),
-    ).toContainText("Ongoing");
+      page.getByTestId("channel-management-channel-type-option-ongoing"),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       page.getByTestId("channel-management-ephemeral-settings"),
     ).toHaveCount(0);
@@ -368,7 +360,6 @@ test.describe("channel controls", () => {
     await openEditDialog(page);
 
     const permissions = page.getByTestId("channel-management-permissions");
-    await permissions.click();
     await page
       .getByTestId("channel-management-permissions-option-private")
       .click();
@@ -402,6 +393,8 @@ test.describe("channel controls", () => {
     await expect(
       page.getByRole("dialog", { name: "Edit public channel" }),
     ).toBeVisible();
-    await expect(permissions).toHaveAccessibleName("Visibility: Public");
+    await expect(
+      page.getByTestId("channel-management-permissions-option-open"),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

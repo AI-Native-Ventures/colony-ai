@@ -41,6 +41,7 @@ type ProfileAvatarProps = {
   plain?: boolean;
   shape?: "circle" | "squircle";
   testId?: string;
+  style?: React.CSSProperties;
   /**
    * Suppress every network image request for a publisher-controlled avatar
    * URL, rendering the initials/icon placeholder instead. Community-catalog
@@ -64,6 +65,7 @@ export function ProfileAvatar({
   imageClassName,
   plain = false,
   shape = "circle",
+  style,
   testId,
   untrusted = false,
 }: ProfileAvatarProps) {
@@ -126,6 +128,7 @@ export function ProfileAvatar({
         className,
       )}
       data-testid={testId}
+      style={style}
       onMouseEnter={animated ? () => setIsHovered(true) : undefined}
       onMouseLeave={animated ? () => setIsHovered(false) : undefined}
     >

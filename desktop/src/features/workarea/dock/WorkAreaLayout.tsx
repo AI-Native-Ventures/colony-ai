@@ -11,6 +11,7 @@ import { listenForFilesTab, listenForWorkspaceFiles } from "../workspaceFiles";
 import {
   closeWorkAreaRestoringFocus,
   closeWorkAreaTabRestoringFocus,
+  openWorkAreaFileFrom,
   openWorkAreaFrom,
   toggleWorkAreaFrom,
 } from "./workAreaActions";
@@ -19,10 +20,10 @@ import {
   listenForNewWorkAreaTabRequests,
   listenForWorkAreaTabRequests,
 } from "./workAreaRequests";
-import { setWorkAreaFileReference } from "./workAreaFilesStore";
 import {
   type WorkAreaChannel,
   WorkAreaChannelContext,
+  WorkAreaConversationContext,
 } from "./workAreaChannelContext";
 import { getWorkAreaTabDefinition } from "./workAreaTabRegistry";
 import {
@@ -122,13 +123,16 @@ export function WorkAreaLayout({
     };
   }, []);
 
-  // File links in messages and the channel's Files tab open the Files tab.
+  // File links and cards in messages open the file on its own tab.
   React.useEffect(
     () =>
       listenForWorkspaceFiles((reference) => {
         if (!channelId || reference.expectedRelayUrl !== relayOrigin) return;
-        setWorkAreaFileReference(channelId, reference);
-        openWorkAreaFrom(channelId, "files", document.activeElement);
+        openWorkAreaFileFrom(
+          channelId,
+          { agentPubkey: reference.agentPubkey, path: reference.path },
+          document.activeElement,
+        );
       }),
     [channelId, relayOrigin],
   );
@@ -277,7 +281,9 @@ export function WorkAreaLayout({
         className="colony-work-area-conversation"
         data-testid="work-area-conversation"
       >
-        {children}
+        <WorkAreaConversationContext.Provider value={channelId}>
+          {children}
+        </WorkAreaConversationContext.Provider>
       </div>
       {openChannelId !== null && !overlay ? (
         <WorkAreaDivider

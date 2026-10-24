@@ -1,5 +1,3 @@
-import { Clock } from "lucide-react";
-
 import {
   TIMEOUT_PRESETS,
   timeoutExpiresAt,
@@ -10,6 +8,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/shared/ui/dropdown-menu";
+import { TimeoutGlyph } from "@/shared/ui/conversationIcons";
 
 /**
  * A dropdown submenu of community-timeout durations. Each item resolves the
@@ -36,7 +35,7 @@ export function TimeoutDurationSubmenu({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={disabled}>
-        <Clock className="h-4 w-4" />
+        <TimeoutGlyph size={17} />
         {label}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>

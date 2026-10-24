@@ -20,6 +20,7 @@ import { useChannelBrowserDialog } from "@/app/useChannelBrowserDialog";
 import { useMarkAsReadShortcuts } from "@/app/useMarkAsReadShortcuts";
 import { useSettingsShortcuts } from "@/app/useSettingsShortcuts";
 import { useAppShellKeyboardShortcuts } from "@/app/useAppShellKeyboardShortcuts";
+import { listenForChannelSearchRequests } from "@/shared/lib/channelSearchRequest";
 import { useAppShellDesktopNotifications } from "@/app/useAppShellDesktopNotifications";
 import { useAppShellLifecycleEffects } from "@/app/useAppShellLifecycleEffects";
 import { useChannelActivityProjection } from "@/app/useChannelActivityProjection";
@@ -165,6 +166,7 @@ export function AppShell() {
     selectedView !== "pins" &&
     location.pathname !== "/team" &&
     location.pathname !== "/today" &&
+    location.pathname !== "/messages/new" &&
     !location.pathname.startsWith("/today/") &&
     !location.pathname.startsWith("/asks/") &&
     !location.pathname.startsWith("/navigation/") &&
@@ -503,6 +505,10 @@ export function AppShell() {
     setScopeSearchFocusRequest((request) => request + 1);
     void refetchChannels();
   }, [refetchChannels]);
+  React.useEffect(
+    () => listenForChannelSearchRequests(handleOpenChannelSearch),
+    [handleOpenChannelSearch],
+  );
 
   const handleBrowseChannelJoin = React.useCallback(
     async (channelId: string) => {

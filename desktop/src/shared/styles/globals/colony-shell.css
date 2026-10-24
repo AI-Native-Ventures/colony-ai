@@ -29,46 +29,10 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="channel-composer-overlay"],
-    [data-testid="thread-composer-overlay"]
-  )
-  [data-testid="message-input-scroll"] {
-  padding: var(--colony-composer-input-padding, 0.75rem 0.75rem 0.4375rem);
-  font-size: var(--conversation-message-font-size);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="thread-composer-overlay"]
-  [data-testid="message-composer"]:has(.colony-thread-crosspost)
-  [data-testid="message-input-scroll"] {
-  padding: var(--colony-composer-input-padding, 0.75rem 0.75rem 0.4375rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
   [data-testid="channel-composer-overlay"]
   [data-testid="composer-dock-backdrop"] {
   left: var(--colony-composer-gutter, 1.5rem);
   right: var(--colony-composer-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="message-timeline"] {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="message-thread-head"],
-    [data-testid="message-thread-head-divider"],
-    [data-testid="message-thread-replies"]
-  ) {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-view-tabs"] {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -80,27 +44,6 @@
 
 :root:has([data-colony-full-app-shell="true"]) .buzz-huddle-app-surface {
   border: 0;
-}
-
-/* A narrow reply box must wrap actions instead of painting over its tools. */
-:root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="channel-composer-overlay"],
-    [data-testid="thread-composer-overlay"]
-  )
-  [data-testid="message-composer-toolbar"] {
-  height: auto;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="message-composer-tools"] {
-  min-width: max-content;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="message-composer-toolbar"]
-  > div:last-child {
-  margin-left: auto;
 }
 
 /* Keep the corner masks on the composer edges after the shared gutter change. */
@@ -128,15 +71,6 @@
   padding-inline: var(--colony-composer-gutter, 1.5rem);
 }
 
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="thread-composer-overlay"]
-  :is(
-    .colony-message-composer-footer-content,
-    [data-testid="message-composer-toolbar"]
-  ) {
-  padding-inline: 0.75rem;
-}
-
 /* Settings page content keeps its own layout inside the shared frame. */
 :root:has(.w20-settings-shell) .w20-settings-shell {
   padding: 0;
@@ -152,21 +86,4 @@
 
 :root:has(.w20-settings-shell) .w20-nav-person small {
   color: hsl(var(--foreground));
-}
-
-@media (max-width: 75rem) {
-  :root:has([data-colony-workspace-route="true"])
-    [data-testid="chat-header"]
-    > div {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: 2.25rem;
-  }
-
-  :root:has([data-colony-workspace-route="true"])
-    [data-testid="chat-header"]
-    > div
-    > div:first-child {
-    min-width: 10rem;
-  }
 }

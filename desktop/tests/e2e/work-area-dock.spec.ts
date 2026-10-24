@@ -14,6 +14,8 @@ import {
 const TERM = 'section[aria-label="Colony Term"]';
 const STORAGE_PREFIX = "colony-work-area.v1:";
 const MAC = process.platform === "darwin";
+// The dock opens at the ChannelWorkArea board's width (799px of 1160px).
+const DEFAULT_WIDTH = 68.85;
 const WRONG_PRIMARY = MAC ? "Control" : "Meta";
 
 const dock = (page: Page) => page.getByTestId("work-area-panel");
@@ -95,7 +97,9 @@ test.describe("work area dock", () => {
     await expect(panel).toContainText("No agent workspace here yet");
 
     // Escape from the header closes the dock and returns focus to the opener.
+    // The opener's tooltip is still fading out; it owns Escape until it is gone.
     await filesTab.focus();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(dock(page)).toHaveCount(0);
     await expect(trigger(page)).toBeFocused();
@@ -187,16 +191,16 @@ test.describe("work area dock", () => {
     await expect(handle).toHaveAttribute("aria-orientation", "vertical");
     await expect(handle).toHaveAttribute("aria-valuemin", "35");
     await expect(handle).toHaveAttribute("aria-valuemax", "75");
-    expect(await widthValue(page)).toBe(64);
+    expect(await widthValue(page)).toBe(DEFAULT_WIDTH);
 
     await handle.focus();
     await page.keyboard.press("ArrowRight");
-    expect(await widthValue(page)).toBe(62);
+    expect(await widthValue(page)).toBe(67);
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
-    expect(await widthValue(page)).toBe(66);
+    expect(await widthValue(page)).toBe(71);
     await page.keyboard.press("Shift+ArrowRight");
-    expect(await widthValue(page)).toBe(56);
+    expect(await widthValue(page)).toBe(61);
     for (let i = 0; i < 4; i += 1)
       await page.keyboard.press("Shift+ArrowRight");
     expect(await widthValue(page)).toBe(35);
@@ -212,11 +216,14 @@ test.describe("work area dock", () => {
     expect(await widthValue(page)).toBe(75);
 
     await page.keyboard.press("Home");
-    expect(await widthValue(page)).toBe(64);
+    expect(await widthValue(page)).toBe(DEFAULT_WIDTH);
     await page.keyboard.press("ArrowLeft");
-    await expect(handle).toHaveAttribute("aria-valuenow", "66");
+    await expect(handle).toHaveAttribute("aria-valuenow", "71");
     await handle.dblclick();
-    await expect(handle).toHaveAttribute("aria-valuenow", "64");
+    await expect(handle).toHaveAttribute(
+      "aria-valuenow",
+      String(DEFAULT_WIDTH),
+    );
 
     // The painted width follows the value, not just the attribute.
     const layoutBox = await page.getByTestId("work-area-layout").boundingBox();
@@ -224,7 +231,9 @@ test.describe("work area dock", () => {
     expect(layoutBox).not.toBeNull();
     expect(dockBox).not.toBeNull();
     expect(
-      Math.abs(((dockBox?.width ?? 0) / (layoutBox?.width ?? 1)) * 100 - 64),
+      Math.abs(
+        ((dockBox?.width ?? 0) / (layoutBox?.width ?? 1)) * 100 - DEFAULT_WIDTH,
+      ),
     ).toBeLessThan(1.5);
   });
 
@@ -241,7 +250,7 @@ test.describe("work area dock", () => {
     await page.mouse.move(startX + 120, y, { steps: 6 });
     await page.mouse.up();
     const after = await widthValue(page);
-    expect(after).toBeLessThan(64);
+    expect(after).toBeLessThan(DEFAULT_WIDTH);
     expect(after).toBeGreaterThanOrEqual(35);
     const [layout] = await storedLayout(page);
     const channels = Object.values(layout.value.channels) as {
@@ -255,13 +264,13 @@ test.describe("work area dock", () => {
     await openFilesTab(page);
     await divider(page).focus();
     for (let i = 0; i < 7; i += 1) await page.keyboard.press("ArrowRight");
-    expect(await widthValue(page)).toBe(50);
+    expect(await widthValue(page)).toBe(55);
 
     await openChannel(page, "random");
     await expect(dock(page)).toHaveCount(0);
     await openChannel(page, "general");
     await expect(dock(page)).toBeVisible();
-    expect(await widthValue(page)).toBe(50);
+    expect(await widthValue(page)).toBe(55);
 
     await page.reload();
     await expect(page.getByTestId("channel-general")).toBeVisible();
@@ -270,7 +279,7 @@ test.describe("work area dock", () => {
     await expect(
       dock(page).getByRole("tab", { name: "Files", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
-    expect(await widthValue(page)).toBe(50);
+    expect(await widthValue(page)).toBe(55);
     await openChannel(page, "random");
     await expect(dock(page)).toHaveCount(0);
 

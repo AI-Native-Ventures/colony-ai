@@ -1,5 +1,5 @@
 import * as React from "react";
-import { LogIn, Plus } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -39,7 +39,6 @@ import { getThreadPanelLayout } from "@/features/channels/lib/threadPanelLayout"
 import { useThreadViewMode } from "@/features/channels/lib/threadViewModePreference";
 import { useThreadViewModeSwitch } from "@/features/channels/ui/useThreadViewModeSwitch";
 import { useFocusDrawerPresence } from "@/features/channels/ui/useFocusDrawerPresence";
-import { useChannelWorkingAgentPubkeys } from "@/features/agents/agentWorkingSignal";
 import { useCardMintJobs } from "@/features/agents/cardMintStore";
 import {
   type BotActivityAgent,
@@ -53,12 +52,11 @@ import {
 import { useWelcomeComposerBanner } from "@/features/channels/ui/useWelcomeComposerBanner";
 import {
   mentionsKnownAgent,
-  selectThreadComposerBotTypingPubkeys,
   shouldPrioritizeIdleAuxiliary,
   shouldUseFocusIdleDrawer,
 } from "@/features/channels/ui/ChannelPane.helpers";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
-import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import { JoinGlyph } from "@/shared/ui/conversationIcons";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
@@ -72,6 +70,7 @@ import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/on
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { channelChrome } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
+const NO_WORKING_BOT_PUBKEYS: string[] = [];
 const NO_ACTIVITY_AGENTS: BotActivityAgent[] = [];
 export const ChannelPane = React.memo(function ChannelPane({
   activeChannel,
@@ -79,7 +78,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   activityAgents = NO_ACTIVITY_AGENTS,
   autoSendDraftKey = null,
   onAutoSendComplete = null,
-  botTypingEntries,
   channelManagementOpen = false,
   currentPubkey,
   editTarget = null,
@@ -312,20 +310,15 @@ export const ChannelPane = React.memo(function ChannelPane({
     acceptsMainAttachments &&
     !isSinglePanelView;
   const hasTypingActivity = typingPubkeys.length > 0;
-  const composerWorkingBotPubkeys = useChannelWorkingAgentPubkeys(
-    activeChannel?.id ?? null,
-  );
-  const hasComposerBotActivity = composerWorkingBotPubkeys.length > 0;
+  // The live agent activity strip under the composer is cut in lean Colony 3.0;
+  // the sidebar shows which channels have agents at work.
+  const composerWorkingBotPubkeys = NO_WORKING_BOT_PUBKEYS;
+  const hasComposerBotActivity = false;
   const hasCardMintActivity = useCardMintJobs().length > 0;
   const hasComposerBottomActivity =
     hasComposerBotActivity || hasTypingActivity || hasCardMintActivity;
-  const threadComposerBotTypingPubkeys = React.useMemo(
-    () =>
-      selectThreadComposerBotTypingPubkeys(botTypingEntries, openThreadHeadId),
-    [botTypingEntries, openThreadHeadId],
-  );
-  const hasThreadComposerBotActivity =
-    threadComposerBotTypingPubkeys.length > 0;
+  const threadComposerBotTypingPubkeys = NO_WORKING_BOT_PUBKEYS;
+  const hasThreadComposerBotActivity = false;
   const directMessageIntro = React.useMemo(
     () =>
       buildDirectMessageIntro({
@@ -343,6 +336,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   }, [onAddAgent]);
   const standardChannelIntro = useChannelIntro({
     activeChannel,
+    currentPubkey,
     onAddAgent,
     onAddFiles,
     onBrowseChannels,
@@ -607,6 +601,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   ) : undefined;
   const threadLayoutProps = getThreadPanelLayout({
     headerLeading: threadHeaderLeading,
+    headerChannelPrivate: activeChannel?.visibility === "private",
     headerTitleSuffix: activeChannel ? `# ${activeChannel.name}` : undefined,
     isFocusDrawer: useFocusThreadDrawer,
     isSinglePanelView,
@@ -656,9 +651,6 @@ export const ChannelPane = React.memo(function ChannelPane({
             }
           >
             {header}
-            {workspaceChrome && activeChannel?.channelType === "stream" ? (
-              <ChannelWorkspaceTabs />
-            ) : null}
             <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
               <MessageTimeline
                 ref={messageTimelineRef}
@@ -686,7 +678,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                 profiles={profiles}
                 ownerProfiles={ownerProfiles}
                 unfollowThreadById={unfollowThreadById}
-                emptyDescription="Messages and sub-replies will appear here once the relay has history for this channel."
                 emptyTitle={
                   activeChannel ? "No messages yet" : "No channel selected"
                 }
@@ -728,33 +719,43 @@ export const ChannelPane = React.memo(function ChannelPane({
               {isNonMemberView ? (
                 <div
                   data-testid="join-banner"
-                  className="flex items-center gap-3 border-t border-border/80 bg-card/50 px-5 py-3"
+                  className="flex flex-wrap items-center gap-3.5 border-t border-colony-border bg-[#fbf8f6] px-7 py-3.5"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5 text-colony-muted">
                     {activeChannel ? (
                       <ChannelGlyph
                         channel={activeChannel}
-                        className="h-4 w-4 shrink-0"
+                        className="!size-[calc(18*var(--colony-px))] shrink-0"
                       />
                     ) : null}
-                    <span className="truncate">
+                    <span className="c3c-join-viewing truncate">
                       Viewing{" "}
-                      <span className="font-medium text-foreground">
+                      <strong className="font-extrabold text-colony-fg">
                         #{activeChannel?.name}
-                      </span>
+                      </strong>
                     </span>
                   </div>
-                  <Button
+                  <button
+                    className="c3c-join-button inline-flex items-center gap-2 rounded-xl bg-colony-accent px-5 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                     disabled={isJoining}
                     onClick={() => {
                       void onJoinChannel?.();
                     }}
-                    size="sm"
-                    variant="default"
+                    type="button"
                   >
-                    <LogIn className="mr-1.5 h-4 w-4" />
+                    <JoinGlyph size={17} />
                     {isJoining ? "Joining..." : "Join to participate"}
-                  </Button>
+                  </button>
+                </div>
+              ) : activeChannel?.archivedAt ? (
+                <div
+                  className="border-t border-colony-border px-7 py-4"
+                  data-testid="archived-banner"
+                >
+                  <div className="c3c-archived-bar flex items-center gap-2.5 rounded-2xl bg-colony-wash px-4 py-3.5 text-colony-muted">
+                    <Lock aria-hidden="true" className="size-4 shrink-0" />
+                    <span>Archived channels are read-only.</span>
+                  </div>
                 </div>
               ) : (
                 <div
@@ -778,11 +779,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                       >
                         {welcomeKickoffStage}
                       </WelcomeComposerGuidanceLayer>
-                    ) : null}
-                    {timeoutState.active ? (
-                      <ComposerTimeoutBanner
-                        expiresAtMs={timeoutState.expiresAtMs}
-                      />
                     ) : null}
                     <ComposerDockBackdrop gutterClassName="inset-x-5" />
                     <MessageComposer
@@ -811,8 +807,14 @@ export const ChannelPane = React.memo(function ChannelPane({
                       onSend={handleSendMessage}
                       {...{ profiles, recentMentionPubkeys: recentMentions }}
                       showBackgroundUploadProgress={false}
-                      footerContent={
-                        workspaceChrome &&
+                      statusBanner={
+                        timeoutState.active ? (
+                          <ComposerTimeoutBanner
+                            expiresAtMs={timeoutState.expiresAtMs}
+                          />
+                        ) : undefined
+                      }
+                      toolbarAskAction={
                         activeChannel?.channelType === "stream" ? (
                           <Button
                             className="colony-ask-entry-button"

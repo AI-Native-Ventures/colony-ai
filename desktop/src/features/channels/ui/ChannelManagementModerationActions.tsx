@@ -6,18 +6,9 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { ChannelMember } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
+import { ChannelConfirmDialog } from "./ChannelConfirmDialog";
+import { TrashLinedGlyph } from "./dialogIcons";
 
 type ChannelMutation<TArgs = void> = {
   error: unknown;
@@ -104,49 +95,22 @@ export function ChannelDeleteConfirmationDialog({
   trigger,
 }: ChannelDeleteConfirmationDialogProps) {
   return (
-    <AlertDialog onOpenChange={onOpenChange} open={open}>
-      {trigger ? (
-        <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-      ) : null}
-      <AlertDialogContent data-testid="channel-delete-confirmation-dialog">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete channel?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Delete {channelName} from the community list. This action cannot be
-            undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {error instanceof Error ? (
-          <p className="text-sm text-destructive">{error.message}</p>
-        ) : null}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button
-              data-testid="channel-delete-cancel"
-              disabled={isPending}
-              type="button"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-          </AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              data-testid="channel-delete-confirm"
-              disabled={isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                onConfirm();
-              }}
-              type="button"
-              variant="destructive"
-            >
-              {isPending ? "Deleting..." : "Delete channel"}
-            </Button>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ChannelConfirmDialog
+      cancelTestId="channel-delete-cancel"
+      confirmDisabled={isPending}
+      confirmLabel={isPending ? "Deleting..." : "Delete channel"}
+      confirmTestId="channel-delete-confirm"
+      contentTestId="channel-delete-confirmation-dialog"
+      description={`Delete ${channelName} from the community list. This action cannot be undone.`}
+      error={error}
+      icon={<TrashLinedGlyph size={20} />}
+      keepOpenOnConfirm
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Delete channel?"
+      trigger={trigger}
+    />
   );
 }
 

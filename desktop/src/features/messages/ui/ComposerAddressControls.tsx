@@ -1,5 +1,4 @@
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
-import { ArrowUp, AtSign, Send, Square, X } from "lucide-react";
 import {
   AnimatePresence,
   motion,
@@ -8,8 +7,14 @@ import {
 } from "motion/react";
 import * as React from "react";
 
-import { cn } from "@/shared/lib/cn";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import {
+  MentionGlyph,
+  SendGlyph,
+  StopGlyph,
+  CloseGlyph,
+  CheckGlyph,
+} from "./ComposerIcons";
 import { Popover, PopoverAnchor, PopoverContent } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -60,18 +65,17 @@ function AddressedAgentAvatar({
   return (
     <motion.span
       animate={controls}
-      className="relative block h-4.5 w-4.5 shrink-0"
+      className="relative block shrink-0"
       data-pulse-version={pulseVersion}
       data-shake-version={shakeVersion}
       data-testid={`composer-address-lock-${agent.pubkey}`}
       initial={false}
     >
-      <UserAvatar
+      <ProfileAvatar
         avatarUrl={agent.avatarUrl}
-        className="h-4.5 w-4.5"
-        displayName={agent.displayName}
+        className="c3c-chip-avatar"
+        label={agent.displayName}
         shape="squircle"
-        size="xs"
         testId="composer-address-lock-avatar"
       />
     </motion.span>
@@ -82,7 +86,7 @@ function RemainingAgentCount({ count }: { count: number }) {
   return count > 0 ? (
     <span
       aria-label={`${count} more addressed ${count === 1 ? "agent" : "agents"}`}
-      className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1 text-3xs font-semibold text-muted-foreground ring-1 ring-border/70"
+      className="c3c-chip-count"
       role="img"
     >
       +{count}
@@ -173,23 +177,15 @@ export function ComposerMentionButton({
     >
       <PopoverAnchor asChild>
         <div
-          className={cn(
-            "flex h-8 min-w-8 items-center justify-center rounded-lg transition-colors",
-            showActiveChrome
-              ? "gap-1.5 bg-primary/15 pl-2 pr-1.5 text-primary hover:bg-primary/25 hover:text-primary/90"
-              : "text-foreground",
-          )}
+          className="c3c-mention"
+          data-active={hasAgents ? "true" : undefined}
         >
           <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <button
                 aria-label={hasAgents ? "Manage mentions" : "Mention someone"}
-                className={cn(
-                  "flex h-8 items-center justify-center rounded-lg focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-                  showActiveChrome
-                    ? "-ml-2 w-6 rounded-l-lg rounded-r-sm pl-2"
-                    : "w-8 hover:bg-accent hover:text-accent-foreground",
-                )}
+                className="c3c-tool"
+                data-active={showActiveChrome ? "true" : undefined}
                 data-mention-picker-trigger=""
                 data-testid="message-insert-mention"
                 disabled={disabled}
@@ -200,9 +196,7 @@ export function ComposerMentionButton({
                 }}
                 type="button"
               >
-                {triggerIcon ?? (
-                  <AtSign aria-hidden="true" className="h-4 w-4 shrink-0" />
-                )}
+                {triggerIcon ?? <MentionGlyph />}
               </button>
             </TooltipTrigger>
             <TooltipContent>
@@ -217,11 +211,11 @@ export function ComposerMentionButton({
           >
             {hasAgents ? (
               <motion.span
-                animate={{ opacity: 1, width: "auto" }}
-                className="flex items-center gap-1 overflow-hidden"
+                animate={{ opacity: 1 }}
+                className="c3c-chips"
                 data-testid="composer-address-locks"
-                exit={{ opacity: 0, width: 0 }}
-                initial={shouldReduceMotion ? false : { opacity: 0, width: 0 }}
+                exit={{ opacity: 0 }}
+                initial={shouldReduceMotion ? false : { opacity: 0 }}
                 transition={
                   shouldReduceMotion
                     ? { duration: 0 }
@@ -230,54 +224,56 @@ export function ComposerMentionButton({
               >
                 <AnimatePresence mode="popLayout">
                   {visibleAgents.map((agent) => (
-                    <Tooltip disableHoverableContent key={agent.pubkey}>
-                      <TooltipTrigger asChild>
-                        <motion.button
-                          aria-label={`Don't automatically mention ${agent.displayName} in this thread`}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="group/address relative rounded-full focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                          data-testid={`composer-address-lock-remove-${agent.pubkey}`}
-                          disabled={disabled}
-                          exit={
-                            shouldReduceMotion
-                              ? { opacity: 0 }
-                              : { opacity: 0, scale: 0.8 }
-                          }
-                          initial={
-                            newlyAddedAgentPubkeys.has(agent.pubkey)
-                              ? shouldReduceMotion
-                                ? { opacity: 0 }
-                                : { opacity: 0, scale: 0.8 }
-                              : false
-                          }
-                          layout={!shouldReduceMotion}
-                          onClick={() => onRemove(agent.pubkey)}
-                          transition={
-                            shouldReduceMotion
-                              ? { duration: 0 }
-                              : addressEntryTransition
-                          }
-                          type="button"
-                        >
-                          <AddressedAgentAvatar
-                            agent={agent}
-                            pulseVersion={
-                              pulseVersionByPubkey[agent.pubkey] ?? 0
-                            }
-                            shakeVersion={
-                              shakeVersionByPubkey[agent.pubkey] ?? 0
-                            }
-                          />
-                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-foreground text-background opacity-0 transition-opacity group-hover/address:opacity-100 group-focus-visible/address:opacity-100">
-                            <X aria-hidden="true" className="h-3 w-3" />
-                          </span>
-                        </motion.button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Don't automatically mention {agent.displayName} in this
-                        thread <AgentManagementMarker pubkey={agent.pubkey} />
-                      </TooltipContent>
-                    </Tooltip>
+                    <motion.span
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="c3c-chip"
+                      data-testid={`composer-address-chip-${agent.pubkey}`}
+                      exit={
+                        shouldReduceMotion
+                          ? { opacity: 0 }
+                          : { opacity: 0, scale: 0.8 }
+                      }
+                      initial={
+                        newlyAddedAgentPubkeys.has(agent.pubkey)
+                          ? shouldReduceMotion
+                            ? { opacity: 0 }
+                            : { opacity: 0, scale: 0.8 }
+                          : false
+                      }
+                      key={agent.pubkey}
+                      layout={!shouldReduceMotion}
+                      transition={
+                        shouldReduceMotion
+                          ? { duration: 0 }
+                          : addressEntryTransition
+                      }
+                    >
+                      <AddressedAgentAvatar
+                        agent={agent}
+                        pulseVersion={pulseVersionByPubkey[agent.pubkey] ?? 0}
+                        shakeVersion={shakeVersionByPubkey[agent.pubkey] ?? 0}
+                      />
+                      <span className="c3c-chip-name">{agent.displayName}</span>
+                      <Tooltip disableHoverableContent>
+                        <TooltipTrigger asChild>
+                          <button
+                            aria-label={`Don't automatically mention ${agent.displayName} in this thread`}
+                            className="c3c-chip-remove"
+                            data-testid={`composer-address-lock-remove-${agent.pubkey}`}
+                            disabled={disabled}
+                            onClick={() => onRemove(agent.pubkey)}
+                            type="button"
+                          >
+                            <CloseGlyph size={12} strokeWidth={2.4} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Don't automatically mention {agent.displayName} in
+                          this thread{" "}
+                          <AgentManagementMarker pubkey={agent.pubkey} />
+                        </TooltipContent>
+                      </Tooltip>
+                    </motion.span>
                   ))}
                 </AnimatePresence>
                 <RemainingAgentCount count={hiddenCount} />
@@ -318,19 +314,20 @@ export function ComposerMentionButton({
 
 export function ComposerSendButton({
   isSending,
+  label,
   onFinishVoiceNote,
   sendDisabled,
-  workspaceChrome = false,
+  variant = "toolbar",
 }: {
   isSending: boolean;
+  /** Overrides the accessible name, e.g. "Send reply" or "Save edit". */
+  label?: string;
   onFinishVoiceNote?: () => void;
   sendDisabled: boolean;
-  workspaceChrome?: boolean;
+  /** `inline` is the 40px send button beside the editor in compact states. */
+  variant?: "toolbar" | "inline" | "save";
 }) {
   const isFinishingVoiceNote = onFinishVoiceNote != null;
-  const sendButtonClassName = workspaceChrome
-    ? "inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-    : "inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
   return (
     <button
       aria-label={
@@ -338,22 +335,23 @@ export function ComposerSendButton({
           ? "Finish voice note"
           : isSending
             ? "Sending"
-            : "Send message"
+            : (label ?? "Send message")
       }
-      className={sendButtonClassName}
+      className="c3c-send"
       data-testid={isFinishingVoiceNote ? "finish-voice-note" : "send-message"}
+      data-variant={variant}
       disabled={sendDisabled || isSending}
       onClick={onFinishVoiceNote}
       type={isFinishingVoiceNote ? "button" : "submit"}
     >
       {isFinishingVoiceNote ? (
-        <Square aria-hidden className="h-3.5 w-3.5 fill-current" />
+        <StopGlyph />
       ) : isSending ? (
         <SendSpinner />
-      ) : workspaceChrome ? (
-        <Send aria-hidden className="h-3.5 w-3.5" />
+      ) : variant === "save" ? (
+        <CheckGlyph />
       ) : (
-        <ArrowUp aria-hidden className="h-4 w-4" />
+        <SendGlyph size={variant === "inline" ? 17 : 18} />
       )}
     </button>
   );
@@ -363,7 +361,7 @@ function SendSpinner() {
   return (
     <span
       aria-hidden
-      className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
+      className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
     />
   );
 }

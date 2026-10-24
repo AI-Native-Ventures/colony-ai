@@ -159,8 +159,12 @@ for (const viewport of [
         .focus();
       await page.keyboard.press("Enter");
       const viewer = page.getByTestId("work-area-panel");
+      // The file opens on its own tab, named for the file.
       await expect(
-        viewer.getByRole("tab", { name: "Files", exact: true }),
+        viewer.getByRole("tab", {
+          name: "GROKBOT_FILM_TEARDOWN_2026-09-04.md",
+          exact: true,
+        }),
       ).toHaveAttribute("aria-selected", "true");
       await expect(
         viewer.getByRole("heading", { name: "Film teardown" }),
@@ -185,9 +189,20 @@ for (const viewport of [
         .getByRole("button", { name: "Close work area", exact: true })
         .click();
       await expect(viewer).not.toBeVisible();
+      // The channel's Files control opens the folder list; the file keeps
+      // its own tab beside it.
       await page
         .getByTestId("channel-view-tabs")
         .getByRole("button", { name: "Files", exact: true })
+        .click();
+      await expect(
+        viewer.getByRole("button", { name: /^DAY1_VIDEO_PACK\.md/ }),
+      ).toBeVisible();
+      await viewer
+        .getByRole("tab", {
+          name: "GROKBOT_FILM_TEARDOWN_2026-09-04.md",
+          exact: true,
+        })
         .click();
       await expect(
         viewer.getByRole("heading", { name: "Film teardown" }),

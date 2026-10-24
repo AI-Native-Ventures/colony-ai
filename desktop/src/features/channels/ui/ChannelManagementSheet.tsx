@@ -1,13 +1,7 @@
-import {
-  Archive,
-  ArchiveRestore,
-  BookOpenText,
-  DoorClosed,
-  DoorOpen,
-  Trash2,
-} from "lucide-react";
+import { ArchiveRestore, DoorOpen, Pin as PinIcon } from "lucide-react";
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { useNavigate } from "@tanstack/react-router";
 
 import {
   useArchiveChannelMutation,
@@ -24,25 +18,23 @@ import { compareMembersByRole } from "@/features/channels/lib/memberUtils";
 import { DEFAULT_EPHEMERAL_TTL_SECONDS } from "@/features/channels/lib/ephemeralChannel";
 import type { Channel, ChannelMember } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { useTheme } from "@/shared/theme/ThemeProvider";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 import {
-  AuxiliaryPanelBody,
   AuxiliaryPanelContext,
-  AuxiliaryPanelHeader,
-  AuxiliaryPanelHeaderGroup,
-  AuxiliaryPanelTitle,
   type AuxiliaryPanelMode,
   getAuxiliaryPanelMode,
 } from "@/shared/layout/AuxiliaryPanel";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
+import { ChevronLeftIcon as ChevronLeftGlyph } from "@/shared/ui/colonyIcons";
+import { LeaveChannelAlertDialog } from "@/features/sidebar/ui/ChannelSectionDialogs";
 import { useScrollBoundaryLock } from "@/shared/hooks/useScrollBoundaryLock";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
 import {
@@ -52,16 +44,14 @@ import {
   PANEL_OVERLAY_CLASS,
 } from "@/shared/ui/OverlayPanelBackdrop";
 import { ChannelCanvas } from "./ChannelCanvas";
-import {
-  CHANNEL_FORM_FIELD_CONTROL_CLASS,
-  CHANNEL_FORM_FIELD_SHELL_CLASS,
-} from "./channelFormStyles";
+import { CHANNEL_FORM_LABEL_CLASS } from "./channelFormStyles";
 import {
   ChannelTypeDetailRow,
   ChannelTypeSettings,
 } from "./ChannelTypeSettings";
 import { ChannelPermissionsSettings } from "./ChannelPermissionsSettings";
 import {
+  ActionFieldGroup,
   ActionFieldRow,
   ChannelHero,
   CopyFieldRow,
@@ -70,12 +60,18 @@ import {
   getMarkdownPreviewText,
   InfoFieldRow,
   IngressRow,
+  SettingsMemberStack,
 } from "./ChannelManagementSheetRows";
+import {
+  ArchiveGlyph,
+  CanvasGlyph,
+  LeaveRowGlyph,
+  TrashGlyph,
+} from "./dialogIcons";
 import {
   ChannelDeleteConfirmationDialog,
   useChannelModerationCapabilities,
 } from "./ChannelManagementModerationActions";
-import { ChannelMemberAvatarStack } from "./ChannelMemberAvatarStack";
 
 type ChannelManagementSheetProps = {
   channel: Channel | null;
@@ -100,7 +96,7 @@ export function ChannelManagementSheet({
   open,
   transparentChrome = false,
 }: ChannelManagementSheetProps) {
-  const { isDark } = useTheme();
+  const navigate = useNavigate();
   const isSplitLayout = layout === "split";
   const auxiliaryPanelMode = getAuxiliaryPanelMode(
     isSplitLayout,
@@ -237,6 +233,15 @@ export function ChannelManagementSheet({
     onOpenChange(next);
   }
 
+  function handleOpenPins() {
+    if (!channelId) return;
+    handlePanelOpenChange(false);
+    void navigate({
+      params: { channelId },
+      to: "/channels/pins/$channelId",
+    });
+  }
+
   const currentVisibility = detail?.visibility ?? channel.visibility;
   const currentTtlSeconds = detail?.ttlSeconds ?? null;
   const nextVisibility: "open" | "private" = isPrivateDraft
@@ -329,7 +334,7 @@ export function ChannelManagementSheet({
         <DialogPrimitive.Content
           className={cn(
             PANEL_BASE_CLASS,
-            "h-full w-full cursor-default overflow-hidden border-l-0 p-0",
+            "h-full w-full cursor-default overflow-hidden border-l-0 bg-[#FBF8F6] p-0 dark:bg-colony-surface-raised",
             animateSplitEnter && PANEL_ENTER_MOTION_CLASS,
           )}
           data-testid="channel-management-sheet"
@@ -349,6 +354,7 @@ export function ChannelManagementSheet({
             canvasQuery={canvasQuery}
             channelId={channelId}
             currentPubkey={currentPubkey}
+            onOpenPins={handleOpenPins}
             deleteChannelMutation={deleteChannelMutation}
             detailsError={detailsQuery.error}
             handleDeleteChannel={handleDeleteChannel}
@@ -378,10 +384,7 @@ export function ChannelManagementSheet({
               PANEL_BASE_CLASS,
               PANEL_OVERLAY_CLASS,
               PANEL_ENTER_MOTION_CLASS,
-              "w-[380px] cursor-default overflow-hidden p-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=closed]:duration-200",
-              isDark
-                ? "bg-background/85 backdrop-blur-xl supports-backdrop-filter:bg-background/75"
-                : "bg-background",
+              "w-[380px] cursor-default overflow-hidden border-colony-border bg-[#FBF8F6] p-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=closed]:duration-200 dark:bg-colony-surface-raised",
             )}
             data-testid="channel-management-sheet"
           >
@@ -397,6 +400,7 @@ export function ChannelManagementSheet({
               canvasQuery={canvasQuery}
               channelId={channelId}
               currentPubkey={currentPubkey}
+              onOpenPins={handleOpenPins}
               deleteChannelMutation={deleteChannelMutation}
               detailsError={detailsQuery.error}
               handleDeleteChannel={handleDeleteChannel}
@@ -429,77 +433,71 @@ export function ChannelManagementSheet({
         >
           <DialogContent
             aria-describedby={undefined}
-            className="max-w-lg overflow-hidden p-0"
+            className="max-w-[520px] gap-0 overflow-hidden bg-colony-surface p-0"
+            showCloseButton={false}
+            style={{
+              boxShadow:
+                "0 30px 80px -30px rgba(30, 15, 50, 0.55), 0 0 0 1px rgba(37, 34, 44, 0.06)",
+            }}
           >
-            <div className="flex max-h-[85vh] flex-col">
-              <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5 pr-14">
-                <DialogTitle>
+            <div className="flex max-h-[calc(100vh-2rem)] flex-col">
+              <div className="flex shrink-0 items-center gap-3 border-b border-colony-border pb-[18px] pl-6 pr-5 pt-5">
+                <DialogTitle className="flex-1 leading-[normal]">
                   Edit {nextVisibility === "private" ? "private" : "public"}{" "}
                   channel
                 </DialogTitle>
-              </DialogHeader>
+                <DialogClose
+                  aria-label="Close"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-colony-control-lg text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+                >
+                  <CloseIcon size={16} strokeWidth={2.6} />
+                </DialogClose>
+              </div>
 
-              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-                <div className="space-y-5">
-                  <div className="space-y-1.5">
-                    <label
-                      className="text-sm font-medium text-foreground"
-                      htmlFor="channel-name"
-                    >
-                      Name
-                    </label>
-                    <div
-                      className={cn(
-                        "flex min-h-11 items-center px-3",
-                        CHANNEL_FORM_FIELD_SHELL_CLASS,
-                      )}
-                    >
-                      <Input
-                        className={cn(
-                          "h-8 px-0 py-0 leading-6",
-                          CHANNEL_FORM_FIELD_CONTROL_CLASS,
-                        )}
-                        data-testid="channel-management-name"
-                        disabled={isSavingChannelEdits}
-                        id="channel-name"
-                        onChange={(event) => {
-                          setNameDraft(event.target.value);
-                          setHasUserEditedChannelDraft(true);
-                        }}
-                        value={nameDraft}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      className="text-sm font-medium text-foreground"
-                      htmlFor="channel-description"
-                    >
-                      Description
-                    </label>
-                    <div className={CHANNEL_FORM_FIELD_SHELL_CLASS}>
-                      <Textarea
-                        className={cn(
-                          "min-h-20 resize-none px-3 py-3 leading-5",
-                          CHANNEL_FORM_FIELD_CONTROL_CLASS,
-                        )}
-                        data-testid="channel-management-description"
-                        disabled={isSavingChannelEdits}
-                        id="channel-description"
-                        onChange={(event) => {
-                          setDescriptionDraft(event.target.value);
-                          setHasUserEditedChannelDraft(true);
-                        }}
-                        rows={2}
-                        value={descriptionDraft}
-                      />
-                    </div>
-                  </div>
+              <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 pb-6 pt-[22px]">
+                <div className="flex flex-col gap-2">
+                  <label
+                    className={CHANNEL_FORM_LABEL_CLASS}
+                    htmlFor="channel-name"
+                  >
+                    Name
+                  </label>
+                  <Input
+                    className="font-semibold"
+                    data-testid="channel-management-name"
+                    disabled={isSavingChannelEdits}
+                    id="channel-name"
+                    onChange={(event) => {
+                      setNameDraft(event.target.value);
+                      setHasUserEditedChannelDraft(true);
+                    }}
+                    value={nameDraft}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className={CHANNEL_FORM_LABEL_CLASS}
+                    htmlFor="channel-description"
+                  >
+                    Description
+                  </label>
+                  <Textarea
+                    className="min-h-0 resize-none text-sm leading-normal"
+                    data-testid="channel-management-description"
+                    disabled={isSavingChannelEdits}
+                    id="channel-description"
+                    onChange={(event) => {
+                      setDescriptionDraft(event.target.value);
+                      setHasUserEditedChannelDraft(true);
+                    }}
+                    rows={2}
+                    value={descriptionDraft}
+                  />
                 </div>
 
                 {resolvedChannel.channelType !== "dm" ? (
                   <div
-                    className="space-y-5"
+                    className="flex flex-col gap-5"
                     data-testid="channel-management-lifecycle"
                   >
                     <ChannelTypeSettings
@@ -515,6 +513,7 @@ export function ChannelManagementSheet({
                       temporary={isEphemeralDraft}
                       testIdPrefix="channel-management"
                       ttlSeconds={ttlSecondsDraft}
+                      variant="card"
                     />
                     <ChannelPermissionsSettings
                       disabled={isSavingChannelEdits}
@@ -523,33 +522,37 @@ export function ChannelManagementSheet({
                         setHasUserEditedChannelDraft(true);
                       }}
                       testIdPrefix="channel-management"
+                      variant="card"
                       visibility={isPrivateDraft ? "private" : "open"}
                     />
                   </div>
                 ) : null}
 
                 {updateChannelDetailsMutation.error instanceof Error ? (
-                  <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <p className="rounded-colony-control-lg bg-colony-danger-bg px-4 py-3 text-xs font-semibold text-colony-danger">
                     {updateChannelDetailsMutation.error.message}
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 justify-end gap-2 border-t border-border/60 px-6 py-4">
+              <div className="flex shrink-0 justify-end gap-2.5 border-t border-colony-border bg-[#FBF8F6] px-6 py-4 dark:bg-colony-surface-raised">
                 <Button
+                  className="border-0 px-4.5 font-bold shadow-[0_0_0_1px_hsl(var(--colony-border-strong))]"
                   onClick={() => handleEditDialogOpenChange(false)}
-                  size="sm"
+                  size="dialog"
                   type="button"
                   variant="outline"
                 >
                   Cancel
                 </Button>
                 <Button
+                  className="px-4.5"
                   data-testid="channel-management-save-changes"
                   disabled={!canSaveChannelEdits}
                   onClick={() => void handleSaveChannelEdits()}
-                  size="sm"
+                  size="dialog"
                   type="button"
+                  variant="agent"
                 >
                   {isSavingChannelEdits ? "Saving..." : "Save changes"}
                 </Button>
@@ -580,6 +583,7 @@ type ChannelManagementPanelContentProps = {
   canvasQuery: { isLoading: boolean };
   channelId: string | null;
   currentPubkey?: string;
+  onOpenPins: () => void;
   deleteChannelMutation: ChannelMutation;
   detailsError: unknown;
   handleDeleteChannel: () => Promise<void>;
@@ -614,6 +618,7 @@ function ChannelManagementPanelContent({
   canvasQuery,
   channelId,
   currentPubkey,
+  onOpenPins,
   deleteChannelMutation,
   detailsError,
   handleDeleteChannel,
@@ -637,6 +642,7 @@ function ChannelManagementPanelContent({
 }: ChannelManagementPanelContentProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   useScrollBoundaryLock(scrollRef);
+  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = React.useState(false);
 
   return (
     <AuxiliaryPanelContext.Provider
@@ -652,54 +658,59 @@ function ChannelManagementPanelContent({
         widthPx: 380,
       }}
     >
-      <AuxiliaryPanelHeader
-        bordered={mode === "panel"}
-        density={mode === "panel" ? "compact" : "comfortable"}
-        mode={mode}
-        transparent={transparentChrome}
+      <div
+        className="flex h-[4.5rem] shrink-0 items-center gap-2.5 border-b border-colony-border pl-6 pr-4"
+        data-testid="channel-management-header"
       >
-        <AuxiliaryPanelHeaderGroup
-          backButtonAriaLabel="Back to channel"
-          backButtonTestId="channel-management-back"
-          mode={mode}
-          onBack={
-            activeView !== "summary"
-              ? () => setActiveView("summary")
-              : undefined
-          }
-        >
-          <DialogPrimitive.Title asChild>
-            <AuxiliaryPanelTitle>
-              {activeView === "canvas" ? "Canvas" : "Channel Settings"}
-            </AuxiliaryPanelTitle>
-          </DialogPrimitive.Title>
-        </AuxiliaryPanelHeaderGroup>
+        {activeView !== "summary" ? (
+          <button
+            aria-label="Back to channel"
+            className="-ml-2 flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.625rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+            data-testid="channel-management-back"
+            onClick={() => setActiveView("summary")}
+            type="button"
+          >
+            <ChevronLeftGlyph size={17} strokeWidth={2.4} />
+          </button>
+        ) : null}
+        <DialogPrimitive.Title asChild>
+          <h2 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-[-0.02em] leading-[normal]">
+            {activeView === "canvas" ? "Canvas" : "Channel settings"}
+          </h2>
+        </DialogPrimitive.Title>
         <DialogPrimitive.Description className="sr-only">
           Channel settings
         </DialogPrimitive.Description>
-      </AuxiliaryPanelHeader>
+        <button
+          aria-label="Close panel"
+          className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.625rem] text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+          data-testid="auxiliary-panel-close"
+          onClick={() => onOpenChange(false)}
+          type="button"
+        >
+          <CloseIcon size={17} strokeWidth={2.4} />
+        </button>
+      </div>
 
-      <AuxiliaryPanelBody
-        className="overflow-y-auto overflow-x-hidden overscroll-contain bg-background px-4 pb-8 [overflow-anchor:none]"
-        mode={mode}
-        panelPadding
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-6 [overflow-anchor:none]"
         ref={scrollRef}
       >
         {activeView === "summary" ? (
-          <div className="space-y-6 pt-3">
+          <div className="flex flex-col gap-[18px]">
             <ChannelHero
               channel={resolvedChannel}
               onEdit={canEditChannel ? onOpenEdit : undefined}
             />
 
             {detailsError instanceof Error ? (
-              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="rounded-colony-control-lg bg-colony-danger-bg px-3 py-2 text-xs font-semibold text-colony-danger">
                 {detailsError.message}
               </p>
             ) : null}
 
             {membersError instanceof Error ? (
-              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="rounded-colony-control-lg bg-colony-danger-bg px-3 py-2 text-xs font-semibold text-colony-danger">
                 {membersError.message}
               </p>
             ) : null}
@@ -730,7 +741,7 @@ function ChannelManagementPanelContent({
                 onClick={onOpenMembers}
                 testId="channel-management-member-count"
                 trailing={
-                  <ChannelMemberAvatarStack
+                  <SettingsMemberStack
                     currentPubkey={currentPubkey}
                     members={members}
                   />
@@ -748,7 +759,7 @@ function ChannelManagementPanelContent({
               <IngressRow
                 description={canvasPreview}
                 helpText="Use the canvas as a shared space for notes, plans, and other channel information."
-                icon={BookOpenText}
+                icon={CanvasGlyph}
                 label="Canvas"
                 onClick={() => setActiveView("canvas")}
                 testId="channel-canvas-ingress"
@@ -756,8 +767,18 @@ function ChannelManagementPanelContent({
               />
             ) : null}
 
+            {resolvedChannel.channelType !== "dm" ? (
+              <IngressRow
+                helpText="Messages the team wanted to keep within reach"
+                icon={PinIcon}
+                label="Pinned messages"
+                onClick={onOpenPins}
+                testId="channel-pins-trigger"
+              />
+            ) : null}
+
             {canJoin || canLeave || canEditChannel ? (
-              <FieldGroup testId="channel-management-actions">
+              <ActionFieldGroup testId="channel-management-actions">
                 {canJoin ? (
                   <ActionFieldRow
                     description="Add this channel to your sidebar"
@@ -777,17 +798,13 @@ function ChannelManagementPanelContent({
                 {canLeave ? (
                   <ActionFieldRow
                     disabled={leaveChannelMutation.isPending}
-                    icon={DoorClosed}
+                    icon={LeaveRowGlyph}
                     label={
                       leaveChannelMutation.isPending
                         ? "Leaving channel..."
                         : "Leave channel"
                     }
-                    onClick={() => {
-                      void leaveChannelMutation.mutateAsync().then(() => {
-                        onOpenChange(false);
-                      });
-                    }}
+                    onClick={() => setIsLeaveDialogOpen(true)}
                     testId="channel-management-leave"
                   />
                 ) : null}
@@ -809,7 +826,7 @@ function ChannelManagementPanelContent({
                   ) : (
                     <ActionFieldRow
                       disabled={archiveChannelMutation.isPending}
-                      icon={Archive}
+                      icon={ArchiveGlyph}
                       label={
                         archiveChannelMutation.isPending
                           ? "Archiving channel..."
@@ -836,33 +853,44 @@ function ChannelManagementPanelContent({
                       <ActionFieldRow
                         destructive
                         disabled={deleteChannelMutation.isPending}
-                        icon={Trash2}
+                        icon={TrashGlyph}
                         label="Delete channel"
                         testId="channel-management-delete"
                       />
                     }
                   />
                 ) : null}
-              </FieldGroup>
+              </ActionFieldGroup>
             ) : null}
 
+            <LeaveChannelAlertDialog
+              channelName={resolvedChannel.name}
+              onConfirm={() => {
+                void leaveChannelMutation.mutateAsync().then(() => {
+                  onOpenChange(false);
+                });
+              }}
+              onOpenChange={setIsLeaveDialogOpen}
+              open={isLeaveDialogOpen}
+            />
+
             {joinChannelMutation.error instanceof Error ? (
-              <p className="text-sm text-destructive">
+              <p className="text-xs font-semibold text-colony-danger">
                 {joinChannelMutation.error.message}
               </p>
             ) : null}
             {leaveChannelMutation.error instanceof Error ? (
-              <p className="text-sm text-destructive">
+              <p className="text-xs font-semibold text-colony-danger">
                 {leaveChannelMutation.error.message}
               </p>
             ) : null}
             {archiveChannelMutation.error instanceof Error ? (
-              <p className="text-sm text-destructive">
+              <p className="text-xs font-semibold text-colony-danger">
                 {archiveChannelMutation.error.message}
               </p>
             ) : null}
             {unarchiveChannelMutation.error instanceof Error ? (
-              <p className="text-sm text-destructive">
+              <p className="text-xs font-semibold text-colony-danger">
                 {unarchiveChannelMutation.error.message}
               </p>
             ) : null}
@@ -876,7 +904,7 @@ function ChannelManagementPanelContent({
             />
           </div>
         ) : null}
-      </AuxiliaryPanelBody>
+      </div>
     </AuxiliaryPanelContext.Provider>
   );
 }

@@ -73,10 +73,17 @@ test("production service resolves and reads real files, forwarding author and co
   assert.deepEqual(await f.service.resolve(f.args("DAY1_VIDEO_PACK.md")), {
     path: "DAY1_VIDEO_PACK.md",
   });
-  assert.deepEqual(await f.service.read(f.args("RESEARCH/notes.md:12")), {
-    path: "RESEARCH/notes.md",
-    content: "## Research\nActual file content",
-  });
+  const read = await f.service.read(f.args("RESEARCH/notes.md:12"));
+  // The reader shows when the file was written ("Written by Mina · 13:57").
+  assert.equal(typeof read.modifiedAt, "number");
+  assert.ok(read.modifiedAt > 0);
+  assert.deepEqual(
+    { path: read.path, content: read.content },
+    {
+      path: "RESEARCH/notes.md",
+      content: "## Research\nActual file content",
+    },
+  );
   assert.equal(f.calls.length, 3);
   assert.deepEqual(f.calls[0].args, {
     agentPubkey: "local-agent",

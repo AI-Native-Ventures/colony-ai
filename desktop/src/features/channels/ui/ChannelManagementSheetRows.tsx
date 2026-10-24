@@ -1,21 +1,27 @@
-import {
-  Check,
-  ChevronRight,
-  Copy,
-  Info,
-  MessageSquare,
-  Pencil,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, MessageSquare, type LucideIcon } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
-import type { Channel } from "@/shared/api/types";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
+import type { Channel, ChannelMember } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
-import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ChevronRightGlyph, CopyGlyph } from "./dialogIcons";
+
+/** The panel's white card: 20px radius, hairline ring, no fill border. */
+export const SETTINGS_CARD_CLASS =
+  "rounded-[1.25rem] bg-colony-pop shadow-[0_0_0_1px_hsl(var(--colony-border))]";
+
+/** One 52px key/value row inside the Details card. */
+const DETAIL_ROW_CLASS =
+  "flex min-h-[3.25rem] w-full items-center gap-3 border-b border-colony-border px-5 text-left last:border-b-0";
+const DETAIL_LABEL_CLASS =
+  "flex-1 text-control font-semibold text-colony-fg-secondary";
+const DETAIL_VALUE_CLASS = "text-control font-extrabold text-colony-fg";
 
 export function ChannelHero({
   channel,
@@ -27,67 +33,69 @@ export function ChannelHero({
   const channelDescription = channel.description.trim();
   const description =
     channelDescription || (onEdit ? "Add a description" : null);
+  const TypeIcon =
+    channel.channelType === "dm"
+      ? null
+      : channel.visibility === "private"
+        ? PrivateChannelIcon
+        : HashIcon;
+  const body = (
+    <>
+      <span className="flex size-14 items-center justify-center rounded-full bg-colony-track text-colony-fg">
+        {TypeIcon ? (
+          <TypeIcon size={20} />
+        ) : (
+          <MessageSquare className="size-5" />
+        )}
+      </span>
+      {channel.channelType !== "dm" ? (
+        <>
+          <span
+            className="max-w-full truncate text-title-md font-extrabold tracking-[-0.025em] leading-[normal]"
+            data-testid="channel-management-name-row"
+          >
+            {channel.name}
+          </span>
+          {description ? (
+            <span
+              className="line-clamp-6 max-w-full whitespace-pre-line text-sm font-medium leading-normal text-colony-fg-secondary"
+              data-testid="channel-management-description"
+            >
+              {description}
+            </span>
+          ) : null}
+        </>
+      ) : null}
+      {channel.channelType !== "dm" && onEdit ? (
+        <span className="text-chip font-extrabold text-colony-accent-ink">
+          Edit name and description
+        </span>
+      ) : null}
+    </>
+  );
+  const cardClass = cn(
+    "flex flex-col items-start gap-3 p-[22px] text-left",
+    SETTINGS_CARD_CLASS,
+  );
 
   return (
-    <div
-      className="flex flex-col items-center gap-3 py-3 text-center"
-      data-testid="channel-management-hero"
-    >
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
-        {channel.channelType === "dm" ? (
-          <MessageSquare className="h-8 w-8" />
-        ) : (
-          <ChannelGlyph channel={channel} className="h-8 w-8" />
-        )}
-      </div>
+    <div data-testid="channel-management-hero">
       {channel.channelType !== "dm" && onEdit ? (
         <button
           aria-label="Edit channel"
-          className="group flex max-w-full flex-col items-center rounded-lg px-8 py-1 text-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            cardClass,
+            "w-full transition-colors hover:bg-colony-surface focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40",
+          )}
           data-testid="channel-management-edit"
           onClick={onEdit}
           type="button"
         >
-          <span
-            className="relative max-w-full"
-            data-testid="channel-management-name-row"
-          >
-            <span className="block max-w-full truncate text-xl font-semibold tracking-tight">
-              {channel.name}
-            </span>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-full ml-1 -translate-y-1/2 text-muted-foreground opacity-0 transition-[color,opacity] duration-150 ease-out group-hover:text-foreground group-hover:opacity-100 group-focus-visible:opacity-100"
-              data-testid="channel-management-edit-icon"
-            >
-              <Pencil className="h-4 w-4" />
-            </span>
-          </span>
-          <span
-            className="mt-1 line-clamp-6 max-w-full whitespace-pre-line text-sm leading-5 text-muted-foreground/70"
-            data-testid="channel-management-description"
-          >
-            {description}
-          </span>
+          {body}
         </button>
-      ) : channel.channelType !== "dm" ? (
-        <div className="flex max-w-full flex-col items-center">
-          <h3
-            className="max-w-full truncate text-xl font-semibold tracking-tight"
-            data-testid="channel-management-name-row"
-          >
-            {channel.name}
-          </h3>
-          {description ? (
-            <p
-              className="mt-1 line-clamp-6 max-w-full whitespace-pre-line text-sm leading-5 text-muted-foreground/70"
-              data-testid="channel-management-description"
-            >
-              {description}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      ) : (
+        <div className={cardClass}>{body}</div>
+      )}
     </div>
   );
 }
@@ -104,9 +112,22 @@ export function FieldGroup({
   title?: React.ReactNode;
 }) {
   return (
-    <PanelSectionGroup description={description} testId={testId} title={title}>
+    <section
+      className={cn("flex flex-col overflow-hidden", SETTINGS_CARD_CLASS)}
+      data-testid={testId}
+    >
+      {title ? (
+        <h3 className="px-5 pb-2 pt-4 text-2xs font-extrabold uppercase tracking-[0.09em] text-colony-muted">
+          {title}
+        </h3>
+      ) : null}
+      {description ? (
+        <p className="px-5 pb-2 text-xs font-medium text-colony-muted">
+          {description}
+        </p>
+      ) : null}
       {children}
-    </PanelSectionGroup>
+    </section>
   );
 }
 
@@ -139,7 +160,6 @@ function truncateIdentifier(value: string) {
 }
 
 export function CopyFieldRow({
-  icon: Icon,
   label,
   value,
   testId,
@@ -175,63 +195,37 @@ export function CopyFieldRow({
   }
 
   return (
-    <button
-      aria-label={copied ? `${label} copied` : `Copy ${label}`}
-      className="group flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
-      data-testid={testId}
-      onClick={() => {
-        void handleCopy();
-      }}
-      title={`Copy ${label}`}
-      type="button"
-    >
-      {Icon ? (
-        <Icon
-          className="h-4 w-4 shrink-0 text-muted-foreground"
-          data-slot="field-row-icon"
-        />
-      ) : null}
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
-        </span>
-        <span
-          className="mt-0.5 block truncate font-mono text-sm text-muted-foreground/70"
-          title={value}
-        >
-          {truncateIdentifier(value)}
-        </span>
-      </span>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "relative h-4 w-4 shrink-0 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100",
-          copied ? "opacity-100" : "opacity-0",
-        )}
+    <div className={cn(DETAIL_ROW_CLASS, "py-1 pr-3")} data-testid={testId}>
+      <span className={DETAIL_LABEL_CLASS}>{label}</span>
+      <code
+        className="font-mono text-[calc(13.5*var(--colony-px))] text-colony-fg-secondary"
+        title={value}
+      >
+        {truncateIdentifier(value)}
+      </code>
+      <button
+        aria-label={copied ? `${label} copied` : `Copy ${label}`}
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-colony-menu-item bg-colony-track text-colony-fg transition-colors hover:bg-colony-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
         data-copied={copied}
         data-testid={testId ? `${testId}-copy-status` : undefined}
+        onClick={() => {
+          void handleCopy();
+        }}
+        title={`Copy ${label}`}
+        type="button"
       >
-        <Copy
-          className={cn(
-            "absolute inset-0 h-4 w-4 transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
-            copied ? "scale-95 opacity-0" : "scale-100 opacity-100",
-          )}
-        />
-        <Check
-          className={cn(
-            "absolute inset-0 h-4 w-4 text-primary transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
-            copied ? "scale-100 opacity-100" : "scale-95 opacity-0",
-          )}
-        />
-      </span>
-    </button>
+        {copied ? (
+          <Check className="size-[0.9375rem]" strokeWidth={2.4} />
+        ) : (
+          <CopyGlyph size={15} />
+        )}
+      </button>
+    </div>
   );
 }
 
 export function InfoFieldRow({
-  icon: Icon,
   label,
-  multiline = false,
   onClick,
   trailing,
   value,
@@ -247,33 +241,26 @@ export function InfoFieldRow({
 }) {
   const content = (
     <>
-      {Icon ? (
-        <Icon
-          className="h-4 w-4 shrink-0 text-muted-foreground"
-          data-slot="field-row-icon"
+      <span className={DETAIL_LABEL_CLASS}>{label}</span>
+      {trailing}
+      <span className={cn(DETAIL_VALUE_CLASS, "truncate")}>{value}</span>
+      {onClick ? (
+        <ChevronRightGlyph
+          className="shrink-0 text-colony-muted"
+          size={16}
+          strokeWidth={2.4}
         />
       ) : null}
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
-        </span>
-        <span
-          className={cn(
-            "mt-0.5 block text-sm font-normal text-muted-foreground/70",
-            multiline ? "line-clamp-2 whitespace-normal leading-5" : "truncate",
-          )}
-        >
-          {value}
-        </span>
-      </span>
-      {trailing}
     </>
   );
 
   if (onClick) {
     return (
       <button
-        className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className={cn(
+          DETAIL_ROW_CLASS,
+          "min-h-14 transition-colors hover:bg-colony-surface focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-colony-accent/40",
+        )}
         data-testid={testId}
         onClick={onClick}
         type="button"
@@ -284,10 +271,7 @@ export function InfoFieldRow({
   }
 
   return (
-    <div
-      className="flex min-h-16 w-full items-center gap-3 px-4 py-3"
-      data-testid={testId}
-    >
+    <div className={DETAIL_ROW_CLASS} data-testid={testId}>
       {content}
     </div>
   );
@@ -295,9 +279,7 @@ export function InfoFieldRow({
 
 export function EditableInfoFieldRow({
   editTestId,
-  icon: Icon,
   label,
-  multiline = false,
   onEdit,
   value,
   testId,
@@ -312,33 +294,10 @@ export function EditableInfoFieldRow({
 }) {
   const content = (
     <>
-      {Icon ? (
-        <Icon
-          className="h-4 w-4 shrink-0 text-muted-foreground"
-          data-slot="field-row-icon"
-        />
-      ) : null}
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
-        </span>
-        <span
-          className={cn(
-            "mt-0.5 block text-sm font-normal text-muted-foreground/70",
-            multiline ? "line-clamp-2 whitespace-normal leading-5" : "truncate",
-          )}
-        >
-          {value}
-        </span>
-      </span>
+      <span className={DETAIL_LABEL_CLASS}>{label}</span>
+      <span className={cn(DETAIL_VALUE_CLASS, "truncate")}>{value}</span>
       {onEdit ? (
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-          data-testid={editTestId}
-        >
-          <Pencil className="h-4 w-4" />
-        </span>
+        <span aria-hidden="true" className="hidden" data-testid={editTestId} />
       ) : null}
     </>
   );
@@ -347,7 +306,10 @@ export function EditableInfoFieldRow({
     return (
       <button
         aria-label={`Edit ${label.toLowerCase()}`}
-        className="group flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className={cn(
+          DETAIL_ROW_CLASS,
+          "transition-colors hover:bg-colony-surface focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-colony-accent/40",
+        )}
         data-testid={testId}
         onClick={onEdit}
         type="button"
@@ -358,10 +320,7 @@ export function EditableInfoFieldRow({
   }
 
   return (
-    <div
-      className="group flex min-h-16 w-full items-center gap-3 px-4 py-3"
-      data-testid={testId}
-    >
+    <div className={DETAIL_ROW_CLASS} data-testid={testId}>
       {content}
     </div>
   );
@@ -371,12 +330,13 @@ type ActionFieldRowProps = {
   destructive?: boolean;
   description?: string;
   disabled?: boolean;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ className?: string; size?: number }>;
   label: string;
   onClick?: () => void;
   testId: string;
 };
 
+/** A row of the Leave / Archive / Delete card. */
 export const ActionFieldRow = React.forwardRef<
   HTMLButtonElement,
   ActionFieldRowProps
@@ -396,8 +356,8 @@ export const ActionFieldRow = React.forwardRef<
   return (
     <button
       className={cn(
-        "flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50",
-        destructive && "text-destructive",
+        "flex h-12 w-full items-center gap-3 rounded-colony-control-lg px-3 text-left text-control font-bold transition-colors hover:bg-colony-track/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
+        destructive ? "text-colony-danger" : "text-colony-fg",
       )}
       data-testid={testId}
       disabled={disabled}
@@ -406,25 +366,36 @@ export const ActionFieldRow = React.forwardRef<
       type="button"
       {...triggerProps}
     >
-      <Icon
-        className={cn(
-          "h-4 w-4 shrink-0 text-muted-foreground",
-          destructive && "text-destructive",
-        )}
-        data-slot="field-row-icon"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{label}</span>
-        {description ? (
-          <span className="mt-0.5 block truncate text-sm font-normal text-muted-foreground/70">
-            {description}
-          </span>
-        ) : null}
-      </span>
+      <Icon className="shrink-0" data-slot="field-row-icon" size={18} />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {description ? (
+        <span className="truncate text-xs font-medium text-colony-muted">
+          {description}
+        </span>
+      ) : null}
     </button>
   );
 });
 
+/** The Actions card that holds Leave, Archive and Delete rows. */
+export function ActionFieldGroup({
+  children,
+  testId,
+}: {
+  children: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      className={cn("flex flex-col gap-1 p-2", SETTINGS_CARD_CLASS)}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A card-sized link row: icon tile, title, help line and a chevron. */
 export function IngressRow({
   description,
   helpText,
@@ -436,58 +407,113 @@ export function IngressRow({
 }: {
   description?: string;
   helpText?: string;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ className?: string; size?: number }>;
   label: string;
   onClick: () => void;
   testId: string;
   trailing?: string;
 }) {
+  const line = description ?? helpText;
   return (
-    <PanelSectionGroup testId={`${testId}-section`}>
-      <div className="relative flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left">
-        <button
-          aria-label={`Open ${label.toLowerCase()}`}
-          className="absolute inset-0 z-10 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          data-testid={testId}
-          onClick={onClick}
-          type="button"
-        />
-        <Icon className="pointer-events-none relative z-20 h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="pointer-events-none relative z-20 min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-            <span>{label}</span>
-            {helpText ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    aria-label={`About ${label.toLowerCase()}`}
-                    className="pointer-events-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid={`${testId}-info`}
-                    onClick={(event) => event.stopPropagation()}
-                    type="button"
-                  >
-                    <Info className="h-3.5 w-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-64 text-left" side="top">
-                  {helpText}
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
-          </span>
-          {description ? (
-            <span className="mt-0.5 block truncate text-sm font-normal text-muted-foreground/70">
-              {description}
+    <section data-testid={`${testId}-section`}>
+      <button
+        aria-label={`Open ${label.toLowerCase()}`}
+        className={cn(
+          "flex w-full items-center gap-3.5 px-5 py-[18px] text-left transition-colors hover:bg-colony-surface focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40",
+          SETTINGS_CARD_CLASS,
+        )}
+        data-testid={testId}
+        onClick={onClick}
+        type="button"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-colony-control-lg bg-colony-wash text-colony-fg-secondary">
+          <Icon size={19} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <span className="text-sm font-extrabold text-colony-fg">{label}</span>
+          {line ? (
+            <span className="line-clamp-3 text-chip font-medium leading-[1.45] text-colony-muted">
+              {line}
             </span>
           ) : null}
         </span>
         {trailing ? (
-          <span className="pointer-events-none relative z-20 text-sm text-muted-foreground/70">
+          <span className="text-xs font-medium text-colony-muted">
             {trailing}
           </span>
         ) : null}
-        <ChevronRight className="pointer-events-none relative z-20 h-4 w-4 shrink-0 text-muted-foreground" />
-      </div>
-    </PanelSectionGroup>
+        <ChevronRightGlyph
+          className="shrink-0 text-colony-muted"
+          size={16}
+          strokeWidth={2.4}
+        />
+      </button>
+    </section>
+  );
+}
+
+/** Overlapping member avatars for the Members row (people round, agents squircle). */
+export function SettingsMemberStack({
+  currentPubkey,
+  members,
+  testIdPrefix = "channel-management-member",
+}: {
+  currentPubkey?: string;
+  members: ChannelMember[];
+  testIdPrefix?: string;
+}) {
+  const visibleMembers = React.useMemo(() => members.slice(0, 3), [members]);
+  const visiblePubkeys = React.useMemo(
+    () => visibleMembers.map((member) => member.pubkey),
+    [visibleMembers],
+  );
+  const profilesQuery = useUsersBatchQuery(visiblePubkeys);
+  const profiles = profilesQuery.data?.profiles;
+  const overflowCount = members.length - visibleMembers.length;
+
+  if (members.length === 0) return null;
+
+  return (
+    <div
+      className="flex shrink-0 items-center"
+      data-testid={`${testIdPrefix}-avatar-stack`}
+    >
+      {visibleMembers.map((member, index) => {
+        const normalizedPubkey = normalizePubkey(member.pubkey);
+        const profile = profiles?.[normalizedPubkey];
+        const label = resolveUserLabel({
+          currentPubkey,
+          fallbackName: member.displayName,
+          profiles,
+          pubkey: member.pubkey,
+        });
+        return (
+          <span
+            className={index > 0 ? "-ml-1.5" : ""}
+            data-testid={`${testIdPrefix}-avatar`}
+            key={normalizedPubkey}
+            style={{ zIndex: index + 1 }}
+          >
+            <UserAvatar
+              avatarUrl={profile?.avatarUrl ?? null}
+              className="!size-[1.625rem] text-3xs ring-2 ring-colony-pop"
+              displayName={label}
+              fallbackDelayMs={0}
+              shape={profile?.isAgent ? "squircle" : "circle"}
+            />
+          </span>
+        );
+      })}
+      {overflowCount > 0 ? (
+        <span
+          className="-ml-1.5 flex size-[1.625rem] items-center justify-center rounded-full bg-colony-track text-3xs font-extrabold text-colony-fg-secondary ring-2 ring-colony-pop"
+          data-testid={`${testIdPrefix}-avatar-overflow`}
+          style={{ zIndex: visibleMembers.length + 1 }}
+          title={`${overflowCount} more members`}
+        >
+          +{overflowCount}
+        </span>
+      ) : null}
+    </div>
   );
 }

@@ -1,4 +1,3 @@
-import { SmilePlus } from "lucide-react";
 import * as React from "react";
 
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
@@ -8,6 +7,7 @@ import { cn } from "@/shared/lib/cn";
 import { emojiDisplayName } from "@/shared/lib/emojiName";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
 import { AnimatedCount } from "@/shared/ui/AnimatedCount";
+import { HeartGlyph, ReactIcon } from "@/shared/ui/conversationIcons";
 import {
   isPositiveEmojiParticle,
   useEmojiBurst,
@@ -20,15 +20,13 @@ import {
 } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
-const REACTION_PILL_BASE_CLASSES =
-  "inline-flex h-7 items-center rounded-full border text-xs font-medium leading-none transition-colors";
+const REACTION_PILL_BASE_CLASSES = "c3c-reaction";
 const REACTION_CUSTOM_GLYPH_CLASSES = "h-3.5 w-3.5";
-const REACTION_NATIVE_GLYPH_CLASSES = "h-3 w-3 text-xs";
-const REACTION_COUNT_CLASSES = "text-muted-foreground";
-const REACTION_NATIVE_COUNT_CLASSES =
-  "text-muted-foreground translate-y-[0.5px]";
+const REACTION_NATIVE_GLYPH_CLASSES = "h-3.5 w-3.5 text-xs";
+const REACTION_COUNT_CLASSES = "";
+const REACTION_NATIVE_COUNT_CLASSES = "";
 const REACTION_PILL_HOVER_CLASSES =
-  "hover:bg-primary/10 hover:text-foreground focus-visible:bg-primary/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+  "hover:bg-colony-accent-soft focus-visible:bg-colony-accent-soft focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 const BADGE_BURST_STABLE_FRAMES = 2;
 const BADGE_BURST_MAX_FRAMES = 12;
 const BADGE_BURST_RECT_EPSILON = 0.5;
@@ -91,6 +89,21 @@ function EmojiGlyph({
       />
     );
   }
+  if (isHeartEmoji(reaction.emoji)) {
+    // The design draws the heart as a vector in the brand rose, not the
+    // platform emoji.
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center justify-center leading-none",
+          className,
+        )}
+        title={displayName}
+      >
+        <HeartGlyph className="text-[#C2416A]" size={14} />
+      </span>
+    );
+  }
   return (
     <span
       className={cn(
@@ -102,6 +115,10 @@ function EmojiGlyph({
       {reaction.emoji}
     </span>
   );
+}
+
+function isHeartEmoji(emoji: string): boolean {
+  return emoji === "\u2764\uFE0F" || emoji === "\u2764";
 }
 
 function formatReactionUsers(reaction: TimelineReaction): string {
@@ -309,22 +326,15 @@ function InlineReactionPicker({
             <button
               aria-label="Add reaction"
               className={cn(
-                REACTION_PILL_BASE_CLASSES,
-                "pointer-events-none w-10 min-w-10 justify-center p-0 text-muted-foreground opacity-0",
-                "group-hover/message:pointer-events-auto group-hover/message:opacity-100",
-                "group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100",
-                "group-hover/reactions:pointer-events-auto group-hover/reactions:opacity-100",
-                "group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:opacity-100",
-                open
-                  ? "pointer-events-auto border-border/80 bg-background text-foreground opacity-100 shadow-xs"
-                  : "border-border/70 bg-muted/70",
+                "c3c-reaction c3c-reaction--add",
+                open && "bg-colony-accent-soft text-colony-accent-ink",
                 REACTION_PILL_HOVER_CLASSES,
               )}
               data-testid={`add-reaction-${messageId}`}
               disabled={pending}
               type="button"
             >
-              <SmilePlus className="h-4 w-4" />
+              <ReactIcon size={15} />
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -414,15 +424,8 @@ function ReactionPill({
 
   const pillClasses = cn(
     REACTION_PILL_BASE_CLASSES,
-    "min-w-12 justify-center gap-1.5 px-2",
-    reaction.reactedByCurrentUser
-      ? "border-primary/40 bg-primary/10 text-primary"
-      : "border-border/70 bg-muted/70 text-foreground/90",
-    canToggle
-      ? reaction.reactedByCurrentUser
-        ? "hover:bg-primary/10 hover:text-primary focus-visible:bg-primary/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-        : REACTION_PILL_HOVER_CLASSES
-      : "cursor-default",
+    reaction.reactedByCurrentUser && "c3c-reaction--mine",
+    canToggle ? REACTION_PILL_HOVER_CLASSES : "cursor-default",
   );
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {

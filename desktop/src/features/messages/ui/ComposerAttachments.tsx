@@ -57,10 +57,8 @@ const COMPOSER_MEDIA_REMOVE_CLASS = cn(
   COMPOSER_MEDIA_REVEAL_CLASS,
 );
 
-const COMPOSER_MEDIA_HOVER_ACTION_CLASS = cn(
-  "absolute inset-0 z-[1] flex items-center justify-center rounded-2xl bg-black/35 text-white backdrop-blur-[1px] hover:bg-black/45",
-  COMPOSER_MEDIA_REVEAL_CLASS,
-);
+/** A 26px control inside a tile's tool pill (spoiler, draw, remove). */
+const COMPOSER_TILE_TOOL_CLASS = "c3c-tile-tool";
 
 /** Dashed-border overlay shown when a file is dragged over the composer form. */
 export function DropZoneOverlay({ className }: { className?: string }) {
@@ -216,8 +214,8 @@ function ComposerSnapshotCard({
 const LIGHTBOX_BUTTON_CLASS =
   "rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white focus:outline-hidden focus:ring-2 focus:ring-white/30";
 
-const COMPOSER_MEDIA_HEIGHT_PX = 55;
-const COMPOSER_MEDIA_WIDTH_PX = 55;
+const COMPOSER_MEDIA_HEIGHT_PX = 90;
+const COMPOSER_MEDIA_WIDTH_PX = 120;
 
 function composerMediaStyle(): React.CSSProperties {
   return {
@@ -350,14 +348,11 @@ const MediaAttachmentItem = React.forwardRef<
       transition={{ type: "spring", stiffness: 500, damping: 30 }}
       className="group relative"
     >
-      <div
-        className="relative h-[55px] max-w-[55px]"
-        style={composerMediaStyle()}
-      >
+      <div className="c3c-tile" style={composerMediaStyle()}>
         <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
           <DialogPrimitive.Trigger
             aria-label={mediaLabel}
-            className="h-full w-full cursor-pointer overflow-hidden rounded-2xl border border-border/70"
+            className="c3c-tile-media h-full w-full cursor-pointer overflow-hidden"
           >
             {isVideo ? (
               <div className="relative flex h-full w-full items-center justify-center bg-muted text-white">
@@ -384,7 +379,7 @@ const MediaAttachmentItem = React.forwardRef<
             )}
             {isSpoilered ? (
               <div
-                className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-background/55 text-foreground/70 backdrop-blur-[1px]"
+                className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-background/55 text-foreground/70 backdrop-blur-[1px]"
                 data-composer-media-spoiler=""
               >
                 <HatGlasses className="h-4 w-4" />
@@ -530,54 +525,61 @@ const MediaAttachmentItem = React.forwardRef<
             </DialogPrimitive.Content>
           </DialogPrimitive.Portal>
         </DialogPrimitive.Root>
-        <Tooltip disableHoverableContent>
-          <TooltipTrigger asChild>
-            <button
-              aria-label={`Remove ${mediaLabel}`}
-              type="button"
-              onClick={() => onRemove(attachment.url)}
-              className={COMPOSER_MEDIA_REMOVE_CLASS}
-            >
-              <X className="h-2.5 w-2.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Remove attachment</TooltipContent>
-        </Tooltip>
-        {canEdit ? (
+        <span className="c3c-tile-label">
+          {attachment.filename?.trim() || mediaLabel}
+        </span>
+        <div className="c3c-tile-tools">
           <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <button
-                className={COMPOSER_MEDIA_HOVER_ACTION_CLASS}
-                data-testid="composer-attachment-annotate"
-                onClick={handleOpenLightbox}
+                aria-label={`Remove ${mediaLabel}`}
                 type="button"
+                onClick={() => onRemove(attachment.url)}
+                className={COMPOSER_TILE_TOOL_CLASS}
               >
-                <LineSquiggle className="h-5 w-5" />
-                <span className="sr-only">Draw on image</span>
+                <X className="h-2.5 w-2.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Draw on image</TooltipContent>
+            <TooltipContent>Remove attachment</TooltipContent>
           </Tooltip>
-        ) : null}
-        {isVideo && onToggleSpoiler ? (
-          <Tooltip disableHoverableContent>
-            <TooltipTrigger asChild>
-              <button
-                aria-label={isSpoilered ? "Remove spoiler" : "Mark as spoiler"}
-                aria-pressed={isSpoilered}
-                className={COMPOSER_MEDIA_HOVER_ACTION_CLASS}
-                data-testid="composer-video-spoiler"
-                onClick={() => onToggleSpoiler(attachment.url)}
-                type="button"
-              >
-                <HatGlasses className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {isSpoilered ? "Remove spoiler" : "Mark as spoiler"}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
+          {canEdit ? (
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger asChild>
+                <button
+                  className={COMPOSER_TILE_TOOL_CLASS}
+                  data-testid="composer-attachment-annotate"
+                  onClick={handleOpenLightbox}
+                  type="button"
+                >
+                  <LineSquiggle className="h-5 w-5" />
+                  <span className="sr-only">Draw on image</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Draw on image</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {isVideo && onToggleSpoiler ? (
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label={
+                    isSpoilered ? "Remove spoiler" : "Mark as spoiler"
+                  }
+                  aria-pressed={isSpoilered}
+                  className={COMPOSER_TILE_TOOL_CLASS}
+                  data-testid="composer-video-spoiler"
+                  onClick={() => onToggleSpoiler(attachment.url)}
+                  type="button"
+                >
+                  <HatGlasses className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isSpoilered ? "Remove spoiler" : "Mark as spoiler"}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
     </motion.div>
   );
@@ -705,27 +707,27 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className="group relative"
+                  className="group relative c3c-file-wrap"
                 >
-                  <div className="flex h-5 max-w-40 items-center gap-1 rounded border border-border/70 bg-muted px-1.5">
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate text-2xs text-muted-foreground">
-                      {label}
-                    </span>
+                  <div className="c3c-file">
+                    <FileText className="size-4 shrink-0" />
+                    <span className="c3c-file-name">{label}</span>
                   </div>
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <button
-                        aria-label="Remove attachment"
-                        type="button"
-                        onClick={() => onRemove(attachment.url)}
-                        className={COMPOSER_MEDIA_REMOVE_CLASS}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Remove attachment</TooltipContent>
-                  </Tooltip>
+                  <div className="c3c-file-tools">
+                    <Tooltip disableHoverableContent>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label="Remove attachment"
+                          type="button"
+                          onClick={() => onRemove(attachment.url)}
+                          className={COMPOSER_TILE_TOOL_CLASS}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Remove attachment</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </motion.div>
               );
             }
@@ -790,7 +792,10 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
             return (
               <motion.div
                 animate={{ opacity: 1, scale: 1 }}
-                className="group relative"
+                className={cn(
+                  "group relative",
+                  isMedia ? "c3c-tile-wrap" : "c3c-file-wrap",
+                )}
                 data-testid="composer-queued-media-attachment"
                 exit={{ opacity: 0, scale: 0.8 }}
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -799,11 +804,8 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
               >
                 {isMedia ? (
-                  <div
-                    className="relative h-[55px] max-w-[55px]"
-                    style={composerMediaStyle()}
-                  >
-                    <div className="h-full w-full overflow-hidden rounded-2xl border border-border/70 bg-muted">
+                  <div className="c3c-tile" style={composerMediaStyle()}>
+                    <div className="c3c-tile-media h-full w-full overflow-hidden">
                       {preview.posterUrl ? (
                         <img
                           alt={preview.filename ?? "Queued attachment"}
@@ -817,57 +819,64 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
                       )}
                     </div>
                     {preview.spoilered ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-background/55 text-foreground/70 backdrop-blur-[1px]">
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-background/55 text-foreground/70 backdrop-blur-[1px]">
                         <HatGlasses className="h-4 w-4" />
                       </div>
                     ) : null}
+                    <span className="c3c-tile-label">
+                      {preview.filename ?? "Attachment"}
+                    </span>
                   </div>
                 ) : (
-                  <div className="flex h-5 max-w-40 items-center gap-1 rounded border border-border/70 bg-muted px-1.5">
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate text-2xs text-muted-foreground">
+                  <div className="c3c-file">
+                    <FileText className="size-4 shrink-0" />
+                    <span className="c3c-file-name">
                       {preview.filename ?? "Attachment"}
                     </span>
                   </div>
                 )}
-                {onRemoveQueued ? (
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <button
-                        aria-label="Remove attachment"
-                        className={COMPOSER_MEDIA_REMOVE_CLASS}
-                        onClick={() => onRemoveQueued(preview.id)}
-                        type="button"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Remove attachment</TooltipContent>
-                  </Tooltip>
-                ) : null}
-                {isVideo && onToggleQueuedSpoiler ? (
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <button
-                        aria-label={
-                          preview.spoilered
-                            ? "Remove spoiler"
-                            : "Mark as spoiler"
-                        }
-                        aria-pressed={preview.spoilered}
-                        className={COMPOSER_MEDIA_HOVER_ACTION_CLASS}
-                        data-testid="composer-queued-video-spoiler"
-                        onClick={() => onToggleQueuedSpoiler(preview.id)}
-                        type="button"
-                      >
-                        <HatGlasses className="h-5 w-5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {preview.spoilered ? "Remove spoiler" : "Mark as spoiler"}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : null}
+                <div className={isMedia ? "c3c-tile-tools" : "c3c-file-tools"}>
+                  {onRemoveQueued ? (
+                    <Tooltip disableHoverableContent>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label="Remove attachment"
+                          className={COMPOSER_TILE_TOOL_CLASS}
+                          onClick={() => onRemoveQueued(preview.id)}
+                          type="button"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Remove attachment</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  {isVideo && onToggleQueuedSpoiler ? (
+                    <Tooltip disableHoverableContent>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label={
+                            preview.spoilered
+                              ? "Remove spoiler"
+                              : "Mark as spoiler"
+                          }
+                          aria-pressed={preview.spoilered}
+                          className={COMPOSER_TILE_TOOL_CLASS}
+                          data-testid="composer-queued-video-spoiler"
+                          onClick={() => onToggleQueuedSpoiler(preview.id)}
+                          type="button"
+                        >
+                          <HatGlasses className="h-5 w-5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {preview.spoilered
+                          ? "Remove spoiler"
+                          : "Mark as spoiler"}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </div>
               </motion.div>
             );
           })}
@@ -882,11 +891,8 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
                 className="group relative"
               >
-                <div
-                  className="relative h-[55px] max-w-[55px]"
-                  style={composerMediaStyle()}
-                >
-                  <div className="h-full w-full overflow-hidden rounded-2xl border border-border/70 bg-muted">
+                <div className="c3c-tile" style={composerMediaStyle()}>
+                  <div className="c3c-tile-media h-full w-full overflow-hidden">
                     {preview.posterUrl ? (
                       <img
                         src={preview.posterUrl}
@@ -896,7 +902,7 @@ export const ComposerAttachments = React.memo(function ComposerAttachments({
                     ) : (
                       <div className="h-full w-full animate-pulse bg-muted" />
                     )}
-                    <div className="absolute inset-0 flex items-end rounded-2xl bg-background/25 px-2 pb-1.5">
+                    <div className="absolute inset-0 flex items-end rounded-xl bg-background/25 px-2 pb-1.5">
                       <Progress
                         aria-label={`Uploading ${preview.filename ?? "attachment"}`}
                         className={cn(

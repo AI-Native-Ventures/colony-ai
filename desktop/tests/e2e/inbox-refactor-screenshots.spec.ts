@@ -474,11 +474,18 @@ test.describe("inbox refactor screenshots", () => {
             lineHeight: style.lineHeight,
           };
         }),
+        // The Composer board sets its text at 1.5 of the font size; read it as
+        // that ratio so the check does not depend on layout rounding.
         composerInput.evaluate((element) => {
           const style = window.getComputedStyle(element);
           return {
             fontSize: style.fontSize,
-            lineHeight: style.lineHeight,
+            lineHeightRatio:
+              Math.round(
+                (Number.parseFloat(style.lineHeight) /
+                  Number.parseFloat(style.fontSize)) *
+                  100,
+              ) / 100,
           };
         }),
       ]);
@@ -491,7 +498,7 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
         { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "17px", lineHeight: "27.1999px" },
+        { fontSize: "17px", lineHeightRatio: 1.5 },
       ]);
     await waitForAnimations(page);
 
@@ -507,7 +514,7 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "14px", lineHeight: "20px" },
         { fontSize: "17px", lineHeight: "27.1999px" },
         { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "17px", lineHeight: "27.1999px" },
+        { fontSize: "17px", lineHeightRatio: 1.5 },
       ]);
 
     await applyConversationPreferences(page, "smaller", "compact");
@@ -520,7 +527,7 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "13.0666px", lineHeight: "18.6666px" },
         { fontSize: "15.8666px", lineHeight: "25.3866px" },
         { fontSize: "13.0666px", lineHeight: "18.6666px" },
-        { fontSize: "15.8666px", lineHeight: "25.3866px" },
+        { fontSize: "15.8666px", lineHeightRatio: 1.5 },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/05-thread-context-compact.png` });
@@ -535,7 +542,7 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "14.9333px", lineHeight: "21.3333px" },
         { fontSize: "18.1333px", lineHeight: "29.0133px" },
         { fontSize: "14.9333px", lineHeight: "21.3333px" },
-        { fontSize: "18.1333px", lineHeight: "29.0133px" },
+        { fontSize: "18.1333px", lineHeightRatio: 1.5 },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/06-thread-context-spacious.png` });
@@ -576,7 +583,7 @@ test.describe("inbox refactor screenshots", () => {
         { fontSize: "15.4px", lineHeight: "21.9999px" },
         { fontSize: "18.7px", lineHeight: "29.9199px" },
         { fontSize: "15.4px", lineHeight: "21.9999px" },
-        { fontSize: "18.7px", lineHeight: "29.9199px" },
+        { fontSize: "18.7px", lineHeightRatio: 1.5 },
       ]);
   });
 });

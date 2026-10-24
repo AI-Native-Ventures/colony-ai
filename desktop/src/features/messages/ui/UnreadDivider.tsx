@@ -7,14 +7,12 @@ export function UnreadDivider() {
   return (
     <section
       aria-label="New messages"
-      className="relative flex items-center py-1"
+      className="relative flex items-center gap-2.5 pb-6"
       data-testid="message-unread-divider"
     >
-      <div className="h-px flex-1 bg-primary/40" />
-      <span className="shrink-0 px-2 text-2xs font-semibold uppercase tracking-[0.04em] text-primary">
-        New
-      </span>
-      <div className="h-px flex-1 bg-primary/40" />
+      <div className="h-[1.5px] flex-1 bg-[#b9a9ee]" />
+      <span className="c3c-new-label shrink-0">New</span>
+      <div className="h-[1.5px] flex-1 bg-[#b9a9ee]" />
     </section>
   );
 }

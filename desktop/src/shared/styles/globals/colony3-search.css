@@ -1,0 +1,309 @@
+/*
+ * Colony 3.0 "Search" board: the palette with its input row, recent activity,
+ * actions, grouped results and footer hints (`Search.dc.html`).
+ */
+
+.c3s-dialog {
+  width: min(35rem, calc(100vw - 2rem));
+  max-width: none;
+  margin-top: 3.5rem;
+  border-radius: 1.5rem;
+  background: var(--colony-pop);
+  box-shadow: 0 30px 80px -30px rgb(40 20 60 / 45%);
+}
+
+.c3s-input-row {
+  display: flex;
+  height: 4rem;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  box-sizing: content-box;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  color: hsl(var(--colony-muted));
+}
+
+.c3s-placeholder {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  align-items: center;
+  color: var(--c3c-placeholder);
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.c3s-placeholder [data-testid="search-placeholder"] {
+  color: inherit;
+}
+
+.c3s-input {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 600;
+  outline: none;
+}
+
+.c3s-esc {
+  flex: none;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-family: inherit;
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3s-scope-chip {
+  display: flex;
+  height: 1.75rem;
+  max-width: 12rem;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+  font-family: inherit;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3s-scroll {
+  max-height: min(60vh, 34rem);
+  overflow-y: auto;
+}
+
+.c3s-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.875rem 0.75rem 0.5rem;
+}
+
+.c3s-note {
+  margin: 0;
+  padding: 1.25rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.c3s-note-error {
+  color: hsl(var(--colony-danger));
+}
+
+.c3s-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.c3s-group + .c3s-group {
+  margin-top: 0.5rem;
+}
+
+.c3s-group[data-actions] {
+  margin-top: 0.625rem;
+}
+
+.c3s-section {
+  margin: 0;
+  padding: 0.25rem 0.625rem 0.5rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.c3s-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  text-align: left;
+}
+
+.c3s-row[data-kind="message"] {
+  align-items: flex-start;
+}
+
+.c3s-row[data-selected="true"] {
+  background: hsl(var(--colony-wash));
+}
+
+.c3s-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.6875rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.c3s-row[data-selected="true"] .c3s-icon {
+  background: var(--colony-pop);
+}
+
+.c3s-icon[data-agent-action="true"] {
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+}
+
+.c3s-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  font-size: calc(14 * var(--colony-px));
+}
+
+.c3s-avatar-message {
+  width: 2.125rem;
+  height: 2.125rem;
+  font-size: calc(12.5 * var(--colony-px));
+}
+
+.c3s-avatar-message[class*="squircle"] {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: calc(13.5 * var(--colony-px));
+}
+
+.c3s-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.c3s-row[data-kind="message"] .c3s-text {
+  gap: 0.1875rem;
+}
+
+.c3s-title {
+  overflow: hidden;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3s-title[data-action="true"] {
+  font-weight: 700;
+}
+
+.c3s-sub {
+  overflow: hidden;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3s-trailing {
+  flex: none;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3s-kbd {
+  flex: none;
+  padding: 0.1875rem 0.4375rem;
+  border-radius: 0.4375rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-family: inherit;
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3s-hit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.c3s-hit-head strong {
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3s-hit-context {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3s-hit-body {
+  display: -webkit-box;
+  overflow: hidden;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.c3s-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+  padding: 0.75rem 1.375rem;
+  border-top: 1px solid hsl(var(--colony-border));
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3s-footer b {
+  color: hsl(var(--colony-fg-secondary));
+  font-weight: 800;
+}
+
+.c3s-scope-action {
+  padding: 0.875rem 0.75rem 0;
+}
+
+.c3s-scope-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-wash) / 0.6);
+  text-align: left;
+}
+
+.c3s-scope-button[data-selected="true"],
+.c3s-scope-button:hover {
+  background: hsl(var(--colony-wash));
+}
