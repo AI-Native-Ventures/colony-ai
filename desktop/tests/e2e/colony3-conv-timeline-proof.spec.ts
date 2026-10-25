@@ -243,7 +243,11 @@ test("Direct message board", async ({ page }) => {
   await page.getByTestId("channel-Aya").click();
   await expect(page.getByTestId("chat-title")).toHaveText("Aya");
   await page.waitForTimeout(1500);
-  await scrollTimelineTo(page, '[data-testid="message-dm-intro"]', 104);
+  await scrollTimelineTo(
+    page,
+    '[data-testid="message-timeline-day-divider"]',
+    136,
+  );
   await shot(page, {
     name: "DirectMessage",
     board: "DirectMessage",
@@ -332,7 +336,11 @@ test("Channel join board", async ({ page }) => {
   await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.marketing}`);
   await expect(page.getByTestId("chat-title")).toHaveText("Marketing");
   await page.waitForTimeout(1500);
-  await scrollTimelineTo(page, '[data-testid="message-channel-intro"]', 152);
+  await scrollTimelineTo(
+    page,
+    '[data-testid="message-timeline-day-divider"]',
+    136,
+  );
   await shot(page, {
     name: "ChannelJoin",
     board: "ChannelJoin",

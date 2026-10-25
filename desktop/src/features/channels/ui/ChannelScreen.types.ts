@@ -26,7 +26,6 @@ export type ChannelScreenProps = {
   idleAuxiliaryOverridesThread?: boolean;
   idleAuxiliaryTitle?: string;
   headerEndActions?: ReactNode;
-  onAddFiles?: () => void;
   onCloseIdleAuxiliaryPanel?: () => void;
   targetMessageEvents: RelayEvent[];
   targetMessageId: string | null;

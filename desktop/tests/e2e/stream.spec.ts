@@ -45,9 +45,10 @@ async function seedTimelineHistory(
   senderPage: Page,
   channelName: string,
   prefix: string,
+  count: number,
 ) {
   const messages = Array.from(
-    { length: 24 },
+    { length: count },
     (_, index) => `${prefix} seed ${index}`,
   );
   for (const content of messages) {
@@ -62,7 +63,7 @@ async function createAndJoinSharedStream(
   ownerPage: Page,
   memberPage: Page,
   channelName: string,
-  seed?: { prefix: string; minDistance?: number },
+  seed?: { prefix: string; minDistance?: number; count?: number },
 ) {
   await openCreateChannelDialog(ownerPage);
   await ownerPage.getByTestId("create-channel-name").fill(channelName);
@@ -72,7 +73,12 @@ async function createAndJoinSharedStream(
   await expect(ownerPage.getByTestId("message-input")).toBeEnabled();
 
   const lastSeed = seed
-    ? await seedTimelineHistory(ownerPage, channelName, seed.prefix)
+    ? await seedTimelineHistory(
+        ownerPage,
+        channelName,
+        seed.prefix,
+        seed.count ?? 24,
+      )
     : null;
 
   await openChannelBrowser(memberPage);
@@ -495,9 +501,12 @@ test("keeps scroll position when new messages arrive above the fold", async ({
     await pageOne.goto("/");
     await pageTwo.goto("/");
     const minAwayDistance = 80;
+    // 24 seed rows left the timeline ~120px short of the 480px of history this
+    // test needs once the channel intro (about 130px) stopped padding it.
     await createAndJoinSharedStream(pageOne, pageTwo, channelName, {
       prefix,
       minDistance: 480,
+      count: 32,
     });
     await expect
       .poll(async () => (await getTimelineMetrics(pageTwo)).distanceFromBottom)

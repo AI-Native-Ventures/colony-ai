@@ -396,54 +396,6 @@ async function invokeMockCommand<T>(
   ) as Promise<T>;
 }
 
-async function expectSameLeftInset(
-  page: import("@playwright/test").Page,
-  firstTestId: string,
-  secondTestId: string,
-) {
-  const firstBox = await page.getByTestId(firstTestId).boundingBox();
-  const secondBox = await page.getByTestId(secondTestId).first().boundingBox();
-
-  if (!firstBox || !secondBox) {
-    throw new Error(`Could not measure ${firstTestId} against ${secondTestId}`);
-  }
-
-  expect(Math.abs(firstBox.x - secondBox.x)).toBeLessThanOrEqual(4);
-}
-
-async function expectIntroSpacedAboveDayDivider(
-  page: import("@playwright/test").Page,
-  introTestId: string,
-) {
-  const introBox = await page.getByTestId(introTestId).boundingBox();
-  const dividerBox = await page
-    .getByTestId("message-timeline-day-divider")
-    .first()
-    .boundingBox();
-  const messageBox = await page
-    .getByTestId("message-row")
-    .first()
-    .boundingBox();
-
-  if (!introBox || !dividerBox || !messageBox) {
-    throw new Error(`Could not measure timeline spacing for ${introTestId}`);
-  }
-
-  const gapAboveDivider = dividerBox.y - (introBox.y + introBox.height);
-  const gapBelowDivider = messageBox.y - (dividerBox.y + dividerBox.height);
-
-  // The intro is a flex sibling above the timeline; the day divider and first
-  // message-row are virtualized items positioned by translateY inside the
-  // scroll container. The intro -> divider gap is the wrapper flex spacing the
-  // layout controls (the intro's own bottom padding is inside its box), so only
-  // non-overlap is asserted here. The divider -> message gap is NOT a layout-spacing contract: virtualized rows are positioned
-  // back-to-back (no inter-item gap), so it is ~0 by construction plus
-  // MessageRow avatar/font render jitter, genuinely variable run-to-run. Assert
-  // only non-overlap on it (reading order: intro, divider, then message).
-  expect(gapAboveDivider).toBeGreaterThanOrEqual(0);
-  expect(gapBelowDivider).toBeGreaterThanOrEqual(0);
-}
-
 test.beforeEach(async ({ page }, testInfo) => {
   await installMockBridge(
     page,
@@ -1402,20 +1354,6 @@ test("shows capped participant stack in group direct message header", async ({
   expect((headerStackBox?.x ?? 0) + (headerStackBox?.width ?? 0)).toBeLessThan(
     headerTitleBox?.x ?? 0,
   );
-  await expect(page.getByTestId("message-dm-intro")).toContainText("alice");
-  await expect(page.getByTestId("message-dm-intro")).toContainText("bob");
-  await expect(page.getByTestId("message-dm-intro")).toContainText("charlie");
-  await expect(page.getByTestId("message-dm-intro")).toContainText("+1 more");
-  await expect(page.getByTestId("message-dm-intro")).not.toContainText(
-    "outsider",
-  );
-  await expect(page.getByTestId("message-dm-intro-avatar-stack")).toBeVisible();
-  await expect(
-    page.getByTestId("message-dm-intro-avatar-stack-participant"),
-  ).toHaveCount(3);
-  await expect(
-    page.getByTestId("message-dm-intro-avatar-stack-more"),
-  ).toHaveText("+1");
 });
 
 test("create stream with name and description", async ({ page }) => {
@@ -1811,10 +1749,10 @@ test("empty channel shows the empty state", async ({ page }) => {
   );
 });
 
-test("short channel with messages shows the channel intro on open", async ({
+test("short channel with messages opens on its day divider and message", async ({
   page,
 }) => {
-  const channelName = `short-intro-${Date.now()}`;
+  const channelName = `short-start-${Date.now()}`;
   const message = "Only message in a short channel";
 
   await page.goto("/");
@@ -1832,19 +1770,18 @@ test("short channel with messages shows the channel intro on open", async ({
   await page.getByTestId(`channel-${channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelName);
   await expect(page.getByTestId("message-timeline")).toContainText(message);
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    channelName,
-  );
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "Open channel",
-  );
+  // The whole history fits in one page, so the start of the channel is proven
+  // and the first day divider heads the timeline above the only message.
+  await expect(
+    page.getByTestId("message-timeline-day-divider").first(),
+  ).toBeInViewport();
+  await expect(page.getByTestId("message-row")).toHaveCount(1);
 });
 
-test("scrollable channel with recent messages hides its intro until top", async ({
+test("scrollable channel with recent messages shows its start marker only at the top", async ({
   page,
 }) => {
-  const channelName = `long-intro-${Date.now()}`;
+  const channelName = `long-start-${Date.now()}`;
   const messages = Array.from(
     { length: 24 },
     (_, index) => `Scrollable channel message ${index + 1}`,
@@ -1866,7 +1803,9 @@ test("scrollable channel with recent messages hides its intro until top", async 
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await page.getByTestId(`channel-${channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelName);
-  await expect(page.getByTestId("message-channel-intro")).not.toBeInViewport();
+  await expect(
+    page.getByTestId("message-timeline-day-divider").first(),
+  ).not.toBeInViewport();
   await expect(page.getByTestId("message-timeline")).toContainText(
     messages[messages.length - 1],
   );
@@ -1875,7 +1814,10 @@ test("scrollable channel with recent messages hides its intro until top", async 
     element.scrollTop = 0;
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
+  await expect(
+    page.getByTestId("message-timeline-day-divider").first(),
+  ).toBeInViewport();
+  await expect(page.getByTestId("message-row").first()).toBeInViewport();
 });
 
 test("channel with messages shows content", async ({ page }) => {
@@ -1883,10 +1825,6 @@ test("channel with messages shows content", async ({ page }) => {
 
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(
-    page.getByTestId("channel-intro-action-create-channel"),
-  ).toHaveCount(0);
   await expect(page.getByTestId("welcome-composer-guide-banner")).toHaveCount(
     0,
   );
@@ -2200,10 +2138,6 @@ test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
 
   await page.getByTestId("channel-alice-tyler").click();
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
-  await expect(page.getByTestId("message-dm-intro")).toBeVisible();
-  await expect(page.getByTestId("message-dm-intro")).toContainText(
-    "This is the beginning of your direct message with",
-  );
   // `.first()`: backdated seeds can straddle midnight UTC and render two
   // dividers (Yesterday + Today); a bare locator fails Playwright strict mode.
   await expect(
@@ -2212,9 +2146,6 @@ test("sidebar clears unread indicator after opening a DM", async ({ page }) => {
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Unread update for the DM",
   );
-  // The row box carries its own 16px of hover padding, so compare with the avatar.
-  await expectSameLeftInset(page, "message-dm-intro", "message-avatar");
-  await expectIntroSpacedAboveDayDivider(page, "message-dm-intro");
   await expect(page.getByTestId("channel-unread-alice-tyler")).toHaveCount(0);
 });
 
