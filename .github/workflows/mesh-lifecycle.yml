@@ -8,36 +8,10 @@ name: Mesh Lifecycle
 # (no hand-carried invite tokens). Mirrors the shape mesh-llm's own CI uses
 # for its two-node smokes (tiny CPU model, one runner, real QUIC mesh).
 
+# Manual only: mesh lifecycle smoke.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'crates/buzz-relay/examples/mesh_*.rs'
-      - 'crates/buzz-relay/Cargo.toml'
-      - 'crates/buzz-admin/**'
-      - 'crates/buzz-test-client/**'
-      - 'crates/buzz-ws-client/**'
-      - 'Cargo.lock'
-      - 'desktop/src-tauri/src/mesh_llm/**'
-      - 'scripts/ci-mesh-lifecycle-smoke.sh'
-      - 'scripts/start-relay-for-tests.sh'
-      - '.github/workflows/mesh-lifecycle.yml'
-      - 'docker-compose.yml'
-      - '.github/actions/cached-service-images/**'
-  pull_request:
-    paths:
-      - 'crates/buzz-relay/examples/mesh_*.rs'
-      - 'crates/buzz-relay/Cargo.toml'
-      - 'crates/buzz-admin/**'
-      - 'crates/buzz-test-client/**'
-      - 'crates/buzz-ws-client/**'
-      - 'Cargo.lock'
-      - 'desktop/src-tauri/src/mesh_llm/**'
-      - 'scripts/ci-mesh-lifecycle-smoke.sh'
-      - 'scripts/start-relay-for-tests.sh'
-      - '.github/workflows/mesh-lifecycle.yml'
-      - 'docker-compose.yml'
-      - '.github/actions/cached-service-images/**'
   workflow_dispatch:
 
 concurrency:

@@ -20,24 +20,11 @@ name: Sprig image
 # admin must flip ghcr.io/block/buzz-sprig to public once (Package settings →
 # Change visibility). Subsequent pushes keep the visibility.
 
+# Manual only: Sprig image build (Colony does not ship Sprig yet).
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  push:
-    branches: [main]
-    tags: ["sprig-v[0-9]*"]
-    paths:
-      - "Dockerfile.sprig"
-      - "scripts/sprig-entrypoint.sh"
-      - ".github/workflows/sprig-image.yml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "crates/**"
-  pull_request:
-    paths:
-      - "Dockerfile.sprig"
-      - "scripts/sprig-entrypoint.sh"
-      - ".github/workflows/sprig-image.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 concurrency:
   group: sprig-image-${{ github.ref }}

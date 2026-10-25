@@ -1,16 +1,10 @@
 name: Colony identity store
 
+# Manual only: identity store crate tests.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    branches:
-      - develop
-    paths:
-      - "desktop/identity-kernel/**"
-      - "desktop/identity-store/**"
-      - "desktop/src-tauri/Cargo.toml"
-      - "desktop/src-tauri/Cargo.lock"
-      - "desktop/src-tauri/src/**"
-      - ".github/workflows/colony-identity-store.yml"
+  workflow_dispatch:
 
 concurrency:
   # A newer push to the same pull request supersedes this run.

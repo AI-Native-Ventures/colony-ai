@@ -1,20 +1,9 @@
 name: Colony iOS runtime proof
 
+# Manual only: iOS runtime proof (simulator).
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    branches:
-      - feat/phase3-auth
-      - develop
-      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
-      - codex/phase2-integration
-    paths:
-      - ".github/workflows/colony-ios-runtime.yml"
-      - "mobile/ios/**"
-      - "mobile/lib/**"
-      - "mobile/pubspec.yaml"
-      - "mobile/pubspec.lock"
-      - "scripts/ios-runtime-proof.sh"
-      - "scripts/ios-runtime-proof-runner.py"
   workflow_dispatch:
 
 permissions:
