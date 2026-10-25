@@ -6,9 +6,17 @@ import { installMockBridge } from "../helpers/bridge";
 /**
  * Discovery and Leads work in a business whose private Sales channel was never
  * created: the first open by an owner or admin creates it (private, named
- * "Sales", with the AI employees as members) and carries on. Anyone else sees
+ * "Sales", with the business's owners, admins and AI employees as members, so
+ * an admin never has to make a second one) and carries on. Anyone else sees
  * who can set it up, and every failure keeps a working Retry.
  */
+
+// The mock relay's member list: the signed-in person is the owner, Alice is an
+// admin and Bob a plain member.
+const ALICE_PUBKEY =
+  "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f";
+const BOB_PUBKEY =
+  "bb22a5299220cad76ffd46190ccbeede8ab5dc260faa28b6e5a2cb31b9aff260";
 
 const NO_SALES = {
   // The company team (the AI employees) is read from the relay's signed
@@ -138,7 +146,8 @@ test.describe("Sales channel setup", () => {
     await expect(page.getByTestId("w10-leads-page")).toBeVisible();
     await expect(page.getByText("Business records unavailable")).toHaveCount(0);
 
-    // Exactly one Sales channel, private, with the AI employees as members.
+    // Exactly one Sales channel, private, with the business's owners, admins
+    // and AI employees as members (not plain members).
     const sales = await salesChannels(page);
     expect(sales).toHaveLength(1);
     expect(sales[0]).toMatchObject({
@@ -158,12 +167,42 @@ test.describe("Sales channel setup", () => {
       members.find((member) => member.pubkey === REFERENCE_AGENTS.scout.pubkey)
         ?.role,
     ).toBe("bot");
+    // The admin can see the private channel, so they never make a second one.
+    expect(members.find((member) => member.pubkey === ALICE_PUBKEY)?.role).toBe(
+      "admin",
+    );
+    expect(memberKeys).not.toContain(BOB_PUBKEY);
 
     // Opening Leads again does not make a second channel.
     await goTo(page, "/pipeline");
     await goTo(page, "/leads");
     await expect(page.getByTestId("w10-leads-page")).toBeVisible();
     expect(await salesChannels(page)).toHaveLength(1);
+  });
+
+  test("two Sales channels left by a create race do not dead-end Leads", async ({
+    page,
+  }) => {
+    await installMockBridge(page, NO_SALES);
+    await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+
+    // Two devices created "Sales" at the same moment, behind this window's back.
+    for (let made = 0; made < 2; made += 1) {
+      await invoke(page, "create_channel", {
+        name: "Sales",
+        description: "",
+        channelType: "stream",
+        visibility: "private",
+      });
+    }
+    expect(await salesChannels(page)).toHaveLength(2);
+
+    await goTo(page, "/leads");
+    await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+    await expect(page.getByText("Business records unavailable")).toHaveCount(0);
+    // Nothing was created or archived to get there.
+    expect(await salesChannels(page)).toHaveLength(2);
   });
 
   test("a failed creation shows the reason and Retry then creates the channel once", async ({

@@ -19,6 +19,7 @@ import {
   type ProspectHead,
   type ServiceHead,
 } from "./businessRecordContract";
+import { pickSalesStream } from "./salesChannel";
 
 export type BusinessRole = "owner" | "admin" | "member" | "guest" | "bot";
 
@@ -91,12 +92,9 @@ export async function resolveBusinessChannel(
     return [...discoveredChannelIds][0];
   }
 
-  const salesStreams = salesStreamsOf(channels);
-  if (salesStreams.length === 1) return salesStreams[0].id;
-  if (salesStreams.length > 1) {
-    throw new Error("More than one private Sales stream is available.");
-  }
-  return null;
+  // Two empty Sales streams (a create race) are not a dead end: every device
+  // picks the same one, so records land in one place.
+  return pickSalesStream(salesStreamsOf(channels))?.id ?? null;
 }
 
 async function fetchKind(

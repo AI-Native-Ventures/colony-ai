@@ -34,6 +34,16 @@ export type SalesChannelOutcome =
   /** The person may not create channels here; someone else has to. */
   | { status: "not-allowed" };
 
+export type SalesChannelRole = "admin" | "bot";
+
+export type SalesChannelPeople = {
+  /** The business's owners and admins. They must see the private channel, or
+   * the first one to open Leads would make a second Sales of their own. */
+  leaders: string[];
+  /** The business's AI employees, added as bots. */
+  employees: string[];
+};
+
 export type SalesChannelDeps = {
   /** A fresh channel list from the relay (not a cached snapshot). */
   listChannels: () => Promise<Channel[]>;
@@ -43,11 +53,17 @@ export type SalesChannelDeps = {
   salesStreams: (channels: Channel[]) => Channel[];
   canCreate: () => Promise<boolean>;
   create: () => Promise<Channel>;
-  /** Adds the business's AI employees; idempotent. Throws on failure. */
-  addEmployees: (channelId: string) => Promise<void>;
+  /** Who belongs in the channel, apart from the person creating it. */
+  listPeople: () => Promise<SalesChannelPeople>;
+  /** Adds people with a channel role; idempotent. Throws on failure. */
+  addMembers: (
+    channelId: string,
+    role: SalesChannelRole,
+    pubkeys: string[],
+  ) => Promise<void>;
   archive: (channelId: string) => Promise<void>;
-  /** Channels still owed their AI employees; survives a restart. */
-  pendingEmployees: {
+  /** Channels still owed their members; survives a restart. */
+  pendingMembers: {
     has: (channelId: string) => boolean;
     add: (channelId: string) => void;
     remove: (channelId: string) => void;
@@ -67,20 +83,41 @@ export function plainReason(error: unknown): string {
 }
 
 /**
- * Tries to give the channel its AI employees. A failure here must not block
- * Leads or Discovery (the channel itself works), so it leaves a durable
- * "owed" record and the next call retries it.
+ * The Sales channel to use when more than one is visible (a create race, or a
+ * losing duplicate that could not be archived): the lowest id, so every device
+ * and every later open picks the same one and none of them dead-ends.
  */
-async function syncEmployees(
+export function pickSalesStream(streams: Channel[]): Channel | null {
+  return streams.reduce<Channel | null>(
+    (best, channel) => (best === null || channel.id < best.id ? channel : best),
+    null,
+  );
+}
+
+/**
+ * Tries to give the channel its owners, admins and AI employees. Owners and
+ * admins go first: without them an admin cannot see the private channel. A
+ * failure must not block Leads or Discovery (the channel itself works), so it
+ * leaves a durable "owed" record and the next call retries it.
+ */
+async function syncMembers(
   deps: SalesChannelDeps,
   channelId: string,
 ): Promise<void> {
-  if (!deps.pendingEmployees.has(channelId)) return;
+  if (!deps.pendingMembers.has(channelId)) return;
   try {
-    await deps.addEmployees(channelId);
-    deps.pendingEmployees.remove(channelId);
+    const people = await deps.listPeople();
+    const leaders = [...new Set(people.leaders)];
+    const employees = [...new Set(people.employees)].filter(
+      (pubkey) => !leaders.includes(pubkey),
+    );
+    if (leaders.length > 0) await deps.addMembers(channelId, "admin", leaders);
+    if (employees.length > 0) {
+      await deps.addMembers(channelId, "bot", employees);
+    }
+    deps.pendingMembers.remove(channelId);
   } catch (error) {
-    deps.warn("Could not add AI employees to the Sales channel yet", error);
+    deps.warn("Could not add everyone to the Sales channel yet", error);
   }
 }
 
@@ -89,7 +126,7 @@ async function ready(
   channelId: string,
   created: Channel | null,
 ): Promise<SalesChannelOutcome> {
-  await syncEmployees(deps, channelId);
+  await syncMembers(deps, channelId);
   return { status: "ready", channelId, created };
 }
 
@@ -121,16 +158,12 @@ async function settleDuplicates(
   created: Channel,
   listed: Channel[],
 ): Promise<string> {
-  const streams = deps.salesStreams(listed);
-  const winner = streams.reduce<Channel | null>(
-    (best, channel) => (best === null || channel.id < best.id ? channel : best),
-    null,
-  );
+  const winner = pickSalesStream(deps.salesStreams(listed));
   if (!winner || winner.id === created.id) return created.id;
   // The channel is ours and empty, so giving it up loses nothing. If the
   // archive fails the error propagates: Retry would otherwise hit two Sales.
   await deps.archive(created.id);
-  deps.pendingEmployees.remove(created.id);
+  deps.pendingMembers.remove(created.id);
   return winner.id;
 }
 
@@ -163,14 +196,14 @@ export async function ensureSalesChannel(
         .then((list) => deps.resolve(list))
         .catch(() => null);
       if (landed) {
-        deps.pendingEmployees.add(landed);
+        deps.pendingMembers.add(landed);
         return ready(deps, landed, null);
       }
       throw new SalesChannelSetupError(plainReason(error));
     }
 
-    // Written before anything else can fail, so the employees are never lost.
-    deps.pendingEmployees.add(created.id);
+    // Written before anything else can fail, so nobody owed a place is lost.
+    deps.pendingMembers.add(created.id);
     const listed = await waitUntilListed(deps, created.id);
     const channelId = listed
       ? await settleDuplicates(deps, created, listed)

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ensureSalesChannel, SalesChannelSetupError } from "./salesChannel.ts";
+import {
+  ensureSalesChannel,
+  pickSalesStream,
+  SalesChannelSetupError,
+} from "./salesChannel.ts";
 
 function channel(id, overrides = {}) {
   return {
@@ -34,89 +38,117 @@ const isSales = (candidate) =>
 
 /**
  * A fake relay and the effects around it. `resolve` and `salesStreams` behave
- * like the production resolver (null on none, throws on two), so the tests
- * exercise the real decision logic against a world they can change.
+ * like the production resolver (the lowest id when two are visible, null on
+ * none), so the tests exercise the real decision logic against a world they
+ * can change. Private channels are listed only for their members, as the real
+ * relay does; a viewer of `null` sees everything the test put on the relay.
  */
 function world(options = {}) {
   const state = {
     relay: options.relay ?? [],
+    members: new Map(),
+    leaders: options.leaders ?? ["admin-1", "owner-1"],
+    employees: options.employees ?? ["bot-1"],
     allowed: options.allowed ?? true,
     createFails: options.createFails ?? null,
     createLandsThenFails: options.createLandsThenFails ?? false,
-    addEmployeesFails: options.addEmployeesFails ?? null,
+    addMembersFails: options.addMembersFails ?? null,
     archiveFails: options.archiveFails ?? null,
     hiddenFromListAfterCreate: options.hiddenFromListAfterCreate ?? 0,
     created: [],
     archived: [],
-    employeeCalls: [],
+    addCalls: [],
     pending: new Set(options.pending ?? []),
     listCalls: 0,
     canCreateCalls: 0,
     warnings: [],
   };
   const nextId = options.firstId ?? "m-created";
-  let lock = Promise.resolve();
-  const deps = {
-    listChannels: async () => {
-      state.listCalls += 1;
-      if (state.hiddenFromListAfterCreate > 0 && state.created.length > 0) {
-        state.hiddenFromListAfterCreate -= 1;
-        return state.relay.filter(
-          (item) => !state.created.some((made) => made.id === item.id),
+
+  function depsFor(viewer) {
+    let lock = Promise.resolve();
+    const visible = (list) =>
+      list.filter((item) => {
+        const members = state.members.get(item.id);
+        return viewer === null || !members || members.has(viewer);
+      });
+    return {
+      listChannels: async () => {
+        state.listCalls += 1;
+        if (state.hiddenFromListAfterCreate > 0 && state.created.length > 0) {
+          state.hiddenFromListAfterCreate -= 1;
+          return visible(
+            state.relay.filter(
+              (item) => !state.created.some((made) => made.id === item.id),
+            ),
+          );
+        }
+        return visible([...state.relay]);
+      },
+      resolve: async (channels) =>
+        pickSalesStream(channels.filter(isSales))?.id ?? null,
+      salesStreams: (channels) => channels.filter(isSales),
+      canCreate: async () => {
+        state.canCreateCalls += 1;
+        return state.allowed;
+      },
+      create: async () => {
+        const made = channel(nextId);
+        state.members.set(made.id, new Map([[viewer ?? "creator", "owner"]]));
+        if (state.createLandsThenFails) {
+          state.relay.push(made);
+          throw new Error("The request timed out.");
+        }
+        if (state.createFails) {
+          state.members.delete(made.id);
+          throw new Error(state.createFails);
+        }
+        state.relay.push(made);
+        state.created.push(made);
+        return made;
+      },
+      listPeople: async () => ({
+        leaders: state.leaders.filter((pubkey) => pubkey !== viewer),
+        employees: state.employees.filter((pubkey) => pubkey !== viewer),
+      }),
+      addMembers: async (channelId, role, pubkeys) => {
+        state.addCalls.push({ channelId, role, pubkeys });
+        if (state.addMembersFails?.role === role) {
+          throw new Error(state.addMembersFails.message);
+        }
+        const members = state.members.get(channelId) ?? new Map();
+        for (const pubkey of pubkeys) members.set(pubkey, role);
+        state.members.set(channelId, members);
+      },
+      archive: async (channelId) => {
+        if (state.archiveFails) throw new Error(state.archiveFails);
+        state.archived.push(channelId);
+        state.relay = state.relay.filter((item) => item.id !== channelId);
+      },
+      pendingMembers: {
+        has: (id) => state.pending.has(id),
+        add: (id) => state.pending.add(id),
+        remove: (id) => state.pending.delete(id),
+      },
+      exclusive: (run) => {
+        const turn = lock.then(run, run);
+        lock = turn.then(
+          () => undefined,
+          () => undefined,
         );
-      }
-      return [...state.relay];
-    },
-    resolve: async (channels) => {
-      const found = channels.filter(isSales);
-      if (found.length > 1) {
-        throw new Error("More than one private Sales stream is available.");
-      }
-      return found[0]?.id ?? null;
-    },
-    salesStreams: (channels) => channels.filter(isSales),
-    canCreate: async () => {
-      state.canCreateCalls += 1;
-      return state.allowed;
-    },
-    create: async () => {
-      if (state.createLandsThenFails) {
-        const landed = channel(nextId);
-        state.relay.push(landed);
-        throw new Error("The request timed out.");
-      }
-      if (state.createFails) throw new Error(state.createFails);
-      const made = channel(nextId);
-      state.relay.push(made);
-      state.created.push(made);
-      return made;
-    },
-    addEmployees: async (channelId) => {
-      state.employeeCalls.push(channelId);
-      if (state.addEmployeesFails) throw new Error(state.addEmployeesFails);
-    },
-    archive: async (channelId) => {
-      if (state.archiveFails) throw new Error(state.archiveFails);
-      state.archived.push(channelId);
-      state.relay = state.relay.filter((item) => item.id !== channelId);
-    },
-    pendingEmployees: {
-      has: (id) => state.pending.has(id),
-      add: (id) => state.pending.add(id),
-      remove: (id) => state.pending.delete(id),
-    },
-    exclusive: (run) => {
-      const turn = lock.then(run, run);
-      lock = turn.then(
-        () => undefined,
-        () => undefined,
-      );
-      return turn;
-    },
-    sleep: async () => {},
-    warn: (message) => state.warnings.push(message),
+        return turn;
+      },
+      sleep: async () => {},
+      warn: (message) => state.warnings.push(message),
+    };
+  }
+
+  return {
+    state,
+    deps: depsFor(options.viewer ?? null),
+    /** The same relay, seen by another person on another device. */
+    as: depsFor,
   };
-  return { state, deps };
 }
 
 test("an existing Sales channel is used as is: nothing is created or asked", async () => {
@@ -139,8 +171,11 @@ test("a missing Sales channel is created for an owner and re-resolved", async ()
   assert.equal(outcome.channelId, "m-created");
   assert.equal(outcome.created?.id, "m-created");
   assert.equal(state.created.length, 1);
-  // The AI employees were added and the owed record cleared.
-  assert.deepEqual(state.employeeCalls, ["m-created"]);
+  // Owners and admins first, then the AI employees; the owed record is cleared.
+  assert.deepEqual(state.addCalls, [
+    { channelId: "m-created", role: "admin", pubkeys: ["admin-1", "owner-1"] },
+    { channelId: "m-created", role: "bot", pubkeys: ["bot-1"] },
+  ]);
   assert.equal(state.pending.size, 0);
   // Resolving the relay's list again finds exactly the one channel.
   assert.equal(await deps.resolve(await deps.listChannels()), "m-created");
@@ -202,8 +237,11 @@ test("a create that timed out but landed on the relay is found, not repeated", a
   assert.equal(outcome.status, "ready");
   assert.equal(outcome.channelId, "m-created");
   assert.equal(state.relay.filter(isSales).length, 1);
-  // The channel still gets its employees.
-  assert.deepEqual(state.employeeCalls, ["m-created"]);
+  // The channel still gets its members.
+  assert.deepEqual(
+    state.addCalls.map((call) => call.role),
+    ["admin", "bot"],
+  );
 });
 
 test("a new channel that the relay list shows late is still returned once visible", async () => {
@@ -256,26 +294,107 @@ test("a failed archive of the losing duplicate is reported, not swallowed", asyn
   await assert.rejects(() => ensureSalesChannel(deps, []), /Archive refused/);
 });
 
-test("employees that could not be added do not block the channel and are retried next time", async () => {
-  const { state, deps } = world({ addEmployeesFails: "Relay busy." });
+test("members that could not be added do not block the channel and are retried next time", async () => {
+  const { state, deps } = world({
+    addMembersFails: { role: "bot", message: "Relay busy." },
+  });
   const outcome = await ensureSalesChannel(deps, []);
   assert.equal(outcome.status, "ready");
-  // The owed record is durable and a warning was raised, not silence.
+  // Owners and admins were already in; the owed record is durable and a
+  // warning was raised, not silence.
+  assert.equal(state.members.get("m-created").get("admin-1"), "admin");
   assert.equal(state.pending.has("m-created"), true);
   assert.equal(state.warnings.length, 1);
 
-  // Next open: the channel exists, the owed employees are added, record cleared.
-  state.addEmployeesFails = null;
-  state.employeeCalls.length = 0;
+  // Next open: the channel exists, the owed members are added, record cleared.
+  state.addMembersFails = null;
+  state.addCalls.length = 0;
   const again = await ensureSalesChannel(deps, state.relay);
   assert.equal(again.status, "ready");
-  assert.deepEqual(state.employeeCalls, ["m-created"]);
+  assert.equal(state.members.get("m-created").get("bot-1"), "bot");
   assert.equal(state.pending.size, 0);
   assert.equal(state.created.length, 1);
+});
+
+test("an admin who was not in the channel when it was made sees it afterwards: no second Sales", async () => {
+  const { state, deps, as } = world({
+    viewer: "owner-1",
+    leaders: ["admin-1"],
+  });
+  const made = await ensureSalesChannel(deps, []);
+  assert.equal(made.channelId, "m-created");
+  assert.equal(state.members.get("m-created").get("admin-1"), "admin");
+
+  // The admin opens Leads with an empty snapshot: the private channel is
+  // listed for them now, so it is used and nothing is created.
+  const adminDeps = as("admin-1");
+  const opened = await ensureSalesChannel(adminDeps, []);
+  assert.deepEqual(opened, {
+    status: "ready",
+    channelId: "m-created",
+    created: null,
+  });
+  assert.equal(state.created.length, 1);
+  assert.equal(state.relay.filter(isSales).length, 1);
+});
+
+test("an admin who creates it adds the owner as an admin of the channel, not themselves", async () => {
+  const { state, deps } = world({
+    viewer: "admin-1",
+    leaders: ["admin-1", "owner-1"],
+    employees: ["bot-1", "admin-1"],
+  });
+  await ensureSalesChannel(deps, []);
+  assert.deepEqual(state.addCalls[0], {
+    channelId: "m-created",
+    role: "admin",
+    pubkeys: ["owner-1"],
+  });
+  assert.equal(state.members.get("m-created").get("owner-1"), "admin");
+  assert.equal(state.members.get("m-created").get("admin-1"), "owner");
+  assert.equal(state.members.get("m-created").get("bot-1"), "bot");
+});
+
+test("someone who is both an owner or admin and an AI employee is added once, as a leader", async () => {
+  const { state, deps } = world({
+    leaders: ["owner-1"],
+    employees: ["owner-1", "bot-1"],
+  });
+  await ensureSalesChannel(deps, []);
+  assert.deepEqual(state.addCalls, [
+    { channelId: "m-created", role: "admin", pubkeys: ["owner-1"] },
+    { channelId: "m-created", role: "bot", pubkeys: ["bot-1"] },
+  ]);
+});
+
+test("two Sales streams visible: the lowest id is used and nothing throws or is created", async () => {
+  const { state, deps } = world({
+    relay: [channel("z-late"), channel("a-first")],
+  });
+  const outcome = await ensureSalesChannel(deps, state.relay);
+  assert.deepEqual(outcome, {
+    status: "ready",
+    channelId: "a-first",
+    created: null,
+  });
+  assert.equal(state.created.length, 0);
+  assert.equal(state.canCreateCalls, 0);
+});
+
+test("pickSalesStream is the lowest id, the same on every device, and null when none", () => {
+  assert.equal(pickSalesStream([]), null);
+  assert.equal(
+    pickSalesStream([channel("m"), channel("b"), channel("x")])?.id,
+    "b",
+  );
+  assert.equal(
+    pickSalesStream([channel("x"), channel("b"), channel("m")])?.id,
+    "b",
+  );
 });
 
 test("a channel with nothing owed is not touched again", async () => {
   const { state, deps } = world({ relay: [channel("existing")] });
   await ensureSalesChannel(deps, state.relay);
-  assert.deepEqual(state.employeeCalls, []);
+  assert.deepEqual(state.addCalls, []);
 });

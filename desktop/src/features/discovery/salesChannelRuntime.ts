@@ -1,18 +1,23 @@
 /**
  * Production wiring for `ensureSalesChannel`: the relay's channel list, the
- * same create path the sidebar "+" uses, the business's AI employees, and a
- * lock shared by every window of the app. The logic lives in `salesChannel.ts`.
+ * same create path the sidebar "+" uses, the business's owners, admins and AI
+ * employees, and a lock shared by every window of the app. The logic lives in
+ * `salesChannel.ts`.
  */
 
 import { fetchCompanyTeam } from "@/features/company-team/teamRelay";
 import type { Community } from "@/features/communities/types";
-import { getMyRelayMembershipLookup } from "@/shared/api/relayMembers";
+import {
+  getMyRelayMembershipLookup,
+  listRelayMembers,
+} from "@/shared/api/relayMembers";
 import { addChannelMembers } from "@/shared/api/tauri";
 import {
   archiveChannel,
   createChannel,
   getChannels,
 } from "@/shared/api/tauriChannels";
+import { getIdentity } from "@/shared/api/tauriIdentity";
 import type { Channel } from "@/shared/api/types";
 
 import { resolveBusinessChannel, salesStreamsOf } from "./businessRecordRelay";
@@ -24,7 +29,7 @@ import {
   type SalesChannelOutcome,
 } from "./salesChannel";
 
-const PENDING_KEY_PREFIX = "colony.salesChannel.employeesOwed.";
+const PENDING_KEY_PREFIX = "colony.salesChannel.membersOwed.";
 
 function readPending(communityId: string): string[] {
   try {
@@ -45,8 +50,8 @@ function writePending(communityId: string, ids: string[]): void {
       JSON.stringify(ids),
     );
   } catch {
-    // Storage can be blocked. The employees are then added on a later setup
-    // or by hand from the channel's member list; nothing else depends on it.
+    // Storage can be blocked. Whoever is missing is then added on a later
+    // setup or by hand from the channel's member list.
   }
 }
 
@@ -81,20 +86,37 @@ function productionDeps(community: Community): SalesChannelDeps {
         channelType: "stream",
         visibility: "private",
       }),
-    addEmployees: async (channelId) => {
-      const team = await fetchCompanyTeam(community.relayUrl);
-      const pubkeys = team.members
-        .filter(
-          (member) =>
-            member.kind === "employee" &&
-            member.position?.head.status !== "terminated",
-        )
-        .map((member) => member.pubkey);
-      if (pubkeys.length === 0) return;
+    listPeople: async () => {
+      const [{ pubkey: self }, team, relayMembers] = await Promise.all([
+        getIdentity(),
+        fetchCompanyTeam(community.relayUrl),
+        listRelayMembers(),
+      ]);
+      const me = self.toLowerCase();
+      const others = (pubkeys: string[]) =>
+        pubkeys.filter((pubkey) => pubkey.toLowerCase() !== me);
+      return {
+        leaders: others(
+          relayMembers
+            .filter(({ role }) => role === "owner" || role === "admin")
+            .map(({ pubkey }) => pubkey),
+        ),
+        employees: others(
+          team.members
+            .filter(
+              (member) =>
+                member.kind === "employee" &&
+                member.position?.head.status !== "terminated",
+            )
+            .map((member) => member.pubkey),
+        ),
+      };
+    },
+    addMembers: async (channelId, role, pubkeys) => {
       const result = await addChannelMembers({
         channelId,
         pubkeys,
-        role: "bot",
+        role,
         expectedRelayUrl: community.relayUrl,
       });
       const failed = result.errors.find(
@@ -103,7 +125,7 @@ function productionDeps(community: Community): SalesChannelDeps {
       if (failed) throw new Error(failed.error);
     },
     archive: archiveChannel,
-    pendingEmployees: {
+    pendingMembers: {
       has: (channelId) => readPending(community.id).includes(channelId),
       add: (channelId) => {
         const ids = readPending(community.id);
