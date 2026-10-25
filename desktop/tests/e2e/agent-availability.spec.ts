@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { openAgentProfilePanel } from "../helpers/agentWorkspace";
 
 const LOCAL = "d".repeat(64);
 
@@ -18,16 +19,8 @@ test("saved deployment with offline presence is not shown as online", async ({
       },
     ],
   });
-  await page.goto("/#/agents?view=templates");
-  const dot = page.getByTestId(`agent-runtime-active-${LOCAL}`);
-  await expect(dot).toHaveAttribute(
-    "aria-label",
-    "Offline deployment: Offline",
-  );
-  await expect(dot.locator("xpath=../..")).not.toHaveClass(/bg-emerald-500/);
-  await page
-    .getByRole("button", { name: "Offline deployment agent profile" })
-    .click();
+  await page.goto("/#/agents");
+  await openAgentProfilePanel(page, LOCAL);
   await expect(page.getByTestId("user-profile-presence-badge")).toHaveAttribute(
     "aria-label",
     "Offline",
@@ -63,10 +56,6 @@ test("saved deployment with offline presence is not shown as online", async ({
     await expect(
       page.getByTestId("user-profile-presence-badge"),
     ).toHaveAttribute("aria-label", status[0].toUpperCase() + status.slice(1));
-    await expect(dot).toHaveAttribute(
-      "aria-label",
-      `Offline deployment: ${status[0].toUpperCase() + status.slice(1)}`,
-    );
     await expect(
       page.getByTestId("user-profile-agent-primary-action"),
     ).toHaveAttribute("aria-label", "Shutdown");
@@ -101,10 +90,6 @@ test("saved deployment with offline presence is not shown as online", async ({
     window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("disconnected"),
   );
   await expect(page.getByTestId("user-profile-presence-badge")).toHaveCount(0);
-  await expect(dot).toHaveAttribute(
-    "aria-label",
-    "Offline deployment: Availability unknown",
-  );
 });
 
 test("missing snapshot is offline but failed reads cannot reuse cached online", async ({
@@ -120,17 +105,13 @@ test("missing snapshot is offline but failed reads cannot reuse cached online", 
       },
     ],
   });
-  await page.goto("/#/agents?view=templates");
-  const dot = page.getByTestId(`agent-runtime-active-${LOCAL}`);
-  await expect(dot).toHaveAttribute("aria-label", "Snapshot agent: Offline");
-  await page
-    .getByRole("button", { name: "Snapshot agent agent profile" })
-    .click();
+  await page.goto("/#/agents");
+  await openAgentProfilePanel(page, LOCAL);
   const badge = page.getByTestId("user-profile-presence-badge");
   await expect(badge).toHaveAttribute("aria-label", "Offline");
 
-  // Override the IPC response, not rendered state or query data. Both card and
-  // profile must consume the same real query success/error boundary.
+  // Override the IPC response, not rendered state or query data. The profile
+  // must consume the real query success/error boundary.
   await page.evaluate(() => {
     const w = window as typeof window & {
       __AVAILABILITY_RESPONSE__?: "missing" | "online" | "error";
@@ -181,7 +162,6 @@ test("missing snapshot is offline but failed reads cannot reuse cached online", 
         : response === "missing"
           ? "Offline"
           : "Online";
-    await expect(dot).toHaveAttribute("aria-label", `Snapshot agent: ${label}`);
     if (response === "error") await expect(badge).toHaveCount(0);
     else await expect(badge).toHaveAttribute("aria-label", label);
     await expect(
@@ -203,7 +183,7 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
       },
     ],
   });
-  await page.goto("/#/agents?view=templates");
+  await page.goto("/#/agents");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -219,13 +199,7 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
       window.__BUZZ_E2E_EMIT_MOCK_PRESENCE__?.({ pubkey, status: "online" }),
     LOCAL,
   );
-  await expect(
-    page.getByTestId(`agent-runtime-active-${LOCAL}`),
-  ).toHaveAttribute("aria-label", "Present local: Online");
-  await expect(page.getByTestId(`agent-runtime-start-${LOCAL}`)).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Present local agent profile" })
-    .press("Enter");
+  await openAgentProfilePanel(page, LOCAL);
   const action = page.getByTestId("user-profile-agent-primary-action");
   await expect(action).toHaveAttribute("aria-label", "Start agent");
   await expect(action).toBeDisabled();
@@ -244,9 +218,6 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
   await expect(badge).toHaveAttribute("aria-label", "Online");
   await waitForAnimations(page);
   await page
-    .getByTestId(`managed-agent-${LOCAL}`)
-    .screenshot({ path: testInfo.outputPath("stopped-online-card.png") });
-  await page
     .getByTestId("user-profile-panel")
     .screenshot({ path: testInfo.outputPath("stopped-online-profile.png") });
   for (const status of ["away", "offline"] as const) {
@@ -260,15 +231,9 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
       status === "away" ? "Away" : "Offline",
     );
     if (status === "away") {
-      await expect(
-        page.getByTestId(`agent-runtime-active-${LOCAL}`),
-      ).toHaveAttribute("aria-label", "Present local: Away");
       await expect(action).toBeDisabled();
     } else {
       await expect(action).toBeEnabled();
-      await expect(
-        page.getByTestId(`agent-runtime-start-${LOCAL}`),
-      ).toBeVisible();
     }
   }
   // Keyboard activation is restored for the ordinary stopped/offline control.
@@ -276,9 +241,6 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
   await action.press("Enter");
   await expect(action).toHaveAttribute("aria-label", "Stop");
   await expect(badge).toHaveAttribute("aria-label", "Offline");
-  await expect(
-    page.getByTestId(`agent-runtime-active-${LOCAL}`),
-  ).toHaveAttribute("aria-label", "Present local: Offline");
 });
 
 test("member menu cannot start a present stopped local runtime", async ({
@@ -362,7 +324,7 @@ for (const surface of ["agents", "members"] as const) {
         channelNames: ["agents"],
       })),
     });
-    await page.goto(surface === "agents" ? "/#/agents?view=templates" : "/");
+    await page.goto(surface === "agents" ? "/#/agents" : "/");
     if (surface === "members") {
       await page.getByTestId("channel-agents").click();
       await page.getByTestId("channel-members-trigger").click();
@@ -426,20 +388,13 @@ for (const surface of ["agents", "members"] as const) {
         window.__BUZZ_E2E_EMIT_MOCK_PRESENCE__?.({ pubkey, status: "away" }),
       LOCAL,
     );
-    if (surface === "agents") {
-      await expect(
-        page.getByTestId(`agent-runtime-active-${LOCAL}`),
-      ).toHaveAttribute("aria-label", "Shared snapshot 0: Away");
-      await expect(
-        page.getByTestId(`agent-runtime-active-${keys[1]}`),
-      ).toHaveAttribute("aria-label", "Shared snapshot 1: Offline");
-    } else {
+    if (surface === "members") {
       await expect(
         page.getByTestId(`sidebar-member-presence-${LOCAL}`).locator("span"),
-      ).toHaveClass(/bg-amber-500/);
+      ).toHaveClass(/bg-colony-away/);
       await expect(
         page.getByTestId(`sidebar-member-presence-${keys[1]}`).locator("span"),
-      ).toHaveClass(/bg-muted-foreground/);
+      ).toHaveClass(/border-colony-fg-secondary/);
     }
   });
 }
@@ -613,10 +568,8 @@ for (const scenario of [
         },
       ],
     });
-    await page.goto("/#/agents?view=templates");
-    await expect(
-      page.getByRole("button", { name: "Deletion fixture agent profile" }),
-    ).toBeVisible();
+    await page.goto("/#/agents");
+    await expect(page.getByTestId(`managed-agent-${LOCAL}`)).toBeVisible();
     await page.evaluate(
       async ({ pubkey, warm }) => {
         const w = window as typeof window & {
@@ -679,9 +632,7 @@ for (const scenario of [
         warm: scenario.endsWith("offline") ? "offline" : "online",
       },
     );
-    await page
-      .getByRole("button", { name: "Deletion fixture agent profile" })
-      .click();
+    await openAgentProfilePanel(page, LOCAL);
     await expect(
       page.getByTestId("user-profile-presence-badge"),
     ).toHaveAttribute(

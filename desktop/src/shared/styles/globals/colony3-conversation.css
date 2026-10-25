@@ -1,0 +1,476 @@
+/*
+ * Colony 3.0 conversations (Channel, Direct message, Thread, Channel states,
+ * Channel join boards). One design px is --colony-px, so every size below
+ * follows the font-size preference and Cmd +/- zoom. Colours come from the
+ * Soft Field tokens in theme.css.
+ */
+:root {
+  --c3c-row-hover: #f7f3fa;
+  --c3c-content-max: 920;
+  --c3c-gutter: 28;
+}
+
+.c3c-title {
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: normal;
+}
+
+/* The header answers to its own width, not the window's: a thread or settings
+   panel beside it leaves the title the room, so the member faces step aside and
+   the count stays (the button is the only way into the member list). */
+.c3c-header {
+  container-type: inline-size;
+}
+
+@container (max-width: 560px) {
+  .c3c-header
+    [data-testid="channel-members-trigger"]
+    [data-testid$="-avatar-stack"] {
+    display: none;
+  }
+}
+
+.c3c-description {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.c3c-subtitle {
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3c-tab {
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3c-tab[aria-current="page"] {
+  font-weight: 800;
+}
+
+.c3c-tab-count {
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3c-button {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3c-icon-button {
+  display: grid;
+  height: calc(40 * var(--colony-px));
+  width: calc(40 * var(--colony-px));
+  place-items: center;
+  border-radius: calc(12 * var(--colony-px));
+  color: hsl(var(--colony-fg-secondary));
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.c3c-icon-button:hover,
+.c3c-icon-button[aria-expanded="true"],
+.c3c-icon-button[data-active="true"] {
+  background-color: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+}
+
+/* Reactions: a pill per emoji, mine in the accent tint, and the add button. */
+.c3c-reaction {
+  display: inline-flex;
+  height: calc(30 * var(--colony-px));
+  align-items: center;
+  justify-content: center;
+  gap: calc(6 * var(--colony-px));
+  border-radius: 999px;
+  padding: 0 calc(10 * var(--colony-px));
+  background-color: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1;
+}
+
+.c3c-reaction--mine {
+  background-color: hsl(var(--colony-accent-soft));
+  box-shadow: inset 0 0 0 1px #d9cff5;
+  color: hsl(var(--colony-accent-ink));
+}
+
+.c3c-reaction--add {
+  width: calc(30 * var(--colony-px));
+  padding: 0;
+  color: hsl(var(--colony-fg-secondary));
+}
+
+/* Thread summary: the pill under a message that opens its thread. */
+.c3c-thread-summary {
+  background-color: #fff;
+  box-shadow: 0 0 0 1px hsl(var(--colony-border));
+}
+
+.c3c-thread-summary:hover,
+.c3c-thread-summary:focus-visible {
+  background-color: hsl(var(--colony-accent-soft));
+  box-shadow: 0 0 0 1px #d9cff5;
+}
+
+.c3c-thread-summary-count {
+  color: hsl(var(--colony-accent-ink));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3c-thread-summary-meta {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+}
+
+/* Message rows. People are round (40), agents keep their squircle (42). */
+.c3c-avatar {
+  flex: none;
+}
+
+.c3c-avatar--person {
+  width: calc(40 * var(--colony-px));
+  height: calc(40 * var(--colony-px));
+  font-size: calc(14 * var(--colony-px));
+}
+
+.c3c-avatar--agent {
+  width: calc(42 * var(--colony-px));
+  height: calc(42 * var(--colony-px));
+  font-size: calc(15 * var(--colony-px));
+}
+
+.c3c-row {
+  --c3c-bar-top: -18;
+  --c3c-row-bg: transparent;
+  position: relative;
+  isolation: isolate;
+  margin: calc(-14 * var(--colony-px)) calc(-16 * var(--colony-px));
+  border-radius: calc(18 * var(--colony-px));
+  padding: calc(14 * var(--colony-px)) calc(16 * var(--colony-px));
+}
+
+/* The hover surface is its own layer so the highlight can fade it alone. */
+.c3c-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--c3c-row-bg);
+  pointer-events: none;
+  transition: background-color 120ms ease;
+}
+
+/*
+ * A run of messages by one author sits tight (no gap), so padded boxes would
+ * sit over their neighbours and take their hover and clicks. Those rows keep a
+ * plain box, draw the surface 6px past it, and keep the action bar inside.
+ */
+.c3c-row--tight {
+  --c3c-bar-top: 2;
+  margin-block: 0;
+  padding-block: 0;
+}
+
+.c3c-row--tight::before {
+  inset: calc(-6 * var(--colony-px)) 0;
+}
+
+.c3c-row:hover,
+.c3c-row:focus-within {
+  --c3c-row-bg: var(--c3c-row-hover);
+}
+
+.c3c-author {
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 800;
+  line-height: normal;
+}
+
+/* One line: the title truncates before the time ever wraps under the name. */
+.c3c-sender-meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 600;
+  color: hsl(var(--colony-muted));
+}
+
+.c3c-time {
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+  color: hsl(var(--colony-muted));
+}
+
+.c3c-body {
+  font-weight: 500;
+}
+
+/* A routed-to message: its surface fades out, the row itself stays. */
+.c3c-row--highlighted::before {
+  animation: route-target-highlight-fade 2s ease-out forwards;
+  background-color: hsl(var(--colony-accent-soft));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .c3c-row--highlighted::before {
+    animation: none;
+  }
+}
+
+/* A row whose parent already draws the hover surface. */
+.c3c-row--inner {
+  --c3c-bar-top: -32;
+  margin: 0;
+  padding: 0;
+}
+
+/* The conversation column: 28px gutters, content at most 920px, left aligned. */
+.c3c-timeline-scroller {
+  padding-top: calc(
+    var(--buzz-channel-content-top-padding, 5.75rem) +
+    24 *
+    var(--colony-px)
+  );
+}
+
+.c3c-timeline-column {
+  box-sizing: content-box;
+  max-width: calc(var(--c3c-content-max) * var(--colony-px));
+  padding-inline: calc(var(--c3c-gutter) * var(--colony-px));
+}
+
+.c3c-day-label {
+  background-color: hsl(var(--colony-surface));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: hsl(var(--colony-muted));
+}
+
+/* Channel states: empty, loading, error, new messages. */
+.c3c-empty-title {
+  font-size: calc(19 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.c3c-empty-text {
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+  color: hsl(var(--colony-muted));
+}
+
+.c3c-new-label {
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: hsl(var(--colony-accent-ink));
+}
+
+@keyframes c3c-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.c3c-live {
+  animation: c3c-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .c3c-live {
+    animation: none;
+  }
+}
+
+/* The hover bar above a message. */
+.c3c-action-bar {
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 10px 24px -12px rgba(40, 20, 60, 0.35);
+}
+
+/* The thread context card at the top of a focus thread. */
+.c3c-eyebrow {
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: hsl(var(--colony-muted));
+}
+
+[data-testid="workspace-thread-context"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--colony-px));
+  margin: 0;
+  border: 0;
+  border-radius: calc(20 * var(--colony-px));
+  padding: calc(20 * var(--colony-px)) calc(22 * var(--colony-px));
+  background-color: hsl(var(--colony-wash));
+}
+
+[data-testid="workspace-thread-context"] h2 {
+  margin: 0;
+  font-size: calc(24 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: normal;
+}
+
+[data-testid="workspace-thread-context"] p {
+  margin: 0;
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.6;
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.c3c-thread-breadcrumb {
+  font-size: calc(15.5 * var(--colony-px));
+}
+
+/* Header: archived badge. Join bar. */
+.c3c-archived-bar {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.c3c-archived-badge {
+  display: inline-flex;
+  height: calc(26 * var(--colony-px));
+  flex: none;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 calc(10 * var(--colony-px));
+  background-color: #f1eef2;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3c-join-viewing {
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3c-join-button {
+  height: calc(46 * var(--colony-px));
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+}
+
+/* Image tile caption: the alt text a person wrote, bottom left. */
+.c3c-mosaic-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: calc(10 * var(--colony-px));
+  pointer-events: none;
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  color: #3b3446;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+}
+
+/* The focus thread drawer sits over the channel with a soft edge. */
+.c3c-focus-drawer {
+  box-shadow:
+    -28px 0 60px -32px rgba(40, 20, 60, 0.45),
+    0 0 0 1px hsl(var(--colony-border));
+}
+
+/* Focus thread drawer: a plain 64px header row, a 780px reading column. */
+.c3c-focus-drawer [data-testid="auxiliary-panel-header-backdrop"] {
+  display: none;
+}
+
+.c3c-focus-drawer [data-tauri-drag-region] {
+  min-height: calc(64 * var(--colony-px));
+  margin-bottom: 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  padding: 0 calc(14 * var(--colony-px)) 0 calc(26 * var(--colony-px));
+  background-color: hsl(var(--colony-surface));
+  backdrop-filter: none;
+}
+
+.c3c-focus-drawer [data-testid="message-thread-body"] {
+  padding-top: 0;
+}
+
+.c3c-focus-drawer [data-image-gallery-scope="thread"] {
+  padding-inline: calc(32 * var(--colony-px));
+}
+
+.c3c-focus-drawer [data-testid="message-thread-head"],
+.c3c-focus-drawer [data-testid="message-thread-head-divider"],
+.c3c-focus-drawer [data-testid="message-thread-replies"] {
+  padding-inline: 0;
+}
+
+.c3c-focus-drawer [data-testid="message-thread-head"] {
+  padding-top: calc(26 * var(--colony-px));
+  padding-bottom: calc(18 * var(--colony-px));
+}
+
+/*
+ * @mentions in message rows: a soft accent chip, no icon. Scoped to the row
+ * body, not every markdown surface: the composer editor draws its own chips.
+ */
+.c3c-body
+.mention-chip:not(.buzz-link-unavailable):not(.buzz-link-deleted):not(
+  .inbox-channel-chip
+):not(.search-channel-chip) {
+  border-radius: calc(7 * var(--colony-px));
+  padding-inline: calc(6 * var(--colony-px));
+  background-color: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/*
+ * Only the horizontal padding is ours: a repository chip sizes its wrapped
+ * lines from its own vertical padding, and people's @mentions sit on the
+ * prose rhythm with a hairline of height.
+ */
+.c3c-body
+[data-mention].mention-chip:not(.buzz-link-unavailable):not(
+  .buzz-link-deleted
+):not(.inbox-channel-chip):not(.search-channel-chip) {
+  padding-block: calc(1 * var(--colony-px));
+}
+
+/* The provenance cloud on an agent chip stays: it says where the agent runs. */
+.c3c-body .mention-chip svg:not(.lucide-cloud) {
+  display: none;
+}
+
+/* The same column when the list is short and renders without virtualising. */
+.c3c-timeline-plain {
+  padding-top: calc(
+    var(--buzz-channel-content-top-padding, 5.75rem) +
+    24 *
+    var(--colony-px)
+  );
+}

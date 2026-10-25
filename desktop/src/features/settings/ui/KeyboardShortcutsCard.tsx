@@ -1,72 +1,46 @@
 import {
   getShortcutsByCategory,
   getPlatformKeys,
-  type KeyboardShortcut,
 } from "@/shared/lib/keyboard-shortcuts";
-import {
-  SettingsOptionGroup,
-  SettingsOptionGroupList,
-  SettingsOptionRow,
-} from "./SettingsOptionGroup";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
 
-function KeyCombo({ shortcut }: { shortcut: KeyboardShortcut }) {
-  const keys = getPlatformKeys(shortcut);
-  // Split on "+" but keep "+" as a standalone key (e.g. for zoom-in "⌘+")
-  const parts = keys
-    .split(/(?<!\+)\+(?!\s*$)/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+/** Shortcuts for features that are not in the lean app are not listed. */
+const NOT_LISTED = new Set(["publish-note", "toggle-huddle", "push-to-talk"]);
 
-  return (
-    <span className="flex items-center gap-1">
-      {parts.map((part) => (
-        <kbd
-          className="inline-flex h-6 min-w-6 items-center justify-center rounded border border-border/70 bg-muted/60 px-1.5 font-mono text-xs text-muted-foreground"
-          key={part}
-        >
-          {part}
-        </kbd>
-      ))}
-    </span>
-  );
+/** "⇧⌘K" reads "⇧ ⌘ K"; "Escape" reads "Esc"; "Ctrl+K" reads "Ctrl K". */
+function spacedKeys(keys: string): string {
+  return keys
+    .replace(/Escape/g, "Esc")
+    .replace(/([⌘⇧⌥⌃])/g, " $1 ")
+    .replace(/(?<=\S)\+(?=\S)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function KeyboardShortcutsCard() {
   const categories = getShortcutsByCategory();
 
   return (
-    <section className="min-w-0" data-testid="settings-shortcuts">
-      <SettingsSectionHeader
-        title="Keyboard shortcuts"
-        description="All available keyboard shortcuts. Shortcuts are read-only."
-      />
-
-      <SettingsOptionGroupList>
-        {[...categories.entries()].map(([category, shortcuts]) => (
-          <SettingsOptionGroup key={category} title={category}>
-            {shortcuts.map((shortcut) => (
-              <SettingsOptionRow
-                className="min-h-12 px-3 py-2"
-                key={shortcut.id}
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-foreground">
-                    {shortcut.label}
-                  </span>
-                  <span
-                    className="ml-2 text-muted-foreground/70"
-                    data-settings-subcopy
-                  >
-                    {shortcut.description}
-                  </span>
+    <div className="cs-led" data-testid="settings-shortcuts">
+      <h2 className="cs-section-title">Keyboard shortcuts</h2>
+      <div className="cs-shortcut-grid">
+        {[...categories.entries()].map(([category, shortcuts]) => {
+          const listed = shortcuts.filter(
+            (shortcut) => !NOT_LISTED.has(shortcut.id),
+          );
+          if (listed.length === 0) return null;
+          return (
+            <section className="cs-card cs-shortcut-card" key={category}>
+              <h3 className="cs-eyebrow">{category}</h3>
+              {listed.map((shortcut) => (
+                <div className="cs-shortcut" key={shortcut.id}>
+                  <span title={shortcut.description}>{shortcut.label}</span>
+                  <kbd>{spacedKeys(getPlatformKeys(shortcut))}</kbd>
                 </div>
-                <KeyCombo shortcut={shortcut} />
-              </SettingsOptionRow>
-            ))}
-          </SettingsOptionGroup>
-        ))}
-      </SettingsOptionGroupList>
-    </section>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+    </div>
   );
 }

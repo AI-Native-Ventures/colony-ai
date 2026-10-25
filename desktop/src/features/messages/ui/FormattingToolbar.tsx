@@ -1,20 +1,17 @@
 import * as React from "react";
 import { TextSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import {
-  Bold,
-  Code,
-  HatGlasses,
-  Italic,
-  Link,
-  List,
-  ListOrdered,
-  Quote,
-  SquareCode,
-  Strikethrough,
-} from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
+import {
+  BulletListGlyph,
+  CodeBlockGlyph,
+  CodeGlyph,
+  LinkGlyph,
+  OrderedListGlyph,
+  QuoteGlyph,
+  SpoilerGlyph,
+} from "./ComposerIcons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   isolateSelectionForBlockFormatting,
@@ -319,66 +316,66 @@ export const FormattingToolbar = React.memo(function FormattingToolbar({
 
   const items = [
     {
-      icon: Bold,
+      glyph: <span className="c3c-fmt-b">B</span>,
       label: "Bold",
       shortcut: "⌘B",
       action: toggleBold,
       active: activeStates.bold,
     },
     {
-      icon: Italic,
+      glyph: <span className="c3c-fmt-i">I</span>,
       label: "Italic",
       shortcut: "⌘I",
       action: toggleItalic,
       active: activeStates.italic,
     },
     {
-      icon: Strikethrough,
+      glyph: <span className="c3c-fmt-s">S</span>,
       label: "Strikethrough",
       shortcut: "⌘⇧X",
       action: toggleStrike,
       active: activeStates.strike,
     },
     {
-      icon: Code,
+      glyph: <CodeGlyph />,
       label: "Code",
       shortcut: "⌘E",
       action: toggleCode,
       active: activeStates.code,
     },
     {
-      icon: SquareCode,
+      glyph: <CodeBlockGlyph />,
       label: "Code block",
       action: toggleCodeBlock,
       active: activeStates.codeBlock,
     },
     {
-      icon: Link,
+      glyph: <LinkGlyph />,
       label: "Link",
       shortcut: "⌘K",
       action: toggleLink,
       active: activeStates.link,
     },
     {
-      icon: List,
+      glyph: <BulletListGlyph />,
       label: "Bullet list",
       action: toggleBulletList,
       active: activeStates.bulletList,
     },
     {
-      icon: ListOrdered,
+      glyph: <OrderedListGlyph />,
       label: "Ordered list",
       action: toggleOrderedList,
       active: activeStates.orderedList,
     },
     {
-      icon: Quote,
+      glyph: <QuoteGlyph />,
       label: "Quote",
       action: toggleBlockquote,
       active: activeStates.blockquote,
     },
     {
-      icon: HatGlasses,
+      glyph: <SpoilerGlyph />,
       label: "Spoiler",
       action: toggleSpoiler,
       active: activeStates.spoiler,
@@ -386,7 +383,7 @@ export const FormattingToolbar = React.memo(function FormattingToolbar({
   ] as const;
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="c3c-fmt-group">
       {items.map((item) => (
         <Tooltip key={item.label} disableHoverableContent>
           <TooltipTrigger asChild>
@@ -397,18 +394,9 @@ export const FormattingToolbar = React.memo(function FormattingToolbar({
               disabled={disabled}
               onClick={() => item.action()}
               onMouseDown={captureSelection}
-              className={cn(
-                "inline-flex h-7 w-7 min-w-7 items-center justify-center rounded-md text-sm font-medium transition-colors",
-                "hover:bg-muted hover:text-foreground",
-                "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
-                "disabled:pointer-events-none disabled:opacity-50",
-                "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-                item.active
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-transparent text-muted-foreground",
-              )}
+              className={cn("c3c-fmt-btn")}
             >
-              <item.icon className="h-4 w-4" />
+              {item.glyph}
             </button>
           </TooltipTrigger>
           <TooltipContent>

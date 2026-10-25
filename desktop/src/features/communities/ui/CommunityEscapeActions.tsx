@@ -1,6 +1,7 @@
 import * as React from "react";
 
-import { Button } from "@/shared/ui/button";
+import { FirstRunButton } from "@/features/onboarding/ui/firstRunControls";
+import "@/features/onboarding/ui/firstRun.css";
 
 import { markCommunityDiscoveryAfterLeave } from "../communityStorage";
 import type { Community } from "../types";
@@ -91,23 +92,27 @@ export function SwitchCommunityList({
   primary?: boolean;
 }) {
   if (exit.others.length === 0) return null;
+  const single = exit.others.length === 1;
   return (
-    <ul className="flex flex-col gap-3" data-testid="community-escape-switch">
+    <>
       {exit.others.map((community, index) => (
-        <li className="flex" key={community.id}>
-          <Button
-            className="h-10 w-full min-w-0"
-            data-testid={`community-escape-switch-${community.id}`}
-            onClick={() => exit.switchTo(community.id)}
-            ref={index === 0 ? firstActionRef : undefined}
-            type="button"
-            variant={primary ? "default" : "secondary"}
-          >
-            <span className="truncate">Switch to {community.name}</span>
-          </Button>
-        </li>
+        <FirstRunButton
+          className="c3fr-gate-button"
+          data-testid={`community-escape-switch-${community.id}`}
+          key={community.id}
+          kind={primary ? "primary" : "secondary"}
+          onClick={() => exit.switchTo(community.id)}
+          ref={index === 0 ? firstActionRef : undefined}
+        >
+          <span className="c3fr-truncate">
+            {single ? "Switch community" : `Switch to ${community.name}`}
+          </span>
+          {single ? (
+            <span className="c3fr-sr-only"> to {community.name}</span>
+          ) : null}
+        </FirstRunButton>
       ))}
-    </ul>
+    </>
   );
 }
 
@@ -135,10 +140,10 @@ export function RemoveCommunityControl({ exit }: { exit: CommunityEscape }) {
   const name = exit.failing.name;
 
   return (
-    <div className="flex flex-col gap-3">
+    <>
       {isConfirming ? (
         <fieldset
-          className="m-0 flex min-w-0 flex-col gap-3 rounded-lg border border-destructive/40 p-3 text-left"
+          className="c3fr-confirm"
           data-testid="community-escape-remove-confirm-panel"
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
@@ -147,51 +152,48 @@ export function RemoveCommunityControl({ exit }: { exit: CommunityEscape }) {
             cancelConfirm();
           }}
         >
-          <legend className="sr-only">Confirm removing {name}</legend>
-          <p className="text-sm leading-6">
+          <legend className="c3fr-sr-only">Confirm removing {name}</legend>
+          <p>
             Remove {name} from this device? This only clears it here. You can
             add it again later.
           </p>
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
+          <div className="c3fr-confirm-actions">
+            <FirstRunButton
               data-testid="community-escape-remove-keep"
               onClick={cancelConfirm}
               ref={keepRef}
-              type="button"
-              variant="secondary"
+              size="small"
             >
               Keep it
-            </Button>
-            <Button
-              className="min-w-0 flex-1"
+            </FirstRunButton>
+            <button
+              className="c3fr-button c3fr-danger-button"
+              data-size="small"
               data-testid="community-escape-remove-confirm"
               onClick={exit.remove}
               type="button"
-              variant="destructive"
             >
-              <span className="truncate">Remove {name}</span>
-            </Button>
+              <span className="c3fr-truncate">Remove {name}</span>
+            </button>
           </div>
         </fieldset>
       ) : (
-        <Button
-          className="h-10 w-full text-destructive hover:text-destructive"
+        <button
+          className="c3fr-danger-link"
           data-testid="community-escape-remove"
           onClick={() => setIsConfirming(true)}
           ref={triggerRef}
           type="button"
-          variant="ghost"
         >
-          Remove this community from this device
-          <span className="sr-only"> ({name})</span>
-        </Button>
+          Remove community
+          <span className="c3fr-sr-only"> ({name}) from this device</span>
+        </button>
       )}
       {exit.actionError ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="c3fr-error" role="alert">
           {exit.actionError}
         </p>
       ) : null}
-    </div>
+    </>
   );
 }

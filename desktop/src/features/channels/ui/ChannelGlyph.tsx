@@ -1,11 +1,8 @@
-import { Hash, Lock, MessageSquare } from "lucide-react";
-
-import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
-import { ProjectChannelIcon } from "@/features/projects/ui/ProjectChannelIcon";
 import type { Channel } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
+import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 
-/** Stream/forum glyph for a channel, using the project mark on project homes. */
+/** Stream glyph for a channel. */
 export function ChannelGlyph({
   channel,
   className,
@@ -13,17 +10,10 @@ export function ChannelGlyph({
   channel: Pick<Channel, "channelType" | "id" | "visibility">;
   className?: string;
 }) {
-  const projectHome = useIsProjectHomeChannel(channel.id);
   const iconClass = cn("size-4 shrink-0", className);
 
-  if (projectHome) {
-    return <ProjectChannelIcon className={iconClass} />;
-  }
   if (channel.visibility === "private") {
-    return <Lock className={iconClass} />;
+    return <PrivateChannelIcon className={iconClass} size={17} />;
   }
-  if (channel.channelType === "forum") {
-    return <MessageSquare className={iconClass} />;
-  }
-  return <Hash className={iconClass} />;
+  return <HashIcon className={iconClass} size={17} />;
 }

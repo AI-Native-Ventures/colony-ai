@@ -1,0 +1,288 @@
+/*
+ * Colony 3.0 "New message" board: a title row, the "To:" bar with its recipient
+ * chips and result list, and the conversation about to start (`NewMessage.dc.html`).
+ */
+
+.c3nm-title {
+  display: flex;
+  height: 4.5rem;
+  flex: none;
+  align-items: center;
+  gap: 0.625rem;
+  box-sizing: border-box;
+  padding: 0 1.75rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  color: hsl(var(--colony-fg));
+}
+
+.c3nm-title h1 {
+  margin: 0;
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.c3nm-to-bar {
+  position: relative;
+  padding: 0.875rem 1.75rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  background: hsl(var(--colony-surface));
+}
+
+.c3nm-to-label {
+  flex: none;
+  margin-right: 0.25rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3nm-chip {
+  display: inline-flex;
+  height: 2.375rem;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.375rem 0 0.3125rem;
+  border-radius: 0.6875rem;
+  background: hsl(var(--colony-wash));
+  color: hsl(var(--colony-fg));
+}
+
+.c3nm-chip-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: calc(11.5 * var(--colony-px));
+}
+
+.c3nm-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3nm-chip-remove {
+  display: grid;
+  width: 1.625rem;
+  height: 1.625rem;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: transparent;
+  color: hsl(var(--colony-fg-secondary));
+  cursor: pointer;
+}
+
+.c3nm-chip-remove:hover:not(:disabled) {
+  background: hsl(var(--colony-border));
+}
+
+.c3nm-to-input {
+  height: 2.375rem;
+  min-width: 7.5rem;
+  flex: 1 1 10rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 600;
+  outline: none;
+}
+
+.c3nm-to-input::placeholder {
+  color: hsl(var(--colony-muted));
+  font-weight: 500;
+}
+
+/* The recipient result list. */
+.c3nm-popover {
+  width: min(32.5rem, calc(100vw - 6.5rem));
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 1.125rem;
+  background: var(--colony-pop);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 24px 60px -24px rgb(40 20 60 / 35%);
+}
+
+.c3nm-results {
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.c3nm-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.c3nm-results-note {
+  margin: 0;
+  padding: 0.75rem 0.75rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+}
+
+.c3nm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+}
+
+.c3nm-row:hover,
+.c3nm-row[data-keyboard-highlighted="true"] {
+  background: hsl(var(--colony-wash));
+}
+
+.c3nm-row[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.c3nm-row-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  font-size: calc(13 * var(--colony-px));
+}
+
+.c3nm-row-avatar[data-avatar-shape="squircle"],
+.c3nm-row:has(.c3nm-pill) .c3nm-row-avatar {
+  width: 2.375rem;
+  height: 2.375rem;
+  font-size: calc(15 * var(--colony-px));
+}
+
+.c3nm-row-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.c3nm-row-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.c3nm-name {
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.c3nm-pill {
+  display: inline-flex;
+  height: 1.375rem;
+  flex: none;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3nm-row-sub {
+  overflow: hidden;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3nm-add {
+  display: inline-flex;
+  height: 2.25rem;
+  flex: none;
+  align-items: center;
+  padding: 0 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.625rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3nm-add[data-primary="true"] {
+  border-color: transparent;
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+}
+
+/* The conversation about to start. */
+.c3nm-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2rem 1.75rem;
+  background: hsl(var(--colony-surface));
+}
+
+.c3nm-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.c3nm-hero-avatars {
+  display: flex;
+}
+
+.c3nm-hero-avatar {
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: none;
+  font-size: calc(21 * var(--colony-px));
+}
+
+.c3nm-hero-avatar:nth-child(n + 2) {
+  width: 3.375rem;
+  height: 3.375rem;
+  margin-left: -0.625rem;
+  box-shadow: 0 0 0 3px hsl(var(--colony-surface));
+  font-size: calc(19 * var(--colony-px));
+}
+
+.c3nm-hero-names {
+  margin: 0;
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3nm-hero-hint {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.c3nm-composer {
+  padding: 0 1.75rem 1.375rem;
+}

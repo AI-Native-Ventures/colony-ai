@@ -369,10 +369,7 @@ test("returning account on a device with no AI connects before opening its busin
     .getByTestId(`onboarding-business-${RETURNING_COMMUNITY.id}`)
     .click();
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
-  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(page.getByTestId("onboarding-mode-free")).toBeChecked();
   // Back returns to the businesses the person picked from.
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByTestId("onboarding-scene-businesses")).toBeVisible();
@@ -381,7 +378,7 @@ test("returning account on a device with no AI connects before opening its busin
     .click();
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 
-  await page.getByTestId("start-free-continue").click();
+  await page.getByTestId("onboarding-test-connection").click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await expect(
     page.getByText("Hello again. What shall we work on?"),
@@ -511,12 +508,14 @@ test("forgot password requests a code and signs in after reset", async ({
   await page
     .getByLabel("New password", { exact: true })
     .fill("new-correct-horse-12");
-  await page.getByLabel("Confirm new password").fill("new-correct-horse-12");
+  await page
+    .getByLabel("Confirm password", { exact: true })
+    .fill("new-correct-horse-12");
   await queueAuthError(page, "confirmReset", {
     error: "invalid_credentials",
     remaining_attempts: 2,
   });
-  await page.getByRole("button", { name: "Update password" }).click();
+  await page.getByRole("button", { name: "Set new password" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-confirm"),
   ).toBeVisible();
@@ -526,12 +525,14 @@ test("forgot password requests a code and signs in after reset", async ({
   await page
     .getByLabel("New password", { exact: true })
     .fill("new-correct-horse-12");
-  await page.getByLabel("Confirm new password").fill("new-correct-horse-12");
-  await page.getByRole("button", { name: "Update password" }).click();
+  await page
+    .getByLabel("Confirm password", { exact: true })
+    .fill("new-correct-horse-12");
+  await page.getByRole("button", { name: "Set new password" }).click();
   await expect(
     page.getByRole("heading", { name: "Password updated" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Back to sign in" }).click();
+  await page.getByRole("button", { name: "Back to sign in" }).last().click();
   await page
     .getByLabel("Password", { exact: true })
     .fill("new-correct-horse-12");
@@ -617,6 +618,9 @@ test("account auth screens never show key wording", async ({ page }) => {
     .click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
+  // The verify screen has no Sign in link; start over for the sign-in screens.
+  await page.goto("/");
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expectNoKeyCopy(page);
   await page.getByRole("button", { name: "Forgot password?" }).click();
@@ -676,7 +680,7 @@ test("contract errors are announced and email_unverified moves to verification",
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expect(
-    page.getByText("Enter the six-digit code sent to your email."),
+    page.getByText(/Enter the six-digit code we sent to/),
   ).toBeVisible();
   await expectNoKeyCopy(page);
 
@@ -916,7 +920,7 @@ for (const width of [1728, 1440]) {
     const google = page.getByTestId("account-auth-google");
     await expect(google).toBeInViewport();
     await expect(google).toHaveAttribute("type", "button");
-    await expect(page.locator(".account-auth-divider")).toHaveText("or");
+    await expect(page.locator(".c3fr-divider")).toHaveText("or");
     await expect(page.locator(".scout-ant svg").first()).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({

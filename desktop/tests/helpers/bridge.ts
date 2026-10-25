@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
 import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
 import type {
+  Colony3Extras,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
@@ -61,6 +62,8 @@ type MockSearchProfileSeed = {
   displayName: string | null;
   avatarUrl?: string | null;
   nip05Handle?: string | null;
+  /** Job title published on the profile (kind:0 `job_title`). */
+  jobTitle?: string | null;
   about?: string | null;
   ownerPubkey?: string | null;
   isAgent?: boolean;
@@ -176,6 +179,14 @@ type MockBridgeOptions = {
   userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Report the window as fullscreen (no macOS traffic-light inset). */
+  windowFullscreen?: boolean;
+  /** Colony 3.0 foundation fixture (the Sidebar board's Lerato Social). */
+  colony3Sidebar?: boolean;
+  /** Colony 3.0 conversation boards: extra people, channels, members and messages. */
+  colony3Extras?: Colony3Extras;
+  /** Colony 3.0 business boards: the design's deliverables, people and dates. */
+  colony3Business?: boolean;
   /** Match the company shell review's conversation rows and empty badge state. */
   referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */
@@ -194,6 +205,8 @@ type MockBridgeOptions = {
     kind: number;
     reason: string;
   }>;
+  /** Set false to run the real discovery runner instead of the simulated one. */
+  referenceWorkspaceDiscoveryStandIn?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
@@ -407,6 +420,8 @@ type MockBridgeOptions = {
   managedAgentRuntimes?: Array<{
     pubkey: string;
     relayUrl: string;
+    /** False for an agent that still needs setup on this device. */
+    localSetup?: boolean;
     lifecycle?:
       | "starting"
       | "listening"
@@ -870,115 +885,6 @@ const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const DEFAULT_RELAY_HTTP_URL =
   process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000";
 const DEFAULT_RELAY_WS_URL = DEFAULT_RELAY_HTTP_URL.replace(/^http/, "ws");
-
-function cloneEngramEntry(entry: MockEngramEntry): MockEngramEntry {
-  return {
-    ...entry,
-    outgoingRefs: [...entry.outgoingRefs],
-  };
-}
-
-/**
- * Recreates the old Memories UI development fixture as explicit Playwright
- * seed data. Use with `installMockBridge(page, { agentMemory: ... })`.
- */
-export function createMockAgentMemoryListing(
-  overrides: Partial<MockAgentMemoryListing> = {},
-): MockAgentMemoryListing {
-  const listing: MockAgentMemoryListing = {
-    core: {
-      slug: "core",
-      body: `I am a mock agent used to flesh out the Memories panel.
-
-I prefer concise updates, explicit next steps, and visual polish before edge-case handling.
-
-See [[mem/preferences/ui-density]] and [[mem/projects/buzz-memory-viewer]] for details.
-
-A retired launch checklist used to live at [[mem/archive/deleted-launch-checklist]], but that memory was deleted after the plan changed.`,
-      eventId: "mock-core",
-      createdAt: 1_700_000_000,
-      outgoingRefs: [
-        "mem/preferences/ui-density",
-        "mem/projects/buzz-memory-viewer",
-        "mem/archive/deleted-launch-checklist",
-      ],
-    },
-    memories: [
-      {
-        slug: "mem/preferences/ui-density",
-        body: "Prefer compact lists with generous body text when expanded.\n\nNested ref: [[mem/working-style/review-loop]]",
-        eventId: "mock-ui-density",
-        createdAt: 1_700_000_100,
-        outgoingRefs: ["mem/working-style/review-loop"],
-      },
-      {
-        slug: "mem/working-style/review-loop",
-        body: "Ship small slices, screenshot the happy path, then iterate on empty/error states.",
-        eventId: "mock-review-loop",
-        createdAt: 1_700_000_200,
-        outgoingRefs: [],
-      },
-      {
-        slug: "mem/projects/buzz-memory-viewer",
-        body: "Building the IXI-7 read-only memory viewer in the profile panel.\n\nChild memory: [[mem/projects/buzz-memory-viewer/notes]]",
-        eventId: "mock-project",
-        createdAt: 1_700_000_300,
-        outgoingRefs: ["mem/projects/buzz-memory-viewer/notes"],
-      },
-      {
-        slug: "mem/projects/buzz-memory-viewer/notes",
-        body: "Tree should auto-expand core. Everything else collapsed with a one-line preview.",
-        eventId: "mock-project-notes",
-        createdAt: 1_700_000_400,
-        outgoingRefs: [],
-      },
-      {
-        slug: "mem/people/alice",
-        body: "Alice prefers async updates in #design.",
-        eventId: "mock-alice",
-        createdAt: 1_700_000_500,
-        outgoingRefs: [],
-      },
-      {
-        slug: "mem/people/bob",
-        body: "Bob reviews PRs quickly but wants screenshots.",
-        eventId: "mock-bob",
-        createdAt: 1_700_000_600,
-        outgoingRefs: ["mem/people/alice"],
-      },
-      {
-        slug: "mem/scratch/todo",
-        body: "",
-        eventId: "mock-empty",
-        createdAt: 1_700_000_700,
-        outgoingRefs: [],
-      },
-      {
-        slug: "mem/orphan/unreferenced",
-        body: "This orphaned note is not reachable from core. It still points at [[mem/research/old-panel-sketches]], a deleted design scratchpad from an earlier pass.",
-        eventId: "mock-orphan",
-        createdAt: 1_700_000_800,
-        outgoingRefs: ["mem/research/old-panel-sketches"],
-      },
-    ],
-    truncated: true,
-    fetchedAt: Math.floor(Date.now() / 1000),
-  };
-
-  return {
-    core:
-      overrides.core === undefined
-        ? listing.core
-          ? cloneEngramEntry(listing.core)
-          : null
-        : overrides.core
-          ? cloneEngramEntry(overrides.core)
-          : null,
-    memories: (overrides.memories ?? listing.memories).map(cloneEngramEntry),
-    truncated: overrides.truncated ?? listing.truncated,
-    fetchedAt: overrides.fetchedAt ?? listing.fetchedAt,
-  };
-}
 
 async function seedOnboardingCompletionForKnownIdentities(
   page: Page,

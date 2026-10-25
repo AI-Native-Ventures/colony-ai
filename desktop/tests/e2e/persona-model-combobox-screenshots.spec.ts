@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 import { waitForAnimations } from "../helpers/animations";
 
 const SHOTS = "test-results/persona-model-combobox";
@@ -24,16 +24,16 @@ async function waitForInvokeBridge(page: import("@playwright/test").Page) {
 }
 
 /**
- * Open the Agents view, click "New agent", and open the persona create dialog.
+ * Open the Agents view, click "Add agent", and open the persona create dialog.
  * Returns the dialog locator.
  */
 async function openNewPersonaDialog(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForInvokeBridge(page);
 
-  await openAgentTemplatesView(page);
+  await openAgentsDirectoryView(page);
 
-  await page.getByTestId("new-agent-card").click();
+  await page.getByTestId("agent-add-button").click();
 
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible({ timeout: 8_000 });

@@ -9,7 +9,9 @@ test.beforeEach(async ({ page }) => {
 test("full app sidebar follows the approved navigation hierarchy", async ({
   page,
 }) => {
-  await page.goto("/");
+  // Activity ("/") draws its own header per the design, so the shell's top
+  // chrome is checked on Today.
+  await page.goto("/#/today");
 
   const sidebar = page.getByTestId("app-sidebar");
   await expect(sidebar).toHaveAttribute("data-colony-full-app-shell", "true");
@@ -24,28 +26,25 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
     "Activity",
   );
 
+  // Colony 3.0 order: the destinations first, the conversations below them.
   const navigationOrder = await sidebar
     .locator(
-      "[data-testid='sidebar-nav-conversations'], section[data-testid='sidebar-nav-company'], section[data-testid='sidebar-nav-business'], section[data-testid='sidebar-software-factory-group'], section[data-testid='sidebar-nav-library']",
+      "[data-testid='sidebar-nav-conversations'], [data-testid='sidebar-nav-company'], [data-testid='sidebar-nav-business']",
     )
     .evaluateAll((groups) =>
       groups.map((group) => group.getAttribute("data-testid")),
     );
   expect(navigationOrder).toEqual([
-    "sidebar-nav-conversations",
     "sidebar-nav-company",
     "sidebar-nav-business",
-    "sidebar-software-factory-group",
-    "sidebar-nav-library",
+    "sidebar-nav-conversations",
   ]);
 
   const conversations = page.getByTestId("sidebar-nav-conversations");
   await expect(conversations.getByTestId("channel-general")).toBeVisible();
-  await expect(conversations.getByTestId("forum-list")).toBeVisible();
   await expect(conversations.getByTestId("dm-list")).toBeVisible();
   for (const [section, list] of [
     ["channels", "stream-list"],
-    ["forums", "forum-list"],
     ["dms", "dm-list"],
   ]) {
     await expect(page.getByTestId(`section-actions-${section}`)).toBeVisible();
@@ -54,37 +53,39 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
       "true",
     );
   }
+  // Every conversation section has its designed "+" quick action.
   await expect(
     page.getByTestId("section-actions-channels-quick-create"),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     page.getByTestId("section-actions-dms-quick-create"),
-  ).toHaveCount(0);
-  await expect(page.getByTestId("open-workflows-view")).toBeVisible();
-  await expect(page.getByTestId("sidebar-company-goals")).toBeVisible();
-  await expect(page.getByTestId("sidebar-company-work")).toBeVisible();
-  await expect(page.getByTestId("open-factory-view")).toBeVisible();
-  await expect(page.getByTestId("sidebar-software-factory-toggle")).toHaveCount(
-    0,
-  );
+  ).toBeVisible();
+  // Company starts collapsed; opening it shows every company destination.
+  const company = page.getByTestId("sidebar-nav-company-toggle");
+  await expect(company).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("sidebar-company-team")).toBeHidden();
+  await company.click();
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+  for (const id of [
+    "sidebar-company-work",
+    "sidebar-company-team",
+    "sidebar-company-agents",
+  ])
+    await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId("sidebar-ai-spend-power")).toBeVisible();
   await expect(page.getByTestId("sidebar-settings")).toBeVisible();
   await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
 
-  for (const group of ["conversations", "company", "business", "library"]) {
-    const chevron = sidebar
-      .getByTestId(`sidebar-nav-${group}-toggle`)
-      .locator("svg");
-    await expect(chevron).toHaveCSS("width", "20px");
-    await expect(chevron).toHaveCSS("border-top-width", "1px");
-    await expect(chevron).toHaveCSS("border-radius", "4px");
+  // Company and Business open and close, each with a 16px caret and no frame.
+  for (const group of ["company", "business"]) {
+    const toggle = sidebar.getByTestId(`sidebar-nav-${group}-toggle`);
+    await expect(toggle).toBeVisible();
+    const chevron = toggle.locator("svg").last();
+    await expect(chevron).toHaveCSS("width", "16px");
+    await expect(chevron).toHaveCSS("border-top-width", "0px");
   }
-
-  await expect(sidebar.locator(".sidebar-navigation-utility")).toHaveCSS(
-    "border-top-width",
-    "1px",
-  );
-  await expect(sidebar.locator(".sidebar-navigation-profile")).toHaveCSS(
+  // The profile row sits under a hairline at the foot of the sidebar.
+  await expect(sidebar.locator("[data-buzz-glass-footer-wrap]")).toHaveCSS(
     "border-top-width",
     "1px",
   );
@@ -111,29 +112,12 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   }
 });
 
-test("Company Goals opens the existing goals route", async ({ page }) => {
-  await page.goto("/");
-
-  const goals = page.getByTestId("sidebar-company-goals");
-  await expect(goals).toBeVisible();
-  await goals.click();
-
-  await expect(page).toHaveURL(/#\/goals$/);
-  await expect(page.getByTestId("sidebar-nav-company-toggle")).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect(goals).toHaveAttribute("data-active", "true");
-  await expect(
-    page.getByText("Company / Goals", { exact: true }),
-  ).toBeVisible();
-});
-
 test("Company Work and Business destinations open existing routes", async ({
   page,
 }) => {
   await page.goto("/");
 
+  await page.getByTestId("sidebar-nav-company-toggle").click();
   await page.getByTestId("sidebar-company-work").click();
   await expect(page).toHaveURL(/#\/work$/);
   await expect(
@@ -182,21 +166,25 @@ test("navigation groups collapse independently with the keyboard", async ({
 
   const company = page.getByTestId("sidebar-nav-company-toggle");
   const business = page.getByTestId("sidebar-nav-business-toggle");
-  const library = page.getByTestId("sidebar-nav-library-toggle");
 
-  await expect(company).toHaveAttribute("aria-expanded", "true");
+  // Both start collapsed, as designed.
+  await expect(company).toHaveAttribute("aria-expanded", "false");
   await expect(business).toHaveAttribute("aria-expanded", "false");
-  await expect(library).toHaveAttribute("aria-expanded", "false");
 
   await company.focus();
   await page.keyboard.press("Enter");
-  await expect(company).toHaveAttribute("aria-expanded", "false");
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+  await expect(business).toHaveAttribute("aria-expanded", "false");
 
   await business.focus();
   await page.keyboard.press("Space");
   await expect(business).toHaveAttribute("aria-expanded", "true");
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+
+  await company.focus();
+  await page.keyboard.press("Enter");
   await expect(company).toHaveAttribute("aria-expanded", "false");
-  await expect(library).toHaveAttribute("aria-expanded", "false");
+  await expect(business).toHaveAttribute("aria-expanded", "true");
 });
 
 test("conversation groups collapse independently with the keyboard", async ({
@@ -205,22 +193,14 @@ test("conversation groups collapse independently with the keyboard", async ({
   await page.goto("/");
 
   const channels = page.getByTestId("stream-list-section-label");
-  const forums = page.getByTestId("forum-list-section-label");
   const directMessages = page.getByTestId("dm-list-section-label");
   await expect(channels).toHaveAttribute("aria-expanded", "true");
-  await expect(forums).toHaveAttribute("aria-expanded", "true");
   await expect(directMessages).toHaveAttribute("aria-expanded", "true");
 
   await channels.focus();
   await page.keyboard.press("Enter");
   await expect(channels).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("stream-list")).toBeHidden();
-  await expect(page.getByTestId("forum-list")).toBeVisible();
-
-  await forums.focus();
-  await page.keyboard.press("Space");
-  await expect(forums).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("forum-list")).toBeHidden();
   await expect(page.getByTestId("dm-list")).toBeVisible();
 
   await directMessages.focus();
@@ -228,53 +208,4 @@ test("conversation groups collapse independently with the keyboard", async ({
   await expect(directMessages).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("dm-list")).toBeHidden();
   await expect(page.getByTestId("stream-list")).toBeHidden();
-});
-
-test("Saved for later remains under Activity and keeps the reminder filter", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await page.getByTestId("sidebar-activity-toggle").click();
-  const savedForLater = page.getByTestId("sidebar-saved-for-later");
-  await expect(savedForLater).toBeVisible();
-  await savedForLater.click();
-
-  await expect(page).toHaveURL(/filter=reminders/);
-  const reminders = page.getByTestId("home-inbox-reminders");
-  await expect(reminders).toBeVisible();
-  await expect(reminders).toContainText("No reminders");
-  await expect(savedForLater).toHaveAttribute("data-active", "true");
-});
-
-test("Software Factory exposes its designed Projects destination only", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await expect(page.getByTestId("sidebar-projects-section")).toHaveCount(0);
-  await page.getByTestId("open-factory-view").click();
-  await expect(page).toHaveURL(/#\/factory$/);
-  await expect(page.getByTestId("sidebar-projects-section")).toBeVisible();
-  await expect(page.getByTestId("sidebar-shared-compute")).toHaveCount(0);
-});
-
-test("Blocks and templates stays in Library and opens its existing settings panel", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
-
-  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
-  await expect(blocksAndTemplates).toBeVisible();
-  await expect(blocksAndTemplates).toHaveCount(1);
-  await blocksAndTemplates.click();
-
-  await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(
-    page.getByTestId("settings-panel-channel-templates"),
-  ).toBeVisible();
-  await expect(page.getByTestId("settings-nav-channel-templates")).toHaveCount(
-    0,
-  );
 });

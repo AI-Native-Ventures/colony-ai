@@ -16,7 +16,7 @@ test("feedback keeps its message after a relay rejection and accepts a retry", a
   const dialog = page.getByTestId("send-feedback-dialog");
   const message = page.getByTestId("feedback-message");
   await expect(dialog).toBeVisible();
-  await page.getByTestId("feedback-type").selectOption("bug");
+  await page.getByRole("radio", { name: "Something is broken" }).check();
   await message.fill("The channel list did not refresh after reconnecting.");
   await page.getByTestId("feedback-submit").click();
 
@@ -26,14 +26,17 @@ test("feedback keeps its message after a relay rejection and accepts a retry", a
   await expect(message).toHaveValue(
     "The channel list did not refresh after reconnecting.",
   );
-  await expect(page.getByTestId("feedback-type")).toHaveValue("bug");
+  await expect(
+    page.getByRole("radio", { name: "Something is broken" }),
+  ).toBeChecked();
 
   await page.getByTestId("feedback-submit").click();
   await expect(page.getByTestId("feedback-sent")).toBeVisible();
-  const sentMessageBounds = await page
-    .getByText(/You can keep working/)
-    .boundingBox();
-  expect(sentMessageBounds?.width).toBe(440);
+  // The designed confirmation: a title and one line, with a Close button.
+  await expect(page.getByTestId("send-feedback-title")).toHaveText(
+    "Thank you for the feedback",
+  );
+  await expect(page.getByText("Your feedback was sent")).toBeVisible();
   await page.getByTestId("feedback-done").click();
   await expect(dialog).not.toBeVisible();
 });

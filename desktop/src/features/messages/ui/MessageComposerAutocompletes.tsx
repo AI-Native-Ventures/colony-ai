@@ -1,3 +1,4 @@
+import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
 import { setKeepMentionedAgentsPinned } from "@/features/messages/lib/autoPinMentionedAgentsPreference";
 import type {
   ChannelSuggestion,
@@ -61,6 +62,9 @@ export function MessageComposerAutocompletes({
   onOptionsRevealComplete,
   onToggleAlwaysAddressAgent,
 }: MessageComposerAutocompletesProps) {
+  const lookupJobTitle = useJobTitleLookup(
+    mentions.isMentionOpen && mentions.suggestions.length > 0,
+  );
   return (
     <>
       <EmojiAutocomplete
@@ -93,6 +97,7 @@ export function MessageComposerAutocompletes({
         onToggleAlwaysAddressAgent={
           audienceControlsEnabled ? onToggleAlwaysAddressAgent : undefined
         }
+        lookupJobTitle={lookupJobTitle}
         onFetchMore={mentions.fetchMoreSuggestions}
         onDismiss={mentions.cancelMentionAutocomplete}
         onSelect={onMentionSelect}

@@ -16,6 +16,10 @@ export type OnboardingSceneData = {
   description: string;
   logoUrl?: string | null;
   logoSource?: "upload" | "website";
+  /** Account email, for "Signed in as" on the business chooser. */
+  signedInEmail?: string;
+  /** The workspace an invite names, for Scout's copy on the invite screen. */
+  inviteScene?: { businessName: string; inviter?: string };
   websitePending?: boolean;
   harnessLabel?: string;
   harnessStatus?: string;
@@ -32,6 +36,10 @@ export type OnboardingBusinessChoice = {
   id: string;
   name: string;
   role: string;
+  /** When the person last opened it on this computer, in words ("today"). */
+  lastVisited?: string;
+  /** Logo the business already has, shown instead of its initial. */
+  logoUrl?: string | null;
 };
 
 export type OnboardingSceneActions = {
@@ -73,8 +81,21 @@ export type OnboardingSceneActions = {
   canSubmit?: boolean;
   /** Business mark and name of a pending workspace invite (account and sign-in). */
   inviteBrand?: React.ReactNode;
-  /** "Have an invite link?" on the account screen; absent once an invite is pending. */
+  /** "Have an invite link?" on the account screens; absent once an invite is pending. */
   onHaveInviteLink?: () => void;
+  /** "Advanced sign-in options" under the account and sign-in forms. */
+  onAdvanced?: () => void;
+  /** Replaces the links at the top right of the screen. */
+  topOverride?: React.ReactNode;
+  /** "Sign out" on the business chooser. */
+  onSignOut?: () => void;
+  /** Where setup stands on "Getting your Colony ready", and the manual way in. */
+  entry?: {
+    stage: "connecting" | "claiming" | "profile" | "finalizing" | "entering";
+    /** The person asked to open now; the curtain drops when Welcome is ready. */
+    openRequested: boolean;
+    onOpen: () => void;
+  };
   headingRef?: React.RefObject<HTMLHeadingElement | null>;
   authCode?: {
     value: string;

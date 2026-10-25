@@ -9,7 +9,7 @@ async function start(page: Page, auth = "logged_in", provider?: "openrouter") {
     if (!localStorage.getItem("buzz-theme")) {
       localStorage.setItem("buzz-theme", "buzz");
       localStorage.setItem("buzz-follow-system", "false");
-      localStorage.setItem("buzz-accent-color", "#895AF6");
+      localStorage.setItem("buzz-accent-color", "#5B45BE");
     }
     if (!localStorage.getItem("buzz-communities")) {
       localStorage.setItem(
@@ -65,32 +65,55 @@ async function appearance(page: Page) {
   await page.goto("/#/settings?section=appearance");
   await expect(page.getByTestId("settings-appearance")).toBeVisible();
 }
-async function customDraft(page: Page) {
-  await page.getByTestId("appearance-theme-custom").click();
-  await page.getByTestId("appearance-color-hex-1").fill("#2AE53F");
-  await page.getByTestId("appearance-color-hex-2").fill("#00ACE6");
-  await page.getByTestId("appearance-accent-green").click();
+/** Sea, then a custom bottom colour, and the Teal accent: an unapplied draft. */
+async function fieldDraft(page: Page) {
+  await page.getByTestId("appearance-field-preset-sea").click();
+  await page.getByTestId("appearance-field-bottom").fill("#00ace6");
+  await page.getByTestId("appearance-accent-teal").click();
+}
+function rootField(page: Page) {
+  return page.evaluate(() => {
+    const style = document.documentElement.style;
+    return [
+      style.getPropertyValue("--colony-field-top"),
+      style.getPropertyValue("--colony-field-middle"),
+      style.getPropertyValue("--colony-field-bottom"),
+    ];
+  });
+}
+/** The field the sidebar paints: shown for the Colony themes, hidden for named ones. */
+function sidebarField(page: Page) {
+  return page.locator(
+    '[data-testid="app-sidebar"] [data-colony-field="sidebar"]',
+  );
 }
 for (const width of [1728, 1440]) {
-  for (const variant of ["default", "catppuccin-latte", "dracula", "custom"]) {
+  for (const variant of ["default", "field"]) {
     test(`chrome paint ${variant} ${width}`, async ({ page }) => {
       test.setTimeout(60_000);
       await page.setViewportSize({
         width,
         height: width === 1728 ? 1117 : 900,
       });
+      // A named theme is one the person already uses; the catalog is cut.
+      if (variant !== "default" && variant !== "field")
+        await page.addInitScript((theme) => {
+          localStorage.setItem("buzz-theme", theme);
+          localStorage.setItem("buzz-follow-system", "false");
+        }, variant);
       await start(page);
       await appearance(page);
-      if (variant === "custom") {
-        await customDraft(page);
+      if (variant === "field") {
+        await fieldDraft(page);
         await page.getByTestId("appearance-apply").click();
-        await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
-      } else if (variant !== "default") {
-        await page.getByTestId("appearance-open-themes").click();
-        await page.getByTestId(`theme-catalog-${variant}`).click();
-        await page.getByTestId("theme-use").click();
-        await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-        await page.getByTestId("theme-done").click();
+        await expect(page.getByTestId("appearance-apply-status")).toHaveText(
+          "Applied",
+        );
+        expect(await rootField(page)).toEqual([
+          "#A3E3D3",
+          "#9CC2F7",
+          "#00ACE6",
+        ]);
       }
       const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
       const capture = async (route: string) => {
@@ -104,28 +127,27 @@ for (const width of [1728, 1440]) {
       };
       await page.locator("#settings-search-input").focus();
       await capture("appearance");
-      const paint = await page
-        .locator(".buzz-theme-gradient-underlay")
-        .evaluate((element) => getComputedStyle(element).backgroundImage);
-      if (variant !== "default") expect(paint).not.toContain("colony-field-");
-      if (variant === "custom") {
-        expect(paint).toContain("linear-gradient");
-        await expect(page.getByTestId("community-rail")).toHaveCSS(
-          "background-color",
-          "rgba(0, 0, 0, 0)",
-        );
+      if (variant === "field") {
         const primary = await page
           .getByTestId("appearance-apply")
           .evaluate((element) => getComputedStyle(element).backgroundColor);
-        expect(primary).toBe("rgb(34, 197, 94)");
+        // The design's Apply is the dark primary; the accent colours pills
+        // and the preview, not this button.
+        expect(primary).toBe("rgb(37, 34, 44)");
       }
       await page.getByTestId("settings-back-to-app").click();
       await capture("workspace");
-      const appPaint = await page
-        .locator(".buzz-theme-gradient-underlay")
-        .evaluate((element) => getComputedStyle(element).backgroundImage);
-      if (variant !== "default")
-        expect(appPaint).not.toContain("colony-field-");
+      // Colony themes paint the person's field in the sidebar; a named theme
+      // keeps its own flat sidebar colour and draws no field at all.
+      if (variant === "default" || variant === "field")
+        await expect(sidebarField(page)).toBeVisible();
+      else await expect(sidebarField(page)).toBeHidden();
+      if (variant === "field")
+        expect(
+          await sidebarField(page)
+            .locator(".colony-field-blob-top")
+            .evaluate((element) => getComputedStyle(element).backgroundColor),
+        ).toBe("rgb(163, 227, 211)");
       await page.getByTestId("open-settings").click();
       await capture("menu");
       await page.goto("/#/settings?section=agent-defaults");
@@ -137,8 +159,12 @@ for (const width of [1728, 1440]) {
       await expect(page.getByTestId("agent-defaults-connection")).toContainText(
         "Claude Code subscription connected",
       );
-      if (variant === "custom")
-        await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
+      if (variant === "field")
+        expect(await rootField(page)).toEqual([
+          "#A3E3D3",
+          "#9CC2F7",
+          "#00ACE6",
+        ]);
       else
         expect(
           await page.evaluate(() => localStorage.getItem("buzz-theme")),
@@ -147,25 +173,23 @@ for (const width of [1728, 1440]) {
   }
 }
 
-test("custom Apply is one atomic snapshot, Cancel and Revert preserve the chosen state", async ({
+test("field Apply is one atomic snapshot, Cancel and Revert preserve the chosen state", async ({
   page,
 }) => {
   await start(page);
   await appearance(page);
-  const before = await page.evaluate(() => document.documentElement.className);
-  await customDraft(page);
+  expect(await rootField(page)).toEqual(["", "", ""]);
+  await fieldDraft(page);
   await expect(page.getByTestId("appearance-apply-status")).toHaveText(
     "Preview only",
   );
-  expect(await page.evaluate(() => document.documentElement.className)).toBe(
-    before,
-  );
+  // A draft changes nothing outside the preview until it is applied.
+  expect(await rootField(page)).toEqual(["", "", ""]);
   await page.getByTestId("appearance-cancel").click();
-  await expect(page.getByTestId("appearance-theme-default")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await customDraft(page);
+  await expect(
+    page.getByTestId("appearance-field-preset-dawn"),
+  ).toHaveAttribute("aria-pressed", "true");
+  await fieldDraft(page);
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     (window as Window & { appearanceWrites?: number }).appearanceWrites = 0;
@@ -183,7 +207,7 @@ test("custom Apply is one atomic snapshot, Cancel and Revert preserve the chosen
   await expect(page.getByTestId("appearance-apply-status")).toHaveText(
     "Applied",
   );
-  await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
+  expect(await rootField(page)).toEqual(["#A3E3D3", "#9CC2F7", "#00ACE6"]);
   expect(
     await page.evaluate(
       () => (window as Window & { appearanceWrites?: number }).appearanceWrites,
@@ -191,13 +215,13 @@ test("custom Apply is one atomic snapshot, Cancel and Revert preserve the chosen
   ).toBe(1);
   await page.getByTestId("appearance-links-rich").click();
   await page.getByTestId("appearance-revert").click();
-  await expect(page.locator("html")).not.toHaveClass(/w20-custom-appearance/);
+  expect(await rootField(page)).toEqual(["", "", ""]);
   await expect(page.getByTestId("appearance-links-rich")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.reload();
-  await expect(page.locator("html")).not.toHaveClass(/w20-custom-appearance/);
+  expect(await rootField(page)).toEqual(["", "", ""]);
 });
 
 for (const auth of ["unknown", "logged_out"])
@@ -212,12 +236,9 @@ for (const auth of ["unknown", "logged_out"])
     await expect(connection).toContainText(
       auth === "unknown" ? "connection not confirmed" : "needs sign-in",
     );
-    await page
-      .getByTestId("agent-defaults-openrouter-alternative")
-      .locator("summary")
-      .click();
-    const bullets = page.getByTestId("openrouter-connection").locator("ul");
-    await expect(bullets).toHaveCSS("padding-left", "20px");
+    await expect(page.getByTestId("agent-way-openrouter")).toContainText(
+      "Not connected",
+    );
   });
 
 test("Agent Defaults shows the saved OpenRouter connection first", async ({
@@ -251,30 +272,3 @@ test("Agent Defaults shows the saved OpenRouter connection first", async ({
   ).toHaveCount(0);
   await expect(page.getByTestId("openrouter-connection")).toBeVisible();
 });
-
-for (const width of [1728, 1440]) {
-  test(`approved named preview and applied states ${width}`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: width === 1728 ? 1117 : 900 });
-    await start(page);
-    await appearance(page);
-    await page.getByTestId("appearance-open-themes").click();
-    await page.getByTestId("theme-catalog-buzz").click();
-    await expect(page.getByTestId("theme-use")).toHaveText("Use Colony");
-    const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-preview.png`,
-      });
-    await page.getByTestId("theme-use").click();
-    await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-    await expect(page.getByTestId("theme-done")).toHaveText("Done");
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-applied.png`,
-      });
-  });
-}

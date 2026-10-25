@@ -12,7 +12,7 @@ const Textarea = React.forwardRef<
       autoCorrect="off"
       spellCheck={false}
       className={cn(
-        "flex min-h-20 w-full rounded-lg border border-input/40 bg-background px-3 py-2 text-base transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "flex min-h-20 w-full rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3.5 py-3 text-control font-medium leading-normal text-colony-fg transition-colors placeholder:text-[#757575] focus-visible:border-colony-accent focus-visible:outline-hidden focus-visible:ring-[0.5px] focus-visible:ring-colony-accent disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       ref={ref}

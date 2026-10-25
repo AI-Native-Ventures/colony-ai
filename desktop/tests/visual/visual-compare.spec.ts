@@ -716,9 +716,6 @@ test.describe("visual comparison captures", () => {
             await expect(
               appPage.locator('[data-testid="message-thread-panel"]'),
             ).toHaveCount(0);
-            await expect(
-              appPage.locator('[data-testid="message-channel-intro"]'),
-            ).toHaveCount(0);
           }
         } else if (entry.referenceInventoryRoute === "channel/sales") {
           const crossPostControl = appPage.getByRole("checkbox", {

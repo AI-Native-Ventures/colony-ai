@@ -74,9 +74,7 @@ async function openStuckCommunity(page: Page) {
 
 async function removeStuckCommunity(page: Page) {
   const screen = page.getByTestId("community-apply-error");
-  await screen
-    .getByRole("button", { name: /^Remove this community from this device/ })
-    .click();
+  await screen.getByRole("button", { name: /^Remove community/ }).click();
   await screen.getByTestId("community-escape-remove-confirm").click();
   await expect(page.getByTestId("community-apply-error")).toHaveCount(0);
 }

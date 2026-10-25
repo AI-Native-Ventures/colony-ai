@@ -5,7 +5,12 @@ export type WorkspaceFileReference = {
   expectedRelayUrl: string;
   path: string;
 };
-export type WorkspaceFile = { path: string; content: string };
+export type WorkspaceFile = {
+  path: string;
+  content: string;
+  /** When the file was last written, in epoch milliseconds. */
+  modifiedAt?: number;
+};
 const OPEN_FILE_EVENT = "colony:open-workspace-file";
 
 /** Path-like inline code stays plain until a native existence check succeeds. */

@@ -6,7 +6,7 @@ import { channelTooltipFooter } from "./ChannelDeepLink.tsx";
 const channel = {
   id: "channel-id",
   name: "history",
-  channelType: "forum",
+  channelType: "stream",
   visibility: "private",
   description: "",
   topic: null,
@@ -23,13 +23,10 @@ const channel = {
 };
 
 test("channelTooltipFooter adds archived status without changing existing metadata", () => {
-  assert.equal(
-    channelTooltipFooter(channel),
-    "Private channel · Forum · Archived",
-  );
+  assert.equal(channelTooltipFooter(channel), "Private channel · Archived");
   assert.equal(
     channelTooltipFooter({ ...channel, archivedAt: null }),
-    "Private channel · Forum",
+    "Private channel",
   );
 });
 
@@ -40,6 +37,6 @@ test("channelTooltipFooter uses just now for activity within a minute", () => {
       archivedAt: null,
       lastMessageAt: new Date().toISOString(),
     }),
-    "Private channel · Forum · Active just now",
+    "Private channel · Active just now",
   );
 });

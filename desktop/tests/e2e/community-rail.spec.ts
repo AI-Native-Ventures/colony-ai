@@ -25,9 +25,10 @@ const COMMUNITY_B = {
   addedAt: "2026-01-02T00:00:00.000Z",
 };
 
+/** The Colony 3.0 main area is flat: it meets the sidebar and window edge. */
 async function expectContentSurfaceHorizontalGutters(
   page: import("@playwright/test").Page,
-  expectedLeftGutter = 8,
+  expectedLeftGutter = 0,
 ) {
   await waitForAnimations(page);
   const [mainInsetBox, contentBox] = await Promise.all([
@@ -42,7 +43,7 @@ async function expectContentSurfaceHorizontalGutters(
     (mainInsetBox?.width ?? 0) -
     ((contentBox?.x ?? 0) + (contentBox?.width ?? 0));
   expect(Math.abs(leftGutter - expectedLeftGutter)).toBeLessThan(0.5);
-  expect(Math.abs(rightGutter - 8)).toBeLessThan(0.5);
+  expect(Math.abs(rightGutter)).toBeLessThan(0.5);
 }
 
 async function seedCommunities(
@@ -103,59 +104,45 @@ test.describe("community rail", () => {
     await expect(
       page.getByTestId(`community-rail-active-${COMMUNITY_B.id}`),
     ).toHaveCount(0);
-    await expect(activeIndicator).toHaveCSS("height", "20px");
+    // The Colony 3.0 marker: a 24px by 4px bar beside the open community.
+    await expect(activeIndicator).toHaveCSS("height", "24px");
     await expect(activeIndicator).toHaveCSS("width", "4px");
-    await expect(
-      buttonA.locator(":scope > span:not([data-testid])").first(),
-    ).toHaveCSS("opacity", "1");
-    await expect(buttonB.locator(":scope > span").first()).toHaveCSS(
-      "opacity",
-      "1",
-    );
-    const [activeStyle, inactiveStyle] = await Promise.all(
-      [buttonA, buttonB].map((button) =>
-        button
-          .locator(":scope > span:not([data-testid])")
-          .first()
-          .evaluate((element) => {
-            const style = getComputedStyle(element);
-            return {
-              backgroundColor: style.backgroundColor,
-              borderRadius: style.borderRadius,
-              color: style.color,
-              outlineColor: style.outlineColor,
-              outlineStyle: style.outlineStyle,
-              outlineWidth: style.outlineWidth,
-            };
-          }),
-      ),
-    );
-    expect(activeStyle.backgroundColor).toBe(inactiveStyle.backgroundColor);
-    expect(activeStyle.borderRadius).toBe(inactiveStyle.borderRadius);
+    const tileStyle = (button: typeof buttonA) =>
+      button.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          backgroundColor: style.backgroundColor,
+          borderRadius: style.borderRadius,
+          color: style.color,
+          height: style.height,
+          outlineStyle: style.outlineStyle,
+          width: style.width,
+        };
+      });
+    const [activeStyle, inactiveStyle] = await Promise.all([
+      tileStyle(buttonA),
+      tileStyle(buttonB),
+    ]);
+    await expect(buttonA).toHaveCSS("opacity", "1");
+    await expect(buttonB).toHaveCSS("opacity", "1");
+    // Same 40px rounded tile; the open community is the dark one.
+    expect(activeStyle.width).toBe("40px");
+    expect(inactiveStyle.width).toBe("40px");
+    expect(activeStyle.height).toBe("40px");
     expect(activeStyle.borderRadius).toBe("12px");
-    expect(activeStyle.color).toBe(inactiveStyle.color);
-    expect(activeStyle.outlineColor).toBe(inactiveStyle.outlineColor);
-    expect(activeStyle.outlineStyle).toBe("solid");
-    expect(activeStyle.outlineWidth).toBe("2px");
-    expect(inactiveStyle.outlineStyle).toBe("solid");
-    expect(inactiveStyle.outlineWidth).toBe("2px");
+    expect(inactiveStyle.borderRadius).toBe("12px");
+    expect(activeStyle.backgroundColor).toBe("rgb(37, 34, 44)");
+    expect(inactiveStyle.backgroundColor).not.toBe(activeStyle.backgroundColor);
+    expect(activeStyle.color).not.toBe(inactiveStyle.color);
+    expect(activeStyle.outlineStyle).toBe("none");
+    expect(inactiveStyle.outlineStyle).toBe("none");
 
-    const inactiveIcon = buttonB.locator(":scope > span").first();
+    // Hovering keeps the tile's shape and fill.
     await buttonB.hover();
-    await expect(inactiveIcon).toHaveCSS("outline-width", "2px");
-    const hoverStyle = await inactiveIcon.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        backgroundColor: style.backgroundColor,
-        borderRadius: style.borderRadius,
-        color: style.color,
-        outlineStyle: style.outlineStyle,
-      };
-    });
+    const hoverStyle = await tileStyle(buttonB);
     expect(hoverStyle.backgroundColor).toBe(inactiveStyle.backgroundColor);
     expect(hoverStyle.borderRadius).toBe(inactiveStyle.borderRadius);
     expect(hoverStyle.color).toBe(inactiveStyle.color);
-    expect(hoverStyle.outlineStyle).toBe("solid");
 
     // The add-community affordance lives at the bottom of the rail.
     await expect(page.getByTestId("community-rail-add")).toBeVisible();
@@ -225,7 +212,7 @@ test.describe("community rail", () => {
     await expect(page).toHaveURL(/#\/settings\?section=community-members$/);
     await expect(page.getByTestId("settings-community-members")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Invites", exact: true }),
+      page.getByRole("heading", { name: "People & access", exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId("community-icon-settings")).toHaveCount(0);
     await expect(
@@ -1310,7 +1297,7 @@ test.describe("community rail", () => {
     ).toBeHidden();
     await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
       "margin-left",
-      "8px",
+      "0px",
     );
     await expectContentSurfaceHorizontalGutters(page);
   });
@@ -1336,7 +1323,7 @@ test.describe("community rail", () => {
     ).toBeVisible();
     await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
       "margin-left",
-      "8px",
+      "0px",
     );
     await expectContentSurfaceHorizontalGutters(page);
   });
@@ -1373,7 +1360,7 @@ test.describe("community rail", () => {
     await expect(page.getByTestId("community-rail-add")).toBeVisible();
     await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
       "margin-left",
-      "8px",
+      "0px",
     );
     await expectContentSurfaceHorizontalGutters(page);
   });
@@ -1385,7 +1372,9 @@ test.describe("community rail", () => {
     });
     await installMockBridge(page, undefined, { skipCommunitySeed: true });
     await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
-    await page.goto("/");
+    // Activity draws its own header per the design, so the shell's history
+    // controls are checked on Today.
+    await page.goto("/#/today");
 
     // The first community button must start below the traffic-light band
     // (native controls sit around y<=31 with trafficLightPosition y:24).
@@ -1409,9 +1398,10 @@ test.describe("community rail", () => {
     expect(appSurfaceBox).not.toBeNull();
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
-    expect(
-      Math.abs((buttonBox?.y ?? 0) - (contentBox?.y ?? 0) - 39),
-    ).toBeLessThan(0.5);
+    // 2.75rem below the rail's top: clear of the window buttons.
+    expect(Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44)).toBeLessThan(
+      0.5,
+    );
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
     );
@@ -1428,15 +1418,19 @@ test.describe("community rail", () => {
       (railBox?.x ?? 0) +
       (railBox?.width ?? 0) -
       ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
-    expect(Math.abs(leftInset - 10)).toBeLessThan(0.5);
+    // A 40px button centred in the 64px Colony 3.0 rail.
+    expect(Math.abs(leftInset - 12)).toBeLessThan(0.5);
     expect(Math.abs(leftInset - rightInset)).toBeLessThan(0.5);
     const visibleRightGap =
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
-    expect(Math.abs(visibleRightGap - 14)).toBeLessThan(0.5);
+    // The sidebar's 14px inset, plus the rail's 12px inset beside the button.
+    expect(Math.abs(visibleRightGap - 26)).toBeLessThan(0.5);
 
     // History controls live inside the inset content frame, clear of the
     // native traffic lights and aligned with the content left edge.
     const back = page.getByTestId("global-back");
+    // Today mounts its route after the shell, so wait for the controls.
+    await expect(back).toBeVisible();
     const backBox = await back.boundingBox();
     expect(backBox).not.toBeNull();
     expect(backBox?.x ?? 0).toBeGreaterThanOrEqual(contentBox?.x ?? 0);

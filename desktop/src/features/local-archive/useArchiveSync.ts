@@ -1,6 +1,5 @@
 import * as React from "react";
 
-import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import {
   announceArchiveSyncEpoch,
   nextArchiveSyncLease,
@@ -42,15 +41,7 @@ function archiveSyncEpoch(): Promise<number> {
  * Everything below this call — subscribing, buffering, batching, archiving —
  * now runs in Rust; the renderer sees no archive traffic at all.
  *
- * Ownership is main-window-only. `AppShell` is the root route, so a companion
- * window (`huddle::window`) mounts this same tree in a second JS realm — and
- * archive sync is app-global work, exactly like the microphone capture the
- * main window already owns. Two concurrent realms cannot be ordered by a
- * newest-wins clock: the companion's unmount cleanup would cancel the live
- * main-window task while the main realm sits there with nothing to re-issue.
- * So secondary realms never announce and never issue lifecycle commands.
- *
- * Within the owning window, `(epoch, lease)` orders everything else: the epoch
+ * `(epoch, lease)` orders every lifecycle command: the epoch
  * is minted by Rust and survives renderer reload (a reload resets the JS lease
  * counter but not the backend's mark), and the lease orders effects inside one
  * realm. The epoch must be resolved BEFORE any lifecycle command is sent — an
@@ -59,8 +50,6 @@ function archiveSyncEpoch(): Promise<number> {
 export function useArchiveSync(ready: boolean): void {
   React.useEffect(() => {
     if (!ready) return;
-    // Companion realms do not participate; see the ownership rule above.
-    if (huddleWindowChannelId() !== null) return;
 
     const lease = nextArchiveSyncLease();
     let stopped = false;

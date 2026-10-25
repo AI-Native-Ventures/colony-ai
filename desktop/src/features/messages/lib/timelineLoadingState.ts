@@ -5,8 +5,8 @@
  * The trap: `data !== undefined` looks like "loaded" but the per-channel query
  * cache is seeded early — by a stale `placeholderData` on revisit, and by the
  * live subscription's `setQueryData` — before the authoritative history fetch
- * settles. Treating that as loaded flashes the channel intro/empty state over a
- * list that is about to stream in.
+ * settles. Treating that as loaded flashes the empty state over a list that is
+ * about to stream in.
  */
 export type TimelineQueryStatus = {
   isPending: boolean;

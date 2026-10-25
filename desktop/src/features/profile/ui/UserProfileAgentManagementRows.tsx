@@ -1,13 +1,5 @@
 import * as React from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  CopyPlus,
-  Download,
-  Sparkles,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import type { IdentityArchiveActions } from "@/features/identity-archive/hooks";
 import { ArchiveConfirmDialog } from "@/features/profile/ui/ArchiveConfirmDialog";
@@ -23,7 +15,6 @@ import {
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
 import { Button, buttonVariants } from "@/shared/ui/button";
-import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
 
 export function UserProfileAgentManagementRows({
   archiveActions,
@@ -61,11 +52,13 @@ export function UserProfileAgentManagementRows({
   }
 
   return (
-    <PanelSectionGroup testId="user-profile-agent-management-section">
+    <div
+      className="pp-manage"
+      data-testid="user-profile-agent-management-section"
+    >
       {onDuplicateAgent ? (
         <ProfileAgentActionRow
           disabled={isDeletePending}
-          icon={CopyPlus}
           label="Duplicate agent"
           onClick={onDuplicateAgent}
           testId="user-profile-duplicate-agent-row"
@@ -74,7 +67,6 @@ export function UserProfileAgentManagementRows({
       {onExportAgent ? (
         <ProfileAgentActionRow
           disabled={isDeletePending}
-          icon={Download}
           label="Export agent"
           onClick={onExportAgent}
           testId="user-profile-export-agent-row"
@@ -83,7 +75,6 @@ export function UserProfileAgentManagementRows({
       {onCreateCard ? (
         <ProfileAgentActionRow
           disabled={isDeletePending}
-          icon={Sparkles}
           label="Create trading card"
           onClick={onCreateCard}
           testId="user-profile-create-card-row"
@@ -100,22 +91,24 @@ export function UserProfileAgentManagementRows({
           onDelete={onDeleteAgent}
         />
       ) : null}
-    </PanelSectionGroup>
+    </div>
   );
 }
 
+/**
+ * One text action under the facts list. `icon` and `iconClassName` are kept
+ * for callers that still pass them; the board draws these rows as plain text.
+ */
 export function ProfileAgentActionRow({
   destructive = false,
   disabled = false,
-  icon: Icon,
-  iconClassName,
   label,
   onClick,
   testId,
 }: {
   destructive?: boolean;
   disabled?: boolean;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   iconClassName?: string;
   label: string;
   onClick: () => void;
@@ -123,30 +116,14 @@ export function ProfileAgentActionRow({
 }) {
   return (
     <button
-      className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="pp-manage-row"
+      data-tone={destructive ? "danger" : undefined}
       data-testid={testId}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <Icon
-        className={
-          iconClassName ??
-          (destructive
-            ? "h-4 w-4 shrink-0 text-destructive"
-            : "h-4 w-4 shrink-0 text-muted-foreground")
-        }
-        data-slot="profile-action-icon"
-      />
-      <span
-        className={
-          destructive
-            ? "min-w-0 flex-1 text-sm font-medium text-destructive"
-            : "min-w-0 flex-1 text-sm font-medium"
-        }
-      >
-        {label}
-      </span>
+      {label}
     </button>
   );
 }
@@ -158,7 +135,6 @@ function ProfileArchiveAgentRow({
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const isArchived = archiveActions.isArchived === true;
-  const Icon = isArchived ? ArchiveRestore : Archive;
   const label = archiveActions.isPending
     ? isArchived
       ? "Unarchiving…"
@@ -171,7 +147,6 @@ function ProfileArchiveAgentRow({
     <>
       <ProfileAgentActionRow
         disabled={archiveActions.isPending}
-        icon={Icon}
         label={label}
         onClick={() => {
           if (isArchived) {
@@ -216,7 +191,6 @@ function ProfileDeleteAgentRow({
       <ProfileAgentActionRow
         destructive
         disabled={isPending}
-        icon={Trash2}
         label="Delete agent"
         onClick={() => {
           if (managedAgent) {

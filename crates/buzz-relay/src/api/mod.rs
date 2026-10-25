@@ -8,6 +8,7 @@ pub mod credits_gateway;
 mod credits_gateway_metering;
 mod credits_gateway_policy;
 mod credits_gateway_upstream;
+pub mod discovery;
 pub mod events;
 pub mod gifs;
 pub mod git;
@@ -28,6 +29,18 @@ use axum::{http::StatusCode, response::Json};
 /// Standard error envelope.
 pub(crate) fn api_error(status: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::Value>) {
     (status, Json(serde_json::json!({ "error": msg })))
+}
+
+/// Error envelope that also carries a stable machine-readable `code`.
+pub(crate) fn api_error_with_code(
+    status: StatusCode,
+    msg: &str,
+    code: &str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        status,
+        Json(serde_json::json!({ "error": msg, "code": code })),
+    )
 }
 
 pub(crate) fn internal_error(msg: &str) -> (StatusCode, Json<serde_json::Value>) {

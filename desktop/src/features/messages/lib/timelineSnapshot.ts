@@ -185,13 +185,13 @@ export type TimelineBodySurface = "skeleton" | "error" | "empty" | "list";
 
 export function selectTimelineBodySurface({
   deferredCount,
-  preserveSettledEmptyIntro = false,
+  preserveSettledEmpty = false,
   isError = false,
   isLoading,
   liveCount,
 }: {
   deferredCount: number;
-  preserveSettledEmptyIntro?: boolean;
+  preserveSettledEmpty?: boolean;
   isError?: boolean;
   isLoading: boolean;
   liveCount: number;
@@ -208,11 +208,11 @@ export function selectTimelineBodySurface({
     return "error";
   }
   if (renderState === "pending") {
-    // Preserve a channel/DM intro across a new append only when this channel
+    // Preserve the empty state across a new append only when this channel
     // already committed an authoritative empty timeline. On first load, the
     // live query can resolve before React's deferred rows commit; painting the
-    // intro in that gap flashes empty-channel actions over incoming messages.
-    return preserveSettledEmptyIntro ? "empty" : "skeleton";
+    // empty state in that gap flashes "No messages yet" over incoming messages.
+    return preserveSettledEmpty ? "empty" : "skeleton";
   }
   return renderState;
 }
@@ -233,10 +233,6 @@ export function selectTimelineBodySurface({
  *   4. "empty"    → the load succeeded and the branch is genuinely empty
  *   5. "pending"  → deferred is empty but the live list has content; paint
  *                   nothing yet (rows are streaming in on the deferred commit)
- *
- * Huddle transcripts flatten replies into the chat timeline and never show the
- * skeleton/error/empty affordances, so their non-list surfaces collapse to
- * "pending" (render nothing).
  */
 export type ThreadRepliesSurface =
   | "skeleton"
@@ -246,25 +242,6 @@ export type ThreadRepliesSurface =
   | "pending";
 
 export function selectThreadRepliesSurface({
-  isPending,
-  isError,
-  renderState,
-  isHuddleTranscript = false,
-}: {
-  isPending: boolean;
-  isError: boolean;
-  renderState: DeferredListRenderState;
-  isHuddleTranscript?: boolean;
-}): ThreadRepliesSurface {
-  const surface = resolveThreadRepliesSurface({
-    isPending,
-    isError,
-    renderState,
-  });
-  return isHuddleTranscript && surface !== "list" ? "pending" : surface;
-}
-
-function resolveThreadRepliesSurface({
   isPending,
   isError,
   renderState,
@@ -349,32 +326,4 @@ export function isRenderedTimelineBehindHistoryPrepend(
     return false;
   }
   return rendered[0]?.id !== live[0]?.id;
-}
-
-export type TimelineIntroSurface =
-  | "direct-message-intro"
-  | "channel-intro"
-  | null;
-
-export function selectTimelineIntroSurface({
-  hasChannelIntro,
-  hasDirectMessageIntro,
-  hasReachedChannelStart,
-  isSkeletonVisible,
-}: {
-  hasChannelIntro: boolean;
-  hasDirectMessageIntro: boolean;
-  hasReachedChannelStart: boolean;
-  isSkeletonVisible: boolean;
-}): TimelineIntroSurface {
-  if (isSkeletonVisible) {
-    return null;
-  }
-  if (hasDirectMessageIntro) {
-    return "direct-message-intro";
-  }
-  if (hasChannelIntro && hasReachedChannelStart) {
-    return "channel-intro";
-  }
-  return null;
 }

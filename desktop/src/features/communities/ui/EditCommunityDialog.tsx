@@ -8,15 +8,14 @@ import {
   normalizeRelayUrl,
 } from "@/features/communities/communityStorage";
 import { validateReposDir } from "@/shared/api/tauri";
-import { Button } from "@/shared/ui/button";
+import { CloseXIcon } from "@/features/onboarding/ui/firstRunIcons";
+import "@/features/onboarding/ui/firstRun.css";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { Input } from "@/shared/ui/input";
 
 type EditCommunityDialogProps = {
   community: Community | null;
@@ -124,36 +123,44 @@ export function EditCommunityDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Community</DialogTitle>
-          <DialogDescription>
-            Update this business name or connection address.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => void handleSubmit(e)}
-        >
+      <DialogContent
+        className="c3fr-dialog c3fr-edit max-w-[26.375rem] gap-0 p-0"
+        showCloseButton={false}
+        surface="none"
+      >
+        <form className="c3fr-edit-form" onSubmit={(e) => void handleSubmit(e)}>
+          <div className="c3fr-edit-head">
+            <div className="c3fr-edit-head-text">
+              <DialogTitle className="c3fr-edit-title">
+                Edit Community
+              </DialogTitle>
+              <DialogDescription className="c3fr-edit-desc">
+                Update this business name or connection address.
+              </DialogDescription>
+            </div>
+            <button
+              aria-label="Close"
+              className="c3fr-edit-close"
+              onClick={handleClose}
+              type="button"
+            >
+              <CloseXIcon size={18} />
+            </button>
+          </div>
           {canEditIcon ? (
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 p-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Community icon</p>
-                <p className="text-xs text-muted-foreground">
+            <div className="c3fr-edit-icon">
+              <div className="c3fr-edit-icon-text">
+                <span className="c3fr-edit-icon-title">Community icon</span>
+                <span className="c3fr-edit-icon-desc">
                   Shown in the community rail and switcher.
-                </p>
+                </span>
               </div>
               <CommunityIconSettingsCard compact />
             </div>
           ) : null}
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-sm font-medium text-foreground"
-              htmlFor="edit-ws-name"
-            >
-              Name
-            </label>
-            <Input
+          <div className="c3fr-edit-field">
+            <label htmlFor="edit-ws-name">Name</label>
+            <input
               autoFocus
               id="edit-ws-name"
               onChange={(e) => setName(e.target.value)}
@@ -162,32 +169,23 @@ export function EditCommunityDialog({
               value={name}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-sm font-medium text-foreground"
-              htmlFor="edit-ws-relay-url"
-            >
-              Connection address
-            </label>
-            <Input
+          <div className="c3fr-edit-field">
+            <label htmlFor="edit-ws-relay-url">Connection address</label>
+            <input
               id="edit-ws-relay-url"
               onChange={(e) => setRelayUrl(e.target.value)}
               placeholder="wss://relay.example.com"
+              spellCheck={false}
               type="text"
               value={relayUrl}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-sm font-medium text-foreground"
-              htmlFor="edit-ws-token"
-            >
-              API Token
-              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                (optional)
-              </span>
+          <div className="c3fr-edit-field">
+            <label htmlFor="edit-ws-token">
+              API Token <small>(optional)</small>
             </label>
-            <Input
+            <input
+              autoComplete="off"
               id="edit-ws-token"
               onChange={(e) => setToken(e.target.value)}
               placeholder="buzz_..."
@@ -195,42 +193,46 @@ export function EditCommunityDialog({
               value={token}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-sm font-medium text-foreground"
-              htmlFor="edit-ws-repos-dir"
-            >
-              Repos Directory
-              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                (optional)
-              </span>
+          <div className="c3fr-edit-field">
+            <label htmlFor="edit-ws-repos-dir">
+              Repos Directory <small>(optional)</small>
             </label>
-            <Input
+            <input
+              aria-describedby="edit-ws-repos-help"
               id="edit-ws-repos-dir"
               onChange={(e) => {
                 setReposDir(e.target.value);
                 setReposDirError(null);
               }}
               placeholder="~/Development"
+              spellCheck={false}
               type="text"
               value={reposDir}
             />
             {reposDirError ? (
-              <p className="text-xs text-destructive">{reposDirError}</p>
+              <p className="c3fr-edit-error">{reposDirError}</p>
             ) : null}
-            <p className="text-xs text-muted-foreground">
-              Point the agent's <code>REPOS</code> directory at an existing
+            <p className="c3fr-edit-help" id="edit-ws-repos-help">
+              Point the agent’s <code>REPOS</code> directory at an existing
               folder so agents work in your local checkouts. Leave blank to use
               the default location.
             </p>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button onClick={handleClose} type="button" variant="outline">
+          <div className="c3fr-edit-actions">
+            <button
+              className="c3fr-edit-cancel"
+              onClick={handleClose}
+              type="button"
+            >
               Cancel
-            </Button>
-            <Button disabled={!name.trim() || !relayUrl.trim()} type="submit">
+            </button>
+            <button
+              className="c3fr-edit-save"
+              disabled={!name.trim() || !relayUrl.trim()}
+              type="submit"
+            >
               Save Changes
-            </Button>
+            </button>
           </div>
         </form>
       </DialogContent>

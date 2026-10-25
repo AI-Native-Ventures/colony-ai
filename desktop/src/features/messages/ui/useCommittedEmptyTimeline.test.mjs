@@ -36,12 +36,11 @@ async function renderTimelineState(initialProps) {
 const empty = {
   channelId: "channel-a",
   deferredCount: 0,
-  hasPersistentIntro: true,
   isLoading: false,
   liveCount: 0,
 };
 
-test("only preserves an intro after an empty timeline commits", async () => {
+test("only preserves the empty state after an empty timeline commits", async () => {
   const { result, rerender } = await renderTimelineState(empty);
 
   assert.equal(result.current, false);

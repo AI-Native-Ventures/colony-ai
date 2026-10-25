@@ -77,7 +77,7 @@ async function seedChannelHeads(
       );
       // A bounds-only head has nothing to paint; let it take the cold path so
       // the skeleton holds until the relay answers instead of flashing the
-      // empty-channel intro over rows that are still revalidating.
+      // empty state over rows that are still revalidating.
       if (page.rows.length === 0) continue;
       const windowKey = channelWindowKey(entry.channelId);
       const messagesKey = channelMessagesKey(entry.channelId);

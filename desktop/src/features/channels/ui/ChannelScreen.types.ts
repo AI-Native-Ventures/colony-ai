@@ -19,22 +19,14 @@ export type ChannelScreenProps = {
   autoSendDraftKey: string | null;
   currentIdentity?: Identity;
   currentProfile?: Profile;
-  /**
-   * Hides the Colony workspace top bar. Project-hosted channels keep their
-   * project chrome until the Software Factory redesign replaces it.
-   */
+  /** Hides the Colony workspace top bar. */
   hideWorkspaceTopBar?: boolean;
   idleAuxiliaryPanel?: ReactNode;
   idleAuxiliaryHeaderActions?: IdleAuxiliaryHeaderControls;
   idleAuxiliaryOverridesThread?: boolean;
   idleAuxiliaryTitle?: string;
   headerEndActions?: ReactNode;
-  onAddFiles?: () => void;
   onCloseIdleAuxiliaryPanel?: () => void;
-  onCloseForumPost: () => void;
-  onSelectForumPost: (postId: string) => void;
-  selectedForumPostId: string | null;
-  targetForumReplyId: string | null;
   targetMessageEvents: RelayEvent[];
   targetMessageId: string | null;
   /** Exact clicked result id, retained after route target cleanup. */

@@ -6,6 +6,7 @@ import {
   buildCommitLink,
   buildGoalLink,
   buildIssueLink,
+  buildLeadLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
@@ -70,6 +71,44 @@ test("builders reject invalid identifiers", () => {
     buildPullRequestLink({ id: "short", owner: OWNER, dtag: "buzz-world" }),
   );
   assert.throws(() => buildGoalLink("short"));
+  assert.throws(() => buildLeadLink("short"));
+  assert.throws(() => buildLeadLink("../../etc/passwd"));
+});
+
+test("lead links carry the lowercase prospect UUID and round-trip", () => {
+  const leadId = "ABCDEF01-2345-6789-ABCD-EF0123456789";
+  const link = buildLeadLink(leadId);
+  assert.equal(link, "buzz://lead/abcdef01-2345-6789-abcd-ef0123456789");
+  assert.deepEqual(parseEntityLink(link), {
+    ok: true,
+    value: { type: "lead", id: "abcdef01-2345-6789-abcd-ef0123456789" },
+  });
+  assert.equal(isEntityLink(link), true);
+  // Uppercase input in a pasted link is normalized, not rejected.
+  assert.deepEqual(parseEntityLink(`buzz://lead/${leadId}`), {
+    ok: true,
+    value: { type: "lead", id: "abcdef01-2345-6789-abcd-ef0123456789" },
+  });
+});
+
+test("lead links are strict: only a single UUID path segment", () => {
+  const id = "123e4567-e89b-12d3-a456-426614174000";
+  for (const href of [
+    "buzz://lead/not-a-uuid",
+    "buzz://lead/",
+    "buzz://lead",
+    `buzz://lead/${id}/notes`,
+    `buzz://lead/${id}?tab=notes`,
+    `buzz://lead/${id}#top`,
+    `buzz://user:pass@lead/${id}`,
+    `buzz://lead:80/${id}`,
+  ]) {
+    assert.deepEqual(
+      parseEntityLink(href),
+      { ok: false, reason: "invalid-lead-id" },
+      href,
+    );
+  }
 });
 
 test("goal links use canonical active-community goal coordinates", () => {

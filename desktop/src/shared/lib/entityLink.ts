@@ -8,6 +8,7 @@
  *   buzz://pr?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://issue?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://goal/<goal-uuid>
+ *   buzz://lead/<lead-uuid>
  *
  * `owner` + `d` identify the NIP-34 repository coordinate
  * (`30617:<owner>:<d>`) or the NIP-MP project coordinate
@@ -47,6 +48,7 @@ export type ParsedEntityLink =
   | { type: "pr"; id: string; owner: string; dtag: string }
   | { type: "issue"; id: string; owner: string; dtag: string }
   | { type: "goal"; id: string }
+  | { type: "lead"; id: string }
   | {
       type: "repo";
       owner: string;
@@ -63,6 +65,8 @@ export type EntityLinkParseResult =
 const HEX64_RE = /^[a-fA-F0-9]{64}$/;
 const GOAL_ID_RE =
   /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
+/** A lead is a prospect record: its link carries the prospect UUID. */
+const LEAD_ID_RE = GOAL_ID_RE;
 const GIT_OBJECT_ID_RE = /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/;
 const DTAG_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -101,6 +105,18 @@ export function buildGoalLink(goalId: string): string {
     throw new Error("entityLink: goal id must be a UUID");
   }
   return `buzz://goal/${goalId.toLowerCase()}`;
+}
+
+/**
+ * Build a link to a lead (a prospect record) in the active community. Agents
+ * read the same format through `buzz leads get`, so the CLI builder in
+ * `crates/buzz-cli/src/links.rs` must keep emitting it.
+ */
+export function buildLeadLink(leadId: string): string {
+  if (!LEAD_ID_RE.test(leadId)) {
+    throw new Error("entityLink: lead id must be a UUID");
+  }
+  return `buzz://lead/${leadId.toLowerCase()}`;
 }
 
 function tabSuffix(tab: EntityLinkTab | undefined): string {
@@ -178,7 +194,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
     href.startsWith("buzz://issue?") ||
     href.startsWith("buzz://repo?") ||
     href.startsWith("buzz://project?") ||
-    href.startsWith("buzz://goal/")
+    href.startsWith("buzz://goal/") ||
+    href.startsWith("buzz://lead/")
   );
 }
 
@@ -215,7 +232,8 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     host !== "issue" &&
     host !== "repo" &&
     host !== "project" &&
-    host !== "goal"
+    host !== "goal" &&
+    host !== "lead"
   ) {
     return { ok: false, reason: "wrong-host" };
   }
@@ -235,6 +253,24 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     return {
       ok: true,
       value: { type: "goal", id: match[1].toLowerCase() },
+    };
+  }
+  if (host === "lead") {
+    const match = /^\/([0-9a-fA-F-]+)$/.exec(parsed.pathname);
+    if (
+      !match ||
+      !LEAD_ID_RE.test(match[1]) ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port
+    ) {
+      return { ok: false, reason: "invalid-lead-id" };
+    }
+    return {
+      ok: true,
+      value: { type: "lead", id: match[1].toLowerCase() },
     };
   }
   const isCoordinateHost = host === "repo" || host === "project";

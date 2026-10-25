@@ -39,7 +39,7 @@ export type MessageComposerProps = {
    * composer dock. `standalone` keeps both concerns inside this component.
    */
   layoutMode?: "dock" | "standalone";
-  /** Use the frozen Colony channel workspace composer chrome. */
+  /** Retained for callers; the composer now has one Colony 3.0 look. */
   workspaceChrome?: boolean;
   disabled?: boolean;
   draftKey?: string;
@@ -109,13 +109,19 @@ export type MessageComposerProps = {
     body: string;
     id: string;
   } | null;
-  /** Hide goal tools in the first-run Welcome conversation. */
-  showGoalReference?: boolean;
+  /** Hide the "Reference lead" tool in the first-run Welcome conversation. */
+  showLeadReference?: boolean;
   showTopBorder?: boolean;
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;
+  /** Header inside the composer card (for example the timed-out notice). */
+  statusBanner?: ReactNode;
+  /** "Raise an ask" pill, shown after the formatting button in a channel. */
+  toolbarAskAction?: ReactNode;
   toolbarExtraActions?: ReactNode;
-  /** Optional accessible content rendered between the editor and toolbar. */
+  /** Which tools to offer; derived from the conversation when omitted. */
+  toolbarLayout?: "channel" | "dm" | "thread" | "new-message";
+  /** Content rendered under the composer card (the thread's "Also send to"). */
   footerContent?: ReactNode;
   typingParentEventId?: string | null;
   typingRootEventId?: string | null;

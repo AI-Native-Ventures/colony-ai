@@ -20,6 +20,7 @@ export const MAX_MONEY_RECORD_EVENTS = 5_000;
 export type InvoiceStatus = "draft" | "issued" | "void";
 export type InvoiceVersionAction =
   | "proposal_acceptance"
+  | "create"
   | "draft_edit"
   | "issue"
   | "void";
@@ -671,6 +672,7 @@ function parseInvoiceVersion(event: RelayEvent): MoneyInvoiceVersion {
     expectedHeadEventId: readNullableHex(value, "expectedHeadEventId"),
     action: readEnum(value, "action", [
       "proposal_acceptance",
+      "create",
       "draft_edit",
       "issue",
       "void",

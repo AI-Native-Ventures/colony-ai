@@ -1,7 +1,6 @@
 import { ChevronDown } from "lucide-react";
 
 import type { InboxFilter } from "@/features/home/lib/inbox";
-import { cn } from "@/shared/lib/cn";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,83 +10,71 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-const INBOX_FILTER_OPTIONS: Array<{
+/** The filters Activity offers, in the order the design lists them. */
+export const INBOX_FILTER_OPTIONS: Array<{
   label: string;
   value: InboxFilter;
 }> = [
   { value: "all", label: "All" },
-  { value: "project", label: "Projects" },
   { value: "mention", label: "Mentions" },
-  { value: "thread", label: "Threads" },
   { value: "needs_action", label: "Needs action" },
+  { value: "thread", label: "Threads" },
   { value: "agent_activity", label: "Agents" },
-  { value: "reminders", label: "Reminders" },
   { value: "drafts", label: "Drafts" },
 ];
 
-const TRIGGER_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-muted/70 data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 relative -ml-2 w-auto gap-1 px-2 text-sm font-medium text-foreground";
-
 type InboxFilterMenuProps = {
   activeDraftCount: number;
-  dueReminderCount: number;
   filter: InboxFilter;
   onFilterChange: (value: InboxFilter) => void;
-  reminderCount: number;
 };
 
+/** The "All activity" button: the same filters as the chips, as a menu. */
 export function InboxFilterMenu({
   activeDraftCount,
-  dueReminderCount,
   filter,
   onFilterChange,
-  reminderCount,
 }: InboxFilterMenuProps) {
   const activeFilter = INBOX_FILTER_OPTIONS.find(
     (option) => option.value === filter,
   );
   const statusLabel =
-    dueReminderCount > 0
-      ? `${dueReminderCount} due reminder${dueReminderCount === 1 ? "" : "s"}`
-      : activeDraftCount > 0
-        ? `${activeDraftCount} active draft${activeDraftCount === 1 ? "" : "s"}`
-        : null;
+    activeDraftCount > 0
+      ? `${activeDraftCount} active draft${activeDraftCount === 1 ? "" : "s"}`
+      : null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           aria-label={`Filter inbox: ${activeFilter?.label ?? "All"}${statusLabel ? `. ${statusLabel}` : ""}`}
-          className={cn(TRIGGER_CLASS)}
+          className="ca-filter-button"
           data-testid="inbox-filter-trigger"
           type="button"
         >
-          <span>{activeFilter?.label ?? "All"}</span>
-          <ChevronDown className="text-muted-foreground" />
+          <span>
+            {filter === "all" ? "All activity" : (activeFilter?.label ?? "All")}
+          </span>
+          <ChevronDown aria-hidden="true" size={14} strokeWidth={2.4} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
+      <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuRadioGroup
           onValueChange={(value) => onFilterChange(value as InboxFilter)}
           value={filter}
         >
           {INBOX_FILTER_OPTIONS.map((option) => (
             <div key={option.value}>
-              {option.value === "reminders" ? (
+              {option.value === "drafts" ? (
                 <DropdownMenuSeparator className="my-2 bg-border/60" />
               ) : null}
               <DropdownMenuRadioItem value={option.value}>
                 <span className="flex flex-1 items-center gap-2">
-                  <span>{option.label}</span>
+                  <span>
+                    {option.value === "all" ? "All activity" : option.label}
+                  </span>
                   <span className="ml-auto flex items-center gap-1.5">
-                    {option.value === "reminders" && reminderCount > 0 ? (
-                      <span
-                        className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold leading-none text-primary-foreground"
-                        data-testid="inbox-reminder-badge-option"
-                      >
-                        {reminderCount}
-                      </span>
-                    ) : option.value === "drafts" && activeDraftCount > 0 ? (
+                    {option.value === "drafts" && activeDraftCount > 0 ? (
                       <span
                         className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold leading-none text-primary-foreground"
                         data-testid="inbox-draft-badge-option"
@@ -103,5 +90,44 @@ export function InboxFilterMenu({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type InboxFilterChipsProps = {
+  activeDraftCount: number;
+  filter: InboxFilter;
+  onFilterChange: (value: InboxFilter) => void;
+};
+
+/** The chip row under the title: one tap to a filter. */
+export function InboxFilterChips({
+  activeDraftCount,
+  filter,
+  onFilterChange,
+}: InboxFilterChipsProps) {
+  return (
+    <div aria-label="Filter activity" className="ca-chips" role="tablist">
+      {INBOX_FILTER_OPTIONS.map((option) => (
+        <button
+          aria-selected={filter === option.value}
+          className="ca-chip"
+          data-testid={`inbox-chip-${option.value}`}
+          key={option.value}
+          onClick={() => onFilterChange(option.value)}
+          role="tab"
+          type="button"
+        >
+          {option.label}
+          {option.value === "drafts" && activeDraftCount > 0 ? (
+            <span
+              className="ca-chip-count"
+              data-testid="inbox-draft-chip-count"
+            >
+              {activeDraftCount}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
   );
 }

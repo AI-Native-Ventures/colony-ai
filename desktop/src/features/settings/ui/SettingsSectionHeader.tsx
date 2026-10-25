@@ -1,11 +1,6 @@
 import type { ReactNode } from "react";
 
-import { PageHeader } from "@/shared/ui/PageHeader";
-
-/**
- * Page title for a Settings card. The R19 settings route applies its page
- * geometry to this marker while other settings surfaces keep their own layout.
- */
+/** The title of a Settings section: a heading, its note and an action. */
 export function SettingsSectionHeader({
   action,
   description,
@@ -16,17 +11,12 @@ export function SettingsSectionHeader({
   title: ReactNode;
 }) {
   return (
-    <PageHeader
-      action={action}
-      className="mb-12 w20-r19-page-heading"
-      description={
-        description ? (
-          <span data-settings-subcopy className="text-muted-foreground/70">
-            {description}
-          </span>
-        ) : undefined
-      }
-      title={title}
-    />
+    <div className="cs-section-head">
+      <div className="cs-section-head-copy">
+        <h2 className="cs-section-title">{title}</h2>
+        {description ? <p className="cs-section-note">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
   );
 }

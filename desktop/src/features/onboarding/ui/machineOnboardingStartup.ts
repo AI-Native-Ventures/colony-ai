@@ -3,6 +3,7 @@ import type { NativeCapability } from "@/shared/api/nativeBridge";
 export type MachineOnboardingPage =
   | "account-auth"
   | "identity"
+  | "profile"
   | "identity-key-intro"
   | "identity-key-help"
   | "key-import"

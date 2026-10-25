@@ -274,51 +274,28 @@ test("resolveSnapshotCard: .agent.json without thumb field yields undefined thum
   assert.equal(card.thumb, undefined);
 });
 
-// ── team snapshot card ────────────────────────────────────────────────────────
+// ── team snapshots are no longer cards ────────────────────────────────────────
 
-test("resolveSnapshotCard: .team.json with sha256 returns team snapshot card", () => {
-  const card = resolveSnapshotCard(
-    {
-      m: "application/json",
-      size: 5000,
-      filename: "my-team.team.json",
-      x: SHA256,
-    },
-    JSON_URL,
-    "",
+test("resolveSnapshotCard: team snapshot files are not snapshot cards", () => {
+  assert.equal(
+    resolveSnapshotCard(
+      {
+        m: "application/json",
+        size: 5000,
+        filename: "my-team.team.json",
+        x: SHA256,
+      },
+      JSON_URL,
+      "",
+    ),
+    null,
   );
-  assert.ok(card !== null);
-  assert.equal(card.filename, "my-team.team.json");
-  assert.equal(card.snapshotKind, "team");
-  assert.equal(card.sha256, SHA256);
-});
-
-test("resolveSnapshotCard: .team.png with image/png returns team snapshot card", () => {
-  const card = resolveSnapshotCard(
-    { m: "image/png", size: 3000, filename: "my-team.team.png", x: SHA256 },
-    PNG_URL,
-    "",
+  assert.equal(
+    resolveSnapshotCard(
+      { m: "image/png", size: 3000, filename: "my-team.team.png", x: SHA256 },
+      PNG_URL,
+      "",
+    ),
+    null,
   );
-  assert.ok(card !== null);
-  assert.equal(card.snapshotKind, "team");
-  assert.equal(card.thumb, undefined);
-});
-
-test("resolveSnapshotCard: plain .team without suffix is not a snapshot", () => {
-  const card = resolveSnapshotCard(
-    { m: "application/json", filename: "team.json", x: SHA256 },
-    JSON_URL,
-    "",
-  );
-  assert.equal(card, null);
-});
-
-test("resolveSnapshotCard: .TEAM.PNG classifies as team snapshot card", () => {
-  const card = resolveSnapshotCard(
-    { m: "image/png", size: 1024, filename: "staff.TEAM.PNG", x: SHA256 },
-    PNG_URL,
-    "",
-  );
-  assert.ok(card !== null);
-  assert.equal(card.snapshotKind, "team");
 });

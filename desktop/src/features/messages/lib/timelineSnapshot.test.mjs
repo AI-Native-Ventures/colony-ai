@@ -13,7 +13,6 @@ import {
   selectLatestMessageAutoScrollBehavior,
   selectLatestMessageKey,
   selectTimelineBodySurface,
-  selectTimelineIntroSurface,
   selectThreadRepliesSurface,
 } from "./timelineSnapshot.ts";
 
@@ -492,39 +491,10 @@ test("thread-surface: streaming-in rows paint nothing (pending), not empty", () 
   );
 });
 
-test("thread-surface: huddle transcripts collapse non-list surfaces to pending", () => {
-  // Huddle transcripts flatten replies into the chat timeline, so they never
-  // show the skeleton/error/empty affordances — only the list body or nothing.
-  for (const isError of [false, true]) {
-    for (const renderState of ["empty", "pending"]) {
-      assert.equal(
-        selectThreadRepliesSurface({
-          isPending: false,
-          isError,
-          renderState,
-          isHuddleTranscript: true,
-        }),
-        "pending",
-      );
-    }
-  }
-  // The list body still paints for a transcript with rows.
-  assert.equal(
-    selectThreadRepliesSurface({
-      isPending: false,
-      isError: false,
-      renderState: "list",
-      isHuddleTranscript: true,
-    }),
-    "list",
-  );
-});
-
 test("timeline-body-surface: loading and deferred-pending both paint the single static skeleton", () => {
   assert.equal(
     selectTimelineBodySurface({
       deferredCount: 0,
-      hasPersistentIntro: false,
       isLoading: true,
       liveCount: 0,
     }),
@@ -533,7 +503,6 @@ test("timeline-body-surface: loading and deferred-pending both paint the single 
   assert.equal(
     selectTimelineBodySurface({
       deferredCount: 0,
-      hasPersistentIntro: false,
       isLoading: false,
       liveCount: 3,
     }),
@@ -544,11 +513,11 @@ test("timeline-body-surface: loading and deferred-pending both paint the single 
 test("timeline-body-surface: first authoritative rows wait for deferred paint", () => {
   // A newly selected populated channel has already resolved live rows, but the
   // deferred snapshot is still empty. It has never committed a settled empty
-  // surface, so showing its intro here would flash Add agent / Add people.
+  // surface, so painting the empty state here would flash "No messages yet".
   assert.equal(
     selectTimelineBodySurface({
       deferredCount: 0,
-      preserveSettledEmptyIntro: false,
+      preserveSettledEmpty: false,
       isLoading: false,
       liveCount: 1,
     }),
@@ -556,11 +525,11 @@ test("timeline-body-surface: first authoritative rows wait for deferred paint", 
   );
 });
 
-test("timeline-body-surface: append preserves a previously settled empty intro", () => {
+test("timeline-body-surface: append preserves a previously settled empty state", () => {
   assert.equal(
     selectTimelineBodySurface({
       deferredCount: 0,
-      preserveSettledEmptyIntro: true,
+      preserveSettledEmpty: true,
       isLoading: false,
       liveCount: 1,
     }),
@@ -650,81 +619,13 @@ test("timeline-body-surface: stale deferred channel snapshot paints skeleton ins
   );
 });
 
-test("timeline-intro-surface: skeleton suppresses intro while loading", () => {
-  assert.equal(
-    selectTimelineIntroSurface({
-      hasChannelIntro: true,
-      hasDirectMessageIntro: false,
-      hasReachedChannelStart: true,
-      isSkeletonVisible: true,
-    }),
-    null,
-  );
-});
-
-test("timeline-intro-surface: intro may coexist with the message list", () => {
-  assert.equal(
-    selectTimelineBodySurface({
-      deferredCount: 2,
-      isLoading: false,
-      liveCount: 2,
-    }),
-    "list",
-  );
-  assert.equal(
-    selectTimelineIntroSurface({
-      hasChannelIntro: true,
-      hasDirectMessageIntro: false,
-      hasReachedChannelStart: true,
-      isSkeletonVisible: false,
-    }),
-    "channel-intro",
-  );
-});
-
-test("timeline-intro-surface: channel intro waits for oldest-history boundary", () => {
-  assert.equal(
-    selectTimelineIntroSurface({
-      hasChannelIntro: true,
-      hasDirectMessageIntro: false,
-      hasReachedChannelStart: false,
-      isSkeletonVisible: false,
-    }),
-    null,
-  );
-});
-
-test("timeline-intro-surface: direct-message intro wins over channel intro", () => {
-  assert.equal(
-    selectTimelineIntroSurface({
-      hasChannelIntro: true,
-      hasDirectMessageIntro: true,
-      hasReachedChannelStart: false,
-      isSkeletonVisible: false,
-    }),
-    "direct-message-intro",
-  );
-});
-
-test("timeline-intro-surface: no intro without an intro model", () => {
-  assert.equal(
-    selectTimelineIntroSurface({
-      hasChannelIntro: false,
-      hasDirectMessageIntro: false,
-      hasReachedChannelStart: true,
-      isSkeletonVisible: false,
-    }),
-    null,
-  );
-});
-
 test("isRenderedTimelineBehindHistoryPrepend: false when both empty", () => {
   assert.equal(isRenderedTimelineBehindHistoryPrepend([], []), false);
 });
 
 test("isRenderedTimelineBehindHistoryPrepend: false during initial empty-to-loaded settle", () => {
   // Rendered still empty while the live cache filled on open: not a prepend lag,
-  // so a freshly opened short channel can still show its intro.
+  // so the spinner never shows for a freshly opened short channel.
   assert.equal(
     isRenderedTimelineBehindHistoryPrepend([], [{ id: "a" }]),
     false,

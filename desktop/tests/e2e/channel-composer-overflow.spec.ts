@@ -178,56 +178,6 @@ test.describe("composer overlays mask scrolled content", () => {
     await expectOverlayBottomMask(page.getByTestId("channel-composer-overlay"));
   });
 
-  test("activity trades composer height without moving the dock", async ({
-    page,
-  }) => {
-    await installMockBridge(page);
-    await page.goto("/");
-    await page.getByTestId(`channel-${CHANNEL}`).click();
-    await waitForMockLiveSubscription(page, CHANNEL);
-    await waitForMockLiveSubscription(page, CHANNEL, TYPING_KIND);
-
-    const overlay = page.getByTestId("channel-composer-overlay");
-    const input = overlay.getByTestId("message-input");
-    await input.fill(
-      "A multiline draft that grows the composer.\nSecond line keeps the natural-height path active.",
-    );
-    await waitForAnimations(page);
-    const quiet = await composerDockGeometry(overlay);
-
-    await page.evaluate((channelName) => {
-      window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({ channelName });
-    }, CHANNEL);
-    await expect(
-      overlay.getByTestId("channel-composer-activity-row"),
-    ).toBeVisible();
-    await waitForAnimations(page);
-    const active = await composerDockGeometry(overlay);
-
-    expect(Math.abs(active.dockTop - quiet.dockTop)).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(active.dockHeight - quiet.dockHeight)).toBeLessThanOrEqual(
-      0.5,
-    );
-    expect(
-      Math.abs(active.composerTop - quiet.composerTop),
-    ).toBeLessThanOrEqual(0.5);
-    expect(active.composerBottom).toBeLessThan(quiet.composerBottom - 8);
-  });
-
-  test("reduced motion removes dock geometry transitions", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await installMockBridge(page);
-    await page.goto("/");
-    await page.getByTestId(`channel-${CHANNEL}`).click();
-
-    const dock = page
-      .getByTestId("channel-composer-overlay")
-      .locator(".composer-dock");
-    const spacer = dock.locator(".composer-dock-quiet-spacer");
-    await expect(dock).toHaveCSS("transition-duration", "0s");
-    await expect(spacer).toHaveCSS("transition-duration", "0s");
-  });
-
   test("bottom-pinned messages clear a growing composer", async ({ page }) => {
     await installMockBridge(page);
     await page.goto("/");

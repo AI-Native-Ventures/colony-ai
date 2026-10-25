@@ -1,141 +1,22 @@
-import * as React from "react";
-import { ScoutAvatar } from "./ScoutAvatar";
-import { GoogleMark } from "./GoogleAccountPresentation";
-import { scoutGuidance } from "./scoutGuidance";
+import type * as React from "react";
+
 import {
-  onboardingSceneStage,
-  type OnboardingSceneId,
-} from "./onboardingScenes";
-import type {
-  OnboardingBusinessChoice,
-  OnboardingSceneData,
-  PresentationProps,
-} from "./OnboardingSceneTypes";
+  BusinessMark,
+  FirstRunButton,
+  FirstRunDivider,
+  FirstRunError,
+  FirstRunLink,
+  FirstRunPasswordField,
+} from "./firstRunControls";
+import { FirstRunHead } from "./FirstRunFrame";
 import {
-  BackButton,
-  Brand,
-  Glyph,
-  InlineAlert,
-  PrimaryButton,
-  type GlyphName,
-} from "./OnboardingScenePrimitives";
-
-export function StepProgress({ scene }: { scene: OnboardingSceneId }) {
-  const stage = onboardingSceneStage(scene);
-  const labels =
-    scene === "additional"
-      ? ["Business", "Connect"]
-      : ["Account", "Business", "Connect"];
-  return (
-    <ol aria-label="Setup progress" className="steps">
-      {labels.map((label, index) => {
-        const step = scene === "additional" ? index + 1 : index;
-        const state = step === stage ? "active" : step < stage ? "done" : "";
-        return (
-          <React.Fragment key={label}>
-            {index > 0 ? <li aria-hidden="true" className="between" /> : null}
-            <li
-              aria-current={step === stage ? "step" : undefined}
-              className={state}
-            >
-              <span className="number">
-                {step < stage ? <Glyph name="check" /> : index + 1}
-              </span>
-              {label}
-            </li>
-          </React.Fragment>
-        );
-      })}
-    </ol>
-  );
-}
-
-export function accessScene(scene: OnboardingSceneId) {
-  return [
-    "signin",
-    "forgot",
-    "email-sent",
-    "new-password",
-    "reset-done",
-    "reset-expired",
-    "businesses",
-    "invite",
-  ].includes(scene);
-}
-
-export function StoryPanel({
-  scene,
-  data,
-  onLogoError,
-  focusTopic,
-}: {
-  focusTopic?: string;
-  scene: OnboardingSceneId;
-  data: OnboardingSceneData;
-  onLogoError?: () => void;
-}) {
-  const stage = onboardingSceneStage(scene);
-  const guidance = scoutGuidance(
-    scene,
-    data.error,
-    data.scoutGuidance,
-    focusTopic,
-    scene === "connect" &&
-      (data.visualOnly || data.harnessStatus === "Checking"),
-  );
-  const businessPreview = stage === 1;
-  return (
-    <aside className="story">
-      <Brand />
-      <div className="story-main">
-        <div className="scout-guide" data-state={guidance.pose}>
-          <div className="scout-portrait">
-            <ScoutAvatar pose={guidance.pose} />
-            <span aria-hidden="true" className="scout-indicator">
-              {guidance.pose === "waiting"
-                ? "?"
-                : guidance.pose === "done"
-                  ? "✓"
-                  : ""}
-            </span>
-          </div>
-          <div className="scout-identity">
-            <strong>Scout</strong>
-            <span>Chief of Staff</span>
-          </div>
-          <div className="scout-status" role="status">
-            <i aria-hidden="true" />
-            <span>{guidance.status}</span>
-          </div>
-        </div>
-        <h1>{guidance.title}</h1>
-        <p>{guidance.copy}</p>
-        {businessPreview ? (
-          <div className="business-preview">
-            <span className="business-initial">
-              {data.logoUrl ? (
-                <img alt="" onError={onLogoError} src={data.logoUrl} />
-              ) : (
-                data.business.trim().slice(0, 1).toUpperCase() || (
-                  <Glyph name="plus" />
-                )
-              )}
-            </span>
-            <div className="business-name">
-              {data.business || "Your business"}
-            </div>
-            <p>{data.description || "Your idea takes shape here."}</p>
-          </div>
-        ) : null}
-      </div>
-      {data.hideProgress || accessScene(scene) || scene.startsWith("reset") ? (
-        <div className="story-bottom" aria-hidden="true" />
-      ) : (
-        <StepProgress scene={scene} />
-      )}
-    </aside>
-  );
-}
+  ChevronRightIcon,
+  GlobeIcon,
+  PlusIcon,
+  RingIcon,
+} from "./firstRunIcons";
+import type { PresentationProps } from "./OnboardingSceneTypes";
+import type { OnboardingBusinessChoice } from "./OnboardingSceneTypes";
 
 function GoogleAccountAction({
   data,
@@ -144,34 +25,45 @@ function GoogleAccountAction({
 }: Pick<PresentationProps, "data" | "onGoogleSignIn" | "googlePending">) {
   if (!onGoogleSignIn) return null;
   return (
-    <div className="account-google-action">
-      <div className="account-auth-divider text-xs" aria-hidden="true">
-        or
-      </div>
-      <button
-        className="secondary full account-google-button"
+    <>
+      <FirstRunDivider>or</FirstRunDivider>
+      <FirstRunButton
         data-testid="account-auth-google"
         disabled={data.pending}
         onClick={onGoogleSignIn}
-        type="button"
       >
-        <GoogleMark />
+        <GlobeIcon size={18} />
         {googlePending ? "Waiting for Google…" : "Continue with Google"}
-      </button>
+      </FirstRunButton>
       {googlePending ? (
-        <p className="account-google-help text-xs" role="status">
+        <p className="c3fr-note" role="status">
           Finish signing in in your browser. You can cancel there and return
           here.
         </p>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+function AdvancedLink({ onAdvanced }: Pick<PresentationProps, "onAdvanced">) {
+  if (!onAdvanced) return null;
+  return (
+    <FirstRunLink
+      className="c3fr-foot-link"
+      data-testid="account-auth-advanced"
+      onClick={onAdvanced}
+    >
+      Advanced sign-in options
+    </FirstRunLink>
   );
 }
 
 export function AccountForm({
   data,
   error,
+  headingRef,
   inviteBrand,
+  onAdvanced,
   onEmailChange,
   onNameChange,
   onPasswordChange,
@@ -180,110 +72,82 @@ export function AccountForm({
   googlePending,
 }: PresentationProps) {
   return (
-    <>
+    <form className="c3fr-form" onSubmit={onSubmit}>
       {inviteBrand}
-      <h2>{inviteBrand ? "You’re invited." : "Let’s get you started."}</h2>
-      <p className="lede">
-        {inviteBrand
-          ? "Create an account to join your team’s workspace on Colony."
-          : "Create an account. Make room for what’s next."}
-      </p>
-      <form className="account-form" onSubmit={onSubmit}>
-        <div className="fields">
-          <div className="field">
-            <label htmlFor="full-name">Your name</label>
-            <input
-              autoComplete="name"
-              defaultValue={data.visualOnly ? undefined : data.name}
-              id="full-name"
-              name="full-name"
-              onChange={(event) => onNameChange?.(event.currentTarget.value)}
-              required
-              value={data.visualOnly ? data.name : undefined}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="account-email">Email address</label>
-            <input
-              autoComplete="email"
-              defaultValue={data.visualOnly ? undefined : data.email}
-              id="account-email"
-              name="email"
-              onChange={(event) => onEmailChange?.(event.currentTarget.value)}
-              required
-              type="email"
-              value={data.visualOnly ? data.email : undefined}
-            />
-          </div>
-          <PasswordInput
-            id="account-password"
-            label="Password"
-            onChange={(event) => onPasswordChange?.(event.currentTarget.value)}
-            visualOnly={data.visualOnly}
-          />
-        </div>
-        {error ? <InlineAlert>{error}</InlineAlert> : null}
-        <PrimaryButton
-          disabled={data.pending}
-          testId="account-auth-submit-signup"
-          type="submit"
-        >
-          {data.pending ? "Please wait…" : "Create account"}
-        </PrimaryButton>
-      </form>
+      <FirstRunHead
+        headingRef={headingRef}
+        lede={
+          inviteBrand
+            ? "Create an account to join your team’s workspace on Colony."
+            : "Create an account. Make room for what’s next."
+        }
+        title={inviteBrand ? "You’re invited." : "Let’s get you started."}
+      />
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="full-name">
+          Your name
+        </label>
+        <input
+          autoComplete="name"
+          className="c3fr-input"
+          defaultValue={data.visualOnly ? undefined : data.name}
+          id="full-name"
+          name="full-name"
+          onChange={(event) => onNameChange?.(event.currentTarget.value)}
+          required
+          value={data.visualOnly ? data.name : undefined}
+        />
+      </div>
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="account-email">
+          Email address
+        </label>
+        <input
+          autoComplete="email"
+          className="c3fr-input"
+          defaultValue={data.visualOnly ? undefined : data.email}
+          id="account-email"
+          name="email"
+          onChange={(event) => onEmailChange?.(event.currentTarget.value)}
+          placeholder="you@business.com"
+          required
+          type="email"
+          value={data.visualOnly ? data.email : undefined}
+        />
+      </div>
+      <FirstRunPasswordField
+        autoComplete="new-password"
+        id="account-password"
+        label="Password"
+        minLength={10}
+        onChange={(event) => onPasswordChange?.(event.currentTarget.value)}
+        placeholder="At least 10 characters"
+      />
+      {error ? <FirstRunError>{error}</FirstRunError> : null}
+      <FirstRunButton
+        data-testid="account-auth-submit-signup"
+        disabled={data.pending}
+        kind="primary"
+        type="submit"
+      >
+        {data.pending ? "Please wait…" : "Create account"}
+      </FirstRunButton>
       <GoogleAccountAction
         data={data}
-        onGoogleSignIn={onGoogleSignIn}
         googlePending={googlePending}
+        onGoogleSignIn={onGoogleSignIn}
       />
-    </>
-  );
-}
-
-function PasswordInput({
-  id,
-  label,
-  onChange,
-  visualOnly,
-}: {
-  id: string;
-  label: string;
-  onChange?: React.ChangeEventHandler<HTMLInputElement>;
-  visualOnly?: boolean;
-}) {
-  const [visible, setVisible] = React.useState(false);
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <div className="input-wrap">
-        <input
-          autoComplete={
-            id === "signin-password" ? "current-password" : "new-password"
-          }
-          defaultValue={visualOnly ? "colony-demo-only" : undefined}
-          id={id}
-          minLength={id === "signin-password" ? undefined : 10}
-          name={id}
-          onChange={onChange}
-          required
-          type={visible ? "text" : "password"}
-        />
-        <button
-          aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
-          onClick={() => setVisible((current) => !current)}
-          type="button"
-        >
-          {visible ? "Hide" : "Show"}
-        </button>
-      </div>
-    </div>
+      <AdvancedLink onAdvanced={onAdvanced} />
+    </form>
   );
 }
 
 export function SignInForm({
   data,
   error,
+  headingRef,
   inviteBrand,
+  onAdvanced,
   onEmailChange,
   onNavigate,
   onPasswordChange,
@@ -292,70 +156,71 @@ export function SignInForm({
   googlePending,
 }: PresentationProps) {
   return (
-    <>
+    <form aria-label="Sign in" className="c3fr-form" onSubmit={onSubmit}>
       {inviteBrand}
-      <h2>Welcome back.</h2>
-      <p className="lede">
-        {inviteBrand
-          ? "Sign in to join your team’s workspace on Colony."
-          : "Let’s pick up where you left off."}
-      </p>
-      <form aria-label="Sign in" onSubmit={onSubmit}>
-        <div className="fields">
-          <div className="field">
-            <label htmlFor="signin-email">Email address</label>
-            <input
-              autoComplete="email"
-              defaultValue={data.visualOnly ? undefined : data.email}
-              id="signin-email"
-              onChange={(event) => onEmailChange?.(event.currentTarget.value)}
-              required
-              type="email"
-              value={data.visualOnly ? data.email : undefined}
-            />
-          </div>
-          <PasswordInput
-            id="signin-password"
-            label="Password"
-            onChange={(event) => onPasswordChange?.(event.currentTarget.value)}
-            visualOnly={data.visualOnly}
-          />
-        </div>
-        <div className="row-between">
-          <span />
-          <button
-            className="link forgot-link"
+      <FirstRunHead
+        headingRef={headingRef}
+        lede={
+          inviteBrand
+            ? "Sign in to join your team’s workspace on Colony."
+            : "Let’s pick up where you left off."
+        }
+        title="Welcome back."
+      />
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="signin-email">
+          Email address
+        </label>
+        <input
+          autoComplete="email"
+          className="c3fr-input"
+          defaultValue={data.visualOnly ? undefined : data.email}
+          id="signin-email"
+          onChange={(event) => onEmailChange?.(event.currentTarget.value)}
+          required
+          type="email"
+          value={data.visualOnly ? data.email : undefined}
+        />
+      </div>
+      <FirstRunPasswordField
+        autoComplete="current-password"
+        defaultValue={data.visualOnly ? "colony-demo-only" : undefined}
+        id="signin-password"
+        label="Password"
+        labelAside={
+          <FirstRunLink
+            className="forgot-link"
             onClick={() => onNavigate?.("forgot")}
-            type="button"
           >
             Forgot password?
-          </button>
-        </div>
-        {error ? <InlineAlert>{error}</InlineAlert> : null}
-        <PrimaryButton
-          disabled={data.pending}
-          testId="account-auth-submit-signin"
-          type="submit"
-        >
-          {data.pending ? "Please wait…" : "Sign in"}
-        </PrimaryButton>
-      </form>
+          </FirstRunLink>
+        }
+        onChange={(event) => onPasswordChange?.(event.currentTarget.value)}
+      />
+      {error ? <FirstRunError>{error}</FirstRunError> : null}
+      <FirstRunButton
+        data-testid="account-auth-submit-signin"
+        disabled={data.pending}
+        kind="primary"
+        type="submit"
+      >
+        {data.pending ? "Please wait…" : "Sign in"}
+      </FirstRunButton>
       <GoogleAccountAction
         data={data}
-        onGoogleSignIn={onGoogleSignIn}
         googlePending={googlePending}
+        onGoogleSignIn={onGoogleSignIn}
       />
-      <div className="form-end">
-        New to Colony?
-        <button
-          className="link"
-          onClick={() => onNavigate?.("account")}
-          type="button"
-        >
-          Create an account
-        </button>
+      <div className="c3fr-foot">
+        <span className="c3fr-foot-line">
+          New to Colony?{" "}
+          <FirstRunLink onClick={() => onNavigate?.("account")}>
+            Create an account
+          </FirstRunLink>
+        </span>
+        <AdvancedLink onAdvanced={onAdvanced} />
       </div>
-    </>
+    </form>
   );
 }
 
@@ -363,6 +228,7 @@ export function BusinessForm({
   scene,
   data,
   error,
+  headingRef,
   onBusinessChange,
   onDescriptionChange,
   onLogoChange,
@@ -374,290 +240,163 @@ export function BusinessForm({
   canSubmit,
   pending,
 }: PresentationProps) {
+  const another =
+    scene === "additional" || (data.visualOnly && data.business === "");
+  const logoTitle = data.logoUrl
+    ? data.logoSource === "website"
+      ? "From your website"
+      : "Your uploaded logo"
+    : "Using your initial for now";
   return (
-    <>
-      <h2>
-        {scene === "additional" || (data.visualOnly && data.business === "")
-          ? "Your next business."
-          : "What are you building?"}
-      </h2>
-      <p className="lede">
-        An idea or an existing business. Start with the essentials.
-      </p>
-      <form onSubmit={onSubmit}>
-        <div className="fields">
-          <div className="field">
-            <label htmlFor="business-name">Business name</label>
-            <input
-              autoComplete="organization"
-              id="business-name"
-              maxLength={200}
-              onChange={(event) =>
-                onBusinessChange?.(event.currentTarget.value)
-              }
-              placeholder="A working name is fine"
-              required
-              value={data.business}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="business-website">
-              Website <small>optional</small>
-            </label>
-            <div className="website-row">
-              <input
-                autoComplete="url"
-                id="business-website"
-                inputMode="url"
-                onChange={(event) =>
-                  onWebsiteChange?.(event.currentTarget.value)
-                }
-                placeholder="yourbusiness.com"
-                value={data.website}
-              />
-              <button
-                className="secondary"
-                disabled={data.websitePending}
-                aria-busy={data.websitePending}
-                onClick={onReadWebsite}
-                type="button"
-              >
-                {data.websitePending ? "Reading…" : "Read website"}
-              </button>
-            </div>
-          </div>
-          <div className="field" id="business-logo-field">
-            <input
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
-              aria-label="Upload business logo"
-              className="sr-only"
-              id="business-logo"
-              onChange={(event) =>
-                onLogoChange?.(event.currentTarget.files?.[0] ?? null)
-              }
-              type="file"
-            />
-            <div className="logo-editor">
-              <label
-                aria-label={
-                  data.logoUrl ? "Change business logo" : "Upload business logo"
-                }
-                className={`logo-tile ${data.logoUrl ? "has-logo" : ""}`}
-                htmlFor="business-logo"
-              >
-                {data.logoUrl ? (
-                  <img alt="" onError={onLogoError} src={data.logoUrl} />
-                ) : (
-                  data.business.trim().slice(0, 1).toUpperCase() || (
-                    <Glyph name="plus" />
-                  )
-                )}
-              </label>
-              <div className="logo-actions">
-                <span className="field-label">
-                  Business logo <small>optional</small>
-                </span>
-                <div className="logo-buttons">
-                  <label className="link" htmlFor="business-logo">
-                    {data.logoUrl ? "Change logo" : "Upload logo"}
-                  </label>
-                </div>
-                <p className="logo-hint">
-                  {data.logoUrl
-                    ? data.logoSource === "website"
-                      ? "From your website"
-                      : "Your uploaded logo"
-                    : "Or we’ll use your website’s icon."}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="field">
-            <label htmlFor="business-description">
-              What does your business do?
-            </label>
-            <textarea
-              id="business-description"
-              maxLength={4000}
-              onChange={(event) =>
-                onDescriptionChange?.(event.currentTarget.value)
-              }
-              placeholder="We help…"
-              required
-              rows={3}
-              value={data.description}
-            />
-          </div>
+    <form
+      className="c3fr-form"
+      onSubmit={onSubmit}
+      style={{ "--c3fr-gap": 20 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        headingRef={headingRef}
+        lede={
+          another
+            ? "An idea or an existing business. Start with the essentials."
+            : "A few details so Scout and the team start in the right place."
+        }
+        title={another ? "Your next business." : "What are you building?"}
+      />
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="business-name">
+          Business name
+        </label>
+        <input
+          autoComplete="organization"
+          className="c3fr-input"
+          id="business-name"
+          maxLength={200}
+          onChange={(event) => onBusinessChange?.(event.currentTarget.value)}
+          placeholder="A working name is fine"
+          required
+          value={data.business}
+        />
+      </div>
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="business-website">
+          <span>
+            Website <small>· optional</small>
+          </span>
+        </label>
+        <div className="c3fr-row">
+          <input
+            autoComplete="url"
+            className="c3fr-input"
+            id="business-website"
+            inputMode="url"
+            onChange={(event) => onWebsiteChange?.(event.currentTarget.value)}
+            placeholder="yourbusiness.co.za"
+            value={data.website}
+          />
+          <button
+            aria-busy={data.websitePending}
+            className="c3fr-button c3fr-inline-button"
+            disabled={data.websitePending}
+            onClick={onReadWebsite}
+            type="button"
+          >
+            {data.websitePending ? "Reading…" : "Read website"}
+          </button>
         </div>
-        {error ? <InlineAlert>{error}</InlineAlert> : null}
-        <PrimaryButton
-          disabled={(pending ?? data.pending) || canSubmit === false}
-          type="submit"
-        >
-          {pending || data.pending ? "Creating…" : "Continue"}
-        </PrimaryButton>
-        <BackButton
+        <span className="c3fr-help">
+          Scout can read it to fill in the rest for you.
+        </span>
+      </div>
+      <div className="c3fr-field-group" id="business-logo-field">
+        <span className="c3fr-label">
+          <span>
+            Logo <small>· optional</small>
+          </span>
+        </span>
+        <input
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          aria-label="Upload business logo"
+          className="c3fr-sr-only"
+          id="business-logo"
+          onChange={(event) =>
+            onLogoChange?.(event.currentTarget.files?.[0] ?? null)
+          }
+          type="file"
+        />
+        <div className="c3fr-logo-box">
+          <BusinessMark
+            logoUrl={data.logoUrl}
+            name={data.business}
+            onLogoError={onLogoError}
+            size="small"
+          />
+          <span className="c3fr-logo-text">
+            <span className="c3fr-logo-title">{logoTitle}</span>
+            <span className="c3fr-help">PNG or SVG, square works best</span>
+          </span>
+          <label
+            aria-label={
+              data.logoUrl ? "Change business logo" : "Upload business logo"
+            }
+            className="c3fr-chip-button c3fr-logo-button"
+            htmlFor="business-logo"
+          >
+            {data.logoUrl ? "Change logo" : "Upload logo"}
+          </label>
+        </div>
+      </div>
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="business-description">
+          What does your business do?
+        </label>
+        <textarea
+          className="c3fr-textarea"
+          id="business-description"
+          maxLength={4000}
+          onChange={(event) => onDescriptionChange?.(event.currentTarget.value)}
+          placeholder="We help…"
+          required
+          rows={3}
+          value={data.description}
+        />
+      </div>
+      {error ? <FirstRunError>{error}</FirstRunError> : null}
+      <div className="c3fr-actions">
+        <FirstRunButton
           onClick={() =>
             onNavigate?.(scene === "additional" ? "workspace" : "account")
           }
         >
           {scene === "additional" ? "Cancel" : "Back"}
-        </BackButton>
-      </form>
-    </>
-  );
-}
-
-export function StatusScene({
-  scene,
-  data,
-  error,
-  onEmailChange,
-  onNavigate,
-  onResend,
-  onSubmit,
-}: PresentationProps) {
-  const details: Record<
-    string,
-    { icon: GlyphName; title: string; lede: React.ReactNode }
-  > = {
-    forgot: {
-      icon: "mail",
-      title: "Forgot your password?",
-      lede: "We’ll email you a link to set a new one.",
-    },
-    "email-sent": {
-      icon: "mail",
-      title: "Check your inbox.",
-      lede: (
-        <>
-          If there’s an account for{" "}
-          <strong className="mail-address">{data.email}</strong>, you’ll receive
-          a password reset link.
-        </>
-      ),
-    },
-    "new-password": {
-      icon: "lock",
-      title: "A fresh password.",
-      lede: "Choose a new password for your Colony account.",
-    },
-    "reset-done": {
-      icon: "check",
-      title: "You’re all set.",
-      lede: (
-        <>
-          Your password has been updated.
-          <br />
-          Your Colony is right where it left it.
-        </>
-      ),
-    },
-    "reset-expired": {
-      icon: "history",
-      title: "Let’s get a fresh link.",
-      lede: "This password reset link has expired or has already been used.",
-    },
-  };
-  const detail = details[scene];
-  if (!detail) return null;
-  const success = scene === "reset-done";
-  const showBack = scene === "forgot" || scene === "reset-expired";
-  return (
-    <>
-      <div className={`status-icon ${success ? "success" : ""}`}>
-        <Glyph name={detail.icon} />
+        </FirstRunButton>
+        <FirstRunButton
+          disabled={(pending ?? data.pending) || canSubmit === false}
+          kind="primary"
+          type="submit"
+        >
+          {pending || data.pending ? "Creating…" : "Continue"}
+        </FirstRunButton>
       </div>
-      <h2>{detail.title}</h2>
-      <p className="lede">{detail.lede}</p>
-      {scene === "forgot" ? (
-        <form onSubmit={onSubmit}>
-          <div className="field">
-            <label htmlFor="reset-email">Email address</label>
-            <input
-              autoComplete="email"
-              defaultValue={data.visualOnly ? undefined : data.email}
-              id="reset-email"
-              onChange={(event) => onEmailChange?.(event.currentTarget.value)}
-              required
-              type="email"
-              value={data.visualOnly ? data.email : undefined}
-            />
-          </div>
-          <PrimaryButton
-            disabled={data.pending}
-            testId="account-auth-submit-reset-request"
-            type="submit"
-          >
-            Send reset link
-          </PrimaryButton>
-          {error ? <InlineAlert>{error}</InlineAlert> : null}
-        </form>
-      ) : null}
-      {scene === "email-sent" ? (
-        <>
-          <div className="notice">
-            Follow the link in the email to choose a new password.
-          </div>
-          <button className="secondary full" onClick={onResend} type="button">
-            Send another link
-          </button>
-          <BackButton onClick={() => onNavigate?.("signin")}>
-            Back to sign in
-          </BackButton>
-        </>
-      ) : null}
-      {scene === "new-password" ? (
-        <form onSubmit={(event) => event.preventDefault()}>
-          <div className="fields">
-            <PasswordInput
-              id="new-password"
-              label="New password"
-              visualOnly={data.visualOnly}
-            />
-            <PasswordInput
-              id="confirm-password"
-              label="Confirm password"
-              visualOnly={data.visualOnly}
-            />
-          </div>
-          <p className="hint">Use at least 10 characters.</p>
-          <PrimaryButton type="submit">Update password</PrimaryButton>
-        </form>
-      ) : null}
-      {scene === "reset-done" ? (
-        <PrimaryButton onClick={() => onNavigate?.("signin")}>
-          Back to sign in
-        </PrimaryButton>
-      ) : null}
-      {scene === "reset-expired" ? (
-        <>
-          <PrimaryButton onClick={() => onNavigate?.("forgot")}>
-            Send a new link
-          </PrimaryButton>
-          <BackButton onClick={() => onNavigate?.("signin")}>
-            Back to sign in
-          </BackButton>
-        </>
-      ) : null}
-      {showBack ? null : null}
-    </>
+    </form>
   );
 }
 
+/** The returning person's list of businesses ("Where shall we go?"). */
 export function BusinessChooser({
   data,
   businessChoices,
   error,
+  headingRef,
   onNavigate,
   onCreateBusiness,
   onSelectBusiness,
   pending = false,
 }: {
-  data: OnboardingSceneData;
+  data: PresentationProps["data"];
   businessChoices?: OnboardingBusinessChoice[];
   error?: string | null;
-  onNavigate?: (scene: OnboardingSceneId) => void;
+  headingRef?: PresentationProps["headingRef"];
+  onNavigate?: PresentationProps["onNavigate"];
   onCreateBusiness?: () => void;
   onSelectBusiness?: (id: string) => void;
   /** A business was picked and its AI connection is being checked. */
@@ -669,89 +408,89 @@ export function BusinessChooser({
       ? [
           {
             id: "studio",
-            name: data.business || "Lerato Studio",
+            name: data.business || "Lerato Social",
             role: "Owner",
+            lastVisited: "today",
           },
-          { id: "rosebank", name: "Rosebank Studio", role: "Team member" },
+          {
+            id: "rosebank",
+            name: "Rosebank Studio",
+            role: "Team member",
+            lastVisited: "3 days ago",
+          },
         ]
       : []);
   return (
-    <>
-      <h2>Where shall we go?</h2>
-      <p className="lede">Choose a business to pick up your work.</p>
-      {error ? <InlineAlert>{error}</InlineAlert> : null}
-      <div
+    <div
+      className="c3fr-form"
+      style={{ "--c3fr-gap": 24 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        headingRef={headingRef}
+        lede="Choose a business to pick up your work."
+        title="Where shall we go?"
+      />
+      {error ? <FirstRunError>{error}</FirstRunError> : null}
+      <ul
         aria-busy={pending}
-        className="business-list"
+        aria-label="Your businesses"
+        className="c3fr-business-list"
         data-testid="onboarding-business-list"
       >
-        {choices.map((choice) => (
-          <button
-            className="business-choice"
-            data-testid={`onboarding-business-${choice.id}`}
-            disabled={pending}
-            key={choice.id}
-            onClick={() => onSelectBusiness?.(choice.id)}
-            type="button"
-          >
-            <span className="business-initial">{choice.name.slice(0, 1)}</span>
-            <span>
-              <strong>{choice.name}</strong>
-              <small>{choice.role}</small>
-            </span>
-            <Glyph name="chevron" />
-          </button>
+        {choices.map((choice, index) => (
+          <li key={choice.id}>
+            <button
+              className="c3fr-business"
+              data-current={index === 0 ? "true" : undefined}
+              data-testid={`onboarding-business-${choice.id}`}
+              disabled={pending}
+              onClick={() => onSelectBusiness?.(choice.id)}
+              type="button"
+            >
+              <BusinessMark
+                dot={index === 0 ? "#f5a4d5" : undefined}
+                logoUrl={choice.logoUrl}
+                name={choice.name}
+                tone={index === 0 ? undefined : "light"}
+              />
+              <span className="c3fr-business-text">
+                <strong>{choice.name}</strong>
+                <small>
+                  {choice.role}
+                  {choice.lastVisited
+                    ? ` · last visited ${choice.lastVisited}`
+                    : ""}
+                </small>
+              </span>
+              <ChevronRightIcon size={18} strokeWidth={2.4} />
+            </button>
+          </li>
         ))}
-      </div>
-      {pending ? (
-        <p role="status" data-testid="onboarding-business-checking">
-          <span className="spinner" /> Checking your AI connection
-        </p>
-      ) : null}
+      </ul>
+      <p className="c3fr-checking" role="status">
+        <span
+          className="c3fr-ring"
+          data-spinning={pending ? "true" : undefined}
+        >
+          <RingIcon size={16} />
+        </span>
+        <span
+          data-testid={pending ? "onboarding-business-checking" : undefined}
+        >
+          {pending
+            ? "Checking your AI connection"
+            : "When you pick a business, Colony checks its AI connection first."}
+        </span>
+      </p>
       <button
-        className="back"
+        className="c3fr-dashed-button"
+        data-testid="onboarding-create-business"
         onClick={onCreateBusiness ?? (() => onNavigate?.("additional"))}
         type="button"
-        data-testid="onboarding-create-business"
       >
-        <Glyph name="plus" />
+        <PlusIcon size={18} strokeWidth={2.4} />
         Start another business
       </button>
-    </>
-  );
-}
-
-export function InviteScene({ data, onSubmit, onNavigate }: PresentationProps) {
-  return (
-    <>
-      <div className="invite-brand">
-        <span className="business-initial">R</span>
-        <span>
-          <strong>Rosebank Studio</strong>
-          <small>Invited by Ayesha</small>
-        </span>
-      </div>
-      <h2>You’re invited.</h2>
-      <p className="lede">Join your team’s workspace on Colony.</p>
-      <form onSubmit={onSubmit}>
-        <div className="field">
-          <label htmlFor="invite-name">Your name</label>
-          <input
-            autoComplete="name"
-            id="invite-name"
-            value={data.name}
-            readOnly
-          />
-        </div>
-        <div className="notice">
-          You’ll join as a team member using{" "}
-          <strong className="mail-address">{data.email}</strong>.
-        </div>
-        <PrimaryButton type="submit">Join Rosebank Studio</PrimaryButton>
-      </form>
-      <BackButton onClick={() => onNavigate?.("signin")}>
-        Use another account
-      </BackButton>
-    </>
+    </div>
   );
 }

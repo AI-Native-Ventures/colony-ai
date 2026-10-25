@@ -174,9 +174,7 @@ function MessageLinkPillContents({
     ? `Thread in ${destination}`
     : channel?.channelType === "dm"
       ? `Direct message with ${destination}`
-      : channel?.channelType === "forum"
-        ? `Forum post in ${destination}`
-        : destination;
+      : destination;
   const label = getMessageLinkLabel({
     channelName: channelLabel,
     threadExcerpt,

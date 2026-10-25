@@ -23,7 +23,7 @@ for (const deliberateMove of [false, true]) {
     await page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .getByText("Alice Chen", { exact: true })
+      .getByTitle("Alice Chen", { exact: true })
       .click();
     if (deliberateMove) await page.keyboard.press("ArrowLeft");
     await page.keyboard.type("hello");

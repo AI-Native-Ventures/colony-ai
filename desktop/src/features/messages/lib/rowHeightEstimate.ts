@@ -22,17 +22,17 @@ import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
 // Visual caps mirror the inline image/markdown styles.
 const MEDIA_MAX_WIDTH = 384; // max-w-[min(24rem,100%)]
 const MEDIA_MAX_HEIGHT = 256; // max-h-64
-const TEXT_LINE_HEIGHT = 20;
+const TEXT_LINE_HEIGHT = 27; // 17px message text at the design's 1.6 line height
 const CODE_LINE_HEIGHT = 19;
 const CHARS_PER_LINE = 64; // rough wrap width at the timeline column
-const ROW_CHROME = 26; // author/time header + denser row padding
-const CONTINUATION_ROW_CHROME = 8; // uniform py-1 padding; header/avatar are hidden
+const ROW_CHROME = 29; // author/time header + gap above the body at the design's sizes (rows pad outward, so no layout cost)
+const CONTINUATION_ROW_CHROME = 0; // tight rows of a run: no padding, no header
 const MEDIA_BLOCK_MARGIN_TOP = 4; // image/video blocks use mt-1 in markdown
 const REACTION_ROW = 24;
 const PREVIEW_CARD = 70;
-const MESSAGE_ITEM_BOTTOM_PADDING = 10; // TimelineMessageList pb-2.5
-const MIN_ESTIMATE = 60; // never reserve less than the old flat floor
-const CONTINUATION_MIN_ESTIMATE = 28;
+const MESSAGE_ITEM_BOTTOM_PADDING = 24; // TimelineMessageRow pb-6 under the last row of a run
+const MIN_ESTIMATE = 56; // one text line plus the header
+const CONTINUATION_MIN_ESTIMATE = 27;
 
 function mediaHeightFromDim(dim: string | undefined): number {
   const dimensions = dimensionsFromDim(dim);

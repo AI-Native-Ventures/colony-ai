@@ -1,5 +1,4 @@
 import * as React from "react";
-import { ArrowLeft, ArrowRight, Search, Settings, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
 import {
@@ -10,50 +9,37 @@ import {
   SidebarInset,
   useSidebar,
 } from "@/shared/ui/sidebar";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
+import { ColonyField } from "@/shared/ui/ColonyField";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  SearchIcon,
+} from "@/shared/ui/colonyIcons";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
-import {
-  getConversationDensity,
-  type ConversationDensity,
-} from "@/shared/lib/conversationDensityPreference";
 import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/features/profile/hooks";
-import type { SyntaxThemeName } from "@/shared/theme/theme-loader";
-import {
-  appearanceLastBusinessKey,
-  appearanceSnapshotKey,
-  blendColor,
-  isValidHexColor,
-  writeAppearanceSnapshot,
-  readAppearanceSnapshot,
-  mergeLiveAppearanceSnapshot,
-} from "../lib/appearanceSnapshot";
-import { currentAppearanceSnapshot } from "./AppearanceSettingsPanel";
 import {
   canonicalSettingsSection,
   renderSettingsSection,
   settingsGroups,
+  settingsNavCategory,
   type SettingsGroupDescriptor,
   type SettingsGroupId,
   type SettingsPanelProps,
   type SettingsSection,
 } from "./SettingsPanels";
-import {
-  ThemeAppliedRoute,
-  ThemeCatalogRoute,
-  ThemePreviewRoute,
-} from "./ThemeCatalogRoute";
 import { membershipRoleLabel } from "./membershipRoleLabel";
 import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
-import "./SettingsView.css";
+import { SettingsPageHead } from "./SettingsPageHead";
+import "./SettingsShell.css";
+import "./SettingsPages.css";
 
 export {
   DEFAULT_SETTINGS_SECTION,
@@ -71,24 +57,6 @@ type SettingsViewProps = SettingsPanelProps & {
 };
 
 const LAST_SECTIONS_KEY = "colony.settings.last-inner-section.v1";
-
-const R19_SETTINGS_LAYOUT_SECTIONS = new Set<SettingsSection>([
-  "notifications",
-  "voice",
-  "shortcuts",
-  "accessibility",
-  "business-profile",
-  "moderation",
-  "audit",
-  "custom-emoji",
-  "local-archive",
-  "archived-records",
-  "recovery",
-  "storage",
-  "updates",
-  "experimental",
-  "feedback",
-]);
 
 function safeReadLastSections(): Partial<
   Record<SettingsGroupId, SettingsSection>
@@ -109,18 +77,6 @@ function routeGroup(section: SettingsSection): SettingsGroupDescriptor {
     group.sections.some((entry) => entry.value === canonical),
   );
   if (found) return found;
-  if (canonical.startsWith("settings/theme-")) {
-    return (
-      settingsGroups.find((group) => group.id === "appearance-group") ??
-      settingsGroups[0]
-    );
-  }
-  if (canonical === "settings/themes") {
-    return (
-      settingsGroups.find((group) => group.id === "appearance-group") ??
-      settingsGroups[0]
-    );
-  }
   if (canonical === "feedback") {
     return (
       settingsGroups.find((group) => group.id === "app-devices") ??
@@ -159,13 +115,13 @@ function SettingsGroupButton({
     <button
       aria-current={active ? "page" : undefined}
       aria-pressed={active}
-      className={cn("w20-nav-item", active && "is-active")}
-      data-active={active ? "true" : "false"}
+      className="cs-nav-item"
+      data-active={active ? "true" : undefined}
       data-testid={`settings-group-${group.id}`}
       onClick={onSelect}
       type="button"
     >
-      <Icon aria-hidden="true" className="size-4 shrink-0" />
+      <Icon size={18} />
       <span className="truncate">{group.label}</span>
     </button>
   );
@@ -196,134 +152,27 @@ export function SettingsView({
   const [isLoaded, setIsLoaded] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [remembered, setRemembered] = React.useState(safeReadLastSections);
-  const theme = useTheme();
-  const {
-    accentColor,
-    followSystem,
-    glassBackground,
-    glassOpacity,
-    prominentActiveTab,
-    selectedThemeName,
-  } = theme;
   const { activeCommunity } = useCommunities();
-  const identity = useIdentityQuery();
+  const { goTeam } = useAppNavigation();
   const profile = useProfileQuery();
   // Same source as the People panel, so the footer never claims a role the
   // person does not hold.
   const membershipQuery = useMyRelayMembershipQuery();
   const roleCaption = membershipRoleLabel(membershipQuery.data?.role);
   const updateProfile = useUpdateProfileMutation();
-  const appearancePersonId =
-    identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
-  const appearanceBusinessId = activeCommunity?.id ?? "local-business";
-  const appearanceKey = appearanceSnapshotKey(
-    appearancePersonId,
-    appearanceBusinessId,
-  );
-  const initialAppearance = mergeLiveAppearanceSnapshot(
-    currentAppearanceSnapshot({
-      accentColor,
-      followSystem,
-      glassBackground,
-      glassOpacity,
-      prominentActiveTab,
-      selectedThemeName,
-    }),
-    readAppearanceSnapshot(appearanceKey),
-  );
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
-  const [avatarEditorContext, setAvatarEditorContext] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
-  const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
-    initialAppearance.theme as SyntaxThemeName,
-  );
-  const [themeSearch, setThemeSearch] = React.useState("");
-  const [themeFilter, setThemeFilter] = React.useState("All");
-  const [appearanceSaveFailed, setAppearanceSaveFailed] = React.useState(false);
-  const [savedAppearance, setSavedAppearance] = React.useState({
-    theme: initialAppearance.theme as SyntaxThemeName,
-    density: initialAppearance.density,
-  });
+  const mainRef = React.useRef<HTMLElement | null>(null);
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
-  const activeInnerSection = activeSection;
-  const TopbarIcon =
-    activeGroup.id === "agents-group" ? Settings : activeGroup.icon;
+  const businessName = activeCommunity?.name ?? "Business";
   const signedInDisplayName =
     profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
-
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => setIsLoaded(true));
     return () => window.cancelAnimationFrame(frameId);
   }, []);
-
-  React.useEffect(() => {
-    const current = mergeLiveAppearanceSnapshot(
-      currentAppearanceSnapshot({
-        accentColor,
-        followSystem,
-        glassBackground,
-        glassOpacity,
-        prominentActiveTab,
-        selectedThemeName,
-      }),
-      readAppearanceSnapshot(appearanceKey),
-    );
-    const selectedTheme = current.theme as SyntaxThemeName;
-    setPreviewTheme(selectedTheme);
-    setSavedAppearance({
-      theme: selectedTheme,
-      density: current.density,
-    });
-    setAppearanceSaveFailed(false);
-  }, [
-    appearanceKey,
-    accentColor,
-    followSystem,
-    glassBackground,
-    glassOpacity,
-    prominentActiveTab,
-    selectedThemeName,
-  ]);
-
-  React.useEffect(() => {
-    const personId =
-      identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
-    const businessId = activeCommunity?.id ?? "local-business";
-    const savedAccent = readAppearanceSnapshot(
-      appearanceSnapshotKey(personId, businessId),
-    )?.accent;
-    let storedAccent: string | null = null;
-    try {
-      storedAccent = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-    } catch {
-      // The live theme value remains available when storage is blocked.
-    }
-    const accentValue =
-      savedAccent === "neutral" ||
-      (typeof savedAccent === "string" && isValidHexColor(savedAccent))
-        ? savedAccent
-        : storedAccent === "neutral" ||
-            (storedAccent !== null && isValidHexColor(storedAccent))
-          ? storedAccent
-          : theme.accentColor || "#895AF6";
-    const accent = accentValue === "neutral" ? "#74717B" : accentValue;
-    document.documentElement.style.setProperty(
-      "--w20-appearance-accent",
-      blendColor(
-        accent,
-        theme.isDark ? "#ffffff" : "#000000",
-        theme.isDark ? 0.5 : 0.35,
-      ),
-    );
-  }, [
-    activeCommunity?.id,
-    activeCommunity?.pubkey,
-    identity.data?.pubkey,
-    theme.accentColor,
-    theme.isDark,
-  ]);
 
   React.useEffect(() => {
     if (activeSection !== section) onSectionChange(activeSection);
@@ -356,6 +205,12 @@ export function SettingsView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  // A page shows its sections one after another, starting with the one the
+  // tab names; choosing a section starts the page at it.
+  React.useLayoutEffect(() => {
+    if (activeSection) mainRef.current?.scrollTo({ top: 0 });
+  }, [activeSection]);
+
   const matchingSections = React.useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return [];
@@ -369,95 +224,45 @@ export function SettingsView({
   }, [search]);
 
   function chooseGroup(group: SettingsGroupDescriptor) {
-    setAvatarEditorContext(false);
     onSectionChange(loadRememberedSection(group, remembered));
     setSearch("");
   }
 
   function chooseSection(next: SettingsSection) {
-    setAvatarEditorContext(false);
     onSectionChange(canonicalSettingsSection(next));
     setSearch("");
   }
 
-  function saveAppearance(
-    selectedTheme: SyntaxThemeName,
-    selectedDensity: ConversationDensity,
-  ) {
-    const lastBusinessKey = appearanceLastBusinessKey(appearancePersonId);
-    const current = mergeLiveAppearanceSnapshot(
-      currentAppearanceSnapshot(theme),
-      readAppearanceSnapshot(appearanceKey),
-    );
-    const next = {
-      ...current,
-      theme: selectedTheme,
-      density: selectedDensity,
-      followSystem: false,
-      custom: false,
-    };
-    const saved = writeAppearanceSnapshot(
-      window.localStorage,
-      appearanceKey,
-      next,
-    );
-    if (!saved) {
-      setAppearanceSaveFailed(true);
-      return;
-    }
-    setAppearanceSaveFailed(false);
-    document.documentElement.classList.remove("w20-custom-appearance");
-    document.documentElement.style.removeProperty(
-      "--w20-custom-gradient-start",
-    );
-    document.documentElement.style.removeProperty("--w20-custom-gradient-end");
-    try {
-      window.localStorage.setItem(lastBusinessKey, appearanceBusinessId);
-    } catch {
-      // The scoped appearance snapshot does not depend on this migration hint.
-    }
-    theme.applyAppearance({
-      theme: selectedTheme,
-      accent: next.accent,
-      followSystem: false,
-    });
-    setSavedAppearance({ theme: selectedTheme, density: selectedDensity });
-    chooseSection("settings/theme-applied");
-  }
-
-  function savePreviewAppearance() {
-    saveAppearance(previewTheme, getConversationDensity());
-  }
+  const categories = settingsNavCategory(businessName);
 
   return (
     <>
       <Sidebar
-        className="!border-r-0 w20-settings-sidebar"
+        className="cs-sidebar !border-r-0"
         collapsible="offcanvas"
         data-testid="settings-sidebar"
         variant="sidebar"
       >
-        <SidebarHeader className="w20-nav-header">
-          <Button
-            className="w20-nav-back"
-            data-testid="settings-back-to-app"
-            onClick={onClose}
-            size="sm"
-            variant="ghost"
-          >
-            <ArrowLeft aria-hidden="true" className="size-3.5" />
-            Back to workspace
-          </Button>
-          <div>
-            <h1 className="w20-nav-title text-settings-nav-title">Settings</h1>
-            <label className="w20-nav-search" htmlFor="settings-search-input">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
-              />
-              <Input
+        <div
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-sidebar-background
+        >
+          <ColonyField />
+          <SidebarHeader className="cs-sidebar-header">
+            <button
+              className="cs-back"
+              data-testid="settings-back-to-app"
+              onClick={onClose}
+              type="button"
+            >
+              <ChevronLeftIcon size={16} strokeWidth={2.4} />
+              Back to workspace
+            </button>
+            <h1 className="cs-sidebar-title">Settings</h1>
+            <label className="cs-search" htmlFor="settings-search-input">
+              <SearchIcon size={17} strokeWidth={2.2} />
+              <input
                 aria-label="Find a setting"
-                className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none ring-0 focus-visible:ring-0"
                 data-testid="settings-search"
                 id="settings-search-input"
                 onChange={(event) => setSearch(event.target.value)}
@@ -466,275 +271,202 @@ export function SettingsView({
                 value={search}
               />
             </label>
-          </div>
-        </SidebarHeader>
+          </SidebarHeader>
 
-        <SidebarContent className="w20-nav-content">
-          {search.trim() ? (
-            <div
-              aria-label="Settings search results"
-              className="w20-search-results"
-              role="listbox"
-            >
-              {matchingSections.map(({ group, label, value }) => (
+          <SidebarContent className="cs-sidebar-content">
+            {search.trim() ? (
+              <div
+                aria-label="Settings search results"
+                className="cs-nav-group"
+                role="listbox"
+              >
+                {matchingSections.map(({ group, label, value }) => (
+                  <button
+                    aria-label={`${label}, ${group.label}`}
+                    className="cs-nav-item cs-search-result"
+                    key={`${group.id}:${value}`}
+                    onClick={() => chooseSection(value)}
+                    role="option"
+                    type="button"
+                  >
+                    <span className="truncate">{label}</span>
+                    <small>{group.label}</small>
+                  </button>
+                ))}
+                {matchingSections.length === 0 ? (
+                  <p className="cs-sidebar-empty">No settings found.</p>
+                ) : null}
+              </div>
+            ) : (
+              categories.map((category) => (
+                <div className="cs-nav-group" key={category.label}>
+                  <h2 className="cs-nav-heading">{category.label}</h2>
+                  {category.groups.map((group) => (
+                    <SettingsGroupButton
+                      active={group.id === activeGroup.id}
+                      group={group}
+                      key={group.id}
+                      onSelect={() => chooseGroup(group)}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </SidebarContent>
+
+          <SidebarFooter className="cs-sidebar-footer">
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <button
-                  aria-label={`${label}, ${group.label}`}
-                  className="w20-nav-item w20-search-result"
-                  key={`${group.id}:${value}`}
-                  onClick={() => chooseSection(value)}
-                  role="option"
+                  aria-label={`Profile and account, ${signedInDisplayName}`}
+                  className="cs-person"
+                  data-testid="settings-profile-avatar-context"
+                  onClick={() => {
+                    chooseSection("profile");
+                    setAvatarSaved(false);
+                  }}
                   type="button"
                 >
-                  <span className="truncate">{label}</span>
-                  <span className="ml-2 shrink-0 text-2xs text-muted-foreground">
-                    {group.label}
-                  </span>
-                </button>
-              ))}
-              {matchingSections.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-muted-foreground">
-                  No settings found.
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            settingsGroups.map((group, index) => {
-              const category =
-                index < 3
-                  ? "Personal"
-                  : index < 7
-                    ? (activeCommunity?.name ?? "Business")
-                    : "This device";
-              const previousCategory =
-                index === 0
-                  ? null
-                  : index - 1 < 3
-                    ? "Personal"
-                    : index - 1 < 7
-                      ? (activeCommunity?.name ?? "Business")
-                      : "This device";
-              return (
-                <div className="w20-nav-group" key={group.id}>
-                  {category !== previousCategory ? (
-                    <h2 className="w20-nav-heading">{category}</h2>
-                  ) : null}
-                  <SettingsGroupButton
-                    active={group.id === activeGroup.id}
-                    group={group}
-                    onSelect={() => chooseGroup(group)}
-                  />
-                </div>
-              );
-            })
-          )}
-        </SidebarContent>
-
-        <SidebarFooter className="w20-nav-footer">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                aria-label={`Profile and account, ${signedInDisplayName}`}
-                className="w20-nav-person w20-nav-person-action"
-                data-testid="settings-profile-avatar-context"
-                onClick={() => {
-                  chooseSection("profile");
-                  setAvatarSaved(false);
-                  setAvatarEditorContext(true);
-                }}
-                type="button"
-              >
-                <div className="w20-nav-person-avatar">
                   <ProfileAvatar
                     avatarUrl={profile.data?.avatarUrl ?? null}
-                    className="size-full rounded-[7px]"
+                    className="cs-person-avatar"
                     label={signedInDisplayName}
-                    shape="squircle"
                     testId="settings-profile-avatar"
                   />
-                </div>
-                <div>
-                  <strong>{signedInDisplayName}</strong>
-                  <small>{roleCaption}</small>
-                </div>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              data-testid="settings-profile-avatar-context-tooltip"
-              side="right"
-            >
-              Profile and account
-            </TooltipContent>
-          </Tooltip>
-        </SidebarFooter>
+                  <span className="cs-person-copy">
+                    <strong>{signedInDisplayName}</strong>
+                    <small>{roleCaption}</small>
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                data-testid="settings-profile-avatar-context-tooltip"
+                side="right"
+              >
+                Profile and account
+              </TooltipContent>
+            </Tooltip>
+          </SidebarFooter>
+        </div>
       </Sidebar>
 
       <SidebarInset
         className={cn(
-          "w20-settings-shell relative min-h-0 min-w-0 overflow-hidden",
+          "cs-shell relative",
           isLoaded ? "opacity-100" : "opacity-0",
         )}
         data-testid="settings-view"
       >
-        <div className="w20-settings-topbar" data-testid="settings-top-chrome">
-          <div className="w20-topbar-history">
-            <Button
-              aria-label="Back"
-              data-testid="settings-history-back"
-              disabled={!canGoBack}
-              onClick={onGoBack}
-              size="icon"
-              variant="ghost"
-            >
-              <ArrowLeft aria-hidden="true" className="size-3.5" />
-            </Button>
-            <Button
-              aria-label="Forward"
-              data-testid="settings-history-forward"
-              disabled={!canGoForward}
-              onClick={onGoForward}
-              size="icon"
-              variant="ghost"
-            >
-              <ArrowRight aria-hidden="true" className="size-3.5" />
-            </Button>
-          </div>
-          <div className="w20-topbar-title" data-tauri-drag-region>
-            <TopbarIcon aria-hidden="true" className="size-4" />
+        <div
+          className="colony-topbar"
+          data-tauri-drag-region
+          data-testid="settings-top-chrome"
+        >
+          <button
+            aria-label="Back"
+            className="colony-topbar-button"
+            data-testid="settings-history-back"
+            disabled={!canGoBack}
+            onClick={onGoBack}
+            type="button"
+          >
+            <ChevronLeftIcon size={17} strokeWidth={2.4} />
+          </button>
+          <button
+            aria-label="Forward"
+            className="colony-topbar-button"
+            data-testid="settings-history-forward"
+            disabled={!canGoForward}
+            onClick={onGoForward}
+            type="button"
+          >
+            <ChevronRightIcon size={17} strokeWidth={2.4} />
+          </button>
+          <nav
+            aria-label="Breadcrumb"
+            className="colony-breadcrumb"
+            data-testid="settings-breadcrumb"
+          >
             <span>Settings</span>
             <span aria-hidden="true">/</span>
-            <strong className="truncate">{activeGroup.label}</strong>
-          </div>
-          <div className="flex-1" />
-          <Button
+            <span data-current="true">{activeGroup.label}</span>
+          </nav>
+          <span className="flex-1" />
+          <button
             aria-label="Close settings"
+            className="colony-topbar-button"
             data-testid="settings-close"
             onClick={onClose}
-            size="icon"
-            variant="ghost"
+            style={{
+              width: "2.5rem",
+              height: "2.5rem",
+              borderRadius: "0.75rem",
+            }}
+            type="button"
           >
-            <X aria-hidden="true" className="size-4" />
-          </Button>
+            <CloseIcon size={18} strokeWidth={2.4} />
+          </button>
         </div>
         <main
-          className="w20-settings-surface"
+          className="cs-main"
           data-testid="settings-content-surface"
+          ref={mainRef}
         >
-          {activeGroup.id === "account" && avatarEditorContext ? null : (
-            <div
-              aria-label={`${activeGroup.label} settings sections`}
-              className="w20-inner-tabs"
-              role="tablist"
-            >
-              {activeGroup.sections.map((entry) => (
-                <button
-                  aria-selected={entry.value === activeInnerSection}
-                  aria-current={
-                    entry.value === "appearance" &&
-                    activeSection.startsWith("settings/theme")
-                      ? "page"
-                      : undefined
-                  }
-                  className={cn(
-                    "w20-inner-tab",
-                    entry.value === activeInnerSection && "is-active",
-                  )}
-                  data-testid={`settings-inner-${entry.value}`}
-                  key={entry.value}
-                  onClick={() => chooseSection(entry.value)}
-                  role="tab"
-                  type="button"
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <section
-            aria-label={`${activeGroup.label} settings`}
-            className={cn(
-              "w20-route-scroll",
-              activeSection === "appearance" && "w20-route-scroll-appearance",
-              activeSection === "channel-templates" &&
-                "w20-route-scroll-templates",
-            )}
+          <div
+            className="cs-page"
             data-testid="settings-content-scroll"
+            data-wide={
+              activeGroup.id === "appearance-group" ? "true" : undefined
+            }
           >
-            <div
-              className={cn(
-                "w20-route-content",
-                R19_SETTINGS_LAYOUT_SECTIONS.has(activeSection) &&
-                  activeSection !== "accessibility" &&
-                  "w20-route-content-r19",
-                ["profile", "security", "accessibility"].includes(
-                  activeSection,
-                ) && "w20-route-content-account",
-                activeSection === "appearance" &&
-                  "w20-route-content-appearance",
-                activeSection.startsWith("settings/theme") &&
-                  "w20-route-content-theme",
-                activeSection === "channel-templates" &&
-                  "w20-route-content-templates",
-                activeSection === "profile" &&
-                  avatarEditorContext &&
-                  "w20-route-content-avatar",
-              )}
-              data-testid={`settings-panel-${activeSection}`}
-            >
-              {activeSection === "settings/themes" ? (
-                <ThemeCatalogRoute
-                  query={themeSearch}
-                  onQueryChange={setThemeSearch}
-                  filter={themeFilter}
-                  onFilterChange={setThemeFilter}
-                  onBack={() => chooseSection("appearance")}
-                  onPreview={(name) => {
-                    setPreviewTheme(name);
-
-                    setAppearanceSaveFailed(false);
-                    chooseSection("settings/theme-preview");
-                  }}
-                />
-              ) : activeSection === "settings/theme-preview" ? (
-                <ThemePreviewRoute
-                  name={previewTheme}
-                  onBack={() => chooseSection("settings/themes")}
-                  saveFailed={appearanceSaveFailed}
-                  onApply={savePreviewAppearance}
-                />
-              ) : activeSection === "settings/theme-applied" ? (
-                <ThemeAppliedRoute
-                  name={savedAppearance.theme}
-                  onDone={() => chooseSection("appearance")}
-                  onBack={() => chooseSection("settings/themes")}
-                />
-              ) : (
-                renderSettingsSection(activeSection, {
-                  currentPubkey,
-                  avatarEditorContext,
-                  avatarSaved,
-                  fallbackDisplayName,
-                  onEditAvatar: () => {
-                    setAvatarSaved(false);
-                    setIsAvatarDialogOpen(true);
-                  },
-                  isUpdatingDesktopNotifications,
-                  notificationErrorMessage,
-                  notificationPermission,
-                  notificationSettings,
-                  onSetDesktopNotificationsEnabled,
-                  onSetHomeBadgeEnabled,
-                  onSetSlotAlertsEnabled,
-                  onSetNotifyWhileViewing,
-                  onSetAllSlotAlertsEnabled,
-                  onSetSoundForSlot,
-                  onOpenThemeCatalog: () => chooseSection("settings/themes"),
-                  onOpenDraftRecovery: () => chooseSection("recovery"),
-                  onClose,
-                  onSectionChange: chooseSection,
-                })
-              )}
-            </div>
-          </section>
+            <SettingsPageHead
+              activeSection={activeSection}
+              businessName={businessName}
+              group={activeGroup}
+              onSelect={chooseSection}
+            />
+            {activeGroup.sections
+              .slice(
+                Math.max(
+                  0,
+                  activeGroup.sections.findIndex(
+                    (entry) => entry.value === activeSection,
+                  ),
+                ),
+              )
+              .map((entry) => (
+                <section
+                  aria-label={`${entry.label} settings`}
+                  className="cs-section"
+                  data-testid={`settings-panel-${entry.value}`}
+                  id={`settings-${entry.value}`}
+                  key={entry.value}
+                >
+                  {renderSettingsSection(entry.value, {
+                    currentPubkey,
+                    avatarSaved,
+                    fallbackDisplayName,
+                    onEditAvatar: () => {
+                      setAvatarSaved(false);
+                      setIsAvatarDialogOpen(true);
+                    },
+                    isUpdatingDesktopNotifications,
+                    notificationErrorMessage,
+                    notificationPermission,
+                    notificationSettings,
+                    onSetDesktopNotificationsEnabled,
+                    onSetHomeBadgeEnabled,
+                    onSetSlotAlertsEnabled,
+                    onSetNotifyWhileViewing,
+                    onSetAllSlotAlertsEnabled,
+                    onSetSoundForSlot,
+                    onClose,
+                    onOpenTeam: () => void goTeam(),
+                    onSectionChange: chooseSection,
+                  })}
+                </section>
+              ))}
+          </div>
         </main>
       </SidebarInset>
       <ProfileAvatarDialog

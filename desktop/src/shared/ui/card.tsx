@@ -51,7 +51,8 @@ export function texturedSurfaceClasses({
 const cardVariants = cva("text-card-foreground", {
   variants: {
     variant: {
-      default: "rounded-xl border border-border/70 bg-card/80 shadow-xs",
+      default:
+        "rounded-colony-card bg-colony-pop shadow-[0_0_0_1px_hsl(var(--colony-border)),0_1px_2px_rgba(40,20,60,0.04)]",
       textured:
         // flex + justify-center: the variant enforces a min size (see
         // card-texture.css); when that floor stretches the card beyond its

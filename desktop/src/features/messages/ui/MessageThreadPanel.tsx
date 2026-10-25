@@ -2,7 +2,6 @@ import * as React from "react";
 import { parseWorkspaceThreadContext } from "@/features/messages/lib/workspaceThreadContext";
 import { ArrowDown } from "lucide-react";
 
-import { HuddleTranscriptIntro } from "@/features/huddle/components/HuddleTranscriptIntro";
 import {
   buildThreadSummaryFromVisibleEntries,
   getActiveContinuationDepths,
@@ -34,11 +33,9 @@ import {
   THREAD_PANEL_MESSAGE_GUTTER_CLASS,
 } from "@/features/messages/lib/messageThreadPanelLayout";
 import { Button } from "@/shared/ui/button";
-import { Separator } from "@/shared/ui/separator";
 import { ComposerActivityAccessory } from "./ComposerActivityAccessory";
 import { ComposerDockBackdrop } from "./ComposerDockBackdrop";
 import { MessageComposer } from "./MessageComposer";
-import { isWelcomeExperienceChannel } from "@/features/onboarding/welcome";
 import {
   MessageThreadPanelHeader,
   ThreadMessageSkeleton,
@@ -54,7 +51,6 @@ import { useStableSendToChannel } from "./useStableSendToChannel";
 import { useAnchoredScroll } from "./useAnchoredScroll";
 import { selectDeferredListRenderState } from "@/features/messages/lib/timelineSnapshot";
 import { selectThreadRowHighlight } from "@/features/messages/lib/threadReplyHighlight";
-import { CompanyWorkThreadContextPanel } from "@/features/company-work/ui/CompanyWorkThreadContextPanel";
 
 type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   channel: Channel | null;
@@ -63,10 +59,6 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   currentPubkey?: string;
   disabled?: boolean;
   firstUnreadReplyId?: string | null;
-  huddleMemberPubkeys?: readonly string[];
-  huddleMemberPubkeysPending?: boolean;
-  /** Present the huddle's parent-channel thread as a dedicated live chat. */
-  isHuddleTranscript?: boolean;
   workspaceChrome?: boolean;
   editTarget?: MessageComposerEditTarget | null;
   isSending: boolean;
@@ -155,13 +147,11 @@ export function MessageThreadPanel({
   currentPubkey,
   disabled = false,
   firstUnreadReplyId,
-  huddleMemberPubkeys,
-  huddleMemberPubkeysPending = false,
-  isHuddleTranscript = false,
   workspaceChrome = false,
   layout = "standalone",
   editTarget,
   enterMotion,
+  headerChannelPrivate,
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
@@ -249,10 +239,7 @@ export function MessageThreadPanel({
     () => createThreadReplySender(onSend, alsoSendToChannel),
     [alsoSendToChannel, onSend],
   );
-  useEscapeKey(
-    onClose,
-    !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
-  );
+  useEscapeKey(onClose, isOverlay || isSinglePanelView || isFocusMode);
   const hasConstrainedColumn = columnMaxWidthPx != null;
   // Whether the composer dock trades its quiet-state spacer for the
   // conditional activity accessory (agent working and/or someone typing).
@@ -369,9 +356,7 @@ export function MessageThreadPanel({
   // card and the streaming-in `pending` state would both leave a rule hanging
   // over an empty region or a placeholder.
   const showThreadHeadDivider =
-    !isHuddleTranscript &&
-    isFocusMode &&
-    (threadRepliesPending || repliesRenderState === "list");
+    threadRepliesPending || repliesRenderState === "list";
 
   const threadMessages = React.useMemo(
     () => deferredThreadReplies.map((entry) => entry.message),
@@ -467,7 +452,6 @@ export function MessageThreadPanel({
       const startsUnreadSection =
         index > 0 && entry.message.id === firstUnreadReplyId;
       const isContinuation =
-        !isHuddleTranscript &&
         !workspaceChrome &&
         !startsUnreadSection &&
         entry.summary === null &&
@@ -496,7 +480,6 @@ export function MessageThreadPanel({
     deferredThreadReplies,
     firstUnreadReplyId,
     hoveredCollapseBranchId,
-    isHuddleTranscript,
     threadHead,
     workspaceChrome,
   ]);
@@ -539,7 +522,6 @@ export function MessageThreadPanel({
       className="overflow-y-auto overflow-x-hidden overscroll-contain pb-24"
       data-buzz-conversation-scroll
       data-testid="message-thread-body"
-      mode={isHuddleTranscript ? "panel" : undefined}
       onCopy={handleTimelineMentionCopy}
       onScroll={onScroll}
       tabIndex={-1}
@@ -556,97 +538,91 @@ export function MessageThreadPanel({
           hasConstrainedColumn ? { maxWidth: columnMaxWidthPx } : undefined
         }
       >
-        {isHuddleTranscript ? (
-          <div className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-2 pt-4")}>
-            <HuddleTranscriptIntro />
-          </div>
-        ) : (
-          <div
-            className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-1 pt-0")}
-            data-testid="message-thread-head"
-          >
-            {workspaceThreadContext ? (
-              <section
-                aria-label="Thread context"
-                className="colony-workspace-thread-context"
-                data-testid="workspace-thread-context"
-              >
-                <h2>{workspaceThreadContext.title}</h2>
-                {workspaceThreadContext.description ? (
-                  <p>{workspaceThreadContext.description}</p>
-                ) : null}
-              </section>
-            ) : (
-              <div className="rounded-2xl">
-                <MessageThreadRow
-                  actionBarPlacement="inside"
-                  channelId={channelId}
-                  currentPubkey={currentPubkey}
-                  huddleMemberPubkeys={huddleMemberPubkeys}
-                  huddleMemberPubkeysPending={huddleMemberPubkeysPending}
-                  isFollowingThread={isFollowingThread}
-                  isUnread={isMessageUnreadById?.(threadHead.id)}
-                  message={threadHead}
-                  onDelete={
-                    onDelete &&
-                    canManageMessageForCurrentUser(
-                      threadHead,
-                      currentPubkey,
-                      profiles,
-                    )
-                      ? onDelete
-                      : undefined
-                  }
-                  onEdit={
-                    onEdit &&
-                    canManageMessageForCurrentUser(
-                      threadHead,
-                      currentPubkey,
-                      profiles,
-                    )
-                      ? onEdit
-                      : undefined
-                  }
-                  onFollowThread={
-                    onFollowThread ? (_msg) => onFollowThread() : undefined
-                  }
-                  onMarkUnread={onMarkUnread}
-                  onMarkRead={onMarkRead}
-                  onToggleReaction={onToggleReaction}
-                  onUnfollowThread={
-                    onUnfollowThread ? (_msg) => onUnfollowThread() : undefined
-                  }
-                  profiles={profiles}
-                  searchQuery={
-                    searchMessageId === threadHead.id ? searchQuery : undefined
-                  }
-                  showDepthGuides={shouldShowThreadBranchGuides}
-                  videoReviewCommentRootId={videoReviewPresentation?.commentRootIdsByMessageId.get(
-                    threadHead.id,
-                  )}
-                  videoReviewContext={videoReviewPresentation?.contextsByMessageId.get(
-                    threadHead.id,
-                  )}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        <CompanyWorkThreadContextPanel
-          channelId={channelId}
-          enabled={Boolean(
-            channelId && !isHuddleTranscript && !workspaceThreadContext,
+        <div
+          className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-1 pt-0")}
+          data-testid="message-thread-head"
+        >
+          {workspaceThreadContext ? (
+            <section
+              aria-label="Thread context"
+              className="colony-workspace-thread-context"
+              data-testid="workspace-thread-context"
+            >
+              <span className="c3c-eyebrow">Thread context</span>
+              <h2>{workspaceThreadContext.title}</h2>
+              {workspaceThreadContext.description ? (
+                <p>{workspaceThreadContext.description}</p>
+              ) : null}
+            </section>
+          ) : (
+            <div className="rounded-2xl">
+              <MessageThreadRow
+                actionBarPlacement="inside"
+                channelId={channelId}
+                currentPubkey={currentPubkey}
+                isFollowingThread={isFollowingThread}
+                isUnread={isMessageUnreadById?.(threadHead.id)}
+                message={threadHead}
+                onDelete={
+                  onDelete &&
+                  canManageMessageForCurrentUser(
+                    threadHead,
+                    currentPubkey,
+                    profiles,
+                  )
+                    ? onDelete
+                    : undefined
+                }
+                onEdit={
+                  onEdit &&
+                  canManageMessageForCurrentUser(
+                    threadHead,
+                    currentPubkey,
+                    profiles,
+                  )
+                    ? onEdit
+                    : undefined
+                }
+                onFollowThread={
+                  onFollowThread ? (_msg) => onFollowThread() : undefined
+                }
+                onMarkUnread={onMarkUnread}
+                onMarkRead={onMarkRead}
+                onToggleReaction={onToggleReaction}
+                onUnfollowThread={
+                  onUnfollowThread ? (_msg) => onUnfollowThread() : undefined
+                }
+                profiles={profiles}
+                searchQuery={
+                  searchMessageId === threadHead.id ? searchQuery : undefined
+                }
+                showDepthGuides={shouldShowThreadBranchGuides}
+                videoReviewCommentRootId={videoReviewPresentation?.commentRootIdsByMessageId.get(
+                  threadHead.id,
+                )}
+                videoReviewContext={videoReviewPresentation?.contextsByMessageId.get(
+                  threadHead.id,
+                )}
+              />
+            </div>
           )}
-          threadRootId={threadHead.id}
-        />
+        </div>
 
         {showThreadHeadDivider ? (
           <div
             className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-3 pt-2")}
             data-testid="message-thread-head-divider"
           >
-            <Separator className="bg-border/60" />
+            <section
+              aria-label={`${threadReplies.length} ${threadReplies.length === 1 ? "reply" : "replies"}`}
+              className="flex items-center gap-3"
+            >
+              <span className="c3c-eyebrow">
+                {threadReplies.length}{" "}
+                {threadReplies.length === 1 ? "reply" : "replies"}
+              </span>
+              <span aria-hidden className="h-px flex-1 bg-colony-border" />
+            </section>
           </div>
         ) : null}
 
@@ -663,7 +639,6 @@ export function MessageThreadPanel({
             isError={threadRepliesError}
             deferredCount={deferredThreadReplies.length}
             liveCount={threadReplies.length}
-            isHuddleTranscript={isHuddleTranscript}
             onRetry={onRetryThreadReplies}
             renderSkeleton={() => (
               <div
@@ -749,10 +724,6 @@ export function MessageThreadPanel({
                           }
                           highlightThreadLineDepths={highlight.lineDepths}
                           hoverBackground={!entry.summary}
-                          huddleMemberPubkeys={huddleMemberPubkeys}
-                          huddleMemberPubkeysPending={
-                            huddleMemberPubkeysPending
-                          }
                           isContinuation={isContinuation}
                           isUnread={isMessageUnreadById?.(entry.message.id)}
                           message={entry.message}
@@ -888,9 +859,6 @@ export function MessageThreadPanel({
           >
             <ComposerDockBackdrop gutterClassName="inset-x-5" />
             <MessageComposer
-              showGoalReference={
-                !channel || !isWelcomeExperienceChannel(channel)
-              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,
@@ -916,11 +884,9 @@ export function MessageThreadPanel({
               onEditLastOwnMessage={onEditLastOwnMessage}
               onEditSave={onEditSave}
               onSend={handleThreadReplySend}
-              placeholder={
-                isHuddleTranscript ? "Message the huddle" : "Reply in thread…"
-              }
+              placeholder="Reply in thread…"
               footerContent={
-                workspaceChrome && !isHuddleTranscript ? (
+                workspaceChrome ? (
                   <label className="colony-thread-crosspost">
                     <input
                       checked={alsoSendToChannel}
@@ -979,19 +945,18 @@ export function MessageThreadPanel({
         enterMotion={enterMotion ?? !isFocusMode}
         footer={threadFooter}
         header={
-          isHuddleTranscript ? undefined : (
-            <MessageThreadPanelHeader
-              headerLeading={headerLeading}
-              headerTitle={headerTitle}
-              headerTitleAriaLabel={headerTitleAriaLabel}
-              headerTitleSuffix={headerTitleSuffix}
-              isFocusMode={isFocusMode}
-              isSinglePanelView={isSinglePanelView}
-              onClose={onClose}
-              onHeaderTitleClick={onHeaderTitleClick}
-              showBackButton={showBackButton}
-            />
-          )
+          <MessageThreadPanelHeader
+            headerChannelPrivate={headerChannelPrivate}
+            headerLeading={headerLeading}
+            headerTitle={headerTitle}
+            headerTitleAriaLabel={headerTitleAriaLabel}
+            headerTitleSuffix={headerTitleSuffix}
+            isFocusMode={isFocusMode}
+            isSinglePanelView={isSinglePanelView}
+            onClose={onClose}
+            onHeaderTitleClick={onHeaderTitleClick}
+            showBackButton={showBackButton}
+          />
         }
         isSinglePanelView={isSinglePanelView}
         layout={layout}

@@ -1,18 +1,12 @@
 // biome-ignore format: keep compact to stay within file size limit
-import * as React from "react";
 import { useLocation } from "@tanstack/react-router";
-import {
-  BriefcaseBusiness,
-  CircleDollarSign,
-  Search,
-  Settings as SettingsIcon,
-  Zap,
-} from "lucide-react";
-import { FeatureGate } from "@/shared/features";
+import * as React from "react";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
 import { AddCommunityDialog } from "@/features/communities/ui/AddCommunityDialog";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { ColonyField } from "@/shared/ui/ColonyField";
+import { PowerIcon, SettingsIcon } from "@/shared/ui/colonyIcons";
 import { useDeferredLoad } from "@/shared/hooks/useDeferredStartup";
 import {
   useChannelSections,
@@ -50,18 +44,17 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
-import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
-import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
-import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
-import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
+import { SidebarCollapsedNav } from "@/features/sidebar/ui/SidebarCollapsedNav";
+import { SidebarDestinationList } from "@/features/sidebar/ui/SidebarDestinationList";
+import type { SidebarDestinationContext } from "@/features/sidebar/ui/sidebarDestinations";
 import {
   ChannelGroupSection,
   CustomChannelSection,
   SectionActionsMenu,
+  SectionQuickAction,
 } from "@/features/sidebar/ui/CustomChannelSection";
 import { CreateChannelDialog } from "@/features/sidebar/ui/CreateChannelDialog";
 import { SidebarProfileCard } from "@/features/sidebar/ui/SidebarProfileCard";
-import { HuddleProfileControl } from "@/features/huddle";
 import type {
   AppSidebarProps,
   CollapsibleSidebarGroup,
@@ -75,7 +68,6 @@ import {
 } from "@/features/sidebar/ui/sidebarLoadingSkeleton";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
 import { SidebarUpdateCard } from "@/features/settings/SidebarUpdateCard";
-import type { FactoryScope } from "@/shared/api/factoryRuntime";
 import { useUpdaterContext } from "@/features/settings/hooks/UpdaterProvider";
 import { shouldShowSidebarUpdateCard } from "@/features/settings/sidebarUpdateCardVisibility";
 import type { Channel, ChannelVisibility } from "@/shared/api/types";
@@ -84,12 +76,9 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarRail,
   useSidebar,
 } from "@/shared/ui/sidebar";
-import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import {
   ProtectedBestieSidebarEntry,
   useProtectedVisibleDirectMessages,
@@ -103,12 +92,10 @@ export function AppSidebar({
   fallbackDisplayName,
   homeBadgeCount,
   isPowerActive,
-  isSavedForLaterActive,
   onBackgroundClick,
   isAddCommunityOpen,
   isLoading,
   isCreatingChannel,
-  isCreatingForum,
   profile,
   relayConnectionCard,
   selfPresenceStatus,
@@ -125,7 +112,6 @@ export function AppSidebar({
   onAddCommunity,
   onAddCommunityOpenChange,
   onCreateChannel,
-  onCreateForum,
   onOpenAddCommunity,
   onSendFeedback,
   onHideDm,
@@ -138,14 +124,11 @@ export function AppSidebar({
   onRemoveCommunity,
   onCreateAgent,
   onSelectToday,
-  onSelectSavedForLater,
-  onSelectFactory,
-  onSelectGoals,
+  onSelectAgents,
   onSelectTeam,
   onSelectClients,
   onSelectWork,
   onSelectPower,
-  onSelectWorkflows,
   onSelectHome,
   onSelectChannel,
   onOpenSearchResult,
@@ -160,8 +143,6 @@ export function AppSidebar({
   isPresencePending,
   onNewMessage,
   isCreateChannelOpen: isCreateChannelOpenProp,
-  isHuddleCompanionOpen = false,
-  onHuddleEnded,
   onCreateChannelOpenChange,
   mutedChannelIds,
   onMuteChannel,
@@ -169,38 +150,40 @@ export function AppSidebar({
   starredChannelIds,
   onStarChannel,
   onUnstarChannel,
-  createChannelTemplateDraft,
-  createChannelTemplateId,
-  createChannelTemplateKind,
-  onClearChannelTemplateRequest,
-  onOpenTemplatePicker,
 }: AppSidebarProps) {
-  const { pathname } = useLocation();
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
-  const { open: sidebarOpen, openMobile } = useSidebar();
+  const { open: sidebarOpen, openMobile, toggleSidebar } = useSidebar();
   const isMobile = useIsMobile();
+  const isCollapsedRail = !isMobile && !sidebarOpen;
   const [isSidebarUpdateCardDismissed, setIsSidebarUpdateCardDismissed] =
     React.useState(false);
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
-  const factoryScope = React.useMemo<FactoryScope>(
+  const { pathname } = useLocation();
+  const destinationContext = React.useMemo<SidebarDestinationContext>(
     () => ({
-      relayUrl: activeCommunity?.relayUrl ?? "unavailable",
-      identityPubkey: currentPubkey ?? "unavailable",
-      businessCommunityId:
-        activeCommunity?.businessCommunityId ??
-        activeCommunity?.id ??
-        "unavailable",
-      clientChannelId: activeCommunity?.clientChannelId ?? null,
+      handlers: {
+        onSelectAgents,
+        onSelectClients,
+        onSelectSettings,
+        onSelectTeam,
+        onSelectWork,
+      },
+      pathname,
+      selectedChannelId: selectedView === "channel" ? selectedChannelId : null,
+      selectedView,
     }),
     [
-      activeCommunity?.businessCommunityId,
-      activeCommunity?.clientChannelId,
-      activeCommunity?.id,
-      activeCommunity?.relayUrl,
-      currentPubkey,
+      onSelectAgents,
+      onSelectClients,
+      onSelectSettings,
+      onSelectTeam,
+      onSelectWork,
+      pathname,
+      selectedChannelId,
+      selectedView,
     ],
   );
   const [dmActionsMenuOpen, setDmActionsMenuOpen] = React.useState(false);
@@ -283,15 +266,14 @@ export function AppSidebar({
   // dialog's `onOpenChange` below.
   React.useEffect(() => {
     if (isCreateChannelOpenProp) {
-      openCreateDialog(createChannelTemplateKind ?? "stream");
+      openCreateDialog("stream");
     }
-  }, [createChannelTemplateKind, isCreateChannelOpenProp, openCreateDialog]);
+  }, [isCreateChannelOpenProp, openCreateDialog]);
   const [collapsedGroups, setCollapsedGroups] = React.useState<
     Record<CollapsibleSidebarGroup, boolean>
   >({
     starred: false,
     channels: false,
-    forums: false,
     directMessages: false,
   });
 
@@ -432,14 +414,6 @@ export function AppSidebar({
     [createSection, assignChannel, createSectionState.pendingChannelId],
   );
 
-  const forumChannels = React.useMemo(
-    () =>
-      sortChannelsForSidebar(
-        channels.filter((channel) => channel.channelType === "forum"),
-        sortModeFor("forums"),
-      ),
-    [channels, sortModeFor],
-  );
   const isSelectedDirectMessage =
     selectedView === "channel" &&
     directMessages.some((channel) => channel.id === selectedChannelId);
@@ -519,12 +493,7 @@ export function AppSidebar({
     profile?.displayName?.trim() ||
     fallbackDisplayName?.trim() ||
     "Current identity";
-  const isCreatingAny =
-    createDialogKind === "stream"
-      ? isCreatingChannel
-      : createDialogKind === "forum"
-        ? isCreatingForum
-        : false;
+  const isCreatingAny = createDialogKind === "stream" && isCreatingChannel;
 
   const handleCreateFromDialog = React.useCallback(
     async (input: {
@@ -532,15 +501,12 @@ export function AppSidebar({
       description?: string;
       visibility: ChannelVisibility;
       ttlSeconds?: number;
-      templateId?: string;
     }) => {
       if (createDialogKind === "stream") {
         await onCreateChannel(input);
-      } else if (createDialogKind === "forum") {
-        await onCreateForum(input);
       }
     },
-    [createDialogKind, onCreateChannel, onCreateForum],
+    [createDialogKind, onCreateChannel],
   );
 
   const handleOpenCreateChannel = React.useCallback(() => {
@@ -563,7 +529,6 @@ export function AppSidebar({
           ? "true"
           : undefined
       }
-      data-colony-factory={selectedView === "factory" ? "true" : undefined}
       data-colony-full-app-shell="true"
       data-testid="app-sidebar"
       onClick={(event) => {
@@ -574,15 +539,13 @@ export function AppSidebar({
       variant="sidebar"
     >
       <div
-        className={`relative flex min-h-0 flex-1 flex-col overflow-hidden ${
-          communities.length > 1 ? "md:-ml-[11px] md:w-[calc(100%+11px)]" : ""
-        }`}
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         data-sidebar-background
         data-testid="app-sidebar-scroll-anchor"
       >
+        <ColonyField />
         <AppSidebarPinnedHeader
           activeCommunityName={activeCommunity?.name ?? ""}
-          factoryView={selectedView === "factory"}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
@@ -594,7 +557,6 @@ export function AppSidebar({
           onOpenDm={onOpenDm}
           onOpenSearchResult={onOpenSearchResult}
           onSelectChannel={onSelectChannel}
-          onReturnToWorkspace={onSelectToday}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
           showSidebarCollapseButton={showSidebarCollapseButton}
@@ -628,26 +590,61 @@ export function AppSidebar({
               data-sidebar-background
               data-testid="sidebar-scroll-content"
             >
-              <AppSidebarPrimaryMenu
-                homeBadgeCount={homeBadgeCount}
-                isSavedForLaterActive={isSavedForLaterActive}
-                onSelectToday={onSelectToday}
-                onSelectSavedForLater={onSelectSavedForLater}
-                onSelectHome={onSelectHome}
-                suppressTodaySelection={suppressTodaySelection}
-                selectedView={selectedView}
-              />
+              {!isCollapsedRail ? (
+                <AppSidebarPrimaryMenu
+                  homeBadgeCount={homeBadgeCount}
+                  onSelectToday={onSelectToday}
+                  onSelectHome={onSelectHome}
+                  suppressTodaySelection={suppressTodaySelection}
+                  selectedView={selectedView}
+                />
+              ) : null}
 
-              {isLoading ? (
+              {isCollapsedRail ? (
+                <SidebarCollapsedNav
+                  destinationContext={destinationContext}
+                  directMessages={sortedDirectMessages.map((channel) => ({
+                    channel,
+                    isActive:
+                      selectedView === "channel" &&
+                      selectedChannelId === channel.id,
+                    label: dmChannelLabels[channel.id] ?? channel.name,
+                    participants: dmParticipantsByChannelId[channel.id],
+                    unreadCount: unreadChannelIds.has(channel.id)
+                      ? Math.max(unreadChannelCounts.get(channel.id) ?? 0, 1)
+                      : 0,
+                  }))}
+                  hasUnreadChannels={streamChannels.some((channel) =>
+                    unreadChannelIds.has(channel.id),
+                  )}
+                  homeBadgeCount={homeBadgeCount}
+                  isActivityActive={selectedView === "home"}
+                  isTodayActive={
+                    selectedView === "today" && !suppressTodaySelection
+                  }
+                  onExpand={toggleSidebar}
+                  onSelectChannel={onSelectChannel}
+                  onSelectHome={onSelectHome}
+                  onSelectToday={onSelectToday}
+                />
+              ) : null}
+
+              {!isCollapsedRail && isLoading ? (
                 <SidebarLoadingContent shape={sidebarLoadingShape} />
               ) : null}
 
-              {!isLoading ? (
+              {!isCollapsedRail && !isLoading ? (
                 <>
-                  <SidebarNavigationGroup
-                    defaultExpanded
-                    label="Conversations"
-                    testId="sidebar-nav-conversations"
+                  <div
+                    className="colony-sidebar-nav"
+                    data-testid="sidebar-nav-destinations"
+                  >
+                    <SidebarDestinationList context={destinationContext} />
+                  </div>
+
+                  <div
+                    className="colony-sidebar-conversations"
+                    data-testid="sidebar-nav-conversations"
                   >
                     <SidebarDndContext
                       channels={channels}
@@ -672,6 +669,7 @@ export function AppSidebar({
                           activeWorkingByChannelId={activeWorkingByChannelId}
                           selectedChannelId={selectedChannelId}
                           unreadChannelIds={unreadChannelIds}
+                          unreadChannelCounts={unreadChannelCounts}
                           sections={channelSections}
                           assignments={channelAssignments}
                           isFirst={idx === 0}
@@ -741,6 +739,9 @@ export function AppSidebar({
                         actionsTestId="section-actions-channels"
                         listTestId="stream-list"
                         onBrowseClick={() => onBrowseChannels?.()}
+                        onQuickCreateClick={() => onBrowseChannels?.()}
+                        quickCreateLabel="Browse channels"
+                        showQuickCreate={Boolean(onBrowseChannels)}
                         browseLabel="Browse channels"
                         onMarkAllRead={onMarkAllChannelsRead}
                         onMarkChannelRead={onMarkChannelRead}
@@ -815,40 +816,14 @@ export function AppSidebar({
                       />
                     ) : null}
 
-                    <FeatureGate feature="forum">
-                      <ChannelGroupSection
-                        createLabel="New forum"
-                        hasUnread={unreadChannelIds.size > 0}
-                        isCollapsed={collapsedGroups.forums}
-                        isActiveChannel={selectedView === "channel"}
-                        activeWorkingByChannelId={activeWorkingByChannelId}
-                        items={forumChannels}
-                        sortMode={sortModeFor("forums")}
-                        onSortModeChange={(mode) =>
-                          setSortModeFor("forums", mode)
-                        }
-                        actionsTestId="section-actions-forums"
-                        listTestId="forum-list"
-                        onCreateClick={() => openCreateDialog("forum")}
-                        onMarkAllRead={onMarkAllChannelsRead}
-                        onMarkChannelRead={onMarkChannelRead}
-                        onMarkChannelUnread={onMarkChannelUnread}
-                        onSelectChannel={onSelectChannel}
-                        onToggleCollapsed={() => toggleCollapsedGroup("forums")}
-                        selectedChannelId={selectedChannelId}
-                        title="Forums"
-                        unreadChannelIds={unreadChannelIds}
-                        unreadChannelCounts={unreadChannelCounts}
-                        mutedChannelIds={mutedChannelIds}
-                        onMuteChannel={onMuteChannel}
-                        onUnmuteChannel={onUnmuteChannel}
-                        onDeleteChannel={requestDeleteChannel}
-                      />
-                    </FeatureGate>
-
                     <SidebarSection
                       action={
                         <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5">
+                          <SectionQuickAction
+                            label="New message"
+                            onClick={onNewMessage}
+                            testId="section-actions-dms-quick-create"
+                          />
                           <SectionActionsMenu
                             sectionLabel="direct messages"
                             testId="section-actions-dms"
@@ -888,104 +863,7 @@ export function AppSidebar({
                     <SidebarMenu>
                       <ProtectedBestieSidebarEntry />
                     </SidebarMenu>
-                  </SidebarNavigationGroup>
-
-                  <SidebarCompanyGroup
-                    onSelectGoals={onSelectGoals}
-                    onSelectTeam={onSelectTeam}
-                    onSelectWork={onSelectWork}
-                    onSelectWorkflows={onSelectWorkflows}
-                    selectedView={selectedView}
-                  />
-
-                  <SidebarNavigationGroup
-                    defaultExpanded={false}
-                    expandForActiveRoute={
-                      selectedView === "business" || selectedView === "clients"
-                    }
-                    label="Business"
-                    testId="sidebar-nav-business"
-                  >
-                    <SidebarMenu>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-business-discovery"
-                          isActive={
-                            pathname === "/discovery" ||
-                            pathname === "/campaign"
-                          }
-                          tooltip="Discovery"
-                        >
-                          <a
-                            aria-current={
-                              pathname === "/discovery" ||
-                              pathname === "/campaign"
-                                ? "page"
-                                : undefined
-                            }
-                            href="#/discovery"
-                          >
-                            <Search className="h-4 w-4" />
-                            <SidebarMenuLabel>Discovery</SidebarMenuLabel>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      {onSelectClients ? (
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            className="sidebar-navigation-child pl-7"
-                            data-testid="sidebar-business-clients"
-                            isActive={selectedView === "clients"}
-                            onClick={onSelectClients}
-                            tooltip="Clients"
-                            type="button"
-                          >
-                            <BriefcaseBusiness className="h-4 w-4" />
-                            <SidebarMenuLabel>Clients</SidebarMenuLabel>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ) : null}
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          className="sidebar-navigation-child pl-7"
-                          data-testid="sidebar-business-money"
-                          isActive={
-                            pathname === "/money" ||
-                            pathname.startsWith("/money/")
-                          }
-                          tooltip="Money"
-                        >
-                          <a
-                            aria-current={
-                              pathname === "/money" ||
-                              pathname.startsWith("/money/")
-                                ? "page"
-                                : undefined
-                            }
-                            href="#/money"
-                          >
-                            <CircleDollarSign className="h-4 w-4" />
-                            <SidebarMenuLabel>Money</SidebarMenuLabel>
-                          </a>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                  </SidebarNavigationGroup>
-
-                  <SidebarSoftwareFactoryGroup
-                    isActive={selectedView === "factory"}
-                    isProjectsActive={selectedView === "projects"}
-                    selectedChannelId={
-                      selectedView === "channel" ? selectedChannelId : null
-                    }
-                    onSelectFactory={onSelectFactory}
-                    scope={factoryScope}
-                  />
-
-                  <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
+                  </div>
 
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
@@ -1037,69 +915,53 @@ export function AppSidebar({
                 />
               </div>
             ) : null}
-            <HuddleProfileControl
-              channels={channels}
-              onHuddleEnded={onHuddleEnded}
-              visible={isHuddleCompanionOpen}
-            />
-            <SidebarMenu className="sidebar-navigation-utility">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="text-xs"
-                  data-testid="sidebar-ai-spend-power"
-                  isActive={isPowerActive}
-                  onClick={onSelectPower}
-                  tooltip="AI spend & power"
-                  type="button"
-                >
-                  <Zap className="h-4 w-4" />
-                  <SidebarMenuLabel>AI spend &amp; power</SidebarMenuLabel>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="text-xs"
-                  data-testid="sidebar-settings"
-                  isActive={false}
-                  onClick={() => onSelectSettings()}
-                  tooltip="Settings"
-                  type="button"
-                >
-                  <SettingsIcon className="h-4 w-4" />
-                  <SidebarMenuLabel>Settings</SidebarMenuLabel>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-            <SidebarMenu className="sidebar-navigation-profile">
-              <SidebarMenuItem>
-                <SidebarProfileCard
-                  activeCommunity={activeCommunity}
-                  isPresencePending={isPresencePending}
-                  onOpenAddCommunity={onOpenAddCommunity}
-                  onOpenSettings={onSelectSettings}
-                  onSendFeedback={onSendFeedback}
-                  onRemoveCommunity={onRemoveCommunity}
-                  onSetPresenceStatus={onSetPresenceStatus}
-                  onSetUserStatus={onSetUserStatus}
-                  onClearUserStatus={onClearUserStatus}
-                  onSwitchCommunity={onSwitchCommunity}
-                  onUpdateCommunity={onUpdateCommunity}
-                  profile={profile}
-                  resolvedDisplayName={resolvedDisplayName}
-                  selfPresenceStatus={selfPresenceStatus}
-                  selfUserStatus={selfUserStatus}
-                  communities={communities}
-                />
-              </SidebarMenuItem>
-            </SidebarMenu>
+            <div className="colony-sidebar-footer-row">
+              <SidebarProfileCard
+                activeCommunity={activeCommunity}
+                isPresencePending={isPresencePending}
+                onOpenAddCommunity={onOpenAddCommunity}
+                onOpenSettings={onSelectSettings}
+                onSendFeedback={onSendFeedback}
+                onRemoveCommunity={onRemoveCommunity}
+                onSetPresenceStatus={onSetPresenceStatus}
+                onSetUserStatus={onSetUserStatus}
+                onClearUserStatus={onClearUserStatus}
+                onSwitchCommunity={onSwitchCommunity}
+                onUpdateCommunity={onUpdateCommunity}
+                profile={profile}
+                resolvedDisplayName={resolvedDisplayName}
+                selfPresenceStatus={selfPresenceStatus}
+                selfUserStatus={selfUserStatus}
+                communities={communities}
+              />
+              <button
+                aria-label="AI spend and power"
+                className="colony-sidebar-footer-icon"
+                data-active={isPowerActive || undefined}
+                data-testid="sidebar-ai-spend-power"
+                onClick={onSelectPower}
+                title="AI spend & power"
+                type="button"
+              >
+                <PowerIcon size={18} />
+              </button>
+              <button
+                aria-label="Settings"
+                className="colony-sidebar-footer-icon"
+                data-testid="sidebar-settings"
+                onClick={() => onSelectSettings()}
+                title="Settings"
+                type="button"
+              >
+                <SettingsIcon size={18} />
+              </button>
+            </div>
           </SidebarFooter>
         </div>
       </div>
 
       <CreateChannelDialog
         channelKind={createDialogKind}
-        initialDraft={createChannelTemplateDraft}
-        initialTemplateId={createChannelTemplateId}
         isCreating={isCreatingAny}
         onOpenChange={(open) => {
           if (!open) {
@@ -1108,19 +970,9 @@ export function AppSidebar({
             if (createDialogKind === "stream") {
               onCreateChannelOpenChange?.(false);
             }
-            onClearChannelTemplateRequest?.();
             setCreateDialogKind(null);
           }
         }}
-        onBrowseTemplates={
-          onOpenTemplatePicker
-            ? (draft) => {
-                setCreateDialogKind(null);
-                onCreateChannelOpenChange?.(false);
-                onOpenTemplatePicker(draft);
-              }
-            : undefined
-        }
         onCreate={handleCreateFromDialog}
       />
 

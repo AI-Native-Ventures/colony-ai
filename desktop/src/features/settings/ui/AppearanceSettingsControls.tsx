@@ -36,7 +36,6 @@ import {
   DEFAULT_GLASS_OPACITY,
   GLASS_OPACITY_MAX,
   GLASS_OPACITY_MIN,
-  NEUTRAL_ACCENT,
   useTheme,
 } from "@/shared/theme/ThemeProvider";
 
@@ -653,11 +652,9 @@ export function ThreadLayoutSetting() {
 /** Accent swatches — shared by the animated and reduced-motion reveal paths. */
 export function AccentPickerContent({
   accentColor,
-  isDark,
   setAccentColor,
 }: {
   accentColor: string;
-  isDark: boolean;
   setAccentColor: (value: string) => void;
 }) {
   return (
@@ -677,16 +674,10 @@ export function AccentPickerContent({
       >
         <div className="flex w-max min-w-full flex-nowrap justify-end gap-2">
           {ACCENT_COLORS.map((color) => {
-            const isNeutral = color.value === NEUTRAL_ACCENT;
-            const isSelected = accentColor === color.value;
-            const swatchColor = isNeutral
-              ? "hsl(var(--foreground))"
-              : color.value;
-            const selectionColor = isNeutral
-              ? isDark
-                ? "#000000"
-                : "#FFFFFF"
-              : contrastColorForBackground(color.value);
+            const isSelected =
+              accentColor.toLowerCase() === color.value.toLowerCase();
+            const swatchColor = color.value;
+            const selectionColor = contrastColorForBackground(color.value);
 
             return (
               <button

@@ -136,7 +136,7 @@ export function resolveInboxItemReadAt(
 /**
  * Projects Home inbox read-state from the shared NIP-RS read marker, with
  * the local `useFeedItemState` done-set as a fallback for items that don't
- * belong to a channel (reminders etc.).
+ * belong to a channel.
  *
  * "Mark as read" on channel-backed items is routed through `markChannelRead`;
  * thread rows advance the same per-message markers as the channel thread

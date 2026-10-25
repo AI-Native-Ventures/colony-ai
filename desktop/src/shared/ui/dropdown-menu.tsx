@@ -1,9 +1,12 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronRight, Circle } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "@/shared/ui/colonyIcons";
 
 import { cn } from "@/shared/lib/cn";
 import {
+  MENU_CONTENT_CLASS,
+  MENU_ITEM_CLASS,
+  MENU_SEPARATOR_CLASS,
   POPOVER_RADIX_MOTION_CLASS,
   POPOVER_RADIX_SIDE_MOTION_CLASS,
   POPOVER_SHADOW_STYLE,
@@ -31,14 +34,19 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "flex min-h-9 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-2 pr-4 text-sm outline-hidden focus:bg-muted/50 data-[state=open]:bg-muted/50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+      MENU_ITEM_CLASS,
+      "[&_svg]:pointer-events-none",
       inset && "pl-8",
       className,
     )}
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto" />
+    <ChevronRightIcon
+      className="ml-auto text-colony-muted"
+      size={15}
+      strokeWidth={2.4}
+    />
   </DropdownMenuPrimitive.SubTrigger>
 ));
 DropdownMenuSubTrigger.displayName =
@@ -51,7 +59,8 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-xl p-1",
+      "z-50 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden",
+      MENU_CONTENT_CLASS,
       POPOVER_RADIX_MOTION_CLASS,
       POPOVER_RADIX_SIDE_MOTION_CLASS,
       POPOVER_SURFACE_CLASS,
@@ -74,7 +83,8 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto overflow-x-hidden rounded-xl p-1",
+        "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto overflow-x-hidden",
+        MENU_CONTENT_CLASS,
         "origin-(--radix-dropdown-menu-content-transform-origin)",
         POPOVER_RADIX_MOTION_CLASS,
         POPOVER_RADIX_SIDE_MOTION_CLASS,
@@ -97,11 +107,7 @@ const DropdownMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-2 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(MENU_ITEM_CLASS, inset && "pl-8", className)}
     {...props}
   />
 ));
@@ -114,18 +120,17 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center rounded-lg py-2 pl-8 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      MENU_ITEM_CLASS,
+      "data-[state=checked]:font-extrabold",
       className,
     )}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <DropdownMenuPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </DropdownMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
+    <span className="flex-1">{children}</span>
+    <DropdownMenuPrimitive.ItemIndicator>
+      <CheckIcon className="text-colony-accent" size={16} strokeWidth={2.8} />
+    </DropdownMenuPrimitive.ItemIndicator>
   </DropdownMenuPrimitive.CheckboxItem>
 ));
 DropdownMenuCheckboxItem.displayName =
@@ -138,17 +143,16 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center rounded-lg py-2 pl-8 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      MENU_ITEM_CLASS,
+      "data-[state=checked]:font-extrabold",
       className,
     )}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <DropdownMenuPrimitive.ItemIndicator>
-        <Circle className="h-2 w-2 fill-current" />
-      </DropdownMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
+    <span className="flex-1">{children}</span>
+    <DropdownMenuPrimitive.ItemIndicator>
+      <CheckIcon className="text-colony-accent" size={16} strokeWidth={2.8} />
+    </DropdownMenuPrimitive.ItemIndicator>
   </DropdownMenuPrimitive.RadioItem>
 ));
 DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
@@ -162,7 +166,7 @@ const DropdownMenuLabel = React.forwardRef<
   <DropdownMenuPrimitive.Label
     ref={ref}
     className={cn(
-      "px-2 py-1.5 text-sm font-semibold",
+      "px-3 py-1.5 text-2xs font-extrabold uppercase tracking-[0.09em] text-colony-muted",
       inset && "pl-8",
       className,
     )}
@@ -177,7 +181,7 @@ const DropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    className={cn(MENU_SEPARATOR_CLASS, className)}
     {...props}
   />
 ));

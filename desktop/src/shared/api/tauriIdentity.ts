@@ -57,6 +57,16 @@ export async function signOut(): Promise<void> {
   await invokeTauri("sign_out");
 }
 
+/**
+ * Sign out of this computer and keep everything else on it: drafts, caches
+ * and the agents' folders stay, and only the identity is forgotten. The app
+ * restarts into the sign-in screen after this call completes.
+ */
+export async function signOutKeepData(): Promise<void> {
+  requireNativeCapability("identity-recovery");
+  await invokeTauri("sign_out_keep_data");
+}
+
 export type GeneratePassphraseOptions = {
   /** Word count; Rust clamps to its allowed range (currently 3–10). */
   words?: number;

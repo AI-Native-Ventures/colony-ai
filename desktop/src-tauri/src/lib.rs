@@ -673,6 +673,7 @@ pub fn run() {
             sign_event,
             sign_nostr_identity_binding,
             sign_out,
+            sign_out_keep_data,
             decrypt_observer_event,
             build_observer_control_event,
             create_auth_event,

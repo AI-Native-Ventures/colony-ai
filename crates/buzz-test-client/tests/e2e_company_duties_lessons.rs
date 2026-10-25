@@ -446,8 +446,9 @@ async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_work
     assert_eq!(head.proposal, proposal);
     assert_eq!(head.proposed_by_pubkey, employee.public_key().to_hex());
     assert_eq!(head.approved_by_pubkey, admin.public_key().to_hex());
-    assert_eq!(head.source_ask_id, ask_id);
-    assert_eq!(head.source_ask_channel_id, channel_id);
+    assert_eq!(head.source_ask_id, Some(ask_id));
+    assert_eq!(head.source_ask_channel_id, Some(channel_id));
+    assert_eq!(head.source_hire_id, None);
 
     let community_id = ensure_test_community(&relay_authority()).await;
     let pool = PgPoolOptions::new()

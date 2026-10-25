@@ -19,14 +19,13 @@ type HomeRouteSearch = {
   profileView?: string;
 };
 
+// Projects and Reminders are not in the lean app; their old links open "all".
 const HOME_FILTERS: InboxFilter[] = [
   "all",
-  "project",
   "mention",
   "thread",
   "needs_action",
   "agent_activity",
-  "reminders",
   "drafts",
 ];
 

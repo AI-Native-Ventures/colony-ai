@@ -160,7 +160,7 @@ export function SegmentedControl<Value extends string>({
   return (
     <fieldset
       className={cn(
-        "relative isolate h-8 max-w-full shrink-0 overflow-hidden rounded-md bg-muted/45 p-0.5",
+        "relative isolate h-9.5 max-w-full shrink-0 overflow-hidden rounded-colony-control-lg bg-colony-track p-[3px]",
         SIZE_CLASSES[size],
         onPreviewChange && "touch-none select-none cursor-ew-resize",
         "disabled:pointer-events-none disabled:opacity-50",
@@ -180,13 +180,13 @@ export function SegmentedControl<Value extends string>({
       <div
         aria-hidden="true"
         className={cn(
-          "absolute bottom-0.5 left-0.5 top-0.5 z-0 rounded-md bg-background shadow-sm transition-transform duration-200 ease-in-out motion-reduce:transition-none",
+          "absolute bottom-[3px] left-[3px] top-[3px] z-0 rounded-[9px] bg-white shadow-[0_1px_2px_rgba(60,40,80,0.12)] transition-transform duration-200 ease-in-out motion-reduce:transition-none",
           previewValue && "duration-0",
         )}
         data-testid={indicatorTestId ?? `${testId}-indicator`}
         style={{
           transform: `translateX(${selectedIndex * 100}%)`,
-          width: `calc((100% - 0.25rem) / ${options.length})`,
+          width: `calc((100% - 0.375rem) / ${options.length})`,
         }}
       />
       {/* Legends escape grid/flex layout on a fieldset, so the columns live
@@ -196,10 +196,10 @@ export function SegmentedControl<Value extends string>({
           <button
             aria-pressed={value === optionValue}
             className={cn(
-              "relative z-10 flex h-full items-center justify-center gap-1.5 rounded-md bg-transparent px-2.5 text-xs font-medium transition-colors duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+              "relative z-10 flex h-full items-center justify-center gap-1.5 rounded-[9px] bg-transparent px-3 text-xs font-semibold transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-colony-accent motion-reduce:transition-none",
               displayedValue === optionValue
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground",
+                ? "font-extrabold text-colony-fg"
+                : "text-colony-fg-secondary hover:text-colony-fg",
             )}
             data-testid={`${optionTestIdPrefix}-${optionValue}`}
             key={optionValue}

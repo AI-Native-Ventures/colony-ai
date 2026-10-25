@@ -9,25 +9,10 @@ const manifest = JSON.parse(
   ),
 );
 
-test("existing Projects and Workflows experiments remain unchanged", () => {
-  const existing = Object.fromEntries(
-    manifest.features
-      .filter(({ id }) => id === "projects" || id === "workflows")
-      .map((feature) => [feature.id, feature]),
-  );
+test("cut experiments are not offered in the preview features manifest", () => {
+  const ids = manifest.features.map(({ id }) => id);
 
-  assert.deepEqual(existing, {
-    projects: {
-      id: "projects",
-      name: "Projects",
-      description: "Git repository browser and collaboration",
-      platforms: ["desktop"],
-    },
-    workflows: {
-      id: "workflows",
-      name: "Workflows",
-      description: "YAML-defined automations with approval gates",
-      platforms: ["desktop"],
-    },
-  });
+  for (const cut of ["projects", "workflows", "pulse", "forum"]) {
+    assert.ok(!ids.includes(cut), `${cut} must not be a preview feature`);
+  }
 });

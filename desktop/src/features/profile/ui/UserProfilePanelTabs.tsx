@@ -1,14 +1,6 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  Archive,
-  ChevronRight,
-  Info,
-  MessageSquare,
-  RefreshCw,
-  ScrollText,
-  Wrench,
-} from "lucide-react";
+import { ChevronRight, Info, RefreshCw, ScrollText } from "lucide-react";
 
 import type { IdentityArchiveActions } from "@/features/identity-archive/hooks";
 import type { ManagedAgent, RestartDiffEntry } from "@/shared/api/types";
@@ -17,14 +9,10 @@ import {
   AUTO_RESTART_ON_BLURB,
   RestartDiffList,
 } from "@/features/agents/ui/RestartDiffBadge";
-import type { ActiveTurnSummary } from "@/features/agents/activeAgentTurnsStore";
-import { ManagedAgentSessionPanel } from "@/features/agents/ui/ManagedAgentSessionPanel";
-import type { ProfileActivityAgent } from "@/features/profile/lib/profileActivityAgent";
-import { resolveActivityChannelId } from "@/features/profile/lib/profileActivityCarousel";
 import {
-  type ProfileActivityFeedScope,
-  useProfileActivityFeedScope,
-} from "@/features/profile/lib/profileActivityFeedScope";
+  CopyGlyphIcon,
+  DocumentIcon,
+} from "@/features/profile/ui/profileIcons";
 import { UserProfileAgentManagementRows } from "@/features/profile/ui/UserProfileAgentManagementRows";
 import { ProtectedAgentBestieAction } from "@protected-feature-components";
 import { ProfileInstancesSection } from "@/features/profile/ui/ProfileInstancesSection";
@@ -35,15 +23,9 @@ import {
 } from "@/features/profile/ui/UserProfilePanelFields";
 import type { ProfilePanelTab } from "@/features/profile/ui/UserProfilePanelUtils";
 import { cn } from "@/shared/lib/cn";
-import { useNow } from "@/shared/lib/useNow";
-import { Button } from "@/shared/ui/button";
-import {
-  Carousel,
-  type CarouselApi,
-  CarouselContent,
-  CarouselItem,
-} from "@/shared/ui/carousel";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { useCopyFeedback } from "@/shared/ui/HoverCopyIndicator";
+import { CheckIcon } from "@/shared/ui/colonyIcons";
 import { PanelSectionGroup } from "@/shared/ui/PanelSectionGroup";
 import { Switch } from "@/shared/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -160,7 +142,7 @@ export function ProfileTabBar({
     >
       <TabsList
         aria-label="Profile sections"
-        className="relative isolate grid h-9 w-full overflow-hidden rounded-lg bg-muted p-0.5"
+        className="pp-tab-list"
         data-testid="user-profile-tab-list"
         style={{
           gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
@@ -168,26 +150,24 @@ export function ProfileTabBar({
       >
         <div
           aria-hidden="true"
-          className="absolute bottom-0.5 left-0.5 top-0.5 z-0 rounded-md bg-background shadow-sm transition-transform duration-[220ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+          className="pp-tab-indicator"
           data-testid="user-profile-tab-indicator"
           style={{
             transform: `translateX(${activeIndex * 100}%)`,
-            width: `calc((100% - 4px) / ${tabs.length})`,
+            width: `calc((100% - 6px) / ${tabs.length})`,
           }}
         />
         {tabs.map((tab) => {
           return (
             <TabsTrigger
-              className="group relative z-10 h-full min-w-0 gap-1 rounded-md bg-transparent px-2 text-xs font-medium shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              className="pp-tab"
               data-testid={`user-profile-tab-${tab.id}`}
               key={tab.id}
               value={tab.id}
             >
               <span className="truncate">{tab.label}</span>
               {tab.trailing ? (
-                <span className="inline-flex shrink-0 items-center leading-none text-2xs text-muted-foreground group-data-[state=active]:text-foreground/70">
-                  {tab.trailing}
-                </span>
+                <span className="pp-tab-trailing">{tab.trailing}</span>
               ) : null}
             </TabsTrigger>
           );
@@ -198,113 +178,81 @@ export function ProfileTabBar({
 }
 
 export function ProfileInfoTabContent({
-  activeTurns,
-  activityAgent,
-  agentInfoFields,
   archiveActions,
   canArchiveAgent,
   canDeleteAgent,
-  channelIdToName,
-  isArchived,
+  facts,
   isDeleteAgentPending,
   managedAgent,
   onCreateCard,
   onDeleteAgent,
   onDuplicateAgent,
-  onExportAgent,
-  onOpenActivity,
   onEditAgent,
-  pubkey,
-  showActivityIngress,
+  onExportAgent,
+  onToggleStartOnLaunch,
   showInstructionBlock,
+  startOnLaunchEnabled,
+  startOnLaunchPending = false,
 }: {
-  activeTurns: ActiveTurnSummary[];
-  activityAgent: ProfileActivityAgent | null;
-  agentInfoFields: ProfileField[];
   archiveActions: IdentityArchiveActions;
   canArchiveAgent: boolean;
   canDeleteAgent: boolean;
-  channelIdToName: Record<string, string>;
-  isArchived: boolean;
+  /** The labelled facts, already in board order. */
+  facts: ProfileField[];
   isDeleteAgentPending: boolean;
   managedAgent?: ManagedAgent;
   /** Mint an agent trading card. Present only for owner-managed personas. */
   onCreateCard?: () => void;
   onDeleteAgent: () => void;
   onDuplicateAgent?: () => void;
-  onExportAgent?: () => void;
   onEditAgent: () => void;
-  onOpenActivity: (channelId?: string | null) => void;
-  pubkey: string | null;
-  showActivityIngress: boolean;
+  onExportAgent?: () => void;
+  onToggleStartOnLaunch?: () => void;
   showInstructionBlock: boolean;
+  startOnLaunchEnabled?: boolean;
+  startOnLaunchPending?: boolean;
 }) {
-  const infoFields: ProfileField[] = isArchived
-    ? [
-        ...agentInfoFields,
-        {
-          displayValue: "Archived",
-          icon: Archive,
-          label: "Visibility",
-          testId: "user-profile-archived-flair",
-          trailingNode: <ArchiveStatusTooltip />,
-        },
-      ]
-    : agentInfoFields;
-  const hasInfoFields = infoFields.length > 0;
   const showArchiveAction =
     canArchiveAgent && archiveActions.isArchived !== undefined;
-  const feedScope = useProfileActivityFeedScope(activityAgent, activeTurns);
-  const showLiveActivityEmbed =
-    showActivityIngress && (feedScope.isLive || feedScope.hasFeedContent);
 
   if (
-    !hasInfoFields &&
+    facts.length === 0 &&
     !showArchiveAction &&
     !canDeleteAgent &&
     !onCreateCard &&
     !onDuplicateAgent &&
     !onExportAgent &&
-    !showActivityIngress &&
     !showInstructionBlock
   ) {
     return null;
   }
 
   return (
-    <div className="space-y-4" data-testid="user-profile-info-sections">
-      {showActivityIngress ? (
-        showLiveActivityEmbed && activityAgent ? (
-          <ProfileLiveActivityEmbed
-            activeTurns={activeTurns}
-            activityAgent={activityAgent}
-            channelIdToName={channelIdToName}
-            feedScope={feedScope}
-            onOpenActivity={onOpenActivity}
-          />
-        ) : (
-          <ProfileIngressRow
-            icon={Wrench}
-            label="Activity log"
-            onClick={() => onOpenActivity(null)}
-            testId={`user-profile-view-activity-${pubkey}`}
-            trailing="View"
-          />
-        )
+    <div className="pp-info" data-testid="user-profile-info-sections">
+      {showInstructionBlock ? (
+        <button
+          className="pp-link-row"
+          data-testid="user-profile-agent-instruction-row"
+          onClick={onEditAgent}
+          type="button"
+        >
+          <DocumentIcon size={18} />
+          <span>Agent instructions</span>
+          <ChevronRight className="h-4 w-4" strokeWidth={2.4} />
+        </button>
       ) : null}
-      {hasInfoFields || showInstructionBlock ? (
-        <ProfileSectionGroup testId="user-profile-info-section" title="Info">
-          {showInstructionBlock ? (
-            <ProfileIngressRow
-              grouped
-              icon={MessageSquare}
-              label="Agent instructions"
-              onClick={onEditAgent}
-              testId="user-profile-agent-instruction-row"
+      {facts.length > 0 ? (
+        <dl className="pp-facts" data-testid="user-profile-info-section">
+          {facts.map((field) => (
+            <ProfileFact
+              field={field}
+              key={field.testId ?? field.label}
+              onToggleStartOnLaunch={onToggleStartOnLaunch}
+              startOnLaunchEnabled={startOnLaunchEnabled}
+              startOnLaunchPending={startOnLaunchPending}
             />
-          ) : null}
-          <ProfileFieldRows fields={infoFields} />
-        </ProfileSectionGroup>
+          ))}
+        </dl>
       ) : null}
       <UserProfileAgentManagementRows
         archiveActions={archiveActions}
@@ -326,368 +274,97 @@ export function ProfileInfoTabContent({
   );
 }
 
-function ProfileLiveActivityEmbed({
-  activeTurns,
-  activityAgent,
-  channelIdToName,
-  feedScope,
-  onOpenActivity,
+/** One labelled fact: its name, its value, and a copy button when copyable. */
+function ProfileFact({
+  field,
+  onToggleStartOnLaunch,
+  startOnLaunchEnabled,
+  startOnLaunchPending,
 }: {
-  activeTurns: ActiveTurnSummary[];
-  activityAgent: ProfileActivityAgent;
-  channelIdToName: Record<string, string>;
-  feedScope: ProfileActivityFeedScope;
-  onOpenActivity: (channelId?: string | null) => void;
+  field: ProfileField;
+  onToggleStartOnLaunch?: () => void;
+  startOnLaunchEnabled?: boolean;
+  startOnLaunchPending: boolean;
 }) {
-  const [carouselApi, setCarouselApi] = React.useState<CarouselApi>();
-  const [selectedChannelId, setSelectedChannelId] = React.useState<
-    string | null
-  >(null);
-  const [mountedChannelIds, setMountedChannelIds] = React.useState<Set<string>>(
-    () => new Set(),
-  );
+  const { copied, copy } = useCopyFeedback({
+    label: field.label,
+    value: field.copyValue ?? "",
+  });
 
-  const slides = React.useMemo(() => {
-    const channelIds = feedScope.isLive
-      ? activeTurns.map((turn) => turn.channelId)
-      : feedScope.channelIds;
-    return [...new Set(channelIds)];
-  }, [activeTurns, feedScope.channelIds, feedScope.isLive]);
-
-  const activeChannelId = resolveActivityChannelId(
-    slides,
-    selectedChannelId,
-    feedScope.preferredChannelId,
-  );
-  const selectedIndex = activeChannelId ? slides.indexOf(activeChannelId) : 0;
-
-  React.useEffect(() => {
-    if (!carouselApi || !activeChannelId) {
-      return;
-    }
-
-    const syncSelectedChannel = () => {
-      setSelectedChannelId(slides[carouselApi.selectedScrollSnap()] ?? null);
-    };
-
-    carouselApi.on("select", syncSelectedChannel);
-    carouselApi.on("reInit", syncSelectedChannel);
-
-    return () => {
-      carouselApi.off("select", syncSelectedChannel);
-      carouselApi.off("reInit", syncSelectedChannel);
-    };
-  }, [activeChannelId, carouselApi, slides]);
-
-  React.useEffect(() => {
-    if (!carouselApi || !activeChannelId) {
-      return;
-    }
-
-    const targetIndex = slides.indexOf(activeChannelId);
-    if (targetIndex >= 0 && carouselApi.selectedScrollSnap() !== targetIndex) {
-      carouselApi.scrollTo(targetIndex, true);
-    }
-    setSelectedChannelId(activeChannelId);
-  }, [activeChannelId, carouselApi, slides]);
-
-  React.useEffect(() => {
-    if (!activeChannelId) {
-      return;
-    }
-
-    setMountedChannelIds((current) => {
-      if (current.has(activeChannelId)) {
-        return current;
-      }
-      const next = new Set(current);
-      next.add(activeChannelId);
-      return next;
-    });
-  }, [activeChannelId]);
-
-  const selectedTurn = feedScope.isLive
-    ? (activeTurns.find((turn) => turn.channelId === activeChannelId) ??
-      activeTurns[0] ??
-      null)
-    : null;
-  const activeChannelName = activeChannelId
-    ? (channelIdToName[activeChannelId] ?? activeChannelId)
-    : null;
-  const lastLiveAt =
-    (activeChannelId
-      ? feedScope.latestActivityAtByChannel[activeChannelId]
-      : undefined) ??
-    selectedTurn?.anchorAt ??
-    null;
-  const emptyState = feedScope.isLive ? "loading" : "idle";
-  const emptyDescription = "Live activity will appear here.";
-  const openSelectedActivity = React.useCallback(() => {
-    onOpenActivity(activeChannelId);
-  }, [activeChannelId, onOpenActivity]);
-
-  const handleDotSelect = React.useCallback(
-    (index: number) => {
-      const targetIndex =
-        slides.length === 2 && index === selectedIndex
-          ? (selectedIndex + 1) % slides.length
-          : index;
-      carouselApi?.scrollTo(targetIndex);
-    },
-    [carouselApi, selectedIndex, slides.length],
-  );
-
-  if (slides.length === 0) {
+  if (field.label === "Start on launch") {
+    const enabled = startOnLaunchEnabled ?? field.displayValue === "Yes";
+    const canToggle = onToggleStartOnLaunch !== undefined;
     return (
-      <section
-        aria-label={`Open activity feed. Last live ${formatLastLiveLabel(lastLiveAt, Date.now())}.`}
-        className="relative flex h-56 cursor-pointer flex-col overflow-hidden rounded-2xl border bg-background text-left shadow-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        data-testid={`user-profile-live-activity-${activityAgent.pubkey}`}
-      >
-        <button
-          aria-label={`Open activity feed. Last live ${formatLastLiveLabel(lastLiveAt, Date.now())}.`}
-          className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={openSelectedActivity}
-          type="button"
-        />
-        <LiveActivityOpenButton
-          activeChannelId={activeChannelId}
-          lastLiveAt={lastLiveAt}
-          onOpenActivity={onOpenActivity}
-        />
-        <ManagedAgentSessionPanel
-          agent={activityAgent}
-          autoTail={true}
-          channelId={activeChannelId}
-          className="relative z-0 min-h-0 flex-1 border-0 bg-transparent px-4 text-xs shadow-none **:data-message-id:pointer-events-none"
-          emptyDescription={emptyDescription}
-          emptyState={emptyState}
-          panelPadding={false}
-          rawLayout="responsive"
-          showHeader={false}
-          showRaw={false}
-          transcriptContentClassName="py-4"
-          transcriptVariant="compactPreview"
-        />
-        <div className="pointer-events-none absolute inset-0 z-20">
-          <div className="absolute inset-x-0 bottom-0 flex flex-col items-start bg-linear-to-t from-background via-background/90 to-transparent px-3 pb-3 pt-24">
-            <div className="min-w-0">
-              <span className="block text-sm font-semibold text-muted-foreground">
-                Latest Activity
-              </span>
-            </div>
+      <div className="pp-fact" data-testid={`${field.testId}-fact`}>
+        <dt>{field.label}</dt>
+        <dd>
+          <div
+            aria-checked={enabled}
+            aria-disabled={!canToggle || startOnLaunchPending}
+            aria-label={field.label}
+            className="pp-fact-switch"
+            data-testid={field.testId}
+            onClick={
+              canToggle && !startOnLaunchPending
+                ? onToggleStartOnLaunch
+                : undefined
+            }
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              if (canToggle && !startOnLaunchPending) onToggleStartOnLaunch?.();
+            }}
+            role="switch"
+            tabIndex={canToggle ? 0 : -1}
+          >
+            <Switch
+              aria-hidden="true"
+              checked={enabled}
+              data-testid={`${field.testId}-toggle`}
+              disabled={!canToggle || startOnLaunchPending}
+              tabIndex={-1}
+            />
+            <span>{enabled ? "On" : "Off"}</span>
           </div>
-        </div>
-      </section>
+        </dd>
+      </div>
     );
   }
 
   return (
-    <div>
-      <section
-        aria-label={`Open activity feed. Last live ${formatLastLiveLabel(lastLiveAt, Date.now())}.`}
-        className="relative flex h-56 cursor-pointer flex-col overflow-hidden rounded-2xl border bg-background text-left shadow-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        data-testid={`user-profile-live-activity-${activityAgent.pubkey}`}
-      >
-        <button
-          aria-label={`Open activity feed. Last live ${formatLastLiveLabel(lastLiveAt, Date.now())}.`}
-          className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={openSelectedActivity}
-          type="button"
-        />
-        <LiveActivityOpenButton
-          activeChannelId={activeChannelId}
-          lastLiveAt={lastLiveAt}
-          onOpenActivity={onOpenActivity}
-        />
-        <Carousel
-          className="relative z-0 flex min-h-0 flex-1 flex-col"
-          opts={{
-            align: "start",
-            containScroll: "trimSnaps",
-            dragFree: false,
-            watchDrag: false,
-          }}
-          setApi={setCarouselApi}
+    <div className="pp-fact" data-testid={field.testId}>
+      <dt>{field.label}</dt>
+      <dd title={field.displayValue}>
+        <span
+          className="pp-fact-value"
+          data-mono={field.label === "Public key" ? "true" : undefined}
         >
-          <CarouselContent className="ml-0 h-full flex-1">
-            {slides.map((channelId) => {
-              const isMounted = mountedChannelIds.has(channelId);
-
-              return (
-                <CarouselItem
-                  className="h-full basis-full pl-0"
-                  data-mounted={isMounted ? "true" : "false"}
-                  data-testid={`user-profile-activity-slide-${channelId}`}
-                  key={channelId}
-                >
-                  {isMounted ? (
-                    <ManagedAgentSessionPanel
-                      agent={activityAgent}
-                      autoTail={true}
-                      channelId={channelId}
-                      className="h-full min-h-0 border-0 bg-transparent px-4 text-xs shadow-none **:data-message-id:pointer-events-none"
-                      emptyDescription={emptyDescription}
-                      emptyState={emptyState}
-                      panelPadding={false}
-                      rawLayout="responsive"
-                      showHeader={false}
-                      showRaw={false}
-                      transcriptContentClassName="py-4"
-                      transcriptVariant="compactPreview"
-                    />
-                  ) : (
-                    <div aria-hidden="true" className="h-full" />
-                  )}
-                </CarouselItem>
-              );
-            })}
-          </CarouselContent>
-        </Carousel>
-        <div className="pointer-events-none absolute inset-0 z-20">
-          <div className="absolute inset-x-0 bottom-0 flex flex-col items-start bg-linear-to-t from-background via-background/80 to-transparent px-3 pb-3 pt-16">
-            <div className="min-w-0">
-              <span className="block text-xs font-semibold text-muted-foreground">
-                Latest Activity
-              </span>
-              {activeChannelName ? (
-                <span
-                  className="block truncate text-xs font-medium text-muted-foreground/75"
-                  data-testid="user-profile-activity-channel-label"
-                  title={`#${activeChannelName}`}
-                >
-                  #{activeChannelName}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-      <ActivityCarouselDots
-        channelIdToName={channelIdToName}
-        onSelect={handleDotSelect}
-        selectedIndex={selectedIndex}
-        slides={slides}
-      />
-    </div>
-  );
-}
-
-function ActivityCarouselDots({
-  channelIdToName,
-  onSelect,
-  selectedIndex,
-  slides,
-}: {
-  channelIdToName: Record<string, string>;
-  onSelect: (index: number) => void;
-  selectedIndex: number;
-  slides: string[];
-}) {
-  if (slides.length <= 1) {
-    return null;
-  }
-
-  return (
-    <div
-      aria-label="Choose active channel feed"
-      className="mt-2 flex items-center justify-center gap-1.5"
-      role="tablist"
-    >
-      {slides.map((channelId, index) => {
-        const isSelected = index === selectedIndex;
-        const channelName = channelIdToName[channelId] ?? channelId;
-
-        return (
+          {field.displayNode ?? field.displayValue}
+        </span>
+        {field.trailingNode}
+        {field.copyValue ? (
           <button
-            aria-label={`Show #${channelName} activity`}
-            aria-selected={isSelected}
-            className="group relative flex items-center justify-center before:absolute before:-inset-2 before:content-['']"
-            data-testid={`user-profile-activity-dot-${channelId}`}
-            key={channelId}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(index);
-            }}
-            role="tab"
+            aria-label={`Copy ${field.label}`}
+            className="pp-copy"
+            data-copied={copied ? "true" : "false"}
+            data-testid={field.testId ? `${field.testId}-copy` : undefined}
+            onClick={() => void copy()}
+            title={`Copy ${field.label}`}
             type="button"
           >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "relative z-10 block rounded-full bg-foreground transition-all",
-                isSelected
-                  ? "h-1 w-4"
-                  : "h-1 w-1 opacity-30 group-hover:opacity-60",
-              )}
-            />
+            {copied ? (
+              <CheckIcon size={13} strokeWidth={2.6} />
+            ) : (
+              <CopyGlyphIcon size={13} strokeWidth={2.2} />
+            )}
           </button>
-        );
-      })}
+        ) : null}
+      </dd>
     </div>
   );
 }
 
-function LiveActivityOpenButton({
-  activeChannelId,
-  lastLiveAt,
-  onOpenActivity,
-}: {
-  activeChannelId: string | null;
-  lastLiveAt: number | null;
-  onOpenActivity: (channelId?: string | null) => void;
-}) {
-  const now = useNow(15_000);
-  const label = formatLastLiveLabel(lastLiveAt, now);
-
-  return (
-    <Button
-      aria-label={`Open full activity. Last live ${label}.`}
-      className="absolute right-3 top-3 z-40 rounded-full bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpenActivity(activeChannelId);
-      }}
-      size="xs"
-      title={`Last live ${label}`}
-      type="button"
-    >
-      {label}
-    </Button>
-  );
-}
-
-function formatLastLiveLabel(timestamp: number | null, now: number): string {
-  if (timestamp === null) {
-    return "No activity yet";
-  }
-
-  const elapsedMs = Math.max(0, now - timestamp);
-  const totalSeconds = Math.floor(elapsedMs / 1000);
-  if (totalSeconds < 60) {
-    return "Just now";
-  }
-
-  const totalMinutes = Math.floor(totalSeconds / 60);
-  if (totalMinutes < 60) {
-    return `${totalMinutes}m ago`;
-  }
-
-  const totalHours = Math.floor(totalMinutes / 60);
-  if (totalHours < 24) {
-    return `${totalHours}h ago`;
-  }
-
-  const totalDays = Math.floor(totalHours / 24);
-  if (totalDays < 7) {
-    return `${totalDays}d ago`;
-  }
-
-  const totalWeeks = Math.floor(totalDays / 7);
-  return `${totalWeeks}w ago`;
-}
-
-function ArchiveStatusTooltip() {
+export function ArchiveStatusTooltip() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>

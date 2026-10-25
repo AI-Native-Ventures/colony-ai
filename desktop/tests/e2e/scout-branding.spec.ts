@@ -34,7 +34,7 @@ for (const viewport of [
     await openR17ConnectionSetup(page, {
       runtimes: [r17Runtime("codex", "available", { status: "logged_in" })],
     });
-    await page.getByRole("button", { name: /^Connect / }).click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await capture(page, `connected-${viewport.width}`);
     await page
@@ -85,10 +85,6 @@ for (const viewport of [
       .getByText("Scout", { exact: true })
       .click();
     await expect(page.getByTestId("agent-profile")).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Agent profile sections" })
-      .getByRole("button", { name: "Instructions" })
-      .click();
     const instructions = page.getByTestId("agent-instructions");
     await expect(instructions).toContainText("Chief of Staff");
     const editor = instructions.locator("textarea");
@@ -130,9 +126,10 @@ for (const viewport of [
     await page.getByTestId("message-input").fill("Hi @");
     const picker = page.getByTestId("mention-autocomplete");
     await expect(picker).toBeVisible();
-    await expect(picker.getByText("Scout", { exact: true })).toBeVisible();
+    // The row's name carries an "agent" pill, so find rows by their title.
+    await expect(picker.getByTitle("Scout", { exact: true })).toBeVisible();
     for (const name of ["Fizz", "Honey", "Pollen"])
-      await expect(picker.getByText(name, { exact: true })).toHaveCount(0);
+      await expect(picker.getByTitle(name, { exact: true })).toHaveCount(0);
     expect((await records(page)).map((agent) => agent.pubkey)).toEqual(
       expect.arrayContaining([scout, ...legacyKeys]),
     );

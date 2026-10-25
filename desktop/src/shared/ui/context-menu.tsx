@@ -1,9 +1,12 @@
 import * as React from "react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
-import { Check, ChevronRight, Circle } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "@/shared/ui/colonyIcons";
 
 import { cn } from "@/shared/lib/cn";
 import {
+  MENU_CONTENT_CLASS,
+  MENU_ITEM_CLASS,
+  MENU_SEPARATOR_CLASS,
   POPOVER_RADIX_MOTION_CLASS,
   POPOVER_RADIX_SIDE_MOTION_CLASS,
   POPOVER_SHADOW_STYLE,
@@ -31,14 +34,19 @@ const ContextMenuSubTrigger = React.forwardRef<
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "flex min-h-9 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-2 pr-4 text-sm outline-hidden focus:bg-muted/50 data-[state=open]:bg-muted/50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+      MENU_ITEM_CLASS,
+      "[&_svg]:pointer-events-none",
       inset && "pl-8",
       className,
     )}
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto" />
+    <ChevronRightIcon
+      className="ml-auto text-colony-muted"
+      size={15}
+      strokeWidth={2.4}
+    />
   </ContextMenuPrimitive.SubTrigger>
 ));
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
@@ -50,7 +58,8 @@ const ContextMenuSubContent = React.forwardRef<
   <ContextMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-xl p-1",
+      "z-50 origin-(--radix-context-menu-content-transform-origin) overflow-hidden",
+      MENU_CONTENT_CLASS,
       POPOVER_RADIX_MOTION_CLASS,
       POPOVER_RADIX_SIDE_MOTION_CLASS,
       POPOVER_SURFACE_CLASS,
@@ -71,7 +80,8 @@ const ContextMenuContent = React.forwardRef<
     <ContextMenuPrimitive.Content
       ref={ref}
       className={cn(
-        "z-50 max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto overflow-x-hidden rounded-xl p-1",
+        "z-50 max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto overflow-x-hidden",
+        MENU_CONTENT_CLASS,
         "origin-(--radix-context-menu-content-transform-origin)",
         POPOVER_RADIX_MOTION_CLASS,
         POPOVER_RADIX_SIDE_MOTION_CLASS,
@@ -94,11 +104,7 @@ const ContextMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-2 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(MENU_ITEM_CLASS, inset && "pl-8", className)}
     {...props}
   />
 ));
@@ -111,18 +117,17 @@ const ContextMenuCheckboxItem = React.forwardRef<
   <ContextMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center rounded-lg py-2 pl-8 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      MENU_ITEM_CLASS,
+      "data-[state=checked]:font-extrabold",
       className,
     )}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <ContextMenuPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </ContextMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
+    <span className="flex-1">{children}</span>
+    <ContextMenuPrimitive.ItemIndicator>
+      <CheckIcon className="text-colony-accent" size={16} strokeWidth={2.8} />
+    </ContextMenuPrimitive.ItemIndicator>
   </ContextMenuPrimitive.CheckboxItem>
 ));
 ContextMenuCheckboxItem.displayName =
@@ -135,17 +140,16 @@ const ContextMenuRadioItem = React.forwardRef<
   <ContextMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex min-h-9 cursor-default select-none items-center rounded-lg py-2 pl-8 pr-4 text-sm outline-hidden transition-colors focus:bg-muted/50 focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      MENU_ITEM_CLASS,
+      "data-[state=checked]:font-extrabold",
       className,
     )}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <ContextMenuPrimitive.ItemIndicator>
-        <Circle className="h-2 w-2 fill-current" />
-      </ContextMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
+    <span className="flex-1">{children}</span>
+    <ContextMenuPrimitive.ItemIndicator>
+      <CheckIcon className="text-colony-accent" size={16} strokeWidth={2.8} />
+    </ContextMenuPrimitive.ItemIndicator>
   </ContextMenuPrimitive.RadioItem>
 ));
 ContextMenuRadioItem.displayName = ContextMenuPrimitive.RadioItem.displayName;
@@ -159,7 +163,7 @@ const ContextMenuLabel = React.forwardRef<
   <ContextMenuPrimitive.Label
     ref={ref}
     className={cn(
-      "px-2 py-1.5 text-sm font-semibold",
+      "px-3 py-1.5 text-2xs font-extrabold uppercase tracking-[0.09em] text-colony-muted",
       inset && "pl-8",
       className,
     )}
@@ -174,7 +178,7 @@ const ContextMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    className={cn(MENU_SEPARATOR_CLASS, className)}
     {...props}
   />
 ));

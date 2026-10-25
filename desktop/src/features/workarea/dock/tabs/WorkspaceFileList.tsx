@@ -8,10 +8,8 @@ import {
   type WorkspaceEntry,
   type WorkspaceListing,
 } from "../../workspaceFiles";
-import {
-  setWorkAreaFileReference,
-  showWorkAreaFileList,
-} from "../workAreaFilesStore";
+import { showWorkAreaFileList } from "../workAreaFilesStore";
+import { openWorkAreaFile } from "../workAreaStore";
 import { useWorkspaceAgent } from "./useWorkspaceAgent";
 
 function formatSize(bytes: number): string {
@@ -84,11 +82,7 @@ export function WorkspaceFileList({
       return;
     }
     if (agentPubkey && relayOrigin) {
-      setWorkAreaFileReference(channelId, {
-        agentPubkey,
-        expectedRelayUrl: relayOrigin,
-        path: entry.path,
-      });
+      openWorkAreaFile(channelId, { agentPubkey, path: entry.path });
     }
   };
 
@@ -110,9 +104,12 @@ export function WorkspaceFileList({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="work-area-files">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <nav aria-label="Folder path" className="min-w-0 flex-1 text-sm">
+    <div className="colony-doc-reader" data-testid="work-area-files">
+      <div className="colony-doc-head">
+        <nav
+          aria-label="Folder path"
+          className="colony-doc-path min-w-0 flex-1"
+        >
           <ol className="flex flex-wrap items-center gap-x-1">
             {["Workspace", ...segments].map((label, index) => {
               const last = index === segments.length;
@@ -126,7 +123,7 @@ export function WorkspaceFileList({
                     </span>
                   ) : null}
                   {last ? (
-                    <span aria-current="page" className="font-medium">
+                    <span aria-current="page" className="text-foreground">
                       {label}
                     </span>
                   ) : (
@@ -155,7 +152,7 @@ export function WorkspaceFileList({
         </Button>
       </div>
       <div
-        className="min-h-0 flex-1 overflow-auto p-2 focus:outline-none"
+        className="min-h-0 flex-1 overflow-auto px-5 py-3 focus:outline-none"
         ref={listRef}
         tabIndex={-1}
       >

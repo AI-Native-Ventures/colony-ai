@@ -218,6 +218,12 @@ pub struct CreateManagedAgentRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateManagedAgentRequest {
     pub pubkey: String,
+    /// Absent = don't touch. `"id"` = point this agent at another active
+    /// definition. The app uses it to make an edit to a definition shared
+    /// with other agents copy-on-write: it clones the definition, relinks
+    /// this agent to the clone, and no other agent changes.
+    #[serde(default)]
+    pub persona_id: Option<String>,
     /// Absent = don't touch. Present = rename the agent.
     #[serde(default)]
     pub name: Option<String>,

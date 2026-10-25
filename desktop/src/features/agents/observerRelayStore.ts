@@ -11,10 +11,6 @@ import {
   parseAgentManagementRequest,
   type AgentManagementRequest,
 } from "./agentManagement";
-import {
-  parseProjectChannelRequest,
-  type ProjectChannelRequest,
-} from "@/features/projects/projectChannelRequest";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useQueryClient } from "@tanstack/react-query";
 import { agentConfigSurfaceQueryKey } from "@/features/agents/hooks";
@@ -137,9 +133,6 @@ const controlResultListeners = new Map<
 
 const agentManagementListeners = new Set<
   (agentPubkey: string, request: AgentManagementRequest) => void
->();
-const projectChannelRequestListeners = new Set<
-  (agentPubkey: string, request: ProjectChannelRequest) => void
 >();
 
 // Normalized pubkeys of agents we are actively managing. Only events whose
@@ -513,12 +506,6 @@ function processLiveObserverEvents(
         listener(agentPubkey, managementRequest);
       }
     }
-    const projectChannelRequest = parseProjectChannelRequest(parsed.payload);
-    if (projectChannelRequest) {
-      for (const listener of projectChannelRequestListeners) {
-        listener(agentPubkey, projectChannelRequest);
-      }
-    }
     if (parsed.kind === "session_config_captured") {
       void putAgentSessionConfig(agentPubkey, parsed.payload);
       onSessionConfigCaptured?.(agentPubkey);
@@ -697,15 +684,6 @@ export function subscribeAgentManagementRequests(
   agentManagementListeners.add(listener);
   return () => {
     agentManagementListeners.delete(listener);
-  };
-}
-
-export function subscribeProjectChannelRequests(
-  listener: (agentPubkey: string, request: ProjectChannelRequest) => void,
-) {
-  projectChannelRequestListeners.add(listener);
-  return () => {
-    projectChannelRequestListeners.delete(listener);
   };
 }
 
@@ -941,7 +919,6 @@ export function resetAgentObserverStore() {
   pendingUnknownAgentFrames.length = 0;
   latestLiveSessionByAgentChannel.clear();
   agentManagementListeners.clear();
-  projectChannelRequestListeners.clear();
   onSessionConfigCaptured = null;
   connectionState = "idle";
   errorMessage = null;

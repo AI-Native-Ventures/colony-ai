@@ -84,34 +84,34 @@ test("channel browser sorts alphabetically or by member count", async ({
   const rows = page.locator('[data-testid^="browse-channel-"]');
 
   await expect(rows).toHaveText([
-    /#agents/,
-    /#all-replies/,
-    /#buzz/,
-    /#deep-history/,
-    /#design/,
-    /#engineering/,
-    /#general/,
-    /#random/,
-    /#sales/,
-    /#secret-projects/,
-    /#welcome-everyone/,
+    /^agents/,
+    /^all-replies/,
+    /^buzz/,
+    /^deep-history/,
+    /^design/,
+    /^engineering/,
+    /^general/,
+    /^random/,
+    /^sales/,
+    /^secret-projects/,
+    /^welcome-everyone/,
   ]);
 
   await page.getByTestId("channel-browser-sort").click();
   await page.getByTestId("channel-browser-sort-members").click();
 
   await expect(rows).toHaveText([
-    /#general/,
-    /#agents/,
-    /#engineering/,
-    /#random/,
-    /#all-replies/,
-    /#deep-history/,
-    /#design/,
-    /#sales/,
-    /#secret-projects/,
-    /#buzz/,
-    /#welcome-everyone/,
+    /^general/,
+    /^agents/,
+    /^engineering/,
+    /^random/,
+    /^all-replies/,
+    /^deep-history/,
+    /^design/,
+    /^sales/,
+    /^secret-projects/,
+    /^buzz/,
+    /^welcome-everyone/,
   ]);
   await expect(page.getByTestId("channel-browser-sort")).toHaveAttribute(
     "aria-label",
@@ -129,17 +129,17 @@ test("channel browser sorts by recent activity", async ({ page }) => {
   await page.getByTestId("channel-browser-sort-recent").click();
 
   await expect(rows).toHaveText([
-    /#all-replies/,
-    /#deep-history/,
-    /#general/,
-    /#agents/,
-    /#sales/,
-    /#engineering/,
-    /#design/,
-    /#buzz/,
-    /#random/,
-    /#secret-projects/,
-    /#welcome-everyone/,
+    /^all-replies/,
+    /^deep-history/,
+    /^general/,
+    /^agents/,
+    /^sales/,
+    /^engineering/,
+    /^design/,
+    /^buzz/,
+    /^random/,
+    /^secret-projects/,
+    /^welcome-everyone/,
   ]);
   await expect(page.getByTestId("channel-browser-sort")).toHaveAttribute(
     "aria-label",
@@ -251,7 +251,7 @@ test("custom section add action stays out of the pointer header and creates by k
   );
   await expect(addButton).toHaveAccessibleName("Add channel to Projects");
   await page.getByTestId(`section-title-${CUSTOM_SECTION.id}`).hover();
-  await expect(addButton).toHaveCSS("opacity", "0");
+  await expect(addButton).toHaveCSS("opacity", "1");
   await addButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
@@ -522,8 +522,9 @@ test("channel browser does not show DM or private channels", async ({
   await expect(page.getByTestId("browse-channel-alice-tyler")).toHaveCount(0);
   await expect(page.getByTestId("browse-channel-bob-tyler")).toHaveCount(0);
 
-  // Private forum should not appear
+  // Forum channels are no longer part of the app, private or not
   await expect(page.getByTestId("browse-channel-announcements")).toHaveCount(0);
+  await expect(page.getByTestId("browse-channel-watercooler")).toHaveCount(0);
 });
 
 test("channel browser closes on escape", async ({ page }) => {

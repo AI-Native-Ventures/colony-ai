@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import type { ThreadPanelLayoutProps } from "@/features/channels/lib/threadPanelLayout";
 import {
@@ -16,10 +17,12 @@ import {
   AuxiliaryPanelHeaderGroup,
   AuxiliaryPanelTitle,
 } from "@/shared/layout/AuxiliaryPanel";
+import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 /** Shared title row so the skeleton and loaded panel keep the same chrome. */
 export function MessageThreadPanelHeader({
+  headerChannelPrivate = false,
   headerLeading,
   headerTitle = "Thread",
   headerTitleAriaLabel,
@@ -30,6 +33,7 @@ export function MessageThreadPanelHeader({
   onHeaderTitleClick,
   showBackButton,
 }: {
+  headerChannelPrivate?: boolean;
   headerLeading?: React.ReactNode;
   headerTitle?: string;
   headerTitleAriaLabel?: string;
@@ -68,19 +72,49 @@ export function MessageThreadPanelHeader({
             : undefined
         }
       >
-        <AuxiliaryPanelTitle
-          className={
-            headerTitleSuffix ? "colony-thread-panel-title" : undefined
-          }
-          data-testid="message-thread-title"
-        >
-          <span>{title}</span>
-          {headerTitleSuffix ? (
-            <span className="colony-thread-panel-title-suffix">
-              {headerTitleSuffix}
-            </span>
-          ) : null}
-        </AuxiliaryPanelTitle>
+        {isFocusMode && headerTitleSuffix ? (
+          <AuxiliaryPanelTitle
+            className="c3c-thread-breadcrumb"
+            data-testid="message-thread-title"
+          >
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center gap-[calc(7*var(--colony-px))] font-bold text-colony-fg-secondary hover:text-colony-fg"
+                data-testid="message-thread-open-channel"
+                onClick={onClose}
+                type="button"
+              >
+                {headerChannelPrivate ? (
+                  <PrivateChannelIcon aria-hidden size={15} />
+                ) : (
+                  <HashIcon aria-hidden size={15} />
+                )}
+                {headerTitleSuffix.replace(/^#\s*/, "")}
+              </button>
+              <ChevronRight
+                aria-hidden
+                className="size-[calc(14*var(--colony-px))] text-colony-muted"
+              />
+              <span aria-current="page" className="font-extrabold">
+                {headerTitle}
+              </span>
+            </nav>
+          </AuxiliaryPanelTitle>
+        ) : (
+          <AuxiliaryPanelTitle
+            className={
+              headerTitleSuffix ? "colony-thread-panel-title" : undefined
+            }
+            data-testid="message-thread-title"
+          >
+            <span>{title}</span>
+            {headerTitleSuffix ? (
+              <span className="colony-thread-panel-title-suffix">
+                {headerTitleSuffix}
+              </span>
+            ) : null}
+          </AuxiliaryPanelTitle>
+        )}
       </AuxiliaryPanelHeaderGroup>
       {headerLeading ? (
         <AuxiliaryPanelHeaderActions>
@@ -173,6 +207,7 @@ export function MessageThreadPanelSkeleton({
   canResetWidth,
   columnMaxWidthPx,
   enterMotion,
+  headerChannelPrivate,
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
@@ -240,6 +275,7 @@ export function MessageThreadPanelSkeleton({
           headerLeading={headerLeading}
           headerTitle={headerTitle}
           headerTitleAriaLabel={headerTitleAriaLabel}
+          headerChannelPrivate={headerChannelPrivate}
           headerTitleSuffix={headerTitleSuffix}
           isFocusMode={isFocusMode}
           isSinglePanelView={isSinglePanelView}

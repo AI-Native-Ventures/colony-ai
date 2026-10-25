@@ -2,12 +2,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Link2,
   MoreHorizontal,
   Plus,
-  Settings2,
-  LogOut,
-  Ticket,
   WifiOff,
 } from "lucide-react";
 import * as React from "react";
@@ -38,6 +34,7 @@ import {
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { useActiveCommunityIcon } from "@/features/communities/useCommunityIcons";
 import { EditCommunityDialog } from "./EditCommunityDialog";
+import "@/features/profile/ui/ProfileMenus.css";
 
 // Community actions is a responsive navigation submenu, not an informational
 // disclosure. Keep its short hover dwell explicit rather than inheriting the
@@ -50,7 +47,7 @@ const CONNECTION_STATE_LABEL: Record<ConnectionState, string> = {
   connecting: "Connecting…",
   connected: "Connected",
   reconnecting: "Reconnecting to relay…",
-  stalled: "Connection lost — relay is not responding",
+  stalled: "Connection lost, relay is not responding",
   disconnected: "Disconnected from relay",
 };
 
@@ -271,6 +268,44 @@ export function CommunitySwitcher({
     </>
   );
 
+  const profileMenuTrigger = (
+    <>
+      {degraded ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              aria-hidden="false"
+              className="pm-community-mark"
+              data-degraded="true"
+              data-testid="relay-connection-warning"
+              role="img"
+            >
+              <WifiOff className="h-4 w-4" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{connectionLabel}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span aria-hidden="true" className="pm-community-mark">
+          {activeIcon ? (
+            <img alt="" draggable={false} src={activeIcon} />
+          ) : (
+            (activeCommunity?.name ?? "C").slice(0, 1).toUpperCase()
+          )}
+        </span>
+      )}
+      <span className="pm-community-copy">
+        <span className="pm-community-name">
+          {activeCommunity?.name ?? "No community"}
+        </span>
+        <span className="pm-community-state" data-degraded={degraded}>
+          {connectionLabel}
+        </span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.4} />
+    </>
+  );
+
   const profileMenuPopover =
     variant === "profile-menu" ? (
       <Popover open={dropdownOpen} onOpenChange={handleProfileMenuOpenChange}>
@@ -280,10 +315,10 @@ export function CommunitySwitcher({
             aria-haspopup="menu"
             aria-label={
               degraded
-                ? `${activeCommunity?.name ?? "Community"} — ${connectionLabel}`
+                ? `${activeCommunity?.name ?? "Community"} - ${connectionLabel}`
                 : "Community actions"
             }
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-popover-foreground outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none data-[state=open]:bg-muted/50 data-[state=open]:text-popover-foreground"
+            className="pm-community"
             data-testid="community-switcher"
             onClick={handleProfileMenuTriggerClick}
             onMouseEnter={() => scheduleProfileMenu(true)}
@@ -291,17 +326,18 @@ export function CommunitySwitcher({
             role="menuitem"
             type="button"
           >
-            {triggerContent}
+            {profileMenuTrigger}
           </button>
         </PopoverTrigger>
         <PopoverContent
           align="end"
-          className="w-60 p-1"
+          alignOffset={-63}
+          className="pm-flyout"
           onMouseEnter={() => scheduleProfileMenu(true)}
           onMouseLeave={() => scheduleProfileMenu(false)}
           onOpenAutoFocus={(event) => event.preventDefault()}
           side="right"
-          sideOffset={0}
+          sideOffset={28}
         >
           <div
             aria-label="Community actions"
@@ -311,7 +347,7 @@ export function CommunitySwitcher({
             {activeCommunity ? (
               <>
                 <button
-                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none"
+                  className="pm-flyout-row"
                   onClick={() => {
                     setDropdownOpen(false);
                     void writeTextToClipboard(activeCommunity.relayUrl);
@@ -319,12 +355,11 @@ export function CommunitySwitcher({
                   role="menuitem"
                   type="button"
                 >
-                  <Link2 className="h-4 w-4" />
                   <span>Copy community URL</span>
                 </button>
                 {canInvite && onInvite ? (
                   <button
-                    className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none"
+                    className="pm-flyout-row"
                     onClick={() => {
                       setDropdownOpen(false);
                       onInvite();
@@ -332,12 +367,11 @@ export function CommunitySwitcher({
                     role="menuitem"
                     type="button"
                   >
-                    <Ticket className="h-4 w-4" />
                     <span>Invite to community</span>
                   </button>
                 ) : null}
                 <button
-                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none"
+                  className="pm-flyout-row"
                   onClick={() => {
                     setDropdownOpen(false);
                     setEditingCommunity(activeCommunity);
@@ -345,32 +379,28 @@ export function CommunitySwitcher({
                   role="menuitem"
                   type="button"
                 >
-                  <Settings2 className="h-4 w-4" />
                   <span>Community settings</span>
                 </button>
                 <button
-                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-destructive outline-hidden transition-colors hover:bg-destructive/10 focus:bg-destructive/10 focus:outline-none focus-visible:bg-destructive/10 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+                  className="pm-flyout-row"
+                  data-tone="danger"
                   disabled={isLeaving}
                   onClick={() => void handleLeaveCommunity()}
                   role="menuitem"
                   type="button"
                 >
-                  <LogOut className="h-4 w-4" />
                   <span>{isLeaving ? "Leaving…" : "Leave community"}</span>
                 </button>
                 {leaveError ? (
-                  <p
-                    className="px-3 py-1 text-xs text-destructive"
-                    role="alert"
-                  >
+                  <p className="pm-flyout-error" role="alert">
                     {leaveError}
                   </p>
                 ) : null}
-                <hr className="-mx-1 my-1 h-px border-0 bg-muted" />
+                <hr className="pm-flyout-rule" />
               </>
             ) : null}
             <button
-              className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-hidden transition-colors hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:bg-muted/50 focus-visible:outline-none"
+              className="pm-flyout-row"
               onClick={() => {
                 setDropdownOpen(false);
                 onAddCommunity();
@@ -378,7 +408,7 @@ export function CommunitySwitcher({
               role="menuitem"
               type="button"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4" strokeWidth={2.4} />
               <span>Add a community</span>
             </button>
           </div>
@@ -397,7 +427,7 @@ export function CommunitySwitcher({
           <button
             aria-label={
               degraded
-                ? `${activeCommunity?.name ?? "Community"} — ${connectionLabel}`
+                ? `${activeCommunity?.name ?? "Community"} - ${connectionLabel}`
                 : "Switch community"
             }
             className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-xs text-sidebar-foreground/50 outline-hidden transition-colors hover:text-sidebar-foreground focus:outline-none focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
@@ -410,7 +440,7 @@ export function CommunitySwitcher({
           <SidebarMenuButton
             aria-label={
               degraded
-                ? `${activeCommunity?.name ?? "Community"} — ${connectionLabel}`
+                ? `${activeCommunity?.name ?? "Community"} - ${connectionLabel}`
                 : undefined
             }
             className="h-auto gap-2 rounded-xl px-2.5 py-2 data-[state=open]:bg-sidebar-accent"

@@ -1,10 +1,13 @@
-import { Check, CloudOff } from "lucide-react";
-
 import {
   SidebarCompactActionCard,
   type SidebarActionCardSurface,
 } from "@/shared/ui/sidebar-action-card";
-import { Spinner } from "@/shared/ui/spinner";
+import {
+  CheckIcon,
+  ConnectingIcon,
+  RelayOffIcon,
+  WaitingIcon,
+} from "@/shared/ui/colonyIcons";
 
 type SidebarRelayConnectionCardProps = {
   isActionDisabled?: boolean;
@@ -62,10 +65,10 @@ export function SidebarRelayConnectionCompactCard({
 }: SidebarRelayConnectionCardProps) {
   const reconnectTitle = isWaitingOnReconnectHook
     ? "Waiting to reconnect"
-    : "Connecting";
+    : "Reconnecting…";
   const reconnectDescription = isWaitingOnReconnectHook
     ? "Complete any prompts opened by the reconnect helper to continue."
-    : "Reconnecting";
+    : "Your messages will catch up";
 
   return (
     <SidebarCompactActionCard
@@ -86,11 +89,15 @@ export function SidebarRelayConnectionCompactCard({
       }
       icon={
         isConnected ? (
-          <Check aria-hidden="true" className="h-5 w-5" />
+          <span className="colony-notice-check">
+            <CheckIcon size={14} />
+          </span>
+        ) : isWaitingOnReconnectHook ? (
+          <WaitingIcon size={20} />
         ) : isReconnectPending ? (
-          <Spinner aria-hidden="true" className="h-5 w-5 border-2" />
+          <ConnectingIcon className="motion-safe:animate-spin" size={20} />
         ) : (
-          <CloudOff aria-hidden="true" className="h-5 w-5" />
+          <RelayOffIcon size={20} />
         )
       }
       className={className}
@@ -106,7 +113,15 @@ export function SidebarRelayConnectionCompactCard({
             ? reconnectTitle
             : "Can't reach the relay"
       }
-      tone={isConnected ? "success" : "neutral"}
+      tone={
+        isConnected
+          ? "success"
+          : isWaitingOnReconnectHook
+            ? "need"
+            : isReconnectPending
+              ? "accent"
+              : "danger"
+      }
     />
   );
 }

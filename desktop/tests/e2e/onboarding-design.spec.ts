@@ -31,7 +31,7 @@ for (const viewport of [
       page.getByRole("heading", { name: "Let’s get you started." }),
     ).toBeVisible();
     await expect(
-      page.getByText("Chief of Staff", { exact: true }),
+      page.getByText("· Chief of Staff", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Here to help", { exact: true })).toBeVisible();
     await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
@@ -44,9 +44,6 @@ for (const viewport of [
       page.locator('img[src*="starter-team"],img[src*="buzz-wordmark"]'),
     ).toHaveCount(0);
     await expect(page.locator(".scout-ant svg").first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Create account", exact: true }),
-    ).toHaveCSS("line-height", "normal");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-account-${viewport.width}.png`,
@@ -57,21 +54,17 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     await openR17BusinessSetup(page);
-    await expect(page.getByText("Your turn", { exact: true })).toBeVisible();
+    await expect(page.getByText("Here to help", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Let’s get to know your business." }),
+      page.getByRole("heading", { name: "Now, tell me about the business." }),
     ).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-business-${viewport.width}.png`,
     });
-    await page.getByLabel("Business name").focus();
-    await expect(
-      page.getByRole("heading", { name: "What’s your business called?" }),
-    ).toBeVisible();
     await completeR17BusinessSetup(page);
     await expect(
-      page.getByRole("heading", { name: "Let’s connect your first agent." }),
+      page.getByRole("heading", { name: "Choose how I think." }),
     ).toBeVisible();
     await expect(page.getByText("Your turn", { exact: true })).toBeVisible();
     await waitForAnimations(page);
@@ -110,7 +103,7 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
   await completeR17BusinessSetup(page);
   await page.getByTestId("onboarding-mode-own").click();
   const group = page.getByRole("radiogroup", { name: "AI connection" });
-  await expect(group.getByRole("radio")).toHaveCount(2);
+  await expect(group.getByRole("radio")).toHaveCount(3);
   const subscriptions = group.getByRole("radio", {
     name: "Claude Code or Codex",
     exact: true,
@@ -120,18 +113,22 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
     exact: true,
   });
   await expect(subscriptions).toBeChecked();
+  const startFree = group.getByRole("radio", {
+    name: "Start free",
+    exact: true,
+  });
+  // Native radios: the arrows move the choice and wrap around the three cards.
   await subscriptions.focus();
-  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowDown");
   await expect(colonyAgent).toBeChecked();
   await expect(colonyAgent).toBeFocused();
-  await expect(subscriptions).toHaveAttribute("tabindex", "-1");
-  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowDown");
+  await expect(startFree).toBeChecked();
+  await page.keyboard.press("ArrowDown");
   await expect(subscriptions).toBeChecked();
   await expect(subscriptions).toBeFocused();
-  await page.keyboard.press("End");
-  await expect(colonyAgent).toBeChecked();
-  await page.keyboard.press("Home");
-  await expect(subscriptions).toBeChecked();
+  await page.keyboard.press("ArrowUp");
+  await expect(startFree).toBeChecked();
   await colonyAgent.click();
   await expect(colonyAgent).toBeChecked();
   await expect(page.getByTestId("openrouter-connection")).toBeVisible();
@@ -159,12 +156,12 @@ for (const viewport of [
     });
     await expect(
       page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toContainText("Subscription could not be checked");
+    ).toContainText("Installed · signed in");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,
     });
-    await page.getByRole("button", { name: /^Connect / }).click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
     await waitForAnimations(page);
@@ -172,10 +169,10 @@ for (const viewport of [
       path: `${SHOT_DIR}/runtime-testing-${viewport.width}.png`,
     });
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
-    await expect(
-      page.getByText("First reply received", { exact: true }),
-    ).toBeVisible();
-    await expect(page.locator(".reply")).toContainText("Hello Lerato");
+    await expect(page.getByText("Connection verified")).toBeVisible();
+    await expect(page.locator(".c3fr-reply-text")).toContainText(
+      "Hello Lerato",
+    );
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connected-${viewport.width}.png`,
@@ -232,16 +229,13 @@ for (const viewport of [
     ).toHaveCount(0);
     await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
     await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
-    await expect(page.locator(".harness-state")).toHaveText("Included");
-    await expect(page.locator(".harness-picker-copy strong")).toHaveText(
-      "Colony Agent",
-    );
+    // Colony credits show as the board's chip, never as a paid action here.
+    await expect(
+      page.getByTestId("onboarding-colony-agent-card"),
+    ).toContainText("Colony credits · Coming soon");
     await expect(
       page.getByRole("button", { name: "Skip for now", exact: true }),
-    ).toBeEnabled();
-    await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(
-      0,
-    );
+    ).toHaveCount(0);
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-colony-agent-${viewport.width}.png`,
@@ -265,7 +259,7 @@ for (const viewport of [
         },
       },
     });
-    await page.getByRole("button", { name: /^Connect / }).click();
+    await page.getByTestId("onboarding-test-connection").click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();

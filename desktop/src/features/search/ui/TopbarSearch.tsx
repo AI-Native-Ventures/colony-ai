@@ -1,5 +1,12 @@
-import { Search } from "lucide-react";
+import { SearchIcon } from "@/shared/ui/colonyIcons";
 import * as React from "react";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useWorkingChannels } from "@/features/agents/agentWorkingSignal";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { readChannelSectionsStore } from "@/features/sidebar/lib/channelSectionsStorage";
+import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { getMinimumSearchQueryLength } from "@/features/search/hooks";
 import { parseSearchOperators } from "@/features/search/lib/parseSearchOperators";
@@ -23,12 +30,7 @@ import { cn } from "@/shared/lib/cn";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
-import {
-  MENTION_CHIP_BASE_CLASSES,
-  MESSAGE_MARKDOWN_CLASS,
-} from "@/shared/ui/mentionChip";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
 type TopbarSearchProps = {
   channelLabels?: Record<string, string>;
   channels: Channel[];
@@ -48,8 +50,7 @@ type TopbarSearchProps = {
 };
 const MAX_SEARCH_SUGGESTIONS = 4;
 const SEARCH_RESULT_LIMIT = 40;
-const SEARCH_SECTION_TITLE_CLASS =
-  "px-2.5 pb-1.5 pt-2 text-xs font-medium text-muted-foreground/70";
+const SEARCH_SECTION_TITLE_CLASS = "c3s-section";
 const SEARCH_RESULT_SECTION_ORDER = [
   "channels",
   "direct-messages",
@@ -92,6 +93,32 @@ function formatRelativeTime(unixSeconds: number) {
   }).format(new Date(unixSeconds * 1_000));
 }
 
+const SEARCH_CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const SEARCH_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+});
+
+/** "09:12" today, "Yesterday", "Mon" this week, then the date. */
+function formatSearchWhen(unixSeconds: number) {
+  const then = new Date(unixSeconds * 1_000);
+  const now = new Date(Date.now());
+  const startOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDiff = Math.round(
+    (startOfDay(now) - startOfDay(then)) / (24 * 60 * 60 * 1_000),
+  );
+  if (dayDiff <= 0) return SEARCH_CLOCK_FORMATTER.format(then);
+  if (dayDiff === 1) return "Yesterday";
+  if (dayDiff < 7) return SEARCH_WEEKDAY_FORMATTER.format(then);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+  }).format(then);
+}
+
 function getChannelActivityTime(channel: Channel) {
   if (!channel.lastMessageAt) {
     return 0;
@@ -120,7 +147,7 @@ function getChannelDisplayName(
 
 function getChannelPreview(channel: Channel) {
   if (channel.channelType === "dm") {
-    return "";
+    return "Direct message";
   }
 
   if (channel.description.trim()) {
@@ -232,26 +259,19 @@ function getSectionTitle(sectionKey: SearchResultSectionKey) {
   }
 }
 
-function SearchHitContextLine({ label }: { label: SearchHitContextLabel }) {
+function SearchHitContextLine({
+  label,
+  when,
+}: {
+  label: SearchHitContextLabel;
+  when: string;
+}) {
   return (
-    <span
-      className={cn(
-        MESSAGE_MARKDOWN_CLASS,
-        "mt-0 flex min-w-0 items-center gap-1.5 text-2xs font-medium leading-3 text-muted-foreground/80",
-      )}
-    >
-      <span className="shrink-0">{label.text}</span>
-      {label.channelLabel ? (
-        <span
-          className={cn(
-            MENTION_CHIP_BASE_CLASSES,
-            "search-channel-chip min-w-0 max-w-full overflow-hidden",
-          )}
-          data-channel-link=""
-        >
-          <span className="truncate">#{label.channelLabel}</span>
-        </span>
-      ) : null}
+    <span className="c3s-hit-context">
+      {label.text}
+      {label.channelLabel ? <> #{label.channelLabel}</> : null}
+      {" · "}
+      {when}
     </span>
   );
 }
@@ -288,6 +308,7 @@ function getSuggestedSearchResults(channels: Channel[]) {
     .filter(
       (channel) =>
         !channel.archivedAt &&
+        channel.channelType !== "forum" &&
         (channel.isMember || channel.channelType === "dm"),
     )
     .sort((a, b) => {
@@ -348,12 +369,12 @@ function SearchResultsSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="p-1"
+      className="c3s-list"
       data-testid="search-results-loading"
     >
       {searchSkeletonRows.map((row) => (
         <div
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2"
+          className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5"
           key={row.key}
         >
           <Skeleton className={cn("h-7 w-7 shrink-0", row.iconShape)} />
@@ -395,6 +416,24 @@ export function TopbarSearch({
     null,
   );
   const [selectedMenuIndex, setSelectedMenuIndex] = React.useState(0);
+  const lookupJobTitle = useJobTitleLookup(isOpen);
+  const { activeCommunity } = useCommunities();
+  const channelSectionNames = React.useMemo(() => {
+    if (!isOpen || !currentPubkey) return new Map<string, string>();
+    const store = readChannelSectionsStore(
+      currentPubkey,
+      activeCommunity?.relayUrl,
+    );
+    const names = new Map(
+      store.sections.map((section) => [section.id, section.name]),
+    );
+    return new Map(
+      Object.entries(store.assignments).flatMap(([channelId, sectionId]) => {
+        const name = names.get(sectionId);
+        return name ? [[channelId, name] as const] : [];
+      }),
+    );
+  }, [activeCommunity?.relayUrl, currentPubkey, isOpen]);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const dialogInputRef = React.useRef<HTMLInputElement>(null);
   const { cancelDeferredModalOpen, openAfterExit, openNextFrame } =
@@ -417,6 +456,27 @@ export function TopbarSearch({
     limit: SEARCH_RESULT_LIMIT,
     scopeChannelId,
   });
+  const workingChannels = useWorkingChannels();
+  const knownAgentPubkeys = useKnownAgentPubkeys();
+  const workingChannelByAgent = React.useMemo(() => {
+    const byAgent = new Map<string, string>();
+    for (const summary of workingChannels) {
+      const channelName = channelLookup.get(summary.channelId)?.name;
+      if (!channelName) continue;
+      for (const pubkey of summary.agentPubkeys) {
+        const key = normalizePubkey(pubkey);
+        if (!byAgent.has(key)) byAgent.set(key, channelName);
+      }
+    }
+    return byAgent;
+  }, [channelLookup, workingChannels]);
+  const dmChannelHasAgent = React.useCallback(
+    (channel: Channel) =>
+      channel.participantPubkeys.some((pubkey) =>
+        knownAgentPubkeys.has(normalizePubkey(pubkey)),
+      ),
+    [knownAgentPubkeys],
+  );
   const trimmedQuery = query.trim();
   // Bind highlights to the debounced result source so stale results can never
   // pair with newly typed text during the debounce window.
@@ -652,7 +712,11 @@ export function TopbarSearch({
     setSelectedMenuIndex,
   });
 
-  const renderSearchResultRow = (result: SearchResult, index: number) => {
+  const renderSearchResultRow = (
+    result: SearchResult,
+    index: number,
+    inQueryResults = false,
+  ) => {
     const menuIndex = index + (hasScopeAction ? 1 : 0);
     const channelDisplayName =
       result.kind === "channel"
@@ -681,32 +745,67 @@ export function TopbarSearch({
           : result.kind === "user"
             ? userDisplayName
             : messageAuthorLabel;
+    const channelSubtitle =
+      result.kind === "channel" && inQueryResults
+        ? [
+            result.channel.channelType === "dm"
+              ? "Direct message"
+              : result.channel.visibility === "private"
+                ? "Private"
+                : "Open",
+            channelSectionNames.get(result.channel.id) ??
+              getChannelPreview(result.channel),
+          ]
+            .filter((part) => part && part !== "Direct message")
+            .join(" · ") ||
+          (result.channel.channelType === "dm" ? "Direct message" : "")
+        : null;
+    const userJobTitle =
+      result.kind === "user" ? lookupJobTitle(result.user.pubkey) : null;
+    const workingChannelName =
+      result.kind === "user" && result.user.isAgent
+        ? (workingChannelByAgent.get(normalizePubkey(result.user.pubkey)) ??
+          null)
+        : null;
+    const userSubtitle =
+      result.kind === "user"
+        ? [
+            userJobTitle,
+            workingChannelName ? `Working in #${workingChannelName}` : null,
+            getUserSecondaryLabel(result.user),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : null;
     const preview =
       result.kind === "channel"
-        ? getChannelPreview(result.channel)
+        ? (channelSubtitle ?? getChannelPreview(result.channel))
         : result.kind === "action"
           ? result.action.description
           : result.kind === "user"
-            ? getUserSecondaryLabel(result.user)
+            ? userSubtitle
             : buildSearchResultPreview(result.hit.content, resultQuery);
     const trailingLabel =
-      result.kind === "channel"
+      result.kind === "channel" && !inQueryResults
         ? getChannelSuggestionMeta(result.channel)
-        : result.kind === "message"
-          ? formatRelativeTime(result.hit.createdAt)
-          : null;
+        : null;
+    const actionShortcut =
+      result.kind === "action"
+        ? result.action.id === "browse-channels"
+          ? getPlatformKeysById("browse-channels")
+          : result.action.id === "create-channel"
+            ? getPlatformKeysById("new-channel")
+            : null
+        : null;
+    const isSelected = menuIndex === selectedMenuIndex;
+    const isMessage = result.kind === "message";
 
     return (
       <button
-        aria-selected={menuIndex === selectedMenuIndex}
-        className={cn(
-          "search-result-row flex w-full gap-3 rounded-lg px-2.5 text-left transition-colors",
-          result.kind === "message" ? "items-start" : "items-center",
-          result.kind === "message" ? "py-3.5" : "py-2.5",
-          menuIndex === selectedMenuIndex
-            ? "bg-muted/45 text-foreground"
-            : "hover:bg-muted/35",
-        )}
+        aria-selected={isSelected}
+        className="search-result-row c3s-row"
+        data-kind={result.kind}
+        data-selected={isSelected ? "true" : undefined}
         key={resultKey(result)}
         onClick={() => openResult(result)}
         onMouseEnter={() => setSelectedMenuIndex(menuIndex)}
@@ -716,80 +815,98 @@ export function TopbarSearch({
         data-search-result-index={menuIndex}
       >
         {result.kind === "message" ? (
-          <UserAvatar
+          <ProfileAvatar
             avatarUrl={
               resultProfiles?.[result.hit.pubkey.toLowerCase()]?.avatarUrl ??
               null
             }
-            className="h-8 w-8"
-            displayName={resolveUserLabel({
-              currentPubkey,
-              profiles: resultProfiles,
-              pubkey: result.hit.pubkey,
-              preferResolvedSelfLabel: true,
-            })}
+            className="c3s-avatar c3s-avatar-message"
+            label={messageAuthorLabel ?? ""}
             shape={
               resultProfiles?.[result.hit.pubkey.toLowerCase()]?.isAgent ===
               true
                 ? "squircle"
                 : "circle"
             }
-            size="md"
           />
         ) : result.kind === "user" ? (
-          <UserAvatar
+          <ProfileAvatar
             avatarUrl={result.user.avatarUrl}
-            className="h-7 w-7"
-            displayName={userDisplayName ?? result.user.pubkey}
+            className="c3s-avatar"
+            label={userDisplayName ?? result.user.pubkey}
             shape={result.user.isAgent ? "squircle" : "circle"}
-            size="sm"
+          />
+        ) : result.kind === "channel" && result.channel.channelType === "dm" ? (
+          <ProfileAvatar
+            avatarUrl={null}
+            className="c3s-avatar"
+            label={channelDisplayName ?? ""}
+            shape={dmChannelHasAgent(result.channel) ? "squircle" : "circle"}
           />
         ) : (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background/70 text-muted-foreground">
+          <span
+            className="c3s-icon"
+            data-agent-action={
+              result.kind === "action" && result.action.id === "create-agent"
+                ? "true"
+                : undefined
+            }
+          >
             {React.createElement(resultIcon(result, channelLookup), {
-              className: "h-4 w-4",
+              className: "size-[1.125rem]",
             })}
           </span>
         )}
-        <span className="min-w-0 flex-1">
-          {result.kind === "message" ? (
-            <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3">
-              <span className="col-start-1 row-start-1 min-w-0 truncate text-sm font-semibold leading-4 text-foreground">
-                {title}
+        <span className="c3s-text">
+          {isMessage ? (
+            <>
+              <span className="c3s-hit-head">
+                <strong>{title}</strong>
+                {messageContextLabel ? (
+                  <SearchHitContextLine
+                    label={messageContextLabel}
+                    when={formatSearchWhen(result.hit.createdAt)}
+                  />
+                ) : null}
               </span>
-              {trailingLabel ? (
-                <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-self-end text-xs font-medium leading-4 text-muted-foreground/70">
-                  {trailingLabel}
-                </span>
-              ) : null}
-              {messageContextLabel ? (
-                <span className="col-start-1 min-w-0">
-                  <SearchHitContextLine label={messageContextLabel} />
-                </span>
-              ) : null}
               {preview ? (
-                <span className="col-start-1 mt-1.5 block min-w-0 truncate text-sm leading-5 text-muted-foreground">
+                <span className="c3s-hit-body">
                   <HighlightedSearchText query={resultQuery} text={preview} />
                 </span>
               ) : null}
-            </span>
+            </>
           ) : (
-            <span className="block space-y-0.5">
-              <span className="block truncate text-sm font-semibold">
-                {title}
+            <>
+              <span
+                className="c3s-title"
+                data-action={result.kind === "action" ? "true" : undefined}
+              >
+                {result.kind === "channel" || result.kind === "user" ? (
+                  <HighlightedSearchText
+                    query={resultQuery}
+                    text={title ?? ""}
+                  />
+                ) : (
+                  title
+                )}
               </span>
               {preview ? (
-                <span className="block truncate text-xs text-muted-foreground">
-                  {preview}
+                <span className="c3s-sub">
+                  {result.kind === "channel" || result.kind === "user" ? (
+                    <HighlightedSearchText query={resultQuery} text={preview} />
+                  ) : (
+                    preview
+                  )}
                 </span>
               ) : null}
-            </span>
+            </>
           )}
         </span>
-        {result.kind !== "message" && trailingLabel ? (
-          <span className="shrink-0 text-2xs text-muted-foreground/75">
-            {trailingLabel}
-          </span>
+        {trailingLabel ? (
+          <span className="c3s-trailing">{trailingLabel}</span>
+        ) : null}
+        {actionShortcut ? (
+          <kbd className="c3s-kbd">{actionShortcut}</kbd>
         ) : null}
       </button>
     );
@@ -799,10 +916,14 @@ export function TopbarSearch({
     let resultIndex = 0;
 
     return sections.map((section) => (
-      <div data-search-section={section.key} key={section.key}>
+      <div
+        className="c3s-group"
+        data-search-section={section.key}
+        key={section.key}
+      >
         <div className={SEARCH_SECTION_TITLE_CLASS}>{section.title}</div>
         {section.results.map((result) =>
-          renderSearchResultRow(result, resultIndex++),
+          renderSearchResultRow(result, resultIndex++, true),
         )}
       </div>
     ));
@@ -823,32 +944,23 @@ export function TopbarSearch({
     ) : null;
   const searchResultContent = isShowingSuggestions ? (
     scopeChannel ? null : suggestionResults.length === 0 ? (
-      <div className="max-h-96 overflow-y-auto">
+      <div className="c3s-scroll">
         {currentChannelSearchAction}
-        <div
-          className={cn(
-            "px-4 text-sm text-muted-foreground",
-            currentChannelSearchAction ? "pb-5" : "py-5",
-          )}
-        >
+        <div className="c3s-note">
           <p>No recent activity yet.</p>
         </div>
       </div>
     ) : (
-      <div
-        aria-label="Recent activity"
-        className="max-h-96 overflow-y-auto"
-        role="listbox"
-      >
+      <div aria-label="Recent activity" className="c3s-scroll" role="listbox">
         {currentChannelSearchAction}
-        <div className="p-1.5">
+        <div className="c3s-list">
           {(() => {
             let resultIndex = 0;
 
             return (
               <>
                 {suggestedResults.length > 0 ? (
-                  <div>
+                  <div className="c3s-group">
                     <div className={SEARCH_SECTION_TITLE_CLASS}>
                       Recent activity
                     </div>
@@ -858,7 +970,7 @@ export function TopbarSearch({
                   </div>
                 ) : null}
                 {suggestionActionResults.length > 0 ? (
-                  <div>
+                  <div className="c3s-group" data-actions="true">
                     <div className={SEARCH_SECTION_TITLE_CLASS}>Actions</div>
                     {suggestionActionResults.map((result) =>
                       renderSearchResultRow(result, resultIndex++),
@@ -872,32 +984,20 @@ export function TopbarSearch({
       </div>
     )
   ) : isSearchLoading && visibleSearchableResults.length === 0 ? (
-    <div className="max-h-[min(60vh,32rem)] overflow-y-auto">
+    <div className="c3s-scroll">
       {currentChannelSearchAction}
       <SearchResultsSkeleton />
     </div>
   ) : searchQuery.error instanceof Error &&
     visibleSearchableResults.length === 0 ? (
-    <div className="max-h-[min(60vh,32rem)] overflow-y-auto">
+    <div className="c3s-scroll">
       {currentChannelSearchAction}
-      <p
-        className={cn(
-          "px-4 text-sm text-destructive",
-          currentChannelSearchAction ? "pb-5" : "py-5",
-        )}
-      >
-        {searchQuery.error.message}
-      </p>
+      <p className="c3s-note c3s-note-error">{searchQuery.error.message}</p>
     </div>
   ) : visibleSearchableResults.length === 0 ? (
-    <div className="max-h-[min(60vh,32rem)] overflow-y-auto">
+    <div className="c3s-scroll">
       {currentChannelSearchAction}
-      <p
-        className={cn(
-          "px-4 text-sm text-muted-foreground",
-          currentChannelSearchAction ? "pb-5" : "py-5",
-        )}
-      >
+      <p className="c3s-note">
         No {scopeChannel ? "messages" : "matches"} for{" "}
         <span className="font-semibold">{trimmedQuery}</span>
         {scopeLabel ? (
@@ -911,16 +1011,32 @@ export function TopbarSearch({
     </div>
   ) : (
     <div
-      className="max-h-[min(60vh,32rem)] overflow-y-auto"
+      className="c3s-scroll"
       data-testid="search-results-list"
       role="listbox"
     >
       {currentChannelSearchAction}
-      <div className="p-1.5">
+      <div className="c3s-list">
         {renderSearchResultSections(searchResultSections)}
       </div>
     </div>
   );
+  const searchFooter =
+    isShowingSuggestions && suggestionResults.length > 0 && !scopeChannel ? (
+      <div className="c3s-footer" data-testid="search-footer-hints">
+        <span>↑ ↓ to move</span>
+        <span>Enter to open</span>
+        <span>Esc to close</span>
+      </div>
+    ) : !isShowingSuggestions ? (
+      <div className="c3s-footer" data-testid="search-footer-operators">
+        <span>Narrow it down with</span>
+        <b>from:</b>
+        <b>in:</b>
+        <b>after:</b>
+        <b>before:</b>
+      </div>
+    ) : null;
   return (
     <div className={cn("relative", className)}>
       <Dialog open={isOpen} onOpenChange={handleSearchOpenChange}>
@@ -937,7 +1053,7 @@ export function TopbarSearch({
           title="Find anything"
           type="button"
         >
-          <Search
+          <SearchIcon
             className={
               isIconVariant
                 ? "h-4 w-4 shrink-0"
@@ -957,14 +1073,14 @@ export function TopbarSearch({
                 {query || "Find anything"}
               </span>
               <kbd className="shrink-0 text-3xs text-sidebar-foreground/45">
-                &#x2318; K
+                &#x2318;K
               </kbd>
             </>
           )}
         </button>
         <DialogContent
           aria-busy={isSearchLoading && visibleSearchableResults.length === 0}
-          className="mt-[18vh] max-w-2xl self-start gap-0 overflow-hidden rounded-2xl p-0 shadow-2xl"
+          className="c3s-dialog self-start gap-0 overflow-hidden p-0"
           data-testid="search-results"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -991,6 +1107,7 @@ export function TopbarSearch({
             scopeLabel={scopeLabel}
           />
           {searchResultContent}
+          {searchFooter}
         </DialogContent>
       </Dialog>
     </div>

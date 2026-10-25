@@ -1,14 +1,4 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  CheckCheck,
-  ChevronDown,
-  EllipsisVertical,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, EllipsisVertical, Plus } from "lucide-react";
 
 import { useRef, useState } from "react";
 import type * as React from "react";
@@ -59,7 +49,6 @@ import type { ChannelSection } from "@/features/sidebar/lib/useChannelSections";
 import type { Channel } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
-import { HashSearch } from "@/shared/ui/icons";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
 
 const SECTION_LABEL_BUTTON_CLASS =
@@ -188,19 +177,16 @@ export function SectionActionsMenu({
       >
         {hasUnread && onMarkAllRead ? (
           <DropdownMenuItem onSelect={() => deferMenuAction(onMarkAllRead)}>
-            <CheckCheck className="h-4 w-4" />
             <span>Mark all as read</span>
           </DropdownMenuItem>
         ) : null}
         {onNewMessage ? (
           <DropdownMenuItem onSelect={() => deferMenuAction(onNewMessage)}>
-            <Plus className="h-4 w-4" />
             <span>{newMessageLabel ?? "New message"}</span>
           </DropdownMenuItem>
         ) : null}
         {onBrowse ? (
           <DropdownMenuItem onSelect={() => deferMenuAction(onBrowse)}>
-            <HashSearch className="h-4 w-4" />
             <span>{browseLabel ?? "Browse channels"}</span>
             <DropdownMenuShortcut>
               {getPlatformKeysById("browse-channels")}
@@ -209,7 +195,6 @@ export function SectionActionsMenu({
         ) : null}
         {onCreate ? (
           <DropdownMenuItem onSelect={() => deferMenuAction(onCreate)}>
-            <Plus className="h-4 w-4" />
             <span>{createLabel ?? "Create channel"}</span>
           </DropdownMenuItem>
         ) : null}
@@ -219,7 +204,6 @@ export function SectionActionsMenu({
               <DropdownMenuItem
                 onSelect={() => deferMenuAction(onRenameSection)}
               >
-                <Pencil className="h-4 w-4" />
                 <span>Rename section</span>
               </DropdownMenuItem>
             ) : null}
@@ -228,7 +212,6 @@ export function SectionActionsMenu({
                 disabled={isFirstSection}
                 onSelect={() => deferMenuAction(onMoveSectionUp)}
               >
-                <ArrowUp className="h-4 w-4" />
                 <span>Move up</span>
               </DropdownMenuItem>
             ) : null}
@@ -237,7 +220,6 @@ export function SectionActionsMenu({
                 disabled={isLastSection}
                 onSelect={() => deferMenuAction(onMoveSectionDown)}
               >
-                <ArrowDown className="h-4 w-4" />
                 <span>Move down</span>
               </DropdownMenuItem>
             ) : null}
@@ -248,7 +230,6 @@ export function SectionActionsMenu({
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
-                <ArrowUpDown className="h-4 w-4" />
                 <span>Sort</span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -278,7 +259,6 @@ export function SectionActionsMenu({
               className="text-destructive focus:text-destructive"
               onSelect={() => deferMenuAction(onDeleteSection)}
             >
-              <Trash2 className="h-4 w-4" />
               <span>Delete section</span>
             </DropdownMenuItem>
           </>
@@ -338,6 +318,7 @@ export function ChannelGroupSection({
   draggable,
   groupClassName,
   hasUnread,
+  hideWhenEmpty = false,
   isCollapsed,
   isActiveChannel,
   activeWorkingByChannelId,
@@ -378,6 +359,8 @@ export function ChannelGroupSection({
   createLabel?: string;
   draggable?: boolean;
   groupClassName?: string;
+  /** Render nothing while the group has no channels (the Forums group). */
+  hideWhenEmpty?: boolean;
   isCollapsed: boolean;
   isActiveChannel: boolean;
   activeWorkingByChannelId?: ReadonlyMap<string, ActiveChannelTurnSummary>;
@@ -426,6 +409,10 @@ export function ChannelGroupSection({
 }) {
   const contentId = `sidebar-${listTestId}`;
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+
+  if (hideWhenEmpty && items.length === 0) {
+    return null;
+  }
 
   const channelList =
     items.length > 0 ? (
@@ -549,6 +536,7 @@ export function CustomChannelSection({
   activeWorkingByChannelId,
   selectedChannelId,
   unreadChannelIds,
+  unreadChannelCounts,
   sections,
   assignments,
   isFirst,
@@ -585,6 +573,7 @@ export function CustomChannelSection({
   activeWorkingByChannelId?: ReadonlyMap<string, ActiveChannelTurnSummary>;
   selectedChannelId: string | null;
   unreadChannelIds: ReadonlySet<string>;
+  unreadChannelCounts?: ReadonlyMap<string, number>;
   sections: ChannelSection[];
   assignments: Record<string, string>;
   isFirst: boolean;
@@ -707,15 +696,12 @@ export function CustomChannelSection({
               </ContextMenuTrigger>
               <ContextMenuContent>
                 <ContextMenuItem onClick={onRenameSection}>
-                  <Pencil className="h-4 w-4" />
                   Rename section
                 </ContextMenuItem>
                 <ContextMenuItem disabled={isFirst} onClick={onMoveSectionUp}>
-                  <ArrowUp className="h-4 w-4" />
                   Move up
                 </ContextMenuItem>
                 <ContextMenuItem disabled={isLast} onClick={onMoveSectionDown}>
-                  <ArrowDown className="h-4 w-4" />
                   Move down
                 </ContextMenuItem>
                 <ContextMenuSeparator />
@@ -723,7 +709,6 @@ export function CustomChannelSection({
                   className="text-destructive focus:text-destructive"
                   onClick={onDeleteSection}
                 >
-                  <Trash2 className="h-4 w-4" />
                   Delete section
                 </ContextMenuItem>
               </ContextMenuContent>
@@ -743,6 +728,9 @@ export function CustomChannelSection({
                                   channel.id,
                                 )}
                                 hasUnread={unreadChannelIds.has(channel.id)}
+                                unreadCount={
+                                  unreadChannelCounts?.get(channel.id) ?? 0
+                                }
                                 isMuted={mutedChannelIds?.has(channel.id)}
                                 isActive={
                                   isActiveChannel &&

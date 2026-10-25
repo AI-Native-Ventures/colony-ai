@@ -59,7 +59,6 @@ import { getThreadReference } from "@/features/messages/lib/threading";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useRelaySelfQuery } from "@/features/moderation/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
-import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { deleteMessage, sendChannelMessage } from "@/shared/api/tauri";
 import type { Channel, HomeFeedResponse } from "@/shared/api/types";
 import { KIND_REACTION } from "@/shared/constants/kinds";
@@ -125,10 +124,8 @@ export function HomeView({
   // background data loads must never trigger navigations.
   const { applyPatch: applyInboxSearchPatch, values: inboxSearchValues } =
     useHistorySearchState(INBOX_SEARCH_KEYS);
-  const isReminders = filter === "reminders";
   const isDrafts = filter === "drafts";
-  const isMessagesMode = !isReminders && !isDrafts;
-  const allowMixedPersonalSelection = filter === "all";
+  const isMessagesMode = !isDrafts;
   const {
     drafts: {
       activeCount: activeDraftCount,
@@ -138,23 +135,13 @@ export function HomeView({
       selectedKey: selectedDraftKey,
       selectDraft: setSelectedDraftKey,
     },
-    dueReminderCount,
-    pendingReminders,
-    reminders: {
-      selectedId: selectedReminderId,
-      selectedItem: selectedReminder,
-      select: setSelectedReminderId,
-    },
   } = useHomePersonalInbox({
-    allowMixedSelection: allowMixedPersonalSelection,
-    currentPubkey,
     isDrafts,
     isNarrowHomeViewport,
-    isReminders,
     viewportWidthPx: homeInboxWidthPx,
   });
-  // `?item=` is Messages-mode-only machinery: a reminder never enters the
-  // FeedItem selection model, so reload while in Reminders mode keeps a stale
+  // `?item=` is Messages-mode-only machinery: a draft never enters the
+  // FeedItem selection model, so reload while in Drafts mode keeps a stale
   // `?item=` unconsumed and does not snap back to a feed-item detail view.
   const urlSelectedItemId = isMessagesMode ? inboxSearchValues.item : null;
   const profilePanelPubkey = inboxSearchValues.profile;
@@ -224,7 +211,6 @@ export function HomeView({
   const [emptyDeleteId, setEmptyDeleteId] = React.useState<string | null>(null);
   const [editTargetId, setEditTargetId] = React.useState<string | null>(null);
   const [isSendingReply, setIsSendingReply] = React.useState(false);
-  const { activeReminderEventIds, openReminder } = useRemindLater();
   const [localRepliesByItemId, setLocalRepliesByItemId] = React.useState<
     Record<string, InboxReply[]>
   >({});
@@ -521,8 +507,7 @@ export function HomeView({
     coldResolutionPending,
     filteredItems,
     hasFeed: Boolean(feed),
-    hasPersonalSelection:
-      selectedDraftItem !== null || selectedReminder !== null,
+    hasPersonalSelection: selectedDraftItem !== null,
     homeInboxWidthPx,
     isLoading,
     isMessagesMode,
@@ -557,18 +542,13 @@ export function HomeView({
 
       setUnreadBoundary(null);
       setSelectedDraftKey(null);
-      setSelectedReminderId(null);
       setFilter(nextFilter);
       applyInboxSearchPatch({
         filter: nextFilter === "all" ? null : nextFilter,
       });
 
-      if (
-        nextFilter === "reminders" ||
-        nextFilter === "drafts" ||
-        selection.preserveSelection
-      ) {
-        if (nextFilter === "reminders" || nextFilter === "drafts") {
+      if (nextFilter === "drafts" || selection.preserveSelection) {
+        if (nextFilter === "drafts") {
           setAutoSelectedEventId(null);
           applyInboxSearchPatch({ item: null });
         }
@@ -586,7 +566,6 @@ export function HomeView({
       ownedAgentPubkeys,
       selectedConversationId,
       setSelectedDraftKey,
-      setSelectedReminderId,
       unreadOnly,
     ],
   );
@@ -622,21 +601,12 @@ export function HomeView({
       currentPubkey,
       availableChannelIds,
     );
-  const detailMode = isDrafts
-    ? "drafts"
-    : isReminders
-      ? "reminders"
-      : selectedDraftItem
-        ? "drafts"
-        : selectedReminder
-          ? "reminders"
-          : "messages";
+  const detailMode = isDrafts || selectedDraftItem ? "drafts" : "messages";
   const {
     auxiliaryPaneWidthPx,
     effectiveInboxListWidthPx,
     isSinglePanelDetailView,
     isSinglePanelDraftDetailView,
-    isSinglePanelReminderDetailView,
     showDetailPane,
     showListPane,
   } = getHomePaneLayout({
@@ -646,11 +616,9 @@ export function HomeView({
     isDrafts: detailMode === "drafts",
     isMessagesMode: detailMode === "messages",
     isNarrow: isNarrowHomeViewport,
-    isReminders: detailMode === "reminders",
     isSinglePanelAuxiliaryView,
     selectedDraft: selectedDraftItem !== null,
     selectedEvent: selectedEventId !== null,
-    selectedReminder: selectedReminder !== null,
     threadPanelWidthPx,
   });
 
@@ -692,22 +660,12 @@ export function HomeView({
             } as React.CSSProperties
           }
         >
-          {showListPane || showDetailPane ? (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-30 h-13 bg-background/80 backdrop-blur-md supports-backdrop-filter:bg-background/70 dark:bg-background/70 dark:backdrop-blur-xl dark:supports-backdrop-filter:bg-background/55"
-              data-testid="home-inbox-shared-header-backdrop"
-            />
-          ) : null}
-
           {showListPane ? (
             <InboxListPane
-              activeReminderEventIds={activeReminderEventIds}
               agentPubkeys={inboxAgentPubkeys}
               activeDraftCount={activeDraftCount}
               draftItems={draftItems}
               doneSet={effectiveDoneSet}
-              dueReminderCount={dueReminderCount}
               filter={filter}
               items={filteredItems}
               onDeleteDraft={handleDeleteDraft}
@@ -717,18 +675,6 @@ export function HomeView({
               onOpenDirect={handleOpenDirect}
               isReopenPending={isReopenPending}
               isReopenErrored={isReopenErrored}
-              onRemindLater={(item) => {
-                const channelId = item.item.channelId;
-                if (!channelId) {
-                  return;
-                }
-                openReminder({
-                  authorPubkey: item.item.pubkey,
-                  channelId,
-                  eventId: item.id,
-                  preview: item.preview.slice(0, 100),
-                });
-              }}
               onSelect={(itemId) => {
                 const item = findInboxItemByEventId(inboxItems, itemId);
                 setUnreadBoundary(
@@ -740,28 +686,17 @@ export function HomeView({
                     : null,
                 );
                 setSelectedDraftKey(null);
-                setSelectedReminderId(null);
                 handleUserSelectItem(itemId);
                 markItemRead(itemId);
               }}
               onSelectDraft={(draftKey) => {
                 setUnreadBoundary(null);
-                setSelectedReminderId(null);
                 handleUserSelectItem(null);
                 setSelectedDraftKey(draftKey);
               }}
-              onSelectReminder={(reminderId) => {
-                setUnreadBoundary(null);
-                setSelectedDraftKey(null);
-                handleUserSelectItem(null);
-                setSelectedReminderId(reminderId);
-              }}
               onUnreadOnlyChange={setUnreadOnly}
-              reminderPubkey={currentPubkey}
-              reminders={pendingReminders}
               selectedConversationId={selectedConversationId}
               selectedDraftKey={selectedDraftKey}
-              selectedReminderId={selectedReminderId}
               showRightDivider={showListPane && showDetailPane}
               unreadOnly={unreadOnly}
             />
@@ -927,20 +862,15 @@ export function HomeView({
               replies={selectedItemReplies}
             />
           ) : null}
-          {showDetailPane && detailMode !== "messages" ? (
+          {showDetailPane && detailMode === "drafts" ? (
             <HomePersonalInboxDetail
-              currentPubkey={currentPubkey}
               draftItem={selectedDraftItem}
-              mode={detailMode}
               onBack={
                 isSinglePanelDraftDetailView
                   ? () => setSelectedDraftKey(null)
-                  : isSinglePanelReminderDetailView
-                    ? () => setSelectedReminderId(null)
-                    : undefined
+                  : undefined
               }
               onDeleteDraft={handleDeleteDraft}
-              reminder={selectedReminder}
             />
           ) : null}
           {profilePanelPubkey ? (

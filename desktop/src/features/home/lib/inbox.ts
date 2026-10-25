@@ -6,10 +6,6 @@ import {
   getThreadReference,
   isBroadcastReply,
 } from "@/features/messages/lib/threading";
-import {
-  getProjectInboxReference,
-  isProjectInboxItem,
-} from "@/features/home/lib/projectInbox";
 import type { TimelineReaction } from "@/features/messages/types";
 import type {
   Channel,
@@ -26,20 +22,17 @@ import { resolveMentionProps } from "@/shared/lib/resolveMentionNames";
 
 export type InboxFilter =
   | "all"
-  | "project"
   | "mention"
   | "thread"
   | "needs_action"
   | "agent_activity"
-  | "reminders"
   | "drafts";
 
 export type InboxItem = {
   avatarUrl: string | null;
   /**
-   * Stable conversation identity: the NIP-10 root for messages, or a
-   * repository-scoped root for Buzz Git work. Does NOT change when a new reply
-   * advances the representative latest event. Use this for lifecycle
+   * Stable conversation identity: the NIP-10 root for messages. Does NOT
+   * change when a new reply advances the representative latest event. Use this for lifecycle
    * continuity: scroll gating, draft keys, local-reply storage, and selection.
    */
   conversationId: string;
@@ -64,6 +57,12 @@ export type InboxItem = {
 export type InboxTypeLabel = {
   text: string;
   channelLabel: string | null;
+  /**
+   * What joins the text to the channel. Labels that already end in a
+   * preposition ("Mentioned in") leave it out; a bare headline ("Progress
+   * update") joins its channel with a middle dot.
+   */
+  separator?: "·";
 };
 
 export type InboxReply = {
@@ -116,36 +115,8 @@ const fullTimeFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-function tagValue(item: FeedItem, name: string) {
-  return item.tags.find((tag) => tag[0] === name)?.[1]?.trim() || null;
-}
-
-function projectRootItem(item: FeedItem, groupItems: readonly FeedItem[]) {
-  return (
-    groupItems.find(
-      (candidate) => candidate.kind === 1618 || candidate.kind === 1621,
-    ) ?? item
-  );
-}
-
-function projectTypeLabel(item: FeedItem) {
-  if (item.kind === 1618) return "Review";
-  if (item.kind === 1621) return "Task";
-  return "Project update";
-}
-
-function feedHeadline(item: FeedItem, groupItems: readonly FeedItem[] = []) {
-  if (isProjectInboxItem(item)) {
-    const root = projectRootItem(item, groupItems);
-    return (
-      (tagValue(root, "subject") ?? root.content.trim().split("\n")[0]) ||
-      projectTypeLabel(root)
-    );
-  }
-
+function feedHeadline(item: FeedItem) {
   switch (item.kind) {
-    case 40007:
-      return "Reminder";
     case 43001:
       return "Job requested";
     case 43002:
@@ -158,12 +129,6 @@ function feedHeadline(item: FeedItem, groupItems: readonly FeedItem[] = []) {
       return "Job cancelled";
     case 43006:
       return "Job failed";
-    case 45001:
-      return "Forum post";
-    case 45003:
-      return "Forum reply";
-    case 46010:
-      return "Approval requested";
     default:
       if (item.category === "mention") {
         return "Mention";
@@ -181,14 +146,6 @@ function feedPreview(item: FeedItem) {
   const content = item.content.trim();
   if (content.length > 0) {
     return content;
-  }
-
-  if (item.kind === 46010) {
-    return "A workflow is waiting for approval.";
-  }
-
-  if (item.kind === 40007) {
-    return "A reminder is waiting for you.";
   }
 
   return "No additional details were attached to this event.";
@@ -271,14 +228,6 @@ function resolveGroupChannel(
 export function getInboxTypeLabel(item: InboxItem): InboxTypeLabel {
   const channelName = item.channelLabel;
 
-  if (item.groupItems.some(isProjectInboxItem)) {
-    const root = projectRootItem(item.item, item.groupItems);
-    return {
-      text: projectTypeLabel(root),
-      channelLabel: null,
-    };
-  }
-
   if (item.item.channelType === "dm") {
     return {
       text: item.senderLabel ? `DM from ${item.senderLabel}` : "DM",
@@ -309,18 +258,19 @@ export function getInboxTypeLabel(item: InboxItem): InboxTypeLabel {
   }
 
   return {
-    text: channelName
-      ? `${activityHeadline(item.item)} in`
-      : activityHeadline(item.item),
+    text: activityHeadline(item.item),
     channelLabel: channelName,
+    separator: "·",
   };
 }
 
+/** "Needs action in #Sales", "Progress update · #Operations", "DM from Aya". */
 export function formatInboxTypeLabel(item: InboxItem) {
   const label = getInboxTypeLabel(item);
-  return label.channelLabel
-    ? `${label.text} #${label.channelLabel}`
-    : label.text;
+  if (!label.channelLabel) return label.text;
+  return label.separator
+    ? `${label.text} ${label.separator} #${label.channelLabel}`
+    : `${label.text} #${label.channelLabel}`;
 }
 
 function categoryPriority(category: FeedItemCategory) {
@@ -340,18 +290,12 @@ function getInboxThreadKey(
   item: FeedItem,
   channelById: ReadonlyMap<string, InboxChannel>,
 ) {
-  const projectReference = getProjectInboxReference(item);
-  if (projectReference) {
-    return `project:${projectReference.repoAddress}:${projectReference.rootId}`;
-  }
-
   const channelType = resolveItemChannel(item, channelById).type;
   return getInboxConversationId(
     item.tags,
     item.id,
     item.channelId,
     channelType,
-    item.kind,
   );
 }
 
@@ -363,9 +307,8 @@ function getStableConversationId(
 }
 
 /**
- * Returns the stable conversation ID for any FeedItem or relay event. Buzz Git
- * roots include their repository coordinate; messages use the NIP-10 root,
- * parent-reply tag, then event id.
+ * Returns the stable conversation ID for any FeedItem or relay event. Messages
+ * use the NIP-10 root, parent-reply tag, then event id.
  * This is the same derivation used by `buildInboxItems` for `conversationId`.
  */
 export function getInboxConversationId(
@@ -373,19 +316,7 @@ export function getInboxConversationId(
   eventId: string,
   channelId?: string | null,
   channelType?: string,
-  kind?: number,
 ): string {
-  if (kind !== undefined) {
-    const projectReference = getProjectInboxReference({
-      id: eventId,
-      kind,
-      tags,
-    });
-    if (projectReference) {
-      return `project:${projectReference.repoAddress}:${projectReference.rootId}`;
-    }
-  }
-
   if (channelType === "dm" && channelId) {
     return `dm:${channelId}`;
   }
@@ -401,7 +332,6 @@ export function getInboxItemConversationId(item: FeedItem) {
     item.id,
     item.channelId,
     item.channelType,
-    item.kind,
   );
 }
 
@@ -419,8 +349,26 @@ export function findInboxItemByEventId(
   );
 }
 
+const CLOCK_24H_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function isSameLocalDay(first: Date, second: Date) {
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+/** A list row's time: "14:05" today, then "Yesterday", a weekday or a date. */
 function formatInboxTimestamp(unixSeconds: number) {
-  return formatItemTimestamp(unixSeconds);
+  const date = new Date(unixSeconds * 1_000);
+  return isSameLocalDay(date, new Date())
+    ? CLOCK_24H_FORMATTER.format(date)
+    : formatItemTimestamp(unixSeconds);
 }
 
 export function formatInboxFullTimestamp(unixSeconds: number) {
@@ -588,7 +536,7 @@ export function buildInboxItems({
         profiles,
         preferResolvedSelfLabel: true,
       });
-      const subject = feedHeadline(item, group.items);
+      const subject = feedHeadline(item);
       const preview = feedPreview(item);
       const { mentionNames, mentionPubkeysByName } = resolveMentionProps(
         item.tags,

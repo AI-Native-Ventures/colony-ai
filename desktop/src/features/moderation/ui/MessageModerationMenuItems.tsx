@@ -1,4 +1,4 @@
-import { Ban, CircleSlash, Clock, ShieldCheck, UserMinus } from "lucide-react";
+import { CircleSlash, ShieldCheck } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -14,6 +14,11 @@ import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import type { TimelineMessage } from "@/features/messages/types";
 import { isTimedOut } from "@/features/moderation/lib/restrictionState";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import {
+  BanGlyph,
+  KickGlyph,
+  TimeoutGlyph,
+} from "@/shared/ui/conversationIcons";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   DropdownMenuItem,
@@ -126,7 +131,7 @@ export function MessageModerationMenuItems({
             data-testid={`message-timeout-${message.id}`}
             disabled={isPending}
           >
-            <Clock className="h-4 w-4" />
+            <TimeoutGlyph size={17} />
             Time out author
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
@@ -166,7 +171,7 @@ export function MessageModerationMenuItems({
             )
           }
         >
-          <UserMinus className="h-4 w-4" />
+          <KickGlyph size={17} />
           Kick from channel
         </DropdownMenuItem>
       ) : null}
@@ -197,7 +202,7 @@ export function MessageModerationMenuItems({
             )
           }
         >
-          <Ban className="h-4 w-4" />
+          <BanGlyph size={17} />
           Ban author from community
         </DropdownMenuItem>
       )}

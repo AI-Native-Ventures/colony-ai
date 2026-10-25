@@ -1,9 +1,4 @@
 import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
-import * as React from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
-import { CommunitiesProvider } from "@/features/communities/useCommunities";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -46,6 +41,7 @@ import {
   KIND_SERVICE_HEAD,
 } from "@/features/discovery/businessRecordContract";
 import {
+  COLONY3_BUSINESS_PEOPLE,
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
   REFERENCE_HOME_VISUAL_FIXTURE,
@@ -55,6 +51,9 @@ import {
   REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
   referenceChannelLastMessageAt,
+  colony3CedarLastMessageAt,
+  colony3OliveLastMessageAt,
+  colony3ChannelSeeds,
   referenceChannelSeeds,
   referenceHomeInboxItems,
   referenceSalesLastMessageAt,
@@ -139,6 +138,7 @@ import {
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
   KIND_HUDDLE_STARTED,
+  KIND_CLIENT_HEAD,
   KIND_INVOICE_HEAD,
   KIND_INVOICE_VERSION,
   KIND_MONEY_ADJUSTMENT,
@@ -249,6 +249,8 @@ type MockManagedAgentRuntimeSeed = {
   pubkey: string;
   relayUrl: string;
   lifecycle?: MockManagedAgentRuntimeRow["lifecycle"];
+  /** False for an agent that still needs setup on this device. Defaults to true. */
+  localSetup?: boolean;
 };
 
 type MockRelayAgentSeed = {
@@ -303,6 +305,8 @@ type MockSearchProfileSeed = {
   displayName: string | null;
   avatarUrl?: string | null;
   nip05Handle?: string | null;
+  /** Job title, as published in the kind:0 `job_title` field. */
+  jobTitle?: string | null;
   about?: string | null;
   ownerPubkey?: string | null;
   isAgent?: boolean;
@@ -370,6 +374,86 @@ export type VisualFixtureSeed = {
   today: HomeFeedVisualFixture;
 };
 
+/** Extra records for the Colony 3.0 conversation boards. */
+export type Colony3Extras = {
+  // The pubkey "self" stands for the signed-in user wherever a pubkey is given
+  // (message authors and any tag value).
+  profiles?: Array<{
+    pubkey: string;
+    displayName: string;
+    isAgent?: boolean;
+    ownerPubkey?: string | null;
+    about?: string | null;
+    avatarUrl?: string | null;
+    presence?: PresenceStatus;
+  }>;
+  channels?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    channelType?: "stream" | "forum" | "dm";
+    visibility?: "open" | "private";
+    archived?: boolean;
+    /** Members besides the signed-in user (who joins unless `selfIsMember` is false). */
+    members?: Array<{ pubkey: string; role?: RawChannelMember["role"] }>;
+    selfIsMember?: boolean;
+    selfRole?: RawChannelMember["role"];
+    lastMessageAt?: number | null;
+    ttlSeconds?: number | null;
+    ttlDeadline?: string | null;
+  }>;
+  /** Adds (or re-roles) members of channels the workspace already has. */
+  members?: Array<{
+    channelId: string;
+    pubkey: string;
+    role?: RawChannelMember["role"];
+  }>;
+  /** Edits seeded channels in place (the reference descriptions are not the design's). */
+  patchChannels?: Array<{ id: string; description?: string; name?: string }>;
+  /** Removes the signed-in user from channels, to show the not-a-member views. */
+  leaveChannelIds?: string[];
+  /** Channels read to the end, so no New divider or unread pill shows. */
+  readChannelIds?: string[];
+  /** Drops the history the reference workspace seeded in these channels, so a
+   *  board's own `messages` are the whole conversation. */
+  clearMessageChannelIds?: string[];
+  /** Same as `clearMessageChannelIds` (kept for boards that already use it). */
+  clearMessagesIn?: string[];
+  /** Overrides the last-activity time (unix seconds) of channels by id. */
+  lastMessageAt?: Record<string, number>;
+  messages?: Array<{
+    channelId: string;
+    id: string;
+    /** A pubkey, or "self" for the signed-in user. */
+    pubkey: string;
+    createdAt: number;
+    kind?: number;
+    tags?: string[][];
+    content: string;
+  }>;
+  /** Agent workspace files the mock host reports as existing (message file cards). */
+  workspaceFiles?: string[];
+  /** Home feed buckets for the Activity board; they replace the reference inbox items. */
+  feed?: {
+    [bucket in
+      | "mentions"
+      | "needs_action"
+      | "activity"
+      | "agent_activity"]?: Array<{
+      id: string;
+      kind: number;
+      pubkey: string;
+      content: string;
+      created_at: number;
+      channel_id: string | null;
+      channel_name: string;
+      channel_type?: string | null;
+      tags: string[][];
+      category: "mention" | "needs_action" | "activity" | "agent_activity";
+    }>;
+  };
+};
+
 type E2eConfig = {
   mode?: "mock" | "relay";
   forceRelayPacing?: boolean;
@@ -429,6 +513,17 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Report the window as fullscreen, which removes the macOS traffic-light
+     *  inset so the sidebar header sits exactly as in the design. */
+    windowFullscreen?: boolean;
+    /** Colony 3.0 foundation: seed the Sidebar board's channels, sections,
+     *  unread counts and Activity badge on top of the reference workspace. */
+    colony3Sidebar?: boolean;
+    /** Colony 3.0 conversation boards: extra people, channels, members and
+     *  messages seeded on top of the reference workspace. Test modules own the
+     *  data; the bridge only applies it (see `applyColony3Extras`). */
+    colony3Extras?: Colony3Extras;
+    colony3Business?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
     /** Override the current member role in reference client channels. */
@@ -445,6 +540,12 @@ type E2eConfig = {
     }>;
     /** Seed the r19 work-reference card in The Olive House client channel. */
     referenceWorkspaceWorkShare?: boolean;
+    /**
+     * The reference workspace installs the simulated discovery runner by
+     * default. Set false to run the real runner against the page's own
+     * `window.__BUZZ_E2E_DISCOVERY_SEARCH__` stub instead.
+     */
+    referenceWorkspaceDiscoveryStandIn?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -1094,6 +1195,7 @@ type RawProfile = {
   avatar_url: string | null;
   about: string | null;
   nip05_handle: string | null;
+  job_title?: string | null;
   owner_pubkey: string | null;
   is_agent?: boolean;
   /** Mirrors the Rust `has_profile_event` flag: true when a real kind:0 event
@@ -1106,6 +1208,7 @@ type RawUserProfileSummary = {
   name?: string | null;
   avatar_url: string | null;
   nip05_handle: string | null;
+  job_title?: string | null;
   owner_pubkey: string | null;
   is_agent?: boolean;
 };
@@ -1963,12 +2066,6 @@ declare global {
       requestId: string;
       timeoutMs?: number;
     }) => Promise<string>;
-    /** Mount AgentSessionThreadPanel directly for channelId-only UI coverage. */
-    __BUZZ_E2E_MOUNT_AGENT_SESSION_PANEL__?: (input: {
-      agentPubkey: string;
-      channelId: string;
-      canInterruptTurn?: boolean;
-    }) => Promise<void>;
     /** Resolve decoded test-only observer controls back through the mock relay. */
     __BUZZ_E2E_OBSERVER_CONTROLS__?: Array<{
       agentPubkey: string;
@@ -1979,6 +2076,8 @@ declare global {
       channelId: string;
       turnId: string;
       kind?: "turn_started" | "turn_completed";
+      /** Back-date the event so a turn reads as already running this long. */
+      startedAgoMs?: number;
     }) => void;
     __BUZZ_E2E_SEED_OBSERVER_EVENTS__?: (input: {
       agentPubkey: string;
@@ -2526,6 +2625,7 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     system_prompt: agent.system_prompt,
     avatar_url: agent.avatar_url ?? null,
     model: agent.model,
+    model_source: agent.model_source ?? null,
     provider: agent.provider ?? null,
     env_vars: { ...(agent.env_vars ?? {}) },
     status: agent.status,
@@ -3165,7 +3265,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
     (seed) => ({
       pubkey: seed.pubkey,
       relayUrl: seed.relayUrl,
-      localSetup: true,
+      localSetup: seed.localSetup ?? true,
       lifecycle: seed.lifecycle ?? "ready",
       pid: seed.lifecycle === "stopped" ? null : 43000,
       error: null,
@@ -3363,6 +3463,7 @@ function seedMockSearchProfiles(config?: E2eConfig) {
       avatar_url: seed.avatarUrl ?? null,
       about: seed.about ?? null,
       nip05_handle: seed.nip05Handle ?? null,
+      job_title: seed.jobTitle ?? null,
       owner_pubkey: seed.ownerPubkey ?? null,
       is_agent: seed.isAgent ?? false,
       has_profile_event: true,
@@ -5381,7 +5482,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     channelId: REFERENCE_CHANNEL_IDS.sales,
     label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   };
-  installReferenceDiscoveryProvider();
+  if (config.mock?.referenceWorkspaceDiscoveryStandIn !== false) {
+    installReferenceDiscoveryProvider();
+  }
   const self = getMockMemberPubkey(config);
   const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
   mockDisplayNames.set(self, REFERENCE_SELF_NAME);
@@ -5407,9 +5510,29 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       has_profile_event: true,
     });
   }
-  const channelSeeds = sidebarShell
-    ? referenceSidebarChannelSeeds()
-    : referenceChannelSeeds();
+  const colony3 = config.mock?.colony3Sidebar === true;
+  if (config.mock?.colony3Business === true) {
+    for (const person of Object.values(COLONY3_BUSINESS_PEOPLE)) {
+      mockDisplayNames.set(person.pubkey, person.name);
+      if (person.isAgent) mockAgentPubkeys.add(person.pubkey);
+      mockProfiles.set(person.pubkey, {
+        pubkey: person.pubkey,
+        display_name: person.name,
+        name: person.name,
+        avatar_url: null,
+        about: null,
+        nip05_handle: null,
+        owner_pubkey: null,
+        is_agent: person.isAgent,
+        has_profile_event: true,
+      });
+    }
+  }
+  const channelSeeds = colony3
+    ? colony3ChannelSeeds()
+    : sidebarShell
+      ? referenceSidebarChannelSeeds()
+      : referenceChannelSeeds();
   const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
@@ -5441,7 +5564,11 @@ function applyReferenceWorkspace(config: E2eConfig): void {
                     : null
         : seed.id === REFERENCE_CHANNEL_IDS.sales
           ? referenceSalesLastMessageAt()
-          : null,
+          : colony3 && seed.id === REFERENCE_CHANNEL_IDS.cedarCafe
+            ? colony3CedarLastMessageAt()
+            : colony3 && seed.id === REFERENCE_CHANNEL_IDS.oliveHouse
+              ? colony3OliveLastMessageAt()
+              : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -5487,11 +5614,15 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }
     setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
   }
+  if (colony3) {
+    setMockPresenceStatus(REFERENCE_AGENTS.scout.pubkey, "online");
+  }
   for (const event of referenceBusinessRecordEvents(self, {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
     workShare: config.mock?.referenceWorkspaceWorkShare,
     moneyRecordsAvailable: config.mock?.referenceWorkspaceMoneyRecords,
+    colony3Business: config.mock?.colony3Business === true,
   })) {
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     if (!channelId) continue;
@@ -5506,7 +5637,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     store.push(event);
     mockMessages.set(channelId, store);
   }
-  seedReferenceSidebarStorage(self, { sidebarShell });
+  seedReferenceSidebarStorage(self, { sidebarShell, colony3 });
   mockBusinessRecordEvents.clear();
   const communityId = referenceCommunityId();
   if (communityId) {
@@ -5518,10 +5649,151 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       mockBusinessRecordEvents.set(channelId, store);
     }
   }
+  if (config.mock?.colony3Extras) {
+    applyColony3Extras(config.mock.colony3Extras, self);
+  }
 }
-let directPanelRoot: Root | null = null;
-let directPanelContainer: HTMLDivElement | null = null;
-let directPanelQueryClient: QueryClient | null = null;
+
+function applyColony3Extras(extras: Colony3Extras, self: string): void {
+  for (const profile of extras.profiles ?? []) {
+    mockDisplayNames.set(profile.pubkey, profile.displayName);
+    if (profile.isAgent) mockAgentPubkeys.add(profile.pubkey);
+    mockProfiles.set(profile.pubkey, {
+      pubkey: profile.pubkey,
+      display_name: profile.displayName,
+      name: profile.displayName,
+      avatar_url: profile.avatarUrl ?? null,
+      about: profile.about ?? null,
+      nip05_handle: null,
+      owner_pubkey:
+        profile.ownerPubkey === "self" ? self : (profile.ownerPubkey ?? null),
+      is_agent: profile.isAgent === true,
+      has_profile_event: true,
+    });
+    if (profile.presence)
+      setMockPresenceStatus(profile.pubkey, profile.presence);
+  }
+  for (const seed of extras.channels ?? []) {
+    const members: RawChannelMember[] = [];
+    if (seed.selfIsMember !== false) {
+      members.push(createMockMember(self, seed.selfRole ?? "owner", 1440));
+    }
+    for (const member of seed.members ?? []) {
+      members.push(
+        createMockMember(member.pubkey, member.role ?? "member", 1200),
+      );
+    }
+    const created = createMockChannel({
+      id: seed.id,
+      name: seed.name,
+      channel_type: seed.channelType ?? "stream",
+      visibility: seed.visibility ?? "open",
+      description: seed.description ?? "",
+      topic: null,
+      purpose: null,
+      last_message_at:
+        seed.lastMessageAt === undefined || seed.lastMessageAt === null
+          ? null
+          : new Date(seed.lastMessageAt * 1_000).toISOString(),
+      archived_at: seed.archived ? isoMinutesAgo(600) : null,
+      created_by: self,
+      topic_set_by: null,
+      topic_set_at: null,
+      purpose_set_by: null,
+      purpose_set_at: null,
+      topic_required: false,
+      max_members: null,
+      nip29_group_id: null,
+      created_minutes_ago: 1440,
+      updated_minutes_ago: 30,
+      members,
+      ttl_seconds: seed.ttlSeconds ?? null,
+      ttl_deadline: seed.ttlDeadline ?? null,
+    });
+    mockChannels.push(created);
+    if (created.channel_type === "dm") syncMockChannel(created);
+  }
+  for (const patch of extras.patchChannels ?? []) {
+    const channel = mockChannels.find((candidate) => candidate.id === patch.id);
+    if (!channel) continue;
+    if (patch.description !== undefined)
+      channel.description = patch.description;
+    if (patch.name !== undefined) channel.name = patch.name;
+  }
+  for (const entry of extras.members ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === entry.channelId,
+    );
+    if (!channel) continue;
+    const existing = channel.members.find(
+      (member) => member.pubkey === entry.pubkey,
+    );
+    if (existing) {
+      existing.role = entry.role ?? existing.role;
+    } else {
+      channel.members.push(
+        createMockMember(entry.pubkey, entry.role ?? "member", 1200),
+      );
+    }
+    syncMockChannel(channel);
+  }
+  for (const [channelId, at] of Object.entries(extras.lastMessageAt ?? {})) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (channel) channel.last_message_at = new Date(at * 1_000).toISOString();
+  }
+  for (const channelId of extras.leaveChannelIds ?? []) {
+    const channel = mockChannels.find(
+      (candidate) => candidate.id === channelId,
+    );
+    if (!channel) continue;
+    channel.members = channel.members.filter(
+      (member) => member.pubkey !== self,
+    );
+    syncMockChannel(channel);
+  }
+  for (const channelId of [
+    ...(extras.clearMessageChannelIds ?? []),
+    ...(extras.clearMessagesIn ?? []),
+  ]) {
+    mockMessages.delete(channelId);
+  }
+  if (extras.readChannelIds?.length) {
+    const key = `buzz.channel-read-state.v2:${self}`;
+    let readState: Record<string, string> = {};
+    try {
+      readState = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    } catch {
+      readState = {};
+    }
+    // Later than any message a board seeds, whatever the fixed clock says.
+    const readAt = "2026-10-23T23:59:00.000+02:00";
+    for (const channelId of extras.readChannelIds) {
+      readState[channelId] = new Date(readAt).toISOString();
+    }
+    window.localStorage.setItem(key, JSON.stringify(readState));
+  }
+  const sig = "mocksig".repeat(20).slice(0, 128);
+  for (const message of extras.messages ?? []) {
+    const store = mockMessages.get(message.channelId) ?? [];
+    store.push({
+      id: message.id,
+      pubkey: message.pubkey === "self" ? self : message.pubkey,
+      created_at: message.createdAt,
+      kind: message.kind ?? KIND_STREAM_MESSAGE,
+      tags: [
+        ["h", message.channelId],
+        ...(message.tags ?? []).map((tag) =>
+          tag.map((value) => (value === "self" ? self : value)),
+        ),
+      ],
+      content: message.content,
+      sig,
+    });
+    mockMessages.set(message.channelId, store);
+  }
+}
 let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
@@ -8862,6 +9134,134 @@ function parseMockBusinessContent<T>(event: RelayEvent): T | null {
   }
 }
 
+/**
+ * A directly created invoice draft: version 1 with no proposal behind it. The
+ * relay answers with the invoice head, whose source is the invoice itself.
+ * Returns the reason when the command is refused.
+ */
+function createReferenceInvoice(
+  event: RelayEvent,
+  channelId: string,
+  dTag: string,
+): string | null {
+  const version = parseMockBusinessContent<{
+    clientId?: string;
+    invoiceId?: string;
+    version?: number;
+    previousVersionEventId?: string | null;
+    proposalVersionEventId?: string | null;
+    expectedHeadEventId?: string | null;
+    currency?: string;
+    lines?: Array<{
+      description?: string;
+      quantityHundredths: number;
+      unitAmountMinor: number;
+    }>;
+    totalMinor?: number;
+    status?: string;
+    dueAt?: number | null;
+    voidReason?: string | null;
+  }>(event);
+  if (!version?.clientId || !version.invoiceId) {
+    return "invoice create must name its client and invoice";
+  }
+  const invoiceDTag = `client:${version.clientId}:invoice:${version.invoiceId}`;
+  const store = getMockMessageStore(channelId);
+  const clientHead = store.find(
+    (candidate) =>
+      candidate.kind === KIND_CLIENT_HEAD &&
+      businessDTagOf(candidate) ===
+        `client:${version.clientId}:client:${version.clientId}`,
+  );
+  if (version.clientId !== channelId || !clientHead) {
+    return "invoice create requires an existing client channel";
+  }
+  if (
+    store.some(
+      (candidate) =>
+        candidate.kind === KIND_INVOICE_HEAD &&
+        businessDTagOf(candidate) === invoiceDTag,
+    )
+  ) {
+    return "invoice already exists";
+  }
+  const lines = version.lines;
+  if (
+    dTag !== `${invoiceDTag}:version:1` ||
+    version.version !== 1 ||
+    version.previousVersionEventId !== null ||
+    version.proposalVersionEventId !== null ||
+    version.expectedHeadEventId !== null ||
+    version.status !== "draft" ||
+    version.voidReason !== null ||
+    !/^[A-Z]{3}$/.test(version.currency ?? "") ||
+    !Array.isArray(lines) ||
+    lines.length === 0 ||
+    lines.length > 100 ||
+    !lines.every(
+      (line) =>
+        typeof line.description === "string" &&
+        line.description.trim().length > 0 &&
+        Number.isSafeInteger(line.quantityHundredths) &&
+        line.quantityHundredths > 0 &&
+        Number.isSafeInteger(line.unitAmountMinor) &&
+        line.unitAmountMinor >= 0,
+    ) ||
+    (version.dueAt !== null &&
+      version.dueAt !== undefined &&
+      !(Number.isSafeInteger(version.dueAt) && version.dueAt > 0))
+  ) {
+    return "invoice create must be a valid first draft version";
+  }
+  const total = lines.reduce(
+    (sum, line) =>
+      sum +
+      (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n,
+    0n,
+  );
+  if (
+    total > BigInt(Number.MAX_SAFE_INTEGER) ||
+    version.totalMinor !== Number(total)
+  ) {
+    return "invoice total does not match its integer line amounts";
+  }
+  storeReferenceBusinessEvent(channelId, event, false, false);
+  const head = referenceRecordEvent(
+    KIND_INVOICE_HEAD,
+    channelId,
+    invoiceDTag,
+    {
+      schemaVersion: 1,
+      clientId: version.clientId,
+      invoiceId: version.invoiceId,
+      proposalId: version.invoiceId,
+      proposalVersionEventId: event.id,
+      currency: version.currency,
+      lines,
+      taxLines: [],
+      sellerTaxNumber: null,
+      customerTaxNumber: null,
+      totalMinor: Number(total),
+      creditedMinor: 0,
+      writtenOffMinor: 0,
+      collectedMinor: 0,
+      outstandingMinor: 0,
+      paymentEvidenceCount: 0,
+      version: 1,
+      currentVersionEventId: event.id,
+      status: "draft",
+      dueAt: version.dueAt ?? null,
+      issuedAt: null,
+      sourceEventId: event.id,
+    },
+    event,
+  );
+  store.push(head);
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, head);
+  return null;
+}
+
 function publishReferenceBusinessCommand(
   event: RelayEvent,
   socket: MockSocket,
@@ -8904,7 +9304,16 @@ function publishReferenceBusinessCommand(
     return prior ? parseMockBusinessContent<T>(prior) : null;
   };
 
-  if (event.kind === KIND_INVOICE_VERSION) {
+  if (
+    event.kind === KIND_INVOICE_VERSION &&
+    parseMockBusinessContent<{ action?: string }>(event)?.action === "create"
+  ) {
+    const refusal = createReferenceInvoice(event, channelId, dTag);
+    if (refusal) {
+      fail(refusal);
+      return true;
+    }
+  } else if (event.kind === KIND_INVOICE_VERSION) {
     const version = parseMockBusinessContent<{
       clientId?: string;
       invoiceId?: string;
@@ -12983,6 +13392,7 @@ async function runGetProfile(config: E2eConfig | undefined) {
     about: content.about ?? null,
     avatar_url: content.picture ?? null,
     nip05_handle: content.nip05 ?? null,
+    job_title: content.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13008,6 +13418,7 @@ async function handleUpdateProfile(
     avatarUrl?: string;
     about?: string;
     nip05Handle?: string;
+    jobTitle?: string;
   },
   config: E2eConfig | undefined,
 ) {
@@ -13036,6 +13447,7 @@ async function handleUpdateProfile(
     const hasAvatarUrlUpdate = typeof args.avatarUrl === "string";
     const hasAboutUpdate = typeof args.about === "string";
     const hasNip05HandleUpdate = typeof args.nip05Handle === "string";
+    const hasJobTitleUpdate = typeof args.jobTitle === "string";
     const nextDisplayName = args.displayName?.trim() ?? "";
     const nextAvatarUrl = args.avatarUrl?.trim() ?? "";
     const nextAbout = args.about?.trim() ?? "";
@@ -13054,6 +13466,9 @@ async function handleUpdateProfile(
     if (hasNip05HandleUpdate && nextNip05Handle !== profile.nip05_handle) {
       profile.nip05_handle = nextNip05Handle || null;
     }
+    if (hasJobTitleUpdate) {
+      profile.job_title = args.jobTitle?.trim() || null;
+    }
 
     return cloneProfile(profile);
   }
@@ -13071,6 +13486,10 @@ async function handleUpdateProfile(
     picture: args.avatarUrl ?? currentContent.picture ?? undefined,
     about: args.about ?? currentContent.about ?? undefined,
     nip05: args.nip05Handle ?? currentContent.nip05 ?? undefined,
+    job_title:
+      (args.jobTitle === undefined
+        ? currentContent.job_title
+        : args.jobTitle.trim()) || undefined,
   });
   await submitSignedEvent(config, {
     kind: 0,
@@ -13086,6 +13505,7 @@ async function handleUpdateProfile(
     about: updated.about ?? null,
     avatar_url: updated.picture ?? null,
     nip05_handle: updated.nip05 ?? null,
+    job_title: updated.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13140,6 +13560,7 @@ async function handleGetUserProfile(
     about: content.about ?? null,
     avatar_url: content.picture ?? null,
     nip05_handle: content.nip05 ?? null,
+    job_title: content.job_title ?? null,
     owner_pubkey: null,
     has_profile_event: true,
   };
@@ -13182,6 +13603,7 @@ async function handleGetUsersBatch(
         name: profile.name ?? null,
         avatar_url: profile.avatar_url,
         nip05_handle: profile.nip05_handle,
+        job_title: profile.job_title ?? null,
         owner_pubkey: profile.owner_pubkey,
         is_agent: profile.is_agent ?? false,
       };
@@ -13207,6 +13629,7 @@ async function handleGetUsersBatch(
       name: content.name ?? null,
       avatar_url: content.picture ?? null,
       nip05_handle: content.nip05 ?? null,
+      job_title: content.job_title ?? null,
       owner_pubkey:
         ((ev.tags ?? []) as string[][]).find(
           (tag) => Array.isArray(tag) && tag[0] === "auth" && tag.length === 4,
@@ -13236,6 +13659,7 @@ async function handleGetUsersBatch(
       name: profile.name ?? null,
       avatar_url: profile.avatar_url,
       nip05_handle: profile.nip05_handle,
+      job_title: profile.job_title ?? null,
       owner_pubkey: profile.owner_pubkey,
       is_agent: profile.is_agent ?? false,
     };
@@ -14315,10 +14739,33 @@ async function handleGetFeed(
 
   if (!isRelayMode(config) && referenceWorkspaceActive) {
     const now = Math.floor(Date.now() / 1000);
+    const extraFeed = config?.mock?.colony3Extras?.feed;
+    if (extraFeed) {
+      const feed = {
+        mentions: extraFeed.mentions ?? [],
+        needs_action: extraFeed.needs_action ?? [],
+        activity: extraFeed.activity ?? [],
+        agent_activity: extraFeed.agent_activity ?? [],
+      };
+      return {
+        feed,
+        meta: {
+          since: args.since ?? now - 7 * 24 * 60 * 60,
+          total: Object.values(feed).reduce(
+            (sum, list) => sum + list.length,
+            0,
+          ),
+          generated_at: now,
+        },
+        visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
+      };
+    }
     const unreadItems =
       config?.mock?.referenceSidebarShell === true
         ? []
-        : referenceHomeInboxItems();
+        : referenceHomeInboxItems({
+            colony3: config?.mock?.colony3Sidebar === true,
+          });
     return {
       feed: {
         mentions: [],
@@ -16233,6 +16680,7 @@ async function handleGetManagedAgentLog(args: {
 async function handleUpdateManagedAgent(args: {
   input: {
     pubkey: string;
+    personaId?: string;
     name?: string;
     model?: string | null;
     systemPrompt?: string | null;
@@ -16242,6 +16690,9 @@ async function handleUpdateManagedAgent(args: {
   };
 }): Promise<{ agent: RawManagedAgent; profile_sync_error: string | null }> {
   const agent = getMockManagedAgent(args.input.pubkey);
+  if (args.input.personaId !== undefined) {
+    agent.persona_id = args.input.personaId;
+  }
   if (args.input.name !== undefined) {
     agent.name = args.input.name;
   }
@@ -16341,6 +16792,8 @@ async function handleSearchMessages(
         (candidate) => candidate.id === channelId,
       );
       for (const event of events) {
+        // The relay's NIP-50 search only covers message kinds (see below).
+        if (![9, 40002, 45001, 45003].includes(event.kind)) continue;
         mockHits.push({
           event_id: event.id,
           content: event.content,
@@ -18532,61 +18985,6 @@ export function maybeInstallE2eTauriMocks() {
       },
     });
   };
-  window.__BUZZ_E2E_MOUNT_AGENT_SESSION_PANEL__ = async ({
-    agentPubkey,
-    channelId,
-    canInterruptTurn = true,
-  }) => {
-    directPanelRoot?.unmount();
-    directPanelContainer?.remove();
-    directPanelQueryClient?.clear();
-
-    directPanelContainer = document.createElement("div");
-    directPanelContainer.dataset.testid = "e2e-direct-agent-session-panel-root";
-    document.body.appendChild(directPanelContainer);
-    directPanelQueryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          networkMode: "always",
-          refetchOnWindowFocus: false,
-        },
-        mutations: { networkMode: "always" },
-      },
-    });
-    directPanelRoot = createRoot(directPanelContainer);
-    _testRegisterKnownAgents("e2e-direct-agent-session-panel", [agentPubkey]);
-
-    const agent = {
-      pubkey: agentPubkey,
-      name: mockDisplayNames.get(agentPubkey) ?? "E2E agent",
-      status: "running" as const,
-      agentSource: "managed" as const,
-      canInterruptTurn,
-      channelIds: [channelId],
-    };
-    directPanelRoot.render(
-      React.createElement(
-        QueryClientProvider,
-        { client: directPanelQueryClient },
-        React.createElement(
-          CommunitiesProvider,
-          null,
-          React.createElement(AgentSessionThreadPanel, {
-            agent,
-            canInterruptTurn,
-            channel: null,
-            channelId,
-            isSinglePanelView: true,
-            layout: "standalone",
-            onClose: () => {},
-            widthPx: 420,
-          }),
-        ),
-      ),
-    );
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-  };
   mockMediaProxyPort = config.mock?.mediaProxyInitiallyUnavailable
     ? 0
     : MOCK_MEDIA_PROXY_PORT;
@@ -19093,11 +19491,12 @@ export function maybeInstallE2eTauriMocks() {
     channelId,
     turnId,
     kind = "turn_started",
+    startedAgoMs = 0,
   }) => {
     seedTurnSeq += 1;
     const event = {
       seq: seedTurnSeq,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(Date.now() - startedAgoMs).toISOString(),
       kind,
       agentIndex: 0,
       channelId,
@@ -19933,9 +20332,11 @@ export function maybeInstallE2eTauriMocks() {
         });
       }
       case "sign_out":
-        // Production wipes local state and restarts the app. In the browser
-        // harness there is nothing to wipe; resolving is enough — specs
-        // assert invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
+      case "sign_out_keep_data":
+        // Production wipes local state (or, for the keep-data variant, only
+        // forgets the identity) and restarts the app. In the browser harness
+        // there is nothing to wipe; resolving is enough; specs assert
+        // invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
         return;
       case "generate_backup_passphrase": {
         const request = payload as {
@@ -20928,6 +21329,12 @@ export function maybeInstallE2eTauriMocks() {
           "open-directory",
         );
         return directory.channels ?? [];
+      }
+      case "resolve_agent_workspace_file": {
+        const path = (payload as { path?: string } | undefined)?.path ?? "";
+        return activeConfig?.mock?.colony3Extras?.workspaceFiles?.includes(path)
+          ? { path }
+          : null;
       }
       case "get_feed":
         return handleGetFeed(
@@ -22785,7 +23192,7 @@ export function maybeInstallE2eTauriMocks() {
       case "set_window_vibrancy":
         return null;
       case "plugin:window|is_fullscreen":
-        return false;
+        return activeConfig?.mock?.windowFullscreen ?? false;
       // Settings reads the app version through the app plugin. Without this the
       // bridge throws an unhandled page error on every Settings render, which
       // shows up as noise in unrelated specs.

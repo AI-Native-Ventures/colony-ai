@@ -53,7 +53,7 @@ for (const size of sizes) {
         page.getByRole("heading", { name: "Today", exact: true }),
       ).toBeVisible();
       await expect(
-        needs.getByText("Needs me · 0 open decisions", { exact: true }),
+        needs.getByText("0 open decisions", { exact: true }),
       ).toBeVisible();
     }
     await capture(page, `today-${size.width}`);
@@ -61,13 +61,13 @@ for (const size of sizes) {
     const team = page.getByTestId("company-team-screen");
     await expect(team).toBeVisible();
     if (!before) {
-      await expect(page.getByTestId("app-top-chrome")).toHaveCount(0);
-      await expect(
-        team.getByRole("navigation", { name: "Navigation history" }),
-      ).toHaveCount(1);
-      await expect(page.getByTestId("global-back")).toHaveCount(1);
-      const header = await team.locator("header").boundingBox();
-      const back = await team.getByTestId("global-back").boundingBox();
+      // Team uses the shell top bar like every other page now, so its history
+      // buttons sit inside the one 64px bar.
+      const chrome = page.getByTestId("app-top-chrome");
+      await expect(chrome).toHaveCount(1);
+      await expect(chrome.getByTestId("global-back")).toHaveCount(1);
+      const header = await chrome.boundingBox();
+      const back = await chrome.getByTestId("global-back").boundingBox();
       expect(header).not.toBeNull();
       expect(back).not.toBeNull();
       expect(back!.y).toBeGreaterThanOrEqual(header!.y);
@@ -107,26 +107,12 @@ for (const size of sizes) {
     await page
       .getByRole("radio", { name: "Colony Agent", exact: true })
       .click();
-    const skip = page.getByRole("button", {
-      name: "Skip for now",
-      exact: true,
-    });
-    const initialSkip = await skip.elementHandle();
-    expect(initialSkip).not.toBeNull();
-    await expect(
-      page.getByRole("button", { name: "Test Colony Agent", exact: true }),
-    ).toBeEnabled();
-    // Harness readiness must not remove the fallback under the pointer.
-    expect(await initialSkip!.evaluate((element) => element.isConnected)).toBe(
-      true,
-    );
-    expect(
-      await skip.evaluate(
-        (element, initial) => element === initial,
-        initialSkip,
-      ),
-    ).toBe(true);
-    await skip.click();
+    await expect(page.getByTestId("onboarding-test-connection")).toBeEnabled();
+    await page.getByTestId("onboarding-test-connection").click();
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Open my Colony", exact: true })
+      .click();
     await expect(page.getByTestId("chat-title")).toContainText("Welcome");
     await expect
       .poll(() =>

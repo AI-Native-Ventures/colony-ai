@@ -1,20 +1,17 @@
 import * as React from "react";
-import { Clock, Loader2, MailOpen } from "lucide-react";
-
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
-import { formatElapsed } from "@/features/agents/ui/agentSessionUtils";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
+import { formatElapsedClock } from "@/features/agents/ui/agentSessionUtils";
 import { buildInboxItems, type InboxItem } from "@/features/home/lib/inbox";
 import { getGroupedInboxItemIds } from "@/features/home/useHomeInboxReadState";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
-import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { Channel, FeedItem, HomeFeedResponse } from "@/shared/api/types";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 import { useNow } from "@/shared/lib/useNow";
+import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
 import {
   DEFAULT_POPOVER_HOVER_OPEN_DELAY_MS,
@@ -23,6 +20,7 @@ import {
   PopoverContent,
 } from "@/shared/ui/popover";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 
 const HOVER_CLOSE_DELAY_MS = 180;
 const ACTIVITY_POPOVER_MOTION_STYLE = {
@@ -51,97 +49,69 @@ function buildChannelActivityFeed(items: FeedItem[]): HomeFeedResponse {
   };
 }
 
-function RowActionButton({
-  children,
-  label,
-  onClick,
-}: {
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-label={label}
-      className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&>svg]:size-4"
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClick();
-      }}
-      title={label}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
+const EYEBROW_CLASS =
+  "text-2xs font-extrabold uppercase tracking-[0.09em] text-colony-muted";
 
 function ThreadPreviewRow({
   isAgent,
   item,
   onMarkRead,
   onOpen,
-  onRemindLater,
 }: {
   isAgent: boolean;
   item: InboxItem;
   onMarkRead: () => void;
   onOpen: () => void;
-  onRemindLater: () => void;
 }) {
   return (
     <div
-      className="group/activity-row relative border-t border-border/50 first:border-t-0"
+      className="group/activity-row relative flex flex-col gap-2 rounded-colony-chip p-3 shadow-[inset_0_0_0_1px_hsl(var(--colony-border))] transition-colors hover:bg-colony-wash focus-within:bg-colony-wash"
       data-testid={`channel-activity-item-${item.conversationId}`}
     >
       <button
         aria-label={`Open thread from ${item.senderLabel}`}
-        className="absolute inset-0 z-0 w-full text-left"
+        className="absolute inset-0 z-0 w-full rounded-colony-chip text-left"
         onClick={onOpen}
         type="button"
       />
-      <div className="pointer-events-none relative z-10 flex min-w-0 items-start gap-2.5 px-3 py-3 transition-colors group-hover/activity-row:bg-muted/50 group-focus-within/activity-row:bg-muted/50">
+      <div className="pointer-events-none relative z-10 flex items-center gap-2.5">
         <UserAvatar
           avatarUrl={item.avatarUrl}
-          className="h-9 w-9 shrink-0"
+          className="size-7 shrink-0"
           displayName={item.senderLabel}
           shape={isAgent ? "squircle" : "circle"}
           size="md"
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-start gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold leading-4 text-foreground">
-              {item.senderLabel}
-            </span>
-            <span className="shrink-0 text-xs leading-4 text-muted-foreground/70 transition-opacity group-hover/activity-row:opacity-0 group-focus-within/activity-row:opacity-0">
-              {item.timestampLabel}
-            </span>
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-            <span>Thread</span>
-            {item.unreadCount > 1 ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{item.unreadCount} unread</span>
-              </>
-            ) : null}
-          </div>
-          <Markdown
-            className="inbox-preview-markdown mt-1.5 line-clamp-2 text-sm font-medium leading-5 text-foreground"
-            content={item.preview}
-            interactive={false}
-            mentionNames={item.mentionNames}
-          />
-        </div>
+        <span className="min-w-0 flex-1 truncate text-menu font-extrabold">
+          {item.senderLabel}
+        </span>
+        <span className="shrink-0 text-xs font-medium text-colony-muted">
+          {item.timestampLabel}
+        </span>
       </div>
-      <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-0.5 rounded-full bg-muted/95 p-0.5 opacity-0 shadow-xs transition-opacity group-hover/activity-row:pointer-events-auto group-hover/activity-row:opacity-100 group-focus-within/activity-row:pointer-events-auto group-focus-within/activity-row:opacity-100">
-        <RowActionButton label="Mark as read" onClick={onMarkRead}>
-          <MailOpen />
-        </RowActionButton>
-        <RowActionButton label="Remind me later" onClick={onRemindLater}>
-          <Clock />
-        </RowActionButton>
+      <span className="pointer-events-none relative z-10 text-xs font-extrabold text-colony-accent-ink">
+        Thread
+        {item.unreadCount > 1 ? ` · ${item.unreadCount} unread` : ""}
+      </span>
+      <Markdown
+        className="inbox-preview-markdown pointer-events-none relative z-10 line-clamp-2 text-menu font-medium leading-[1.45] text-colony-fg-secondary"
+        content={item.preview}
+        interactive={false}
+        mentionNames={item.mentionNames}
+      />
+      <div className="relative z-10 flex gap-2">
+        <Button
+          onClick={(event) => {
+            event.stopPropagation();
+            onMarkRead();
+          }}
+          size="xs"
+          type="button"
+          variant="ghost"
+          className="h-8.5 bg-colony-track px-3 text-xs font-bold text-colony-fg hover:bg-colony-border"
+        >
+          Mark as read
+        </Button>
       </div>
     </div>
   );
@@ -165,33 +135,29 @@ function WorkingAgentRow({
 }) {
   return (
     <button
-      className="flex w-full min-w-0 items-start gap-2.5 border-t border-border/50 px-3 py-3 text-left transition-colors first:border-t-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-hidden"
+      className="flex w-full min-w-0 items-center gap-3 rounded-colony-chip px-2.5 py-2 text-left transition-colors hover:bg-colony-wash focus-visible:bg-colony-wash focus-visible:outline-hidden"
       data-testid={`channel-activity-agent-${pubkey}`}
       onClick={onOpen}
       type="button"
     >
       <UserAvatar
         avatarUrl={avatarUrl}
-        className="h-9 w-9 shrink-0"
+        className="size-8.5 shrink-0"
         displayName={name}
         initialsLabel={initialsLabel}
         shape="squircle"
         size="md"
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-start gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold leading-4 text-foreground">
-            {name}
-          </span>
-          <span className="shrink-0 text-xs leading-4 text-muted-foreground/70">
-            {elapsed}
-          </span>
-        </div>
-        <span className="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary/70" />
-          Working
+      <span className="flex min-w-0 flex-1 flex-col leading-[1.3]">
+        <span className="truncate text-control font-extrabold">{name}</span>
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-colony-accent-ink">
+          <span className="size-[7px] rounded-full bg-colony-accent motion-safe:animate-pulse" />
+          Working · {elapsed}
         </span>
-      </div>
+      </span>
+      <span className="text-xs font-extrabold text-colony-accent-ink underline">
+        View activity
+      </span>
     </button>
   );
 }
@@ -213,7 +179,6 @@ export function WorkingAgentRows({
   profiles?: UserProfileLookup;
 }) {
   const now = useNow(1000);
-  const elapsed = formatElapsed(now - activeWorking.anchorAt);
   const alignedAgentNames =
     activeWorking.agentNames?.length === activeWorking.agentPubkeys.length
       ? activeWorking.agentNames
@@ -225,10 +190,14 @@ export function WorkingAgentRows({
       profile?.displayName?.trim() || alignedAgentNames?.[index];
     const keyLabel = truncateNpub(pubkey);
     const name = authoredName || `Agent ${keyLabel}`;
+    // Each agent counts from its own start; the channel anchor is the fallback.
+    const agentAnchor =
+      activeWorking.agentAnchors?.[normalizePubkey(pubkey)] ??
+      activeWorking.anchorAt;
     return (
       <WorkingAgentRow
         avatarUrl={profile?.avatarUrl ?? null}
-        elapsed={elapsed}
+        elapsed={formatElapsedClock(now - agentAnchor)}
         initialsLabel={authoredName || keyLabel}
         key={pubkey}
         name={name}
@@ -264,8 +233,6 @@ export function ChannelActivityPopover({
   const { undoUnread } = feedItemState;
   const identityQuery = useIdentityQuery();
   const { goChannel } = useAppNavigation();
-  const { openAgentActivity } = useOpenAgentActivity();
-  const { openReminder } = useRemindLater();
 
   const unreadChannelFeedItems = React.useMemo(() => {
     return unreadThreadFeedItems.filter(
@@ -400,43 +367,54 @@ export function ChannelActivityPopover({
       </div>
       <PopoverContent
         align="start"
-        className="w-96 overflow-hidden p-0"
+        className="flex w-96 flex-col gap-3.5 rounded-colony-popover bg-colony-pop p-4"
         data-testid={`channel-activity-popover-${channel.name}`}
         onFocusCapture={keepOpen}
         onMouseEnter={keepOpen}
         onMouseLeave={closeWithDelay}
         onOpenAutoFocus={(event) => event.preventDefault()}
         side="right"
-        sideOffset={0}
+        sideOffset={8}
         style={ACTIVITY_POPOVER_MOTION_STYLE}
       >
         <section
           aria-label="Channel activity"
-          className="flex max-h-96 min-h-0 flex-col overflow-hidden"
+          className="flex max-h-[28rem] min-h-0 flex-col gap-3.5 overflow-hidden"
         >
           <h3
-            className="relative z-20 shrink-0 border-b border-border/70 bg-background/95 px-3 py-2 text-sm font-semibold text-foreground backdrop-blur-md supports-[backdrop-filter]:bg-background/90"
+            className="m-0 flex items-center gap-2.5"
             data-testid="channel-activity-header"
           >
-            Channel activity
+            <ChannelGlyph channel={channel} className="size-4.5" />
+            <span className="flex-1 truncate text-base font-extrabold">
+              {channel.name}
+            </span>
+            <span className={EYEBROW_CLASS}>Channel activity</span>
           </h3>
           <div
-            className="buzz-channel-activity-scrollbar min-h-0 overflow-y-auto overscroll-contain"
+            className="buzz-channel-activity-scrollbar flex min-h-0 flex-col gap-3.5 overflow-y-auto overscroll-contain"
             data-testid="channel-activity-scroll"
           >
             {activeWorking?.agentPubkeys.length ? (
-              <WorkingAgentRows
-                activeWorking={activeWorking}
-                channelId={channel.id}
-                onOpen={(pubkey, channelId) => {
-                  setOpen(false);
-                  openAgentActivity(pubkey, { channelId });
-                }}
-                profiles={profiles}
-              />
+              <div className="flex flex-col gap-1">
+                <span className={`${EYEBROW_CLASS} pb-1`}>Agents working</span>
+                <WorkingAgentRows
+                  activeWorking={activeWorking}
+                  channelId={channel.id}
+                  onOpen={(_pubkey, channelId) => {
+                    setOpen(false);
+                    void goChannel(channelId);
+                  }}
+                  profiles={profiles}
+                />
+              </div>
             ) : null}
-            {activityItems.length > 0
-              ? activityItems.map((item) => (
+            {activityItems.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <span className={`${EYEBROW_CLASS} pb-0.5`}>
+                  Unread threads
+                </span>
+                {activityItems.map((item) => (
                   <ThreadPreviewRow
                     isAgent={
                       profiles?.[normalizePubkey(item.item.pubkey)]?.isAgent ===
@@ -453,18 +431,10 @@ export function ChannelActivityPopover({
                         threadRootId: item.conversationId,
                       });
                     }}
-                    onRemindLater={() => {
-                      setOpen(false);
-                      openReminder({
-                        authorPubkey: item.item.pubkey,
-                        channelId: channel.id,
-                        eventId: item.id,
-                        preview: item.preview.slice(0, 100),
-                      });
-                    }}
                   />
-                ))
-              : null}
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
       </PopoverContent>

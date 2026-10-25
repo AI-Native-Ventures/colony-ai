@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
 
 import { cn } from "@/shared/lib/cn";
-import { useTheme } from "@/shared/theme/ThemeProvider";
 import "./card-texture.css";
 import { MODAL_BACKDROP_BLUR_CLASS } from "@/shared/ui/modalBackdrop";
 import {
@@ -21,23 +20,18 @@ const DialogClose = DialogPrimitive.Close;
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => {
-  const { isDark } = useTheme();
-
-  return (
-    <DialogPrimitive.Overlay
-      className={cn(
-        "fixed inset-0 z-50",
-        MODAL_OVERLAY_MOTION_CLASS,
-        MODAL_BACKDROP_BLUR_CLASS,
-        isDark ? "bg-black/60" : "bg-black/10",
-        className,
-      )}
-      ref={ref}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    className={cn(
+      "fixed inset-0 z-50 bg-colony-scrim",
+      MODAL_OVERLAY_MOTION_CLASS,
+      MODAL_BACKDROP_BLUR_CLASS,
+      className,
+    )}
+    ref={ref}
+    {...props}
+  />
+));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 type DialogContentProps = React.ComponentPropsWithoutRef<
@@ -101,7 +95,8 @@ const DialogContent = React.forwardRef<
         <DialogPrimitive.Content
           className={cn(
             "pointer-events-auto relative grid w-[calc(100vw-2rem)] max-w-2xl gap-4 outline-hidden",
-            surface === "default" && "rounded-2xl bg-background p-6 shadow-2xl",
+            surface === "default" &&
+              "gap-4.5 rounded-colony-dialog bg-colony-pop p-7 shadow-colony-dialog",
             surface === "none" && "bg-transparent p-0 shadow-none",
             surface === "textured" &&
               "buzz-card-textured isolate box-border w-full rounded-none border-0 bg-transparent p-[var(--buzz-card-textured-safe-inset)] shadow-none",
@@ -115,17 +110,17 @@ const DialogContent = React.forwardRef<
           {showCloseButton ? (
             <DialogPrimitive.Close
               className={cn(
-                "absolute flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                "absolute flex size-9 items-center justify-center rounded-colony-menu-item bg-colony-track text-colony-fg-secondary transition-colors duration-150 ease-out hover:bg-colony-border focus:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40",
                 // On the textured surface the layout edge sits in the powder
                 // fade; dock the close button at the safe-inset corner so it
                 // stays on the solid center of the texture.
                 surface === "textured"
                   ? "right-[var(--buzz-card-textured-safe-inset)] top-[var(--buzz-card-textured-safe-inset)] -mr-2 -mt-2"
-                  : "right-4 top-4",
+                  : "right-5 top-5",
                 closeButtonClassName,
               )}
             >
-              <X className="h-4 w-4" />
+              <CloseIcon size={15} strokeWidth={2.4} />
               <span className="sr-only">Close</span>
             </DialogPrimitive.Close>
           ) : null}
@@ -153,7 +148,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+      "flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end",
       className,
     )}
     {...props}
@@ -166,7 +161,7 @@ const DialogTitle = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
-    className={cn("text-xl font-semibold tracking-tight", className)}
+    className={cn("text-title-md font-extrabold", className)}
     ref={ref}
     {...props}
   />
@@ -178,7 +173,10 @@ const DialogDescription = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn(
+      "text-control font-medium text-colony-fg-secondary",
+      className,
+    )}
     ref={ref}
     {...props}
   />

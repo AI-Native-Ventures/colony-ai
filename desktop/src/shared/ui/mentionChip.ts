@@ -55,6 +55,7 @@ export type InlineChipIconKind =
   | "repo"
   | "project"
   | "goal"
+  | "lead"
   | "pr"
   | "issue";
 
@@ -66,6 +67,7 @@ const INLINE_CHIP_ICON_KIND_CLASSES: Record<InlineChipIconKind, string> = {
   repo: "inline-chip-icon-repo",
   project: "inline-chip-icon-project",
   goal: "inline-chip-icon-goal",
+  lead: "inline-chip-icon-lead",
   pr: "inline-chip-icon-pr",
   issue: "inline-chip-icon-issue",
 };

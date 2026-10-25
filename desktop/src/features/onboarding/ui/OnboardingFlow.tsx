@@ -14,9 +14,8 @@ import {
   importIdentity,
   persistCurrentIdentity,
 } from "@/shared/api/tauriIdentity";
-import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
-import { Button } from "@/shared/ui/button";
 import { AvatarStep } from "./AvatarStep";
+import { FirstRunButton, FirstRunLink } from "./firstRunControls";
 import { MembershipDenied } from "./MembershipDenied";
 import {
   NostrKeyImportForm,
@@ -24,12 +23,7 @@ import {
 } from "./NostrKeyImportForm";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
-import {
-  type OnboardingTransitionDirection,
-  OnboardingSlideTransition,
-} from "./OnboardingSlideTransition";
-import { OnboardingCard } from "./OnboardingCard";
-import { TOTAL_ONBOARDING_PAGES } from "./OnboardingChrome";
+import { ProfileDoneCard, ProfileFrame, ProfilePair } from "./ProfileFrame";
 import { ProfileStep } from "./ProfileStep";
 import type {
   OnboardingActions,
@@ -177,9 +171,6 @@ export function OnboardingFlow({
     kind: "unreachable" | "error";
     message?: string;
   } | null>(null);
-  const [transitionDirection, setTransitionDirection] =
-    React.useState<OnboardingTransitionDirection>("forward");
-  const systemColorScheme = useSystemColorScheme();
 
   const resetProfileSaveError = React.useCallback(() => {
     profileUpdateMutation.reset();
@@ -196,22 +187,16 @@ export function OnboardingFlow({
     [resetProfileSaveError],
   );
 
-  const showAvatarPage = React.useCallback(
-    (direction: OnboardingTransitionDirection = "forward") => {
-      setTransitionDirection(direction);
-      setCurrentPage("avatar");
-    },
-    [],
-  );
+  const showAvatarPage = React.useCallback(() => {
+    setCurrentPage("avatar");
+  }, []);
 
   const showProfilePage = React.useCallback(() => {
     setMembershipError(null);
-    setTransitionDirection("backward");
     setCurrentPage("profile");
   }, []);
 
   const showKeyImportPage = React.useCallback(() => {
-    setTransitionDirection("forward");
     setCurrentPage("key-import");
   }, []);
 
@@ -361,16 +346,8 @@ export function OnboardingFlow({
         }
       : profileStepState.saveRecovery,
   };
-  // Machine-level identity, backup, and provider setup have already completed.
-  // This relay-scoped flow now owns only the community profile.
-  const activeSteps: OnboardingPage[] = ["profile", "avatar"];
-  const STEP_OFFSET = 5;
-  // key-import occupies the same position as profile.
-  const normalizedPage: OnboardingPage =
-    currentPage === "key-import" ? "profile" : currentPage;
-  const pageIndex = activeSteps.indexOf(normalizedPage);
-  const currentStep = pageIndex >= 0 ? pageIndex + STEP_OFFSET : STEP_OFFSET;
-  const totalOnboardingSteps = TOTAL_ONBOARDING_PAGES;
+  // Machine-level identity and provider setup have already completed. This
+  // relay-scoped flow now owns only the community profile.
 
   // Swapping the identity changes the pubkey, which remounts this flow
   // (keyed on pubkey in App.tsx) and re-runs the onboarding gate: the new
@@ -384,7 +361,6 @@ export function OnboardingFlow({
       queryClient.removeQueries({ queryKey: profileQueryKey });
       profileUpdateMutation.reset();
       setDeniedPubkey("");
-      setTransitionDirection("backward");
       setCurrentPage("profile");
     },
     [profileUpdateMutation, queryClient],
@@ -478,46 +454,49 @@ export function OnboardingFlow({
 
   return (
     <>
-      <OnboardingCard
-        allowWideContent={currentPage === "avatar"}
-        backAction={chromeBackAction}
-        current={currentStep}
-        stableWideWidth={currentPage === "avatar"}
-        systemColorScheme={systemColorScheme}
-        testId="onboarding-gate"
-        total={totalOnboardingSteps}
-      >
-        <div className="relative flex w-full max-w-none flex-col items-stretch text-left">
+      <ProfileFrame stage="after" testId="onboarding-gate">
+        <div className="c3fr-profile-wrap">
+          <div className="c3fr-wide-top">
+            {chromeBackAction ? (
+              <FirstRunLink
+                data-testid="onboarding-back"
+                disabled={chromeBackAction.disabled}
+                onClick={chromeBackAction.onClick}
+              >
+                {currentPage === "profile"
+                  ? "Change community"
+                  : (chromeBackAction.label ?? "Back")}
+              </FirstRunLink>
+            ) : (
+              <span />
+            )}
+          </div>
           {membershipError &&
           (currentPage === "profile" || currentPage === "avatar") ? (
-            <div className="mb-4 w-full max-w-[500px] rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
-              {membershipError.kind === "unreachable" ? (
-                <>
-                  <p className="font-medium text-destructive">
-                    Can't reach this relay
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    Check your connection or change your community.
-                  </p>
-                  <Button
-                    className="mt-3"
-                    onClick={() => setIsCommunityChangeOpen(true)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    Change community
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p className="font-medium text-destructive">
-                    {membershipError.message ?? "Something went wrong"}
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    The relay returned an error. Try again.
-                  </p>
-                </>
-              )}
+            <div className="c3fr-callout" data-tone="bad">
+              <div className="c3fr-callout-body">
+                {membershipError.kind === "unreachable" ? (
+                  <>
+                    <div className="c3fr-callout-text">
+                      <h3>Can’t reach this relay</h3>
+                      <p>Check your connection or change your community.</p>
+                    </div>
+                    <div className="c3fr-callout-actions">
+                      <FirstRunButton
+                        onClick={() => setIsCommunityChangeOpen(true)}
+                        size="small"
+                      >
+                        Change community
+                      </FirstRunButton>
+                    </div>
+                  </>
+                ) : (
+                  <div className="c3fr-callout-text">
+                    <h3>{membershipError.message ?? "Something went wrong"}</h3>
+                    <p>The relay returned an error. Try again.</p>
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
 
@@ -535,23 +514,20 @@ export function OnboardingFlow({
                 updateAvatarUrl: updateAvatarUrlDraft,
                 updateDisplayName: updateDisplayNameDraft,
               }}
-              direction={transitionDirection}
               state={profileStepState}
-              usesExistingIdentity
             />
           ) : currentPage === "key-import" ? (
-            <OnboardingSlideTransition
-              className="flex w-full flex-col items-center text-center"
-              direction={transitionDirection}
-              transitionKey={`key-import-${transitionDirection}`}
+            <div
+              className="c3fr-profile-card"
+              data-testid="onboarding-key-import"
             >
-              <div className="w-full max-w-[440px]">
+              <div className="c3fr-head">
                 {identityLost ? (
                   <>
-                    <h1 className="text-title font-normal text-foreground">
+                    <h2 className="c3fr-title c3fr-title-profile" tabIndex={-1}>
                       Re-import your key
-                    </h1>
-                    <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                    </h2>
+                    <p className="c3fr-lede c3fr-lede-card">
                       Your identity is no longer in the system keyring.
                       Re-import your nsec to restore it. Colony will restart to
                       finish recovery. Or go back to start a new identity with a
@@ -560,10 +536,10 @@ export function OnboardingFlow({
                   </>
                 ) : (
                   <>
-                    <h1 className="text-title font-normal text-foreground">
+                    <h2 className="c3fr-title c3fr-title-profile" tabIndex={-1}>
                       Use your existing key
-                    </h1>
-                    <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                    </h2>
+                    <p className="c3fr-lede c3fr-lede-card">
                       Import your Nostr private key to use that identity with
                       Colony. If this key already has a profile on the relay,
                       your name and avatar are restored automatically.
@@ -571,13 +547,11 @@ export function OnboardingFlow({
                   </>
                 )}
               </div>
-
               {persistError ? (
-                <p className="mt-4 w-full max-w-[440px] text-sm text-destructive">
+                <p className="c3fr-error" role="alert">
                   {persistError}
                 </p>
               ) : null}
-
               <NostrKeyImportForm
                 key={keyImportFormKey}
                 onBack={handleKeyImportBack}
@@ -587,27 +561,33 @@ export function OnboardingFlow({
                 showBack={false}
                 showPasswordStageBack={false}
               />
-            </OnboardingSlideTransition>
+            </div>
           ) : (
-            <AvatarStep
-              actions={{
-                advanceWithoutSaving: complete,
-                back: showProfilePage,
-                onUploadingChange: setIsUploadingAvatar,
-                skipForNow,
-                submit: () => {
-                  void saveProfileAndContinue("complete");
-                },
-                updateAvatarUrl: updateAvatarUrlDraft,
-              }}
-              direction={transitionDirection}
-              showAlwaysSkip={true}
-              showBack={false}
-              state={avatarStepState}
-            />
+            <ProfilePair>
+              <ProfileDoneCard
+                name={
+                  profileStepState.name.draftValue.trim() ||
+                  profileStepState.name.savedValue
+                }
+              />
+              <AvatarStep
+                actions={{
+                  advanceWithoutSaving: complete,
+                  back: showProfilePage,
+                  onUploadingChange: setIsUploadingAvatar,
+                  skipForNow,
+                  submit: () => {
+                    void saveProfileAndContinue("complete");
+                  },
+                  updateAvatarUrl: updateAvatarUrlDraft,
+                }}
+                showAlwaysSkip={true}
+                state={avatarStepState}
+              />
+            </ProfilePair>
           )}
         </div>
-      </OnboardingCard>
+      </ProfileFrame>
       {isCommunityChangeOpen ? (
         <CommunityChangeOverlay
           onClose={() => setIsCommunityChangeOpen(false)}

@@ -94,6 +94,9 @@ test.beforeEach(async ({ page }) => {
 test("set status dialog uses the desktop modal with shared status choices", async ({
   page,
 }) => {
+  // Pin a mid-week day: on a Sunday "This week" and "Today" end at the same
+  // moment (Monday 00:00), so a saved "This week" reopens as "Today".
+  await page.clock.setFixedTime(STATUS_CLOCK);
   await page.goto("/");
   await openProfilePopover(page);
   await page.getByTestId("profile-popover-set-status").click();
@@ -118,7 +121,7 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
   await expect(emojiButton.getByText("💬", { exact: true })).toBeVisible();
   await expect(emojiButton.locator("svg")).toHaveCount(0);
   await dialog.getByTestId("set-status-input").fill("");
-  await expect(dialog.getByText("Duration", { exact: true })).toHaveCount(2);
+  await expect(dialog.getByText("Clear after", { exact: true })).toBeVisible();
   await expect(
     dialog.getByText("Quick statuses", { exact: true }),
   ).toBeVisible();
@@ -133,22 +136,18 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
     await expect(dialog.getByText(quickStatus, { exact: true })).toBeVisible();
   }
 
-  await dialog.getByTestId("set-status-duration").click();
-  for (const duration of [
-    "1 hour",
-    "8 hours",
-    "Today",
-    "This week",
-    "Custom",
-  ]) {
-    await expect(page.getByRole("menuitem", { name: duration })).toBeVisible();
+  for (const duration of ["Today", "This week", "Custom"]) {
+    await expect(dialog.getByRole("radio", { name: duration })).toBeVisible();
+  }
+  for (const removed of ["1 hour", "8 hours"]) {
+    await expect(dialog.getByRole("radio", { name: removed })).toHaveCount(0);
   }
   await waitForAnimations(page);
   await page.screenshot({
     clip: { height: 700, width: 600, x: 340, y: 10 },
     path: "test-results/profile-status/04-status-duration-options.png",
   });
-  await page.getByRole("menuitem", { name: "8 hours" }).click();
+  await dialog.getByRole("radio", { name: "This week" }).click();
 
   await dialog.getByTestId("set-status-preset-working-remotely").click();
   await expect(dialog.getByTestId("set-status-input")).toHaveValue(
@@ -159,21 +158,18 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
 
   await openProfilePopover(page);
   await page.getByTestId("profile-popover-set-status").click();
-  await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    dialog.getByText("Quick statuses", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
-  await expect(page.getByTestId("set-status-duration")).toContainText(
-    "8 hours",
-  );
+  await expect(dialog.getByRole("radio", { name: "This week" })).toBeChecked();
 
   await dialog.getByTestId("set-status-input").fill("Working remotely today");
   await expect(dialog.getByLabel("Save status")).toBeEnabled();
   await dialog.getByTestId("set-status-input").fill("Working remotely");
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
 
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "Custom" }).click();
+  await dialog.getByRole("radio", { name: "Custom" }).click();
   await expect(dialog.getByText("Until", { exact: true })).toBeVisible();
   const expirationDate = dialog.getByLabel("Status expiration date");
   await expect(expirationDate).toBeVisible();
@@ -261,12 +257,11 @@ test("keeps an open status draft when the saved status expires", async ({
     "Choose a duration in the future.",
   );
   await expect(saveButton).toBeDisabled();
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "This week" }).click();
+  await dialog.getByRole("radio", { name: "This week" }).click();
   await expect(saveButton).toBeEnabled();
-  await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    dialog.getByText("Quick statuses", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByTestId("set-status-clear")).toBeVisible();
 });
 
@@ -307,8 +302,7 @@ test("can apply Today to an existing status without an expiration", async ({
   const dialog = page.getByTestId("set-status-dialog");
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
 
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "Today" }).click();
+  await dialog.getByRole("radio", { name: "Today" }).click();
   await expect(dialog.getByLabel("Save status")).toBeEnabled();
   await dialog.getByTestId("set-status-save").click();
 
@@ -334,7 +328,7 @@ test("applies Today when editing a legacy status without an expiration", async (
   });
   await page.getByTestId("profile-popover-set-status").click();
   const dialog = page.getByTestId("set-status-dialog");
-  await expect(page.getByTestId("set-status-duration")).toContainText("Today");
+  await expect(dialog.getByRole("radio", { name: "Today" })).toBeChecked();
   await dialog.getByTestId("set-status-input").fill("Legacy status edited");
   await dialog.getByTestId("set-status-save").click();
 
@@ -414,7 +408,7 @@ test("profile popover renders a custom emoji status as an image", async ({
   await expect(statusButton).not.toContainText(`:${SHORTCODE}:`);
 });
 
-test("shows status and huddle indicators beside chat names with tooltips", async ({
+test("shows the status indicator beside chat names with a tooltip", async ({
   page,
 }) => {
   await page.goto("/");
@@ -454,7 +448,7 @@ test("shows status and huddle indicators beside chat names with tooltips", async
     .poll(() =>
       statusIndicator.evaluate((element) => getComputedStyle(element).fontSize),
     )
-    .toBe("15px");
+    .toBe("16px");
   await expect
     .poll(() =>
       statusIndicator.locator("[aria-hidden='true']").evaluate((element) => ({
@@ -466,58 +460,4 @@ test("shows status and huddle indicators beside chat names with tooltips", async
   await expect(statusIndicator.locator("[title]")).toHaveCount(0);
   await statusIndicator.hover();
   await expect(page.getByRole("tooltip")).toHaveText(STATUS_TEXT);
-
-  await waitForMockLiveSubscription(page, "alice-tyler", 48100);
-  await page.evaluate((pubkey) => {
-    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-      }),
-      id: "8".repeat(64),
-      kind: 48100,
-      pubkey,
-    });
-  }, MOCK_IDENTITY_PUBKEY);
-  const huddleIndicator = row.getByTestId("user-huddle-indicator");
-  await expect(huddleIndicator).toHaveCount(0);
-
-  await waitForMockLiveSubscription(page, "alice-tyler", 48101);
-  await page.evaluate((relayPubkey) => {
-    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
-    emit?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        admission_id: "status-admission",
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-        roster_revision: 1,
-      }),
-      extraTags: [["p", relayPubkey]],
-      id: "9".repeat(64),
-      kind: 48101,
-      pubkey: relayPubkey,
-    });
-    emit?.({
-      channelName: "alice-tyler",
-      content: JSON.stringify({
-        ephemeral_channel_id: "status-huddle",
-        generation: "status-generation",
-      }),
-      extraTags: [["d", "status-huddle"]],
-      id: "a".repeat(64),
-      kind: 48104,
-      pubkey: relayPubkey,
-    });
-  }, MOCK_IDENTITY_PUBKEY);
-  await expect(huddleIndicator).toBeVisible();
-  await expect(huddleIndicator).toHaveAttribute("aria-label", "🎧 In a huddle");
-  await expect
-    .poll(() =>
-      huddleIndicator.evaluate((element) => getComputedStyle(element).fontSize),
-    )
-    .toBe("15px");
-  await huddleIndicator.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("In a huddle");
 });

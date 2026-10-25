@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
 test.describe("home inbox chrome", () => {
@@ -29,44 +28,6 @@ test.describe("home inbox chrome", () => {
     expect(filterBox).not.toBeNull();
     expect(optionsBox).not.toBeNull();
     expect(filterBox?.x ?? 0).toBeLessThan(optionsBox?.x ?? 0);
-  });
-
-  test("shares a blurred header backdrop across list and detail", async ({
-    page,
-  }) => {
-    await expect(page.getByTestId("home-inbox-detail")).toBeVisible();
-
-    const homeInbox = page.getByTestId("home-inbox");
-    const listScroller = page.getByTestId("home-inbox-list");
-    const detailScroller = page.getByTestId("home-inbox-detail-scroll");
-    const sharedBackdrop = page.getByTestId(
-      "home-inbox-shared-header-backdrop",
-    );
-
-    const [homeBox, backdropBox, listBox, detailBox, backdropFilter] =
-      await Promise.all([
-        homeInbox.boundingBox(),
-        sharedBackdrop.boundingBox(),
-        listScroller.boundingBox(),
-        detailScroller.boundingBox(),
-        sharedBackdrop.evaluate(
-          (element) => getComputedStyle(element).backdropFilter,
-        ),
-      ]);
-
-    expect(homeBox).not.toBeNull();
-    expect(backdropBox).not.toBeNull();
-    expect(listBox).not.toBeNull();
-    expect(detailBox).not.toBeNull();
-    expect(Math.round(backdropBox?.x ?? 0)).toBe(Math.round(homeBox?.x ?? 0));
-    expect(Math.round(backdropBox?.width ?? 0)).toBe(
-      Math.round(homeBox?.width ?? 0),
-    );
-    expect(Math.round(listBox?.y ?? 0)).toBe(Math.round(backdropBox?.y ?? 0));
-    expect(Math.round(detailBox?.y ?? 0)).toBe(Math.round(backdropBox?.y ?? 0));
-    expect(backdropFilter).not.toBe("none");
-
-    await waitForAnimations(page);
   });
 
   test("reserves the measured composer height and masks content behind it", async ({

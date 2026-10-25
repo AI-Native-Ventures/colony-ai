@@ -33,7 +33,10 @@ const RESEND_COOLDOWN_SECONDS = 60;
 type AccountAuthFlowProps = {
   authClient: AccountAuthClient;
   mode?: "onboarding" | "claim";
-  onAdvanced?: () => void;
+  /** Opens the advanced sign-in screen; says which screen it was opened from. */
+  onAdvanced?: (from: "account" | "signin") => void;
+  /** The screen to start on (coming back from the advanced sign-in screen). */
+  initialScreen?: "account" | "signin";
   onAuthenticated: (account: AccountAuthRecord) => Promise<void> | void;
   onCancel?: () => void;
   standalone?: boolean;
@@ -232,6 +235,7 @@ export function AccountAuthFlow({
   authClient,
   mode = "onboarding",
   onAdvanced,
+  initialScreen,
   onAuthenticated,
   onCancel,
   standalone = false,
@@ -241,7 +245,12 @@ export function AccountAuthFlow({
   const [state, dispatch] = React.useReducer(
     accountAuthFlowReducer,
     mode,
-    createAccountAuthFlowState,
+    (initialMode) => {
+      const initial = createAccountAuthFlowState(initialMode);
+      return initialScreen === "signin"
+        ? accountAuthFlowReducer(initial, { type: "begin_signin" })
+        : initial;
+    },
   );
   const [password, setPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
@@ -607,7 +616,7 @@ export function AccountAuthFlow({
           <button
             className="self-center rounded-sm px-2 py-1 text-sm text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="account-auth-advanced"
-            onClick={onAdvanced}
+            onClick={() => onAdvanced?.("account")}
             type="button"
           >
             Advanced sign-in options
@@ -965,7 +974,7 @@ export function AccountAuthFlow({
       if (scene === "account") dispatchAndClear({ type: "begin_signup" });
       else if (scene === "signin") dispatchAndClear({ type: "show_signin" });
       else if (scene === "forgot") dispatchAndClear({ type: "begin_reset" });
-      else if (scene === "business") onAdvanced?.();
+      else if (scene === "business") onAdvanced?.("account");
     };
     const submit =
       state.screen === "choice" || state.screen === "signup"
@@ -988,7 +997,10 @@ export function AccountAuthFlow({
         className="colony-onboarding-auth-root"
         data-testid="machine-onboarding-gate"
       >
-        <div data-testid={`account-auth-screen-${state.screen}`}>
+        <div
+          className="c3fr-gate"
+          data-testid={`account-auth-screen-${state.screen}`}
+        >
           <StartupWindowDragRegion />
           <OnboardingScenePresentation
             data={data}
@@ -1001,6 +1013,12 @@ export function AccountAuthFlow({
             onNavigate={navigate}
             onPasswordChange={setPassword}
             onGoogleSignIn={submitGoogle}
+            onAdvanced={
+              onAdvanced
+                ? () =>
+                    onAdvanced(state.screen === "signin" ? "signin" : "account")
+                : undefined
+            }
             googlePending={googlePending}
             inviteBrand={
               designedScene === "account" ||

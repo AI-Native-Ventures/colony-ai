@@ -231,8 +231,7 @@ test("new ask thread drafts can be canceled from the destination step", async ({
   }
   await channel.selectOption(channelId);
 
-  await page.getByRole("button", { name: "Choose a thread" }).click();
-  await page.getByRole("button", { name: "Start a new thread" }).click();
+  await page.getByRole("radio", { name: "Start a new thread" }).check();
   await page
     .getByLabel("New thread title")
     .fill("A thread draft that will be canceled");
@@ -439,7 +438,7 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     if (ask.category === "money") {
       await expect(page.getByTestId("ask-thread-title")).toHaveText(ask.title);
       await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
-        ask.title,
+        `Decision in ${ask.threadTitle}`,
       );
       await expect(
         page.getByRole("heading", { name: "Decision requested" }),
@@ -527,75 +526,4 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     );
     await expect(page.getByTestId("ask-resolved")).toBeVisible();
   }
-});
-
-test("Needs me approves and denies addressed workflow approvals", async ({
-  page,
-}) => {
-  const createdAt = Math.floor(Date.now() / 1_000);
-  const expiresAt = new Date((createdAt + 3_600) * 1_000).toISOString();
-  await installMockBridge(page, {
-    workflowApprovals: [
-      {
-        workflowId: "workflow-today-release",
-        workflowName: "Release approval",
-        channelName: "general",
-        runId: "run-today-release",
-        approvalRef: "approval-today-release",
-        stepId: "release_review",
-        stepIndex: 2,
-        approverSpec: "current",
-        approverPubkey: "current",
-        expiresAt,
-        createdAt,
-      },
-      {
-        workflowId: "workflow-today-security",
-        workflowName: "Security approval",
-        channelName: "general",
-        runId: "run-today-security",
-        approvalRef: "approval-today-security",
-        stepId: "security_review",
-        stepIndex: 1,
-        approverSpec: "any",
-        approverPubkey: null,
-        expiresAt,
-        createdAt,
-      },
-      {
-        workflowId: "workflow-today-other-person",
-        workflowName: "Other person approval",
-        channelName: "general",
-        runId: "run-today-other-person",
-        approvalRef: "approval-today-other-person",
-        stepId: "other_person_review",
-        stepIndex: 1,
-        approverSpec: TEST_IDENTITIES.bob.pubkey,
-        approverPubkey: TEST_IDENTITIES.bob.pubkey,
-        expiresAt,
-        createdAt,
-      },
-    ],
-  });
-  await page.goto("/#/today");
-
-  const releaseRow = page.getByTestId(
-    "today-workflow-approval-approval-today-release",
-  );
-  const securityRow = page.getByTestId(
-    "today-workflow-approval-approval-today-security",
-  );
-  await expect(
-    page.getByTestId("today-workflow-approval-approval-today-other-person"),
-  ).toHaveCount(0);
-  await expect(releaseRow).toBeVisible();
-  await expect(securityRow).toBeVisible();
-  const approve = releaseRow.getByRole("button", { name: "Approve" });
-  await approve.focus();
-  await page.keyboard.press("Enter");
-  await expect(releaseRow).toHaveCount(0);
-  const deny = securityRow.getByRole("button", { name: "Deny" });
-  await deny.focus();
-  await page.keyboard.press("Enter");
-  await expect(securityRow).toHaveCount(0);
 });

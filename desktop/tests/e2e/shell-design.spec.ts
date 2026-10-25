@@ -124,14 +124,15 @@ for (const [width, height] of [
       }
       const sidebar = page.getByTestId("app-sidebar");
       await expect(sidebar).toBeVisible();
-      await expect(sidebar).toHaveCSS("width", "260px");
+      await expect(sidebar).toHaveCSS("width", "280px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"]').first(),
-      ).toHaveCSS("font-size", "13.9286px");
+      ).toHaveCSS("font-size", "16px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"] > svg').first(),
-      ).toHaveCSS("width", "18px");
-      if (height >= 900) {
+      ).toHaveCSS("width", "19px");
+      // The designed 960px frame shows the whole sidebar without scrolling.
+      if (height >= 960) {
         const nav = sidebar.locator("[data-sidebar=content]");
         expect(
           await nav.evaluate((el) => el.scrollHeight - el.clientHeight),
@@ -142,8 +143,9 @@ for (const [width, height] of [
           "[data-buzz-content-surface]:not([data-buzz-content-unframed])",
         )
         .first();
-      await expect(frame).toHaveCSS("margin", "8px");
-      await expect(frame).toHaveCSS("border-radius", "11px");
+      // The Colony 3.0 main area is flat and fills its column.
+      await expect(frame).toHaveCSS("margin", "0px");
+      await expect(frame).toHaveCSS("border-radius", "0px");
       await page.evaluate(() => document.fonts.ready);
       await waitForAnimations(page);
       const box = await frame.boundingBox();
@@ -152,23 +154,23 @@ for (const [width, height] of [
       if (name === "thread") {
         const thread = page.getByTestId("message-thread-panel");
         const input = thread.getByTestId("message-input-scroll");
-        await expect(input).toHaveCSS("padding", "12px 12px 7px");
-        await expect(input).toHaveCSS("font-size", "15px");
+        // The Colony 3.0 card pads the card; the editor keeps a 1px edge.
+        await expect(input).toHaveCSS("padding", "1px 0px");
+        await expect(input).toHaveCSS("font-size", "17px");
         await expect(thread.locator(".composer-dock")).toHaveCSS(
           "padding",
           "10px 24px 15px",
         );
-        const inputTextLeft = await input.evaluate(
-          (el) =>
-            el.getBoundingClientRect().x +
-            parseFloat(getComputedStyle(el).paddingLeft),
-        );
+        // "Also send to" sits under the card, on the card's left edge.
+        const threadCardLeft = await thread
+          .getByTestId("message-composer")
+          .evaluate((el) => el.getBoundingClientRect().x);
         const checkbox = thread.getByRole("checkbox");
         if (width >= 1200) {
           const checkboxBox = await checkbox.boundingBox();
           expect(checkboxBox).not.toBeNull();
           expect(
-            Math.abs((checkboxBox?.x ?? 0) - inputTextLeft),
+            Math.abs((checkboxBox?.x ?? 0) - threadCardLeft),
           ).toBeLessThanOrEqual(1);
         }
         const channelComposer = page.getByTestId("channel-composer-overlay");
@@ -196,13 +198,10 @@ for (const [width, height] of [
             .evaluate((el) => el.scrollWidth - el.clientWidth),
         ).toBeLessThanOrEqual(1);
         const tools = await thread
-          .getByRole("button", { name: "Record voice note", exact: true })
+          .getByRole("button", { name: "Attach file", exact: true })
           .boundingBox();
         const send = await thread
-          .getByRole("button", {
-            name: "Reference goal or sub-goal",
-            exact: true,
-          })
+          .getByRole("button", { name: "Send message", exact: true })
           .boundingBox();
         expect(tools).not.toBeNull();
         expect(send).not.toBeNull();
@@ -232,10 +231,11 @@ for (const [width, height] of [
   });
 }
 
+// Colony 3.0 conversation text: 17px by default, a step of 1/15 either way.
 for (const [preference, px] of [
-  ["smaller", 14],
-  ["default", 15],
-  ["larger", 16],
+  ["smaller", 15.8666],
+  ["default", 17],
+  ["larger", 18.1333],
 ] as const) {
   test(`shared text ramp preserves ${preference} and keyboard zoom`, async ({
     page,
@@ -279,7 +279,7 @@ for (const [preference, px] of [
         ),
       )
       .toBeCloseTo(px * 1.1, 2);
-    await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "260px");
+    await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "280px");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${proofDir}/after-${preference}-zoom-1440.png`,
@@ -293,5 +293,5 @@ test("migrates the saved legacy sidebar default", async ({ page }) => {
   );
   await installMockBridge(page);
   await page.goto("/");
-  await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "260px");
+  await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "280px");
 });

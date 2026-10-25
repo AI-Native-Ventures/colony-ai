@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { TodayScreen } from "@/features/home/ui/TodayScreen";
 
 function NavigationStartScreen() {
-  return <TodayScreen showUpdatesAction={false} />;
+  return <TodayScreen />;
 }
 
 export const Route = createFileRoute("/navigation/start")({

@@ -300,10 +300,11 @@ test("video upload previews use poster frames and inline videos open review mode
   await expect(composerPoster).toHaveAttribute("src", POSTER_DATA_URL);
 
   const box = await composerPoster.boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(53);
-  expect(box?.width).toBeLessThanOrEqual(58);
-  expect(box?.height).toBeGreaterThanOrEqual(52);
-  expect(box?.height).toBeLessThanOrEqual(58);
+  // The Colony 3.0 composer shows attachments as 120px tiles.
+  expect(box?.width).toBeGreaterThanOrEqual(110);
+  expect(box?.width).toBeLessThanOrEqual(130);
+  expect(box?.height).toBeGreaterThanOrEqual(70);
+  expect(box?.height).toBeLessThanOrEqual(130);
 
   await page.getByTestId("send-message").click();
   await expect(page.getByText("Sending")).toHaveCount(0);

@@ -9,7 +9,6 @@ import {
   DEFAULT_EPHEMERAL_TTL_SECONDS,
   formatTtlDuration,
 } from "@/features/channels/lib/ephemeralChannel";
-import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
 import type { Channel } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -21,12 +20,21 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
+import { CHANNEL_FORM_LABEL_CLASS } from "./channelFormStyles";
+import { ChannelFormSegmented } from "./ChannelFormSegmented";
+import { ChevronDownGlyph, ClockDashedGlyph } from "./dialogIcons";
+import { HashIcon } from "@/shared/ui/colonyIcons";
 import { EditableInfoFieldRow } from "./ChannelManagementSheetRows";
 import { ChannelTypePicker } from "./ChannelTypePicker";
 
 const CHANNEL_TYPE_OPTIONS = [
   { value: "temporary", label: "Temporary", Icon: ClockFading },
   { value: "ongoing", label: "Ongoing", Icon: Hash },
+] as const;
+
+const CARD_TYPE_OPTIONS = [
+  { value: "temporary", label: "Temporary", Icon: ClockDashedGlyph },
+  { value: "ongoing", label: "Ongoing", Icon: HashIcon },
 ] as const;
 
 const EPHEMERAL_TIMEOUT_OPTIONS = [
@@ -55,9 +63,7 @@ export function ChannelTypeDetailRow({
   channel: Channel;
   onEdit?: () => void;
 }) {
-  const projectHome = useIsProjectHomeChannel(channel.id);
   const lifecycle = channelLifecycle({
-    projectHome,
     temporary: channel.ttlSeconds !== null,
   });
 
@@ -73,7 +79,6 @@ export function ChannelTypeDetailRow({
 }
 
 export function ChannelTypeSettings({
-  channelId,
   disabled,
   label = "Channel type",
   onOpenChange,
@@ -85,7 +90,6 @@ export function ChannelTypeSettings({
   ttlSeconds,
   variant = "dropdown",
 }: {
-  channelId?: string | null;
   disabled?: boolean;
   label?: string;
   onOpenChange?: (open: boolean) => void;
@@ -95,10 +99,9 @@ export function ChannelTypeSettings({
   temporary: boolean;
   testIdPrefix: string;
   ttlSeconds: number;
-  variant?: "dropdown" | "segmented";
+  variant?: "dropdown" | "segmented" | "form" | "card";
 }) {
-  const projectHome = useIsProjectHomeChannel(channelId);
-  const lifecycle = channelLifecycle({ projectHome, temporary });
+  const lifecycle = channelLifecycle({ temporary });
   const shouldReduceMotion = useReducedMotion();
   const channelTypeResizeTransition = shouldReduceMotion
     ? { duration: 0 }
@@ -115,6 +118,199 @@ export function ChannelTypeSettings({
         },
         ...EPHEMERAL_TIMEOUT_OPTIONS,
       ];
+
+  if (variant === "card") {
+    return (
+      <div
+        className="rounded-colony-chip bg-colony-pop shadow-[0_0_0_1px_hsl(var(--colony-border-strong))]"
+        data-testid={`${testIdPrefix}-channel-type-container`}
+      >
+        <div
+          className="flex items-center justify-between gap-3 py-2.5 pl-3.5 pr-2.5"
+          data-testid={`${testIdPrefix}-channel-type-row`}
+        >
+          <span
+            className={cn("text-menu font-bold", disabled && "opacity-50")}
+            id={`${testIdPrefix}-channel-type-label`}
+          >
+            {label}
+          </span>
+          <ChannelFormSegmented
+            disabled={disabled}
+            legend={label}
+            onValueChange={(next) => onTemporaryChange(next === "temporary")}
+            optionTestIdPrefix={`${testIdPrefix}-channel-type-option`}
+            options={CARD_TYPE_OPTIONS}
+            testId={`${testIdPrefix}-channel-type`}
+            value={temporary ? "temporary" : "ongoing"}
+          />
+        </div>
+        {temporary ? (
+          <>
+            <div className="mx-3.5 h-px bg-colony-border" />
+            <div
+              className="flex items-center justify-between gap-3 py-2 pl-3.5 pr-2"
+              data-testid={`${testIdPrefix}-ephemeral-settings`}
+            >
+              <label
+                className={cn("text-menu font-bold", disabled && "opacity-50")}
+                htmlFor={`${testIdPrefix}-ttl`}
+              >
+                Expires after
+              </label>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label="Expires after"
+                    className="inline-flex h-[2.375rem] items-center gap-2 rounded-[0.625rem] px-3 text-menu font-bold text-colony-fg transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40 disabled:opacity-50"
+                    data-testid={`${testIdPrefix}-ttl`}
+                    disabled={disabled}
+                    id={`${testIdPrefix}-ttl`}
+                    type="button"
+                  >
+                    {selectedTimeoutOption?.label ??
+                      `Current (${formatTtlDuration(ttlSeconds)})`}
+                    <ChevronDownGlyph
+                      className="text-colony-muted"
+                      size={15}
+                      strokeWidth={2.4}
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                  style={{
+                    minWidth: "var(--radix-dropdown-menu-trigger-width)",
+                  }}
+                >
+                  <DropdownMenuRadioGroup
+                    onValueChange={(value) => onTtlSecondsChange(Number(value))}
+                    value={String(ttlSeconds)}
+                  >
+                    {timeoutOptions.map((option) => (
+                      <DropdownMenuRadioItem
+                        data-testid={`${testIdPrefix}-ttl-option-${option.seconds}`}
+                        key={option.seconds}
+                        value={String(option.seconds)}
+                      >
+                        {option.label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (variant === "form") {
+    return (
+      <div
+        className="flex flex-wrap gap-4"
+        data-testid={`${testIdPrefix}-channel-type-container`}
+      >
+        <fieldset
+          className="m-0 flex min-w-0 flex-[1_1_13.75rem] flex-col gap-[7px] border-0 p-0"
+          data-testid={`${testIdPrefix}-channel-type`}
+          disabled={disabled}
+        >
+          <legend className={cn("mb-[7px] p-0", CHANNEL_FORM_LABEL_CLASS)}>
+            {label}
+          </legend>
+          <div className="grid grid-cols-2 gap-1 rounded-[0.8125rem] bg-colony-track p-1">
+            {CHANNEL_TYPE_OPTIONS.map((option) => {
+              const selected =
+                (temporary ? "temporary" : "ongoing") === option.value;
+              return (
+                <label
+                  className={cn(
+                    "flex h-[2.375rem] cursor-pointer items-center justify-center gap-2 rounded-[0.625rem] text-menu",
+                    selected
+                      ? "bg-colony-pop font-extrabold text-colony-fg shadow-[0_1px_3px_rgba(60,40,80,0.12)]"
+                      : "font-semibold text-colony-fg-secondary",
+                  )}
+                  data-testid={`${testIdPrefix}-channel-type-option-${option.value}`}
+                  key={option.value}
+                >
+                  <input
+                    checked={selected}
+                    className="m-0 accent-colony-accent"
+                    name={`${testIdPrefix}-channel-type`}
+                    onChange={() =>
+                      onTemporaryChange(option.value === "temporary")
+                    }
+                    type="radio"
+                  />
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+        {temporary ? (
+          <div
+            className="flex min-w-0 flex-[1_1_11.25rem] flex-col gap-[7px]"
+            data-testid={`${testIdPrefix}-ephemeral-settings`}
+          >
+            <label
+              className={CHANNEL_FORM_LABEL_CLASS}
+              htmlFor={`${testIdPrefix}-ttl`}
+            >
+              Expires after
+            </label>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="Expires after"
+                  className="flex h-11.5 items-center justify-between gap-2 rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3 text-left text-sm font-semibold text-colony-fg transition-colors focus-visible:border-colony-accent focus-visible:outline-hidden disabled:opacity-50"
+                  data-testid={`${testIdPrefix}-ttl`}
+                  disabled={disabled}
+                  id={`${testIdPrefix}-ttl`}
+                  type="button"
+                >
+                  <span className="truncate">
+                    {selectedTimeoutOption?.label ??
+                      `Current (${formatTtlDuration(ttlSeconds)})`}
+                  </span>
+                  <ChevronDownGlyph
+                    className="shrink-0 text-colony-fg-secondary"
+                    size={15}
+                    strokeWidth={2.4}
+                  />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(event) => event.preventDefault()}
+                style={{
+                  minWidth: "var(--radix-dropdown-menu-trigger-width)",
+                }}
+              >
+                <DropdownMenuRadioGroup
+                  onValueChange={(value) => onTtlSecondsChange(Number(value))}
+                  value={String(ttlSeconds)}
+                >
+                  {timeoutOptions.map((option) => (
+                    <DropdownMenuRadioItem
+                      data-testid={`${testIdPrefix}-ttl-option-${option.seconds}`}
+                      key={option.seconds}
+                      value={String(option.seconds)}
+                    >
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -146,7 +342,6 @@ export function ChannelTypeSettings({
         ) : (
           <ChannelTypePicker
             align="end"
-            allowProject={projectHome}
             className="-mr-2.5"
             disabled={disabled}
             lifecycle={lifecycle}
@@ -160,7 +355,7 @@ export function ChannelTypeSettings({
         )}
       </div>
       <AnimatePresence initial={false}>
-        {temporary && !projectHome ? (
+        {temporary ? (
           <motion.div
             animate={{ height: "auto", opacity: 1 }}
             className="overflow-hidden"

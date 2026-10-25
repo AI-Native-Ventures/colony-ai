@@ -2,6 +2,12 @@ import {
   nextPreferenceWriteTime,
   preferenceWriteTime,
 } from "@/shared/lib/preferenceWriteTime";
+import {
+  DEFAULT_FIELD_COLORS,
+  fieldColorsFromLegacyGradient,
+  parseFieldColors,
+  type FieldColors,
+} from "@/shared/theme/sidebarField";
 
 export type AppearanceSnapshot = {
   updatedAt?: number;
@@ -11,6 +17,12 @@ export type AppearanceSnapshot = {
   followSystem: boolean;
   custom: boolean;
   customLight: [string, string];
+  /**
+   * The person's three sidebar field colours. Always written in full; a
+   * snapshot saved before the field existed has none, and its old two-colour
+   * `custom` gradient is mapped onto the field when it is read.
+   */
+  field?: FieldColors;
   glassBackground: boolean;
   glassOpacity: number;
   prominentActiveTab: boolean;
@@ -99,6 +111,29 @@ export function customGradientStops(
   ];
 }
 
+/** The field trio a saved snapshot stands for. */
+export function snapshotFieldColors(
+  snapshot: Partial<AppearanceSnapshot> | null,
+): FieldColors {
+  if (!snapshot) return [...DEFAULT_FIELD_COLORS];
+  const saved = parseFieldColors(snapshot.field);
+  if (saved) return saved;
+  // Saved before the field was customisable: keep a chosen custom gradient.
+  if (
+    snapshot.field === undefined &&
+    snapshot.custom === true &&
+    Array.isArray(snapshot.customLight) &&
+    snapshot.customLight.length === 2
+  ) {
+    const mapped = fieldColorsFromLegacyGradient([
+      snapshot.customLight[0],
+      snapshot.customLight[1],
+    ]);
+    if (mapped) return mapped;
+  }
+  return [...DEFAULT_FIELD_COLORS];
+}
+
 export function readAppearanceSnapshot(
   key: string,
 ): Partial<AppearanceSnapshot> | null {
@@ -116,14 +151,23 @@ export function readAppearanceSnapshot(
 /** Mirror a newer theme edit into an existing full Settings snapshot atomically. */
 export function updateAppearanceSnapshotTheme(
   key: string,
-  preference: { theme: string; accent: string; followSystem: boolean },
+  preference: {
+    theme: string;
+    accent: string;
+    followSystem: boolean;
+    field?: FieldColors;
+  },
 ): boolean {
   const snapshot = readAppearanceSnapshot(key);
   if (!snapshot) return true;
+  const field = preference.field ?? DEFAULT_FIELD_COLORS;
+  const savedField = snapshotFieldColors(snapshot);
   if (
     snapshot.theme === preference.theme &&
     snapshot.accent === preference.accent &&
-    snapshot.followSystem === preference.followSystem
+    snapshot.followSystem === preference.followSystem &&
+    snapshot.field !== undefined &&
+    savedField.every((color, index) => color === field[index].toUpperCase())
   )
     return true;
   try {
@@ -133,7 +177,12 @@ export function updateAppearanceSnapshotTheme(
       key,
       JSON.stringify({
         ...value,
-        ...preference,
+        theme: preference.theme,
+        accent: preference.accent,
+        followSystem: preference.followSystem,
+        // Written in full, so a legacy custom gradient is not mapped again.
+        field,
+        custom: false,
         updatedAt: nextPreferenceWriteTime(),
       }),
     );
@@ -165,6 +214,9 @@ export function mergeAppearanceSnapshot(
     ...base,
     ...value,
     version: 1,
+    // The old two-colour gradient is the field now; see `snapshotFieldColors`.
+    field: snapshotFieldColors(value),
+    custom: value.custom === true,
     theme: typeof value.theme === "string" ? value.theme : base.theme,
     accent:
       typeof value.accent === "string" &&
@@ -173,7 +225,6 @@ export function mergeAppearanceSnapshot(
           ? "#74717B"
           : value.accent
         : base.accent,
-    custom: value.custom === true,
     customLight,
     glassBackground: value.glassBackground === true,
     glassOpacity:
@@ -216,6 +267,7 @@ export function mergeLiveAppearanceSnapshot(
     ...mergeAppearanceSnapshot(base, saved),
     theme: base.theme,
     accent: base.accent,
+    field: base.field,
     followSystem: base.followSystem,
     density: base.density,
     linkPreview: base.linkPreview,

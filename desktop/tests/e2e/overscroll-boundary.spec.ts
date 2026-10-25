@@ -31,12 +31,38 @@ test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
 });
 
+// The lock leaves a conversation scroller alone only while it can scroll. The
+// plain mock #general no longer overflows on its own (it used to, under the
+// channel intro), so give it enough history to scroll before asserting that.
+async function openScrollableGeneral(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function",
+  );
+  await page.evaluate(() => {
+    for (let index = 0; index < 40; index += 1) {
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content: `overscroll row ${index}`,
+      });
+    }
+  });
+  await page.getByTestId("channel-general").click();
+  const timeline = page.getByTestId("message-timeline");
+  await expect(timeline).toBeVisible();
+  await expect
+    .poll(() =>
+      timeline.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+}
+
 test("locks viewport rubber-band outside conversation scrollers", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("message-timeline")).toBeVisible();
+  await openScrollableGeneral(page);
 
   await expect(
     dispatchWheelPrevented(page, "body", { deltaY: -120 }),
@@ -80,9 +106,7 @@ test("locks viewport rubber-band outside conversation scrollers", async ({
 });
 
 test("locks horizontal viewport pan everywhere", async ({ page }) => {
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("message-timeline")).toBeVisible();
+  await openScrollableGeneral(page);
 
   for (const deltaX of [-120, 120]) {
     await expect(
