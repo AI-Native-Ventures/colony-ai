@@ -1,0 +1,384 @@
+{
+  "_comment": [
+    "Which Playwright specs a change needs. scripts/ci-plan.mjs reads this file.",
+    "features: a changed path matching 'paths' runs the listed smoke-project specs.",
+    "shared: code every screen uses. A change here, or to a path no entry covers, runs the essential set.",
+    "essential: the core journeys, run by the 'essential' and 'essential-focus' Playwright projects.",
+    "essential.focus: heavy specs run only for the named tests (a case-sensitive title regex).",
+    "The full suite stays available by hand: Actions > CI full suite."
+  ],
+  "shared": [
+    "desktop/src/app/**",
+    "desktop/src/shared/**",
+    "desktop/src/testing/**",
+    "desktop/src/protectedFeatures/**",
+    "desktop/src/types/**",
+    "desktop/src/*",
+    "desktop/tests/helpers/**",
+    "desktop/tests/e2e/helpers/**",
+    "desktop/tests/e2e/fixtures/**",
+    "desktop/src/features/messages/ui/*Composer*",
+    "desktop/src/features/messages/ui/FormattingToolbar.tsx",
+    "desktop/src/features/messages/ui/*Autocomplete*",
+    "desktop/src/features/messages/lib/*omposer*",
+    "desktop/src/features/messages/lib/*ention*"
+  ],
+  "essential": {
+    "specs": [
+      "account-auth.spec.ts",
+      "connect-polish.spec.ts",
+      "start-free-opencode.spec.ts",
+      "colony3-first-run-proof.spec.ts",
+      "smoke.spec.ts",
+      "navigation.spec.ts",
+      "colony3-today.spec.ts",
+      "colony3-home-proof.spec.ts",
+      "colony3-team-proof.spec.ts",
+      "colony3-hire-proof.spec.ts",
+      "w07-agents-smoke.spec.ts",
+      "company-team.spec.ts",
+      "edit-agent.spec.ts",
+      "w10-discovery-sales.spec.ts",
+      "colony3-discovery-run.spec.ts",
+      "colony3-lead-reference.spec.ts",
+      "colony3-sales-setup.spec.ts",
+      "money.spec.ts",
+      "w11-clients-work.spec.ts",
+      "colony3-settings.spec.ts",
+      "settings-section-layout.spec.ts",
+      "thread-reply-anchor-roleplay.spec.ts"
+    ],
+    "focus": {
+      "specs": ["messaging.spec.ts", "mentions.spec.ts", "channels.spec.ts"],
+      "titles": [
+        "send a message and see it in timeline",
+        "send message with Enter key",
+        "message input clears after send",
+        "sends a thread message to its parent channel with a root-thread link",
+        "opens a single-level thread panel with inline expansion",
+        "thread composer keeps focus after sending a thread reply",
+        "mentioning an in-channel stopped managed agent publishes first and starts it detached",
+        "a second mention while the first wake is in flight does not start the agent twice",
+        "a failed publish drops the queued agent wake and never claims the message was sent",
+        "mentioning a non-member managed agent adds it before sending and starts it detached",
+        "selecting a managed agent mention inserts @Name into input",
+        "sidebar shows all channel types",
+        "create stream with name and description",
+        "switch between streams",
+        "start a new direct message from the sidebar",
+        "sends the first message from the new direct message composer",
+        "open channel management supports join and leave",
+        "manage channel updates details"
+      ]
+    }
+  },
+  "features": [
+    {
+      "paths": [
+        "desktop/src/features/account/**",
+        "desktop/src/features/auth/**"
+      ],
+      "specs": [
+        "account-auth.spec.ts",
+        "advanced-signin.spec.ts",
+        "signout-confirmation.spec.ts",
+        "identity-key-help.spec.ts",
+        "identity-lost.spec.ts",
+        "key-import-reveal.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/agents/**"],
+      "specs": [
+        "w07-agents-smoke.spec.ts",
+        "colony3-agents-proof.spec.ts",
+        "edit-agent.spec.ts",
+        "edit-agent-run-on.spec.ts",
+        "agent-access-warning.spec.ts",
+        "agent-lifecycle-feedback.spec.ts",
+        "agent-numeric-tuning.spec.ts",
+        "agent-profile-instructions.spec.ts",
+        "agent-provider-dropdowns.spec.ts",
+        "agent-readiness-screenshots.spec.ts",
+        "harness-detection.spec.ts",
+        "harness-management.spec.ts",
+        "harness-catalog-screenshots.spec.ts",
+        "inline-custom-harness.spec.ts",
+        "where-to-run-config.spec.ts",
+        "owned-agent-discovery.spec.ts",
+        "global-agent-config-screenshots.spec.ts",
+        "doctor-states.spec.ts",
+        "needs-restart-screenshots.spec.ts",
+        "persona-model-combobox-screenshots.spec.ts",
+        "persistent-agent-audience.spec.ts"
+      ]
+    },
+    {
+      "paths": [
+        "desktop/src/features/channels/**",
+        "desktop/src/features/chat/**"
+      ],
+      "specs": [
+        "channels.spec.ts",
+        "channel-activity-popover.spec.ts",
+        "channel-add-screenshots.spec.ts",
+        "channel-browser.spec.ts",
+        "channel-controls.spec.ts",
+        "channel-mute.spec.ts",
+        "channel-shared-header-backdrop.spec.ts",
+        "channel-sort.spec.ts",
+        "channel-star.spec.ts",
+        "auxiliary-pane-close-visibility.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/clients/**"],
+      "specs": [
+        "w11-clients-work.spec.ts",
+        "colony3-business-money-proof.spec.ts"
+      ]
+    },
+    {
+      "paths": [
+        "desktop/src/features/communities/**",
+        "desktop/src/features/community-members/**",
+        "desktop/src/features/moderation/**"
+      ],
+      "specs": [
+        "community-rail.spec.ts",
+        "community-apply-error.spec.ts",
+        "removed-member-escape.spec.ts",
+        "add-community-screenshots.spec.ts",
+        "hosted-communities-settings-screenshots.spec.ts",
+        "invites-settings-screenshots.spec.ts",
+        "invite-link-copy.spec.ts",
+        "deep-link-invite.spec.ts",
+        "invited-onboarding.spec.ts",
+        "self-serve-community-onboarding.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/company-asks/**"],
+      "specs": [
+        "company-asks.spec.ts",
+        "asks-2.spec.ts",
+        "colony3-asks-compose-proof.spec.ts",
+        "colony3-asks-decide-proof.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/company-hiring/**"],
+      "specs": ["company-hiring.spec.ts", "colony3-hire-proof.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/company-team/**"],
+      "specs": [
+        "company-team.spec.ts",
+        "company-team-design.spec.ts",
+        "company-team-scout.spec.ts",
+        "colony3-team-proof.spec.ts",
+        "team-mentions.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/credits/**"],
+      "specs": ["stripe-credits.spec.ts", "credits-gateway-option.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/custom-emoji/**"],
+      "specs": [
+        "custom-emoji.spec.ts",
+        "custom-emoji-ui.spec.ts",
+        "profile-custom-emoji-status.spec.ts"
+      ]
+    },
+    {
+      "paths": [
+        "desktop/src/features/discovery/**",
+        "desktop/src/features/leads/**"
+      ],
+      "specs": [
+        "w10-discovery-sales.spec.ts",
+        "colony3-discovery-run.spec.ts",
+        "colony3-discovery-leads-proof.spec.ts",
+        "colony3-lead-reference.spec.ts",
+        "colony3-sales-setup.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/gifs/**"],
+      "specs": ["messaging.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/home/**"],
+      "specs": [
+        "colony3-home-proof.spec.ts",
+        "colony3-home-proof-activity.spec.ts",
+        "colony3-today.spec.ts",
+        "home-collapsed-top-chrome.spec.ts",
+        "inbox-edit.spec.ts",
+        "inbox-live-update.spec.ts",
+        "inbox-reactions.spec.ts",
+        "inbox-refactor-screenshots.spec.ts",
+        "inbox-title-overlap.spec.ts",
+        "drafts-screenshots.spec.ts",
+        "drafts-all-fix-screenshots.spec.ts"
+      ]
+    },
+    {
+      "paths": [
+        "desktop/src/features/identity-archive/**",
+        "desktop/src/features/local-archive/**"
+      ],
+      "specs": [
+        "identity-archive.spec.ts",
+        "identity-archive-hide.spec.ts",
+        "colony3-local-archive.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/messages/**"],
+      "specs": [
+        "messaging.spec.ts",
+        "mentions.spec.ts",
+        "mention-clipboard.spec.ts",
+        "mention-recipients.spec.ts",
+        "mention-spacing.spec.ts",
+        "remote-owned-mentions.spec.ts",
+        "composer-image-draw.spec.ts",
+        "composer-link-shortcut.spec.ts",
+        "composer-selection-formatting.spec.ts",
+        "composer-tooltip-dismiss.spec.ts",
+        "channel-composer-overflow.spec.ts",
+        "file-attachment.spec.ts",
+        "image-attachment-gallery.spec.ts",
+        "video-attachment.spec.ts",
+        "voice-note.spec.ts",
+        "spoiler.spec.ts",
+        "markdown-parse-cache.spec.ts",
+        "markdown-tables.spec.ts",
+        "reaction-names.spec.ts",
+        "reaction-order.spec.ts",
+        "message-copy-link.spec.ts",
+        "message-author-overlap.spec.ts",
+        "message-feedback-snapshots.spec.ts",
+        "empty-edit-delete.spec.ts",
+        "human-edit-agent-content.spec.ts",
+        "entity-link-recipient-cards.spec.ts",
+        "thread-focus-mode.spec.ts",
+        "thread-head-stale-edit.spec.ts",
+        "thread-load-failure.spec.ts",
+        "thread-reply-anchor-roleplay.spec.ts",
+        "thread-unread.spec.ts",
+        "threadpane-ultrawide.spec.ts",
+        "scroll-history.spec.ts",
+        "virtualization.spec.ts",
+        "timeline-no-shift.spec.ts",
+        "live-broadcast-reply-timeline.spec.ts",
+        "colony3-conv-composer-proof.spec.ts",
+        "colony3-conv-timeline-proof.spec.ts",
+        "colony3-conv-dialogs-proof.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/money/**"],
+      "specs": ["money.spec.ts", "colony3-business-money-proof.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/onboarding/**"],
+      "specs": [
+        "colony3-first-run-proof.spec.ts",
+        "connect-polish.spec.ts",
+        "start-free-opencode.spec.ts",
+        "start-free-screenshots.spec.ts",
+        "first-reply-runtime.spec.ts",
+        "onboarding-agent-defaults.spec.ts",
+        "onboarding-avatar-skip.spec.ts",
+        "onboarding-backup.spec.ts",
+        "onboarding-community-entry.spec.ts",
+        "onboarding-design.spec.ts",
+        "onboarding-docked-cta-screenshots.spec.ts",
+        "onboarding-polish.spec.ts",
+        "onboarding-two-paths-screenshots.spec.ts",
+        "openrouter-oauth.spec.ts",
+        "harness-detection.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/pins/**"],
+      "specs": ["work-area-pins.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/power/**"],
+      "specs": ["colony3-home-proof-power.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/profile/**"],
+      "specs": [
+        "profile-active-turn.spec.ts",
+        "profile-backup-settings.spec.ts",
+        "profile-nsec-reveal.spec.ts",
+        "profile-custom-emoji-status.spec.ts",
+        "exact-key-profile.spec.ts",
+        "pubkey-display-screenshots.spec.ts",
+        "colony3-home-proof-profile.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/search/**"],
+      "specs": ["search-scope-screenshots.spec.ts", "smoke.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/settings/**"],
+      "specs": [
+        "colony3-settings.spec.ts",
+        "settings-section-layout.spec.ts",
+        "appearance-chrome.spec.ts",
+        "appearance-previews.spec.ts",
+        "buzz-theme-screenshots.spec.ts",
+        "send-feedback-settings.spec.ts",
+        "signout-confirmation.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/sidebar/**"],
+      "specs": [
+        "sidebar-full-app.spec.ts",
+        "sidebar-offcanvas-rail.spec.ts",
+        "sidebar-reference-fixture.spec.ts",
+        "sidebar-snapshot.spec.ts",
+        "sidebar-more-unread-overlap.spec.ts",
+        "community-rail.spec.ts",
+        "channel-sort.spec.ts",
+        "channel-star.spec.ts",
+        "channel-mute.spec.ts",
+        "unread-pill.spec.ts",
+        "badge.spec.ts",
+        "navigation.spec.ts",
+        "shell-design.spec.ts",
+        "top-chrome-zoom-clearance.spec.ts"
+      ]
+    },
+    {
+      "paths": ["desktop/src/features/terminal/**"],
+      "specs": ["terminal-wheel.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/workarea/**"],
+      "specs": [
+        "work-area-dock.spec.ts",
+        "work-area-dock-screenshots.spec.ts",
+        "work-area-files.spec.ts",
+        "work-area-canvas.spec.ts",
+        "work-area-browser.spec.ts",
+        "work-area-browser-agent.spec.ts",
+        "work-area-browser-screenshots.spec.ts",
+        "work-area-knowledge.spec.ts",
+        "work-area-pins.spec.ts",
+        "workspace-file-links.spec.ts",
+        "browser-profile-forget.spec.ts",
+        "colony3-conv-workarea-proof.spec.ts"
+      ]
+    }
+  ]
+}
