@@ -1,15 +1,10 @@
 name: Codex Security Review
 
-on: # zizmor: ignore[dangerous-triggers] untrusted PR code is inspected only in an isolated read-only job
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, ready_for_review, synchronize]
-  issue_comment:
-    types: [created]
-  push:
-    branches: [main]
-  repository_dispatch:
-    types: [codex-security-review-reconcile]
+# Manual only: the Codex security review (its jobs only run for block/buzz).
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
+on:
+  workflow_dispatch:
 
 jobs:
   prepare-review:

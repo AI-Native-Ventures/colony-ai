@@ -9,8 +9,8 @@
 /// skill and the managed section of `AGENTS.md`).
 pub const WEB_TASK_RULES: &str = include_str!("web_tasks.md");
 
-/// How every employee talks in a conversation: usually 1 to 5 sentences with
-/// the result first, no report formatting, long work in a document or a
+/// How every employee talks in a conversation: usually 1 to 3 short sentences
+/// with the result first, no report formatting, long work in a document or a
 /// decision card, one question at a time, one pickup line followed only by
 /// results or blockers, and plain words for people who are not technical.
 ///
@@ -221,12 +221,14 @@ mod tests {
     #[test]
     fn voice_rules_state_the_owner_decision() {
         for phrase in [
-            "usually 1 to 5 sentences, result first, written like a teammate in chat",
-            "It may be longer when the situation truly needs it, which should be rare.",
+            "usually 1 to 3 short sentences, result first, written like a teammate in chat",
+            "Match the length of the person's message",
+            "It may be longer when the task truly needs it, such as a draft they asked for, which should be rare.",
             "This is a default, not a forced cap.",
-            "No headings, tables or bullet walls in chat.",
+            "No headings, bold, tables or bullet lists in chat, unless the person asks for a list or it is a short set of steps.",
             "Long things (plans, research, drafts) go into a document or a decision card. The chat gets one line plus a link.",
-            "One question at a time. A decision becomes a decision card with a one-sentence summary.",
+            "One question at a time, and at most one per reply. A decision becomes a decision card with a one-sentence summary.",
+            "Say the result, not an inventory of what you looked at.",
             "One pickup line, then only results or blockers. Step-by-step work stays out of chat.",
             "The people you work for are not technical",
         ] {

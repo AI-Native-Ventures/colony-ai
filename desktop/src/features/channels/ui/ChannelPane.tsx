@@ -40,10 +40,10 @@ import { useThreadViewMode } from "@/features/channels/lib/threadViewModePrefere
 import { useThreadViewModeSwitch } from "@/features/channels/ui/useThreadViewModeSwitch";
 import { useFocusDrawerPresence } from "@/features/channels/ui/useFocusDrawerPresence";
 import { useCardMintJobs } from "@/features/agents/cardMintStore";
-import {
-  type BotActivityAgent,
-  BotActivityComposerAction,
-} from "@/features/channels/ui/BotActivityBar";
+import type { BotActivityAgent } from "@/features/channels/ui/BotActivityBar";
+import { AgentWorkingIndicatorRow } from "@/features/channels/ui/AgentWorkingIndicator";
+import { useAgentWorkingIndicators } from "@/features/channels/ui/useAgentWorkingIndicators";
+import { formatWorkingIndicatorLabel } from "@/features/channels/lib/agentWorkingIndicator";
 import { ChannelComposerActivityAccessory } from "@/features/channels/ui/ChannelComposerActivityAccessory";
 import {
   containsWelcomePersonaMention,
@@ -52,6 +52,7 @@ import {
 import { useWelcomeComposerBanner } from "@/features/channels/ui/useWelcomeComposerBanner";
 import {
   mentionsKnownAgent,
+  selectActiveThreadRootId,
   shouldPrioritizeIdleAuxiliary,
   shouldUseFocusIdleDrawer,
 } from "@/features/channels/ui/ChannelPane.helpers";
@@ -69,12 +70,12 @@ import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/on
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { channelChrome } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
-const NO_WORKING_BOT_PUBKEYS: string[] = [];
 const NO_ACTIVITY_AGENTS: BotActivityAgent[] = [];
 export const ChannelPane = React.memo(function ChannelPane({
   activeChannel,
   agentPubkeys,
   activityAgents = NO_ACTIVITY_AGENTS,
+  botTypingEntries,
   autoSendDraftKey = null,
   onAutoSendComplete = null,
   channelManagementOpen = false,
@@ -305,15 +306,29 @@ export const ChannelPane = React.memo(function ChannelPane({
     acceptsMainAttachments &&
     !isSinglePanelView;
   const hasTypingActivity = typingPubkeys.length > 0;
-  // The live agent activity strip under the composer is cut in lean Colony 3.0;
-  // the sidebar shows which channels have agents at work.
-  const composerWorkingBotPubkeys = NO_WORKING_BOT_PUBKEYS;
-  const hasComposerBotActivity = false;
+  const agentNames = React.useMemo(
+    () =>
+      new Map(
+        activityAgents.map((agent) => [agent.pubkey.toLowerCase(), agent.name]),
+      ),
+    [activityAgents],
+  );
+  const { channel: channelWorkingIndicator, thread: threadWorkingIndicator } =
+    useAgentWorkingIndicators({
+      agentNames,
+      botTypingEntries,
+      channelId: activeChannel?.id ?? null,
+      channelMessages: messages,
+      currentPubkey,
+      openThreadHeadId: openThreadHeadId ?? null,
+      profiles,
+      threadMessages: threadAllMessages,
+    });
+  const hasComposerBotActivity = channelWorkingIndicator.kind !== "hidden";
   const hasCardMintActivity = useCardMintJobs().length > 0;
   const hasComposerBottomActivity =
     hasComposerBotActivity || hasTypingActivity || hasCardMintActivity;
-  const threadComposerBotTypingPubkeys = NO_WORKING_BOT_PUBKEYS;
-  const hasThreadComposerBotActivity = false;
+  const hasThreadComposerBotActivity = threadWorkingIndicator.kind !== "hidden";
   const directMessageIntro = React.useMemo(
     () =>
       buildDirectMessageIntro({
@@ -465,6 +480,14 @@ export const ChannelPane = React.memo(function ChannelPane({
   });
   const showIdleAuxiliaryOverThread =
     overlayIdleAuxiliaryOverThread && useFocusIdleDrawer;
+  const activeThreadRootId = selectActiveThreadRootId({
+    channelManagementOpen,
+    hasThreadSurface,
+    idleAuxiliaryCoversThread:
+      showIdleAuxiliaryOverThread || replaceThreadWithIdleAuxiliary,
+    openThreadHeadId,
+    threadHeadId: threadHeadMessage?.id,
+  });
   const { channelIsCovered, markExitComplete } = useFocusDrawerPresence(
     useFocusThreadDrawer || useFocusIdleDrawer,
     priorityIdleAuxiliary
@@ -633,9 +656,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               <MessageTimeline
                 ref={messageTimelineRef}
                 channelId={activeChannel?.id}
-                activeThreadRootId={
-                  workspaceChrome ? (threadHeadMessage?.id ?? null) : null
-                }
+                activeThreadRootId={activeThreadRootId}
                 scrollContainerRef={timelineScrollRef}
                 currentPubkey={currentPubkey}
                 fetchOlder={fetchOlder}
@@ -834,13 +855,12 @@ export const ChannelPane = React.memo(function ChannelPane({
                       showTopBorder={false}
                     />
                     <ChannelComposerActivityAccessory
-                      agents={activityAgents}
                       channel={activeChannel}
                       currentPubkey={currentPubkey}
                       profiles={profiles}
                       typingPubkeys={typingPubkeys}
                       visible={hasComposerBottomActivity}
-                      workingBotPubkeys={composerWorkingBotPubkeys}
+                      workingIndicator={channelWorkingIndicator}
                     />
                   </div>
                 </div>
@@ -927,14 +947,15 @@ export const ChannelPane = React.memo(function ChannelPane({
                   threadReplyUnreadCounts={threadReplyUnreadCounts}
                   threadTypingPubkeys={threadTypingPubkeys}
                   activityAccessoryVisible={hasThreadComposerBotActivity}
+                  activityAnnouncement={formatWorkingIndicatorLabel(
+                    threadWorkingIndicator,
+                  )}
                   activityAccessoryContent={
                     hasThreadComposerBotActivity ? (
-                      <BotActivityComposerAction
-                        agents={activityAgents}
-                        channelId={activeChannel?.id ?? null}
+                      <AgentWorkingIndicatorRow
                         profiles={profiles}
-                        workingBotPubkeys={threadComposerBotTypingPubkeys}
-                        variant="inline"
+                        state={threadWorkingIndicator}
+                        testId="thread-agent-working-indicator"
                       />
                     ) : null
                   }

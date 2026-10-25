@@ -304,6 +304,28 @@ just ci
 This is the same check that runs in CI. PRs that fail `just ci` will not be
 merged. If `just ci` fails on formatting, `just fix-all` fixes it in one shot (`rustfmt` + Tauri fmt + desktop, web, and mobile formatters).
 
+#### What GitHub CI runs on a pull request
+
+CI tests only what a change touches. The `Plan` job (`scripts/ci-plan.mjs`)
+maps the changed files to jobs:
+
+- **Rust**: clippy and unit tests for the changed crates plus the crates that
+  depend on them (cargo workspace graph); PostgreSQL tests when a database
+  crate, `migrations/` or `schema/` is affected; the desktop native host when it
+  or a crate it uses changed.
+- **Desktop**: lint and types always; unit tests whose import graph reaches a
+  changed file (all of them when package or config files change).
+- **Desktop E2E**: the specs listed for the changed folders in
+  `desktop/tests/e2e/affected-map.json`; a small essential set when shared code
+  (app shell, `shared/`, the composer, tokens, the E2E bridge) or an unmapped
+  path changes. Add a new feature folder to that file with its specs.
+- Docs-only and site-only changes run no desktop or Rust job.
+
+Run `node scripts/ci-plan.mjs --base origin/develop` to see the plan for your
+branch. Everything else (all E2E specs, proofs, canaries, interop suites) is
+manual: Actions, then "CI full suite" or the workflow's Run workflow button.
+Release pull requests into `main` also build the Mac and Windows app.
+
 ---
 
 ## Code Style

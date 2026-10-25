@@ -388,25 +388,30 @@ ci: check test-unit desktop-test desktop-build desktop-tauri-check desktop-tauri
 test:
     ./scripts/run-tests.sh all
 
-# Run unit tests only (no infra needed)
+# Run unit tests only (no infra needed). CI sets UNIT_TEST_CRATES to the
+# crates a change affects (scripts/ci-plan.mjs); unset or "all" runs every one.
 test-unit:
     #!/usr/bin/env bash
     set -euo pipefail
     ./scripts/test-ensure-local-relay-key.sh
+    # want <crate>: is this crate selected? nt <crate> <args>: nextest it if so.
+    want() { [[ "${UNIT_TEST_CRATES:-all}" == all || " ${UNIT_TEST_CRATES} " == *" $1 "* ]]; }
+    nt() { local crate=$1; shift; if want "$crate"; then cargo nextest run -p "$crate" "$@"; fi; }
     if command -v cargo-nextest &>/dev/null; then
-        cargo nextest run -p buzz-core -p buzz-auth --lib
+        nt buzz-core --lib
+        nt buzz-auth --lib
         # buzz-auth NIP-FI verifier doctests. The sealed-authority
         # `compile_fail` doctests prove the default-feature public API alone
         # cannot forge the issuer→JWKS authority; nextest does not run
         # doctests, hence this separate step. The verifier's regression suite
         # lives in the in-crate `#[cfg(test)] mod tests`, so `--lib` above
         # already runs it.
-        cargo test -p buzz-auth --doc
-        cargo nextest run -p buzz-voice --lib
-        cargo nextest run -p buzz-cli
+        if want buzz-auth; then cargo test -p buzz-auth --doc; fi
+        nt buzz-voice --lib
+        nt buzz-cli
         # buzz-acp owns the relay-to-agent trust boundary. Run its tests here so
         # forged relay events cannot regain a path into agent routing unnoticed.
-        cargo nextest run -p buzz-acp
+        nt buzz-acp
         # buzz-db migrator/lint tests: pure SQL-parsing unit tests (no infra).
         # They guard the embedded-migrator invariant (the complete checked-in
         # additive migration set; legacy cutover/backfill remains an operator
@@ -414,27 +419,27 @@ test-unit:
         # Postgres-backed buzz-db tests are
         # #[ignore]d, so --lib runs only the infra-free set. Without this gate a
         # stray file in migrations/ or a broken lint ships green.
-        cargo nextest run -p buzz-db --lib
+        nt buzz-db --lib
         # Storage accounting crosses three crates whose focused regression
         # suites are otherwise absent from the infra-free unit lane.
-        cargo nextest run -p buzz-media --lib \
+        nt buzz-media --lib \
             -E 'test(=bucket_index::tests::bucket_snapshot_json_round_trip_preserves_community_keys)'
-        cargo nextest run -p buzz-admin \
+        nt buzz-admin \
             -E 'test(=storage_snapshot_tests::failed_fold_never_invokes_snapshot_persistence)'
         # Multi-tenant conformance gate (buzz-conformance): the independent
         # replay checker + golden fixtures. No infra — pure in-process trace
         # replay — so it belongs in the unit job. Run all targets (lib + the
         # tests/replay_fixtures.rs integration test), not just --lib.
-        cargo nextest run -p buzz-conformance
+        nt buzz-conformance
         # Gateway unit and black-box HTTP tests are infra-free. Postgres-backed
         # contract/race tests run in the dedicated CI job below.
-        cargo nextest run -p buzz-push-gateway
+        nt buzz-push-gateway
         # Kubernetes backend provider: the decision layers (state machine, GC
         # planner, env precedence, naming, wire) are pure functions with a fake
         # substrate, so they belong in the unit job. Enumerated explicitly
         # because nothing in CI runs `cargo test --workspace` — workspace
         # membership alone buys clippy/check, not a single executed test.
-        cargo nextest run -p buzz-backend-kubernetes
+        nt buzz-backend-kubernetes
         # buzz-agent: two infra-free concerns run together by executing the
         # whole crate (lib + integration tests), because nothing in CI runs
         # `cargo test --workspace`, so without this stanza neither the crate's
@@ -449,7 +454,7 @@ test-unit:
         #     integration tests): lock single-flight, cooldown, cross-process
         #     crash recovery — infra-free via a stub OIDC provider and an
         #     injected browser opener, no network or Postgres.
-        cargo nextest run -p buzz-agent
+        nt buzz-agent
         # Admin API auth-boundary tests (api::admin in buzz-relay): the NIP-98
         # duplicate-tag rejections, the Host/Origin replay-ordering causal pair,
         # the admin.localhost origin/advertisement/canonical-URL pins, and the
@@ -494,12 +499,12 @@ test-unit:
         # Payment provider, catalog, policy configuration and HTTP rejection
         # tests use fake upstreams or a bounded dead database. Execute them here;
         # compiling the relay archive alone does not run these regression guards.
-        cargo nextest run -p buzz-relay --lib \
+        nt buzz-relay --lib \
             -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/) + test(/^stripe::tests::/) + test(/^credit_packs::tests::/) + test(/^api::payments::tests::/) + test(/^config::tests::(stripe_|credit_policy_|payments_config_)/)'
         # ACP author-gate and queue tests protect the trust boundary between
         # relay events and agent prompts. They are infra-free; ignored lifecycle
         # tests remain excluded and run in their dedicated integration lanes.
-        cargo nextest run -p buzz-acp --lib
+        nt buzz-acp --lib
     else
         ./scripts/run-tests.sh unit
     fi

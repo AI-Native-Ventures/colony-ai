@@ -21,7 +21,7 @@ Open `http://127.0.0.1:4173/`. Check mockup parity, all five business scenarios,
 
 The `#download` section in `public/index.html` links to the tag-pinned assets of the public GitHub release `desktop-v<version>` (installers and `checksums.txt`). Pinned tag URLs keep working when other releases are published; `releases/latest` does not.
 
-For each new desktop release, update the section in one edit: the tag and version in every link, the file names, the sizes (from the release asset list), and the signing wording (remove the "not code-signed" copy only once the release is signed and notarized). `npm --prefix site run check` fails if the links mix release tags or if a Mac, Windows, Linux or checksums link is missing. Then deploy and confirm each link returns the installer.
+For each new desktop release, update the section in one edit: the tag and version in every link, the file names, the sizes (from the release asset list), and the signing wording (remove the "not code-signed" copy only once the release is signed and notarized). `npm --prefix site run check` fails if the links mix release tags, if a Mac, Windows or checksums link is missing, or if a Linux link or mention appears (Colony ships for Mac and Windows only). Then deploy and confirm each link returns the installer.
 
 ## Early access
 

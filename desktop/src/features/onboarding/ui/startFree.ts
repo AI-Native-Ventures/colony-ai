@@ -1,3 +1,8 @@
+import {
+  FREE_LIMIT_CODE,
+  FREE_LIMIT_COPY,
+  isFreeLimitText,
+} from "@/features/agents/lib/friendlyAgentLastError";
 import type { GlobalAgentConfig } from "@/shared/api/types";
 
 /** Start free runs Colony's own OpenCode on OpenCode's free model. */
@@ -32,4 +37,17 @@ export function startFreeFailureKind(error: unknown): "ended" | "other" {
     error.code === "model_unavailable"
     ? "ended"
     : "other";
+}
+
+/**
+ * What Connect shows for a failed proof turn. OpenCode's free quota running out
+ * gets one plain sentence, whether the native test coded it or only quoted it.
+ */
+export function onboardingFailureCopy(error: Error): string {
+  const coded =
+    error instanceof OnboardingConnectionError &&
+    error.code === FREE_LIMIT_CODE;
+  return coded || isFreeLimitText(error.message)
+    ? FREE_LIMIT_COPY
+    : error.message;
 }

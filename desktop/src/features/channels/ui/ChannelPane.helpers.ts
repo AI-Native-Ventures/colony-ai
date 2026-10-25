@@ -37,6 +37,31 @@ export function shouldPrioritizeIdleAuxiliary(
   return overrideThread && hasIdleAuxiliary;
 }
 
+/**
+ * The message whose thread is open in the side panel, so its row in the
+ * timeline can carry a soft wash of the person's accent. Null whenever some
+ * other surface owns the panel (channel details, a caller-owned sheet over the
+ * thread) or no thread is open.
+ */
+export function selectActiveThreadRootId({
+  channelManagementOpen,
+  hasThreadSurface,
+  idleAuxiliaryCoversThread,
+  openThreadHeadId,
+  threadHeadId,
+}: {
+  channelManagementOpen: boolean;
+  hasThreadSurface: boolean;
+  idleAuxiliaryCoversThread: boolean;
+  openThreadHeadId: string | null | undefined;
+  threadHeadId: string | null | undefined;
+}): string | null {
+  if (!hasThreadSurface || channelManagementOpen || idleAuxiliaryCoversThread) {
+    return null;
+  }
+  return threadHeadId ?? openThreadHeadId ?? null;
+}
+
 export function isWelcomeSetupSystemMessage(message: TimelineMessage) {
   if (message.kind !== KIND_SYSTEM_MESSAGE) {
     return false;

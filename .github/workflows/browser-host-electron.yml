@@ -8,15 +8,10 @@ name: Browser host (real Electron)
 # build, so it is quick. The mock-bridge Playwright specs cannot prove any of
 # this because they have no real Chromium session.
 
+# Manual only: real-Electron browser host smoke.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/browser-host-electron.yml"
-      - "desktop/electron/**"
-      - "desktop/package.json"
-      - "desktop/tests/electron/browser-smoke-main.mjs"
-      - "desktop/tests/electron/run-browser-smoke.mjs"
-      - "pnpm-lock.yaml"
   workflow_dispatch:
 
 concurrency:

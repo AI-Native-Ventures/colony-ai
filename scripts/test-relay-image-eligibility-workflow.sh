@@ -25,10 +25,6 @@ require_literal "if: matrix.variant == 'release'"
 require_literal "BUZZ_SOURCE_SHA"
 require_literal "BUZZ_BUILD_ID"
 require_literal "BUZZ_BUILD_URL"
-require_literal '- "deploy/charts/buzz/Chart.yaml"'
-require_literal '- "scripts/create-deployment-eligibility-predicate.jq"'
-require_literal '- "scripts/select-qualified-ci-run.jq"'
-require_literal '- "scripts/test-relay-image-eligibility-workflow.sh"'
 
 require_docker_cache_contract() {
   local step_name=$1

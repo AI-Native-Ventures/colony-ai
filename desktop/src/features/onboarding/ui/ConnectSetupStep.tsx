@@ -48,6 +48,7 @@ import { thisComputer } from "./OnboardingResultScenes";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
 import {
   buildStartFreeConfig,
+  onboardingFailureCopy,
   START_FREE_RUNTIME_ID,
   startFreeFailureKind,
 } from "./startFree";
@@ -295,7 +296,7 @@ export function ConnectSetupStep({
       }
       setSaveError(
         failure instanceof Error
-          ? failure.message
+          ? onboardingFailureCopy(failure)
           : "Your agent could not reply. Check sign-in and usage, then try again.",
       );
       setTestState("connection-error");

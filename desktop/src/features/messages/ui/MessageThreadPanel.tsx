@@ -119,6 +119,8 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   threadTypingPubkeys: string[];
   videoReviewPresentation?: VideoReviewPresentation;
   activityAccessoryContent?: React.ReactNode;
+  /** Plain text for a polite, always-mounted live region (read once per change). */
+  activityAnnouncement?: string;
   activityAccessoryVisible: boolean;
   widthPx: number;
   isFollowingThread?: boolean;
@@ -199,6 +201,7 @@ export function MessageThreadPanel({
   threadReplyUnreadCounts,
   threadTypingPubkeys,
   activityAccessoryContent,
+  activityAnnouncement = "",
   activityAccessoryVisible,
   canResetWidth,
   splitPaneClamp,
@@ -909,6 +912,15 @@ export function MessageThreadPanel({
             {/* The activity accessory is anchored in the dock's reserved bottom
               rail, so fading it cannot change the observed overlay height or
               move the conversation. Its natural content height remains responsive. */}
+            <div
+              aria-atomic="true"
+              aria-live="polite"
+              className="sr-only"
+              data-testid="thread-agent-working-announcer"
+              role="status"
+            >
+              {activityAnnouncement}
+            </div>
             <ComposerActivityAccessory
               className={THREAD_PANEL_COMPOSER_GUTTER_CLASS}
               visible={hasComposerBottomActivity}

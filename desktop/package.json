@@ -15,6 +15,7 @@
     "check": "biome check . && pnpm check:px-text && pnpm check:pubkey-truncation",
     "format": "biome format --write .",
     "test": "node --import ./test-loader.mjs --experimental-strip-types --test \"src/**/*.test.mjs\" \"scripts/*.test.mjs\" \"electron/**/*.test.mjs\" \"tests/real-run/nest-migration/*.test.mjs\"",
+    "test:files": "node --import ./test-loader.mjs --experimental-strip-types --test",
     "test:nest-proof": "node --test \"tests/real-run/nest-migration/*.test.mjs\"",
     "electron:test": "node --test \"electron/**/*.test.mjs\"",
     "preview": "vite preview",

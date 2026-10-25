@@ -1,18 +1,9 @@
 name: Colony browser broker
 
+# Manual only: browser broker Electron tests.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    branches: [develop, main]
-    paths:
-      - desktop/tests/real-run/agent-browser/**
-      - desktop/electron/browser-broker/**
-      - desktop/electron/browser-host.mjs
-      - desktop/electron/browser-session.mjs
-      - desktop/electron/preload.cjs
-      - desktop/electron/main.mjs
-      - desktop/tests/electron/browser-broker.spec.ts
-      - desktop/tests/electron/fixtures/browser-broker.*
-      - .github/workflows/browser-broker.yml
   workflow_dispatch:
 
 permissions:

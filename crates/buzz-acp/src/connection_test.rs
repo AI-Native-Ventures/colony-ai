@@ -26,7 +26,7 @@ const SILENCE_SECS: u64 = 45;
 const MAX_ATTEMPTS: u32 = 4;
 /// A retry needs room to start an agent and wait out a reply.
 const MIN_RETRY_ROOM: Duration = Duration::from_secs(15);
-const PROMPT: &str = "This is a connection test. Do not use tools or read files. Reply with a short hello and ask what we shall work on first.";
+const PROMPT: &str = "This is a connection test. Do not use tools or read files. Reply in one or two short sentences: say hello, then ask what we shall work on first.";
 
 fn effective_model(raw: &Value) -> Option<String> {
     extract_model_config_options(raw)
@@ -50,6 +50,10 @@ fn effective_model(raw: &Value) -> Option<String> {
 const MODEL_UNAVAILABLE: &str = "Selected model is unavailable or this harness does not support model switching. Choose another model.";
 const AI_BUSY: &str =
     "Your AI is busy and did not answer. Try again in a minute, or choose another connection.";
+const INCOMPLETE_REPLY: &str =
+    "The agent did not complete a reply. Check sign-in and usage, then try again.";
+/// Slack added to an attempt's age when looking for OpenCode's quota error in its log.
+const LOG_LOOKBACK_SLACK: Duration = Duration::from_secs(5);
 
 /// Limits for one connection test, shared by every attempt.
 #[derive(Clone, Copy)]
@@ -109,10 +113,12 @@ impl std::fmt::Display for ConnectionFailure {
 impl std::error::Error for ConnectionFailure {}
 
 fn completed_reply(reply: String, stop: StopReason) -> Result<String> {
+    // OpenCode can hand its quota error back as the reply text.
+    if crate::provider_failure::is_free_limit_text(&reply) {
+        bail!(ConnectionFailure(crate::provider_failure::FREE_LIMIT_COPY));
+    }
     if stop != StopReason::EndTurn || reply.trim().is_empty() {
-        bail!(ConnectionFailure(
-            "The agent did not complete a reply. Check sign-in and usage, then try again."
-        ));
+        bail!(ConnectionFailure(INCOMPLETE_REPLY));
     }
     let text = reply.to_lowercase();
     if [
@@ -207,7 +213,7 @@ async fn probe_turn(
         .map(|raw| crate::business_context::context(&raw))
         .transpose()?;
     let prompt = if let Some(context) = context {
-        format!("You are Scout, Colony's Chief of Staff. This is your first introduction to the owner, and will also appear in their private Welcome channel. Do not use tools or read files. Briefly introduce yourself, welcome them to their business by name, and ask what they want to work on first.{}", context)
+        format!("You are Scout, Colony's Chief of Staff. This is your first message to the owner, and it will also appear in their private Welcome channel. Do not use tools or read files. Write one or two short sentences: say hi, welcome them to their business by name, and end with one question asking what they want to work on first. No lists, no headings, nothing else.{}", context)
     } else {
         PROMPT.to_owned()
     };
@@ -229,11 +235,32 @@ async fn probe_turn(
     )
 }
 
+#[cfg(test)]
 fn error_result(error: &anyhow::Error) -> Value {
+    error_result_with_log(error, false)
+}
+
+/// `free_limit_logged` says OpenCode's own log shows the free quota is gone. It
+/// only explains a failure that has no other explanation: a silent or generic one.
+fn error_result_with_log(error: &anyhow::Error, free_limit_logged: bool) -> Value {
     let failure = error.downcast_ref::<ConnectionFailure>();
     if failure.is_some_and(|failure| failure.0 == MODEL_UNAVAILABLE) {
         // A stable code lets onboarding tell "free model ended" from other failures.
         return json!({"error": MODEL_UNAVAILABLE, "code": "model_unavailable"});
+    }
+    let acp = error.downcast_ref::<crate::AcpError>();
+    let explained = failure.is_some_and(|failure| failure.0 != INCOMPLETE_REPLY)
+        || acp
+            .and_then(crate::provider_failure::onboarding_notice)
+            .is_some();
+    if failure.is_some_and(|failure| failure.0 == crate::provider_failure::FREE_LIMIT_COPY)
+        || acp.is_some_and(|acp| {
+            matches!(acp, crate::AcpError::AgentError { message, .. } if crate::provider_failure::is_free_limit_text(message))
+        })
+        || (free_limit_logged && !explained)
+    {
+        // The daily free quota is gone: not "busy", and a retry cannot help.
+        return free_limit_outcome();
     }
     let notice = failure.map(ToString::to_string)
         .or_else(|| error.downcast_ref::<crate::AcpError>().and_then(crate::provider_failure::onboarding_notice))
@@ -250,6 +277,7 @@ async fn bounded_probe(
     progress: Option<&Path>,
     started: Instant,
 ) -> Attempt {
+    let attempt_started = Instant::now();
     let result = tokio::time::timeout_at(limits.deadline, async {
         tokio::select! {
             result = probe_turn(client, desired, limits, progress, started) => result,
@@ -262,15 +290,38 @@ async fn bounded_probe(
             outcome: reply,
             retry: false,
         },
-        Ok(Err(error)) => Attempt {
-            outcome: error_result(&error),
-            retry: transient(&error),
+        Ok(Err(error)) => {
+            let outcome = error_result_with_log(&error, free_limit_logged(attempt_started));
+            let retry = transient(&error) && !is_free_limit(&outcome);
+            Attempt { outcome, retry }
+        }
+        Err(_) if free_limit_logged(attempt_started) => Attempt {
+            outcome: free_limit_outcome(),
+            retry: false,
         },
         Err(_) => Attempt {
             outcome: json!({"error": format!("Your AI did not answer within {}. It may be busy right now. Try again later, or choose another connection.", budget_words(limits.total))}),
             retry: false,
         },
     }
+}
+
+/// Did OpenCode log that the free quota is gone since this attempt began?
+fn free_limit_logged(attempt_started: Instant) -> bool {
+    crate::provider_failure::opencode_log_shows_free_limit(
+        attempt_started.elapsed() + LOG_LOOKBACK_SLACK,
+    )
+}
+
+fn free_limit_outcome() -> Value {
+    json!({
+        "error": crate::provider_failure::FREE_LIMIT_COPY,
+        "code": crate::provider_failure::FREE_LIMIT_CODE,
+    })
+}
+
+fn is_free_limit(outcome: &Value) -> bool {
+    outcome["code"] == crate::provider_failure::FREE_LIMIT_CODE
 }
 
 /// Run attempts on fresh agents until one answers, a failure is not transient,

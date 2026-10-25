@@ -1,17 +1,10 @@
 name: Harbor Buzz Orchestra
 
+# Manual only: Harbor orchestra benchmark.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "benchmarks/harbor-buzz-orchestra/**"
-      - "benchmarks/buzz-dataset/**"
-      - ".github/workflows/benchmark-harbor.yml"
-  pull_request:
-    paths:
-      - "benchmarks/harbor-buzz-orchestra/**"
-      - "benchmarks/buzz-dataset/**"
-      - ".github/workflows/benchmark-harbor.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read

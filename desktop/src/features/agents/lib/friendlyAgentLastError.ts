@@ -51,6 +51,25 @@ export const FREE_MODEL_ENDED_COPY =
 
 const FREE_MODEL_ENDED_PREFIX = "free model ended: ";
 
+/**
+ * Start free: OpenCode's daily free quota is gone. OpenCode words it as
+ * "AI_APICallError: Free usage limit reached. Free models work in OpenCode
+ * (...); subscribe to OpenCode Go to keep going". The same copy is used by the
+ * Connect test and chat notices in `crates/buzz-acp/src/provider_failure.rs`.
+ */
+export const FREE_LIMIT_COPY =
+  "Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.";
+
+/** Stable machine code the Connect test returns next to `FREE_LIMIT_COPY`. */
+export const FREE_LIMIT_CODE = "free_limit_reached";
+
+const FREE_LIMIT_PHRASE = "free usage limit reached";
+
+/** True when `text` is (or quotes) OpenCode's free-quota-used-up error. */
+export function isFreeLimitText(text: string | null | undefined): boolean {
+  return (text ?? "").toLowerCase().includes(FREE_LIMIT_PHRASE);
+}
+
 export const CLI_ACP_INTERNAL_ERROR_COPY =
   "The agent's harness reported an internal error. For Codex agents this can mean the configured model isn't supported by your installed codex-acp - check the model in `~/.codex/config.toml` or upgrade the adapter (`brew upgrade codex-acp`).";
 
@@ -77,6 +96,11 @@ export function friendlyAgentLastError(
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
+
+  // OpenCode's quota error can arrive under any code, or none at all.
+  if (isFreeLimitText(trimmed)) {
+    return { severity: "denied", copy: FREE_LIMIT_COPY };
+  }
 
   // Structured code first; a code embedded in the message string is the
   // same signal recovered from a record that lost the field.

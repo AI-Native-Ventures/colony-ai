@@ -38,6 +38,14 @@
   padding: 10px 0 15px;
 }
 
+/* The notice above the thread composer (agent working, someone typing) sits in
+   its own strip under the "Also send to" row instead of covering it. */
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .composer-dock--with-activity {
+  padding-bottom: calc(var(--composer-dock-quiet-inset) + 1.25rem);
+}
+
 :root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   .composer-dock-quiet-spacer {

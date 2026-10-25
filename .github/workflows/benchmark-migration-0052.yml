@@ -1,11 +1,9 @@
 name: Benchmark migration 0052
 
+# Manual only: migration 0052 benchmark.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    paths:
-      - "migrations/0052_company_records_fts_exclusion.sql"
-      - "scripts/bench-migration-0052.py"
-      - ".github/workflows/benchmark-migration-0052.yml"
   workflow_dispatch:
 
 permissions:

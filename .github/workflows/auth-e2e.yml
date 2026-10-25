@@ -1,30 +1,9 @@
 name: Account Auth E2E
 
+# Manual only: account auth E2E against a real relay.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  push:
-    branches:
-      - feat/phase3-auth
-  pull_request:
-    branches:
-      - feat/phase3-auth
-    paths:
-      - ".github/workflows/auth-e2e.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "crates/buzz-auth/**"
-      - "crates/buzz-core/**"
-      - "crates/buzz-db/**"
-      - "crates/buzz-relay/**"
-      - "crates/buzz-test-client/Cargo.toml"
-      - "crates/buzz-test-client/tests/e2e_accounts.rs"
-      - "crates/buzz-ws-client/**"
-      - "docs/auth-accounts.md"
-      - "migrations/**"
-      - "schema/schema.sql"
-      - "scripts/auth-e2e/**"
-      - "scripts/reconcile-schema-after-pgschema.sql"
-      - "scripts/start-relay-for-tests.sh"
-      - ".github/actions/cached-service-images/**"
   workflow_dispatch:
 
 permissions:

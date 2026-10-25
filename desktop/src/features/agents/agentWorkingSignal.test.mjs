@@ -3,7 +3,9 @@ import { beforeEach, describe, it } from "node:test";
 
 import {
   getAgentWorkingState,
+  getTurnErrorsForChannel,
   getWorkingAgentPubkeysForChannel,
+  getWorkingAgentsForChannel,
   getWorkingChannels,
   reportChannelBotTyping,
   resetAgentWorkingSignal,
@@ -224,5 +226,148 @@ describe("subscription and caching", () => {
     reportChannelBotTyping("chan-1", [AGENT]);
     resetAgentWorkingSignal();
     assert.equal(getAgentWorkingState(AGENT, "chan-1").working, false);
+  });
+});
+
+function errorEvent(overrides) {
+  return makeEvent({
+    kind: "turn_error",
+    seq: 2_000_000_000,
+    timestamp: new Date(Date.now() + 1).toISOString(),
+    ...overrides,
+  });
+}
+
+describe("getWorkingAgentsForChannel", () => {
+  it("is empty without a channel or work", () => {
+    assert.deepEqual(getWorkingAgentsForChannel(null), []);
+    assert.deepEqual(getWorkingAgentsForChannel("chan-1"), []);
+  });
+
+  it("lists each working agent once, oldest anchor first", () => {
+    startTurn(AGENT_2, "chan-1");
+    startTurn(AGENT, "chan-1");
+    startTurn(AGENT, "chan-2");
+    const agents = getWorkingAgentsForChannel("chan-1");
+    assert.deepEqual(
+      new Set(agents.map((agent) => agent.pubkey)),
+      new Set([AGENT, AGENT_2]),
+    );
+    assert.ok(agents.every((agent) => agent.source === "observer"));
+    assert.ok(agents[0].anchorAt <= agents[1].anchorAt);
+  });
+
+  it("falls back to channel typing and prefers the observer anchor", () => {
+    reportChannelBotTyping("chan-1", [AGENT, AGENT_2]);
+    startTurn(AGENT, "chan-1");
+    const byAgent = new Map(
+      getWorkingAgentsForChannel("chan-1").map((a) => [a.pubkey, a]),
+    );
+    assert.equal(byAgent.get(AGENT)?.source, "observer");
+    assert.equal(byAgent.get(AGENT_2)?.source, "typing");
+  });
+
+  it("is reference-stable until the signal changes", () => {
+    const unsubscribe = subscribeAgentWorkingSignal(() => {});
+    try {
+      startTurn(AGENT, "chan-1");
+      const first = getWorkingAgentsForChannel("chan-1");
+      assert.equal(getWorkingAgentsForChannel("chan-1"), first);
+      startTurn(AGENT_2, "chan-1");
+      assert.notEqual(getWorkingAgentsForChannel("chan-1"), first);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+describe("getTurnErrorsForChannel", () => {
+  it("reports a fresh turn error in its own channel only", () => {
+    startTurn(AGENT, "chan-1", "t1");
+    syncAgentTurnsFromEvents(AGENT, [
+      errorEvent({ channelId: "chan-1", turnId: "t1" }),
+    ]);
+    assert.equal(getWorkingAgentsForChannel("chan-1").length, 0);
+    const errors = getTurnErrorsForChannel("chan-1");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].pubkey, AGENT);
+    assert.deepEqual(getTurnErrorsForChannel("chan-2"), []);
+  });
+
+  it("does not report a clean completion", () => {
+    startTurn(AGENT, "chan-1", "t1");
+    syncAgentTurnsFromEvents(AGENT, [
+      errorEvent({ kind: "turn_completed", channelId: "chan-1", turnId: "t1" }),
+    ]);
+    assert.equal(getWorkingAgentsForChannel("chan-1").length, 0);
+    assert.deepEqual(getTurnErrorsForChannel("chan-1"), []);
+  });
+
+  it("ignores an old error replayed from history", () => {
+    syncAgentTurnsFromEvents(AGENT, [
+      errorEvent({
+        channelId: "chan-1",
+        turnId: "t1",
+        timestamp: new Date(Date.now() - 10 * 60_000).toISOString(),
+      }),
+    ]);
+    assert.deepEqual(getTurnErrorsForChannel("chan-1"), []);
+  });
+
+  it("clears the error when the agent starts a new turn there", () => {
+    const unsubscribe = subscribeAgentWorkingSignal(() => {});
+    try {
+      syncAgentTurnsFromEvents(AGENT, [
+        errorEvent({ channelId: "chan-1", turnId: "t1", seq: 1 }),
+      ]);
+      assert.equal(getTurnErrorsForChannel("chan-1").length, 1);
+      syncAgentTurnsFromEvents(AGENT, [
+        makeEvent({
+          channelId: "chan-1",
+          turnId: "t2",
+          seq: 3_000_000_000,
+          timestamp: new Date(Date.now() + 2).toISOString(),
+        }),
+      ]);
+      assert.deepEqual(getTurnErrorsForChannel("chan-1"), []);
+      assert.equal(getWorkingAgentsForChannel("chan-1").length, 1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("maps a channel-less panic onto the channels the agent was working in", () => {
+    startTurn(AGENT, "chan-1", "t1");
+    startTurn(AGENT, "chan-2", "t2");
+    syncAgentTurnsFromEvents(AGENT, [
+      errorEvent({ kind: "agent_panic", channelId: null, turnId: null }),
+    ]);
+    assert.equal(getTurnErrorsForChannel("chan-1").length, 1);
+    assert.equal(getTurnErrorsForChannel("chan-2").length, 1);
+  });
+
+  it("notifies subscribers when an error lands", () => {
+    let notified = 0;
+    const unsubscribe = subscribeAgentWorkingSignal(() => {
+      notified += 1;
+    });
+    try {
+      syncAgentTurnsFromEvents(AGENT, [
+        errorEvent({ channelId: "chan-1", turnId: "t1" }),
+      ]);
+      assert.ok(notified >= 1);
+      assert.equal(getTurnErrorsForChannel("chan-1").length, 1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("is cleared by the turns store reset", () => {
+    syncAgentTurnsFromEvents(AGENT, [
+      errorEvent({ channelId: "chan-1", turnId: "t1" }),
+    ]);
+    resetActiveAgentTurnsStore();
+    resetAgentWorkingSignal();
+    assert.deepEqual(getTurnErrorsForChannel("chan-1"), []);
   });
 });

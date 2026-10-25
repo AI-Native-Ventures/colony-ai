@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  selectActiveThreadRootId,
   shouldPrioritizeIdleAuxiliary,
   shouldUseFocusIdleDrawer,
 } from "./ChannelPane.helpers.ts";
@@ -49,4 +50,52 @@ test("idle auxiliary priority does not depend on thread layout mode", () => {
   assert.equal(shouldPrioritizeIdleAuxiliary(true, true), true);
   assert.equal(shouldPrioritizeIdleAuxiliary(true, false), false);
   assert.equal(shouldPrioritizeIdleAuxiliary(false, true), false);
+});
+
+test("the open thread's root is marked while the thread owns the side panel", () => {
+  const open = {
+    channelManagementOpen: false,
+    hasThreadSurface: true,
+    idleAuxiliaryCoversThread: false,
+    openThreadHeadId: "root-b",
+    threadHeadId: "root-a",
+  };
+  // The loaded head wins; before it loads, the routed id marks the row at once.
+  assert.equal(selectActiveThreadRootId(open), "root-a");
+  assert.equal(
+    selectActiveThreadRootId({ ...open, threadHeadId: null }),
+    "root-b",
+  );
+  // Moves with the open thread.
+  assert.equal(
+    selectActiveThreadRootId({ ...open, threadHeadId: "root-c" }),
+    "root-c",
+  );
+});
+
+test("no root is marked once the thread panel is closed or covered", () => {
+  const open = {
+    channelManagementOpen: false,
+    hasThreadSurface: true,
+    idleAuxiliaryCoversThread: false,
+    openThreadHeadId: "root-a",
+    threadHeadId: "root-a",
+  };
+  assert.equal(
+    selectActiveThreadRootId({
+      ...open,
+      hasThreadSurface: false,
+      openThreadHeadId: null,
+      threadHeadId: null,
+    }),
+    null,
+  );
+  assert.equal(
+    selectActiveThreadRootId({ ...open, channelManagementOpen: true }),
+    null,
+  );
+  assert.equal(
+    selectActiveThreadRootId({ ...open, idleAuxiliaryCoversThread: true }),
+    null,
+  );
 });

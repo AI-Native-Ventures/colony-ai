@@ -32,11 +32,10 @@ on:
       windows_signed:
         description: Whether the Windows release was signed.
         value: ${{ jobs.resolve-signing.outputs.windows_signed }}
+  # Release pull requests into main prove the Mac and Windows app still builds.
+  # Pull requests into develop skip it: the ordinary gate (ci.yml) covers them.
   pull_request:
-    paths:
-      - "desktop/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/electron-package.yml"
+    branches: [main]
   workflow_dispatch:
     inputs:
       release:
@@ -126,15 +125,12 @@ jobs:
           - runner: windows-latest
             platform: win32
             arch: x64
-          - runner: ubuntu-22.04
-            platform: linux
-            arch: x64
 
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Activate Hermit toolchain (macOS and Linux)
+      - name: Activate Hermit toolchain (macOS)
         if: runner.os != 'Windows'
         uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
 
@@ -162,33 +158,6 @@ jobs:
           cargo --version
           node --version
           pnpm --version
-
-      - name: Install Tauri dependencies (Linux)
-        if: runner.os == 'Linux'
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo apt-get update \
-            -o Acquire::Retries=3 \
-            -o Acquire::http::Timeout=30 \
-            -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends \
-            -o Acquire::Retries=3 \
-            -o Acquire::http::Timeout=30 \
-            -o Acquire::https::Timeout=30 \
-            -o DPkg::Lock::Timeout=120 \
-            build-essential \
-            curl \
-            file \
-            libasound2-dev \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf \
-            xvfb
 
       - name: Install desktop dependencies
         shell: bash
@@ -218,7 +187,6 @@ jobs:
           const manifestDir = path.join("desktop", "src-tauri");
           const platform = {
             darwin: "macos",
-            linux: "linux",
             win32: "windows",
           }[process.platform];
           if (!platform) throw new Error(`Unsupported runner platform: ${process.platform}`);
@@ -492,8 +460,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Smoke launch packaged app (macOS and Linux)
-        if: runner.os != 'Windows'
+      - name: Smoke launch packaged app (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         env:
           NODE_OPTIONS: ""
@@ -506,11 +474,7 @@ jobs:
         run: |
           set -euo pipefail
           package_name="${COLONY_ELECTRON_PRODUCT_NAME:-Colony}"
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            command=(xvfb-run -a "$GITHUB_WORKSPACE/desktop/dist-electron/linux-x64/$package_name")
-          else
-            command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/$package_name.app/Contents/MacOS/$package_name")
-          fi
+          command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/$package_name.app/Contents/MacOS/$package_name")
           python3 - "${command[@]}" <<'PY'
           import os
           import signal

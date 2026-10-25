@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { FREE_LIMIT_COPY } from "@/features/agents/lib/friendlyAgentLastError";
+
 import { FirstRunButton, FirstRunError } from "./firstRunControls";
 import { FirstRunHead, ScoutHeadMark } from "./FirstRunFrame";
 import {
@@ -248,7 +250,9 @@ export function ConnectionErrorScene({
               onClick={() => onNavigate?.("connect")}
               type="button"
             >
-              Choose another connection
+              {data.error === FREE_LIMIT_COPY
+                ? "Connect your own AI"
+                : "Choose another connection"}
             </button>
           </div>
         </div>

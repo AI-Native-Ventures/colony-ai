@@ -5897,6 +5897,27 @@ fn spawn_failure_notice_task(
     }))
 }
 
+/// How far back an unexplained failed OpenCode turn may have begun when its log
+/// is searched for the free-quota error.
+const FREE_LIMIT_LOG_WINDOW: Duration = Duration::from_secs(600);
+
+/// A turn that failed with no stated reason (silence, a timeout, an exit) on
+/// OpenCode, whose own log shows the free quota is used up.
+fn silent_free_limit_notice(config: &Config, outcome: &PromptOutcome) -> Option<String> {
+    let unexplained = match outcome {
+        PromptOutcome::Timeout(_) | PromptOutcome::AgentExited => true,
+        PromptOutcome::Error(error) => {
+            provider_failure::notice(error).is_none()
+                && provider_failure::free_model_ended_notice(error).is_none()
+        }
+        _ => false,
+    };
+    (unexplained
+        && crate::config::normalize_agent_command_identity(&config.agent_command) == "opencode"
+        && provider_failure::opencode_log_shows_free_limit(FREE_LIMIT_LOG_WINDOW))
+    .then(|| format!("⚠️ {}", provider_failure::FREE_LIMIT_COPY))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_prompt_result(
     pool: &mut AgentPool,
@@ -5991,6 +6012,15 @@ fn handle_prompt_result(
                 // accounting, same as a clean cancel.
                 let reason = batch.cancel_reason.unwrap_or(CancelReason::Steer);
                 queue.requeue_as_cancelled(batch, reason);
+            } else if let Some(content) = silent_free_limit_notice(config, &result.outcome) {
+                // OpenCode's free quota is gone and it said so only in its own
+                // log: every retry fails the same way, so say why and stop.
+                tracing::warn!(
+                    channel_id = %batch.channel_id,
+                    events = batch.events.len(),
+                    "dead-lettering batch: OpenCode's free usage limit is reached"
+                );
+                spawn_failure_notice(rest_client, &batch, content);
             } else if matches!(
                 result.outcome,
                 PromptOutcome::Timeout(TimeoutKind::Hard {
@@ -12391,6 +12421,18 @@ mod error_outcome_emission_tests {
     async fn model_not_found_posts_recovery_notice_without_retrying() {
         assert_terminal_notice(-32002, "free model ended: opencode/deepseek-v4.1-flash-free", "⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.").await;
         assert_terminal_notice(-32002, "llm model not found: (gpt-6-astra) 404 Not Found", "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request.").await;
+    }
+
+    #[tokio::test]
+    async fn opencode_free_quota_error_posts_plain_notice_without_retrying() {
+        for code in [-32603, -32000] {
+            assert_terminal_notice(
+                code,
+                "AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going",
+                "⚠️ Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.",
+            )
+            .await;
+        }
     }
 
     #[tokio::test]

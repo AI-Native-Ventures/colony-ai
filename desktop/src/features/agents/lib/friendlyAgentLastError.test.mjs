@@ -5,7 +5,9 @@ import {
   friendlyAgentLastError,
   friendlyTurnErrorCopy,
   CLI_ACP_INTERNAL_ERROR_COPY,
+  FREE_LIMIT_COPY,
   FREE_MODEL_ENDED_COPY,
+  isFreeLimitText,
   MODEL_NOT_FOUND_COPY,
   PROVIDER_KEY_REJECTED_COPY,
   RELAY_MESH_DENIED_COPY,
@@ -361,4 +363,54 @@ test("Start free model ended -> Free AI has ended copy", () => {
     friendlyAgentLastError("llm model not found: (x) 404", -32002).copy,
     MODEL_NOT_FOUND_COPY,
   );
+});
+
+// What OpenCode wrote to its log when the free model's daily quota ran out.
+const OPENCODE_FREE_LIMIT =
+  "AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going";
+
+test("free quota used up: the exact copy the owner asked for", () => {
+  assert.equal(
+    FREE_LIMIT_COPY,
+    "Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.",
+  );
+});
+
+test("OpenCode's free quota error → plain copy, whatever code or wrapper", () => {
+  for (const [raw, code] of [
+    [OPENCODE_FREE_LIMIT, undefined],
+    [OPENCODE_FREE_LIMIT, null],
+    [OPENCODE_FREE_LIMIT, -32603],
+    [OPENCODE_FREE_LIMIT, -32000],
+    [`Agent reported error (code -32603): ${OPENCODE_FREE_LIMIT}`, undefined],
+    [`llm: ${OPENCODE_FREE_LIMIT}`, -32000],
+  ]) {
+    assert.deepEqual(friendlyAgentLastError(raw, code), {
+      severity: "denied",
+      copy: FREE_LIMIT_COPY,
+    });
+  }
+});
+
+test("a turn_error observer payload with the quota error shows the plain copy", () => {
+  assert.equal(
+    friendlyTurnErrorCopy(OPENCODE_FREE_LIMIT, -32603),
+    FREE_LIMIT_COPY,
+  );
+  assert.equal(
+    friendlyTurnErrorCopy(OPENCODE_FREE_LIMIT, undefined),
+    FREE_LIMIT_COPY,
+  );
+});
+
+test("isFreeLimitText ignores case and unrelated errors", () => {
+  assert.equal(isFreeLimitText(OPENCODE_FREE_LIMIT.toUpperCase()), true);
+  assert.equal(isFreeLimitText("llm: HTTP 500: Internal Server Error"), false);
+  assert.equal(isFreeLimitText("free model ended: opencode/x"), false);
+  assert.equal(isFreeLimitText(null), false);
+  assert.equal(isFreeLimitText(undefined), false);
+});
+
+test("the quota copy never uses an em dash", () => {
+  assert.ok(!FREE_LIMIT_COPY.includes(String.fromCharCode(0x2014)));
 });
