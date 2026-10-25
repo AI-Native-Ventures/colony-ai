@@ -546,6 +546,12 @@ type E2eConfig = {
      * `window.__BUZZ_E2E_DISCOVERY_SEARCH__` stub instead.
      */
     referenceWorkspaceDiscoveryStandIn?: boolean;
+    /**
+     * Start the reference workspace as a business whose private Sales channel
+     * was never created (no channel, no business records in it), the state a
+     * fresh or existing business is in until Leads or Discovery sets it up.
+     */
+    referenceWorkspaceWithoutSales?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -5528,11 +5534,14 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       });
     }
   }
-  const channelSeeds = colony3
-    ? colony3ChannelSeeds()
-    : sidebarShell
-      ? referenceSidebarChannelSeeds()
-      : referenceChannelSeeds();
+  const withoutSales = config.mock?.referenceWorkspaceWithoutSales === true;
+  const channelSeeds = (
+    colony3
+      ? colony3ChannelSeeds()
+      : sidebarShell
+        ? referenceSidebarChannelSeeds()
+        : referenceChannelSeeds()
+  ).filter((seed) => !withoutSales || seed.id !== REFERENCE_CHANNEL_IDS.sales);
   const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
@@ -5640,7 +5649,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, { sidebarShell, colony3 });
   mockBusinessRecordEvents.clear();
   const communityId = referenceCommunityId();
-  if (communityId) {
+  if (communityId && !withoutSales) {
     for (const event of referenceSalesRecordEvents(self, communityId)) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;

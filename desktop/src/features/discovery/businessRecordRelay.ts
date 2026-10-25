@@ -56,6 +56,13 @@ function businessCandidates(channels: Channel[]): Channel[] {
   );
 }
 
+/** Every private stream the person can see that is named "Sales". */
+export function salesStreamsOf(channels: Channel[]): Channel[] {
+  return businessCandidates(channels).filter(
+    (channel) => channel.name.trim().toLocaleLowerCase() === "sales",
+  );
+}
+
 export async function resolveBusinessChannel(
   channels: Channel[],
 ): Promise<string | null> {
@@ -84,9 +91,7 @@ export async function resolveBusinessChannel(
     return [...discoveredChannelIds][0];
   }
 
-  const salesStreams = candidates.filter(
-    (channel) => channel.name.trim().toLocaleLowerCase() === "sales",
-  );
+  const salesStreams = salesStreamsOf(channels);
   if (salesStreams.length === 1) return salesStreams[0].id;
   if (salesStreams.length > 1) {
     throw new Error("More than one private Sales stream is available.");

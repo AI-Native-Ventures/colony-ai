@@ -1,16 +1,22 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
-import { useChannelsQuery } from "@/features/channels/hooks";
+import {
+  channelsQueryKey,
+  upsertCachedChannel,
+  useChannelsQuery,
+} from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
+import type { Channel } from "@/shared/api/types";
 import { BUSINESS_RECORD_QUERY_KINDS } from "./businessRecordContract";
 import {
   loadBusinessRecords,
-  resolveBusinessChannel,
   type BusinessRecords,
 } from "./businessRecordRelay";
+import { SalesChannelSetupError } from "./salesChannel";
+import { ensureBusinessChannel } from "./salesChannelRuntime";
 
 const BUSINESS_CHANNEL_STALE_MS = 30_000;
 
@@ -29,7 +35,25 @@ export function useBusinessRecords() {
     ],
     enabled: channels.isSuccess && Boolean(activeCommunity),
     staleTime: BUSINESS_CHANNEL_STALE_MS,
-    queryFn: () => resolveBusinessChannel(channels.data ?? []),
+    // A failed setup is final until the person taps Retry; a plain read error
+    // still gets the one automatic retry.
+    retry: (failureCount, error) =>
+      !(error instanceof SalesChannelSetupError) && failureCount < 1,
+    queryFn: async () => {
+      if (!activeCommunity) return null;
+      const outcome = await ensureBusinessChannel({
+        community: activeCommunity,
+        channels: channels.data ?? [],
+      });
+      if (outcome.status !== "ready") return null;
+      const created = outcome.created;
+      if (created) {
+        queryClient.setQueryData<Channel[]>(channelsQueryKey, (current) =>
+          upsertCachedChannel(current, created),
+        );
+      }
+      return outcome.channelId;
+    },
   });
   const channelId = channelQuery.data ?? null;
   const pubkey = identity.data?.pubkey ?? null;
