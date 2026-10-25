@@ -94,6 +94,9 @@ test.beforeEach(async ({ page }) => {
 test("set status dialog uses the desktop modal with shared status choices", async ({
   page,
 }) => {
+  // Pin a mid-week day: on a Sunday "This week" and "Today" end at the same
+  // moment (Monday 00:00), so a saved "This week" reopens as "Today".
+  await page.clock.setFixedTime(STATUS_CLOCK);
   await page.goto("/");
   await openProfilePopover(page);
   await page.getByTestId("profile-popover-set-status").click();
