@@ -17,18 +17,16 @@ import { getProfile } from "@/shared/api/tauriProfiles";
 import { buildLeadLink } from "@/shared/lib/entityLink";
 
 import { publishProspectAction } from "./businessRecordMutations";
-import {
-  loadBusinessRecords,
-  resolveBusinessChannel,
-} from "./businessRecordRelay";
+import { loadBusinessRecords } from "./businessRecordRelay";
 import { browserStorage, storageKey } from "./discoveryCampaignStore";
 import { leadNameKey, placeProspectId } from "./discoveryMapping";
 import type { DiscoveryCampaignProvider } from "./discoveryProvider";
 import { registerDiscoveryRuntime } from "./discoveryRuntimeRegistry";
 import { searchPlaces } from "./outscraperSearchClient";
+import { SALES_NOT_ALLOWED_MESSAGE } from "./salesChannel";
+import { ensureBusinessChannel } from "./salesChannelRuntime";
 import {
   createDiscoveryController,
-  NO_SALES_CHANNEL_ERROR,
   type DiscoveryContext,
   type DiscoveryController,
   type DiscoveryDeps,
@@ -58,8 +56,13 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 async function resolveContext(community: Community): Promise<DiscoveryContext> {
   const identity = await getIdentity();
   const { channels } = await getChannels(null);
-  const channelId = await resolveBusinessChannel(channels ?? []);
-  if (!channelId) throw new Error(NO_SALES_CHANNEL_ERROR);
+  // The Sales channel is made here when it is missing and this person may.
+  const outcome = await ensureBusinessChannel({
+    community,
+    channels: channels ?? [],
+  });
+  if (outcome.status !== "ready") throw new Error(SALES_NOT_ALLOWED_MESSAGE);
+  const channelId = outcome.channelId;
   const records = await loadBusinessRecords(channelId, identity.pubkey);
   if (records.role === "guest" || records.role === null) {
     throw new Error(GUEST_ERROR);

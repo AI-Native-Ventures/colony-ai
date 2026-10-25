@@ -7,6 +7,10 @@ import { W10Error, W10Loading } from "./BusinessCommon";
 import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
+import {
+  SALES_NOT_ALLOWED_MESSAGE,
+  SalesChannelSetupError,
+} from "./salesChannel";
 
 import "./business-records.css";
 
@@ -35,12 +39,32 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
   ) {
     return <W10Loading />;
   }
+  if (business.channelError instanceof SalesChannelSetupError) {
+    return (
+      <W10Error
+        message={business.channelError.message}
+        onRetry={() => void business.refresh()}
+        retrying={business.channelLoading}
+        title="Sales channel could not be set up"
+      />
+    );
+  }
   if (business.channelError || business.recordsError) {
     return (
       <W10Error
         message="Business records could not be loaded. Retry when the connection is available."
         onRetry={() => void business.refresh()}
         retrying={business.channelLoading || business.recordsLoading}
+      />
+    );
+  }
+  if (business.needsBusinessChannel) {
+    return (
+      <W10Error
+        message={SALES_NOT_ALLOWED_MESSAGE}
+        onRetry={() => void business.refresh()}
+        retrying={business.channelLoading}
+        title="Sales channel not set up"
       />
     );
   }
