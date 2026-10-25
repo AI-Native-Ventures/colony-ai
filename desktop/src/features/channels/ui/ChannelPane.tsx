@@ -52,6 +52,7 @@ import {
 import { useWelcomeComposerBanner } from "@/features/channels/ui/useWelcomeComposerBanner";
 import {
   mentionsKnownAgent,
+  selectActiveThreadRootId,
   shouldPrioritizeIdleAuxiliary,
   shouldUseFocusIdleDrawer,
 } from "@/features/channels/ui/ChannelPane.helpers";
@@ -479,6 +480,14 @@ export const ChannelPane = React.memo(function ChannelPane({
   });
   const showIdleAuxiliaryOverThread =
     overlayIdleAuxiliaryOverThread && useFocusIdleDrawer;
+  const activeThreadRootId = selectActiveThreadRootId({
+    channelManagementOpen,
+    hasThreadSurface,
+    idleAuxiliaryCoversThread:
+      showIdleAuxiliaryOverThread || replaceThreadWithIdleAuxiliary,
+    openThreadHeadId,
+    threadHeadId: threadHeadMessage?.id,
+  });
   const { channelIsCovered, markExitComplete } = useFocusDrawerPresence(
     useFocusThreadDrawer || useFocusIdleDrawer,
     priorityIdleAuxiliary
@@ -647,9 +656,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               <MessageTimeline
                 ref={messageTimelineRef}
                 channelId={activeChannel?.id}
-                activeThreadRootId={
-                  workspaceChrome ? (threadHeadMessage?.id ?? null) : null
-                }
+                activeThreadRootId={activeThreadRootId}
                 scrollContainerRef={timelineScrollRef}
                 currentPubkey={currentPubkey}
                 fetchOlder={fetchOlder}

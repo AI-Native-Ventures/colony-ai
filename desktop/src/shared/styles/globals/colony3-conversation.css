@@ -191,6 +191,26 @@
   --c3c-row-bg: var(--c3c-row-hover);
 }
 
+/*
+ * The message whose thread is open in the side panel keeps a soft wash of the
+ * person's accent for as long as the panel stays on it. It is a mix of the
+ * accent token over the page surface, so it follows the chosen accent and the
+ * light or dark palette, and it stays well clear of the faint hover surface.
+ * Hovering or focusing the row leaves it as it is.
+ */
+.c3c-row[data-active-thread-root="true"],
+.c3c-row[data-active-thread-root="true"]:hover,
+.c3c-row[data-active-thread-root="true"]:focus-within,
+[data-active-thread-root="true"] .c3c-row:not(.c3c-row--inner),
+[data-active-thread-root="true"] .c3c-row:not(.c3c-row--inner):hover,
+[data-active-thread-root="true"] .c3c-row:not(.c3c-row--inner):focus-within {
+  --c3c-row-bg: color-mix(
+    in srgb,
+    hsl(var(--colony-accent)) 15%,
+    hsl(var(--colony-surface))
+  );
+}
+
 .c3c-author {
   font-size: calc(16.5 * var(--colony-px));
   font-weight: 800;
