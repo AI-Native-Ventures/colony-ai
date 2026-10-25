@@ -90,7 +90,7 @@ const PG_ALL = [/^(migrations|schema)\//, /^scripts\/postgres-test-/];
 
 /** The CI definition itself: validate it with the whole essential gate. */
 const CI_DEFINITION = [
-  /^\.github\/workflows\/(ci|_ci-[\w-]+)\.yml$/,
+  /^\.github\/workflows\/ci\.yml$/,
   /^scripts\/ci-plan(\.test)?\.mjs$/,
   /^desktop\/tests\/e2e\/affected-map\.json$/,
   /^desktop\/playwright\.config\.ts$/,

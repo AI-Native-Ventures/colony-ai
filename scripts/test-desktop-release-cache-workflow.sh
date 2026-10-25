@@ -57,7 +57,7 @@ PY
 for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc; do
   grep -q -- "$target" "$proof" || { echo "proof missing $target" >&2; exit 1; }
 done
-grep -q -- '--features mesh-llm' "$proof"
+grep -q -- 'features: mesh-llm' "$proof"
 grep -q -- '--features default' "$proof"
 [[ $(grep -c 'actions/cache/save@' "$proof") -eq 0 ]]
 [[ $(grep -c 'Require exact cache hit' "$proof") -eq 2 ]]
