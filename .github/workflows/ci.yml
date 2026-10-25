@@ -168,12 +168,21 @@ jobs:
     if: needs.plan.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'push' && 'READ_WRITE' || 'READ_ONLY' }}
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      # rust-cache cannot save the root workspace's target here (the cache came
+      # back 1 KB), so compiled crates are cached with sccache instead. Pushes
+      # to main and develop write; pull requests only read.
+      - name: Set up sccache
+        uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11 # zizmor: ignore[cache-poisoning] pull requests only read the cache; pushes to main and develop write it.
         with:
-          save-if: ${{ github.event_name == 'push' }}
+          version: v0.16.0
       - name: Format check
         run: just fmt-check
       - name: Clippy (affected crates)
@@ -182,6 +191,9 @@ jobs:
         run: |
           read -r -a packages <<<"$PACKAGE_ARGS"
           cargo clippy "${packages[@]}" --all-targets -- -D warnings
+      - name: Cache statistics
+        if: always()
+        run: sccache --show-stats
 
   rust-tests:
     name: Rust unit tests
@@ -189,14 +201,22 @@ jobs:
     if: needs.plan.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'push' && 'READ_WRITE' || 'READ_ONLY' }}
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      # rust-cache cannot save the root workspace's target here (the cache came
+      # back 1 KB), so compiled crates are cached with sccache instead. Pushes
+      # to main and develop write; pull requests only read.
+      - name: Set up sccache
+        uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11 # zizmor: ignore[cache-poisoning] pull requests only read the cache; pushes to main and develop write it.
         with:
-          key: sherpa-cache-v1
-          save-if: ${{ github.event_name == 'push' }}
+          version: v0.16.0
       - name: Install cargo-nextest
         uses: taiki-e/install-action@0fd46367812ee04360509b4169d9f659d6892bb2 # v2.79.15
         with:
@@ -205,6 +225,9 @@ jobs:
         env:
           UNIT_TEST_CRATES: ${{ needs.plan.outputs.unit_test_crates }}
         run: just test-unit
+      - name: Cache statistics
+        if: always()
+        run: sccache --show-stats
 
   tauri-host:
     name: Desktop native host
@@ -370,14 +393,21 @@ jobs:
       PGSCHEMA_PLAN_PORT: "5432"
       PGSCHEMA_PLAN_USER: buzz
       PGSCHEMA_PLAN_PASSWORD: buzz_dev
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'push' && 'READ_WRITE' || 'READ_ONLY' }}
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      # rust-cache cannot save the root workspace's target here (the cache came
+      # back 1 KB), so compiled crates are cached with sccache instead. Pushes
+      # to main and develop write; pull requests only read.
+      - name: Set up sccache
+        uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11 # zizmor: ignore[cache-poisoning] pull requests only read the cache; pushes to main and develop write it.
         with:
-          key: postgres-tests
-          save-if: ${{ github.event_name == 'push' }}
+          version: v0.16.0
       - name: Validate PostgreSQL test discovery
         run: |
           scripts/test-postgres-test-discovery.sh
@@ -408,7 +438,12 @@ jobs:
           PACKAGE_ARGS: ${{ needs.plan.outputs.postgres_package_args }}
         run: |
           read -r -a packages <<<"$PACKAGE_ARGS"
-          scripts/postgres-test-run.sh "${packages[@]}" --lib --tests
+          # The optimized "ci" profile, as before: unoptimized test binaries made
+          # the pool-timeout tests flaky.
+          scripts/postgres-test-run.sh "${packages[@]}" --cargo-profile ci --lib --tests
+      - name: Cache statistics
+        if: always()
+        run: sccache --show-stats
 
   web:
     name: Web
