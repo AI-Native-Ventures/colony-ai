@@ -76,10 +76,6 @@ export type ChannelPaneProps = {
   onChannelManagementDeleted?: () => void;
   onCloseIdleAuxiliaryPanel?: () => void;
   onCloseProfilePanel: () => void;
-  onAddAgent?: (options?: { beforeSend?: () => void }) => void;
-  onAddFiles?: () => void;
-  onBrowseChannels?: () => void;
-  onCreateChannel?: () => void;
   onCloseThread: () => void;
   onDelete?: (message: TimelineMessage) => void;
   onEdit?: (message: TimelineMessage) => void;

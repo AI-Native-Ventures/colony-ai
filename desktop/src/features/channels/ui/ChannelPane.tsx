@@ -58,7 +58,6 @@ import {
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { JoinGlyph } from "@/shared/ui/conversationIcons";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
-import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
 import { usePrepareDmSendChannel } from "@/features/channels/ui/usePrepareDmSendChannel";
 import { useChannelPaneMessages } from "@/features/channels/ui/useChannelPaneMessages";
@@ -115,10 +114,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   onChannelManagementDeleted,
   onCloseIdleAuxiliaryPanel,
   onCloseProfilePanel,
-  onAddAgent,
-  onAddFiles,
-  onBrowseChannels,
-  onCreateChannel,
   onCloseThread,
   onDelete,
   onEdit,
@@ -328,25 +323,8 @@ export const ChannelPane = React.memo(function ChannelPane({
       }),
     [activeChannel, currentPubkey, profiles],
   );
-  const handleWelcomeAddAgent = React.useCallback(() => {
-    onAddAgent?.({
-      beforeSend: () =>
-        messageTimelineRef.current?.scrollToBottomOnNextUpdate(),
-    });
-  }, [onAddAgent]);
-  const standardChannelIntro = useChannelIntro({
-    activeChannel,
-    currentPubkey,
-    onAddAgent,
-    onAddFiles,
-    onBrowseChannels,
-    onCreateChannel,
-    onOpenMembers,
-    onWelcomeAddAgent: onAddAgent ? handleWelcomeAddAgent : undefined,
-  });
   const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
   const workspaceChrome = window.innerWidth >= 1440;
-  const channelIntro = hasOpenMessageThread ? null : standardChannelIntro;
   const {
     mainTimelineEntries: channelTimelineEntries,
     recentMentions,
@@ -658,8 +636,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                 activeThreadRootId={
                   workspaceChrome ? (threadHeadMessage?.id ?? null) : null
                 }
-                channelIntro={channelIntro}
-                directMessageIntro={directMessageIntro}
                 scrollContainerRef={timelineScrollRef}
                 currentPubkey={currentPubkey}
                 fetchOlder={fetchOlder}

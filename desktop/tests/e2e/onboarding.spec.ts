@@ -226,10 +226,7 @@ async function expectStarterChannels(page: Page) {
     ]);
 }
 
-async function expectWelcomeGuideIntro(
-  page: Page,
-  { expectVisible = true }: { expectVisible?: boolean } = {},
-) {
+async function expectWelcomeGuide(page: Page) {
   await expect
     .poll(async () => {
       const channelId = await getWelcomeChannelId(page);
@@ -273,11 +270,6 @@ async function expectWelcomeGuideIntro(
       fizzPersonaId: "builtin:fizz",
       profileAvatarUrl: expect.stringMatching(/^data:image\/svg\+xml,/),
     });
-
-  if (expectVisible) {
-    await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-    await expect(page.getByTestId("system-message-row")).toHaveCount(0);
-  }
 }
 
 async function expectIncompleteOnboarding(page: Page) {
@@ -1434,7 +1426,7 @@ test("completed onboarding backfills missing starter channels", async ({
   await expect(page.getByTestId("channel-general")).toBeVisible();
   await expect(page.getByTestId("channel-welcome-everyone")).toBeVisible();
   await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page, { expectVisible: false });
+  await expectWelcomeGuide(page);
 });
 
 test("R17 connection setup opens the designed workspace route", async ({

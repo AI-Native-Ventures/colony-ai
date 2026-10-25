@@ -4,13 +4,11 @@ import * as React from "react";
 export function useCommittedEmptyTimeline({
   channelId,
   deferredCount,
-  hasPersistentIntro,
   isLoading,
   liveCount,
 }: {
   channelId: string | null;
   deferredCount: number;
-  hasPersistentIntro: boolean;
   isLoading: boolean;
   liveCount: number;
 }) {
@@ -18,8 +16,7 @@ export function useCommittedEmptyTimeline({
     channelId: null as string | null,
     hasSettledEmpty: false,
   });
-  const preserveSettledEmptyIntro =
-    hasPersistentIntro &&
+  const preserveSettledEmpty =
     committedRef.current.channelId === channelId &&
     committedRef.current.hasSettledEmpty;
 
@@ -31,5 +28,5 @@ export function useCommittedEmptyTimeline({
     };
   }, [channelId, deferredCount, isLoading, liveCount]);
 
-  return preserveSettledEmptyIntro;
+  return preserveSettledEmpty;
 }

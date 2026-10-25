@@ -238,7 +238,7 @@ test("a channel mounted during a slow cache load still takes the hydrated path",
 });
 test("a bounds-only persisted head is not hydrated", async () => {
   // Carl/#6572 (3): zero rows paint nothing, so the channel must take the
-  // cold path and hold its skeleton rather than flash the empty-channel intro.
+  // cold path and hold its skeleton rather than flash the empty state.
   install([{ channelId, events: [bounds()], savedAt: 1, lastVisitedAt: 1 }]);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

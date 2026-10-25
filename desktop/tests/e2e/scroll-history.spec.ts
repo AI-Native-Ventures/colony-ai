@@ -46,6 +46,33 @@ async function getFirstVisibleMessage(page: import("@playwright/test").Page) {
   });
 }
 
+/**
+ * What heads the rendered list: a day divider or a message row. The oldest
+ * loaded day's divider only exists once history is proven exhausted, so a
+ * divider at the very top is the marker for the start of the channel.
+ */
+async function getTopTimelineItemKind(page: import("@playwright/test").Page) {
+  return page.getByTestId("message-timeline").evaluate((element) => {
+    let topItem: HTMLElement | null = null;
+    let topY = Number.POSITIVE_INFINITY;
+    for (const item of (
+      element as HTMLDivElement
+    ).querySelectorAll<HTMLElement>(
+      '[data-message-id], [data-testid="message-timeline-day-divider"]',
+    )) {
+      const y = item.getBoundingClientRect().top;
+      if (y < topY) {
+        topY = y;
+        topItem = item;
+      }
+    }
+    if (!topItem) return null;
+    return topItem.dataset.testid === "message-timeline-day-divider"
+      ? "day-divider"
+      : "message";
+  });
+}
+
 async function getMessagePosition(
   page: import("@playwright/test").Page,
   messageId: string,
@@ -1524,17 +1551,19 @@ test("in-viewport reflow above the anchor row does not push it down", async ({
     .toBeLessThanOrEqual(2);
 });
 
-// Regression: the channel intro ("header") must never flash mid-content while
-// an older-history page is still loading. Reproduces the reported bug where the
-// header appeared in the middle of history during pagination. The companion
-// "scrollable channel ... hides intro actions until top" test in channels.spec
-// already proves the positive (intro shows once at the true, exhausted top);
-// this proves the negative (it stays hidden while a fetch is in flight).
+// Regression: the start-of-channel marker (the oldest day's divider, which
+// needs proven history exhaustion) must never appear while an older-history
+// page is still loading. Reproduces the reported bug where the channel's start
+// showed up in the middle of history during pagination. The companion
+// "scrollable channel ... shows its start marker only at the top" test in
+// channels.spec already proves the positive (the divider shows once at the
+// true, exhausted top); this proves the negative (it stays absent while a fetch
+// is in flight) and that the awaited page then lands.
 //
 // Uses real wheel input, not `scrollTop = 0`, because the timeline is
 // virtualized (Virtuoso) and re-asserts its tracked scroll position after a
 // raw scrollTop write -- see the abandon test above for the same rationale.
-test("channel intro stays hidden while older history is loading", async ({
+test("channel start stays unmarked while older history is loading", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -1582,9 +1611,6 @@ test("channel intro stays hidden while older history is loading", async ({
     return element ? element.scrollHeight > element.clientHeight + 1000 : false;
   });
 
-  // At the bottom on initial open: intro hidden.
-  await expect(page.getByTestId("message-channel-intro")).toHaveCount(0);
-
   // Wheel up to the top to trigger the (5s-delayed) older fetch.
   await timeline.hover();
   for (let attempt = 0; attempt < 32; attempt += 1) {
@@ -1598,43 +1624,47 @@ test("channel intro stays hidden while older history is loading", async ({
   await page.waitForTimeout(150);
 
   // We are near the top of the loaded window AND the prepend has not resolved
-  // (history is still in flight). The intro MUST stay hidden -- this is the
-  // mid-load flash the fix prevents.
+  // (history is still in flight). A message must head the list, not the start
+  // marker -- this is the mid-load flash the fix prevents.
   const duringFetch = await getTimelineMetrics(page);
   expect(duringFetch.scrollTop).toBeLessThan(500);
-  await expect(page.getByTestId("message-channel-intro")).toHaveCount(0);
+  expect(await getTopTimelineItemKind(page)).toBe("message");
 
-  // It must remain hidden while the fetch indicator is visible. Once the
-  // delayed fetch completes, the channel may legitimately be at the true start
-  // and show the intro.
+  // It must stay unmarked while the fetch indicator is visible. Only 600 older
+  // roots were seeded, far more than one page, so the start is still not
+  // reached once the delayed fetch completes: the page lands and grows the list.
   await expect
     .poll(
       async () => {
-        const introCount = await page
-          .getByTestId("message-channel-intro")
-          .count();
         const indicatorCount = await page
           .getByTestId("message-timeline-fetching-older")
           .count();
-        if (indicatorCount > 0 && introCount > 0) {
-          return "intro-appeared-during-fetch";
+        if (
+          indicatorCount > 0 &&
+          (await getTopTimelineItemKind(page)) === "day-divider"
+        ) {
+          return "start-marked-during-fetch";
         }
         return indicatorCount === 0 ? "resolved" : "pending";
       },
       { timeout: 7_000 },
     )
     .toBe("resolved");
+  expect((await getTimelineMetrics(page)).scrollHeight).toBeGreaterThan(
+    duringFetch.scrollHeight,
+  );
 });
 
 // Regression for the architectural bug Wes reported: in a channel with MORE
 // content events than the timeline window cap (MAX_TIMELINE_MESSAGES = 2000),
-// scrolling back must keep paginating older history WITHOUT ever flashing the
-// channel intro ("header") mid-content. The old code inferred exhaustion from a
-// post-merge oldest-timestamp compare; once the cap evicted a freshly-prepended
-// older root, that compare wrongly fired `hasOlderMessages=false`, popping the
-// header and then flooding in a batch. This test crosses the cap on purpose and
-// asserts the header stays hidden while genuine older history still loads.
-test("channel intro stays hidden while paginating past the timeline cap", async ({
+// scrolling back must keep paginating older history WITHOUT ever marking the
+// channel start (the oldest day's divider) mid-content. The old code inferred
+// exhaustion from a post-merge oldest-timestamp compare; once the cap evicted a
+// freshly-prepended older root, that compare wrongly fired
+// `hasOlderMessages=false`, popping the start marker and then flooding in a
+// batch. This test crosses the cap on purpose and asserts the marker stays
+// absent while genuine older history still loads.
+test("channel start stays unmarked while paginating past the timeline cap", async ({
   page,
 }, testInfo) => {
   testInfo.setTimeout(90_000);
@@ -1668,13 +1698,11 @@ test("channel intro stays hidden while paginating past the timeline cap", async 
   const timeline = page.getByTestId("message-timeline");
   await expect(timeline.locator("[data-message-id]").first()).toBeVisible();
 
-  // At the bottom on open: intro hidden.
-  await expect(page.getByTestId("message-channel-intro")).toHaveCount(0);
-
   // Scroll back until pagination reaches the true channel start (the oldest
   // seeded root, "mock older 0") or clearly stalls. Each pass triggers an
   // older-history fetch; we wait for it to settle (oldest rendered id advances)
-  // before the next wheel. The intro must never appear while older roots remain.
+  // before the next wheel. The start marker must never appear while older roots
+  // remain.
   //
   // With the old newest-2000 cap, the freshly-prepended older roots are evicted
   // once the cache crosses MAX_TIMELINE_MESSAGES, so the oldest rendered row
@@ -1691,19 +1719,6 @@ test("channel intro stays hidden while paginating past the timeline cap", async 
         if (match) min = Math.min(min, Number(match[1]));
       }
       return Number.isFinite(min) ? min : null;
-    });
-
-  const isIntroHeaderInViewport = async () =>
-    page.getByTestId("message-timeline").evaluate((timelineElement) => {
-      const icon = timelineElement.querySelector<HTMLElement>(
-        '[data-testid="message-channel-intro-icon"]',
-      );
-      if (!icon) return false;
-      const timelineRect = timelineElement.getBoundingClientRect();
-      const iconRect = icon.getBoundingClientRect();
-      return (
-        iconRect.bottom > timelineRect.top && iconRect.top < timelineRect.bottom
-      );
     });
 
   // Poll for real progress instead of a fixed sleep: a slow CI shard's fetch
@@ -1741,7 +1756,7 @@ test("channel intro stays hidden while paginating past the timeline cap", async 
     await scrollToTop();
     const current = await waitForOlderHistoryProgress(deepest);
     if ((current ?? Number.POSITIVE_INFINITY) > 50) {
-      expect(await isIntroHeaderInViewport()).toBe(false);
+      expect(await getTopTimelineItemKind(page)).toBe("message");
     }
 
     if (current !== null && current < deepest) {
@@ -1762,6 +1777,96 @@ test("channel intro stays hidden while paginating past the timeline cap", async 
   // backward-paged roots. < 50 leaves slack for virtualization not rendering
   // the literal index-0 row at the exact top.
   expect(deepest).toBeLessThan(50);
+});
+
+// The start of the channel: once older history is exhausted the oldest day's
+// divider heads the list, directly above the very first message, and scrolling
+// to the top again asks for no further page. This divider replaced the channel
+// intro as the start-of-history marker.
+test("paging back to the channel start heads the list with the first day divider", async ({
+  page,
+}, testInfo) => {
+  testInfo.setTimeout(60_000);
+  await installMockBridge(page);
+  await page.goto("/");
+  await page.waitForFunction(
+    () =>
+      typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function" &&
+      typeof window.__BUZZ_E2E_PREPEND_MOCK_HISTORY__ === "function",
+  );
+
+  await page.evaluate(() => {
+    for (let index = 0; index < 30; index += 1) {
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content: `recent ${index}`,
+      });
+    }
+    window.__BUZZ_E2E_PREPEND_MOCK_HISTORY__?.({
+      channelName: "general",
+      count: 150,
+      lineCount: 1,
+    });
+  });
+
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("chat-title")).toHaveText("general");
+  const timeline = page.getByTestId("message-timeline");
+  await expect(timeline.locator("[data-message-id]").first()).toBeVisible();
+
+  const fetchingOlder = page.getByTestId("message-timeline-fetching-older");
+  const scrollToTop = async () =>
+    timeline.evaluate((element) => {
+      const container = element as HTMLDivElement;
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -1 }));
+      container.scrollTop = 0;
+      container.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+  const fetchCount = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __CHANNEL_WINDOW_FETCH_COUNT__?: number })
+          .__CHANNEL_WINDOW_FETCH_COUNT__ ?? 0,
+    );
+
+  // Page back one gesture at a time until the start is proven. Every pass waits
+  // for the page it triggered to land before looking at what heads the list.
+  await timeline.hover();
+  await expect
+    .poll(
+      async () => {
+        await scrollToTop();
+        await expect(fetchingOlder).toHaveCount(0, { timeout: 10_000 });
+        return getTopTimelineItemKind(page);
+      },
+      { timeout: 45_000 },
+    )
+    .toBe("day-divider");
+
+  // The first message ever sent sits directly below the marker.
+  const firstMessageText = await timeline.evaluate((element) => {
+    let first: HTMLElement | null = null;
+    let firstY = Number.POSITIVE_INFINITY;
+    for (const row of (element as HTMLDivElement).querySelectorAll<HTMLElement>(
+      "[data-message-id]",
+    )) {
+      const y = row.getBoundingClientRect().top;
+      if (y < firstY) {
+        firstY = y;
+        first = row;
+      }
+    }
+    return (first as HTMLElement | null)?.textContent ?? "";
+  });
+  expect(firstMessageText).toContain("mock older 0 line 1");
+
+  // At the start there is no loader: another trip to the top requests no page.
+  const pagesAtStart = await fetchCount();
+  await scrollToTop();
+  await page.waitForTimeout(1_000);
+  await expect(fetchingOlder).toHaveCount(0);
+  expect(await fetchCount()).toBe(pagesAtStart);
+  expect(await getTopTimelineItemKind(page)).toBe("day-divider");
 });
 
 // Regression for the flood Wes reported: scrolling back while an older-history

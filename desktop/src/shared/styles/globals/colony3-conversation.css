@@ -260,54 +260,6 @@
   color: hsl(var(--colony-muted));
 }
 
-/* The top of a channel's history. */
-.c3c-intro-title {
-  font-size: calc(30 * var(--colony-px));
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  line-height: normal;
-}
-
-.c3c-intro-text {
-  font-size: calc(17 * var(--colony-px));
-  font-weight: 500;
-  line-height: 1.6;
-  color: hsl(var(--colony-fg-secondary));
-}
-
-.c3c-intro-people {
-  font-size: calc(15 * var(--colony-px));
-  font-weight: 600;
-  color: hsl(var(--colony-muted));
-}
-
-.c3c-intro-chip {
-  display: inline-flex;
-  height: calc(28 * var(--colony-px));
-  align-items: center;
-  gap: calc(6 * var(--colony-px));
-  border-radius: 999px;
-  padding: 0 calc(10 * var(--colony-px));
-  background-color: #f1eef2;
-  color: hsl(var(--colony-fg-secondary));
-  font-size: calc(13.5 * var(--colony-px));
-  font-weight: 700;
-}
-
-/* The start of a direct message. */
-.c3c-dm-intro-title {
-  font-size: calc(34 * var(--colony-px));
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: normal;
-}
-
-.c3c-dm-intro-text {
-  font-size: calc(17 * var(--colony-px));
-  line-height: 1.55;
-  color: hsl(var(--colony-fg-secondary));
-}
-
 /* Channel states: empty, loading, error, new messages. */
 .c3c-empty-title {
   font-size: calc(19 * var(--colony-px));

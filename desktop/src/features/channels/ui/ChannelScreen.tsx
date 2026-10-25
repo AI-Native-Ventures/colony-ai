@@ -19,7 +19,6 @@ import {
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
-import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
 import {
   useManagedAgentsQuery,
@@ -28,10 +27,8 @@ import {
 } from "@/features/agents/hooks";
 import { mergeChannelKnownAgentPubkeys } from "@/features/agents/knownAgentPubkeys";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
-import { pickWelcomeGuideAgent } from "@/features/onboarding/welcomeGuide";
 import { useWelcomeKickoffEntrance } from "@/features/onboarding/useWelcomeKickoffEntrance";
 import { useWelcomeKickoffStagePresence } from "@/features/onboarding/useWelcomeKickoffStagePresence";
-import { useWelcomeAgentCreate } from "@/features/channels/useWelcomeAgentCreate";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
   useChannelMessagesQuery,
@@ -99,7 +96,7 @@ export function ChannelScreen({
   headerEndActions, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
-  onAddFiles, onCloseIdleAuxiliaryPanel,
+  onCloseIdleAuxiliaryPanel,
   targetMessageEvents, targetMessageId,
   ...searchTarget
 }: ChannelScreenProps) {
@@ -113,8 +110,6 @@ export function ChannelScreen({
     getMessageReadAt,
     markMessageRead,
     setContextParentResolver,
-    openBrowseChannels,
-    openCreateChannel,
     followThread,
     unfollowThread,
     isFollowingThread,
@@ -288,15 +283,6 @@ export function ChannelScreen({
   const channelMembers = channelMembersQuery.data;
   const managedAgentsQuery = useManagedAgentsQuery();
   const managedAgents = managedAgentsQuery.data ?? [];
-  const welcomeGuideAgent = React.useMemo(
-    () => pickWelcomeGuideAgent(managedAgents),
-    [managedAgents],
-  );
-  const welcomeAgentCreate = useWelcomeAgentCreate({
-    activeChannel,
-    currentIdentity,
-    welcomeGuideAgent,
-  });
   const relayAgentsQuery = useRelayAgentsQuery();
   const relayAgents = relayAgentsQuery.data ?? [];
   const knownAgentPubkeys = React.useMemo(
@@ -529,11 +515,6 @@ export function ChannelScreen({
     activeChannel && !activeChannel.archivedAt && activeChannel.isMember
       ? handleSendVideoReviewComment
       : undefined;
-  const handleOpenAddBot = React.useCallback(
-    (options?: { beforeSend?: () => void }) =>
-      welcomeAgentCreate.openAddAgent(() => setIsAddBotOpen(true), options),
-    [welcomeAgentCreate],
-  );
   const handleOpenMembersSidebar = () => setIsMembersSidebarOpen(true);
   const handleCloseChannelManagement = () => setChannelManagementOpen(false);
   const handleChannelManagementDeleted = React.useCallback(() => {
@@ -727,15 +708,6 @@ export function ChannelScreen({
   );
   return (
     <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
-        <WelcomeAgentCreateDialog
-          guideName={welcomeGuideAgent?.name ?? "your welcome guide"}
-          isSending={welcomeAgentCreate.isSending}
-          onCreateInChat={() => void welcomeAgentCreate.createInChat()}
-          onCreateManually={welcomeAgentCreate.createManually}
-          onOpenChange={welcomeAgentCreate.setIsOpen}
-          open={welcomeAgentCreate.isOpen}
-          sendError={welcomeAgentCreate.error}
-        />
         <DeleteMessageConfirmDialog
           onConfirm={() => {
             if (emptyDeleteId) {
@@ -792,10 +764,6 @@ export function ChannelScreen({
                   fetchOlder={fetchOlder}
                   header={channelHeader}
                   {...{ idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread, idleAuxiliaryPanel, idleAuxiliaryTitle, hasOlderMessages, historyExhausted }}
-                  {...{ onAddFiles }}
-                  onAddAgent={handleOpenAddBot}
-                  onBrowseChannels={openBrowseChannels}
-                  onCreateChannel={openCreateChannel}
                   onOpenMembers={handleOpenMembersSidebar}
                   isFetchingOlder={isFetchingOlder}
                   entranceMessageId={welcomeEntranceMessageId}

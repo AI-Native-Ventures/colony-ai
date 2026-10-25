@@ -498,7 +498,9 @@ test("message links to visible root messages open the thread panel", async ({
   await expect(linkMenu).toBeVisible();
   await randomChannelLink.click({ button: "right" });
   await expect(linkMenu).toHaveCount(1);
-  await rootThreadLink.click({ button: "right" });
+  // The open menu now covers the lower part of the root chip, so aim for its top
+  // edge instead of its centre.
+  await rootThreadLink.click({ button: "right", position: { x: 8, y: 3 } });
   await expect(linkMenu).toHaveCount(1);
   await expect(
     linkMenu.getByRole("button", { name: "Open link" }),
