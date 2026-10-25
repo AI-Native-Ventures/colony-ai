@@ -156,9 +156,7 @@ pub(crate) fn mcp_servers_with_browser(
     agent: &str,
     relay: &str,
 ) -> Result<Vec<McpServer>, AcpError> {
-    with_browser_server(servers, scope, agent, relay, |key| {
-        std::env::var(key).ok()
-    })
+    with_browser_server(servers, scope, agent, relay, |key| std::env::var(key).ok())
 }
 
 /// Browser authority is never inherited by the general agent subprocess.
@@ -376,8 +374,8 @@ mod tests {
     /// no browser server at all; only DMs and thread sessions did.
     #[test]
     fn channel_conversation_gets_the_browser_server_like_a_dm() {
-        let channel_id = Uuid::parse_str("12345678-1234-5678-9abc-123456789abc")
-            .expect("fixture UUID");
+        let channel_id =
+            Uuid::parse_str("12345678-1234-5678-9abc-123456789abc").expect("fixture UUID");
         let conversation = SessionScope::Conversation { channel_id };
         let servers = with_browser_server(
             vec![],
@@ -410,14 +408,10 @@ mod tests {
             "https://relay.example/\n",
             " https://relay.example",
         ] {
-            assert!(with_browser_server(
-                vec![],
-                Some(&thread()),
-                &"a".repeat(64),
-                relay,
-                launch,
-            )
-            .is_err());
+            assert!(
+                with_browser_server(vec![], Some(&thread()), &"a".repeat(64), relay, launch,)
+                    .is_err()
+            );
         }
         assert!(with_browser_server(
             vec![],
