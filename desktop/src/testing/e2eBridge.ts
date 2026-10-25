@@ -2081,7 +2081,7 @@ declare global {
       agentPubkey: string;
       channelId: string;
       turnId: string;
-      kind?: "turn_started" | "turn_completed";
+      kind?: "turn_started" | "turn_completed" | "turn_error";
       /** Back-date the event so a turn reads as already running this long. */
       startedAgoMs?: number;
     }) => void;

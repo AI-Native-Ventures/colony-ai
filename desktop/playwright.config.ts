@@ -165,6 +165,8 @@ export default defineConfig({
         "**/channel-star.spec.ts",
         "**/channel-controls.spec.ts",
         "**/channel-activity-popover.spec.ts",
+        "**/agent-working-indicator.spec.ts",
+        "**/agent-working-indicator-screenshots.spec.ts",
         "**/active-turn-resilience.spec.ts",
         "**/profile-active-turn.spec.ts",
         "**/welcome-agent-modal-screenshots.spec.ts",
@@ -286,6 +288,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/agent-working-indicator.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/workspace-file-links.spec.ts",
