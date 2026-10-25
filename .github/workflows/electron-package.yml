@@ -500,12 +500,12 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
-          # Release builds are named Colony; the Package step sets this only for itself.
+          # Every build is named Colony (the Tauri config default); the release flag only pins it.
           COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
           COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
-          package_name="${COLONY_ELECTRON_PRODUCT_NAME:-Buzz}"
+          package_name="${COLONY_ELECTRON_PRODUCT_NAME:-Colony}"
           if [ "${{ matrix.platform }}" = "linux" ]; then
             command=(xvfb-run -a "$GITHUB_WORKSPACE/desktop/dist-electron/linux-x64/$package_name")
           else
@@ -543,7 +543,7 @@ jobs:
           COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
         run: |
           $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
-          $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Buzz" }
+          $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Colony" }
           $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/$packageName.exe"
           $stdoutPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stdout.log"
           $stderrPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stderr.log"
