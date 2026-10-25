@@ -16,7 +16,7 @@ name: CI
 # main also build the Mac and Windows app (electron-package.yml).
 on:
   push:
-    branches: [main, release, develop, ci/strip-to-essentials] # TEMP-MEASURE: remove before merge
+    branches: [main, release, develop]
   pull_request:
 
 concurrency:
