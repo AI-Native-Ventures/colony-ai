@@ -18,7 +18,7 @@
 /* Desktop download section (release assets are tag-pinned, see site/README.md). */
 .launch-download{padding:96px 5% 104px;background:var(--r10-paper,#faf8f2);color:var(--r10-ink,#303e34);border-top:1px solid var(--r10-line,#dedfd4)}
 .launch-download .r10-heading{margin-bottom:44px}
-.download-grid{list-style:none;margin:0 auto;padding:0;max-width:1120px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.download-grid{list-style:none;margin:0 auto;padding:0;max-width:780px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .download-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:26px 26px 24px;border:1px solid var(--r10-line,#dedfd4);border-radius:22px;background:#fffffa}
 .download-card h3{margin:0;font-size:1.35rem;line-height:1.2}
 .launch-download .download-meta{margin:0;color:var(--p-muted,#667366);font-size:.8125rem;line-height:1.45}

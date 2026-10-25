@@ -1,19 +1,9 @@
 name: Colony identity kernel
 
+# Manual only: identity kernel crate tests.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    branches:
-      - develop
-    paths:
-      - "desktop/identity-kernel/**"
-      - "desktop/src-tauri/Cargo.toml"
-      - "desktop/src-tauri/Cargo.lock"
-      - "desktop/src-tauri/src/app_state.rs"
-      - "desktop/src-tauri/src/app_state_tests.rs"
-      - "desktop/src-tauri/src/commands/identity.rs"
-      - "desktop/src-tauri/src/identity_storage.rs"
-      - "desktop/src-tauri/src/secret_store.rs"
-      - ".github/workflows/colony-identity-kernel.yml"
   workflow_dispatch:
 
 concurrency:

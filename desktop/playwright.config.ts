@@ -1,6 +1,28 @@
 import { defineConfig, devices } from "@playwright/test";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The core journeys CI runs on every change to shared code. The same file maps
+// folders to the specs a change needs (see scripts/ci-plan.mjs).
+const affectedMap = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("./tests/e2e/affected-map.json", import.meta.url)),
+    "utf8",
+  ),
+) as {
+  essential: {
+    specs: string[];
+    focus: { specs: string[]; titles: string[] };
+  };
+};
+const specMatch = (specs: string[]) => specs.map((spec) => `**/${spec}`);
+const titlePattern = (titles: string[]) =>
+  new RegExp(
+    titles
+      .map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|"),
+  );
 
 const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
 const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
@@ -279,6 +301,21 @@ export default defineConfig({
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
       ],
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "essential",
+      testMatch: specMatch(affectedMap.essential.specs),
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "essential-focus",
+      testMatch: specMatch(affectedMap.essential.focus.specs),
+      grep: titlePattern(affectedMap.essential.focus.titles),
       use: {
         ...devices["Desktop Chrome"],
       },

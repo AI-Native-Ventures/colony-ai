@@ -148,16 +148,14 @@ jobs:
           Signing status:
           - macOS: $mac_status
           - Windows: $windows_status
-          - Linux: UNSIGNED
 
-          Verify downloaded files with checksums.txt. Automatic updates require a signed macOS build. Windows and Linux updates verify the published updater checksum before installation.
+          Verify downloaded files with checksums.txt. Automatic updates require a signed macOS build. Windows updates verify the published updater checksum before installation.
           EOF
           if [ -n "$first_launch" ]; then
             {
               echo
               echo "First launch of unsigned builds:"
               printf '%s' "$first_launch" | sed 's/^ *//'
-              echo "- Linux: make the AppImage executable (chmod +x), then run it."
             } >> release-notes.md
           fi
 

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-release="$root/.github/workflows/release.yml"
+release="$root/.github/workflows/release-desktop.yml"
 proof="$root/.github/workflows/desktop-release-cache-proof.yml"
 canaries=(
   "$root/.github/workflows/signed-macos-canary.yml"
   "$root/.github/workflows/macos-intel-canary.yml"
   "$root/.github/workflows/windows-canary.yml"
-  "$root/.github/workflows/linux-canary.yml"
 )
 
 if grep -q 'desktop-rust-release-v1\|desktop-release-cache-key' "$release"; then
@@ -54,21 +53,16 @@ for filename in sys.argv[1:]:
             raise SystemExit(f"native toolchain output not passed through env: {filename}")
 PY
 
-# Producer/proof coverage must match all four release targets and features.
-for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc; do
+# Producer/proof coverage must match the Mac and Windows release targets and features.
+for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc; do
   grep -q -- "$target" "$proof" || { echo "proof missing $target" >&2; exit 1; }
 done
-grep -q -- '--features mesh-llm' "$proof"
+grep -q -- 'features: mesh-llm' "$proof"
 grep -q -- '--features default' "$proof"
 [[ $(grep -c 'actions/cache/save@' "$proof") -eq 0 ]]
-[[ $(grep -c 'Require exact cache hit' "$proof") -eq 3 ]]
+[[ $(grep -c 'Require exact cache hit' "$proof") -eq 2 ]]
 grep -q 'refs/tags/cache-proof-' "$proof"
 
-# Linux producer must match release's default linker, not the CI-only mold path.
-if grep -q 'setup-mold\|ubuntu-24.04-mold' "$root/.github/workflows/linux-canary.yml"; then
-  echo "Linux cache producer diverges from the release linker" >&2
-  exit 1
-fi
 if grep -q 'setup-mold' "$release"; then
   echo "release linker changed; re-review cache equivalence" >&2
   exit 1
