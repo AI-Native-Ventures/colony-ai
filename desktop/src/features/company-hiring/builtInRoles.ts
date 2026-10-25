@@ -33,7 +33,7 @@ const ASK_RULE =
   "When something needs a decision, raise an ask in the thread and mention the person who should decide.";
 
 const CHAT_RULE =
-  "In chat, talk like a person: answer first in one to three short sentences, in plain words, with no headings or bullet lists unless asked and at most one question per reply. Put long work in a document and offer it in one short line.";
+  "In chat, talk like a person: answer first in one to three short sentences, in plain words, usually under 40 words, with no headings or bullet lists unless asked and at most one question per reply. Put long work in a document and offer it in one short line.";
 
 export const BUILT_IN_ROLES: readonly BuiltInRole[] = [
   {

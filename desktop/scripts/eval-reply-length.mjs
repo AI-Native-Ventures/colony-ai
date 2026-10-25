@@ -4,6 +4,13 @@
 // reply plus any heading, bold or bullet formatting.
 //
 //   node desktop/scripts/eval-reply-length.mjs --old-ref daf0a19c8 --runs 2
+//   node desktop/scripts/eval-reply-length.mjs --backend openrouter --runs 3
+//
+// When OpenCode's free daily quota is used up, `--backend openrouter` asks the
+// same model (DeepSeek V4.1 Flash) through OpenRouter, and `--backend deepseek`
+// through DeepSeek's own API. They read OPENROUTER_API_KEY / DEEPSEEK_API_KEY
+// from the environment and never print or store it. Run both variants on one
+// backend so the before and after numbers are comparable.
 //
 // OLD instructions come from `git show <old-ref>:<path>`, NEW from the working
 // tree. Each variant sends what a Scout turn carries: the shared base prompt
@@ -19,6 +26,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MODEL = "opencode/deepseek-v4.1-flash-free";
+/** Same model as the free OpenCode one, reached through a paid API. */
+const API_BACKENDS = {
+  deepseek: {
+    url: "https://api.deepseek.com/chat/completions",
+    keyEnv: "DEEPSEEK_API_KEY",
+    model: "deepseek-flash",
+  },
+  openrouter: {
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    keyEnv: "OPENROUTER_API_KEY",
+    model: "deepseek/deepseek-v4.1-flash",
+  },
+};
 
 export const OWNER_MESSAGES = [
   "are you there?",
@@ -164,6 +184,37 @@ export function replyFromEvents(stdout) {
   return { text: parts.join("\n").trim(), toolCalls };
 }
 
+/** The text of a chat-completions response, or "" when the model said nothing. */
+export function replyFromChatCompletion(body) {
+  const content = body?.choices?.[0]?.message?.content;
+  return typeof content === "string" ? content.trim() : "";
+}
+
+async function askApi({ backend, prompt, timeoutMs }) {
+  const config = API_BACKENDS[backend];
+  const key = process.env[config.keyEnv];
+  if (!key) throw new Error(`${config.keyEnv} is not set`);
+  const response = await fetch(config.url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1024,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    // Status only: the body can echo request details.
+    throw new Error(`${backend} HTTP ${response.status}`);
+  }
+  return replyFromChatCompletion(await response.json());
+}
+
 function throwawayEnv(home) {
   const env = {
     PATH: process.env.PATH ?? "/usr/bin:/bin",
@@ -216,14 +267,28 @@ async function askOnce(options, message, variant, index) {
   const cwd = path.join(options.cwdRoot, `${variant}-${index}`);
   for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
     const started = Date.now();
-    const result = await runOpencode({
-      opencode: options.opencode,
-      home: options.home,
-      cwd,
-      prompt,
-      timeoutMs: options.timeoutMs,
-    });
-    const { text, toolCalls } = replyFromEvents(result.stdout);
+    let text = "";
+    let toolCalls = 0;
+    if (API_BACKENDS[options.backend]) {
+      try {
+        text = await askApi({
+          backend: options.backend,
+          prompt,
+          timeoutMs: options.timeoutMs,
+        });
+      } catch (error) {
+        console.error(`attempt ${attempt}: ${error.message}`);
+      }
+    } else {
+      const result = await runOpencode({
+        opencode: options.opencode,
+        home: options.home,
+        cwd,
+        prompt,
+        timeoutMs: options.timeoutMs,
+      });
+      ({ text, toolCalls } = replyFromEvents(result.stdout));
+    }
     if (text) {
       return {
         message,
@@ -273,6 +338,7 @@ function parseArgs(argv) {
     concurrency: 3,
     timeoutSecs: 120,
     attempts: 3,
+    backend: "opencode",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
@@ -287,6 +353,7 @@ function parseArgs(argv) {
       "--concurrency": "concurrency",
       "--timeout": "timeoutSecs",
       "--attempts": "attempts",
+      "--backend": "backend",
     };
     if (map[key] && value !== undefined) {
       args[map[key]] = [
@@ -309,7 +376,7 @@ function row(label, summary) {
 
 export function renderTable(oldRun, newRun) {
   const lines = [
-    `Model: \`${MODEL}\`. ${oldRun.runs} runs per message. OLD = \`${oldRun.ref}\`, NEW = this branch.`,
+    `Model: \`${oldRun.model ?? MODEL}\`. ${oldRun.runs} runs per message. OLD = \`${oldRun.ref}\`, NEW = this branch.`,
     "",
     "| Message | Words before (median) | Words after (median) |",
     "|---|---|---|",
@@ -361,6 +428,7 @@ async function runVariant(label, ref, args, root) {
     cwdRoot: args.cwdRoot,
     timeoutMs: args.timeoutSecs * 1000,
     attempts: args.attempts,
+    backend: args.backend,
   };
   const jobs = [];
   for (const message of OWNER_MESSAGES) {
@@ -374,7 +442,8 @@ async function runVariant(label, ref, args, root) {
   return {
     variant: label,
     ref: ref ? `${ref} (${resolved.slice(0, 9)})` : "working tree",
-    model: MODEL,
+    model: API_BACKENDS[args.backend]?.model ?? MODEL,
+    backend: args.backend,
     runs: args.runs,
     replies,
     summary: summarize(replies),

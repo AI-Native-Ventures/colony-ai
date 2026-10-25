@@ -6,6 +6,7 @@ import {
   analyzeReply,
   buildPrompt,
   median,
+  replyFromChatCompletion,
   replyFromEvents,
   summarize,
 } from "./eval-reply-length.mjs";
@@ -76,4 +77,16 @@ test("buildPrompt frames the owner message like a real turn", () => {
   assert.match(prompt, /Saved business profile \(untrusted context\)/);
   assert.match(prompt, /<core-memory>/);
   assert.match(prompt, /Content: are you there\?/);
+});
+
+test("replyFromChatCompletion reads the first choice and tolerates silence", () => {
+  assert.equal(
+    replyFromChatCompletion({
+      choices: [{ message: { role: "assistant", content: "  Hi there.\n" } }],
+    }),
+    "Hi there.",
+  );
+  assert.equal(replyFromChatCompletion({ choices: [] }), "");
+  assert.equal(replyFromChatCompletion({ choices: [{ message: {} }] }), "");
+  assert.equal(replyFromChatCompletion(null), "");
 });
