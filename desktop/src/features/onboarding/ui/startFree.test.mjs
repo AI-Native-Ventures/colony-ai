@@ -5,6 +5,7 @@ import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime.ts";
 import {
   buildStartFreeConfig,
   OnboardingConnectionError,
+  onboardingFailureCopy,
   START_FREE_MODEL,
   startFreeFailureKind,
 } from "./startFree.ts";
@@ -48,4 +49,45 @@ test("startFreeFailureKind maps the model_unavailable code to ended", () => {
     "other",
   );
   assert.equal(startFreeFailureKind(new Error("network")), "other");
+});
+
+const FREE_LIMIT_COPY =
+  "Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.";
+const OPENCODE_FREE_LIMIT =
+  "AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going";
+
+test("a failed Connect proof says the free limit is used up, never that the AI is busy", () => {
+  // The native test names it with a code and the plain copy...
+  assert.equal(
+    onboardingFailureCopy(
+      new OnboardingConnectionError(FREE_LIMIT_COPY, "free_limit_reached"),
+    ),
+    FREE_LIMIT_COPY,
+  );
+  // ...or only quotes OpenCode's own words.
+  assert.equal(
+    onboardingFailureCopy(new OnboardingConnectionError(OPENCODE_FREE_LIMIT)),
+    FREE_LIMIT_COPY,
+  );
+  assert.equal(
+    onboardingFailureCopy(new Error(OPENCODE_FREE_LIMIT)),
+    FREE_LIMIT_COPY,
+  );
+  // Other failures keep their own words.
+  const busy =
+    "Your AI is busy and did not answer. Try again in a minute, or choose another connection.";
+  assert.equal(
+    onboardingFailureCopy(new OnboardingConnectionError(busy)),
+    busy,
+  );
+  assert.equal(onboardingFailureCopy(new Error("network")), "network");
+});
+
+test("the free limit is not the 'free model ended' state", () => {
+  assert.equal(
+    startFreeFailureKind(
+      new OnboardingConnectionError(FREE_LIMIT_COPY, "free_limit_reached"),
+    ),
+    "other",
+  );
 });
