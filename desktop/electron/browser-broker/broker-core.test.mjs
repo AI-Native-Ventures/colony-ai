@@ -70,6 +70,7 @@ function setup({
   url = "https://shop.example/cart",
   elements = defaultElements(),
   text = "Cart text",
+  defaultAccess = false,
 } = {}) {
   const clock = { wall: 1_000_000, mono: 5_000 };
   const caps = createCapabilityStore({
@@ -106,6 +107,7 @@ function setup({
     businessId: "biz-1",
     tabId: "tab-1",
     allowedOrigins: origins,
+    defaultAccess,
   });
   const call = (name, args) => broker.call(token, name, args);
   const refOf = (result, label) => {
@@ -1210,4 +1212,130 @@ test("download rejection, link replacement and document changes cannot reach a f
       mode,
     );
   }
+});
+
+// ---- default access: the owner's own agent opens the browser on its own ----
+
+test("under default access the address the agent asks for is approved, private and file addresses are not", async () => {
+  const env = setup({ origins: [], defaultAccess: true });
+  const opened = await env.call("browser_open", {
+    url: "https://news.example/a",
+  });
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.deepEqual(env.caps.getGrant(env.grant.id).allowedOrigins, [
+    "https://news.example",
+  ]);
+  const navigated = await env.call("browser_navigate", {
+    tab: opened.tab.id,
+    url: "https://shop.example/k",
+  });
+  assert.equal(navigated.ok, true, JSON.stringify(navigated));
+  assert.deepEqual(env.caps.getGrant(env.grant.id).allowedOrigins, [
+    "https://news.example",
+    "https://shop.example",
+  ]);
+  for (const [url, code] of [
+    ["http://127.0.0.1:8080/", "private_network_denied"],
+    ["http://localhost/", "private_network_denied"],
+    ["file:///etc/passwd", "scheme_denied"],
+    ["https://rebind.example/", "private_network_denied"],
+  ]) {
+    const refused = await env.call("browser_open", { url });
+    assert.equal(refused.code, code, url);
+  }
+  assert.equal(
+    env.caps
+      .getGrant(env.grant.id)
+      .allowedOrigins.includes("http://127.0.0.1:8080"),
+    false,
+  );
+});
+
+test("a person made grant keeps asking about every new address", async () => {
+  const env = setup({ origins: ["https://shop.example"] });
+  assert.equal(env.grant.defaultAccess, false);
+  const refused = await env.call("browser_open", {
+    url: "https://news.example/a",
+  });
+  assert.equal(refused.code, "origin_approval_required");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).allowedOrigins, [
+    "https://shop.example",
+  ]);
+});
+
+test("under default access a page's own jump to another site still waits for the person, except the www twin", () => {
+  const env = setup({ origins: [], defaultAccess: true });
+  assert.equal(
+    env.broker.checkNavigationSync("tab-1", "https://news.example/a").allow,
+    false,
+  );
+  env.caps.approveOrigin(env.grant.id, "https://news.example/");
+  const verdict = env.broker.checkNavigationSync(
+    "tab-1",
+    "https://evil.example/x",
+  );
+  assert.deepEqual(
+    [verdict.allow, verdict.code, verdict.origin],
+    [false, "origin_approval_required", "https://evil.example"],
+  );
+  assert.equal(
+    env.broker.checkNavigationSync("tab-1", "https://www.news.example/in/me")
+      .allow,
+    true,
+  );
+  assert.deepEqual(env.caps.getGrant(env.grant.id).allowedOrigins, [
+    "https://news.example",
+    "https://www.news.example",
+  ]);
+  for (const url of [
+    "http://news.example/",
+    "https://news.example:8443/",
+    "https://news.example.evil.example/",
+    "https://sub.news.example/",
+  ]) {
+    assert.equal(
+      env.broker.checkNavigationSync("tab-1", url).allow,
+      false,
+      url,
+    );
+  }
+});
+
+test("under a person made grant the www twin is not approved for the person", () => {
+  const env = setup({ origins: ["https://news.example"] });
+  assert.equal(
+    env.broker.checkNavigationSync("tab-1", "https://www.news.example/").allow,
+    false,
+  );
+});
+
+test("under default access the first address opens in the task's own blank tab", async () => {
+  const env = setup({
+    origins: [],
+    defaultAccess: true,
+    url: "about:blank",
+  });
+  const first = await env.call("browser_open", {
+    url: "https://news.example/a",
+  });
+  assert.equal(first.ok, true, JSON.stringify(first));
+  assert.equal(first.tab.id, "tab-1");
+  assert.equal(first.tab.primary, true);
+  assert.equal(env.driver.count("openTab"), 0);
+  const second = await env.call("browser_open", {
+    url: "https://news.example/b",
+  });
+  assert.equal(second.ok, true, JSON.stringify(second));
+  assert.notEqual(second.tab.id, "tab-1");
+  assert.equal(env.driver.count("openTab"), 1);
+});
+
+test("a person made grant always opens a new tab, even over a blank one", async () => {
+  const env = setup({ origins: ["https://news.example"], url: "about:blank" });
+  const opened = await env.call("browser_open", {
+    url: "https://news.example/a",
+  });
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.notEqual(opened.tab.id, "tab-1");
+  assert.equal(env.driver.count("openTab"), 1);
 });

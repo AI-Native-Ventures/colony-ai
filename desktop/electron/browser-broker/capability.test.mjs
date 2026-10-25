@@ -491,3 +491,44 @@ test("tokens are unique and compared by hash, not by prefix", () => {
   assert.equal(real.authenticate(a.token.slice(0, -1)).code, "no_grant");
   assert.equal(real.authenticate(`${a.token}x`).code, "no_grant");
 });
+
+test("a default access grant may start with no sites and says it is automatic", () => {
+  const { store } = harness();
+  const { grant } = store.issue(
+    request({ allowedOrigins: [], defaultAccess: true }),
+  );
+  assert.deepEqual(grant.allowedOrigins, []);
+  assert.equal(grant.defaultAccess, true);
+  assert.equal(store.getGrant(grant.id).defaultAccess, true);
+  assert.equal(
+    store.issue(request({ agentId: "agent-b" })).grant.defaultAccess,
+    false,
+  );
+});
+
+test("a grant that is not default access still needs at least one site", () => {
+  const { store } = harness();
+  for (const allowedOrigins of [[], undefined]) {
+    assert.throws(
+      () => store.issue(request({ allowedOrigins })),
+      (error) => error.code === "invalid_input",
+    );
+  }
+  assert.throws(
+    () => store.issue(request({ allowedOrigins: [], defaultAccess: "yes" })),
+    (error) => error.code === "invalid_input",
+  );
+});
+
+test("an empty default access grant is widened one approved site at a time", () => {
+  const { store } = harness();
+  const { grant } = store.issue(
+    request({ allowedOrigins: [], defaultAccess: true }),
+  );
+  const widened = store.approveOrigin(grant.id, "https://news.example/a");
+  assert.deepEqual(widened.allowedOrigins, ["https://news.example"]);
+  assert.throws(
+    () => store.removeOrigin(grant.id, "https://news.example"),
+    (error) => error.code === "invalid_input",
+  );
+});

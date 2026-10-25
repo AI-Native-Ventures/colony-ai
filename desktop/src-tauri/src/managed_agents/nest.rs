@@ -68,7 +68,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Bump this when changing `nest_skill.md` to trigger refresh on existing installs.
 /// Version 7 renamed the skill from `buzz-cli` to `colony-cli`.
 /// Version 8 added the web task rules (see [`COLONY_CLI_SKILL_MD`]).
-const NEST_SKILL_VERSION: u32 = 8;
+/// Version 9 rewrote web task rule 3: agents open the browser themselves.
+const NEST_SKILL_VERSION: u32 = 9;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

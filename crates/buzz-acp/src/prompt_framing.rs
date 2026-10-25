@@ -162,7 +162,9 @@ mod tests {
         for phrase in [
             "Use the Colony browser",
             "only when their current message explicitly asks for that browser",
-            "ask the person to open the site in the Colony browser and allow you to use it",
+            "Open the site yourself with `browser_open`",
+            "ask them to sign in once in the browser panel",
+            "ask the person to open the Colony browser and tap Allow an agent",
             "Then stop and wait for their reply.",
             "no shell command that opens a browser or a link",
             "no AppleScript or other desktop automation",

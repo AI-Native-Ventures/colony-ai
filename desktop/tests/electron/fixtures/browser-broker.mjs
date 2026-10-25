@@ -46,6 +46,9 @@ async function boot() {
     chooseFile: async () =>
       process.env.COLONY_BROWSER_FIXTURE_UPLOAD_PATH ?? null,
     enabled: process.env.COLONY_BROWSER_AGENT === "1",
+    // This fixture proves the person-made grant path exactly; default access
+    // (the app opening the browser for the agent) has its own tests.
+    hostOptions: { defaultAccess: false },
     fixturePrivateExceptions: [
       `${fixtureOrigin.hostname}:${fixtureOrigin.port}`,
     ],
