@@ -235,6 +235,7 @@ async fn probe_turn(
     )
 }
 
+#[cfg(test)]
 fn error_result(error: &anyhow::Error) -> Value {
     error_result_with_log(error, false)
 }

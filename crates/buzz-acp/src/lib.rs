@@ -5897,7 +5897,6 @@ fn spawn_failure_notice_task(
     }))
 }
 
-#[allow(clippy::too_many_arguments)]
 /// How far back an unexplained failed OpenCode turn may have begun when its log
 /// is searched for the free-quota error.
 const FREE_LIMIT_LOG_WINDOW: Duration = Duration::from_secs(600);
@@ -5919,6 +5918,7 @@ fn silent_free_limit_notice(config: &Config, outcome: &PromptOutcome) -> Option<
     .then(|| format!("⚠️ {}", provider_failure::FREE_LIMIT_COPY))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_prompt_result(
     pool: &mut AgentPool,
     queue: &mut EventQueue,

@@ -76,7 +76,7 @@ fn log_dir_shows_free_limit(dir: &Path, max_age: Duration, now: SystemTime) -> b
                 .then_some((modified, path))
         })
         .collect();
-    recent.sort_by(|a, b| b.0.cmp(&a.0));
+    recent.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
     recent
         .into_iter()
         .take(LOG_FILES_CHECKED)

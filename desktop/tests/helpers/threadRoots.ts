@@ -78,6 +78,11 @@ export async function openChannelWithThreads(page: Page): Promise<Roots> {
       createdAt: start + index * 20,
       pubkey: authors[index % authors.length],
     });
+    // A reply that lands before its root has rendered has nothing to attach
+    // to on a slow runner, so the root shows first.
+    await expect(
+      page.locator(".c3c-row", { hasText: text }).first(),
+    ).toBeVisible({ timeout: 15_000 });
     await emit(page, `A reply on topic ${index + 1}`, {
       createdAt: start + index * 20 + 5,
       parentEventId: root.id,
@@ -86,7 +91,7 @@ export async function openChannelWithThreads(page: Page): Promise<Roots> {
     roots.push({ id: root.id, text });
   }
   for (const root of roots) {
-    await expect(summaryOf(page, root.id)).toBeVisible();
+    await expect(summaryOf(page, root.id)).toBeVisible({ timeout: 15_000 });
   }
   return roots;
 }

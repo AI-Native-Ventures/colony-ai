@@ -115,11 +115,14 @@ test.describe("open thread tint", () => {
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
     await waitForAnimations(page);
 
-    // Hover another row to read the hover surface.
-    await rowOf(page, roots[4].text).hover();
-    const hover = await settled(rowOf(page, roots[4].text));
-    const hoverWash = parse(hover.background);
-    expect(hoverWash.a).toBeGreaterThan(0.9);
+    // Hover another row to read the hover surface. The timeline can still be
+    // settling under the pointer on a slow runner, so hover until it shows.
+    const other = rowOf(page, roots[4].text);
+    await expect(async () => {
+      await other.hover();
+      expect(parse((await settled(other)).background).a).toBeGreaterThan(0.9);
+    }).toPass({ timeout: 15_000 });
+    const hoverWash = parse((await settled(other)).background);
 
     const active = page.locator(ACTIVE);
     const openWash = parse((await settled(active)).background);
