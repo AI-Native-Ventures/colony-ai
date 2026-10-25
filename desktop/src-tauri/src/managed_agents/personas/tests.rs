@@ -442,3 +442,20 @@ fn stock_scout_prompt_migrates_and_custom_instructions_survive() {
     assert_eq!(kept.system_prompt, custom.system_prompt);
     assert_eq!(kept.display_name, custom.display_name);
 }
+
+#[test]
+fn colony_3_0_0_scout_prompt_is_stock_and_moves_to_the_current_text() {
+    let current = super::SCOUT_SYSTEM_PROMPT.trim();
+    let previous = super::SCOUT_3_0_0_SYSTEM_PROMPT;
+    assert_ne!(previous.trim(), current);
+    assert!(super::is_stock_scout_prompt(previous));
+    let mut stock = custom_persona("builtin:fizz", "Scout");
+    stock.system_prompt = previous.trim().to_string();
+    let (records, changed) = merge_personas(vec![stock], "2026-10-26T00:00:00Z");
+    assert!(changed);
+    let scout = records
+        .iter()
+        .find(|record| record.id == "builtin:fizz")
+        .expect("Scout definition");
+    assert_eq!(scout.system_prompt, current);
+}
