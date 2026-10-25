@@ -44,13 +44,12 @@ git -C "$tmp" tag -m "relay release" relay-v2.0.0
 )
 
 if grep -q 'inputs\.ref' \
-  "$repo_root/.github/workflows/release.yml" \
+  "$repo_root/.github/workflows/release-desktop.yml" \
   "$repo_root/.github/workflows/docker.yml"; then
   echo "publisher workflow still accepts a caller-selected source ref" >&2
   exit 1
 fi
 
-grep -q 'verify-release-ref\.sh' "$repo_root/.github/workflows/release.yml"
 grep -q 'verify-release-ref\.sh' "$repo_root/.github/workflows/docker.yml"
 grep -q 'test-release-ref-contract\.sh' "$repo_root/.github/workflows/ci.yml"
 "$repo_root/scripts/test-signed-canary-contract.sh"
@@ -146,22 +145,21 @@ grep -Fq 'git show "$candidate_parents:scripts/required-check-succeeded.jq"' "$v
 grep -Fq 'DESKTOP_RELEASE_ROOT="$PWD" python3 "$verifier_dir/desktop_release.py"' "$verify_merge"
 grep -Fq -- '-f "$verifier_dir/required-check-succeeded.jq"' "$verify_merge"
 
-release_workflow="$repo_root/.github/workflows/release.yml"
+release_workflow="$repo_root/.github/workflows/release-desktop.yml"
 [[ "$(grep -c 'contents: write' "$release_workflow")" -eq 1 ]] || {
   echo "desktop release must have exactly one GitHub contents writer" >&2; exit 1;
 }
-grep -Fq "needs.release.result == 'success'" "$release_workflow"
-grep -Fq "needs.release-macos-x64.result == 'success'" "$release_workflow"
-grep -Fq "needs.release-linux.result == 'success'" "$release_workflow"
-grep -Fq "needs.release-windows.result == 'success'" "$release_workflow"
-grep -Fq "refs/tags/desktop-v{0}" "$release_workflow"
-grep -Fq 'group: desktop-release-${{ github.ref }}' "$release_workflow"
+grep -Fq 'group: colony-desktop-release-${{ github.ref }}' "$release_workflow"
 grep -Fq 'cancel-in-progress: false' "$release_workflow"
-grep -Fq 'release artifact basename collision' "$release_workflow"
+grep -Fq 'refs/tags/desktop-v$version' "$release_workflow"
 [[ "$(grep -c 'gh release upload' "$release_workflow")" -eq 1 ]] || {
   echo "desktop release must only upload versioned release assets" >&2; exit 1;
 }
-grep -Fq 'if: env.already_published' "$release_workflow"
+# Colony ships for Mac and Windows only: no Linux desktop build or asset.
+if grep -qi 'linux\|appimage' "$release_workflow" "$repo_root/.github/workflows/electron-package.yml"; then
+  echo "the desktop release must not build or publish a Linux app" >&2
+  exit 1
+fi
 grep -Fq 'if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --silent 2>/dev/null; then' "$auto_tag"
 if grep -F 'git/ref/tags/$TAG' "$auto_tag" | grep -Fq '|| true'; then
   echo "auto-tag ignores a failed tag lookup, so a 404 body can look like an existing tag" >&2
