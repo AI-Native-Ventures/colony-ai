@@ -99,6 +99,36 @@ test("start free shows the ended screen when the free model is gone", async ({
   await expect(page.getByTestId("onboarding-mode-own")).toBeChecked();
 });
 
+test("start free says the free limit is used up, not that the AI is busy", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeInstalled],
+    mock: {
+      installAcpRuntimeResult: { success: true, steps: [] },
+      onboardingConnectionResult: {
+        // OpenCode's own words, quoted with no machine code.
+        error:
+          "AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going",
+      },
+    },
+  });
+  await page.getByTestId("onboarding-test-connection").click();
+  const failure = page.getByTestId("connection-error");
+  await expect(failure).toBeVisible();
+  await expect(failure).toContainText(
+    "Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.",
+  );
+  await expect(failure).not.toContainText("busy");
+  await expect(failure).not.toContainText("AI_APICallError");
+  await expect(
+    failure.getByRole("button", { name: "Connect your own AI" }),
+  ).toBeVisible();
+  await failure.getByRole("button", { name: "Connect your own AI" }).click();
+  await expect(page.getByTestId("onboarding-mode-own")).toBeVisible();
+});
+
 test("mode choice is a keyboard radio group", async ({ page }) => {
   await openR17ConnectionSetup(page, {
     startFree: true,

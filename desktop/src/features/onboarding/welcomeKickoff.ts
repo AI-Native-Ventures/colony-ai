@@ -66,8 +66,7 @@ export async function postWelcomeKickoffSetupNotice(
   return true;
 }
 
-const WELCOME_KICKOFF_CTA =
-  "What can I help you build? Bring me something you're working on, or give me a quick challenge to get started.";
+const WELCOME_KICKOFF_CTA = "What can I help you build?";
 
 function formatAgentNames(agents: readonly ManagedAgent[]) {
   if (agents.length === 0) return "";
@@ -199,8 +198,10 @@ export function buildWelcomeKickoffOpener(
   const introNames = formatMentionNames(introTeammates);
   if (introTeammates.length === 0) {
     const teammateNames = formatAgentNames(allTeammates);
-    const teammatePhrase = teammateNames ? ` with ${teammateNames}` : "";
-    return `${greeting} Welcome to Colony. This is your private home base, and I'm here${teammatePhrase} to help you get oriented or work through something you're building.\n\n${WELCOME_KICKOFF_CTA}`;
+    const teammatePhrase = teammateNames
+      ? ` I'm here with ${teammateNames}.`
+      : "";
+    return `${greeting} Welcome to Colony.${teammatePhrase} ${WELCOME_KICKOFF_CTA}`;
   }
 
   return `${greeting} Welcome to Colony. This is your private home base, and we're here to help you get oriented or work through something you're building.\n\n${introNames}, introduce ${introTeammates.length === 1 ? "yourself" : "yourselves"} in a sentence or two, share what you're good at and when to bring you in. Don't start any work yet.`;

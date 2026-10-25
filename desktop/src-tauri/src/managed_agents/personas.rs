@@ -17,6 +17,9 @@ struct BuiltInPersona {
 
 pub(crate) const SCOUT_SYSTEM_PROMPT: &str =
     include_str!("../../../src/features/onboarding/assets/scout-instructions.txt");
+/// Shipped in Colony 3.0.0; still stock, so it is upgraded to the current text.
+const SCOUT_3_0_0_SYSTEM_PROMPT: &str =
+    include_str!("../../../src/features/onboarding/assets/scout-instructions-3.0.0.txt");
 const FIZZ_SYSTEM_PROMPT: &str = SCOUT_SYSTEM_PROMPT;
 const SCOUT_PREVIOUS_SYSTEM_PROMPT: &str = "You are Scout, the user's Chief of Staff. Help the user get oriented, plan work, create, research, and finish tasks. Be warm, practical, and concise. Be candid about uncertainty.";
 pub(super) const SCOUT_LEGACY_SYSTEM_PROMPT: &str = "You are Fizz, an energetic maker who turns ideas into action. Be upbeat, practical, and decisive. Help users plan, create, solve problems, and finish work. Add occasional bee wordplay or \u{1f41d}\u{2728}\u{2014}keep it charming, never distracting.";
@@ -182,6 +185,7 @@ fn sort_personas(records: &mut [AgentDefinition]) {
 pub(crate) fn is_stock_scout_prompt(prompt: &str) -> bool {
     matches!(prompt.trim(), "" | SCOUT_PREVIOUS_SYSTEM_PROMPT | SCOUT_LEGACY_SYSTEM_PROMPT)
         || prompt.trim() == SCOUT_SYSTEM_PROMPT.trim()
+        || prompt.trim() == SCOUT_3_0_0_SYSTEM_PROMPT.trim()
         || prompt.trim() == "You are Scout, an energetic maker who turns ideas into action. Be upbeat, practical, and decisive. Help users plan, create, solve problems, and finish work."
 }
 
