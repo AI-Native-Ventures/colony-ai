@@ -104,8 +104,6 @@ type ActiveRun = {
 
 export const FIRST_START_ERROR =
   "Add a location and choose 1 to 500 prospects.";
-export const NO_SALES_CHANNEL_ERROR =
-  "Finding prospects saves its results in the private Sales channel, which is not set up here yet.";
 export const STOPPED_ERROR = "The search was stopped before it began.";
 const GENERIC_STOP_REASON =
   "The search stopped. Retry when the connection is available.";

@@ -207,6 +207,8 @@ type MockBridgeOptions = {
   }>;
   /** Set false to run the real discovery runner instead of the simulated one. */
   referenceWorkspaceDiscoveryStandIn?: boolean;
+  /** Start without the private Sales channel, as a business never set up. */
+  referenceWorkspaceWithoutSales?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;

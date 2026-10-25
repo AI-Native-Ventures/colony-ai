@@ -67,7 +67,9 @@ async function fetchCompanyTeamCount(
   return { memberCount: members.length, membershipSnapshotFound: true };
 }
 
-async function fetchCompanyTeam(relayUrl: string): Promise<CompanyTeamData> {
+export async function fetchCompanyTeam(
+  relayUrl: string,
+): Promise<CompanyTeamData> {
   const relaySelf = await getRelaySelf();
   if (!relaySelf) {
     throw new Error("This relay does not advertise a signing identity.");

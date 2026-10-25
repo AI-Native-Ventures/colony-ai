@@ -345,6 +345,7 @@ export default defineConfig({
         "**/agents-everywhere.live.spec.ts",
         "**/relay-restart.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
+        "**/colony3-sales-setup.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
