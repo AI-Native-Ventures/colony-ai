@@ -112,6 +112,7 @@
         "persona-model-combobox-screenshots.spec.ts",
         "persistent-agent-audience.spec.ts",
         "agent-start-watch.spec.ts",
+        "mention-wake-after-launch.spec.ts",
         "agent-working-indicator.spec.ts"
       ]
     },
@@ -132,6 +133,7 @@
         "channel-star.spec.ts",
         "auxiliary-pane-close-visibility.spec.ts",
         "agent-start-watch.spec.ts",
+        "mention-wake-after-launch.spec.ts",
         "agent-working-indicator.spec.ts"
       ]
     },
@@ -284,7 +286,8 @@
         "colony3-conv-composer-proof.spec.ts",
         "colony3-conv-timeline-proof.spec.ts",
         "colony3-conv-dialogs-proof.spec.ts",
-        "agent-start-watch.spec.ts"
+        "agent-start-watch.spec.ts",
+        "mention-wake-after-launch.spec.ts"
       ]
     },
     {

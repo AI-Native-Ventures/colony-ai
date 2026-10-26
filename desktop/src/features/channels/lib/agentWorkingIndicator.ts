@@ -127,6 +127,9 @@ function waitingOn(
     if (
       !scopeMatches(watch) ||
       skip.has(pubkey) ||
+      // An agent believed to be running has time to answer before anything
+      // is said; only the stalled note (below) speaks for it.
+      (watch.quiet && watch.phase === "starting") ||
       hasReplied(posted, pubkey, watch.since)
     ) {
       continue;

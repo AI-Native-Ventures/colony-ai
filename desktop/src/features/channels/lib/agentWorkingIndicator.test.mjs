@@ -390,6 +390,7 @@ describe("agents that were woken for a mention", () => {
     floorUnix: 1_000,
     phase: "starting",
     reason: null,
+    quiet: false,
     ...overrides,
   });
 
@@ -401,6 +402,20 @@ describe("agents that were woken for a mention", () => {
     ]);
     assert.equal(formatWorkingIndicatorLabel(state), "Scout is starting…");
     assert.equal(workingIndicatorAnchor(state), NOW - 8_000);
+  });
+
+  it("says nothing while an agent believed to be running has time to answer", () => {
+    const state = selectChannelWorkingIndicator(
+      input({ starts: [watch({ quiet: true })] }),
+    );
+    assert.equal(state.kind, "hidden");
+  });
+
+  it("still says so when that quiet wait stalls", () => {
+    const state = selectChannelWorkingIndicator(
+      input({ starts: [watch({ quiet: true, phase: "stalled" })] }),
+    );
+    assert.equal(state.kind, "stalled");
   });
 
   it("says plainly that it has not picked the mention up when it stalled", () => {

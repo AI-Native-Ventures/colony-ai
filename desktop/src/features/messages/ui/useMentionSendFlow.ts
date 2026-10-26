@@ -24,6 +24,8 @@ import {
   type ImetaMedia,
 } from "@/features/messages/lib/imetaMediaMarkdown";
 import { useActivePreparedLinkPreviews } from "./useActivePreparedLinkPreviews";
+import { noteMentionSentToAgents } from "@/features/agents/mentionReconcilerHandle";
+import { loadManagedAgentsForSend } from "./managedAgentsForSend";
 import { useDetachedAgentStart } from "./useDetachedAgentStart";
 import { useEnsureAgentMentionsReady } from "./useEnsureAgentMentionsReady";
 import type { AcpRuntime, ManagedAgent } from "@/shared/api/types";
@@ -122,15 +124,23 @@ export function useMentionSendFlow({
   // publish, so a start failure can never toast "your message was sent"
   // before the publish outcome is known.
   const startAgentDetached = useDetachedAgentStart();
-  const getManagedAgentsByPubkey = React.useCallback(async () => {
-    const agents =
-      managedAgentsQuery.data ??
-      (await managedAgentsQuery.refetch()).data ??
-      [];
-    return new Map(
-      agents.map((agent) => [normalizePubkey(agent.pubkey), agent]),
-    );
-  }, [managedAgentsQuery.data, managedAgentsQuery.refetch]);
+  // The managed agents a send decides its wakes from. Never an empty list
+  // standing in for a read that failed (GATE-303): see
+  // `loadManagedAgentsForSend`.
+  const getManagedAgentsByPubkey = React.useCallback(
+    async (mentionedPubkeys: readonly string[] = []) => {
+      const { agents } = await loadManagedAgentsForSend({
+        cached: managedAgentsQuery.data,
+        refetch: async () =>
+          (await managedAgentsQuery.refetch({ throwOnError: true })).data ?? [],
+        mentionedPubkeys,
+      });
+      return new Map(
+        agents.map((agent) => [normalizePubkey(agent.pubkey), agent]),
+      );
+    },
+    [managedAgentsQuery.data, managedAgentsQuery.refetch],
+  );
   const getPersonas = React.useCallback(async () => {
     return personasQuery.data ?? (await personasQuery.refetch()).data ?? [];
   }, [personasQuery.data, personasQuery.refetch]);
@@ -436,8 +446,8 @@ export function useMentionSendFlow({
             (pubkey) => admittedMentionPubkeySet.has(pubkey),
           ),
         );
-        const managedAgentsByPubkey = await getManagedAgentsByPubkey().catch(
-          () => new Map<string, ManagedAgent>(),
+        const managedAgentsByPubkey = await getManagedAgentsByPubkey(
+          admittedMentionPubkeys,
         );
         if (isSendCancelled()) return restoreComposerAfterFailure();
         if (!isMountedRef.current) {
@@ -574,6 +584,10 @@ export function useMentionSendFlow({
               threadHeadId: draft.capturedThreadContext?.threadHeadId ?? null,
             });
           }
+          // Whatever the wakes above did or skipped, the relay is asked soon
+          // after whether each mentioned local agent touched the message, and
+          // an agent that did not is started (GATE-303).
+          noteMentionSentToAgents(revalidatedMentionPubkeys);
           if (signal?.aborted || isSendCancelled()) return;
           const sentMentionPubkeys = new Set(
             revalidatedMentionPubkeys.map(normalizePubkey),

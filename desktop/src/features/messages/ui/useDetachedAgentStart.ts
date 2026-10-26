@@ -3,8 +3,13 @@ import { toast } from "sonner";
 import {
   beginAgentStartAttempt,
   failAgentStartWatches,
+  lowerAgentStartFloor,
   registerAgentStartWatch,
 } from "@/features/agents/agentStartWatch";
+import {
+  getStartFloorLookup,
+  lowerFloorFromRelay,
+} from "@/features/agents/startFloorLookup";
 import { useStartManagedAgentMutation } from "@/features/agents/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { matchesDetachedToastScope } from "@/features/messages/lib/detachedToastScope";
@@ -56,6 +61,19 @@ const inFlightDetachedStarts = new Map<string, Promise<unknown>>();
  */
 export function resetDetachedAgentStarts(): void {
   inFlightDetachedStarts.clear();
+}
+
+/**
+ * Whether a detached start for this agent is still running, under any scope.
+ * The mention reconciler asks before it starts the agent itself, so one wake
+ * is not followed by a second.
+ */
+export function isDetachedStartInFlight(agentPubkey: string): boolean {
+  const suffix = `\u0000${normalizePubkey(agentPubkey)}`;
+  for (const key of inFlightDetachedStarts.keys()) {
+    if (key.endsWith(suffix)) return true;
+  }
+  return false;
 }
 
 /**
@@ -155,6 +173,15 @@ export function useDetachedAgentStart(): (
   // The signer check is case-insensitive, so canonicalizing is free here.
   const expectedSignerPubkey =
     normalizePubkey(identityQuery.data?.pubkey ?? "") || undefined;
+  // The scope as of the latest render, for a retry the person asks for after a
+  // wake was refused because the scope was not known yet. A person's click is
+  // a fresh decision in the community on screen, unlike a start that outlives
+  // its send.
+  const latestScopeRef = React.useRef({
+    expectedRelayUrl,
+    expectedSignerPubkey,
+  });
+  latestScopeRef.current = { expectedRelayUrl, expectedSignerPubkey };
   return React.useCallback(
     (
       agent: ManagedAgent,
@@ -166,6 +193,35 @@ export function useDetachedAgentStart(): (
         // identity at execution time, so it can land on whichever tenant is
         // active by then .  and its dedupe key would be shared across
         // communities.
+        //
+        // The mention was still sent, so the conversation says so for as long
+        // as it stays unanswered, with a way to try again once Colony is
+        // connected. A toast alone is gone in seconds (GATE-303).
+        registerAgentStartWatch({
+          pubkey: agent.pubkey,
+          channelId: scope?.channelId ?? null,
+          threadHeadId: scope?.threadHeadId ?? null,
+          floorUnix: replayFloorUnix ?? Math.floor(Date.now() / 1000),
+          start: ({ force, floorUnix: attemptFloorUnix }) => {
+            const latest = latestScopeRef.current;
+            if (!latest.expectedRelayUrl || !latest.expectedSignerPubkey) {
+              return Promise.reject(
+                new Error("Colony is still connecting to this community."),
+              );
+            }
+            return startAgentMutateAsync({
+              pubkey: agent.pubkey,
+              expectedRelayUrl: latest.expectedRelayUrl,
+              expectedSignerPubkey: latest.expectedSignerPubkey,
+              replayFloorUnix: attemptFloorUnix,
+              forceRestart: force,
+            });
+          },
+        });
+        failAgentStartWatches(
+          agent.pubkey,
+          "Colony is still connecting to this community.",
+        );
         warnAgentMayNotRespond(
           agent.name,
           "Colony is still connecting to this community. Mention the agent again in a moment.",
@@ -214,12 +270,25 @@ export function useDetachedAgentStart(): (
       // that message is inside the harness's first subscription window
       // however long the spawn takes.
       const attempt = beginAgentStartAttempt(agent.pubkey);
-      const started = startAgentMutateAsync({
-        pubkey: agent.pubkey,
-        expectedRelayUrl,
-        expectedSignerPubkey,
-        replayFloorUnix: floorUnix,
-      })
+      const begin = (startFloorUnix: number) =>
+        startAgentMutateAsync({
+          pubkey: agent.pubkey,
+          expectedRelayUrl,
+          expectedSignerPubkey,
+          replayFloorUnix: startFloorUnix,
+        });
+      // With the mention reconciler mounted, the start also reaches back to
+      // any older mention the relay shows the agent never touched: a newer
+      // mention must not move the floor past an older unanswered one. Without
+      // it (no relay to ask) the start goes ahead at once, as before.
+      const started = (
+        getStartFloorLookup()
+          ? lowerFloorFromRelay(agent.pubkey, floorUnix).then((lowered) => {
+              lowerAgentStartFloor(agent.pubkey, lowered);
+              return begin(lowered);
+            })
+          : begin(floorUnix)
+      )
         .catch((error: unknown) => {
           // The conversation says so durably; the toast below is the nudge.
           // A failure that outlived a newer attempt is stale and ignored.
