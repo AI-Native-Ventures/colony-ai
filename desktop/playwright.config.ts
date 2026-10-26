@@ -117,6 +117,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/colony3-*.spec.ts",
+        "**/mac-update-cards.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/scout-branding.spec.ts",
@@ -189,6 +190,7 @@ export default defineConfig({
         "**/channel-controls.spec.ts",
         "**/channel-activity-popover.spec.ts",
         "**/agent-working-indicator.spec.ts",
+        "**/agent-start-watch.spec.ts",
         "**/agent-working-indicator-screenshots.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/thread-open-tint-screenshots.spec.ts",
@@ -329,6 +331,7 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/agent-working-indicator.spec.ts",
+        "**/agent-start-watch.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
@@ -380,6 +383,7 @@ export default defineConfig({
         "**/dm-double-notification.spec.ts",
         "**/profile.spec.ts",
         "**/sidebar.spec.ts",
+        "**/mac-update-cards.spec.ts",
         "**/shell-design.spec.ts",
         "**/community-apply-error.spec.ts",
         "**/removed-member-escape.spec.ts",

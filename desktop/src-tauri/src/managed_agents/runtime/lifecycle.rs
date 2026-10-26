@@ -81,6 +81,19 @@ pub fn sync_managed_agent_processes(
             continue;
         };
 
+        // A harness that is killed, or dies before it logs anything, otherwise
+        // leaves no trace of when or how it ended (GATE-302: the first harness
+        // went silent after "applying replay floor" and nothing recorded why).
+        // The exit status names a signal when one ended it.
+        let _ = append_log_marker(
+            &runtime.log_path,
+            &format!("=== harness exited with {status} at {} ===", now_iso()),
+        );
+        eprintln!(
+            "buzz-desktop: harness {} on {} exited with {status}",
+            key.pubkey, key.relay_url
+        );
+
         if let Some(record) = records
             .iter_mut()
             .find(|record| record.pubkey == key.pubkey)

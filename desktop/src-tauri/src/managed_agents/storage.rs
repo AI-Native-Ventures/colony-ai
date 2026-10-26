@@ -96,6 +96,20 @@ pub fn managed_agent_runtime_log_path(
     Ok(managed_agents_logs_dir(app)?.join(format!("{}.log", key.runtime_id())))
 }
 
+/// Wake-ledger file for a managed runtime pair. The harness keeps the ids of
+/// the wake events it handled and a floor to replay from in it, so a mention
+/// sent while the harness was down, stalled or being replaced is answered once
+/// by the next harness. Pair-scoped like the log: the relay URL never appears
+/// in the filename. The harness creates the folder.
+pub fn managed_agent_wake_ledger_path(
+    app: &AppHandle,
+    key: &ManagedAgentRuntimeKey,
+) -> Result<PathBuf, String> {
+    Ok(managed_agents_base_dir(app)?
+        .join("wake")
+        .join(format!("{}.json", key.runtime_id())))
+}
+
 /// Log path to surface for an agent whose runtime is not tracked in memory:
 /// the most recently written of its pair-scoped logs, falling back to the
 /// legacy single-runtime path when the agent has not run since harnesses

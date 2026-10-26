@@ -38,12 +38,14 @@ import {
   saveActiveAgentTurnsForCommunity,
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
+import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
 import { resetAvatarProfileSync } from "@/features/profile/avatarProfileSync";
 import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
 import { resetDiscoveryRuntime } from "@/features/discovery/discoveryRuntimeRegistry";
+import { resetTenantCommunityCache } from "./tenantCommunity";
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
@@ -81,6 +83,10 @@ async function resetCommunityState({
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();
   resetAgentWorkingSignal();
+  // Mentions still waiting on an agent to start belong to the community they
+  // were sent in: dropping them keeps their replay floors and "starting" notices
+  // from reaching the next one.
+  resetAgentStartWatches();
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();
   }
@@ -91,6 +97,7 @@ async function resetCommunityState({
   resetSidebarRelayConnectionCardState();
   resetMembershipDenialGate();
   resetDiscoveryRuntime();
+  resetTenantCommunityCache();
   resetWorkAreaState();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();

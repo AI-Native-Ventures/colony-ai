@@ -166,6 +166,7 @@ pub(super) async fn start_local_agent_pairs_with_preflight(
     summarize_from_disk(app, record, &runtimes)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn start_local_agent_with_preflight(
     app: &AppHandle,
     state: &AppState,
@@ -174,6 +175,7 @@ pub(super) async fn start_local_agent_with_preflight(
     expected_relay_url: Option<&str>,
     expected_signer_pubkey: Option<&str>,
     replay_floor_unix: Option<u64>,
+    force_restart: bool,
 ) -> Result<ManagedAgentSummary, String> {
     let preflight_started = std::time::Instant::now();
     let record_snapshot = {
@@ -277,6 +279,7 @@ pub(super) async fn start_local_agent_with_preflight(
         Some(workspace_owner.as_str()),
         &workspace_relay_url,
         replay_floor_unix,
+        force_restart,
     )?;
     save_managed_agents(app, &records)?;
     if let Some(saved_record) = records.iter().find(|r| r.pubkey == pubkey) {
@@ -737,7 +740,8 @@ pub async fn create_managed_agent(
     // ── Phase 3b: local spawn (async preflight outside store lock) ───────────
     let mut spawn_error = None;
     let agent = if input.spawn_after_create && input.backend == BackendKind::Local {
-        match start_local_agent_with_preflight(&app, &state, &pubkey, true, None, None, None).await
+        match start_local_agent_with_preflight(&app, &state, &pubkey, true, None, None, None, false)
+            .await
         {
             Ok(agent) => agent,
             Err(error) => {
@@ -848,6 +852,7 @@ pub async fn start_managed_agent(
     expected_relay_url: Option<String>,
     expected_signer_pubkey: Option<String>,
     replay_floor_unix: Option<u64>,
+    force_restart: Option<bool>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ManagedAgentSummary, String> {
@@ -950,6 +955,7 @@ pub async fn start_managed_agent(
                 expected_relay_url.as_deref(),
                 expected_signer_pubkey.as_deref(),
                 replay_floor_unix,
+                force_restart.unwrap_or(false),
             )
             .await
         }

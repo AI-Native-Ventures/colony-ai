@@ -11,6 +11,7 @@
  */
 
 import type { ProspectChanges } from "./businessRecordMutations";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import {
   findCampaign,
   readState,
@@ -50,7 +51,8 @@ export const BUDGET_USD_PER_PROSPECT = 0.05;
 export type DiscoveryContext = {
   /** The private Sales channel that holds business records. */
   channelId: string;
-  communityId: string;
+  /** The relay's tenant community id; never the local community id. */
+  communityId: TenantCommunityId;
   pubkey: string;
   displayName: string;
   /** Record ids already in Leads. The controller adds what it saves. */
@@ -370,6 +372,19 @@ export function createDiscoveryController(
     return !disposed && run.generation === generation;
   }
 
+  /**
+   * A page that arrives after a pause or stop was still paid for. Nothing on
+   * it is saved (the run is over), but it is kept so Resume saves it instead
+   * of searching again.
+   */
+  function keepLatePage(run: ActiveRun, response: DiscoverySearchResponse) {
+    if (disposed) return;
+    patch(run.campaignId, (existing) => ({
+      ...existing,
+      pendingPage: existing.pendingPage ?? response,
+    }));
+  }
+
   async function runLoop(
     run: ActiveRun,
     context: DiscoveryContext,
@@ -399,7 +414,18 @@ export function createDiscoveryController(
             }),
           ));
         pending = null;
-        if (!isLive(run)) return;
+        if (!isLive(run)) {
+          keepLatePage(run, response);
+          return;
+        }
+        // The page was paid for: keep it on the campaign until every place on
+        // it is saved, so a failed save is retried from here, not re-searched.
+        if (campaign.pendingPage !== response) {
+          patch(run.campaignId, (existing) => ({
+            ...existing,
+            pendingPage: response,
+          }));
+        }
         const outcome = await savePage(run, context, response);
         if (!isLive(run)) return;
         if (!outcome.ok) {
@@ -413,6 +439,7 @@ export function createDiscoveryController(
           skip: response.nextSkip ?? existing.skip + response.places.length,
           exhausted: response.nextSkip === null,
           pagesFetched: existing.pagesFetched + 1,
+          pendingPage: null,
         }));
       }
     } catch (error) {
@@ -567,7 +594,9 @@ export function createDiscoveryController(
       status: "running",
       failureReason: null,
     }));
-    beginRun(fresh.id, context, null);
+    // A page that was found but not fully saved is saved first; only then does
+    // the run search for the next one.
+    beginRun(fresh.id, context, fresh.pendingPage);
     void flushPendingPosts();
   }
 
@@ -648,6 +677,7 @@ export function createDiscoveryController(
         postState: "none",
         stopNotePosted: false,
         topFits: [],
+        pendingPage: first,
       };
       commit(setCurrent(upsertCampaign(state, campaign), campaign.id));
       beginRun(campaign.id, context, first);

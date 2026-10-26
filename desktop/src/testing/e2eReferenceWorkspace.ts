@@ -41,6 +41,8 @@ import {
   KIND_SERVICE_HEAD,
   proposalVersionDTag,
 } from "@/features/discovery/businessRecordContract";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
+import { MOCK_TENANT_COMMUNITY_ID } from "./e2eTenant.ts";
 
 export const REFERENCE_SELF_NAME = "Lerato Molefe";
 export const REFERENCE_COMMUNITY_NAME = "Lerato Social";
@@ -973,7 +975,7 @@ function referenceW10Event(
 /** W10 records from the reference workspace, seeded only in the opt-in E2E fixture. */
 export function referenceSalesRecordEvents(
   selfPubkey: string,
-  communityId: string,
+  communityId: TenantCommunityId,
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const now = Math.floor(Date.now() / 1000);
@@ -1551,17 +1553,18 @@ export function referenceSalesMessages(selfPubkey: string): RelayEvent[] {
   ];
 }
 
-export function referenceCommunityId(): string | null {
+/**
+ * The tenant community UUID the mock relay namespaces business records with,
+ * or null when no community is stored. It is deliberately not the stored
+ * community's own id: the real relay's tenant id and the desktop's local id
+ * are different values, and the mock must keep them apart.
+ */
+export function referenceTenantCommunityId(): TenantCommunityId | null {
   try {
     const communities = JSON.parse(
       window.localStorage.getItem("buzz-communities") ?? "[]",
     ) as Array<{ id?: string }>;
-    const activeId = window.localStorage.getItem("buzz-active-community-id");
-    return (
-      communities.find((community) => community.id === activeId)?.id ??
-      communities[0]?.id ??
-      null
-    );
+    return communities.length > 0 ? MOCK_TENANT_COMMUNITY_ID : null;
   } catch {
     return null;
   }

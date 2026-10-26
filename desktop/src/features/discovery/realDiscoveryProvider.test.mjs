@@ -306,7 +306,7 @@ test("a search that finds nothing completes quietly without a Sales post", async
   assert.equal(log.posts.length, 0);
 });
 
-test("pause stops at the cursor, a late page writes nothing, and resume continues from the cursor", async () => {
+test("pause stops at the cursor, a late page writes nothing but is kept, and resume saves it without paying for it again", async () => {
   const late = deferred();
   const { controller, log } = harness({
     search: async (request, _signal, searchLog) => {
@@ -334,7 +334,7 @@ test("pause stops at the cursor, a late page writes nothing, and resume continue
   await controller.whenIdle();
   assert.deepEqual(
     log.searches.map((request) => request.skip),
-    [0, 20, 20],
+    [0, 20],
   );
   assert.equal(controller.getCurrent().status, "complete");
   assert.equal(controller.getCurrent().count, 30);
@@ -478,11 +478,12 @@ test("a save that keeps failing stops the run without advancing the cursor, and 
   const done = controller.getCurrent();
   assert.equal(done.status, "complete");
   assert.equal(done.count, 20);
-  // The page was fetched again from the same offset, and the first two
-  // businesses were recognised as this campaign's own, not saved again.
+  // The page that was found is saved from where it is kept: no second search
+  // is paid for, and the first two businesses were recognised as this
+  // campaign's own, not saved again.
   assert.deepEqual(
     log.searches.map((request) => request.skip),
-    [0, 0],
+    [0],
   );
   const ids = log.publishes.map((changes) => changes.prospectId);
   assert.equal(new Set(ids).size, ids.length);
@@ -751,4 +752,80 @@ test("a disposed controller ignores a search that comes back later", async () =>
   await settle();
   assert.equal(controller.getCurrent().count, 20);
   assert.equal(log.publishes.length, 20);
+});
+
+test("a page the relay refused to save is kept, and Retry saves it without searching (and paying) again", async () => {
+  let refusing = true;
+  const { controller, log, storageMap } = harness({
+    pages: () => page(1, 5, null),
+    publish: async () => {
+      if (refusing) {
+        throw new Error(
+          "invalid: business command scope: business record d-tag does not match its namespace",
+        );
+      }
+    },
+  });
+  await controller.start(INPUT);
+  await controller.whenIdle();
+  assert.equal(controller.getCurrent().status, "failed");
+  assert.equal(controller.getCurrent().count, 0);
+  assert.equal(log.searches.length, 1);
+
+  // Durable: the found places are on the stored campaign, cursor unmoved.
+  const kept = stored(storageMap).campaigns[0];
+  assert.equal(kept.pendingPage.places.length, 5);
+  assert.equal(kept.skip, 0);
+
+  refusing = false;
+  await controller.retry();
+  await controller.whenIdle();
+  const done = controller.getCurrent();
+  assert.equal(done.status, "complete");
+  assert.equal(done.count, 5);
+  assert.equal(log.searches.length, 1);
+  assert.equal(log.publishes.length, 5);
+  assert.equal(stored(storageMap).campaigns[0].pendingPage, null);
+});
+
+test("found places survive a restart: Resume saves them before any new search", async () => {
+  const storageMap = new Map();
+  const first = harness({
+    storageMap,
+    pages: () => page(1, 4, 20),
+    publish: async () => {
+      throw new Error("The update could not be saved.");
+    },
+  });
+  await first.controller.start(INPUT);
+  await first.controller.whenIdle();
+  assert.equal(first.controller.getCurrent().status, "failed");
+  first.controller.dispose();
+
+  const second = harness({
+    storageMap,
+    search: async (request) => {
+      if (request.skip === 20) return page(21, 2, null);
+      assert.fail("the kept page must be saved before searching again");
+    },
+  });
+  // A restart pauses a failed or running list; select it and retry.
+  await second.controller.select(stored(storageMap).currentId);
+  await second.controller.retry();
+  await second.controller.whenIdle();
+  const done = second.controller.getCurrent();
+  assert.equal(done.status, "complete");
+  assert.equal(done.count, 6);
+  assert.deepEqual(
+    second.log.searches.map((request) => request.skip),
+    [20],
+  );
+});
+
+test("a page is cleared from the campaign once every place on it is saved", async () => {
+  const { controller, storageMap } = harness({ pages: () => page(1, 3, null) });
+  await controller.start(INPUT);
+  await controller.whenIdle();
+  assert.equal(controller.getCurrent().status, "complete");
+  assert.equal(stored(storageMap).campaigns[0].pendingPage, null);
 });

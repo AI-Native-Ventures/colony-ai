@@ -1245,3 +1245,93 @@ fn make_pair_runtime_placeholder() -> crate::managed_agents::ManagedAgentPairRun
     };
     crate::managed_agents::ManagedAgentPairRuntime::starting(process)
 }
+
+// ── start requests and the harness already tracked for the pair ──────────
+
+#[test]
+fn a_running_harness_is_reused_so_two_never_run_for_one_pair() {
+    assert_eq!(
+        super::tracked_harness_action(true, false),
+        super::TrackedHarness::Reuse
+    );
+}
+
+#[test]
+fn a_requested_restart_replaces_the_running_harness() {
+    assert_eq!(
+        super::tracked_harness_action(true, true),
+        super::TrackedHarness::Replace
+    );
+}
+
+#[test]
+fn an_exited_harness_is_discarded_whatever_the_request() {
+    for force_replace in [false, true] {
+        assert_eq!(
+            super::tracked_harness_action(false, force_replace),
+            super::TrackedHarness::Discard
+        );
+    }
+}
+
+#[test]
+fn a_harness_that_exited_leaves_a_marker_in_its_log() {
+    // GATE-302: the first harness ended without a word in its log, so nothing
+    // said when or how it died. The host now writes how it ended.
+    use crate::managed_agents::ManagedAgentRuntimeKey;
+    let pubkey = "dd".repeat(32);
+    let record = minimal_record(&pubkey);
+    let key = ManagedAgentRuntimeKey::new(pubkey, "wss://relay.example").unwrap();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let log = dir.path().join("harness.log");
+    let mut runtime = make_pair_runtime_placeholder();
+    runtime.process.log_path = log.clone();
+    runtime.child.wait().expect("the placeholder exits");
+    let mut runtimes = std::collections::HashMap::new();
+    runtimes.insert(key, runtime);
+    let mut records = vec![record];
+
+    let (changed, exited) =
+        super::sync_managed_agent_processes(&mut records, &mut runtimes, "instance");
+
+    assert!(changed);
+    assert_eq!(exited.len(), 1);
+    let text = std::fs::read_to_string(&log).expect("the exit marker was written");
+    assert!(text.contains("=== harness exited with"), "{text}");
+}
+
+// Absolute `/bin/sleep`, like the placeholder's `/usr/bin/true`: parallel tests
+// swap PATH to a tempdir.
+#[cfg(unix)]
+#[test]
+fn a_harness_that_is_still_running_gets_no_exit_marker() {
+    use crate::managed_agents::ManagedAgentRuntimeKey;
+    let pubkey = "ee".repeat(32);
+    let record = minimal_record(&pubkey);
+    let key = ManagedAgentRuntimeKey::new(pubkey, "wss://relay.example").unwrap();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let log = dir.path().join("harness.log");
+    // A child that outlives the sync call.
+    let child = std::process::Command::new("/bin/sleep")
+        .arg("30")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn sleep");
+    let mut runtime = make_pair_runtime_placeholder();
+    runtime.process.child = child;
+    runtime.process.log_path = log.clone();
+    let mut runtimes = std::collections::HashMap::new();
+    runtimes.insert(key.clone(), runtime);
+    let mut records = vec![record];
+
+    let (_, exited) = super::sync_managed_agent_processes(&mut records, &mut runtimes, "instance");
+
+    assert!(exited.is_empty());
+    assert!(!log.exists(), "a live harness is left alone");
+    if let Some(mut runtime) = runtimes.remove(&key) {
+        let _ = runtime.child.kill();
+        let _ = runtime.child.wait();
+    }
+}

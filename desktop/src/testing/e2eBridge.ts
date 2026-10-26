@@ -30,6 +30,7 @@ import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
 import {
   businessDTag,
+  proposalVersionDTag,
   KIND_PARTY_HEAD,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_CONVERSION_RECEIPT,
@@ -58,7 +59,7 @@ import {
   referenceHomeInboxItems,
   referenceSalesLastMessageAt,
   referenceBusinessRecordEvents,
-  referenceCommunityId,
+  referenceTenantCommunityId,
   referenceSalesMessages,
   referenceSidebarChannelSeeds,
   referenceSidebarUnreadMessages,
@@ -67,6 +68,11 @@ import {
   seedReferenceSidebarStorage,
 } from "./e2eReferenceWorkspace.ts";
 import { installReferenceDiscoveryProvider } from "./e2eReferenceDiscovery.ts";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
+import {
+  BUSINESS_SCOPE_REFUSAL,
+  MOCK_TENANT_COMMUNITY_ID,
+} from "./e2eTenant.ts";
 export { mockSearchHitMatches };
 import type { ConnectionState } from "@/shared/api/relayClientShared";
 import type {
@@ -2168,6 +2174,10 @@ declare global {
      *  armed `startManagedAgentErrors` rejection) without waiting out the
      *  delay. Returns the number of holds flushed. */
     __BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__?: () => number;
+    /** Make a managed agent's harness end with no word, as after a silent
+     *  exit: the agent and its runtime rows read as stopped from the next
+     *  list on. */
+    __BUZZ_E2E_END_MANAGED_AGENT__?: (pubkey: string) => Promise<void>;
     /** Release every `sync_agents_to_active_huddle` currently held behind
      *  `syncAgentsToActiveHuddleDelayMs`, letting it resolve without waiting
      *  out the delay. Returns the number of holds flushed. */
@@ -5648,7 +5658,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   }
   seedReferenceSidebarStorage(self, { sidebarShell, colony3 });
   mockBusinessRecordEvents.clear();
-  const communityId = referenceCommunityId();
+  const communityId = referenceTenantCommunityId();
   if (communityId && !withoutSales) {
     for (const event of referenceSalesRecordEvents(self, communityId)) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
@@ -9034,8 +9044,53 @@ function storeReferenceBusinessEvent(
   if (emitLive) emitMockLiveEvent(channelId, event);
 }
 
-function referenceCommunityRecordId(): string {
-  return referenceCommunityId() ?? REFERENCE_CHANNEL_IDS.sales;
+function referenceCommunityRecordId(): TenantCommunityId {
+  return referenceTenantCommunityId() ?? MOCK_TENANT_COMMUNITY_ID;
+}
+
+/**
+ * The d-tag the real relay requires for a business-scoped command, built from
+ * the tenant community UUID. Null for commands whose d-tag is not namespaced by
+ * the community (client-scoped records use the client id instead).
+ */
+function expectedBusinessCommandDTag(
+  event: RelayEvent,
+  tenantId: TenantCommunityId,
+): string | null {
+  if (event.kind === KIND_SERVICE_ACTION) {
+    const action = parseMockBusinessContent<ReferenceServiceAction>(event);
+    return action ? businessDTag(tenantId, "service", action.serviceId) : null;
+  }
+  if (event.kind === KIND_PROSPECT_ACTION) {
+    const action = parseMockBusinessContent<ReferenceProspectAction>(event);
+    return action
+      ? businessDTag(tenantId, "prospect", action.prospectId)
+      : null;
+  }
+  if (event.kind === KIND_PROPOSAL_VERSION) {
+    const version = parseMockBusinessContent<ReferenceProposalVersion>(event);
+    return version
+      ? proposalVersionDTag(tenantId, version.proposalId, version.revision)
+      : null;
+  }
+  if (event.kind === KIND_PROPOSAL_ACCEPTANCE) {
+    const acceptance =
+      parseMockBusinessContent<ReferenceProposalAcceptance>(event);
+    return acceptance
+      ? businessDTag(tenantId, "conversion", acceptance.conversionId)
+      : null;
+  }
+  return null;
+}
+
+function logBusinessCommand(event: RelayEvent, accepted: boolean): void {
+  const log = window.__BUZZ_E2E_BUSINESS_COMMANDS__ ?? [];
+  window.__BUZZ_E2E_BUSINESS_COMMANDS__ = log;
+  log.push({
+    kind: event.kind,
+    dTag: businessDTagOf(event) ?? "",
+    accepted,
+  });
 }
 
 function referenceRecordEvent(
@@ -9288,6 +9343,18 @@ function publishReferenceBusinessCommand(
     return true;
   }
   const communityId = referenceCommunityRecordId();
+  const expectedDTag = expectedBusinessCommandDTag(event, communityId);
+  if (expectedDTag !== null && expectedDTag !== dTag) {
+    logBusinessCommand(event, false);
+    sendWsText(socket.handler, [
+      "OK",
+      event.id,
+      false,
+      `invalid: ${BUSINESS_SCOPE_REFUSAL}`,
+    ]);
+    return true;
+  }
+  logBusinessCommand(event, true);
   const commandTime = event.created_at;
   const shouldLoseAcceptanceAck =
     event.kind === KIND_PROPOSAL_ACCEPTANCE &&
@@ -16525,6 +16592,8 @@ async function handleStartManagedAgent(
     pubkey: string;
     expectedRelayUrl?: string | null;
     expectedSignerPubkey?: string | null;
+    replayFloorUnix?: number | null;
+    forceRestart?: boolean | null;
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
@@ -19324,6 +19393,9 @@ export function maybeInstallE2eTauriMocks() {
     const held = heldManagedAgentStartReleases.splice(0);
     for (const release of held) release();
     return held.length;
+  };
+  window.__BUZZ_E2E_END_MANAGED_AGENT__ = async (pubkey: string) => {
+    await handleStopManagedAgent({ pubkey });
   };
   heldHuddleAgentSyncReleases = [];
   window.__BUZZ_E2E_RELEASE_HUDDLE_AGENT_SYNCS__ = () => {

@@ -45,6 +45,7 @@ function campaign(id, overrides = {}) {
     postState: "posted",
     stopNotePosted: false,
     topFits: [],
+    pendingPage: null,
     ...overrides,
   };
 }
@@ -183,4 +184,69 @@ test("storage that throws never breaks reading or writing", () => {
   assert.equal(writeState(broken, "k", emptyState()), false);
   assert.deepEqual(readState(null, "k"), emptyState());
   assert.equal(writeState(null, "k", emptyState()), false);
+});
+
+const PENDING_PAGE = {
+  provider: "outscraper",
+  places: [
+    {
+      placeId: "p1",
+      name: "Olive Branch Studio",
+      category: "Home goods store",
+      subtypes: null,
+      address: "1 Main Road",
+      city: "Johannesburg",
+      state: "Gauteng",
+      country: "South Africa",
+      phone: "+27 11 555 0100",
+      website: "https://olive-branch.example",
+      email: null,
+      rating: 4.5,
+      reviews: 20,
+      latitude: null,
+      longitude: null,
+      mapsUrl: null,
+      description: null,
+      businessStatus: null,
+    },
+  ],
+  estimatedCostUsd: 0.012,
+  nextSkip: 20,
+};
+
+test("a page that was paid for but not saved survives a restart", () => {
+  const state = withCampaigns(
+    campaign("one", { status: "failed", pendingPage: PENDING_PAGE }),
+  );
+  const restored = parseStoredState(serializeState(state));
+  assert.deepEqual(restored.campaigns[0].pendingPage, PENDING_PAGE);
+});
+
+test("an unreadable pending page is dropped without losing the campaign", () => {
+  for (const junk of [
+    "text",
+    42,
+    { places: "none" },
+    { places: [] },
+    { places: [null, 3] },
+  ]) {
+    const state = withCampaigns(campaign("one"));
+    const raw = JSON.parse(serializeState(state));
+    raw.campaigns[0].pendingPage = junk;
+    const restored = parseStoredState(JSON.stringify(raw));
+    assert.equal(restored.campaigns.length, 1);
+    assert.equal(restored.campaigns[0].pendingPage, null);
+  }
+});
+
+test("a stored pending page is capped at one server page of places", () => {
+  const places = Array.from({ length: 80 }, (_, index) => ({
+    ...PENDING_PAGE.places[0],
+    placeId: `p${index}`,
+  }));
+  const state = withCampaigns(
+    campaign("one", { pendingPage: { ...PENDING_PAGE, places } }),
+  );
+  const restored = parseStoredState(serializeState(state));
+  assert.equal(restored.campaigns[0].pendingPage.places.length, 50);
 });

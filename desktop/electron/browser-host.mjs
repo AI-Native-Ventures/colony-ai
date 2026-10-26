@@ -46,6 +46,10 @@ export function createBrowserHost({
     const verdict = navigationGate(tab.id, url, isMainFrame);
     if (!verdict.allow) {
       blockedNavigations.set(tab.id, verdict);
+      // The refusal is the person's notice. Chromium then reports the cancelled
+      // load as a failure (ERR_FAILED for a stopped redirect), which must not
+      // also turn the page the person is looking at into an error page.
+      if (isMainFrame) tab.gatedGeneration = tab.navigationGeneration;
       sendTabEvent(tab, "navigation-blocked", { reason: verdict.code });
     }
     return verdict.allow;
@@ -191,6 +195,7 @@ export function createBrowserHost({
       (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
         if (!isMainFrame || errorCode === -3 || !tabs.has(tab.id)) return;
         if (tab.activeNavigationGeneration !== tab.navigationGeneration) return;
+        if (tab.gatedGeneration === tab.navigationGeneration) return;
         if (tab.activeNavigationUrl && tab.activeNavigationUrl !== validatedUrl)
           return;
         updateError(tab, navigationFailure(new Error(errorDescription)));
@@ -316,6 +321,7 @@ export function createBrowserHost({
         title: "",
         error: null,
         navigationGeneration: 0,
+        gatedGeneration: null,
         expectedNavigationUrl: null,
         activeNavigationUrl: null,
         activeNavigationGeneration: null,
@@ -371,6 +377,7 @@ export function createBrowserHost({
       const message = navigationFailure(error);
       if (
         generation !== tab.navigationGeneration ||
+        tab.gatedGeneration === generation ||
         message.includes("ERR_ABORTED")
       )
         return snapshot(tab);

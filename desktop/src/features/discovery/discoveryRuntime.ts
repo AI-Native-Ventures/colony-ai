@@ -9,6 +9,7 @@ import {
   loadActiveCommunityId,
   loadCommunities,
 } from "@/features/communities/communityStorage";
+import { resolveTenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { Community } from "@/features/communities/types";
 import { getChannels } from "@/shared/api/tauriChannels";
 import { getIdentity } from "@/shared/api/tauriIdentity";
@@ -54,6 +55,10 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 async function resolveContext(community: Community): Promise<DiscoveryContext> {
+  // First, before any channel is made or any paid search runs: every prospect
+  // coordinate is namespaced by the relay's own business id, and the local
+  // community id is not that. When the relay cannot confirm it, stop here.
+  const tenantCommunityId = await resolveTenantCommunityId(community.relayUrl);
   const identity = await getIdentity();
   const { channels } = await getChannels(null);
   // The Sales channel is made here when it is missing and this person may.
@@ -77,7 +82,7 @@ async function resolveContext(community: Community): Promise<DiscoveryContext> {
   }
   return {
     channelId,
-    communityId: community.id,
+    communityId: tenantCommunityId,
     pubkey: identity.pubkey,
     displayName: displayName || "You",
     existingProspectIds: new Set(

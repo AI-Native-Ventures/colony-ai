@@ -50,8 +50,12 @@ const updaterRuntimeModule = await import(
     : "./electron-updater-runtime.mjs"
 );
 const updaterRuntime = updaterRuntimeModule.default ?? updaterRuntimeModule;
-const { autoUpdater, createElectronUpdaterService, UPDATE_METADATA_URL } =
-  updaterRuntime;
+const {
+  autoUpdater,
+  createElectronUpdaterService,
+  createMacSelfUpdater,
+  resolveUpdateMetadataUrl,
+} = updaterRuntime;
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
@@ -85,7 +89,12 @@ const releaseCapabilities = (() => {
     ) {
       return null;
     }
-    return capabilities;
+    return {
+      ...capabilities,
+      // Absent in packages made before in-app Mac updates: treated as off.
+      selfUpdate: capabilities.selfUpdate === true,
+      updateTestOverride: capabilities.updateTestOverride === true,
+    };
   } catch {
     return null;
   }
@@ -342,13 +351,51 @@ async function boot() {
       window.webContents.send(BROWSER_BROKER_EVENT_CHANNEL, event);
   });
 
-  if (app.isPackaged && !smoke && releaseCapabilities?.release) {
+  // A local update test build (never a release) may read its manifest from a
+  // loopback server; see resolveUpdateMetadataUrl.
+  const updateTestBuild =
+    releaseCapabilities?.updateTestOverride === true &&
+    releaseCapabilities.release === false;
+  if (
+    app.isPackaged &&
+    !smoke &&
+    (releaseCapabilities?.release || updateTestBuild)
+  ) {
+    const macSelfUpdater =
+      process.platform === "darwin" && releaseCapabilities.selfUpdate
+        ? createMacSelfUpdater({
+            executablePath: app.getPath("exe"),
+            userDataDir: app.getPath("userData"),
+            currentVersion: app.getVersion(),
+            requestQuit: () => quitApp(),
+            allowInsecureLoopback: updateTestBuild,
+            // A local test build relaunches with the same throwaway profile
+            // and host; a release relaunches with a plain environment.
+            relaunchEnv: updateTestBuild
+              ? Object.fromEntries(
+                  [
+                    "HOME",
+                    "COLONY_ELECTRON_USER_DATA",
+                    "COLONY_NATIVE_HOST",
+                    "COLONY_ELECTRON_BACKGROUND",
+                    "COLONY_UPDATE_TEST_METADATA_URL",
+                  ]
+                    .filter((name) => typeof process.env[name] === "string")
+                    .map((name) => [name, process.env[name]]),
+                )
+              : {},
+          })
+        : null;
     updaterService = createElectronUpdaterService({
       autoUpdater,
       currentVersion: app.getVersion(),
       currentBuild: releaseCapabilities,
       platformKey: releaseCapabilities.platformKey,
-      metadataUrl: UPDATE_METADATA_URL,
+      metadataUrl: resolveUpdateMetadataUrl({
+        capabilities: releaseCapabilities,
+        env: process.env,
+      }),
+      macSelfUpdater,
       onStatus: (status) => {
         for (const entry of windows.values()) {
           if (

@@ -1,10 +1,11 @@
 import type { ProspectStage } from "./businessRecordContract";
 import type { BusinessRecords, BusinessRole } from "./businessRecordRelay";
 import type { ProspectChanges } from "./businessRecordMutations";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 
 export type LeadContext = {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   currentPubkey: string | null;
   records: BusinessRecords;
   refresh: () => Promise<void>;

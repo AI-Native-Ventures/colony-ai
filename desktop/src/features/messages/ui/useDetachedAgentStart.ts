@@ -1,5 +1,10 @@
 import * as React from "react";
 import { toast } from "sonner";
+import {
+  beginAgentStartAttempt,
+  failAgentStartWatches,
+  registerAgentStartWatch,
+} from "@/features/agents/agentStartWatch";
 import { useStartManagedAgentMutation } from "@/features/agents/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { matchesDetachedToastScope } from "@/features/messages/lib/detachedToastScope";
@@ -121,10 +126,18 @@ function warnAgentMayNotRespond(agentName: string, detail: string): void {
  * which could exceed it and push the harness's startup watermark past the
  * very message the floor exists to cover. Callers with no queued floor omit
  * it and get fire time.
+ *
+ * The floor actually sent is never newer than the oldest mention to this agent
+ * that nobody has picked up yet (`agentStartWatch`): a harness that died before
+ * reading the first mention is replaced by one that reaches back to it, not
+ * just to the message that happened to trigger the replacement. `scope` says
+ * which conversation is waiting, so it can show "starting" and, if the agent
+ * never picks the message up, an error with a retry.
  */
 export function useDetachedAgentStart(): (
   agent: ManagedAgent,
   replayFloorUnix?: number,
+  scope?: { channelId: string | null; threadHeadId: string | null },
 ) => boolean {
   const startAgentMutateAsync = useStartManagedAgentMutation().mutateAsync;
   const { activeCommunity } = useCommunities();
@@ -143,7 +156,11 @@ export function useDetachedAgentStart(): (
   const expectedSignerPubkey =
     normalizePubkey(identityQuery.data?.pubkey ?? "") || undefined;
   return React.useCallback(
-    (agent: ManagedAgent, replayFloorUnix?: number) => {
+    (
+      agent: ManagedAgent,
+      replayFloorUnix?: number,
+      scope?: { channelId: string | null; threadHeadId: string | null },
+    ) => {
       if (!expectedRelayUrl || !expectedSignerPubkey) {
         // Fail closed: an unscoped start resolves the relay and the signing
         // identity at execution time, so it can land on whichever tenant is
@@ -165,6 +182,24 @@ export function useDetachedAgentStart(): (
       // case-insensitive compare, so two casings of one identity cannot split
       // the key.
       const key = `${expectedRelayUrl}\u0000${expectedSignerPubkey}\u0000${normalizePubkey(agent.pubkey)}`;
+      // The person is waiting on this agent from now on, whether or not this
+      // call is the one that fires the start. The watch answers with the
+      // replay floor of the oldest mention still unanswered, and later starts
+      // the agent again (or says it did not start) if nobody picks it up.
+      const { floorUnix } = registerAgentStartWatch({
+        pubkey: agent.pubkey,
+        channelId: scope?.channelId ?? null,
+        threadHeadId: scope?.threadHeadId ?? null,
+        floorUnix: replayFloorUnix ?? Math.floor(Date.now() / 1000),
+        start: ({ force, floorUnix: attemptFloorUnix }) =>
+          startAgentMutateAsync({
+            pubkey: agent.pubkey,
+            expectedRelayUrl,
+            expectedSignerPubkey,
+            replayFloorUnix: attemptFloorUnix,
+            forceRestart: force,
+          }),
+      });
       if (inFlightDetachedStarts.has(key)) {
         // One wake serves both messages. A local duplicate is a backend no-op
         // anyway, but a provider redeploy can replace a harness that had just
@@ -178,13 +213,21 @@ export function useDetachedAgentStart(): (
       // send path queued it, or this moment for a caller with no queue .  so
       // that message is inside the harness's first subscription window
       // however long the spawn takes.
+      const attempt = beginAgentStartAttempt(agent.pubkey);
       const started = startAgentMutateAsync({
         pubkey: agent.pubkey,
         expectedRelayUrl,
         expectedSignerPubkey,
-        replayFloorUnix: replayFloorUnix ?? Math.floor(Date.now() / 1000),
+        replayFloorUnix: floorUnix,
       })
         .catch((error: unknown) => {
+          // The conversation says so durably; the toast below is the nudge.
+          // A failure that outlived a newer attempt is stale and ignored.
+          failAgentStartWatches(
+            agent.pubkey,
+            detachedStartFailureDetail(error),
+            attempt,
+          );
           // This settles arbitrarily long after the send, and `<Toaster />`
           // mounts outside the community remount boundary .  so an unfenced
           // warning would render this community's agent name and error detail

@@ -12,6 +12,7 @@ import {
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
+  releaseCapabilities,
   sidecarFilenames,
   verifySignatureArguments,
 } from "./electron-package-config.mjs";
@@ -301,5 +302,70 @@ test("the committed app icons are the Colony icon set at usable sizes", () => {
     source,
     /#f4f2e8/,
     "the committed source is the Colony ant mark",
+  );
+});
+
+test("an unsigned Mac release build can update itself and has no test override", () => {
+  const capabilities = releaseCapabilities({
+    platform: "darwin",
+    arch: "arm64",
+    env: { COLONY_ELECTRON_RELEASE: "1", COLONY_ELECTRON_AUTO_UPDATE: "0" },
+  });
+  assert.equal(capabilities.selfUpdate, true);
+  assert.equal(capabilities.autoUpdate, false);
+  assert.equal(capabilities.signed, false);
+  assert.equal(capabilities.release, true);
+  assert.equal(capabilities.updateTestOverride, false);
+  assert.equal(capabilities.schemaVersion, 1);
+});
+
+test("signed Mac and Windows release builds do not self-update", () => {
+  const signedMac = releaseCapabilities({
+    platform: "darwin",
+    arch: "arm64",
+    env: {
+      COLONY_ELECTRON_RELEASE: "1",
+      COLONY_ELECTRON_SIGNED: "1",
+      COLONY_ELECTRON_AUTO_UPDATE: "1",
+    },
+  });
+  assert.equal(signedMac.selfUpdate, false);
+  assert.equal(signedMac.autoUpdate, true);
+  const windows = releaseCapabilities({
+    platform: "win32",
+    arch: "x64",
+    env: { COLONY_ELECTRON_RELEASE: "1", COLONY_ELECTRON_AUTO_UPDATE: "1" },
+  });
+  assert.equal(windows.selfUpdate, false);
+});
+
+test("a plain local package never self-updates or accepts an override", () => {
+  const capabilities = releaseCapabilities({
+    platform: "darwin",
+    arch: "arm64",
+    env: {},
+  });
+  assert.equal(capabilities.selfUpdate, false);
+  assert.equal(capabilities.updateTestOverride, false);
+  assert.equal(capabilities.release, false);
+});
+
+test("the update test override exists only in a non-release Mac test build", () => {
+  const capabilities = releaseCapabilities({
+    platform: "darwin",
+    arch: "arm64",
+    env: { COLONY_ELECTRON_UPDATE_TEST: "1" },
+  });
+  assert.equal(capabilities.updateTestOverride, true);
+  assert.equal(capabilities.release, false);
+  assert.equal(capabilities.selfUpdate, true);
+  assert.throws(
+    () =>
+      releaseCapabilities({
+        platform: "darwin",
+        arch: "arm64",
+        env: { COLONY_ELECTRON_RELEASE: "1", COLONY_ELECTRON_UPDATE_TEST: "1" },
+      }),
+    /release build cannot enable the update test override/,
   );
 });

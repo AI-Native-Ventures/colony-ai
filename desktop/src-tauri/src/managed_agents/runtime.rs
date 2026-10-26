@@ -22,8 +22,9 @@ pub(crate) use super::access_policy::{build_respond_to_env_with_policy, RespondT
 
 mod metadata;
 pub(crate) use metadata::{
-    apply_agent_display_env, apply_replay_floor_env, child_rust_log_filter, resolve_session_title,
-    runtime_metadata_env_vars, DISPLAY_NAME_ENV_VAR, REPLAY_FLOOR_ENV_VAR, SESSION_TITLE_ENV_VAR,
+    apply_agent_display_env, apply_replay_floor_env, apply_wake_ledger_env, child_rust_log_filter,
+    resolve_session_title, runtime_metadata_env_vars, DISPLAY_NAME_ENV_VAR, REPLAY_FLOOR_ENV_VAR,
+    SESSION_TITLE_ENV_VAR,
 };
 
 mod setup_payload;
@@ -816,6 +817,20 @@ pub fn spawn_agent_child(
     // BUZZ_ACP_REPLAY_FLOOR — the shadow `apply_replay_floor` strips from the
     // provider payload's `launch.env` tier for the same reason.
     apply_replay_floor_env(&mut command, replay_floor_unix);
+    // Restart catch-up: the harness keeps a ledger of the wake events it
+    // handled, so a mention sent while the previous harness was dead, stalled
+    // or being replaced is answered once by this one instead of skipped. Written
+    // after the user env for the same reason as the replay floor. If the path
+    // cannot be resolved the harness runs without a ledger, as before.
+    let wake_ledger = super::managed_agent_wake_ledger_path(app, &runtime_key)
+        .map_err(|error| {
+            eprintln!(
+                "buzz-desktop: no wake ledger for {} on {}: {error}",
+                record.pubkey, runtime_key.relay_url
+            )
+        })
+        .ok();
+    apply_wake_ledger_env(&mut command, wake_ledger.as_deref());
 
     // A1: for local claude agents, ANTHROPIC_MODEL is the single startup model authority.
     // BUZZ_ACP_MODEL is removed (live ACP switches only; two authorities in the same env
@@ -937,12 +952,39 @@ pub fn spawn_agent_child(
     })
 }
 
+/// What a start request does about the harness already tracked for the pair.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TrackedHarness {
+    /// It is running: keep it, so two never run for one pair.
+    Reuse,
+    /// It is running but the person asked to try again: stop it first.
+    Replace,
+    /// It already exited: forget it and spawn a fresh one.
+    Discard,
+}
+
+/// Decide what a start request does about the harness tracked for the pair:
+/// `running` is whether its process is still alive, `force_replace` whether
+/// the person asked to try again.
+pub(crate) fn tracked_harness_action(running: bool, force_replace: bool) -> TrackedHarness {
+    match (running, force_replace) {
+        (true, false) => TrackedHarness::Reuse,
+        (true, true) => TrackedHarness::Replace,
+        (false, _) => TrackedHarness::Discard,
+    }
+}
+
 /// Spawn (or adopt) the runtime pair for `record` on the caller's bound
 /// workspace relay. `workspace_relay` can only be produced by
 /// `bind_expected_relay_scope`, so this spawn consumes — by construction — the
 /// exact workspace-relay read the caller's scope assertion passed on; it never
 /// re-reads the mutable override (see `relay::scope`). The key comes from
 /// [`bound_runtime_key`] — the seam the spawn-key regressions exercise.
+///
+/// A harness that is already running for the pair is reused, so two never run
+/// at once. `force_replace` is for a person who asked to try again after the
+/// agent never picked a mention up: the running harness is the stuck one, so
+/// it is stopped (and its exit awaited) before the new one is spawned.
 pub fn start_managed_agent_process(
     app: &AppHandle,
     record: &mut ManagedAgentRecord,
@@ -950,20 +992,34 @@ pub fn start_managed_agent_process(
     owner_hex: Option<&str>,
     workspace_relay: &crate::relay::ScopedWorkspaceRelay,
     replay_floor_unix: Option<u64>,
+    force_replace: bool,
 ) -> Result<(), String> {
     let key = bound_runtime_key(record, workspace_relay)?;
     if let Some(runtime) = runtimes.get_mut(&key) {
-        if runtime
+        let running = runtime
             .child
             .try_wait()
             .map_err(|error| format!("failed to inspect running process: {error}"))?
-            .is_none()
-        {
-            return Ok(());
+            .is_none();
+        match tracked_harness_action(running, force_replace) {
+            TrackedHarness::Reuse => return Ok(()),
+            TrackedHarness::Replace => {
+                let _ = append_log_marker(
+                    &runtime.log_path,
+                    &format!(
+                        "=== replacing {} ({}) at {}: restart requested ===",
+                        record.name,
+                        record.pubkey,
+                        now_iso()
+                    ),
+                );
+                stop::stop_managed_agent_pair(app, record, runtimes, &key)?;
+            }
+            TrackedHarness::Discard => {
+                runtimes.remove(&key);
+                super::remove_agent_runtime_receipt(app, &key);
+            }
         }
-
-        runtimes.remove(&key);
-        super::remove_agent_runtime_receipt(app, &key);
     }
 
     // Scalar PIDs are migration-only and never establish pair liveness.

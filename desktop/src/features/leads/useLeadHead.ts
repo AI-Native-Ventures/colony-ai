@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { channelsQueryKey } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useTenantCommunityId } from "@/features/communities/useTenantCommunityId";
 import { resolveBusinessChannel } from "@/features/discovery/businessRecordRelay";
 import { relayClient } from "@/shared/api/relayClient";
 import { getChannels } from "@/shared/api/tauriChannels";
@@ -55,7 +56,10 @@ export function useLeadReference(leadId: string): {
 } {
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
-  const communityId = activeCommunity?.id ?? null;
+  // The lead's coordinate is namespaced by the relay's tenant id, which the
+  // relay itself has to confirm; the local community id would never match.
+  const tenant = useTenantCommunityId(relayUrl);
+  const communityId = tenant.tenantId;
   const channel = useBusinessChannelId();
   const channelId = channel.data ?? null;
   const head = useQuery({
@@ -80,10 +84,23 @@ export function useLeadReference(leadId: string): {
 
   const { refetch: refetchChannel } = channel;
   const { refetch: refetchHead } = head;
+  const { retry: retryTenant } = tenant;
   const retry = React.useCallback(() => {
-    void refetchChannel().then(() => refetchHead());
-  }, [refetchChannel, refetchHead]);
+    void retryTenant()
+      .then(() => refetchChannel())
+      .then(() => refetchHead());
+  }, [refetchChannel, refetchHead, retryTenant]);
 
+  if (tenant.error) {
+    return {
+      view: leadReferenceView({
+        isPending: false,
+        error: tenant.error,
+        head: null,
+      }),
+      retry,
+    };
+  }
   if (channel.error) {
     return {
       view: leadReferenceView({
@@ -100,7 +117,7 @@ export function useLeadReference(leadId: string): {
   }
   return {
     view: leadReferenceView({
-      isPending: channel.isPending || head.isPending,
+      isPending: channel.isPending || tenant.pending || head.isPending,
       error: head.error,
       head: head.data,
     }),

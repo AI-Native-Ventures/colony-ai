@@ -70,7 +70,13 @@ export async function setup({ lifecycle = false } = {}) {
   dom.window.localStorage.clear();
   draftStore.initDraftStore("test-author", "wss://test.example");
   const calls = [];
-  const control = { prepare: null, add: null, publish: null, inventory: null };
+  const control = {
+    prepare: null,
+    add: null,
+    publish: null,
+    inventory: null,
+    watches: [],
+  };
   const refs = [{ displayName: "RemoteScout", pubkey: KEY, isAgent: true }];
   const query = {
     data: [],
@@ -121,6 +127,21 @@ export async function setup({ lifecycle = false } = {}) {
     },
     "@/features/messages/lib/detachedToastScope": {
       matchesDetachedToastScope: () => true,
+    },
+    // The unanswered-mention store: these suites pin the send flow, not the
+    // store (agentStartWatch.test.mjs does). Registrations are kept apart from
+    // `calls` so they cannot disturb the order-sensitive assertions there.
+    "@/features/agents/agentStartWatch": {
+      registerAgentStartWatch: (input) => {
+        control.watches.push({
+          pubkey: input.pubkey,
+          channelId: input.channelId,
+          threadHeadId: input.threadHeadId,
+        });
+        return { floorUnix: input.floorUnix };
+      },
+      beginAgentStartAttempt: () => 1,
+      failAgentStartWatches: noop,
     },
     "@/features/agents/channelAgents": {
       applyReusableAgentAccessPolicy: async (agent) => {

@@ -5,6 +5,7 @@ import {
   type ProspectHead,
   type ProspectStage,
 } from "@/features/discovery/businessRecordContract";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { RelayEvent } from "@/shared/api/types";
 
 /** Pill tones shared with the Leads table: won green, lost red, and so on. */
@@ -93,7 +94,7 @@ export function summarizeLead(head: ProspectHead): LeadSummary | null {
 /** The relay filter for one lead's head, scoped to the business channel. */
 export function leadHeadFilter(
   channelId: string,
-  communityId: string,
+  communityId: TenantCommunityId,
   leadId: string,
 ) {
   return {

@@ -103,10 +103,14 @@ const fail = (code, message, extra = {}) => ({
 const approvedAboutBlank = (url) => url === "about:blank" || url === "";
 
 /**
- * Sites that differ only by a leading "www." (same scheme and port) are one
- * site to the person: linkedin.com sends everyone to www.linkedin.com.
+ * The same site under another spelling of its address. Sites that differ only
+ * by a leading "www." (same scheme and port) are one site to the person:
+ * linkedin.com sends everyone to www.linkedin.com. A site approved over plain
+ * http may also upgrade itself to https on the standard ports, since the
+ * agent asked for it and the upgrade only makes the connection safer. Never
+ * the other way round: an approved https site does not fall back to http.
  */
-function isWwwTwin(origin, approvedOrigins) {
+function isSameSite(origin, approvedOrigins) {
   let wanted;
   try {
     wanted = new URL(origin);
@@ -117,10 +121,14 @@ function isWwwTwin(origin, approvedOrigins) {
   return approvedOrigins.some((entry) => {
     try {
       const known = new URL(entry);
+      if (bare(known.hostname) !== bare(wanted.hostname)) return false;
+      if (known.protocol === wanted.protocol && known.port === wanted.port)
+        return true;
       return (
-        known.protocol === wanted.protocol &&
-        known.port === wanted.port &&
-        bare(known.hostname) === bare(wanted.hostname)
+        known.protocol === "http:" &&
+        wanted.protocol === "https:" &&
+        known.port === "" &&
+        wanted.port === ""
       );
     } catch {
       return false;
@@ -1194,7 +1202,7 @@ export function createBroker({
       if (!grant.allowedOrigins.includes(checked.origin)) {
         if (
           grant.defaultAccess &&
-          isWwwTwin(checked.origin, grant.allowedOrigins)
+          isSameSite(checked.origin, grant.allowedOrigins)
         ) {
           try {
             capabilities.approveOrigin(grant.id, url);

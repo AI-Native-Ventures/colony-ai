@@ -22,6 +22,7 @@ mod relay;
 mod role_context;
 mod scope;
 mod setup_mode;
+mod startup_watch;
 mod tool_permissions;
 mod usage;
 mod wake_ledger;
@@ -2621,10 +2622,23 @@ async fn tokio_main() -> Result<()> {
         .filter(|s| !s.is_empty())
         .and_then(|s| buzz_sdk::nip_oa::parse_auth_tag(&s).ok());
 
-    let mut relay =
-        HarnessRelay::connect(&config.relay_url, &config.keys, &pubkey_hex, relay_auth_tag)
-            .await
-            .map_err(|e| anyhow::anyhow!("relay connect error: {e}"))?;
+    // Every wait on the relay below is time-limited and names itself when it
+    // runs out, and a watchdog on its own thread exits a start that is stuck
+    // where no timeout can fire (see `startup_watch`). Until now a start that
+    // stalled after "applying replay floor" left nothing in the log.
+    let startup = startup_watch::StartupWatch::begin(
+        "relay_connect",
+        startup_watch::STARTUP_DEADLINE,
+        startup_watch::WATCHDOG_TICK,
+        startup_watch::exit_on_stall,
+    );
+    let mut relay = startup_watch::bounded(
+        "relay_connect",
+        startup_watch::RELAY_CONNECT_BUDGET,
+        HarnessRelay::connect(&config.relay_url, &config.keys, &pubkey_hex, relay_auth_tag),
+    )
+    .await?
+    .map_err(|e| anyhow::anyhow!("relay connect error: {e}"))?;
 
     // Tell the relay background task the watermark so it can use
     // `since = watermark - 5s` on the first REQ instead of `since=now`.
@@ -2637,13 +2651,18 @@ async fn tokio_main() -> Result<()> {
     tracing::info!("connected to relay at {}", config.relay_url);
 
     let relay_rest_client = relay.rest_client();
+    startup.enter("author_gate");
     let mut author_gate_ctx =
         InboundAuthorGate::connect(&relay_rest_client, &pubkey_hex, "startup").await;
 
-    relay
-        .subscribe_membership_notifications()
-        .await
-        .map_err(|e| anyhow::anyhow!("membership notification subscribe error: {e}"))?;
+    startup.enter("membership_subscribe");
+    startup_watch::bounded(
+        "membership_subscribe",
+        startup_watch::STARTUP_STEP_BUDGET,
+        relay.subscribe_membership_notifications(),
+    )
+    .await?
+    .map_err(|e| anyhow::anyhow!("membership notification subscribe error: {e}"))?;
     tracing::info!("subscribed to membership notifications");
 
     let presence_publisher = relay.event_publisher();
@@ -2694,10 +2713,14 @@ async fn tokio_main() -> Result<()> {
                         owner_pubkey_hex,
                         owner_pubkey,
                     ));
-                    relay
-                        .subscribe_observer_controls()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("observer control subscribe error: {e}"))?;
+                    startup.enter("observer_subscribe");
+                    startup_watch::bounded(
+                        "observer_subscribe",
+                        startup_watch::STARTUP_STEP_BUDGET,
+                        relay.subscribe_observer_controls(),
+                    )
+                    .await?
+                    .map_err(|e| anyhow::anyhow!("observer control subscribe error: {e}"))?;
                     relay_observer_control_rx = relay.take_observer_control_rx();
                     tracing::info!("relay observer enabled");
                 }
@@ -2713,10 +2736,14 @@ async fn tokio_main() -> Result<()> {
         }
     }
 
-    let channel_info_map = relay
-        .discover_channels()
-        .await
-        .map_err(|e| anyhow::anyhow!("channel discovery error: {e}"))?;
+    startup.enter("channel_discovery");
+    let channel_info_map = startup_watch::bounded(
+        "channel_discovery",
+        startup_watch::STARTUP_STEP_BUDGET,
+        relay.discover_channels(),
+    )
+    .await?
+    .map_err(|e| anyhow::anyhow!("channel discovery error: {e}"))?;
 
     tracing::info!("discovered {} channel(s)", channel_info_map.len());
     let channel_ids: Vec<Uuid> = channel_info_map.keys().copied().collect();
@@ -2763,12 +2790,18 @@ async fn tokio_main() -> Result<()> {
         tracing::warn!("no channel subscriptions resolved — agent will sit idle");
     }
     let mut subscribed_channel_ids = HashSet::with_capacity(channel_filters.len());
+    startup.enter("channel_subscribe");
     for (channel_id, filter) in &channel_filters {
         // `None` keeps the startup watermark, exactly as before.
-        if let Err(e) = relay
-            .subscribe_channel_from(*channel_id, filter.clone(), catch_up_since)
-            .await
-        {
+        let subscribed = startup_watch::bounded(
+            "channel_subscribe",
+            startup_watch::STARTUP_STEP_BUDGET,
+            relay.subscribe_channel_from(*channel_id, filter.clone(), catch_up_since),
+        )
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|result| result.map_err(|e| e.to_string()));
+        if let Err(e) = subscribed {
             tracing::warn!("failed to subscribe to channel {channel_id}: {e}");
         } else {
             subscribed_channel_ids.insert(*channel_id);
@@ -2797,12 +2830,22 @@ async fn tokio_main() -> Result<()> {
     // Online means the harness can receive work, not merely that its socket is
     // connected. Publishing after channel subscriptions gives desktop callers
     // a durable readiness boundary before they send a startup mention.
+    startup.enter("presence");
     if config.presence_enabled {
-        match publish_presence(&presence_publisher, &presence_keys, "online").await {
-            Ok(_) => tracing::info!("presence set to online"),
+        match startup_watch::bounded(
+            "presence",
+            startup_watch::STARTUP_STEP_BUDGET,
+            publish_presence(&presence_publisher, &presence_keys, "online"),
+        )
+        .await
+        {
+            Ok(Ok(_)) => tracing::info!("presence set to online"),
+            Ok(Err(e)) => tracing::warn!("failed to set initial presence: {e}"),
             Err(e) => tracing::warn!("failed to set initial presence: {e}"),
         }
     }
+    // Subscribed and announced: from here the harness can read a mention.
+    startup.finish();
 
     if config.lazy_pool {
         emit_runtime_lifecycle(
