@@ -139,7 +139,7 @@
 
 .colony-ask-create-context {
   border: 1px solid hsl(var(--border));
-  border-left: 0.2rem solid #536d9c;
+  border-left: 0.2rem solid var(--colony-info-solid);
   border-radius: 0.45rem;
   background: hsl(var(--muted) / 0.35);
   margin: 0 0 1.1rem;
@@ -173,9 +173,9 @@
 }
 
 .colony-ask-create-type[aria-pressed="true"] {
-  border-color: #536d9c;
-  background: #536d9c;
-  color: #fff;
+  border-color: var(--colony-info-solid);
+  background: var(--colony-info-solid);
+  color: var(--colony-state-foreground);
 }
 
 .colony-ask-create-recipient-state {
@@ -271,8 +271,8 @@
 }
 
 .colony-ask-compose-actions > button:first-child {
-  background: #536d9c;
-  color: #fff;
+  background: var(--colony-info-solid);
+  color: var(--colony-state-foreground);
 }
 
 .colony-ask-create-aside h2 {
@@ -927,15 +927,15 @@
 
 .colony-needs-me-group-controls button[aria-pressed="true"],
 .colony-needs-me-overdue-toggle[aria-pressed="true"] {
-  border-color: #536d9c;
-  background: #536d9c;
-  color: #fff;
+  border-color: var(--colony-info-solid);
+  background: var(--colony-info-solid);
+  color: var(--colony-state-foreground);
 }
 
 .colony-needs-me-overdue-note {
   width: min(100%, 22rem);
   border: 1px solid hsl(var(--border));
-  border-left: 0.2rem solid #ad843c;
+  border-left: 0.2rem solid var(--colony-warning-solid);
   border-radius: 0.5rem;
   background: hsl(var(--muted) / 0.35);
   margin: 0 0 1.1rem;
@@ -944,7 +944,7 @@
 
 .colony-needs-me-overdue-note strong {
   display: block;
-  color: #ad843c;
+  color: var(--colony-warning-solid);
   font-size: var(--text-xs);
 }
 
@@ -1014,7 +1014,7 @@ button.colony-needs-me-row:hover {
 }
 
 .colony-needs-me-overdue {
-  color: #ad843c;
+  color: var(--colony-warning-solid);
 }
 
 .colony-needs-me-chevron {

@@ -331,6 +331,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/colony3-dark-mode.spec.ts",
         "**/agent-working-indicator.spec.ts",
         "**/agent-start-watch.spec.ts",
         "**/mention-wake-after-launch.spec.ts",

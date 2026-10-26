@@ -742,7 +742,7 @@ export function MembersSidebar({
               <input
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
+                className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[var(--colony-placeholder)]"
                 data-testid="channel-management-search-users"
                 disabled={isArchived}
                 id="channel-management-search-users"

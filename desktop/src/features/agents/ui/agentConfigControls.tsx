@@ -207,7 +207,7 @@ export function AgentDropdownSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="z-[100] max-h-72 overflow-y-auto rounded-2xl border-foreground/10 bg-white p-1.5 text-foreground opacity-100 data-[state=closed]:animate-none data-[state=open]:animate-none"
+        className="z-[100] max-h-72 overflow-y-auto rounded-2xl border-foreground/10 bg-[var(--colony-agent-picker-surface)] p-1.5 text-foreground opacity-100 data-[state=closed]:animate-none data-[state=open]:animate-none"
         sideOffset={8}
         style={{
           boxShadow: "0 16px 36px rgb(0 0 0 / 0.12)",
@@ -229,7 +229,7 @@ export function AgentDropdownSelect({
               <Input
                 aria-label="Search models"
                 autoFocus
-                className="h-9 rounded-xl border-foreground/10 bg-white pl-9 text-sm"
+                className="h-9 rounded-xl border-foreground/10 bg-[var(--colony-agent-picker-surface)] pl-9 text-sm"
                 data-testid={testId ? `${testId}-search` : undefined}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search models…"
@@ -254,9 +254,10 @@ export function AgentDropdownSelect({
                 aria-disabled={option.disabled || undefined}
                 aria-selected={selected}
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm leading-5 text-black opacity-100 transition-colors hover:bg-black/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-black/30",
+                  "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm leading-5 text-[color:var(--colony-agent-picker-ink)] opacity-100 transition-colors hover:bg-[var(--colony-agent-picker-hover)] focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-[color:var(--colony-agent-picker-focus)]",
                   selected && "bg-[var(--buzz-welcome-chartreuse)]/35",
-                  option.disabled && "cursor-not-allowed text-black/35",
+                  option.disabled &&
+                    "cursor-not-allowed text-[color:var(--colony-agent-picker-disabled)]",
                 )}
                 data-testid={optionTestId(testId, option.value)}
                 data-value={option.value}
@@ -274,8 +275,9 @@ export function AgentDropdownSelect({
                 <Check
                   aria-hidden="true"
                   className={cn(
-                    "h-4 w-4 shrink-0 text-black transition-opacity",
-                    option.disabled && "text-black/35",
+                    "h-4 w-4 shrink-0 text-[color:var(--colony-agent-picker-ink)] transition-opacity",
+                    option.disabled &&
+                      "text-[color:var(--colony-agent-picker-disabled)]",
                     selected ? "opacity-100" : "opacity-0",
                   )}
                   strokeWidth={2.5}

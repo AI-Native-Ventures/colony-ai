@@ -550,7 +550,7 @@ export function NostrKeyImportForm({
             <Input
               autoComplete="current-password"
               autoCorrect="off"
-              className="h-14 rounded-2xl border-black/20 bg-white px-12 text-center font-mono text-lg text-black/80 shadow-none placeholder:text-black/55 focus-visible:ring-black/35"
+              className="h-14 rounded-2xl border-[color:var(--colony-onboarding-security-line)] bg-[var(--colony-onboarding-security-field)] px-12 text-center font-mono text-lg text-[color:var(--colony-onboarding-security-ink)] shadow-none placeholder:text-[color:var(--colony-onboarding-security-muted)] focus-visible:ring-[color:var(--colony-onboarding-security-focus)]"
               data-testid="nostr-import-passphrase"
               id="nostr-import-passphrase"
               onChange={(event) => {
@@ -565,7 +565,7 @@ export function NostrKeyImportForm({
             />
             <Button
               aria-label={isRevealed ? "Hide password" : "Reveal password"}
-              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-black/55 hover:bg-black/5 hover:text-black/80"
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-[color:var(--colony-onboarding-security-muted)] hover:bg-[var(--colony-onboarding-security-hover)] hover:text-[color:var(--colony-onboarding-security-ink)]"
               data-testid="nostr-import-passphrase-reveal-toggle"
               disabled={isInteractionDisabled}
               onClick={() => setIsRevealed((current) => !current)}

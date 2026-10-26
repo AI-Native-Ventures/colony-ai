@@ -24,18 +24,11 @@ type FocusThreadDrawerProps = {
 };
 
 /**
- * Scrim over the channel content area behind the focus drawer.
- *
- * Veil, not shadow, and no blur: the channel fades toward the surface colour
- * rather than being darkened. A black wash is a multiply; it scales text and
- * background down together, so dark-on-light text keeps its contrast ratio and
- * stays readable at any opacity short of a solid bar. Fading toward
- * `background` instead compresses text against the surface in both themes,
- * which is what pushes the sliver back to colour and shape. Matches the shared
- * header backdrop's `bg-background/80` vocabulary, a touch heavier because this
- * one has to defeat body text rather than sit over a gap.
+ * Theme-aware scrim over the channel content behind the focus drawer. The
+ * light veil preserves the established light appearance; the dark veil fades
+ * toward the shared dark base surface so the drawer belongs to the same family.
  */
-const FOCUS_SCRIM_CLASS = "bg-[rgba(251,248,246,0.78)]";
+const FOCUS_SCRIM_CLASS = "bg-[var(--colony-focus-thread-scrim)]";
 
 /**
  * Hover eases the veil one step in both themes.
@@ -43,7 +36,8 @@ const FOCUS_SCRIM_CLASS = "bg-[rgba(251,248,246,0.78)]";
  * Feedback that the sliver is a target, deliberately not a peek: one step is
  * enough to register as interactive without making the channel readable.
  */
-const FOCUS_SCRIM_HOVER_CLASS = "hover:bg-[rgba(251,248,246,0.68)]";
+const FOCUS_SCRIM_HOVER_CLASS =
+  "hover:bg-[var(--colony-focus-thread-scrim-hover)]";
 
 /** Arrive and settle. The iOS sheet curve, shared with `buzz-side-panel-enter`. */
 const ENTER_EASE = [0.32, 0.72, 0, 1] as const;

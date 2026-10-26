@@ -334,7 +334,7 @@ export function ChannelManagementSheet({
         <DialogPrimitive.Content
           className={cn(
             PANEL_BASE_CLASS,
-            "h-full w-full cursor-default overflow-hidden border-l-0 bg-[#FBF8F6] p-0 dark:bg-colony-surface-raised",
+            "h-full w-full cursor-default overflow-hidden border-l-0 bg-[var(--colony-warm-surface-alt)] p-0",
             animateSplitEnter && PANEL_ENTER_MOTION_CLASS,
           )}
           data-testid="channel-management-sheet"
@@ -384,7 +384,7 @@ export function ChannelManagementSheet({
               PANEL_BASE_CLASS,
               PANEL_OVERLAY_CLASS,
               PANEL_ENTER_MOTION_CLASS,
-              "w-[380px] cursor-default overflow-hidden border-colony-border bg-[#FBF8F6] p-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=closed]:duration-200 dark:bg-colony-surface-raised",
+              "w-[380px] cursor-default overflow-hidden border-colony-border bg-[var(--colony-warm-surface-alt)] p-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=closed]:duration-200",
             )}
             data-testid="channel-management-sheet"
           >
@@ -535,7 +535,7 @@ export function ChannelManagementSheet({
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 justify-end gap-2.5 border-t border-colony-border bg-[#FBF8F6] px-6 py-4 dark:bg-colony-surface-raised">
+              <div className="flex shrink-0 justify-end gap-2.5 border-t border-colony-border bg-[var(--colony-warm-surface-alt)] px-6 py-4">
                 <Button
                   className="border-0 px-4.5 font-bold shadow-[0_0_0_1px_hsl(var(--colony-border-strong))]"
                   onClick={() => handleEditDialogOpenChange(false)}

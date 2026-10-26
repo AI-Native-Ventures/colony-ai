@@ -3,41 +3,6 @@
  * community rail, with the tokens it reads. Design pixels are written in rem.
  */
 
-:root.dark {
-  --colony-field-wall: #2a2432;
-  --colony-field-wall-fallback: #241f2b;
-  --colony-field-veil-top: rgb(20 16 28 / 66%);
-  --colony-field-veil-middle: rgb(20 16 28 / 58%);
-  --colony-field-veil-bottom: rgb(20 16 28 / 68%);
-  --colony-field-blob-opacity: 0.3;
-  --colony-field-blob-opacity-middle: 0.27;
-  --colony-field-grain-opacity: 0.1;
-  --colony-rail-top: #3b2c46;
-  --colony-rail-middle: #2c2a4c;
-  --colony-rail-bottom: #26356b;
-  --colony-rail-shade: rgb(0 0 0 / 22%);
-  --colony-sidebar-ink-soft: hsl(var(--colony-fg-secondary));
-  --colony-sidebar-line: rgb(255 255 255 / 16%);
-  --colony-sidebar-line-soft: rgb(255 255 255 / 12%);
-  --colony-sidebar-glass: rgb(255 255 255 / 9%);
-  --colony-sidebar-active: rgb(255 255 255 / 15%);
-  --colony-sidebar-active-shadow: 0 1px 2px rgb(0 0 0 / 30%);
-  --colony-sidebar-pill: rgb(255 255 255 / 14%);
-  --colony-sidebar-kbd: rgb(0 0 0 / 24%);
-  --colony-sidebar-search-ring: rgb(255 255 255 / 16%);
-  --colony-sidebar-avatar: #4a4152;
-  --colony-sidebar-avatar-ring: #2a2432;
-  --colony-notice-surface: rgb(255 255 255 / 10%);
-  --colony-notice-shadow: 0 8px 20px -12px rgb(0 0 0 / 60%);
-}
-
-/* The branded dark field is a mid-tone, so its soft ink is lighter than the
-   foreground-secondary the named themes use; every label reaches 4.5:1. */
-:root.dark[data-buzz-sidebar] {
-  --colony-sidebar-ink: hsl(var(--colony-fg));
-  --colony-sidebar-ink-soft: #dcd6e2;
-}
-
 /* ---------------------------------------------------------------- field -- */
 
 .colony-field {
@@ -197,7 +162,7 @@
   border: 0;
   border-radius: 0.75rem;
   background: rgb(255 255 255 / 88%);
-  color: #25222c;
+  color: var(--colony-ink-button);
   font-size: calc(14 * var(--colony-px));
   font-weight: 800;
   text-decoration: none;
@@ -210,7 +175,7 @@
 
 .colony-rail-button[aria-current="true"] {
   background: var(--colony-sidebar-ink);
-  color: #fffdfa;
+  color: var(--colony-accent-foreground);
   font-size: calc(16 * var(--colony-px));
 }
 
@@ -248,8 +213,8 @@
   padding: 0 0.3125rem;
   border-radius: 999px;
   background: hsl(var(--colony-danger));
-  box-shadow: 0 0 0 2px #d8c3ec;
-  color: #fff;
+  box-shadow: 0 0 0 2px var(--colony-focus-line);
+  color: var(--colony-state-foreground);
   font-size: calc(11 * var(--colony-px));
   font-weight: 800;
 }
@@ -262,7 +227,7 @@
   height: 0.625rem;
   border-radius: 50%;
   background: var(--colony-sidebar-ink);
-  box-shadow: 0 0 0 2px #d3c2ee;
+  box-shadow: 0 0 0 2px var(--colony-focus-line-strong);
 }
 
 .colony-rail-add {

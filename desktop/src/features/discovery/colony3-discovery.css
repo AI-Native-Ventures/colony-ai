@@ -626,7 +626,7 @@ button.c3d-search-chip {
   display: grid;
   flex: none;
   place-items: center;
-  color: #25222c;
+  color: var(--colony-ink-button);
 }
 
 .c3d-tile--44 {
@@ -1108,7 +1108,7 @@ button.c3d-search-chip {
   padding: 0 0.875rem;
   border: 0;
   border-radius: 0.625rem;
-  background: rgb(255 255 255 / 12%);
+  background: var(--colony-discovery-action-surface);
   color: var(--c3d-surface);
   font-size: calc(15 * var(--colony-px));
   font-weight: 700;
@@ -1116,7 +1116,7 @@ button.c3d-search-chip {
 }
 
 .c3d-selection-action:not(:disabled):hover {
-  background: rgb(255 255 255 / 20%);
+  background: var(--colony-discovery-action-hover);
 }
 
 .c3d-selection-action:disabled {
@@ -1126,11 +1126,11 @@ button.c3d-search-chip {
 
 .c3d-selection-action--light {
   background: var(--c3d-surface);
-  color: #25222c;
+  color: var(--colony-ink-button);
 }
 
 .c3d-selection-action--light:not(:disabled):hover {
-  background: #fff;
+  background: var(--colony-overlay);
 }
 
 .c3d-selection-clear {
@@ -1147,7 +1147,7 @@ button.c3d-search-chip {
 }
 
 .c3d-selection-clear:hover {
-  background: rgb(255 255 255 / 12%);
+  background: var(--colony-discovery-action-surface);
 }
 
 .c3d-table-wrap {
@@ -1191,7 +1191,7 @@ button.c3d-search-chip {
 }
 
 .c3d-table tbody tr.is-selected {
-  background: #f7f3fa;
+  background: var(--colony-row-hover);
 }
 
 .c3d-table th,
@@ -1293,7 +1293,7 @@ button.c3d-search-chip {
 }
 
 .is-selected .c3d-fit-bar {
-  background: #e6e0ec;
+  background: var(--colony-legacy-neutral);
 }
 
 .c3d-fit-bar > i {
@@ -1656,7 +1656,7 @@ button.c3d-search-chip {
 
 .c3d-step-mark--done {
   background: var(--c3d-ok);
-  color: #fff;
+  color: var(--colony-state-foreground);
 }
 
 .c3d-step-mark--bad {
@@ -1688,8 +1688,8 @@ button.c3d-search-chip {
 }
 
 .c3d-note--amber {
-  background: #fff6e6;
-  color: #5f3a00;
+  background: var(--colony-warning-surface);
+  color: var(--colony-warning-ink);
 }
 
 .c3d-note--amber > svg {

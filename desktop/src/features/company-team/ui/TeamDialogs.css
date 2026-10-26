@@ -18,7 +18,7 @@
   gap: 1.125rem;
   padding: 1.75rem;
   border-radius: 1.5rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 30px 80px -30px rgb(40 20 60 / 45%);
   color: hsl(var(--colony-fg));
 }
@@ -85,7 +85,7 @@
   padding: 0 0.875rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-family: inherit;
   font-size: calc(16 * var(--colony-px));
@@ -130,7 +130,7 @@
   padding: 0.75rem 0.875rem;
   border-radius: 0.875rem;
   background: hsl(var(--colony-danger-bg));
-  color: #7a2039;
+  color: var(--colony-danger-deepest-ink);
   font-size: calc(14.5 * var(--colony-px));
   line-height: 1.5;
 }
@@ -153,7 +153,7 @@
   gap: 0.875rem;
   padding: 0.875rem;
   border-radius: 1rem;
-  background: #fbf8f6;
+  background: var(--colony-warm-surface-alt);
 }
 
 .team-dialog-summary-avatar {
@@ -216,7 +216,7 @@
   padding: 0 1.125rem;
   border: 0;
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px hsl(var(--colony-border-strong));
   color: hsl(var(--colony-fg));
   cursor: pointer;
@@ -234,7 +234,7 @@
 .team-dialog-button[data-variant="danger"] {
   background: hsl(var(--colony-danger));
   box-shadow: none;
-  color: #fff;
+  color: var(--colony-state-foreground);
 }
 
 .team-dialog-button:disabled {

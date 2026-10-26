@@ -8,7 +8,7 @@ export function MessageTimelineErrorCard({
 }) {
   return (
     <div
-      className="my-auto flex flex-col items-center gap-2 rounded-[calc(18*var(--colony-px))] border-[1.5px] border-dashed border-[#e3afbf] bg-[#fdf4f7] px-[calc(22*var(--colony-px))] py-7 text-center"
+      className="my-auto flex flex-col items-center gap-2 rounded-[calc(18*var(--colony-px))] border-[1.5px] border-dashed border-[var(--colony-danger-line)] bg-[var(--colony-danger-surface)] px-[calc(22*var(--colony-px))] py-7 text-center"
       data-testid="message-timeline-error"
       role="alert"
     >
@@ -24,7 +24,7 @@ export function MessageTimelineErrorCard({
       </p>
       {onRetry ? (
         <button
-          className="c3c-button mt-2 inline-flex h-10 items-center gap-2 rounded-[calc(11*var(--colony-px))] bg-white px-4 text-colony-fg shadow-[0_0_0_1px_hsl(var(--colony-border-strong))] transition-colors hover:bg-colony-wash"
+          className="c3c-button mt-2 inline-flex h-10 items-center gap-2 rounded-[calc(11*var(--colony-px))] bg-[var(--colony-overlay)] px-4 text-colony-fg shadow-[0_0_0_1px_hsl(var(--colony-border-strong))] transition-colors hover:bg-colony-wash"
           data-testid="message-timeline-retry"
           onClick={onRetry}
           type="button"

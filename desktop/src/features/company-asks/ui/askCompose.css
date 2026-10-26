@@ -19,8 +19,8 @@
   --ask3-line2: hsl(var(--colony-border-strong));
   --ask3-accent: hsl(var(--colony-accent));
   --ask3-accent-ink: hsl(var(--colony-accent-ink));
-  --ask3-wash: #f7f3fa;
-  --ask3-wash2: #fbf8fc;
+  --ask3-wash: var(--colony-row-hover);
+  --ask3-wash2: var(--colony-soft-cool);
   --ask3-card-shadow:
     0 0 0 1px hsl(var(--colony-border)), 0 1px 2px rgba(40, 20, 60, 0.04);
   font-family: var(--colony-font-sans);
@@ -174,7 +174,7 @@ button.ask3-chip {
   gap: 1.375rem;
   padding: 1.75rem;
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: var(--ask3-card-shadow);
 }
 
@@ -203,7 +203,7 @@ button.ask3-chip {
   gap: 1.125rem;
   padding: 1.375rem;
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: var(--ask3-card-shadow);
 }
 
@@ -290,7 +290,7 @@ button.ask3-chip {
   box-sizing: border-box;
   border: 1px solid var(--ask3-line2);
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--ask3-ink);
   font-family: inherit;
   font-size: calc(16 * var(--px));
@@ -311,7 +311,7 @@ input[type="date"].ask3-control {
 /* The boards use the browser's own placeholder grey, not the app's lighter one. */
 .ask3-control::placeholder,
 .ask3-textarea::placeholder {
-  color: #757575;
+  color: var(--colony-placeholder);
   opacity: 1;
 }
 
@@ -437,22 +437,22 @@ input[type="date"].ask3-control {
 }
 
 .ask3-btn:disabled {
-  background: #ece7ef;
-  color: #a39daa;
+  background: var(--colony-ask-line);
+  color: var(--colony-ask-muted);
   cursor: not-allowed;
 }
 
 .ask3-btn[data-variant="secondary"] {
   padding: 0 1.125rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px var(--ask3-line2);
   color: var(--ask3-ink);
   font-weight: 600;
 }
 
 .ask3-btn[data-variant="secondary"]:disabled {
-  background: #fff;
-  color: #a39daa;
+  background: var(--colony-overlay);
+  color: var(--colony-ask-muted);
 }
 
 .ask3-btn[data-size="44"] {
@@ -578,7 +578,7 @@ input[type="date"].ask3-control {
   padding: 0.875rem;
   border: 0;
   border-radius: 0.875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px var(--ask3-line2);
   color: var(--ask3-ink);
   font-family: inherit;
@@ -627,8 +627,8 @@ input[type="date"].ask3-control {
   gap: 0.625rem;
   padding: 1rem;
   border-radius: 1rem;
-  background: #fff8ec;
-  box-shadow: inset 0 0 0 1px #f0d9a8;
+  background: var(--colony-warning-light-surface);
+  box-shadow: inset 0 0 0 1px var(--colony-warning-line);
 }
 
 .ask3-notice > .ask3-btn {
@@ -695,7 +695,7 @@ input[type="date"].ask3-control {
   border-radius: 0.875rem;
   background: hsl(var(--colony-info-bg));
   box-shadow: none;
-  color: #23497f;
+  color: var(--colony-info-deep-ink);
 }
 
 .ask3-notice[data-tone="info"] svg {
@@ -879,7 +879,7 @@ input[type="date"].ask3-control {
   padding: 1.125rem 1.25rem;
   border: 0;
   border-radius: 1.125rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px var(--ask3-line2);
   color: var(--ask3-ink);
   font-family: inherit;
@@ -899,7 +899,7 @@ input[type="date"].ask3-control {
   flex: none;
   place-items: center;
   border-radius: 0.8125rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--ask3-accent-ink);
   font-size: calc(19 * var(--px));
   font-weight: 800;
@@ -931,7 +931,7 @@ input[type="date"].ask3-control {
   align-items: center;
   padding: 0 0.6875rem;
   border-radius: 999px;
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--ask3-accent-ink);
   font-size: calc(13.5 * var(--px));
   font-weight: 800;
@@ -965,7 +965,7 @@ input[type="date"].ask3-control {
 }
 
 .ask3-seg label[data-selected="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 1px 3px rgba(60, 40, 80, 0.12);
   color: var(--ask3-ink);
   font-weight: 800;
@@ -991,7 +991,7 @@ input[type="date"].ask3-control {
   gap: 1rem;
   padding: 1.375rem;
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: var(--ask3-card-shadow);
 }
 
@@ -1043,7 +1043,7 @@ input[type="date"].ask3-control {
   padding: 1.125rem;
   border-radius: 1.125rem;
   background: hsl(var(--colony-success-bg));
-  color: #1f5c3e;
+  color: var(--colony-ok-deep-ink);
 }
 
 .ask3-success-mark {
@@ -1053,7 +1053,7 @@ input[type="date"].ask3-control {
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-success));
 }
 
@@ -1084,7 +1084,7 @@ input[type="date"].ask3-control {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #1f5c3e;
+  color: var(--colony-ok-deep-ink);
   font: inherit;
   font-size: calc(15 * var(--px));
   font-weight: 800;
@@ -1106,7 +1106,7 @@ input[type="date"].ask3-control {
   gap: 1rem;
   padding: 1.5rem;
   border-radius: 1.5rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 30px 80px -30px rgba(40, 20, 60, 0.45);
 }
 
@@ -1153,7 +1153,7 @@ input[type="date"].ask3-control {
   margin-left: auto;
   padding: 0 0.5625rem;
   border-radius: 999px;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px var(--ask3-line2);
   color: var(--ask3-ink2);
   font-size: calc(13 * var(--px));
@@ -1162,7 +1162,7 @@ input[type="date"].ask3-control {
 
 .ask3-invite-search {
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 1px var(--ask3-line2);
 }
 
@@ -1278,7 +1278,7 @@ input[type="date"].ask3-control {
   padding: 0 0.75rem;
   border: 1px solid var(--ask3-line2);
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--ask3-ink);
   font-family: inherit;
   font-size: calc(15.5 * var(--px));
