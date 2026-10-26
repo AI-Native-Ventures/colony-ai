@@ -142,6 +142,8 @@ test("a community change forgets what was learned", async () => {
 });
 
 test("the message is plain words with no em dash", () => {
-  assert.ok(!TENANT_COMMUNITY_UNKNOWN_MESSAGE.includes(String.fromCharCode(0x2014)));
+  assert.ok(
+    !TENANT_COMMUNITY_UNKNOWN_MESSAGE.includes(String.fromCharCode(0x2014)),
+  );
   assert.ok(!/buzz/i.test(TENANT_COMMUNITY_UNKNOWN_MESSAGE));
 });
