@@ -11,9 +11,15 @@ import type {
   DiscoveryRunStatus,
   DiscoveryRunner,
 } from "./discoveryProvider";
+import type {
+  DiscoveryPlace,
+  DiscoverySearchResponse,
+} from "./discoverySearch";
 
 export const MAX_STORED_CAMPAIGNS = 50;
 const MAX_TOP_FITS = 5;
+/** The server returns 1 to 50 places a page; a stored page is capped the same. */
+const MAX_PENDING_PLACES = 50;
 const STORE_VERSION = 1;
 
 export type TopFit = { id: string; name: string; fit: number };
@@ -35,6 +41,13 @@ export type CampaignInternals = {
   stopNotePosted: boolean;
   /** The best matches found so far, for the Sales message. */
   topFits: TopFit[];
+  /**
+   * The search page that was paid for but is not fully saved yet. Written the
+   * moment a page arrives and cleared only once every place on it is saved, so
+   * a failed save, a pause or a restart resumes from it instead of searching
+   * (and paying) again.
+   */
+  pendingPage: DiscoverySearchResponse | null;
 };
 
 export type StoredCampaign = DiscoveryCampaign &
@@ -104,6 +117,57 @@ function parseTopFits(value: unknown): TopFit[] {
   return fits.slice(0, MAX_TOP_FITS);
 }
 
+function strOrNull(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function numOrNull(value: unknown): number | null {
+  return num(value);
+}
+
+function parsePlace(raw: unknown): DiscoveryPlace | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const value = raw as Record<string, unknown>;
+  return {
+    placeId: strOrNull(value.placeId),
+    name: str(value.name) ?? "",
+    category: strOrNull(value.category),
+    subtypes: strOrNull(value.subtypes),
+    address: strOrNull(value.address),
+    city: strOrNull(value.city),
+    state: strOrNull(value.state),
+    country: strOrNull(value.country),
+    phone: strOrNull(value.phone),
+    website: strOrNull(value.website),
+    email: strOrNull(value.email),
+    rating: numOrNull(value.rating),
+    reviews: numOrNull(value.reviews),
+    latitude: numOrNull(value.latitude),
+    longitude: numOrNull(value.longitude),
+    mapsUrl: strOrNull(value.mapsUrl),
+    description: strOrNull(value.description),
+    businessStatus: strOrNull(value.businessStatus),
+  };
+}
+
+function parsePendingPage(value: unknown): DiscoverySearchResponse | null {
+  if (typeof value !== "object" || value === null) return null;
+  const page = value as Record<string, unknown>;
+  if (!Array.isArray(page.places)) return null;
+  const places = page.places.slice(0, MAX_PENDING_PLACES).flatMap((entry) => {
+    const place = parsePlace(entry);
+    return place ? [place] : [];
+  });
+  if (places.length === 0) return null;
+  const nextSkip = num(page.nextSkip);
+  return {
+    provider: str(page.provider) ?? "",
+    places,
+    estimatedCostUsd: num(page.estimatedCostUsd) ?? 0,
+    nextSkip: nextSkip !== null && nextSkip >= 0 ? Math.floor(nextSkip) : null,
+  };
+}
+
 /** Reads one stored campaign; null when it is not usable. */
 export function parseCampaign(raw: unknown): StoredCampaign | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -167,6 +231,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
         : "none",
     stopNotePosted: value.stopNotePosted === true,
     topFits: parseTopFits(value.topFits),
+    pendingPage: parsePendingPage(value.pendingPage),
   };
 }
 

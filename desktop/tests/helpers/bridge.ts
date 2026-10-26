@@ -8,6 +8,7 @@ import type {
   MockManagedAgentSeed,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
 export const TEST_IDENTITIES = {
@@ -985,6 +986,40 @@ async function seedPreviewFeaturesEnabled(page: Page) {
   );
 }
 
+/**
+ * The mock relay's answer to `GET /api/communities/mine?scope=member`: the
+ * seeded host with its tenant community UUID, which is never the desktop's
+ * local community id. Specs that need a different answer (an unknown tenant, a
+ * failing lookup) register their own route afterwards; the last route wins.
+ */
+async function installMockTenantDirectory(
+  page: Page,
+  options: BridgeOptions,
+  ownerPubkey: string,
+) {
+  if (options.mode !== "mock") return;
+  const host = new URL(options.relayWsUrl ?? DEFAULT_RELAY_WS_URL).host;
+  await page.route(/\/api\/communities\/mine(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        owner_pubkey: ownerPubkey,
+        communities: [
+          {
+            id: MOCK_TENANT_COMMUNITY_ID,
+            name: host,
+            slug: host,
+            normalized_host: host,
+            owner_pubkey: ownerPubkey,
+            role: "owner",
+            created_at: 0,
+            archived_at: null,
+          },
+        ],
+      },
+    }),
+  );
+}
+
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
     options.mode === "relay"
@@ -1006,6 +1041,11 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       options.mock?.visualFixture?.businessName,
     );
   }
+  await installMockTenantDirectory(
+    page,
+    options,
+    identity?.pubkey ?? DEFAULT_MOCK_PUBKEY,
+  );
   if (!options.skipOnboardingSeed) {
     await seedOnboardingCompletionForKnownIdentities(
       page,

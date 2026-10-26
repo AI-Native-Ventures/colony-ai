@@ -168,3 +168,16 @@ export function listMyCommunities(
 ): Promise<MyCommunitiesResponse> {
   return requestJson(httpBase, "/api/communities/mine", "GET", undefined, true);
 }
+
+/** Every community the signer belongs to on this relay, owned or joined. */
+export function listMemberCommunities(
+  httpBase: string,
+): Promise<MyCommunitiesResponse> {
+  return requestJson(
+    httpBase,
+    "/api/communities/mine?scope=member",
+    "GET",
+    undefined,
+    true,
+  );
+}

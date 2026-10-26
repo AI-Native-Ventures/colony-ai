@@ -1,3 +1,4 @@
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { RelayEvent } from "@/shared/api/types";
 
 export const BUSINESS_RECORD_SCHEMA_VERSION = 1;
@@ -189,8 +190,13 @@ export function parseContent<T>(event: RelayEvent, label: string): T {
   return value;
 }
 
+/**
+ * A business-scoped coordinate. `communityId` must be the relay's tenant
+ * community id (see `tenantCommunity.ts`), never the desktop's local community
+ * id; the type refuses the latter at compile time.
+ */
 export function businessDTag(
-  communityId: string,
+  communityId: TenantCommunityId,
   recordType: string,
   recordId: string,
 ): string {
@@ -198,7 +204,7 @@ export function businessDTag(
 }
 
 export function proposalVersionDTag(
-  communityId: string,
+  communityId: TenantCommunityId,
   proposalId: string,
   revision: number,
 ): string {

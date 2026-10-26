@@ -7,6 +7,7 @@ import {
   useChannelsQuery,
 } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useTenantCommunityId } from "@/features/communities/useTenantCommunityId";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import type { Channel } from "@/shared/api/types";
@@ -25,6 +26,9 @@ export function useBusinessRecords() {
   const { activeCommunity } = useCommunities();
   const activeCommunityId = activeCommunity?.id ?? null;
   const activeCommunityRelayUrl = activeCommunity?.relayUrl ?? null;
+  // Record coordinates are namespaced by the relay's tenant id. The local
+  // community id above only keys caches; it is never used in a d-tag.
+  const tenant = useTenantCommunityId(activeCommunityRelayUrl);
   const identity = useIdentityQuery();
   const channels = useChannelsQuery({ enabled: Boolean(activeCommunity) });
   const channelQuery = useQuery({
@@ -115,17 +119,28 @@ export function useBusinessRecords() {
     };
   }, [activeCommunityId, channelId, queryClient, recordsKey]);
 
+  const { retry: retryTenant } = tenant;
   const refresh = React.useCallback(async () => {
+    await retryTenant();
     if (!channelId) {
       await channelQuery.refetch();
       return;
     }
     await queryClient.invalidateQueries({ queryKey: recordsKey });
     await recordsQuery.refetch();
-  }, [channelId, channelQuery, queryClient, recordsKey, recordsQuery]);
+  }, [
+    channelId,
+    channelQuery,
+    queryClient,
+    recordsKey,
+    recordsQuery,
+    retryTenant,
+  ]);
 
   return {
-    communityId: activeCommunityId,
+    communityId: tenant.tenantId,
+    tenantLoading: tenant.pending,
+    tenantError: tenant.error,
     channelId,
     channelLoading:
       Boolean(activeCommunity) &&

@@ -15,7 +15,7 @@ import {
   summarizeLead,
 } from "./leadReferenceModel.ts";
 
-const COMMUNITY = "e2e-default-community";
+const COMMUNITY = "7c1f3a4e-0d2b-4c58-9a6e-5b8d2f1e9a03";
 const LEAD_ID = "1e1a7000-0000-4000-9000-000000001002";
 const CHANNEL = "1e1a7000-0000-4000-8000-000000000001";
 

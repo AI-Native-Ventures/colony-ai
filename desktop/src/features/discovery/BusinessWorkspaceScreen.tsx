@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { DiscoveryScreen } from "./DiscoveryScreen";
 import { CampaignScreen } from "./CampaignScreen";
+import { TENANT_COMMUNITY_UNKNOWN_MESSAGE } from "@/features/communities/tenantCommunity";
 import { W10Error, W10Loading } from "./BusinessCommon";
 import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
@@ -35,9 +36,22 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
 
   if (
     business.channelLoading ||
+    business.tenantLoading ||
     (business.channelId && business.recordsLoading)
   ) {
     return <W10Loading />;
+  }
+  if (business.tenantError) {
+    // Without the relay's own business id no record can be saved or found, so
+    // say so plainly instead of showing records that cannot be changed.
+    return (
+      <W10Error
+        message={TENANT_COMMUNITY_UNKNOWN_MESSAGE}
+        onRetry={() => void business.refresh()}
+        retrying={business.tenantLoading}
+        title="Business could not be confirmed"
+      />
+    );
   }
   if (business.channelError instanceof SalesChannelSetupError) {
     return (

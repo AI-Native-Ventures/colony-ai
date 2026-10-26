@@ -17,6 +17,7 @@ import {
   type ServiceRecord,
 } from "./businessRecordContract";
 import { publishBusinessCommand } from "./businessRecordRelay";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 
 export type ProspectChanges = Omit<ProspectRecord, "party"> & {
   displayName: string;
@@ -63,7 +64,7 @@ export function parseProposalTerms(value: string): ProposalTerms {
 
 export async function publishServiceAction(input: {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   current: { eventId: string; record: ServiceHead } | null;
   serviceId: string;
   name: string;
@@ -97,7 +98,7 @@ export async function publishServiceAction(input: {
 
 export async function publishProspectAction(input: {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   current: { eventId: string; record: ProspectHead } | null;
   changes: ProspectChanges;
   activity?: Pick<ProspectActivity, "activityKind" | "content"> &
@@ -165,7 +166,7 @@ export async function publishProspectAction(input: {
 
 export async function publishProposalVersion(input: {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   proposalId: string;
   prospect: ProspectHead;
   current: {
@@ -210,7 +211,7 @@ export async function publishProposalVersion(input: {
 
 export async function publishProposalAcceptance(input: {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   proposal: {
     head: {
       proposalId: string;
