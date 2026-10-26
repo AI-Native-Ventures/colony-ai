@@ -58,7 +58,7 @@ async function evaluateIn<T>(app: BrokerApp, tabId: string, code: string) {
 }
 
 /** Every tool an agent has, on one tab, each within its budget. */
-async function useEveryTool(
+async function exerciseEveryTool(
   app: BrokerApp,
   client: { callTool(tool: string, args: object): Promise<Reply> },
   tabId: string,
@@ -172,7 +172,7 @@ test("real Electron background: an agent's tab that was never shown, shown then 
     const person = await app.createTab(origin, "visible");
     // A reference screenshot of the page while it is on screen.
     const reference = await app.agent(taskFor("0"), person.id, [origin]);
-    const baseline = await useEveryTool(
+    const baseline = await exerciseEveryTool(
       app,
       reference.client,
       person.id,
@@ -208,7 +208,7 @@ test("real Electron background: an agent's tab that was never shown, shown then 
       const before = await personView(app);
       const agent = await app.agent(taskFor(letter), tab.id, [origin]);
       await test.step(name, async () => {
-        await useEveryTool(app, agent.client, tab.id, origin, baseline);
+        await exerciseEveryTool(app, agent.client, tab.id, origin, baseline);
       });
       expect(await personView(app), name).toEqual(before);
       expect(await visibleTabs(app), name).toEqual([person.id]);
@@ -230,7 +230,7 @@ for (const state of ["hidden", "minimized"] as const) {
       const agent = await app.agent(taskFor("d"), mine.id, [origin]);
       await app.windowState(state);
       const before = await personView(app);
-      await useEveryTool(app, agent.client, mine.id, origin);
+      await exerciseEveryTool(app, agent.client, mine.id, origin);
       expect(await personView(app)).toEqual(before);
       expect(await visibleTabs(app)).toEqual([person.id]);
       await app.windowState("shown");
@@ -279,7 +279,7 @@ test("real Electron background: two agents work in two tabs at the same time, in
       });
     await Promise.all(
       agents.map((agent, index) =>
-        useEveryTool(app, agent.client, tabs[index].id, origin),
+        exerciseEveryTool(app, agent.client, tabs[index].id, origin),
       ),
     );
     // Nobody queued behind the waiting agent or behind the visible tab.

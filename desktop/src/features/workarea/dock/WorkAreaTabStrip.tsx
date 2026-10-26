@@ -219,7 +219,9 @@ function WorkAreaTabItem({
         <span>{label}</span>
       </button>
       {Badge ? <Badge channelId={channelId} id={badgeId} /> : null}
-      {TabExtras ? <TabExtras channelId={channelId} tabId={tab.id} /> : null}
+      {TabExtras ? (
+        <TabExtras channelId={channelId} selected={selected} tabId={tab.id} />
+      ) : null}
       <button
         aria-label={`Close ${label}`}
         className="colony-work-area-tab-close"

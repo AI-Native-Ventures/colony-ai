@@ -21,9 +21,11 @@ import {
  */
 export function BrowserTabExtras({
   tabId,
+  selected,
 }: {
   channelId: string;
   tabId: string;
+  selected: boolean;
 }) {
   const pageKey = browserPageKeyOf(tabId);
   const page = React.useSyncExternalStore(
@@ -46,6 +48,7 @@ export function BrowserTabExtras({
         className="colony-work-area-tab-private"
         data-private={page.private ? "true" : "false"}
         data-testid={`browser-keep-private-${pageKey}`}
+        tabIndex={selected ? 0 : -1}
         onClick={() => setBrowserPagePrivate(pageKey, !page.private)}
         title={
           page.private

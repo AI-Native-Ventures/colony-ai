@@ -80,6 +80,17 @@ export function WorkAreaBrowserTab({
     defaultAccess: false,
     agentHasIt: false,
   });
+  // The controls report on every change; an unchanged report is not a render.
+  const reportSharing = React.useCallback(
+    (next: BrowserSharing) =>
+      setSharing((current) =>
+        current.defaultAccess === next.defaultAccess &&
+        current.agentHasIt === next.agentHasIt
+          ? current
+          : next,
+      ),
+    [],
+  );
   const hasPage = page !== null;
 
   // A page the person just made takes the address bar, once its tab is shown.
@@ -167,7 +178,7 @@ export function WorkAreaBrowserTab({
         hostId={page.hostId}
         url={page.url}
         isPrivate={page.private}
-        onSharingChange={setSharing}
+        onSharingChange={reportSharing}
       />
       <BrowserNotices notices={notices} pageKey={pageKey} />
       <BrowserViewport active={active} page={page} />

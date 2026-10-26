@@ -61,6 +61,8 @@ export type WorkAreaTabDefinition = {
   readonly TabExtras?: React.ComponentType<{
     channelId: string;
     tabId: string;
+    /** This tab is the one on screen. */
+    selected: boolean;
   }>;
   /** A small count after the label (the Work tab's open work), read live. */
   readonly Badge?: React.ComponentType<{ channelId: string; id?: string }>;
