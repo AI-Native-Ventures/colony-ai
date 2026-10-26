@@ -678,6 +678,40 @@ test("a screenshot that cannot be taken even on the stage fails with a plain err
   assert.ok(names.includes("unmaskCredentials"));
 });
 
+test("a click and typing on a page that is not on screen happen on the stage and the page goes back after", async () => {
+  const rig = createRig();
+  const order = [];
+  rig.adapter.renderLease = async (id) => {
+    order.push(["lease", id]);
+    return { staged: true, release: async () => order.push(["release"]) };
+  };
+  const original = rig.debuggerFake.sendCommand;
+  rig.debuggerFake.sendCommand = async (method, params) => {
+    if (method.startsWith("Input.")) order.push(["input", method]);
+    return original(method, params);
+  };
+  await rig.driver.click("tab-1", 11);
+  assert.deepEqual(order[0], ["lease", "tab-1"]);
+  assert.deepEqual(order.at(-1), ["release"]);
+  assert.equal(
+    order.filter((entry) => entry[0] === "input").length,
+    3,
+    "move, press and release",
+  );
+  order.length = 0;
+  await rig.driver.type("tab-1", 11, "hello");
+  assert.deepEqual(order[0], ["lease", "tab-1"]);
+  assert.deepEqual(order.at(-1), ["release"]);
+  assert.ok(order.some((entry) => entry[1] === "Input.insertText"));
+  // A refused click still gives the page back.
+  rig.state.hit = false;
+  order.length = 0;
+  await assert.rejects(rig.driver.click("tab-1", 11), {
+    driverCode: "click_intercepted",
+  });
+  assert.deepEqual(order.at(-1), ["release"]);
+});
+
 test("snapshot returns the tree, DOM derived extras and the document id", async () => {
   const rig = createRig();
   rig.state.domChildren = [

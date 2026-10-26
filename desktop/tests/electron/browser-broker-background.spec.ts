@@ -132,8 +132,8 @@ async function exerciseEveryTool(
   if (reference)
     expect(shot.bytes).toBeGreaterThan(reference.screenshotBytes * 0.5);
 
-  for (const [tool, ms] of Object.entries(timings))
-    expect(ms, `${tool} took ${ms}ms`).toBeLessThan(TOOL_BUDGET_MS);
+  const slow = Object.entries(timings).filter(([, ms]) => ms >= TOOL_BUDGET_MS);
+  expect(slow, `every tool took: ${JSON.stringify(timings)}`).toEqual([]);
   return { screenshotBytes: shot.bytes };
 }
 

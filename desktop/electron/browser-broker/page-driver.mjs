@@ -406,6 +406,139 @@ export function createPageDriver({
     }
   }
 
+  /**
+   * Run page input while the page is drawn. A page that is not on screen has
+   * no frames to acknowledge input with, so on some platforms a click waits
+   * several seconds for an answer that never comes; on the stage it is
+   * answered at once. A page that is on screen is not touched.
+   */
+  async function whileRendered(tabId, work) {
+    const lease = await adapter.renderLease?.(tabId);
+    try {
+      return await work();
+    } finally {
+      await lease?.release();
+    }
+  }
+
+  async function clickOnPage(tabId, backendNodeId, { signal, check } = {}) {
+    const session = await sessionFor(tabId);
+    const objectId = await resolve(session, backendNodeId, signal).catch(() => {
+      throw new DriverError("element_not_actionable");
+    });
+    try {
+      const box = await boxOf(session, backendNodeId, signal);
+      check?.();
+      const hit = await call(
+        session,
+        objectId,
+        "hitTest",
+        [box.x, box.y],
+        signal,
+      );
+      if (!hit) throw new DriverError("click_intercepted");
+      // Last gate before real input: a revoke or take over lands here.
+      check?.();
+      adapter.consumeBlocked?.(tabId);
+      const base = {
+        x: box.x,
+        y: box.y,
+        button: "left",
+        pointerType: "mouse",
+      };
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mouseMoved" },
+        signal,
+      );
+      check?.();
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mousePressed", clickCount: 1 },
+        signal,
+      );
+      check?.();
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mouseReleased", clickCount: 1 },
+        signal,
+      );
+    } finally {
+      await release(session, objectId);
+    }
+    const blocked = adapter.consumeBlocked?.(tabId);
+    return blocked ? { blocked } : {};
+  }
+
+  async function typeOnPage(
+    tabId,
+    backendNodeId,
+    text,
+    { submit = false, signal, check } = {},
+  ) {
+    const session = await sessionFor(tabId);
+    const objectId = await resolve(session, backendNodeId, signal).catch(() => {
+      throw new DriverError("element_not_actionable");
+    });
+    try {
+      await send(session, "DOM.focus", { backendNodeId }, signal).catch(() => {
+        throw new DriverError("element_not_actionable");
+      });
+      await call(session, objectId, "selectContents", [], signal);
+      check?.();
+      adapter.consumeBlocked?.(tabId);
+      if (text.length > 0) {
+        await send(session, "Input.insertText", { text }, signal);
+      } else {
+        for (const type of ["keyDown", "keyUp"])
+          await send(
+            session,
+            "Input.dispatchKeyEvent",
+            {
+              type,
+              key: "Delete",
+              code: "Delete",
+              windowsVirtualKeyCode: 46,
+            },
+            signal,
+          );
+      }
+      if (submit) {
+        check?.();
+        await send(
+          session,
+          "Input.dispatchKeyEvent",
+          {
+            type: "keyDown",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13,
+            text: "\r",
+          },
+          signal,
+        );
+        await send(
+          session,
+          "Input.dispatchKeyEvent",
+          {
+            type: "keyUp",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13,
+          },
+          signal,
+        );
+      }
+    } finally {
+      await release(session, objectId);
+    }
+    const blocked = adapter.consumeBlocked?.(tabId);
+    return blocked ? { blocked } : {};
+  }
+
   const driver = {
     attach(value) {
       broker = value;
@@ -545,129 +678,13 @@ export function createPageDriver({
       }
     },
 
-    async click(tabId, backendNodeId, { signal, check } = {}) {
-      const session = await sessionFor(tabId);
-      const objectId = await resolve(session, backendNodeId, signal).catch(
-        () => {
-          throw new DriverError("element_not_actionable");
-        },
-      );
-      try {
-        const box = await boxOf(session, backendNodeId, signal);
-        check?.();
-        const hit = await call(
-          session,
-          objectId,
-          "hitTest",
-          [box.x, box.y],
-          signal,
-        );
-        if (!hit) throw new DriverError("click_intercepted");
-        // Last gate before real input: a revoke or take over lands here.
-        check?.();
-        adapter.consumeBlocked?.(tabId);
-        const base = {
-          x: box.x,
-          y: box.y,
-          button: "left",
-          pointerType: "mouse",
-        };
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mouseMoved" },
-          signal,
-        );
-        check?.();
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mousePressed", clickCount: 1 },
-          signal,
-        );
-        check?.();
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mouseReleased", clickCount: 1 },
-          signal,
-        );
-      } finally {
-        await release(session, objectId);
-      }
-      const blocked = adapter.consumeBlocked?.(tabId);
-      return blocked ? { blocked } : {};
-    },
+    click: (tabId, backendNodeId, options) =>
+      whileRendered(tabId, () => clickOnPage(tabId, backendNodeId, options)),
 
-    async type(
-      tabId,
-      backendNodeId,
-      text,
-      { submit = false, signal, check } = {},
-    ) {
-      const session = await sessionFor(tabId);
-      const objectId = await resolve(session, backendNodeId, signal).catch(
-        () => {
-          throw new DriverError("element_not_actionable");
-        },
-      );
-      try {
-        await send(session, "DOM.focus", { backendNodeId }, signal).catch(
-          () => {
-            throw new DriverError("element_not_actionable");
-          },
-        );
-        await call(session, objectId, "selectContents", [], signal);
-        check?.();
-        adapter.consumeBlocked?.(tabId);
-        if (text.length > 0) {
-          await send(session, "Input.insertText", { text }, signal);
-        } else {
-          for (const type of ["keyDown", "keyUp"])
-            await send(
-              session,
-              "Input.dispatchKeyEvent",
-              {
-                type,
-                key: "Delete",
-                code: "Delete",
-                windowsVirtualKeyCode: 46,
-              },
-              signal,
-            );
-        }
-        if (submit) {
-          check?.();
-          await send(
-            session,
-            "Input.dispatchKeyEvent",
-            {
-              type: "keyDown",
-              key: "Enter",
-              code: "Enter",
-              windowsVirtualKeyCode: 13,
-              text: "\r",
-            },
-            signal,
-          );
-          await send(
-            session,
-            "Input.dispatchKeyEvent",
-            {
-              type: "keyUp",
-              key: "Enter",
-              code: "Enter",
-              windowsVirtualKeyCode: 13,
-            },
-            signal,
-          );
-        }
-      } finally {
-        await release(session, objectId);
-      }
-      const blocked = adapter.consumeBlocked?.(tabId);
-      return blocked ? { blocked } : {};
-    },
+    type: (tabId, backendNodeId, text, options) =>
+      whileRendered(tabId, () =>
+        typeOnPage(tabId, backendNodeId, text, options),
+      ),
 
     async select(tabId, backendNodeId, values, { signal, check } = {}) {
       const session = await sessionFor(tabId);
