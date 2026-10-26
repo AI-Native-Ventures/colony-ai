@@ -150,6 +150,12 @@ beforeEach(async () => {
     "./useDetachedAgentStart.ts"
   );
   resetDetachedAgentStarts();
+  // So is the store of unanswered mentions: a wake registered by one test
+  // would otherwise pull the next test's replay floor back.
+  const { resetAgentStartWatches } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  resetAgentStartWatches();
   // The toast-scope mirror is a module singleton too. Point it at community A
   // — what `useCommunityInit` does when A's apply completes — so failure
   // warnings deliver by default, as in the running app.
@@ -321,6 +327,82 @@ test("a wake with no queued floor captures fire time", async () => {
       startCalls[0].replayFloorUnix <= after,
     "callers with no queued floor keep the fire-time capture",
   );
+  rendered.unmount();
+});
+
+test("a second start replays from the OLDEST mention nobody answered", async () => {
+  // GATE-302: the first mention (03:00:27) was never picked up, the harness
+  // was gone, and the second mention (03:09:09) spawned a new harness whose
+  // replay floor was the second message. The first one was skipped for good.
+  const { act, rendered } = await renderDetachedStart();
+  const firstMention = Math.floor(Date.now() / 1000) - 522;
+  const secondMention = firstMention + 522;
+
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, firstMention);
+    await settle();
+  });
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, secondMention);
+    await settle();
+  });
+
+  assert.equal(startCalls.length, 2);
+  assert.equal(startCalls[0].replayFloorUnix, firstMention);
+  assert.equal(
+    startCalls[1].replayFloorUnix,
+    firstMention,
+    "the new harness must reach back to the first unanswered mention",
+  );
+  rendered.unmount();
+});
+
+test("an agent that picked the first mention up does not drag the next floor back", async () => {
+  const { act, rendered } = await renderDetachedStart();
+  const { resolveAgentStartWatches } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  const firstMention = Math.floor(Date.now() / 1000) - 522;
+  const secondMention = firstMention + 522;
+
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, firstMention);
+    await settle();
+  });
+  resolveAgentStartWatches(AGENT);
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, secondMention);
+    await settle();
+  });
+
+  assert.equal(startCalls[1].replayFloorUnix, secondMention);
+  rendered.unmount();
+});
+
+test("a start that fails outright marks the conversation as not started", async () => {
+  const { act, rendered } = await renderDetachedStart();
+  const { getAgentStartWatches } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  holdStarts = true;
+
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, undefined, {
+      channelId: "channel-welcome",
+      threadHeadId: null,
+    });
+    await settle();
+  });
+  assert.equal(getAgentStartWatches("channel-welcome")[0].phase, "starting");
+
+  await act(async () => {
+    heldStarts.shift().reject();
+    await settle();
+  });
+
+  const [watch] = getAgentStartWatches("channel-welcome");
+  assert.equal(watch.phase, "stalled");
+  assert.equal(watch.reason, "spawn failed");
   rendered.unmount();
 });
 

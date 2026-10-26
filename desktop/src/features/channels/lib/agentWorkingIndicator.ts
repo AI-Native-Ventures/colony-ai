@@ -1,3 +1,4 @@
+import type { AgentStartWatch } from "@/features/agents/agentStartWatch";
 import type {
   ChannelTurnError,
   ChannelWorkingAgent,
@@ -8,6 +9,10 @@ import type {
  * (the channel) and in the open thread panel. It only decides what to show;
  * the data comes from the unified working signal (`agentWorkingSignal`) and
  * the bot typing entries, which carry the thread an agent is replying in.
+ *
+ * The same line also covers the time before the agent has picked a mention
+ * up: "Scout is starting..." while the agent is being woken, and a plain note
+ * with a way to try again when it never answered (`agentStartWatch`).
  */
 
 /** How long "Scout hit a problem" stays visible after the turn stopped. */
@@ -23,7 +28,11 @@ export type WorkingIndicatorAgent = {
 export type AgentWorkingIndicatorState =
   | { kind: "hidden" }
   | { kind: "working"; agents: WorkingIndicatorAgent[] }
-  | { kind: "error"; agents: WorkingIndicatorAgent[] };
+  | { kind: "error"; agents: WorkingIndicatorAgent[] }
+  /** Woken for a mention, nothing picked up yet. `anchorAt` is the send time. */
+  | { kind: "starting"; agents: WorkingIndicatorAgent[] }
+  /** Never picked the mention up (or failed to start): offer a retry. */
+  | { kind: "stalled"; agents: WorkingIndicatorAgent[] };
 
 export const HIDDEN_WORKING_INDICATOR: AgentWorkingIndicatorState = {
   kind: "hidden",
@@ -54,6 +63,8 @@ type SelectInput = {
   now: number;
   /** Agents' messages in the scope; a reply posted since the turn began ends the notice. */
   posted?: PostedAt;
+  /** Agents woken for a mention in this conversation that have not answered. */
+  starts?: readonly AgentStartWatch[];
   working: readonly ChannelWorkingAgent[];
 };
 
@@ -83,7 +94,7 @@ export function latestPostedAt(
   return latest.size === 0 ? NO_POSTED_AT : latest;
 }
 
-function hasReplied(
+export function hasReplied(
   posted: PostedAt | undefined,
   pubkey: string,
   anchorAt: number,
@@ -96,15 +107,58 @@ function freshErrors(errors: readonly ChannelTurnError[], now: number) {
   return errors.filter((error) => now - error.at < TURN_ERROR_VISIBLE_MS);
 }
 
+/**
+ * Agents the person is still waiting on to pick a mention up, split into the
+ * ones being started and the ones that never answered. An agent already shown
+ * as working or errored, or that has replied since the wait began, is not
+ * waited on any more.
+ */
+function waitingOn(
+  starts: readonly AgentStartWatch[],
+  scopeMatches: (watch: AgentStartWatch) => boolean,
+  skip: ReadonlySet<string>,
+  posted: PostedAt | undefined,
+  nameOf: (pubkey: string) => string,
+): { starting: WorkingIndicatorAgent[]; stalled: WorkingIndicatorAgent[] } {
+  const starting: WorkingIndicatorAgent[] = [];
+  const stalled: WorkingIndicatorAgent[] = [];
+  for (const watch of starts) {
+    const pubkey = key(watch.pubkey);
+    if (
+      !scopeMatches(watch) ||
+      skip.has(pubkey) ||
+      hasReplied(posted, pubkey, watch.since)
+    ) {
+      continue;
+    }
+    (watch.phase === "stalled" ? stalled : starting).push({
+      pubkey: watch.pubkey,
+      name: nameOf(watch.pubkey),
+      anchorAt: watch.since,
+    });
+  }
+  return { starting, stalled };
+}
+
 function toState(
   working: WorkingIndicatorAgent[],
   errored: WorkingIndicatorAgent[],
+  waiting: {
+    starting: WorkingIndicatorAgent[];
+    stalled: WorkingIndicatorAgent[];
+  } = { starting: [], stalled: [] },
 ): AgentWorkingIndicatorState {
   if (working.length > 0) {
     return { kind: "working", agents: working };
   }
   if (errored.length > 0) {
     return { kind: "error", agents: errored };
+  }
+  if (waiting.stalled.length > 0) {
+    return { kind: "stalled", agents: waiting.stalled };
+  }
+  if (waiting.starting.length > 0) {
+    return { kind: "starting", agents: waiting.starting };
   }
   return HIDDEN_WORKING_INDICATOR;
 }
@@ -149,6 +203,7 @@ export function selectChannelWorkingIndicator({
   nameOf,
   now,
   posted,
+  starts = [],
   working,
 }: SelectInput): AgentWorkingIndicatorState {
   const channelTyping = new Set<string>();
@@ -187,7 +242,18 @@ export function selectChannelWorkingIndicator({
       anchorAt: agent.anchorAt,
     }));
 
-  return toState(busy, errored);
+  const waiting = waitingOn(
+    starts,
+    (watch) => watch.threadHeadId === null,
+    new Set([
+      ...busy.map((agent) => key(agent.pubkey)),
+      ...erroredKeys,
+      ...threadOnly,
+    ]),
+    posted,
+    nameOf,
+  );
+  return toState(busy, errored, waiting);
 }
 
 /** The notice for the open thread: bots typing in that thread, or one that
@@ -199,6 +265,7 @@ export function selectThreadWorkingIndicator({
   nameOf,
   now,
   posted,
+  starts = [],
   threadHeadId,
   working,
 }: SelectInput & { threadHeadId: string | null }): AgentWorkingIndicatorState {
@@ -237,7 +304,14 @@ export function selectThreadWorkingIndicator({
     busy.push({ pubkey, name: nameOf(pubkey), anchorAt });
   }
 
-  return toState(busy, errored);
+  const waiting = waitingOn(
+    starts,
+    (watch) => watch.threadHeadId === threadHeadId,
+    new Set([...busy.map((agent) => key(agent.pubkey)), ...erroredKeys]),
+    posted,
+    nameOf,
+  );
+  return toState(busy, errored, waiting);
 }
 
 function joinNames(names: readonly string[]) {
@@ -258,6 +332,12 @@ export function formatWorkingIndicatorLabel(
   if (state.kind === "error") {
     return `${joinNames(names)} hit a problem and stopped.`;
   }
+  if (state.kind === "stalled") {
+    return `${joinNames(names)} ${names.length === 1 ? "hasn't" : "haven't"} picked this up yet.`;
+  }
+  if (state.kind === "starting") {
+    return `${joinNames(names)} ${names.length === 1 ? "is" : "are"} starting…`;
+  }
   return `${joinNames(names)} ${names.length === 1 ? "is" : "are"} working…`;
 }
 
@@ -265,7 +345,7 @@ export function formatWorkingIndicatorLabel(
 export function workingIndicatorAnchor(
   state: AgentWorkingIndicatorState,
 ): number | null {
-  if (state.kind !== "working") {
+  if (state.kind !== "working" && state.kind !== "starting") {
     return null;
   }
   return Math.min(...state.agents.map((agent) => agent.anchorAt));
