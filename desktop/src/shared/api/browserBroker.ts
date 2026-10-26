@@ -8,6 +8,8 @@ export type BrowserGrant = {
   primaryTabId: string;
   tabIds: string[];
   allowedOrigins: string[];
+  /** Made by the app for the owner's own agent; the person can still stop it. */
+  defaultAccess?: boolean;
   issuedAt: number;
   expiresAt: number;
   epoch: number;
@@ -21,7 +23,9 @@ export type BrowserGrantRequest = {
   businessId: string;
   clientId?: string | null;
   tabId: string;
+  /** May be empty only with `defaultAccess`: the agent's own addresses are approved as it asks. */
   allowedOrigins: string[];
+  defaultAccess?: boolean;
   ttlMs?: number;
 };
 
@@ -60,6 +64,14 @@ export type BrowserBrokerEvent =
       tabId: string;
       origin: string;
       url: string;
+    }
+  | {
+      /** An agent has no browser yet. `resume` is true after the person stopped it. */
+      type: "access-requested";
+      agentId: string;
+      taskId: string;
+      communityOrigin: string;
+      resume: boolean;
     }
   | { type: "grant-changed"; grantId: string; state: BrowserGrant["state"] }
   | { type: "agent-action"; entry: BrowserActionEntry }

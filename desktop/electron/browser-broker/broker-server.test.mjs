@@ -37,10 +37,10 @@ function hello(agent = AGENT_A, id = 1) {
   };
 }
 
-async function start(options = {}) {
+async function start({ capabilityOptions, ...options } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cb-"));
   const socketPath = path.join(dir, "sock", "b.sock");
-  const capabilities = createCapabilityStore();
+  const capabilities = createCapabilityStore(capabilityOptions);
   const driver = createFakePageDriver();
   const broker = createBroker({
     capabilities,
@@ -71,7 +71,7 @@ async function start(options = {}) {
     await server.stop();
     fs.rmSync(dir, { recursive: true, force: true });
   };
-  const grant = (agentId = AGENT_A) =>
+  const grant = (agentId = AGENT_A, extra = {}) =>
     server.issueGrant({
       agentId,
       taskId: TASK,
@@ -79,6 +79,7 @@ async function start(options = {}) {
       businessId: "biz-1",
       tabId: "tab-1",
       allowedOrigins: ["https://shop.example"],
+      ...extra,
     });
   return { server, capabilities, broker, driver, socketPath, grant, cleanup };
 }
@@ -365,4 +366,211 @@ test("production socket entrypoint bounds complete concurrent frames before disp
   assert.equal(result.code, "resource_limit");
   assert.equal(calls, 2);
   await client.waitClosed();
+});
+
+// ---- default access: the first browser call opens the browser ---------------
+
+const ASK = { agentId: AGENT_A, taskId: TASK, communityOrigin: COMMUNITY };
+
+test("under default access the tools are listed before any grant", async () => {
+  const env = await start({ defaultAccess: true });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  assert.deepEqual(
+    (await client.listTools()).map((tool) => tool.name),
+    toolNames(),
+  );
+  client.close();
+  await env.cleanup();
+});
+
+test("without default access nothing is listed or asked for", async () => {
+  const requests = [];
+  const env = await start({ onAccessRequested: (r) => requests.push(r) });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  assert.deepEqual(await client.listTools(), []);
+  const denied = await client.callTool("browser_tabs", {});
+  assert.equal(denied.code, "no_grant");
+  assert.deepEqual(requests, []);
+  client.close();
+  await env.cleanup();
+});
+
+test("a first call asks the app for a browser and runs once the grant exists", async () => {
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const first = client.callTool("browser_tabs", {});
+  await until(() => requests.length === 1);
+  assert.deepEqual(requests[0], { ...ASK, resume: false });
+  env.grant();
+  const result = await first;
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(
+    result.tabs.map((tab) => tab.id),
+    ["tab-1"],
+  );
+  // The next call uses the grant and asks for nothing.
+  assert.equal((await client.callTool("browser_tabs", {})).ok, true);
+  assert.equal(requests.length, 1);
+  client.close();
+  await env.cleanup();
+});
+
+test("calls made together share one request", async () => {
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const calls = [
+    client.callTool("browser_tabs", {}),
+    client.callTool("browser_tabs", {}),
+    client.callTool("browser_connect", {}),
+  ];
+  await until(() => requests.length === 1);
+  env.grant();
+  for (const result of await Promise.all(calls))
+    assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(requests.length, 1);
+  client.close();
+  await env.cleanup();
+});
+
+test("when no browser can be opened the call ends with the approval guidance", async () => {
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    accessWaitMs: 30,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const result = await client.callTool("browser_tabs", {});
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "no_grant");
+  assert.match(result.message, /Ask the person to approve the Colony browser/u);
+  // A later call asks again: the app may be ready now.
+  const again = client.callTool("browser_tabs", {});
+  await until(() => requests.length === 2);
+  env.grant();
+  assert.equal((await again).ok, true);
+  client.close();
+  await env.cleanup();
+});
+
+test("a failing app handler still ends the call cleanly", async () => {
+  const env = await start({
+    defaultAccess: true,
+    accessWaitMs: 30,
+    onAccessRequested: () => {
+      throw new Error("renderer exploded with /Users/secret/path");
+    },
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const result = await client.callTool("browser_tabs", {});
+  assert.equal(result.code, "no_grant");
+  assert.ok(!JSON.stringify(result).includes("secret"));
+  client.close();
+  await env.cleanup();
+});
+
+test("the person's Stop is respected: the next call asks with resume and is not granted silently", async () => {
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    accessWaitMs: 30,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const grant = env.grant();
+  assert.equal((await client.callTool("browser_tabs", {})).ok, true);
+  env.broker.revoke(grant.id, "person revoked");
+  const after = await client.callTool("browser_tabs", {});
+  assert.equal(after.code, "no_grant");
+  assert.deepEqual(requests, [{ ...ASK, resume: true }]);
+  assert.match(after.message, /stopped/u);
+  // Only the person allowing it again brings the browser back.
+  const waiting = client.callTool("browser_tabs", {});
+  await until(() => requests.length === 2);
+  env.grant();
+  assert.equal((await waiting).ok, true);
+  client.close();
+  await env.cleanup();
+});
+
+test("taking over and closing the tab are also stops, but expiry is not", async () => {
+  for (const [end, resume] of [
+    [(env, grant) => env.broker.takeOver(grant.id), true],
+    [(env, grant) => env.broker.revoke(grant.id, "tab closed"), true],
+    [(env, grant) => env.broker.revoke(grant.id, "replaced"), false],
+    [(env, grant) => env.broker.revoke(grant.id, "expired"), false],
+  ]) {
+    const requests = [];
+    const env = await start({
+      defaultAccess: true,
+      accessWaitMs: 20,
+      onAccessRequested: (request) => requests.push(request),
+    });
+    const { client } = connectClient(env.socketPath);
+    await until(() => client.isReady());
+    const grant = env.grant();
+    end(env, grant);
+    await client.callTool("browser_tabs", {});
+    assert.equal(requests[0].resume, resume);
+    client.close();
+    await env.cleanup();
+  }
+});
+
+test("a grant that runs out is renewed by the next call without asking the person", async () => {
+  const clock = { wall: 1_000_000, mono: 5_000 };
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    capabilityOptions: {
+      now: () => clock.wall,
+      monotonic: () => clock.mono,
+    },
+    accessWaitMs: 50,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  env.grant(AGENT_A, { ttlMs: 1_000 });
+  clock.wall += 5_000;
+  clock.mono += 5_000;
+  const renewed = client.callTool("browser_tabs", {});
+  await until(() => requests.length === 1);
+  assert.equal(requests[0].resume, false);
+  env.grant();
+  assert.equal((await renewed).ok, true);
+  client.close();
+  await env.cleanup();
+});
+
+test("another agent's grant never answers this agent's request", async () => {
+  const requests = [];
+  const env = await start({
+    defaultAccess: true,
+    accessWaitMs: 40,
+    onAccessRequested: (request) => requests.push(request),
+  });
+  const { client } = connectClient(env.socketPath, AGENT_A);
+  await until(() => client.isReady());
+  const waiting = client.callTool("browser_tabs", {});
+  await until(() => requests.length === 1);
+  env.grant(AGENT_B);
+  assert.equal((await waiting).code, "no_grant");
+  client.close();
+  await env.cleanup();
 });

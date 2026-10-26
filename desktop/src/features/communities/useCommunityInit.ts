@@ -47,7 +47,9 @@ import { resetDiscoveryRuntime } from "@/features/discovery/discoveryRuntimeRegi
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
+import { startAgentBrowserAccess } from "@/features/workarea/browser/agentBrowserAccess";
 import { initBrowserTabsStore } from "@/features/workarea/browser/browserTabsStore";
+import { browserCommunityOrigin } from "../../../electron/browser-broker/session-context.mjs";
 import { initWorkAreaStore } from "@/features/workarea/dock/workAreaStore";
 import { resetWorkAreaState } from "@/features/workarea/dock/resetWorkAreaState";
 import { resetMembershipDenialGate } from "./membershipDenialGate";
@@ -407,6 +409,15 @@ export function useCommunityInit(
         // The community is the business: its id keys the browser's isolated
         // profile (cookies, storage) and its remembered pages.
         initBrowserTabsStore(activeCommunity.id);
+        // The owner's own AI employees open this browser by themselves.
+        try {
+          startAgentBrowserAccess({
+            businessId: activeCommunity.id,
+            communityOrigin: browserCommunityOrigin(activeCommunity.relayUrl),
+          });
+        } catch {
+          // A community without a usable relay address cannot host a task.
+        }
         // Restore any turn state saved for this community (a prior A→B round-
         // trip). This runs after applyCommunity succeeds and before the app
         // renders so components see the restored timers on first render.

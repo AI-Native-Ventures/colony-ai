@@ -5,6 +5,32 @@ import type {
   BrowserGrant,
 } from "../../../src/shared/api/browserBroker";
 
+/** What a spec can do with the fake broker, through `window`. */
+export type BrowserControlFixture = {
+  calls: { action: string; payload: Record<string, unknown> }[];
+  grant(): { defaultAccess?: boolean; allowedOrigins: string[] } | null;
+  confirmed(): number;
+  holdConfirmation(): void;
+  failNextStop(): void;
+  confirmation(category: string, summary: string): void;
+  /** The agent's browser call reached main and it has no browser yet. */
+  requestAccess(
+    agentId: string,
+    taskId: string,
+    resume?: boolean,
+    communityOrigin?: string,
+  ): void;
+  /** The active grant ran out. */
+  expire(): void;
+  site(origin: string): void;
+};
+
+declare global {
+  interface Window {
+    colonyBrowserControlFixture?: BrowserControlFixture;
+  }
+}
+
 /** Person-control IPC contract only. Real policy remains in the Electron fixture. */
 export async function installBrowserBrokerFake(page: Page, enabled = true) {
   await page.addInitScript(
@@ -157,6 +183,31 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
             };
             pending.set(entry.actionId, entry);
             emit({ type: "confirmation-requested", ...entry });
+          },
+          requestAccess(
+            agentId: string,
+            taskId: string,
+            resume = false,
+            communityOrigin = "http://localhost:3000",
+          ) {
+            emit({
+              type: "access-requested",
+              agentId,
+              taskId,
+              communityOrigin,
+              resume,
+            });
+          },
+          expire() {
+            const old = grant;
+            grant = null;
+            pending.clear();
+            if (old)
+              emit({
+                type: "grant-changed",
+                grantId: old.id,
+                state: "expired",
+              });
           },
           site(origin: string) {
             if (!grant) throw new Error("No task");

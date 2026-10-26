@@ -23,7 +23,7 @@ const UNTRUSTED =
  * with; the middle sentence is copied from there word for word.
  */
 export const WEB_TASKS =
-  "Use these tools for every task that opens, checks or operates a website. Never reach a website another way: no shell command that opens a browser or a link, no AppleScript or other desktop automation, no Playwright, Puppeteer, Selenium, or headless browser, and no browser skill or plugin, even when one is installed. Without access, ask the person to allow you in the Colony browser and wait.";
+  "Use these tools for every task that opens, checks or operates a website. Never reach a website another way: no shell command that opens a browser or a link, no AppleScript or other desktop automation, no Playwright, Puppeteer, Selenium, or headless browser, and no browser skill or plugin, even when one is installed. Your first call opens the Colony browser for the person. Only if a tool says you have no access, ask the person to allow you in the Colony browser and wait.";
 
 const tab = {
   type: "string",
@@ -48,7 +48,7 @@ export const TOOLS = Object.freeze([
   {
     name: "browser_connect",
     description:
-      "Report the existing browser connection approved by the person for this task: primary tab, approved sites and expiry. This does not grant access or open a new profile." +
+      "Report this task's browser connection: primary tab, approved sites and expiry. The first browser call of a task opens the browser for the person; this does not open a new profile." +
       UNTRUSTED +
       ` ${WEB_TASKS}`,
     inputSchema: object({}),
@@ -62,7 +62,7 @@ export const TOOLS = Object.freeze([
   {
     name: "browser_open",
     description:
-      "Open a new tab on an approved site. The site must be on the approved list for this task." +
+      "Open a page in the Colony browser. Your first call opens the browser for the person and gives you access, so you can open any public website straight away. Pages open in the task's own tab first, then in new tabs." +
       UNTRUSTED +
       ` ${WEB_TASKS}`,
     inputSchema: object(

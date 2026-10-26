@@ -61,6 +61,8 @@ export async function createElectronBrowserAgentHost({
   });
   const driver = createPageDriver({ adapter, downloads });
   const host = await createBrowserAgentHost({
+    // The packaged gate keeps grants person-made: it proves that path exactly.
+    defaultAccess: !packagedGate,
     ...hostOptions,
     enabled: true,
     driver,
@@ -268,6 +270,8 @@ export async function createElectronBrowserAgentHost({
           throw new Error("This tab already has an active browser task");
         if (payload.privateExceptions?.length)
           throw new Error("Private network browsing is not enabled");
+        if (payload.defaultAccess === true && !host.defaultAccess)
+          throw new Error("Default browser access is not enabled");
         const privateExceptions = packagedGate
           ? packagedGate.exceptionsFor(payload)
           : fixturePrivateExceptions;

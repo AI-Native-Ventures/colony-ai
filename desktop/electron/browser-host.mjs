@@ -648,9 +648,12 @@ export function createBrowserHost({
         primary.clientId !== (clientId ?? null)
       )
         throw new Error("Browser task scope is unavailable");
+      // `openedFrom` makes the app adopt the tab as a work area tab beside its
+      // opener, so the person sees every page the agent opens.
       return createTabInternal(primary.appWebContents, primary.ownerWindow, {
         businessId,
         clientId,
+        openedFrom: primaryTabId,
       });
     },
     closeTab(id) {

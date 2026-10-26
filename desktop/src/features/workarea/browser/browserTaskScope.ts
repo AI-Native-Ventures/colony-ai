@@ -1,4 +1,9 @@
-/** A browser task follows the conversation boundary, never page-provided text. */
+/**
+ * A browser task follows the conversation boundary, never page-provided text.
+ * It is the same id the agent's own session has: a DM, or a channel the agent
+ * answers as one conversation, is `conversation:<channel>`; an agent that
+ * keeps a session per thread has `thread:<channel>:<root>`.
+ */
 export function browserTaskScope(
   channelId: string,
   channelType: string,
@@ -10,9 +15,13 @@ export function browserTaskScope(
     )
   )
     return null;
-  if (channelType === "dm") return `conversation:${channelId.toLowerCase()}`;
-  if (!threadRootId || !/^[0-9a-f]{64}$/iu.test(threadRootId)) return null;
-  return `thread:${channelId.toLowerCase()}:${threadRootId.toLowerCase()}`;
+  if (
+    channelType !== "dm" &&
+    threadRootId &&
+    /^[0-9a-f]{64}$/iu.test(threadRootId)
+  )
+    return `thread:${channelId.toLowerCase()}:${threadRootId.toLowerCase()}`;
+  return `conversation:${channelId.toLowerCase()}`;
 }
 
 /** Display and approve only an exact HTTP origin, without credentials or paths. */

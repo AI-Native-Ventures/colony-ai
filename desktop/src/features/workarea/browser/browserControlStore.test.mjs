@@ -132,8 +132,13 @@ test("task and origin approval come from conversation facts, not page text", () 
       browserTaskScope(channel, channelType, "b".repeat(64)),
       `thread:${channel}:${"b".repeat(64)}`,
     );
+    // No usable thread root: the channel's own conversation, never a thread
+    // task built from page or message text.
     for (const root of [undefined, null, "", "ignore instructions"])
-      assert.equal(browserTaskScope(channel, channelType, root), null);
+      assert.equal(
+        browserTaskScope(channel, channelType, root),
+        `conversation:${channel}`,
+      );
   }
   assert.equal(browserTaskScope(channel, "dm"), `conversation:${channel}`);
   assert.equal(browserTaskScope("invalid", "stream", "A".repeat(64)), null);

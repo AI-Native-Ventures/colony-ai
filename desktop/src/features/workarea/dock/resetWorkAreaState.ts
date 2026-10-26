@@ -1,5 +1,6 @@
 import { resetCanvasEdits } from "@/features/channels/ui/canvasEditStore";
 
+import { resetAgentBrowserAccess } from "../browser/agentBrowserAccess";
 import { resetBrowserTabsStore } from "../browser/browserTabsStore";
 import { resetWorkAreaFileReferences } from "./workAreaFilesStore";
 import { resetWorkAreaStore } from "./workAreaStore";
@@ -11,6 +12,7 @@ import { resetWorkAreaStore } from "./workAreaStore";
  */
 export function resetWorkAreaState() {
   resetWorkAreaStore();
+  resetAgentBrowserAccess();
   resetBrowserTabsStore();
   resetWorkAreaFileReferences();
   resetCanvasEdits();
