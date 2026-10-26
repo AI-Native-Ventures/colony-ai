@@ -588,6 +588,45 @@ for (const { name, options, message } of refusals) {
   });
 }
 
+test("background checks do not keep re-downloading an update that was refused", async () => {
+  const rig = await makeMacRig({ manifestSha: "0".repeat(64) });
+  try {
+    const archiveRequests = () =>
+      rig.requests.filter((url) => url.endsWith(".zip")).length;
+    assert.equal((await rig.service.check()).state, "error");
+    assert.equal(archiveRequests(), 1);
+    for (let index = 0; index < 4; index += 1) {
+      const status = await rig.service.check({ background: true });
+      assert.equal(status.state, "error");
+      assert.equal(status.releaseUrl, "https://colony.global/#download");
+    }
+    // One manual try and one background try, then the background stops.
+    assert.equal(archiveRequests(), 2);
+    // A manual check still tries again.
+    assert.equal((await rig.service.check()).state, "error");
+    assert.equal(archiveRequests(), 3);
+  } finally {
+    await rig.cleanup();
+  }
+});
+
+test("a check while the swap is being started does nothing", async () => {
+  const rig = await makeMacRig();
+  try {
+    assert.equal((await rig.service.check()).state, "ready");
+    assert.equal(await rig.service.installAndRelaunch(), true);
+    const before = rig.requests.length;
+    assert.equal((await rig.service.check()).state, "installing");
+    assert.equal(
+      (await rig.service.check({ background: true })).state,
+      "installing",
+    );
+    assert.equal(rig.requests.length, before);
+  } finally {
+    await rig.cleanup();
+  }
+});
+
 test("a translocated app falls back to the manual card without downloading", async () => {
   const rig = await makeMacRig({
     executableDir:

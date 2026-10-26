@@ -12,6 +12,10 @@ const MAX_METADATA_BYTES = 256 * 1024;
 const METADATA_TIMEOUT_MS = 10_000;
 const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+// A download that failed for a reason other than the network is not repeated
+// by background checks beyond this many tries per version; a manual check,
+// Retry, or the next launch tries again.
+const MAX_BACKGROUND_REFUSALS = 2;
 // "manual-required" is not here on purpose: its card names a version, so a
 // background check must keep that version current.
 const BLOCKED_BACKGROUND_STATES = new Set([
@@ -172,6 +176,7 @@ export function createElectronUpdaterService({
   let stopped = false;
   let installRequested = false;
   let macUpdateStaged = false;
+  const refusalCounts = new Map();
   const updaterListeners = [];
 
   function setStatus(next) {
@@ -263,8 +268,14 @@ export function createElectronUpdaterService({
   // Unsigned Mac build: download, verify and stage the new app, then wait for
   // the person's click. Anything that cannot be proven safe ends in a card with
   // the manual download link, and the running app is never touched.
-  async function runMacSelfUpdate(manifest, release) {
+  async function runMacSelfUpdate(manifest, release, { background }) {
     const version = manifest.version;
+    if (
+      background &&
+      (refusalCounts.get(version) ?? 0) >= MAX_BACKGROUND_REFUSALS
+    ) {
+      return status;
+    }
     const location = await macSelfUpdater.assess();
     if (stopped) return status;
     if (!location.ok) {
@@ -294,6 +305,9 @@ export function createElectronUpdaterService({
       });
     } catch (error) {
       expectedVersion = null;
+      if (error?.code !== "network") {
+        refusalCounts.set(version, (refusalCounts.get(version) ?? 0) + 1);
+      }
       return refusedStatus(error);
     }
     if (stopped) {
@@ -305,14 +319,18 @@ export function createElectronUpdaterService({
   }
 
   async function check({ background = false } = {}) {
-    if (stopped) return status;
+    if (stopped || installRequested) return status;
     if (background && BLOCKED_BACKGROUND_STATES.has(status.state))
       return status;
     if (checkInFlight) return checkInFlight;
 
-    // A card that already names a version is refreshed in place: no flicker
-    // through "checking", and a failed refresh leaves the card as it was.
-    const refreshingManual = background && status.state === "manual-required";
+    // A card that already names a version (or a refused update with its
+    // download link) is refreshed in place: no flicker through "checking", and
+    // a failed refresh leaves the card as it was.
+    const refreshingManual =
+      background &&
+      (status.state === "manual-required" ||
+        (status.state === "error" && Boolean(status.releaseUrl)));
     checkInFlight = (async () => {
       if (!refreshingManual) setStatus({ state: "checking" });
       try {
@@ -348,7 +366,7 @@ export function createElectronUpdaterService({
           !signatureChanged
         ) {
           expectedVersion = manifest.version;
-          return await runMacSelfUpdate(manifest, release);
+          return await runMacSelfUpdate(manifest, release, { background });
         }
         if (
           !currentBuild?.autoUpdate ||
