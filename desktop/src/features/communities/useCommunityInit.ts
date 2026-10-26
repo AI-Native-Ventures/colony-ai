@@ -38,6 +38,7 @@ import {
   saveActiveAgentTurnsForCommunity,
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
+import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
@@ -81,6 +82,10 @@ async function resetCommunityState({
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();
   resetAgentWorkingSignal();
+  // Mentions still waiting on an agent to start belong to the community they
+  // were sent in: dropping them keeps their replay floors and "starting" notices
+  // from reaching the next one.
+  resetAgentStartWatches();
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();
   }

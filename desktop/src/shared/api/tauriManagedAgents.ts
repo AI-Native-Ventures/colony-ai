@@ -24,6 +24,10 @@ export async function startManagedAgent(
      * long the spawn takes. Local spawns receive it as process env; provider
      * deploys carry it in the payload's launch.policy_env. */
     replayFloorUnix?: number;
+    /** Replace the agent's harness even if one is running. Only for a person
+     * asking to try again after the agent never picked a mention up: the
+     * running harness is stuck, and a plain start would reuse it. */
+    forceRestart?: boolean;
   },
 ): Promise<ManagedAgent> {
   const response = await invokeTauri<RawManagedAgent>("start_managed_agent", {
@@ -31,6 +35,7 @@ export async function startManagedAgent(
     expectedRelayUrl: options?.expectedRelayUrl ?? null,
     expectedSignerPubkey: options?.expectedSignerPubkey ?? null,
     replayFloorUnix: options?.replayFloorUnix ?? null,
+    forceRestart: options?.forceRestart ?? null,
   });
   return fromRawManagedAgent(response);
 }

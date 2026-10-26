@@ -189,6 +189,7 @@ export default defineConfig({
         "**/channel-controls.spec.ts",
         "**/channel-activity-popover.spec.ts",
         "**/agent-working-indicator.spec.ts",
+        "**/agent-start-watch.spec.ts",
         "**/agent-working-indicator-screenshots.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/thread-open-tint-screenshots.spec.ts",
@@ -329,6 +330,7 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/agent-working-indicator.spec.ts",
+        "**/agent-start-watch.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",

@@ -1,12 +1,17 @@
 import * as React from "react";
 
 import {
+  resolveAgentStartWatches,
+  useChannelAgentStartWatches,
+} from "@/features/agents/agentStartWatch";
+import {
   useChannelTurnErrors,
   useChannelWorkingAgents,
 } from "@/features/agents/agentWorkingSignal";
 import {
   type AgentScopes,
   type AgentWorkingIndicatorState,
+  hasReplied,
   type IndicatorTypingEntry,
   NO_AGENT_SCOPES,
   latestPostedAt,
@@ -57,6 +62,8 @@ export function useAgentWorkingIndicators({
 } {
   const working = useChannelWorkingAgents(channelId);
   const errors = useChannelTurnErrors(channelId);
+  // Agents woken for a mention in this channel that have not answered yet.
+  const starts = useChannelAgentStartWatches(channelId);
 
   const [record, setRecord] = React.useState<ScopeRecord>({
     channelId: null,
@@ -102,14 +109,16 @@ export function useAgentWorkingIndicators({
     [agentNames, currentPubkey, profiles],
   );
 
-  // Who could be mid-reply: agents working in the channel or typing in it.
+  // Who could be mid-reply: agents working in the channel or typing in it, or
+  // that were woken for a mention here and have not been heard from.
   const watched = React.useMemo(
     () =>
       new Set([
         ...working.map((agent) => agent.pubkey.toLowerCase()),
         ...botTypingEntries.map((entry) => entry.pubkey.toLowerCase()),
+        ...starts.map((watch) => watch.pubkey.toLowerCase()),
       ]),
-    [botTypingEntries, working],
+    [botTypingEntries, starts, working],
   );
   const channelPosted = React.useMemo(
     () => latestPostedAt(channelMessages, watched),
@@ -120,6 +129,21 @@ export function useAgentWorkingIndicators({
     [threadMessages, watched],
   );
 
+  // A reply is proof the agent picked the mention up: stop waiting on it.
+  React.useEffect(() => {
+    for (const watch of starts) {
+      const posted =
+        watch.threadHeadId === null
+          ? channelPosted
+          : watch.threadHeadId === openThreadHeadId
+            ? threadPosted
+            : undefined;
+      if (hasReplied(posted, watch.pubkey, watch.since)) {
+        resolveAgentStartWatches(watch.pubkey);
+      }
+    }
+  }, [channelPosted, openThreadHeadId, starts, threadPosted]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: expiryTick re-runs the clock-dependent selection
   return React.useMemo(() => {
     const input = {
@@ -128,6 +152,7 @@ export function useAgentWorkingIndicators({
       lastScopes,
       nameOf,
       now: Date.now(),
+      starts,
       working,
     };
     return {
@@ -150,6 +175,7 @@ export function useAgentWorkingIndicators({
     lastScopes,
     nameOf,
     openThreadHeadId,
+    starts,
     working,
   ]);
 }

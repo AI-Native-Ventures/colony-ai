@@ -2168,6 +2168,10 @@ declare global {
      *  armed `startManagedAgentErrors` rejection) without waiting out the
      *  delay. Returns the number of holds flushed. */
     __BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__?: () => number;
+    /** Make a managed agent's harness end with no word, as after a silent
+     *  exit: the agent and its runtime rows read as stopped from the next
+     *  list on. */
+    __BUZZ_E2E_END_MANAGED_AGENT__?: (pubkey: string) => Promise<void>;
     /** Release every `sync_agents_to_active_huddle` currently held behind
      *  `syncAgentsToActiveHuddleDelayMs`, letting it resolve without waiting
      *  out the delay. Returns the number of holds flushed. */
@@ -16525,6 +16529,8 @@ async function handleStartManagedAgent(
     pubkey: string;
     expectedRelayUrl?: string | null;
     expectedSignerPubkey?: string | null;
+    replayFloorUnix?: number | null;
+    forceRestart?: boolean | null;
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
@@ -19324,6 +19330,9 @@ export function maybeInstallE2eTauriMocks() {
     const held = heldManagedAgentStartReleases.splice(0);
     for (const release of held) release();
     return held.length;
+  };
+  window.__BUZZ_E2E_END_MANAGED_AGENT__ = async (pubkey: string) => {
+    await handleStopManagedAgent({ pubkey });
   };
   heldHuddleAgentSyncReleases = [];
   window.__BUZZ_E2E_RELEASE_HUDDLE_AGENT_SYNCS__ = () => {

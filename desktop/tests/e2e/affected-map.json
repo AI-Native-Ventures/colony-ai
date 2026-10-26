@@ -110,7 +110,9 @@
         "doctor-states.spec.ts",
         "needs-restart-screenshots.spec.ts",
         "persona-model-combobox-screenshots.spec.ts",
-        "persistent-agent-audience.spec.ts"
+        "persistent-agent-audience.spec.ts",
+        "agent-start-watch.spec.ts",
+        "agent-working-indicator.spec.ts"
       ]
     },
     {
@@ -128,7 +130,9 @@
         "channel-shared-header-backdrop.spec.ts",
         "channel-sort.spec.ts",
         "channel-star.spec.ts",
-        "auxiliary-pane-close-visibility.spec.ts"
+        "auxiliary-pane-close-visibility.spec.ts",
+        "agent-start-watch.spec.ts",
+        "agent-working-indicator.spec.ts"
       ]
     },
     {
@@ -277,7 +281,8 @@
         "live-broadcast-reply-timeline.spec.ts",
         "colony3-conv-composer-proof.spec.ts",
         "colony3-conv-timeline-proof.spec.ts",
-        "colony3-conv-dialogs-proof.spec.ts"
+        "colony3-conv-dialogs-proof.spec.ts",
+        "agent-start-watch.spec.ts"
       ]
     },
     {

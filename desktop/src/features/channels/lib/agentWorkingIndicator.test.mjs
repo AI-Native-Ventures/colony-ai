@@ -380,3 +380,143 @@ describe("labels and timer anchor", () => {
     );
   });
 });
+
+describe("agents that were woken for a mention", () => {
+  const watch = (overrides = {}) => ({
+    pubkey: SCOUT,
+    channelId: "channel-1",
+    threadHeadId: null,
+    since: NOW - 8_000,
+    floorUnix: 1_000,
+    phase: "starting",
+    reason: null,
+    ...overrides,
+  });
+
+  it("says the agent is starting until it picks the mention up", () => {
+    const state = selectChannelWorkingIndicator(input({ starts: [watch()] }));
+    assert.equal(state.kind, "starting");
+    assert.deepEqual(state.agents, [
+      { pubkey: SCOUT, name: "Scout", anchorAt: NOW - 8_000 },
+    ]);
+    assert.equal(formatWorkingIndicatorLabel(state), "Scout is starting…");
+    assert.equal(workingIndicatorAnchor(state), NOW - 8_000);
+  });
+
+  it("says plainly that it has not picked the mention up when it stalled", () => {
+    const state = selectChannelWorkingIndicator(
+      input({ starts: [watch({ phase: "stalled" })] }),
+    );
+    assert.equal(state.kind, "stalled");
+    assert.equal(
+      formatWorkingIndicatorLabel(state),
+      "Scout hasn't picked this up yet.",
+    );
+    assert.equal(workingIndicatorAnchor(state), null);
+  });
+
+  it("words two stalled agents in the plural", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [
+          watch({ phase: "stalled" }),
+          watch({ pubkey: NOVA, phase: "stalled" }),
+        ],
+      }),
+    );
+    assert.equal(
+      formatWorkingIndicatorLabel(state),
+      "Scout and Nova haven't picked this up yet.",
+    );
+  });
+
+  it("hands over to the working notice as soon as the agent works", () => {
+    const state = selectChannelWorkingIndicator(
+      input({ starts: [watch()], working: [scoutWorking] }),
+    );
+    assert.equal(state.kind, "working");
+    assert.deepEqual(
+      state.agents.map((agent) => agent.name),
+      ["Scout"],
+    );
+  });
+
+  it("stops waiting once the agent has replied since the wait began", () => {
+    const repliedAt = Math.floor((NOW - 4_000) / 1000);
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [watch()],
+        posted: new Map([[SCOUT, repliedAt]]),
+      }),
+    );
+    assert.equal(state.kind, "hidden");
+  });
+
+  it("ignores an older reply from before the mention", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [watch()],
+        posted: new Map([[SCOUT, Math.floor((NOW - 600_000) / 1000)]]),
+      }),
+    );
+    assert.equal(state.kind, "starting");
+  });
+
+  it("shows a fresh turn error ahead of an agent that is still starting", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [watch({ pubkey: NOVA })],
+        errors: [{ pubkey: SCOUT, at: NOW - 500 }],
+      }),
+    );
+    assert.equal(state.kind, "error");
+  });
+
+  it("shows a stalled agent ahead of one that is still starting", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [watch({ pubkey: NOVA }), watch({ phase: "stalled" })],
+      }),
+    );
+    assert.equal(state.kind, "stalled");
+    assert.deepEqual(
+      state.agents.map((agent) => agent.name),
+      ["Scout"],
+    );
+  });
+
+  it("keeps a mention sent in a thread out of the main conversation", () => {
+    const starts = [watch({ threadHeadId: THREAD })];
+    assert.equal(
+      selectChannelWorkingIndicator(input({ starts })).kind,
+      "hidden",
+    );
+    assert.equal(
+      selectThreadWorkingIndicator(input({ starts, threadHeadId: THREAD }))
+        .kind,
+      "starting",
+    );
+    assert.equal(
+      selectThreadWorkingIndicator(input({ starts, threadHeadId: "other" }))
+        .kind,
+      "hidden",
+    );
+  });
+
+  it("keeps a main-conversation mention out of the open thread", () => {
+    const state = selectThreadWorkingIndicator(
+      input({ starts: [watch()], threadHeadId: THREAD }),
+    );
+    assert.equal(state.kind, "hidden");
+  });
+
+  it("never uses an em dash or the old product name", () => {
+    for (const phase of ["starting", "stalled"]) {
+      const text = formatWorkingIndicatorLabel(
+        selectChannelWorkingIndicator(input({ starts: [watch({ phase })] })),
+      );
+      assert.ok(!text.includes(String.fromCharCode(0x2014)));
+      assert.ok(!/buzz/i.test(text));
+    }
+  });
+});
