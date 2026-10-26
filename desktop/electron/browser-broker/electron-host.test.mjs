@@ -86,7 +86,15 @@ async function fixture(t, options = {}) {
       constructor() {
         this.webContents = new Contents();
         this.webContents.session = profile;
+        this.bounds = { x: 0, y: 0, width: 0, height: 0 };
       }
+      setBounds(bounds) {
+        this.bounds = bounds;
+      }
+      getBounds() {
+        return this.bounds;
+      }
+      setVisible() {}
     },
   });
   const sender = new Contents();

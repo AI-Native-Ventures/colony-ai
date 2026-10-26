@@ -34,6 +34,7 @@ async function boot() {
   });
   const browser = createBrowserHost({
     WebContentsView,
+    BrowserWindow,
     session,
     userDataPath: app.getPath("userData"),
     downloadsPath: path.join(app.getPath("userData"), "downloads"),

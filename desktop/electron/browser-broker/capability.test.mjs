@@ -362,16 +362,30 @@ test("the last origin cannot be removed", () => {
   assert.throws(() => store.removeOrigin(grant.id, "https://shop.example"));
 });
 
-test("a new grant for the same agent replaces and fences the old one", () => {
+test("a new grant for the same agent and task replaces and fences the old one", () => {
   const { store } = harness();
   const first = store.issue(request());
   const fence = store.fence(first.token);
-  const second = store.issue(request({ taskId: "task-2" }));
+  const second = store.issue(request({ tabId: "tab-2" }));
   assert.equal(store.authenticate(first.token).code, "grant_revoked");
   assert.equal(fence.check().code, "grant_revoked");
   assert.equal(store.authenticate(second.token).ok, true);
   assert.equal(store.getGrant(first.grant.id).endedReason, "replaced");
   assert.equal(store.grantsForAgent("agent-a").length, 1);
+});
+
+test("the same agent in two tasks keeps both grants, so it can browse in two channels at once", () => {
+  const { store } = harness();
+  const first = store.issue(request({ taskId: "task-1", tabId: "tab-1" }));
+  const second = store.issue(request({ taskId: "task-2", tabId: "tab-2" }));
+  assert.equal(store.authenticate(first.token).ok, true);
+  assert.equal(store.authenticate(second.token).ok, true);
+  assert.equal(store.grantsForAgent("agent-a").length, 2);
+  // Re-issuing one task replaces only that task's grant.
+  const again = store.issue(request({ taskId: "task-1", tabId: "tab-1" }));
+  assert.equal(store.authenticate(first.token).code, "grant_revoked");
+  assert.equal(store.authenticate(again.token).ok, true);
+  assert.equal(store.authenticate(second.token).ok, true);
 });
 
 test("an invalid replacement does not revoke the existing grant", () => {

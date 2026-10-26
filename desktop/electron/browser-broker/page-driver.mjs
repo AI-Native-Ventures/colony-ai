@@ -119,6 +119,8 @@ export function createPageDriver({
   adapter,
   downloads,
   cdpTimeoutMs = 15_000,
+  /** How long a page that looks on screen gets to produce a frame for a screenshot. */
+  directShotMs = 2_500,
   loadTimeoutMs = 30_000,
   pollMs = 150,
   sleep = (ms) => delay(ms),
@@ -129,7 +131,13 @@ export function createPageDriver({
 
   // ---- CDP plumbing ------------------------------------------------------
 
-  async function rawSend(session, method, params, signal) {
+  async function rawSend(
+    session,
+    method,
+    params,
+    signal,
+    timeoutMs = cdpTimeoutMs,
+  ) {
     if (signal?.aborted) throw new DriverError("cdp_timeout");
     if (!ALLOWED_CDP_METHODS.has(method))
       throw new Error(`CDP method not allowed: ${String(method).slice(0, 60)}`);
@@ -138,7 +146,7 @@ export function createPageDriver({
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(new DriverError("cdp_timeout")),
-        cdpTimeoutMs,
+        timeoutMs,
       );
       timer.unref?.();
     });
@@ -199,8 +207,8 @@ export function createPageDriver({
     return session;
   }
 
-  const send = (session, method, params, signal) =>
-    rawSend(session, method, params, signal);
+  const send = (session, method, params, signal, timeoutMs) =>
+    rawSend(session, method, params, signal, timeoutMs);
 
   /** One isolated world per document, so the page cannot tamper with built-ins. */
   async function worldFor(session, signal) {
@@ -296,6 +304,80 @@ export function createPageDriver({
   if (internals && typeof internals === "object")
     internals.send = async (tabId, method, params) =>
       send(await sessionFor(tabId), method, params);
+
+  async function takeScreenshot(
+    tabId,
+    {
+      backendNodeId,
+      fullPage = false,
+      maskCredentialFields = true,
+      signal,
+    } = {},
+    shotTimeoutMs = cdpTimeoutMs,
+  ) {
+    const session = await sessionFor(tabId);
+    const objectId = await documentObject(session, signal);
+    let masked = false;
+    try {
+      if (maskCredentialFields) {
+        // Fail closed: no mask, no screenshot.
+        masked = true;
+        await call(session, objectId, "maskCredentials", [], signal);
+      }
+      let clip;
+      if (backendNodeId !== undefined) {
+        const box = await boxOf(session, backendNodeId, signal);
+        clip = {
+          x: box.left,
+          y: box.top,
+          width: box.width,
+          height: box.height,
+        };
+      } else {
+        const metrics = await send(
+          session,
+          "Page.getLayoutMetrics",
+          {},
+          signal,
+        );
+        const view = fullPage
+          ? (metrics.cssContentSize ?? metrics.contentSize)
+          : (metrics.cssVisualViewport ?? {
+              clientWidth: 800,
+              clientHeight: 600,
+            });
+        const width = view.width ?? view.clientWidth;
+        const height = view.height ?? view.clientHeight;
+        clip = { x: 0, y: 0, width, height };
+      }
+      const scale = Math.min(
+        1,
+        MAX_SHOT_EDGE / Math.max(clip.width, clip.height, 1),
+      );
+      const shot = await send(
+        session,
+        "Page.captureScreenshot",
+        {
+          format: "png",
+          clip: { ...clip, scale },
+          captureBeyondViewport: fullPage,
+        },
+        signal,
+        shotTimeoutMs,
+      );
+      return { mimeType: "image/png", data: shot.data };
+    } finally {
+      if (masked)
+        await call(
+          session,
+          objectId,
+          "unmaskCredentials",
+          [],
+          undefined,
+        ).catch(() => undefined);
+      await release(session, objectId);
+    }
+  }
 
   const driver = {
     attach(value) {
@@ -598,128 +680,64 @@ export function createPageDriver({
       { backendNodeId, direction, amount = 600, signal } = {},
     ) {
       const session = await sessionFor(tabId);
-      if (
-        (direction === "top" || direction === "bottom") &&
+      const edge = direction === "top" || direction === "bottom";
+      const objectId =
         backendNodeId === undefined
-      ) {
-        const objectId = await documentObject(session, signal);
-        try {
-          await call(session, objectId, "scrollPageTo", [direction], signal);
-        } finally {
-          await release(session, objectId);
-        }
-        return {};
-      }
-      let point;
-      if (backendNodeId !== undefined) {
-        point = await boxOf(session, backendNodeId, signal);
-      } else {
-        const metrics = await send(
-          session,
-          "Page.getLayoutMetrics",
-          {},
-          signal,
-        );
-        const view = metrics.cssVisualViewport ?? {
-          clientWidth: 800,
-          clientHeight: 600,
-        };
-        point = { x: view.clientWidth / 2, y: view.clientHeight / 2 };
-      }
-      const deltas = {
-        up: [0, -amount],
-        down: [0, amount],
-        left: [-amount, 0],
-        right: [amount, 0],
-        top: [0, -100_000],
-        bottom: [0, 100_000],
-      }[direction] ?? [0, amount];
-      await send(
-        session,
-        "Input.dispatchMouseEvent",
-        {
-          type: "mouseWheel",
-          x: point.x,
-          y: point.y,
-          deltaX: deltas[0],
-          deltaY: deltas[1],
-        },
-        signal,
-      );
-      return {};
-    },
-
-    async screenshot(
-      tabId,
-      {
-        backendNodeId,
-        fullPage = false,
-        maskCredentialFields = true,
-        signal,
-      } = {},
-    ) {
-      const session = await sessionFor(tabId);
-      const objectId = await documentObject(session, signal);
-      let masked = false;
+          ? await documentObject(session, signal)
+          : await resolve(session, backendNodeId, signal).catch(() => {
+              throw new DriverError("element_not_actionable");
+            });
       try {
-        if (maskCredentialFields) {
-          // Fail closed: no mask, no screenshot.
-          masked = true;
-          await call(session, objectId, "maskCredentials", [], signal);
+        if (edge && backendNodeId === undefined) {
+          await call(session, objectId, "scrollPageTo", [direction], signal);
+          return {};
         }
-        let clip;
-        if (backendNodeId !== undefined) {
-          const box = await boxOf(session, backendNodeId, signal);
-          clip = {
-            x: box.left,
-            y: box.top,
-            width: box.width,
-            height: box.height,
-          };
-        } else {
-          const metrics = await send(
-            session,
-            "Page.getLayoutMetrics",
-            {},
-            signal,
-          );
-          const view = fullPage
-            ? (metrics.cssContentSize ?? metrics.contentSize)
-            : (metrics.cssVisualViewport ?? {
-                clientWidth: 800,
-                clientHeight: 600,
-              });
-          const width = view.width ?? view.clientWidth;
-          const height = view.height ?? view.clientHeight;
-          clip = { x: 0, y: 0, width, height };
-        }
-        const scale = Math.min(
-          1,
-          MAX_SHOT_EDGE / Math.max(clip.width, clip.height, 1),
-        );
-        const shot = await send(
-          session,
-          "Page.captureScreenshot",
-          {
-            format: "png",
-            clip: { ...clip, scale },
-            captureBeyondViewport: fullPage,
-          },
-          signal,
-        );
-        return { mimeType: "image/png", data: shot.data };
+        // The page scrolls itself. A wheel event waits for a drawn frame, which
+        // a page that is not on screen never produces, and then does nothing.
+        const deltas = {
+          up: [0, -amount],
+          down: [0, amount],
+          left: [-amount, 0],
+          right: [amount, 0],
+          top: [0, -100_000],
+          bottom: [0, 100_000],
+        }[direction] ?? [0, amount];
+        await call(session, objectId, "scrollBy", deltas, signal);
+        return {};
       } finally {
-        if (masked)
-          await call(
-            session,
-            objectId,
-            "unmaskCredentials",
-            [],
-            undefined,
-          ).catch(() => undefined);
         await release(session, objectId);
       }
     },
+
+    async screenshot(tabId, options = {}) {
+      let lease = await adapter.renderLease?.(tabId);
+      try {
+        try {
+          return await takeScreenshot(
+            tabId,
+            options,
+            lease?.staged ? cdpTimeoutMs : directShotMs,
+          );
+        } catch (error) {
+          // A page that looked on screen but is covered by another window
+          // draws nothing: try once more on the stage.
+          if (
+            lease?.staged ||
+            !adapter.renderLease ||
+            options.signal?.aborted ||
+            !(error instanceof DriverError) ||
+            error.driverCode !== "cdp_timeout"
+          )
+            throw error;
+          await lease?.release();
+          lease = await adapter.renderLease(tabId, { force: true });
+          return await takeScreenshot(tabId, options, cdpTimeoutMs);
+        }
+      } finally {
+        await lease?.release();
+      }
+    },
+
 
     async readText(tabId, { backendNodeId, maxChars = 8_000, signal } = {}) {
       const session = await sessionFor(tabId);

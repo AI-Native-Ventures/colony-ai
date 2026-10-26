@@ -16,8 +16,23 @@ import {
 
 export const BROWSER_HOST_EVENT_CHANNEL = "colony:browser-event";
 
+/**
+ * The size a page has before the app shows it, and the size it keeps when the
+ * dock that showed it closes. A page the app never mounted (an agent's page in a
+ * channel nobody is looking at) still lays out at a real size, so its elements
+ * can be found and clicked and it can be photographed.
+ */
+export const DEFAULT_TAB_BOUNDS = Object.freeze({
+  x: 0,
+  y: 0,
+  width: 1_024,
+  height: 768,
+});
+
 export function createBrowserHost({
   WebContentsView,
+  /** Optional. Lets a page that is not on screen be drawn for a screenshot. */
+  BrowserWindow,
   session,
   userDataPath,
   maxTabs = MAX_BROWSER_TABS,
@@ -41,6 +56,7 @@ export function createBrowserHost({
   const documentListeners = new Set();
   const closeListeners = new Set();
   const blockedNavigations = new Map();
+  let stageTurn = Promise.resolve();
 
   function gate(tab, url, isMainFrame = true) {
     const verdict = navigationGate(tab.id, url, isMainFrame);
@@ -78,6 +94,102 @@ export function createBrowserHost({
       attached: tab.attached,
       visible: tab.visible,
       bounds: tab.bounds,
+    };
+  }
+
+  /**
+   * A page the system is not drawing (hidden behind the person's tab, the dock
+   * closed, the Colony window hidden or minimized) produces no frames, and a
+   * screenshot waits for a frame. The lease draws the page in a window that is
+   * on screen but fully transparent and click-through, for the moment the
+   * capture takes, then puts it back exactly where it was. A page that is
+   * already on screen is left alone unless the caller asks for the stage.
+   */
+  async function lendRenderedView(tab, { force = false } = {}) {
+    const none = { staged: false, release: async () => {} };
+    if (!BrowserWindow || tab.webContents.isDestroyed()) return none;
+    const owner = tab.ownerWindow;
+    const showing =
+      tab.attached &&
+      tab.visible &&
+      !owner.isDestroyed() &&
+      owner.isVisible() &&
+      !owner.isMinimized();
+    if (showing && !force) return none;
+    const previousTurn = stageTurn;
+    let finishTurn = () => {};
+    stageTurn = new Promise((resolve) => {
+      finishTurn = resolve;
+    });
+    await previousTurn;
+    if (!tabs.has(tab.id) || tab.webContents.isDestroyed()) {
+      finishTurn();
+      throw new Error("Browser tab closed");
+    }
+    const size = tab.bounds ?? DEFAULT_TAB_BOUNDS;
+    const stage = new BrowserWindow({
+      show: false,
+      x: 0,
+      y: 0,
+      width: size.width,
+      height: size.height,
+      useContentSize: true,
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      focusable: false,
+      skipTaskbar: true,
+      resizable: false,
+    });
+    const previousBounds = tab.view.getBounds();
+    let settleStaging = () => {};
+    tab.staging = new Promise((resolve) => {
+      settleStaging = resolve;
+    });
+    try {
+      stage.setIgnoreMouseEvents(true);
+      stage.setOpacity(0);
+      stage.showInactive();
+      if (tab.attached && !owner.isDestroyed())
+        owner.contentView.removeChildView(tab.view);
+      stage.contentView.addChildView(tab.view);
+      tab.view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+      tab.view.setVisible(true);
+      tab.stagedIn = stage;
+    } catch (error) {
+      tab.stagedIn = null;
+      if (!stage.isDestroyed()) stage.destroy();
+      settleStaging();
+      tab.staging = null;
+      finishTurn();
+      throw error;
+    }
+    let released = false;
+    return {
+      staged: true,
+      async release() {
+        if (released) return;
+        released = true;
+        try {
+          if (!stage.isDestroyed()) stage.contentView.removeChildView(tab.view);
+        } catch {
+          // The page was closed while it was on the stage.
+        }
+        tab.stagedIn = null;
+        if (tabs.has(tab.id) && !tab.webContents.isDestroyed()) {
+          if (tab.attached && !tab.ownerWindow.isDestroyed()) {
+            tab.ownerWindow.contentView.addChildView(tab.view);
+            tab.view.setBounds(tab.bounds ?? previousBounds);
+            tab.view.setVisible(tab.visible);
+          } else {
+            tab.view.setBounds(previousBounds);
+          }
+        }
+        if (!stage.isDestroyed()) stage.destroy();
+        tab.staging = null;
+        settleStaging();
+        finishTurn();
+      },
     };
   }
 
@@ -310,8 +422,12 @@ export function createBrowserHost({
           webSecurity: true,
           allowRunningInsecureContent: false,
           webviewTag: false,
+          // An agent works in a page nobody is looking at. Its timers and
+          // layout run at full speed whether or not the page is on screen.
+          backgroundThrottling: false,
         },
       });
+      view.setBounds({ ...DEFAULT_TAB_BOUNDS });
       const tab = {
         id: tabId,
         businessId,
@@ -333,6 +449,8 @@ export function createBrowserHost({
         attached: false,
         visible: false,
         bounds: null,
+        staging: null,
+        stagedIn: null,
       };
       tabs.set(tab.id, tab);
       tabsByContents.set(tab.webContents.id, tab);
@@ -431,6 +549,14 @@ export function createBrowserHost({
     blockedNavigations.delete(tab.id);
     if (tab.attached && !tab.ownerWindow.isDestroyed())
       tab.ownerWindow.contentView.removeChildView(tab.view);
+    if (tab.stagedIn) {
+      try {
+        if (!tab.stagedIn.isDestroyed())
+          tab.stagedIn.contentView.removeChildView(tab.view);
+      } catch {
+        // Already gone with its window.
+      }
+    }
     browserSessions.cancelTabDownloads(tab.id);
     browserSessions.releaseTab(tab.profileHash, tab.id);
     tabs.delete(tab.id);
@@ -552,6 +678,9 @@ export function createBrowserHost({
     }
 
     const tab = findOwnedTab(payload.tabId, sender.id);
+    // A page on the capture stage returns to the window first, so a show or
+    // hide from the app is applied to a page that is back where it belongs.
+    if (["attach", "detach"].includes(action)) await tab.staging;
     if (
       [
         "navigate",
@@ -643,6 +772,11 @@ export function createBrowserHost({
         bytes,
       ),
     tabIds: () => [...tabs.keys()],
+    renderLease: (id, options) => {
+      const tab = tabs.get(id);
+      if (!tab) throw new Error("Browser tab closed");
+      return lendRenderedView(tab, options);
+    },
     getTab: (id) => (tabs.has(id) ? snapshot(tabs.get(id)) : null),
     webContents: (id) => tabs.get(id)?.webContents,
     session: (id) => tabs.get(id)?.webContents.session,

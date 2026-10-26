@@ -192,9 +192,15 @@ export function createCapabilityStore({
     if (!Number.isFinite(ttlMs) || ttlMs <= 0 || ttlMs > MAX_GRANT_TTL_MS)
       throw new CapabilityError("invalid_input", "Invalid grant lifetime");
 
-    // One active grant per agent: the agent's tool list must be unambiguous.
+    // One active grant per agent and task: the agent's tool list for that task
+    // must be unambiguous. The same agent working in another channel at the
+    // same time keeps its own grant, so it can browse in both at once.
     for (const existing of grants.values()) {
-      if (current(existing).state === "active" && existing.agentId === agentId)
+      if (
+        current(existing).state === "active" &&
+        existing.agentId === agentId &&
+        existing.taskId === taskId
+      )
         end(existing, "revoked", "replaced");
     }
     if (activeCount() >= maxActiveGrants)
