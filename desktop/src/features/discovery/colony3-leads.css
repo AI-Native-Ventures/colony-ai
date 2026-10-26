@@ -168,6 +168,11 @@
   opacity: 0.9;
 }
 
+:root.dark .c3l-btn-primary {
+  background: hsl(var(--colony-accent));
+  color: var(--colony-accent-foreground);
+}
+
 .c3l-btn-danger {
   padding: 0 1.25rem;
   background: var(--c3l-bad);
@@ -460,6 +465,11 @@
 .c3l-runner-avatar {
   flex: none;
   box-shadow: none;
+}
+
+:root.dark .c3l-runner-avatar {
+  background: var(--colony-sidebar-avatar);
+  box-shadow: 0 0 0 1px var(--colony-sidebar-avatar-ring);
 }
 
 .c3l-runner-avatar-22 {
