@@ -337,7 +337,7 @@ async fn run_turn(turn: Turn) -> TurnRun {
             channel_id,
             root_event_id: root_id.clone(),
         },
-        _ => conv(channel_id),
+        _ => SessionScope::Conversation { channel_id },
     };
     let batch = FlushBatch {
         channel_id,
