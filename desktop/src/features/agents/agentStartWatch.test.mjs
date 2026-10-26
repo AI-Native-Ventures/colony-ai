@@ -8,6 +8,7 @@ import {
   AGENT_START_WATCH_TTL_MS,
   failAgentStartWatches,
   getAgentStartWatches,
+  lowerAgentStartFloor,
   registerAgentStartWatch,
   resetAgentStartWatches,
   resolveAgentStartWatches,
@@ -306,5 +307,65 @@ describe("reset", () => {
     mock.timers.tick(AGENT_START_STALLED_AFTER_MS * 2);
     assert.equal(calls.length, 0);
     assert.deepEqual(getAgentStartWatches(WELCOME), []);
+  });
+});
+
+describe("quiet watches (an agent believed to be running)", () => {
+  it("starts quiet, and still restarts once and stalls like any other", () => {
+    const { calls, runner } = makeRunner();
+    register({ start: runner, quiet: true });
+    assert.equal(getAgentStartWatches(WELCOME)[0].quiet, true);
+    mock.timers.tick(AGENT_START_RETRY_AFTER_MS);
+    assert.equal(calls.length, 1);
+    mock.timers.tick(AGENT_START_STALLED_AFTER_MS);
+    const [watch] = getAgentStartWatches(WELCOME);
+    assert.equal(watch.phase, "stalled");
+  });
+
+  it("is loud once a start is registered for the same wait", () => {
+    register({ quiet: true });
+    register({ quiet: false });
+    assert.equal(getAgentStartWatches(WELCOME)[0].quiet, false);
+  });
+
+  it("does not take a notice back once the person has been told", () => {
+    register({ quiet: false });
+    register({ quiet: true });
+    assert.equal(getAgentStartWatches(WELCOME)[0].quiet, false);
+  });
+
+  it("is loud again after a failed start or a retry", () => {
+    register({ quiet: true });
+    failAgentStartWatches(SCOUT, "spawn failed");
+    assert.equal(getAgentStartWatches(WELCOME)[0].quiet, false);
+    resetAgentStartWatches();
+    register({ quiet: true });
+    mock.timers.tick(AGENT_START_STALLED_AFTER_MS);
+    retryAgentStart(SCOUT);
+    assert.equal(getAgentStartWatches(WELCOME)[0].quiet, false);
+  });
+});
+
+describe("lowerAgentStartFloor", () => {
+  it("reaches the next start back to an older mention the relay showed", () => {
+    register({ floorUnix: FLOOR_SECOND });
+    lowerAgentStartFloor(SCOUT, FLOOR_FIRST);
+    const { floorUnix } = register({ floorUnix: FLOOR_SECOND });
+    assert.equal(floorUnix, FLOOR_FIRST);
+  });
+
+  it("never moves a floor forward", () => {
+    register({ floorUnix: FLOOR_FIRST });
+    lowerAgentStartFloor(SCOUT, FLOOR_SECOND);
+    assert.equal(register({ floorUnix: FLOOR_SECOND }).floorUnix, FLOOR_FIRST);
+  });
+
+  it("leaves another agent's floor alone", () => {
+    register({ pubkey: WRITER, floorUnix: FLOOR_SECOND });
+    lowerAgentStartFloor(SCOUT, FLOOR_FIRST);
+    assert.equal(
+      register({ pubkey: WRITER, floorUnix: FLOOR_SECOND }).floorUnix,
+      FLOOR_SECOND,
+    );
   });
 });

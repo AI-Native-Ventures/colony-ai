@@ -191,6 +191,7 @@ export default defineConfig({
         "**/channel-activity-popover.spec.ts",
         "**/agent-working-indicator.spec.ts",
         "**/agent-start-watch.spec.ts",
+        "**/mention-wake-after-launch.spec.ts",
         "**/agent-working-indicator-screenshots.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/thread-open-tint-screenshots.spec.ts",
@@ -332,6 +333,7 @@ export default defineConfig({
       testMatch: [
         "**/agent-working-indicator.spec.ts",
         "**/agent-start-watch.spec.ts",
+        "**/mention-wake-after-launch.spec.ts",
         "**/thread-open-tint.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",

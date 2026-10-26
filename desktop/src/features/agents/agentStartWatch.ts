@@ -48,6 +48,12 @@ export type AgentStartWatch = {
   phase: AgentStartPhase;
   /** Why the start failed, when it failed outright. */
   reason: string | null;
+  /**
+   * The agent was believed to be running, so nothing says "starting" while it
+   * has time to pick the mention up. The watch still stands guard: if nobody
+   * answers it turns into the stalled note with a way to try again.
+   */
+  quiet: boolean;
 };
 
 /** Starts the agent again. `force` replaces a harness that is still running. */
@@ -228,6 +234,8 @@ export function registerAgentStartWatch(input: {
   /** Unix seconds captured when the mention was queued. */
   floorUnix: number;
   start: AgentStartRunner;
+  /** The agent is believed to be running: wait without a "starting" notice. */
+  quiet?: boolean;
 }): { floorUnix: number } {
   const now = Date.now();
   pruneExpired(now);
@@ -239,7 +247,13 @@ export function registerAgentStartWatch(input: {
   const existing = entries.get(key);
   if (existing && existing.watch.phase === "starting") {
     existing.start = input.start;
-    existing.watch = { ...existing.watch, floorUnix };
+    // Once the person has been told the agent is starting, a later quiet
+    // registration must not take the notice back.
+    existing.watch = {
+      ...existing.watch,
+      floorUnix,
+      quiet: existing.watch.quiet && (input.quiet ?? false),
+    };
   } else {
     const entry: Entry = {
       watch: {
@@ -250,6 +264,7 @@ export function registerAgentStartWatch(input: {
         floorUnix,
         phase: "starting",
         reason: null,
+        quiet: input.quiet ?? false,
       },
       start: input.start,
       retried: false,
@@ -263,6 +278,19 @@ export function registerAgentStartWatch(input: {
   syncWorkingSubscription();
   notify();
   return { floorUnix };
+}
+
+/**
+ * The relay shows a mention to `pubkey` older than any this session recorded
+ * and still unanswered: every later start for the agent reaches back to it.
+ */
+export function lowerAgentStartFloor(pubkey: string, floorUnix: number) {
+  const key = normalizePubkey(pubkey);
+  for (const entry of entriesFor(key)) {
+    if (floorUnix < entry.watch.floorUnix) {
+      entry.watch = { ...entry.watch, floorUnix };
+    }
+  }
 }
 
 /** The agent picked the mention up (or answered): stop waiting on it. */
@@ -307,7 +335,7 @@ export function failAgentStartWatches(
     if (entry.watch.pubkey !== key) continue;
     clearTimers(entry);
     entry.retried = true;
-    entry.watch = { ...entry.watch, phase: "stalled", reason };
+    entry.watch = { ...entry.watch, phase: "stalled", reason, quiet: false };
     changed = true;
   }
   if (changed) notify();
@@ -331,6 +359,7 @@ export function retryAgentStart(pubkey: string) {
       phase: "starting",
       since: now,
       reason: null,
+      quiet: false,
     };
     startTimers(entryId, entry);
   }
