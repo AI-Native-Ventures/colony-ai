@@ -10,17 +10,22 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { listManagedAgents } from "@/shared/api/tauri";
+import {
+  releaseWakeEvents,
+  stopManagedAgent,
+} from "@/shared/api/tauriManagedAgents";
 import { normalizePubkey } from "@/shared/lib/pubkey";
+import { runAgentLifecycle } from "@/features/agents/agentLifecycle";
 import {
   failAgentStartWatches,
   registerAgentStartWatch,
   resolveAgentStartWatches,
+  stallAgentStartWatches,
 } from "@/features/agents/agentStartWatch";
 import { createMentionCatchUpStore } from "@/features/agents/mentionCatchUpStorage";
 import {
   createMentionReconciler,
   type MentionReconciler,
-  SENT_LOOKBACK_SECONDS,
   type TenantScope,
 } from "@/features/agents/mentionReconciler";
 import { setMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
@@ -80,6 +85,9 @@ export function useMentionReconciler(): void {
         });
       },
       getScope: () => scopeRef.current,
+      stopAgent: (pubkey, reason) => stopManagedAgent(pubkey, reason),
+      handBack: (pubkey, eventIds) => releaseWakeEvents(pubkey, eventIds),
+      exclusive: runAgentLifecycle,
       startAgent: (agent, attempt, scope) =>
         startRef.current({
           pubkey: agent.pubkey,
@@ -92,8 +100,11 @@ export function useMentionReconciler(): void {
       watch: (input) => {
         registerAgentStartWatch(input);
       },
-      resolve: resolveAgentStartWatches,
+      resolve: (pubkey, registeredBefore) =>
+        resolveAgentStartWatches(pubkey, { registeredBefore }),
+      now: () => Date.now(),
       fail: failAgentStartWatches,
+      stall: stallAgentStartWatches,
       caughtUp: createMentionCatchUpStore(),
       report: (message) => {
         toast.error(message);
@@ -109,19 +120,9 @@ export function useMentionReconciler(): void {
     reconcilerRef.current = reconciler;
     setMentionReconciler(reconciler);
     // Every start of an agent reaches back to the oldest mention the relay
-    // shows it never touched.
-    setStartFloorLookup(async (agentPubkey) => {
-      const sender = scopeRef.current?.expectedSignerPubkey;
-      if (!sender) return undefined;
-      const unanswered = await findUnansweredMentions({
-        agentPubkey,
-        senderPubkey: sender,
-        nowSeconds: Math.floor(Date.now() / 1000),
-        lookbackSeconds: SENT_LOOKBACK_SECONDS,
-        fetchEvents: (filter) => relayClient.fetchEvents(filter),
-      });
-      return unanswered[0]?.createdAt;
-    });
+    // shows it never answered, and hands back the ones its last harness
+    // queued and lost.
+    setStartFloorLookup((agentPubkey) => reconciler.prepareStart(agentPubkey));
     setReady(true);
     return () => {
       setReady(false);

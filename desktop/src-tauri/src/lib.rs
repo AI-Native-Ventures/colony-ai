@@ -85,7 +85,7 @@ use huddle::{
 use initial_window::*;
 use managed_agents::{
     backfill_persona_snapshots, ensure_nest, list_managed_agent_runtimes,
-    put_managed_agent_runtime_lifecycle, reconcile_managed_agent_runtimes,
+    put_managed_agent_runtime_lifecycle, reconcile_managed_agent_runtimes, release_wake_events,
     restart_managed_agent_runtime, start_managed_agent_runtime, stop_managed_agent_runtime,
     try_regenerate_nest,
 };
@@ -770,6 +770,7 @@ pub fn run() {
             restart_managed_agent_runtime,
             reconcile_managed_agent_runtimes,
             put_managed_agent_runtime_lifecycle,
+            release_wake_events,
             create_managed_agent,
             start_managed_agent,
             stop_managed_agent,

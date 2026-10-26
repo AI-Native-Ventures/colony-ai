@@ -8,15 +8,22 @@ import {
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 /**
- * Mentions to a local agent that nobody on the agent's side has touched.
+ * Mentions to a local agent that the agent never answered.
  *
  * GATE-303 (26 Oct, published 3.0.3): a mention sent 3.6 s after launch was
  * lost for good. Every earlier fix looked at what the desktop attempted (the
  * wake, the replay floor, the wake ledger), so a mention the desktop never
  * attempted left no trace anywhere. The relay is the one record that cannot
  * miss it: the mention is stored there, and a harness that queued it reacts to
- * it (the "seen" reaction) or answers it. A stored mention with no event from
- * the agent that points at it was never picked up.
+ * it (the "seen" reaction) or answers it.
+ *
+ * Only an answer ends the wait. The harness reacts 👀 the moment it queues a
+ * mention and 💬 when the turn begins, and removes both when the turn ends.
+ * GATE-304 (26 Oct, published 3.0.4): the first harness queued the mention,
+ * reacted, and was stopped before it answered; a check that took the reaction
+ * for an answer dropped the wait and nothing ever looked at the mention again.
+ * A reaction left behind is progress, reported as such, so the caller can tell
+ * a mention nobody saw from one that was queued or begun and then lost.
  */
 
 /** Furthest back a mention can still be unanswered: the harness never replays
@@ -28,12 +35,25 @@ export const UNANSWERED_MENTION_LIMIT = 50;
 export const UNANSWERED_MENTION_READ_TIMEOUT_MS = 6_000;
 
 const MESSAGE_KINDS = [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2];
-/** What an agent sends about a mention: a reply, or the "seen" reaction. */
+/** The harness reacts with this when a turn for the mention begins. */
+const WORKING_REACTION = "💬";
+/** What an agent sends about a mention: a reply, or a progress reaction. */
 const ANSWER_KINDS = [
   KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_V2,
   KIND_REACTION,
 ];
+
+/**
+ * How far the agent got with a mention it never answered.
+ * - `none`: nothing from the agent points at it.
+ * - `seen`: the harness queued it (👀) and nothing more. Its turn never began,
+ *   so the harness can be asked to take the mention again without a turn ever
+ *   having acted on it.
+ * - `working`: a turn began (💬) and then ended without an answer. The model
+ *   may have acted on it, so only the person decides whether to run it again.
+ */
+export type MentionProgress = "none" | "seen" | "working";
 
 export type UnansweredMention = {
   id: string;
@@ -42,6 +62,7 @@ export type UnansweredMention = {
   channelId: string | null;
   /** The thread it was sent in, or `null` for the main conversation. */
   threadHeadId: string | null;
+  progress: MentionProgress;
 };
 
 export type FetchRelayEvents = (
@@ -83,8 +104,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
 
 /**
  * The mentions `senderPubkey` sent to `agentPubkey` that the agent never
- * touched, oldest first. Throws when the relay cannot be read: the caller must
- * retry or say so, because an empty answer here means "nothing was lost".
+ * answered, oldest first, each with how far the agent got. Throws when the
+ * relay cannot be read: the caller must retry or say so, because an empty
+ * answer here means "nothing was lost".
  */
 export async function findUnansweredMentions({
   agentPubkey,
@@ -141,30 +163,40 @@ export async function findUnansweredMentions({
   const answersFromAgent = answers.filter(
     (answer) => normalizePubkey(answer.pubkey) === agent,
   );
-  const touched = new Set<string>();
+  const isReaction = (answer: RelayEvent) => answer.kind === KIND_REACTION;
+  // A reaction says how far the harness got; only a message answers.
+  const replies = answersFromAgent.filter((answer) => !isReaction(answer));
+  const answered = new Set<string>();
+  const seen = new Set<string>();
+  const working = new Set<string>();
   for (const answer of answersFromAgent) {
     for (const tag of answer.tags) {
-      if (tag[0] === "e" && tag[1]) touched.add(tag[1]);
+      if (tag[0] !== "e" || !tag[1]) continue;
+      if (!isReaction(answer)) answered.add(tag[1]);
+      else if (answer.content === WORKING_REACTION) working.add(tag[1]);
+      else seen.add(tag[1]);
     }
   }
   const answeredInThread = (event: RelayEvent) => {
     const head = threadHeadOf(event);
     return (
       head !== null &&
-      answersFromAgent.some(
+      replies.some(
         (answer) =>
           answer.created_at >= event.created_at &&
           answer.tags.some((tag) => tag[0] === "e" && tag[1] === head),
       )
     );
   };
+  const progressOf = (id: string): MentionProgress =>
+    working.has(id) ? "working" : seen.has(id) ? "seen" : "none";
 
-  const seen = new Set<string>();
+  const listed = new Set<string>();
   return sent
     .filter((event) => {
-      if (touched.has(event.id) || answeredInThread(event)) return false;
-      if (seen.has(event.id)) return false;
-      seen.add(event.id);
+      if (answered.has(event.id) || answeredInThread(event)) return false;
+      if (listed.has(event.id)) return false;
+      listed.add(event.id);
       return true;
     })
     .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id))
@@ -173,5 +205,6 @@ export async function findUnansweredMentions({
       createdAt: event.created_at,
       channelId: tagValue(event, "h"),
       threadHeadId: threadHeadOf(event),
+      progress: progressOf(event.id),
     }));
 }

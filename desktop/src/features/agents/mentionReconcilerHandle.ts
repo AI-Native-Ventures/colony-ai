@@ -22,3 +22,19 @@ export function resetMentionReconciler() {
 export function noteMentionSentToAgents(pubkeys: readonly string[]) {
   current?.noteMentionSent(pubkeys);
 }
+
+/**
+ * The person asked to try again: replace the agent's harness, hand back what
+ * it queued and lost, and start from the oldest unanswered mention. Resolves
+ * to `false`, doing nothing, when no reconciler is mounted so the caller can
+ * fall back to a plain forced start.
+ */
+export async function retryAgentWithMentions(
+  pubkey: string,
+  floorUnix: number,
+): Promise<boolean> {
+  const reconciler = current;
+  if (!reconciler) return false;
+  await reconciler.retryAgent(pubkey, floorUnix);
+  return true;
+}

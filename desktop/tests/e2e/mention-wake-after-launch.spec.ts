@@ -1,6 +1,21 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import {
+  advance,
+  AGENT_PUBKEY,
+  callBridge,
+  endHarness,
+  indicator,
+  mentionScout,
+  openGeneral,
+  pageNowSeconds,
+  pickScout,
+  readCommands,
+  readStartCalls,
+  scout,
+  SECOND,
+} from "../helpers/mentionWake";
 
 /**
  * GATE-303 (26 Oct, published 3.0.3): a mention sent 3.6 s after launch to a
@@ -15,110 +30,7 @@ import { installMockBridge } from "../helpers/bridge";
  * silent.
  */
 
-const AGENT_PUBKEY = "ab".repeat(32);
-const SECOND = 1000;
-
 test.use({ viewport: { width: 1280, height: 720 } });
-
-type StartCall = {
-  expectedRelayUrl?: string | null;
-  forceRestart?: boolean | null;
-  replayFloorUnix?: number | null;
-};
-
-async function readStartCalls(page: Page): Promise<StartCall[]> {
-  return page.evaluate(() =>
-    (
-      (
-        window as Window & {
-          __BUZZ_E2E_COMMAND_LOG__?: Array<{
-            command: string;
-            payload: unknown;
-          }>;
-        }
-      ).__BUZZ_E2E_COMMAND_LOG__ ?? []
-    )
-      .filter((entry) => entry.command === "start_managed_agent")
-      .map((entry) => entry.payload as StartCall),
-  );
-}
-
-async function pageNowSeconds(page: Page) {
-  return page.evaluate(() => Math.floor(Date.now() / 1000));
-}
-
-async function callBridge(
-  page: Page,
-  name:
-    | "__BUZZ_E2E_BLOCK_MANAGED_AGENT_LIST__"
-    | "__BUZZ_E2E_RELEASE_MANAGED_AGENT_LIST__",
-) {
-  await page.evaluate((fn) => {
-    (window as unknown as Record<string, () => void>)[fn]?.();
-  }, name);
-}
-
-/** The agent's harness ends with no word; the app's cache has not heard yet. */
-async function endHarness(page: Page) {
-  await page.evaluate(
-    (pubkey) =>
-      (
-        window as Window & {
-          __BUZZ_E2E_END_MANAGED_AGENT__?: (pubkey: string) => Promise<void>;
-        }
-      ).__BUZZ_E2E_END_MANAGED_AGENT__?.(pubkey),
-    AGENT_PUBKEY,
-  );
-}
-
-async function openGeneral(page: Page) {
-  await page.clock.install();
-  await page.goto("/");
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("general");
-}
-
-async function pickScout(page: Page, text: string) {
-  const input = page.getByTestId("message-input");
-  await input.fill("Hey @scout");
-  await expect(
-    page
-      .getByTestId("message-composer")
-      .getByTestId("mention-autocomplete")
-      .getByText("Scout"),
-  ).toBeVisible();
-  await input.press("Enter");
-  await page.keyboard.type(` ${text}`);
-}
-
-async function mentionScout(page: Page, text: string) {
-  await pickScout(page, text);
-  await page.getByTestId("send-message").click();
-}
-
-/**
- * Moves the page clock on, running every timer due on the way, including the
- * ones that earlier timers schedule: the mock host answers each call on a
- * timer too, so a chain of reads and waits needs the clock to keep moving.
- */
-async function advance(page: Page, totalMs: number, stepMs = 250) {
-  for (let spent = 0; spent < totalMs; spent += stepMs) {
-    await page.clock.runFor(Math.min(stepMs, totalMs - spent));
-  }
-}
-
-function indicator(page: Page) {
-  return page.getByTestId("channel-agent-working-indicator");
-}
-
-function scout(status: "stopped" | "running") {
-  return {
-    pubkey: AGENT_PUBKEY,
-    name: "Scout",
-    status,
-    channelNames: ["general"],
-  };
-}
 
 test.describe("a mention to an agent the app believes is fine", () => {
   // GATE-303: the app's picture of its agents was stale or missing when the
@@ -209,20 +121,21 @@ test.describe("a running agent that never touches a mention", () => {
       indicator(page).getByTestId("agent-working-indicator-label"),
     ).toHaveText("Scout hasn't picked this up yet.");
 
-    // Try again replaces the harness and reaches back to the mention.
+    // Try again replaces the harness (a stop that says why, then a start) and
+    // reaches back to the mention.
     await indicator(page)
       .getByRole("button", { name: "Try starting Scout again" })
       .click();
     await expect
-      .poll(async () => {
-        const calls = await readStartCalls(page);
-        return calls.some((call) => call.forceRestart === true);
-      })
-      .toBe(true);
-    const forced = (await readStartCalls(page)).find(
-      (call) => call.forceRestart === true,
-    );
-    expect(forced?.replayFloorUnix).toBeLessThanOrEqual(sentAt + 2);
-    expect(forced?.replayFloorUnix).toBeGreaterThan(sentAt - 5);
+      .poll(async () => (await readStartCalls(page)).length)
+      .toBeGreaterThan(0);
+    const [replaced] = await readStartCalls(page);
+    expect(replaced.replayFloorUnix).toBeLessThanOrEqual(sentAt + 2);
+    expect(replaced.replayFloorUnix).toBeGreaterThan(sentAt - 5);
+    const [stop] = await readCommands(page, ["stop_managed_agent"]);
+    expect(stop.payload).toMatchObject({
+      pubkey: AGENT_PUBKEY,
+      reason: "the person asked to try again",
+    });
   });
 });

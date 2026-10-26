@@ -1018,3 +1018,69 @@ test("a relay that cannot be read does not stop the start", async () => {
     console.warn = warn;
   }
 });
+
+test("Try again goes through the mention reconciler, which hands back what the old harness queued", async () => {
+  // GATE-304: a plain forced start reuses the harness's ledger, which marks a
+  // mention it queued and lost as handled. The reconciler stops the agent,
+  // hands the mention back and starts it.
+  const { setMentionReconciler } = await import(
+    "@/features/agents/mentionReconcilerHandle.ts"
+  );
+  const retried = [];
+  setMentionReconciler({
+    noteMentionSent: () => {},
+    catchUpOnLaunch: () => {},
+    prepareStart: async () => undefined,
+    retryAgent: async (pubkey, floorUnix) => {
+      retried.push([pubkey, floorUnix]);
+    },
+    dispose: () => {},
+  });
+  try {
+    holdIdentity = true;
+    const { act, rendered } = await renderDetachedStart();
+    const { retryAgentStart } = await import(
+      "@/features/agents/agentStartWatch.ts"
+    );
+    const floor = Math.floor(Date.now() / 1000) - 3;
+    await act(async () => {
+      rendered.result.current.startDetached(AGENT_RECORD, floor, {
+        channelId: "welcome",
+        threadHeadId: null,
+      });
+      await settle();
+    });
+    for (const resolveIdentity of heldIdentity.splice(0)) resolveIdentity();
+    await waitForIdentity(act, rendered);
+    await act(async () => {
+      retryAgentStart(AGENT);
+      await settle();
+    });
+    assert.deepEqual(retried, [[AGENT, floor]]);
+    assert.equal(startCalls.length, 0, "no plain forced start went out");
+    rendered.unmount();
+  } finally {
+    setMentionReconciler(null);
+  }
+});
+
+test("a start a send fired is tracked until it lands, so nothing stops the agent mid-start", async () => {
+  const { isAgentLifecycleBusy, resetAgentLifecycle } = await import(
+    "@/features/agents/agentLifecycle.ts"
+  );
+  resetAgentLifecycle();
+  holdStarts = true;
+  const { act, rendered } = await renderDetachedStart();
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD);
+    await settle();
+  });
+  assert.equal(startCalls.length, 1);
+  assert.equal(isAgentLifecycleBusy(AGENT), true, "the start is in flight");
+  await act(async () => {
+    heldStarts[0].resolve();
+    await settle();
+  });
+  assert.equal(isAgentLifecycleBusy(AGENT), false, "the start landed");
+  rendered.unmount();
+});

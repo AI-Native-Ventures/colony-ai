@@ -85,12 +85,47 @@ describe("findUnansweredMentions", () => {
         createdAt: FIRST,
         channelId: WELCOME,
         threadHeadId: null,
+        progress: "none",
       },
     ]);
   });
 
-  it("counts the seen reaction as touched: the harness queued it", async () => {
+  it("does not take the seen reaction for an answer: the harness queued it, nothing more", async () => {
+    // GATE-304: the first harness reacted 👀 as soon as it queued the mention
+    // and was stopped before it answered. The reaction is progress, never
+    // proof the person was answered.
     const events = [mention("m1", FIRST), answer(7, "m1")];
+    const found = await find(events);
+    assert.deepEqual(
+      found.map((m) => [m.id, m.progress]),
+      [["m1", "seen"]],
+    );
+  });
+
+  it("tells a turn that began (💬) from one that only queued the mention (👀)", async () => {
+    const events = [
+      mention("queued", FIRST),
+      answer(7, "queued"),
+      mention("begun", FIRST + 10),
+      { ...answer(7, "begun"), content: "💬", created_at: FIRST + 12 },
+      { ...answer(7, "begun"), id: "seen-begun", created_at: FIRST + 11 },
+    ];
+    const found = await find(events);
+    assert.deepEqual(
+      found.map((m) => [m.id, m.progress]),
+      [
+        ["queued", "seen"],
+        ["begun", "working"],
+      ],
+    );
+  });
+
+  it("an answer wins over any reaction left behind", async () => {
+    const events = [
+      mention("m1", FIRST),
+      answer(7, "m1"),
+      answer(9, "m1", { createdAt: FIRST + 20 }),
+    ];
     assert.deepEqual(await find(events), []);
   });
 

@@ -8,11 +8,13 @@ import {
   AGENT_START_WATCH_TTL_MS,
   failAgentStartWatches,
   getAgentStartWatches,
+  hasAgentStartWatch,
   lowerAgentStartFloor,
   registerAgentStartWatch,
   resetAgentStartWatches,
   resolveAgentStartWatches,
   retryAgentStart,
+  stallAgentStartWatches,
   subscribeAgentStartWatches,
 } from "./agentStartWatch.ts";
 import {
@@ -367,5 +369,74 @@ describe("lowerAgentStartFloor", () => {
       register({ pubkey: WRITER, floorUnix: FLOOR_SECOND }).floorUnix,
       FLOOR_SECOND,
     );
+  });
+});
+
+describe("an agent that started and went away", () => {
+  it("is stalled at once, with its own note, and is not restarted behind the person's back", () => {
+    const { calls, runner } = makeRunner();
+    register({ start: runner });
+    stallAgentStartWatches(SCOUT, "Scout keeps stopping before it answers.");
+    const [watch] = getAgentStartWatches(WELCOME);
+    assert.equal(watch.phase, "stalled");
+    assert.equal(watch.note, "Scout keeps stopping before it answers.");
+    assert.equal(watch.reason, null, "the start did not fail");
+    mock.timers.tick(AGENT_START_STALLED_AFTER_MS * 2);
+    assert.equal(calls.length, 0);
+  });
+
+  it("loses the note when the person tries again", () => {
+    register();
+    stallAgentStartWatches(SCOUT, "Scout stopped while working on this.");
+    retryAgentStart(SCOUT);
+    const [watch] = getAgentStartWatches(WELCOME);
+    assert.equal(watch.phase, "starting");
+    assert.equal(watch.note, null);
+  });
+
+  it("leaves another agent's wait alone", () => {
+    register({ pubkey: WRITER });
+    stallAgentStartWatches(SCOUT, "note");
+    assert.equal(getAgentStartWatches(WELCOME)[0].phase, "starting");
+  });
+});
+
+describe("hasAgentStartWatch", () => {
+  it("is true while somebody waits on the agent, in any spelling, and false after", () => {
+    assert.equal(hasAgentStartWatch(SCOUT), false);
+    register();
+    assert.equal(hasAgentStartWatch(SCOUT), true);
+    assert.equal(hasAgentStartWatch(SCOUT.toUpperCase()), true);
+    assert.equal(hasAgentStartWatch(WRITER), false);
+    resolveAgentStartWatches(SCOUT);
+    assert.equal(hasAgentStartWatch(SCOUT), false);
+  });
+});
+
+describe("resolveAgentStartWatches with registeredBefore", () => {
+  it("ends the waits registered before the moment and keeps the later ones", () => {
+    register({ threadHeadId: null });
+    mock.timers.tick(5_000);
+    const cut = Date.now();
+    mock.timers.tick(1);
+    register({ threadHeadId: "thread-2", floorUnix: FLOOR_SECOND });
+    resolveAgentStartWatches(SCOUT, { registeredBefore: cut });
+    assert.deepEqual(
+      getAgentStartWatches(WELCOME).map((watch) => watch.threadHeadId),
+      ["thread-2"],
+    );
+  });
+
+  it("keeps a wait registered in the very moment the look began", () => {
+    register();
+    resolveAgentStartWatches(SCOUT, { registeredBefore: Date.now() });
+    assert.equal(hasAgentStartWatch(SCOUT), true);
+  });
+
+  it("without the option ends every wait for the agent, as before", () => {
+    register();
+    register({ threadHeadId: "thread-2" });
+    resolveAgentStartWatches(SCOUT);
+    assert.equal(hasAgentStartWatch(SCOUT), false);
   });
 });

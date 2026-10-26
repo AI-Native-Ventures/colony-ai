@@ -113,6 +113,7 @@
         "persistent-agent-audience.spec.ts",
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
+        "mention-wake-stop-race.spec.ts",
         "agent-working-indicator.spec.ts"
       ]
     },
@@ -134,6 +135,7 @@
         "auxiliary-pane-close-visibility.spec.ts",
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
+        "mention-wake-stop-race.spec.ts",
         "agent-working-indicator.spec.ts"
       ]
     },
@@ -287,7 +289,8 @@
         "colony3-conv-timeline-proof.spec.ts",
         "colony3-conv-dialogs-proof.spec.ts",
         "agent-start-watch.spec.ts",
-        "mention-wake-after-launch.spec.ts"
+        "mention-wake-after-launch.spec.ts",
+        "mention-wake-stop-race.spec.ts"
       ]
     },
     {
