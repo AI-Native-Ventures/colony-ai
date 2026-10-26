@@ -12270,3 +12270,7 @@ done"#
 #[cfg(all(test, unix))]
 #[path = "pool/pi_prompt_tests.rs"]
 mod pi_prompt_tests;
+
+#[cfg(all(test, unix))]
+#[path = "pool/turn_reply_tests.rs"]
+mod turn_reply_tests;
