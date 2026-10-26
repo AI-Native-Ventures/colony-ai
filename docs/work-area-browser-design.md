@@ -111,8 +111,11 @@ Module layout (all under `desktop/electron/browser-broker/`)
   over. Nothing crosses businesses: a grant names exactly one `businessId`, and
   every tab lookup in the broker is filtered by it.
 - A grant binds to one primary tab at issue time. The agent may open up to
-  `maxExtraTabs` (default 3) more, each bound to the same grant. The agent only
-  ever sees tabs bound to its grant. The person's other tabs are invisible to it.
+  `maxExtraTabs` (default 3) more, each bound to the same grant. A grant the
+  person made sees only the tabs bound to it. Under default access (section
+  6.1) a grant also takes over, on first use, any work area tab of its own
+  business that the person has not marked private (section 6.2). Nothing from
+  another business or client is ever listed or reachable.
 - Popups opened by an agent-controlled tab become new tabs that are NOT
   agent-accessible until the person approves their origin.
 - History: `back`, `forward`, `reload` exposed as navigation actions, subject to
@@ -242,14 +245,82 @@ and click Allow. The flow, end to end:
    card goes away by itself once the grant holds that site, for example when
    the agent then opens that address itself.
 5. The first `browser_open` uses the task's own empty tab; later ones open new
-   tabs, which the app adopts as work area tabs.
-6. Stop, Take over and closing the tab end the grant and mark the task as
-   stopped. The agent's next call arrives as `access-requested` with
-   `resume: true`: the app opens the panel and shows one Allow card, and only
-   the person's click grants again. Expiry (60 minutes) is not a stop: the
-   next call renews it silently.
+   tabs, which the app adds to the tab strip without selecting them.
+6. Stop and closing the tab end the grant and mark the task as stopped. The
+   agent's next call arrives as `access-requested` with `resume: true`: the
+   app shows one Allow card on the agent's page and marks the agent as waiting
+   for the person, and only the person's click grants again. Take over on a
+   tab gives back that one tab (section 6.2) and the task goes on. Expiry (60
+   minutes) is not a stop: the next call renews it silently.
 7. The packaged gate (`COLONY_BROWSER_PACKAGED_GATE`) turns default access off
    so it keeps proving the person-made grant path.
+8. Nothing here moves the person's view (section 6.3). The app makes the page
+   and adds it to the tab strip. The dock does not open, the selected tab, the
+   dock width and the keyboard focus do not change.
+
+### 6.2 Shared tabs (owner decision, 26 Oct 2026)
+
+"Even if I open a tab the agent should be able to find it and control it."
+Under default access every AI employee of a business shares that business's
+work area tabs, with no Allow click. What stays:
+
+- One business (and client) only. `browser_tabs` and every tool filter by it.
+- Password, card and one-time-code fields stay blanked in snapshots, reads and
+  screenshots. Sends, posts, purchases, permission changes and uploads still
+  ask the person. Addresses must still pass the url policy (public http and
+  https), so a tab on a private network or file address is not taken.
+- One controller per tab. `browser_tabs` lists each tab with `shown` (the one
+  the person is looking at) and `control`: `you`, `free` or `another AI
+  employee`. A tab another task holds answers `tab_busy`.
+- The person wins. A key press, a mouse press or a wheel turn in a page (never
+  the agent's own input, which the page driver marks while it sends it) hands
+  that one tab back at once: the grant lives on, pending work on it is
+  cancelled, the tab shows the person's controls again. The agent leaves the
+  tab alone for four seconds (`person_active`) and takes it back when it asks
+  again. Take over does the same for one tab. Stop still ends the whole task.
+- Keep private. One click on the open tab's lock (tab strip) and the tab is not
+  listed and not reachable, a task that held it lets go at once, and the
+  choice is remembered with the page. Share it again with a second click.
+- Taking a tab approves its current site for that task (it is already open in
+  the owner's own browser, in the owner's own business). A tab the agent opened
+  itself can be closed by it; a tab the person or another task opened cannot.
+- Agent rules (`web_tasks.md`, rule 6): "the page I have open" means call
+  `browser_tabs`, pick the tab marked `shown`, pass its id as `tab`.
+
+Packaged gate hosts keep person-made grants: no sharing, the old "Allow an
+agent" button and "Not shared with agents" footer. The renderer reads
+`defaultAccess` from `agent-status` to choose.
+
+### 6.3 Background work and no takeover (26 Oct 2026)
+
+An agent's page is usually not the page the person looks at. Four things make
+every tool work there, found by driving hidden, detached, hidden-window and
+minimized tabs in real Electron:
+
+- A page the dock never mounted had a 0 by 0 view, so elements had no place
+  (`click_intercepted`) and a screenshot had nothing to draw. Every page now
+  starts at 1024 by 768 and keeps its size when the dock closes.
+- A wheel event waits for a drawn frame, which a hidden window never draws (the
+  scroll did nothing). Scrolling is done by the page itself (`scrollBy`).
+- A screenshot waits for a frame too and hung until the 15 second timeout in a
+  hidden window. A page that is not on screen is drawn for the moment of the
+  capture on a transparent, click-through, non-focusable window, then put back
+  where it was (`renderLease` in `browser-host.mjs`). A page that looks on
+  screen but draws nothing gets one retry on the stage after 2.5 seconds. A
+  capture that still cannot be taken fails with `cdp_timeout` inside its
+  timeout.
+- Tab views no longer throttle in the background (`backgroundThrottling:
+  false`).
+- A grant is one per agent and task, not one per agent: Scout in two channels
+  at once keeps both browsers. Grants run in parallel; calls within one grant
+  still run one at a time.
+
+No takeover: the app adds a page to the tab strip with `addWorkAreaTab`, never
+`openWorkArea`. The marks (channel header, sidebar row, page tab) come from the
+broker's `agent-action` events and from questions only the person can answer
+(`agentBrowserActivity.ts`): "Scout is using the browser" for 12 seconds after
+its last action, "Scout needs you in the browser" while it waits on a confirm,
+a site or an Allow. A click on the header mark opens the dock on its page.
 
 ## 7. Network policy
 
