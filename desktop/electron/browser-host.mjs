@@ -55,6 +55,8 @@ export function createBrowserHost({
   showItemInFolder,
   /** False when the kill switch is set: no tab can be created. */
   enabled = true,
+  /** Page input arriving this long after an agent's own still belongs to it. */
+  agentInputGraceMs = 100,
   platform = process.platform,
 }) {
   const tabs = new Map();
@@ -823,7 +825,17 @@ export function createBrowserHost({
         .map(agentView),
     markAgentInput(id, delta) {
       const tab = tabs.get(id);
-      if (tab) tab.agentInputs = Math.max(0, tab.agentInputs + delta);
+      if (!tab) return;
+      if (delta > 0) {
+        tab.agentInputs += delta;
+        return;
+      }
+      // The page may report the agent's own key or click a moment after the
+      // command returned; that late report is not the person.
+      const timer = setTimeout(() => {
+        tab.agentInputs = Math.max(0, tab.agentInputs + delta);
+      }, agentInputGraceMs);
+      timer.unref?.();
     },
     onHumanInput(callback) {
       humanInputListeners.add(callback);

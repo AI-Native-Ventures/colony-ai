@@ -872,7 +872,10 @@ test("the person's key or click in a page is the person; the agent's own input i
   contents.emit("input-event", {}, { type: "mouseDown" });
   contents.emit("input-event", {}, { type: "keyDown" });
   f.browser.agentAdapter.markAgentInput(f.tab.id, -1);
+  // The page can report the agent's own press just after the command returned.
+  contents.emit("input-event", {}, { type: "mouseDown" });
   assert.deepEqual(seen, []);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   // The person.
   for (const type of ["mouseDown", "mouseWheel", "keyDown", "char"]) {
     contents.emit("input-event", {}, { type });
@@ -884,6 +887,7 @@ test("the person's key or click in a page is the person; the agent's own input i
   );
   // The count never goes below zero, so a stray decrement cannot hide the person.
   f.browser.agentAdapter.markAgentInput(f.tab.id, -1);
+  await new Promise((resolve) => setTimeout(resolve, 200));
   contents.emit("input-event", {}, { type: "mouseDown" });
   assert.equal(seen.length, 5);
 });
