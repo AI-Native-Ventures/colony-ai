@@ -237,7 +237,11 @@
   flex: none;
   place-items: center;
   border-radius: 0.5rem;
-  background: linear-gradient(135deg, var(--colony-appearance-green-start), var(--colony-appearance-green-stop));
+  background: linear-gradient(
+    135deg,
+    var(--colony-appearance-green-start),
+    var(--colony-appearance-green-stop)
+  );
   font-size: calc(12 * var(--colony-px));
   font-weight: 800;
 }

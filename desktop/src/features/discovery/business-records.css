@@ -435,7 +435,11 @@
 .w10-metric:last-child {
   border: 0;
   background:
-    radial-gradient(at 90% 95%, var(--colony-records-metric-blue), transparent 80%),
+    radial-gradient(
+      at 90% 95%,
+      var(--colony-records-metric-blue),
+      transparent 80%
+    ),
     radial-gradient(at 0 0, var(--colony-records-metric-rose), transparent 85%);
 }
 
@@ -801,7 +805,11 @@
   border: 1px solid var(--w10-line);
   border-radius: 0.55rem;
   padding: 0.85rem;
-  background: linear-gradient(110deg, var(--colony-records-campaign-start), var(--w10-paper));
+  background: linear-gradient(
+    110deg,
+    var(--colony-records-campaign-start),
+    var(--w10-paper)
+  );
   color: var(--w10-ink);
   text-decoration: none;
 }
@@ -815,7 +823,11 @@
   flex: none;
   place-items: center;
   border-radius: 0.6rem;
-  background: linear-gradient(135deg, var(--colony-records-campaign-symbol-start), var(--colony-records-campaign-symbol-stop));
+  background: linear-gradient(
+    135deg,
+    var(--colony-records-campaign-symbol-start),
+    var(--colony-records-campaign-symbol-stop)
+  );
   color: var(--colony-records-campaign-symbol-ink);
 }
 .w10-campaign-symbol svg {
