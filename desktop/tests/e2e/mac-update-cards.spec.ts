@@ -18,7 +18,7 @@ const DOWNLOAD_URL = "https://colony.global/#download";
  * Stands in for the Electron preload's `window.colonyDesktop.updater`, so the
  * cards can be driven through the same states the main-process updater pushes
  * (downloading with progress, ready with a version, a refused update with the
- * manual link). Installed after the mock bridge so the Tauri mock stays active.
+ * manual link).
  */
 async function installFakeElectronUpdater(page: Page, initial: UpdateStatus) {
   await installMockBridge(page);
@@ -36,6 +36,12 @@ async function installFakeElectronUpdater(page: Page, initial: UpdateStatus) {
     Object.defineProperty(window, "colonyDesktop", {
       configurable: true,
       value: {
+        // The Electron shim reads these when it loads; the Tauri mock then
+        // replaces its internals, so only the updater is exercised.
+        platform: "darwin",
+        windowLabel: "main",
+        request: async () => null,
+        subscribe: () => () => {},
         updater: {
           getStatus: async () => current,
           check: async () => {

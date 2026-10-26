@@ -76,8 +76,14 @@ export async function assessBundleLocation({
   return { ok: true };
 }
 
+// A system tool that hangs must not leave the update stuck forever.
+const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+
 function runSystemCommand(file, args) {
-  return execFileAsync(file, args, { maxBuffer: 4 * 1024 * 1024 });
+  return execFileAsync(file, args, {
+    maxBuffer: 4 * 1024 * 1024,
+    timeout: COMMAND_TIMEOUT_MS,
+  });
 }
 
 async function readPlistValue(runCommand, plistPath, key) {
@@ -318,6 +324,7 @@ export function createMacSelfUpdater({
   now = () => Date.now(),
   helperCommands = {},
   relaunchEnv = {},
+  log = (...args) => console.error("[updater]", ...args),
 }) {
   const bundlePath = appBundleFromExecutable(executablePath);
   const updatesDir = userDataDir ? posix.join(userDataDir, "updates") : null;
@@ -454,6 +461,7 @@ export function createMacSelfUpdater({
       });
       staged = { stageDir, appPath, version, expectedBundleId };
     } catch (error) {
+      log("the update was not prepared:", error);
       await removeStage(stageDir).catch(() => {});
       throw mapUnexpected(
         error,
@@ -526,6 +534,7 @@ export function createMacSelfUpdater({
       child.unref();
       await requestQuit();
     } catch (error) {
+      log("the update was not started:", error);
       // A helper that is still waiting must not swap later behind the user's back.
       if (child) {
         try {

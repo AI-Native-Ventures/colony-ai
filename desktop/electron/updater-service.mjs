@@ -441,6 +441,8 @@ export function createElectronUpdaterService({
     } catch (error) {
       installRequested = false;
       macUpdateStaged = false;
+      // The prepared files are no use now; the next check prepares them again.
+      await macSelfUpdater.discardStaged().catch(() => {});
       refusedStatus(error);
       return false;
     }
@@ -455,6 +457,8 @@ export function createElectronUpdaterService({
       autoUpdater?.removeListener(event, listener);
     }
     updaterListeners.length = 0;
+    // An update that was prepared but never applied should not sit on disk.
+    if (!installRequested) void macSelfUpdater?.discardStaged().catch(() => {});
   }
 
   return {

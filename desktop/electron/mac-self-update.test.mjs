@@ -467,6 +467,7 @@ function updaterFor(install, overrides = {}) {
     requestQuit: async () => {},
     fetchImpl: fetch,
     allowInsecureLoopback: true,
+    log: () => {},
     ...overrides,
   });
 }

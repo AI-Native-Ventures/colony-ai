@@ -446,6 +446,7 @@ async function makeMacRig({
       return child;
     },
     allowInsecureLoopback: true,
+    log: () => {},
     ...(fsOverride ? { fs: fsOverride } : {}),
   });
   const states = [];
@@ -692,6 +693,41 @@ test("the staged app is checked again before the swap starts", async () => {
     assert.equal(rig.service.snapshot().state, "error");
     assert.equal(rig.spawned.length, 0);
     assert.equal(rig.quitCalls.length, 0);
+    assert.deepEqual(
+      await rig.stageFolders(),
+      [],
+      "the unusable update is removed",
+    );
+  } finally {
+    await rig.cleanup();
+  }
+});
+
+test("a prepared update that is never applied is removed when the app stops", async () => {
+  const rig = await makeMacRig();
+  try {
+    assert.equal((await rig.service.check()).state, "ready");
+    assert.equal((await rig.stageFolders()).length, 1);
+    rig.service.stop();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.deepEqual(await rig.stageFolders(), []);
+  } finally {
+    await rig.cleanup();
+  }
+});
+
+test("an update that was handed to the helper is kept when the app stops", async () => {
+  const rig = await makeMacRig();
+  try {
+    assert.equal((await rig.service.check()).state, "ready");
+    assert.equal(await rig.service.installAndRelaunch(), true);
+    rig.service.stop();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(
+      (await rig.stageFolders()).length,
+      1,
+      "the helper still needs it",
+    );
   } finally {
     await rig.cleanup();
   }
@@ -709,6 +745,7 @@ test("if the app cannot be asked to quit, the waiting helper is stopped", async 
     );
     assert.equal(rig.spawned.length, 1);
     assert.equal(rig.spawned[0].child.killed, true);
+    assert.deepEqual(await rig.stageFolders(), []);
   } finally {
     await rig.cleanup();
   }
