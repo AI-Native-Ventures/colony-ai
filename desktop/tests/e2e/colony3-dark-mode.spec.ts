@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
@@ -17,12 +19,15 @@ import { actionsBoardMessages } from "../helpers/colony3TimelineFixture";
 
 const OIL_CHANNEL = REFERENCE_CHANNEL_IDS.oliveHouse;
 
-async function seedTheme(page: Page, mode: "explicit-dark" | "system-dark") {
+async function seedTheme(
+  page: Page,
+  mode: "explicit-dark" | "explicit-light" | "system-dark",
+) {
   const followsSystem = mode === "system-dark";
   await page.emulateMedia({
     colorScheme: followsSystem ? "dark" : "light",
   });
-  const theme = followsSystem ? "buzz" : "buzz-dark";
+  const theme = mode === "explicit-dark" ? "buzz-dark" : "buzz";
   const relayUrl = "ws://localhost:3000";
   await page.addInitScript(
     ({ themeName, followSystem, activeRelayUrl }) => {
@@ -44,6 +49,23 @@ async function seedTheme(page: Page, mode: "explicit-dark" | "system-dark") {
     },
     { themeName: theme, followSystem: followsSystem, activeRelayUrl: relayUrl },
   );
+}
+
+const FOLLOWUP_PROOF_DIR = process.env.COLONY3_DARK_MODE_2_PROOF_DIR;
+
+async function captureFollowupScreen(
+  page: Page,
+  name: string,
+  clip?: { x: number; y: number; width: number; height: number },
+) {
+  if (!FOLLOWUP_PROOF_DIR) return;
+  mkdirSync(FOLLOWUP_PROOF_DIR, { recursive: true });
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    ...(clip ? { clip } : { fullPage: true }),
+    path: join(FOLLOWUP_PROOF_DIR, name),
+  });
 }
 
 async function darkBackground(locator: Locator) {
@@ -79,7 +101,209 @@ async function darkBackground(locator: Locator) {
   return color;
 }
 
+function cssColorChannels(color: string) {
+  const match = color.match(/^rgba?\(([^)]+)\)$/u);
+  if (!match) throw new Error(`Expected an RGB color, got ${color}`);
+  return match[1]
+    .split(/[\s,/]+/u)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map(Number);
+}
+
+function luminance(color: string) {
+  const [red, green, blue] = cssColorChannels(color).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+function cssAlpha(color: string) {
+  const match = color.match(/^rgba?\(([^)]+)\)$/u);
+  if (!match) throw new Error(`Expected an RGB color, got ${color}`);
+  const channels = match[1].split(/[\s,/]+/u).filter(Boolean);
+  return channels[3] === undefined ? 1 : Number(channels[3]);
+}
+
 test.describe.configure({ timeout: 120_000 });
+
+test("C3 dark-mode follow-up screens", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.clock.setFixedTime(new Date(COLONY3_NOW));
+  await seedTheme(page, "explicit-light");
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    relayRequiresMembership: true,
+    relayRole: "owner",
+  });
+  await page.goto("/#/today");
+  await expect(page.getByTestId("today-screen")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(false);
+  await captureFollowupScreen(page, "light-today-main.png", {
+    x: 280,
+    y: 0,
+    width: 1160,
+    height: 960,
+  });
+
+  await page.goto("/#/leads");
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+  const lightPrimary = page.getByRole("button", { name: "Find prospects" });
+  await expect(lightPrimary).toBeVisible();
+  const lightPrimaryColors = await lightPrimary.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(lightPrimaryColors).toEqual({
+    background: "rgb(37, 34, 44)",
+    color: "rgb(255, 253, 250)",
+  });
+  await captureFollowupScreen(page, "light-leads.png");
+
+  await page.goto("/#/settings?section=appearance");
+  await expect(page.getByTestId("settings-appearance")).toBeVisible();
+  const lightDawn = page.getByTestId("appearance-field-preset-dawn");
+  const lightPeach = page.getByTestId("appearance-field-preset-peach");
+  await expect(lightDawn).toHaveAttribute("aria-pressed", "true");
+  const lightPresetColors = await Promise.all(
+    [lightDawn, lightPeach].map((preset) =>
+      preset.evaluate((element) => getComputedStyle(element).backgroundColor),
+    ),
+  );
+  expect(lightPresetColors).toEqual([
+    "rgb(247, 244, 253)",
+    "rgb(255, 255, 255)",
+  ]);
+  const lightInkSwatch = await page
+    .getByTestId("appearance-accent-ink")
+    .evaluate((element) => getComputedStyle(element).borderTopWidth);
+  expect(lightInkSwatch).toBe("0px");
+  await captureFollowupScreen(page, "light-appearance.png");
+  await page.getByTestId("appearance-mode-dark").click();
+  await page.getByTestId("appearance-apply").click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(true);
+
+  await page.goto("/#/leads");
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+  const primary = page.getByRole("button", { name: "Find prospects" });
+  const primaryColors = await primary.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(primaryColors).toEqual({
+    background: "rgb(184, 162, 255)",
+    color: "rgb(26, 25, 32)",
+  });
+  expect(
+    contrastRatio(primaryColors.color, primaryColors.background),
+  ).toBeGreaterThanOrEqual(4.5);
+
+  const runnerAvatar = page.locator(".c3l-runner-avatar").first();
+  await expect(runnerAvatar).toBeVisible();
+  const runnerStyle = await runnerAvatar.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      background: style.backgroundColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+  const runnerBounds = await runnerAvatar.boundingBox();
+  expect(runnerBounds?.width).toBeGreaterThanOrEqual(20);
+  expect(runnerBounds?.height).toBeGreaterThanOrEqual(20);
+  expect(runnerStyle.background).toBe("rgb(59, 52, 68)");
+  expect(runnerStyle.boxShadow).not.toBe("none");
+  await captureFollowupScreen(page, "dark-leads.png");
+
+  await page.goto("/#/settings?section=appearance");
+  await expect(page.getByTestId("settings-appearance")).toBeVisible();
+  for (const presetId of ["dawn", "peach", "sea"]) {
+    const preset = page.getByTestId(`appearance-field-preset-${presetId}`);
+    const initialColors = await preset.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        border: style.borderColor,
+        pressed: element.getAttribute("aria-pressed"),
+      };
+    });
+    expect(initialColors.pressed).toBe(presetId === "dawn" ? "true" : "false");
+    expect(luminance(initialColors.background)).toBeLessThan(0.25);
+    expect(
+      contrastRatio(initialColors.color, initialColors.background),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(initialColors.border, initialColors.background),
+    ).toBeGreaterThanOrEqual(3);
+  }
+
+  await captureFollowupScreen(page, "dark-appearance.png");
+
+  for (const presetId of ["dawn", "peach", "sea"]) {
+    const preset = page.getByTestId(`appearance-field-preset-${presetId}`);
+    await preset.click();
+    await expect(preset).toHaveAttribute("aria-pressed", "true");
+    const selectedColors = await preset.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        border: style.borderColor,
+      };
+    });
+    expect(luminance(selectedColors.background)).toBeLessThan(0.25);
+    expect(
+      contrastRatio(selectedColors.color, selectedColors.background),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(selectedColors.border, selectedColors.background),
+    ).toBeGreaterThanOrEqual(3);
+  }
+
+  const darkInkSwatch = await page
+    .getByTestId("appearance-accent-ink")
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        borderStyle: style.borderStyle,
+        borderWidth: style.borderTopWidth,
+      };
+    });
+  expect(darkInkSwatch.borderStyle).toBe("solid");
+  expect(darkInkSwatch.borderWidth).toBe("1px");
+  expect(
+    contrastRatio(darkInkSwatch.border, darkInkSwatch.background),
+  ).toBeGreaterThanOrEqual(3);
+
+  for (const selector of [".ap-field-lines > u", ".cs-preview-lines > u"]) {
+    const previewRowBackground = await page
+      .locator(selector)
+      .evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(cssAlpha(previewRowBackground), selector).toBeLessThan(0.5);
+  }
+  const fieldPreviewAvatarRing = await page
+    .locator(".ap-field-lines > b")
+    .evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(fieldPreviewAvatarRing).not.toBe("none");
+});
 
 test("Colony 3.0 Today cards and states use dark surfaces", async ({
   page,

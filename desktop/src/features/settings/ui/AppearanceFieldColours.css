@@ -261,3 +261,32 @@
 .cs-appearance .ap-field-dots > i + i {
   margin-left: -5px;
 }
+
+.dark .cs-appearance .ap-field-lines > * {
+  background: var(--colony-sidebar-glass);
+}
+
+.dark .cs-appearance .ap-field-lines > b {
+  background: var(--colony-sidebar-avatar);
+  box-shadow: 0 0 0 1px var(--colony-sidebar-avatar-ring);
+}
+
+.dark .cs-appearance .ap-field-lines > u {
+  background: var(--colony-sidebar-active);
+}
+
+.dark .cs-appearance .ap-field-preset {
+  border-color: hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-surface-raised));
+  color: hsl(var(--colony-fg));
+}
+
+.dark .cs-appearance .ap-field-preset[aria-pressed="true"] {
+  border-color: hsl(var(--colony-accent));
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-fg));
+}
+
+.dark .cs-appearance .ap-field-dots > i {
+  box-shadow: 0 0 0 0.125rem hsl(var(--colony-surface));
+}

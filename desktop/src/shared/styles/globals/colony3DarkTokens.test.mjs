@@ -150,6 +150,8 @@ test("dark text, states and controls keep WCAG AA contrast", () => {
 
   for (const [foreground, background] of [
     ["--colony-accent-foreground", "--colony-accent"],
+    ["--colony-fg", "--colony-accent-soft"],
+    ["--colony-fg", "--colony-surface-raised"],
     [
       "--colony-onboarding-security-cta-ink",
       "--colony-onboarding-security-cta",
@@ -186,6 +188,13 @@ test("dark text, states and controls keep WCAG AA contrast", () => {
       assertContrast(tokens, foreground, background, 3);
     }
   }
+
+  assertContrast(
+    tokens,
+    "--colony-sidebar-avatar-ring",
+    "--colony-sidebar-avatar",
+    3,
+  );
 });
 
 function isColonyThemeStylesheet(filename) {
