@@ -197,6 +197,90 @@
     pointer-events: none;
   }
 
+  /* Kept to the person (a closed lock) or shared with the business's AI
+     employees (an open lock). Quiet until the tab is pointed at, always there
+     when the tab is private. */
+  .colony-work-area-tab-private {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: none;
+    place-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0.5rem;
+    background: none;
+    color: hsl(var(--colony-fg-secondary));
+    cursor: pointer;
+    opacity: 0.55;
+  }
+
+  /* Only the open tab carries the switch, so adding a tab moves the strip no
+     further than it always did. A tab kept private always shows its lock. */
+  .colony-work-area-tab:not([data-selected="true"])
+  .colony-work-area-tab-private[data-private="false"] {
+    display: none;
+  }
+
+  .colony-work-area-tab-private svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+  }
+
+  .colony-work-area-tab-private[data-private="true"],
+  .colony-work-area-tab:hover .colony-work-area-tab-private,
+  .colony-work-area-tab:focus-within .colony-work-area-tab-private,
+  .colony-work-area-tab[data-selected="true"] .colony-work-area-tab-private {
+    opacity: 1;
+  }
+
+  .colony-work-area-tab-private:hover,
+  .colony-work-area-tab-private:focus-visible {
+    background: hsl(var(--colony-fg) / 0.07);
+    color: hsl(var(--colony-fg));
+  }
+
+  .colony-work-area-tab-private:focus-visible {
+    outline: 2px solid hsl(var(--colony-focus));
+    outline-offset: -2px;
+  }
+
+  /* An AI employee is using this page. A dot, not a picture: the page is not
+     brought forward, the person chooses to look. */
+  .colony-work-area-tab-agent {
+    position: relative;
+    z-index: 1;
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: none;
+    border-radius: 9999px;
+    background: hsl(var(--colony-accent));
+    animation: colony-work-area-agent-pulse 1.4s ease-in-out infinite;
+  }
+
+  .colony-work-area-tab-agent[data-state="needs-you"] {
+    background: hsl(38 92% 50%);
+    animation: none;
+  }
+
+  @keyframes colony-work-area-agent-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .colony-work-area-tab-agent {
+      animation: none;
+    }
+  }
+
   .colony-work-area-tab-close {
     position: relative;
     z-index: 1;

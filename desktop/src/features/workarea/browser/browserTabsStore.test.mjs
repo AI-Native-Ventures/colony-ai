@@ -16,6 +16,7 @@ import {
   getBrowserNotices,
   getBrowserOrphansForTests,
   getBrowserPage,
+  getBrowserPageByHost,
   getBrowserPageLabel,
   getBrowserPersistDirtyForTests,
   goBackBrowserPage,
@@ -28,6 +29,7 @@ import {
   revealBrowserDownload,
   setBrowserHostForTests,
   setBrowserKeysForTests,
+  setBrowserPagePrivate,
   setBrowserStoreClockForTests,
   takeBrowserAddressFocus,
 } from "./browserTabsStore.ts";
@@ -69,6 +71,7 @@ function tabState(id, overrides = {}) {
     attached: false,
     visible: false,
     bounds: null,
+    private: false,
     ...overrides,
   };
 }
@@ -112,6 +115,12 @@ function fakeHost() {
     async revealDownload(id) {
       calls.push(["revealDownload", id]);
       return { revealed: true };
+    },
+    failPrivate: false,
+    async setPrivate(id, value) {
+      calls.push(["setPrivate", id, value]);
+      if (api.failPrivate) throw new Error("not now");
+      return tabState(id, { private: value });
     },
     onEvent(callback) {
       listener = callback;
@@ -422,6 +431,36 @@ test("a popup opens beside its page as a dock tab in front; one from an unknown 
     host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-10"),
   );
   assert.equal(getWorkAreaState("chan").tabs.length, 1);
+});
+
+test("a page an AI employee opened joins the tab strip and nothing else moves", async () => {
+  initBrowserTabsStore("community-a");
+  initWorkAreaStore("ws://a.example");
+  const first = openPage("chan", "example.com");
+  await settle();
+  const { closeWorkArea, openWorkArea } = await import(
+    "../dock/workAreaStore.ts"
+  );
+  openWorkArea("chan", "browser", browserTabId(first));
+  closeWorkArea("chan");
+  const before = getWorkAreaState("chan");
+  assert.equal(before.open, false);
+  host.emit({
+    type: "new-tab",
+    openedFrom: "host-1",
+    background: true,
+    tab: tabState("host-9", { url: "https://agent.test/" }),
+  });
+  const dock = getWorkAreaState("chan");
+  assert.equal(dock.open, false, "a shut dock stays shut");
+  assert.equal(
+    dock.activeTabId,
+    before.activeTabId,
+    "the selected tab is unchanged",
+  );
+  assert.equal(dock.tabs.length, 2);
+  const added = dock.tabs.find((tab) => tab.id !== before.activeTabId);
+  assert.equal(getBrowserPage(browserPageKeyOf(added.id)).hostId, "host-9");
 });
 
 test("a popup beyond the dock's tab limit is closed, not orphaned", async () => {
@@ -864,4 +903,77 @@ test("dock tab ids and page keys round-trip", () => {
   assert.equal(browserTabId("k1"), "browser:k1");
   assert.equal(browserPageKeyOf("browser:k1"), "k1");
   assert.equal(browserPageKeyOf("k2"), "k2");
+});
+
+test("keeping a page private tells the live tab at once, is remembered, and sharing it again undoes it", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  assert.equal(getBrowserPage(key).private, false);
+  setBrowserPagePrivate(key, true);
+  assert.equal(getBrowserPage(key).private, true, "shown at once");
+  await settle();
+  assert.deepEqual(
+    host.calls.filter((call) => call[0] === "setPrivate"),
+    [["setPrivate", "host-1", true]],
+  );
+  // The host's own state keeps it private.
+  host.emit({
+    type: "state",
+    tab: tabState("host-1", { url: "https://example.com/", private: true }),
+  });
+  assert.equal(getBrowserPage(key).private, true);
+  assert.equal(
+    JSON.parse(storage.getItem(browserStorageKey("community-a"))).channels.chan
+      .pages[0].private,
+    true,
+  );
+  setBrowserPagePrivate(key, false);
+  await settle();
+  assert.equal(getBrowserPage(key).private, false);
+  assert.equal(host.calls.at(-1)[2], false);
+  assert.equal(
+    JSON.parse(storage.getItem(browserStorageKey("community-a"))).channels.chan
+      .pages[0].private,
+    undefined,
+  );
+});
+
+test("a refused change puts the switch back", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  host.failPrivate = true;
+  setBrowserPagePrivate(key, true);
+  assert.equal(getBrowserPage(key).private, true);
+  await settle();
+  assert.equal(getBrowserPage(key).private, false);
+});
+
+test("a page kept private stays private after a restart, in the new live tab", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  setBrowserPagePrivate(key, true);
+  await settle();
+  resetBrowserTabsStore();
+  host = fakeHost();
+  setBrowserHostForTests(host);
+  initBrowserTabsStore("community-a");
+  ensureBrowserPage("chan", key);
+  assert.equal(getBrowserPage(key).private, true, "dormant but still private");
+  await settle();
+  assert.equal(getBrowserPage(key).private, true);
+  assert.deepEqual(
+    host.calls.filter((call) => call[0] === "setPrivate"),
+    [["setPrivate", "host-1", true]],
+  );
+});
+
+test("the page behind a live tab can be found from the tab's id", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  assert.equal(getBrowserPageByHost("host-1").key, key);
+  assert.equal(getBrowserPageByHost("nobody"), null);
 });

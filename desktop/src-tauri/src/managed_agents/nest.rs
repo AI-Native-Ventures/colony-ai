@@ -69,7 +69,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 7 renamed the skill from `buzz-cli` to `colony-cli`.
 /// Version 8 added the web task rules (see [`COLONY_CLI_SKILL_MD`]).
 /// Version 9 rewrote web task rule 3: agents open the browser themselves.
-const NEST_SKILL_VERSION: u32 = 9;
+/// Version 10 added web task rule 6: agents find and use the person's own tabs.
+const NEST_SKILL_VERSION: u32 = 10;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

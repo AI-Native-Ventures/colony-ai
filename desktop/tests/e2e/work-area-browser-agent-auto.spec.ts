@@ -5,25 +5,39 @@ import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { installBrowserBrokerFake } from "./helpers/browserBrokerFake";
 
 /**
- * Default browser access: the owner's own AI employee opens the Colony browser
- * itself. These specs bind the app window's side of it, with the broker and the
- * native host replaced by their contract fakes. The broker's own policy
- * (tools listed from the start, the held first call, auto-approved addresses,
- * Stop respected) is proven in `electron/browser-broker/*.test.mjs`.
+ * Default browser access: the owner's own AI employees use the Colony browser
+ * by themselves, in the background, and share the business's tabs. These specs
+ * bind the app window's side of it, with the broker and the native host
+ * replaced by their contract fakes. The broker's own policy (tools listed from
+ * the start, auto-approved addresses, taking over the person's tabs, Stop
+ * respected) is proven in `electron/browser-broker/*.test.mjs` and, against
+ * real Electron, in `tests/electron/browser-broker-*.spec.ts`.
+ *
+ * The person's view never moves for an agent: no dock opens, no tab is
+ * selected, no focus is taken. A small mark says an agent is using the
+ * browser, and the person chooses to watch by clicking it.
  */
 
 const agentId = "a".repeat(64);
+const otherAgentId = "b".repeat(64);
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 async function boot(page: Page, channelName: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await installBrowserHostFake(page);
-  await installBrowserBrokerFake(page, true);
+  await installBrowserBrokerFake(page, true, { defaultAccess: true });
   await installMockBridge(page, {
     managedAgents: [
       {
         pubkey: agentId,
         name: "Scout",
+        status: "running",
+        channelNames: [channelName],
+        sessionPolicy: "channel",
+      },
+      {
+        pubkey: otherAgentId,
+        name: "Sage",
         status: "running",
         channelNames: [channelName],
         sessionPolicy: "channel",
@@ -45,35 +59,65 @@ const grants = (page: Page) =>
         (call) => call.action === "agent-grant",
       ) ?? [],
   );
-const controller = (page: Page) => page.getByTestId("browser-controller");
+// Every tab's panel stays mounted; only the shown one is not [hidden].
+const shown = (page: Page, id: string) =>
+  page
+    .getByTestId("work-area-panel")
+    .locator('section[role="tabpanel"]:not([hidden])')
+    .getByTestId(id);
+const controller = (page: Page) => shown(page, "browser-controller");
 const hostCalls = (page: Page, op: string) =>
   page.evaluate(
     (name) => window.__browserFake?.calls.filter((c) => c.op === name) ?? [],
     op,
   );
+const dock = (page: Page) => page.getByTestId("work-area-panel");
+const activityButton = (page: Page) =>
+  page.getByTestId("channel-browser-activity");
+const tabStrip = (page: Page) =>
+  page.getByRole("tablist", { name: "Work area tabs" });
 
-test("an agent's first browser call opens the work area browser in a channel and takes control", async ({
+const ask = (page: Page, task: string, resume = false) =>
+  page.evaluate(
+    ([agent, taskId, again]) =>
+      window.colonyBrowserControlFixture?.requestAccess(
+        agent as string,
+        taskId as string,
+        again as boolean,
+      ),
+    [agentId, task, resume],
+  );
+
+/** The agent did something in its page: the app hears an `agent-action`. */
+const acted = (page: Page, task: string, who = agentId) =>
+  page.evaluate(
+    ([agent, taskId]) => {
+      const tab = window.__browserFake?.tabs().at(-1)?.id;
+      window.colonyBrowserControlFixture?.agentAction(agent, taskId, tab);
+    },
+    [who, task],
+  );
+
+/** The person chooses to watch: the one place the dock opens for an agent. */
+async function watch(page: Page) {
+  await activityButton(page).click();
+  await expect(dock(page)).toBeVisible();
+}
+
+test("an agent's first browser call makes it a page and takes control, and the person's screen does not move", async ({
   page,
 }, testInfo) => {
   const channelId = await boot(page, "engineering");
+  const task = `conversation:${channelId}`;
   // Nothing is open: the person has not touched the work area.
-  await expect(page.getByTestId("work-area-panel")).toHaveCount(0);
+  await expect(dock(page)).toHaveCount(0);
 
-  await page.evaluate(
-    ([agent, task]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, task),
-    [agentId, `conversation:${channelId}`],
-  );
-
-  await expect(page.getByTestId("work-area-panel")).toBeVisible();
-  await expect(page.getByTestId("browser-agent-controls")).toBeVisible();
-  await expect(controller(page)).toHaveText("Scout has control");
-  await expect(page.getByTestId("browser-address")).toBeVisible();
-
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
   const [request] = await grants(page);
   expect(request.payload).toMatchObject({
     agentId,
-    taskId: `conversation:${channelId}`,
+    taskId: task,
     communityOrigin: "http://localhost:3000",
     allowedOrigins: [],
     defaultAccess: true,
@@ -84,51 +128,119 @@ test("an agent's first browser call opens the work area browser in a channel and
     { op: "createTab", businessId: expect.any(String) },
   ]);
   expect(request.payload.tabId).toBe("fake-tab-1");
-  expect(
-    await page.evaluate(
-      () => window.colonyBrowserControlFixture?.grant()?.defaultAccess,
-    ),
-  ).toBe(true);
 
-  // The person is told what happened and keeps Stop and Take over.
-  await controls(page)
-    .getByText("Approved sites and files", { exact: true })
-    .click();
-  await expect(controls(page)).toContainText(
-    "Scout opened this browser for this channel.",
+  // The dock stays shut and no page was attached to the window.
+  await expect(dock(page)).toHaveCount(0);
+  expect(await hostCalls(page, "attach")).toEqual([]);
+
+  // Once it works, a mark says so, in the header and beside the channel.
+  await expect(activityButton(page)).toHaveCount(0);
+  await acted(page, task);
+  await expect(activityButton(page)).toBeVisible();
+  await expect(activityButton(page)).toHaveAccessibleName(
+    "Scout is using the browser. Watch",
   );
   await expect(
-    controls(page).getByRole("button", { name: "Stop", exact: true }),
+    page.getByTestId("channel-browser-engineering"),
+  ).toHaveAccessibleName("Scout is using the browser");
+  await expect(dock(page)).toHaveCount(0);
+
+  // Watching is the person's choice.
+  await watch(page);
+  await expect(page.getByTestId("browser-agent-controls")).toBeVisible();
+  await expect(controller(page)).toHaveText("Scout has control");
+  await expect(page.getByTestId("browser-address")).toBeVisible();
+  await expect(
+    page.getByTestId("browser-agent-controls").getByRole("button", {
+      name: "Stop",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    controls(page).getByRole("button", { name: "Take over", exact: true }),
+    page.getByTestId("browser-agent-controls").getByRole("button", {
+      name: "Take over",
+      exact: true,
+    }),
   ).toBeVisible();
+  await expect(shown(page, "browser-status-sharing")).toHaveText(
+    "An AI employee is using this tab",
+  );
   await waitForAnimations(page);
   await page.screenshot({
     path: testInfo.outputPath("agent-opened-browser.png"),
   });
 });
 
-test("the same call in a DM opens the browser there too, and a renewed grant keeps the page", async ({
+test("an agent working while the person reads another tab never changes the tab, the dock or the focus", async ({
+  page,
+}) => {
+  const channelId = await boot(page, "engineering");
+  const task = `conversation:${channelId}`;
+  // The person has the Files tab open and is typing in the message box.
+  await page.getByTestId("channel-work-area-trigger").click();
+  await page.getByTestId("work-area-open-files").click();
+  await expect(dock(page)).toBeVisible();
+  const composer = page.getByTestId("message-input");
+  await composer.click();
+  await composer.pressSequentially("half a sentence");
+  const filesTab = tabStrip(page).getByRole("tab", { name: "Files" });
+  await expect(filesTab).toHaveAttribute("aria-selected", "true");
+
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await acted(page, task);
+  await expect(activityButton(page)).toBeVisible();
+
+  // The agent's page is in the strip, quietly: Files is still the shown tab.
+  await expect(tabStrip(page).getByRole("tab")).toHaveCount(2);
+  await expect(filesTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("browser-tab-agent-mark")).toBeVisible();
+  await expect(composer).toBeFocused();
+  await expect(composer).toContainText("half a sentence");
+  expect(await hostCalls(page, "attach")).toEqual([]);
+
+  // A page the agent opens for itself arrives the same way.
+  await page.evaluate(() => {
+    const [first] = window.__browserFake?.tabs() ?? [];
+    window.__browserFake?.agentOpened(first.id, "https://colony.global");
+  });
+  await expect(tabStrip(page).getByRole("tab")).toHaveCount(3);
+  await expect(filesTab).toHaveAttribute("aria-selected", "true");
+  await expect(composer).toBeFocused();
+});
+
+test("two agents at once each show, and a click on the mark opens the dock on the page", async ({
+  page,
+}) => {
+  const channelId = await boot(page, "engineering");
+  const task = `conversation:${channelId}`;
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await acted(page, task);
+  await acted(page, task, otherAgentId);
+  await expect(activityButton(page)).toHaveAccessibleName(
+    "Scout and Sage are using the browser. Watch",
+  );
+  await expect(dock(page)).toHaveCount(0);
+  await watch(page);
+  await expect(controller(page)).toHaveText("Scout has control");
+});
+
+test("the same call in a DM works there too, and a renewed grant keeps the page", async ({
   page,
 }) => {
   const channelId = await boot(page, "alice-tyler");
   const task = `conversation:${channelId}`;
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId),
-    [agentId, task],
-  );
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await acted(page, task);
+  await watch(page);
   await expect(controller(page)).toHaveText("Scout has control");
 
   // The grant ran out; the next call asks again and the same page is reused.
   await page.evaluate(() => window.colonyBrowserControlFixture?.expire());
-  await expect(controller(page)).toHaveText("You’re browsing");
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId),
-    [agentId, task],
-  );
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  await ask(page, task);
   await expect(controller(page)).toHaveText("Scout has control");
   const requests = await grants(page);
   expect(requests).toHaveLength(2);
@@ -136,32 +248,30 @@ test("the same call in a DM opens the browser there too, and a renewed grant kee
   expect(await hostCalls(page, "createTab")).toHaveLength(1);
 });
 
-test("after Stop the agent's next call shows one Allow card and nothing is granted until the person clicks", async ({
+test("after Stop the agent's next call shows one Allow card, marks the agent as waiting, and grants nothing until the person clicks", async ({
   page,
 }, testInfo) => {
   const channelId = await boot(page, "engineering");
   const task = `conversation:${channelId}`;
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId),
-    [agentId, task],
-  );
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await acted(page, task);
+  await watch(page);
   await expect(controller(page)).toHaveText("Scout has control");
 
   await controls(page)
     .getByRole("button", { name: "Stop", exact: true })
     .click();
-  await expect(controller(page)).toHaveText("You’re browsing");
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
 
   // Main reports the agent's next call as a resume request.
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId, true),
-    [agentId, task],
-  );
+  await ask(page, task, true);
   const card = page.getByTestId("browser-agent-resume");
   await expect(card).toContainText("Scout wants to use the browser again.");
-  await expect(controller(page)).toHaveText("You’re browsing");
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  await expect(activityButton(page)).toHaveAccessibleName(
+    "Scout needs you in the browser. Watch",
+  );
   expect(await grants(page)).toHaveLength(1);
   await waitForAnimations(page);
   await controls(page).screenshot({
@@ -183,17 +293,20 @@ test("Not now clears the card and leaves the agent without the browser", async (
   page,
 }) => {
   const channelId = await boot(page, "engineering");
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId, true),
-    [agentId, `conversation:${channelId}`],
+  await ask(page, `conversation:${channelId}`, true);
+  // Nothing opened by itself; the mark says the agent waits for the person.
+  await expect(dock(page)).toHaveCount(0);
+  await expect(activityButton(page)).toHaveAccessibleName(
+    "Scout needs you in the browser. Watch",
   );
+  await watch(page);
   const card = page.getByTestId("browser-agent-resume");
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Not now", exact: true }).click();
   await expect(card).toHaveCount(0);
+  await expect(activityButton(page)).toHaveCount(0);
   expect(await grants(page)).toHaveLength(0);
-  await expect(controller(page)).toHaveText("You’re browsing");
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
 });
 
 test("an Allow card goes away when the broker approves that site itself, and a held site never raises one", async ({
@@ -202,11 +315,11 @@ test("an Allow card goes away when the broker approves that site itself, and a h
   // The 25 Oct run: the agent opened a site, a redirect raised a card for it,
   // and the agent then opened that address itself. The card stayed.
   const channelId = await boot(page, "engineering");
-  await page.evaluate(
-    ([agent, taskId]) =>
-      window.colonyBrowserControlFixture?.requestAccess(agent, taskId),
-    [agentId, `conversation:${channelId}`],
-  );
+  const task = `conversation:${channelId}`;
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await acted(page, task);
+  await watch(page);
   await expect(controller(page)).toHaveText("Scout has control");
 
   await page.evaluate(() =>
@@ -238,6 +351,102 @@ test("an Allow card goes away when the broker approves that site itself, and a h
   await expect(card).toContainText("https://other.example");
 });
 
+test("AI employees can use the person's own tab, and one click keeps it private", async ({
+  page,
+}) => {
+  await boot(page, "engineering");
+  await page.getByTestId("channel-work-area-trigger").click();
+  await page.getByTestId("work-area-open-browser").click();
+  const address = shown(page, "browser-address");
+  await address.fill("colony.global");
+  await address.press("Enter");
+  await expect(address).toHaveValue(/colony\.global/u);
+
+  // Open to the business's AI employees by default; nothing to allow.
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  await expect(shown(page, "browser-status-sharing")).toHaveText(
+    "Shared with this business’s AI employees",
+  );
+  await expect(
+    controls(page).getByRole("button", { name: "Allow an agent" }),
+  ).toHaveCount(0);
+  const keepPrivate = tabStrip(page).getByRole("button", {
+    name: "Keep private from AI employees",
+  });
+  await expect(keepPrivate).toHaveAttribute("aria-pressed", "false");
+
+  await keepPrivate.click();
+  await expect(controller(page)).toHaveText(
+    "Private: AI employees cannot see this tab",
+  );
+  await expect(shown(page, "browser-status-sharing")).toHaveText(
+    "Private to you",
+  );
+  const calls = await hostCalls(page, "setPrivate");
+  expect(calls).toEqual([
+    { op: "setPrivate", tabId: "fake-tab-1", value: true },
+  ]);
+  const shareAgain = tabStrip(page).getByRole("button", {
+    name: "Private tab. Share it with AI employees",
+  });
+  await expect(shareAgain).toHaveAttribute("aria-pressed", "true");
+  await shareAgain.click();
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  expect(await hostCalls(page, "setPrivate")).toHaveLength(2);
+});
+
+test("an agent that takes the person's tab shows 'has control' there, and Take over gives only that tab back", async ({
+  page,
+}) => {
+  const channelId = await boot(page, "engineering");
+  const task = `conversation:${channelId}`;
+  // The person's own page is open and shown.
+  await page.getByTestId("channel-work-area-trigger").click();
+  await page.getByTestId("work-area-open-browser").click();
+  const address = shown(page, "browser-address");
+  await address.fill("colony.global");
+  await address.press("Enter");
+  await expect(address).toHaveValue(/colony\.global/u);
+  const personTab = await page.evaluate(
+    () => window.__browserFake?.tabs()[0].id ?? "",
+  );
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+
+  // The agent has a page of its own, then takes the person's.
+  await ask(page, task);
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
+  await page.evaluate(
+    (tab) => window.colonyBrowserControlFixture?.adopt(tab),
+    personTab,
+  );
+  await expect(controller(page)).toHaveText("Scout has control");
+  await expect(shown(page, "browser-status-sharing")).toHaveText(
+    "An AI employee is using this tab",
+  );
+  // The page the person is looking at is still the one they are looking at.
+  await expect(address).toHaveValue(/colony\.global/u);
+
+  await controls(page)
+    .getByRole("button", { name: "Take over", exact: true })
+    .click();
+  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  const released = await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.calls.filter(
+      (call) => call.action === "agent-release-tab",
+    ),
+  );
+  expect(released).toEqual([
+    {
+      action: "agent-release-tab",
+      payload: { grantId: "fixture-grant", tabId: personTab },
+    },
+  ]);
+  // The agent is not stopped: its grant is alive.
+  expect(
+    await page.evaluate(() => window.colonyBrowserControlFixture?.grant()),
+  ).not.toBeNull();
+});
+
 test("a request for a different community or a malformed task changes nothing", async ({
   page,
 }) => {
@@ -258,9 +467,9 @@ test("a request for a different community or a malformed task changes nothing", 
   );
   await page.waitForTimeout(300);
   expect(await grants(page)).toHaveLength(0);
-  await expect(page.getByTestId("work-area-panel")).toHaveCount(0);
+  await expect(dock(page)).toHaveCount(0);
 });
 
 function controls(page: Page) {
-  return page.getByTestId("browser-agent-controls");
+  return shown(page, "browser-agent-controls");
 }

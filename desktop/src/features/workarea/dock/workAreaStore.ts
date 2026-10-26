@@ -279,6 +279,27 @@ export function openWorkArea(
   );
 }
 
+/**
+ * Add a tab to the dock without opening it, selecting it or moving what the
+ * person is looking at: a page an AI employee opened for its own work. The
+ * person finds it in the tab strip, or follows the "using the browser" mark.
+ */
+export function addWorkAreaTab(
+  channelId: string,
+  kind: WorkAreaTabKind,
+  tabId: string,
+) {
+  commit(channelId, (current) => {
+    if (current.tabs.some((tab) => tab.id === tabId)) return current;
+    if (current.tabs.length >= MAX_TABS_PER_CHANNEL) return current;
+    return {
+      ...current,
+      tabs: [...current.tabs, { id: tabId, kind }],
+      activeTabId: current.activeTabId ?? tabId,
+    };
+  });
+}
+
 /** Open the dock on one file's own tab (added when it is not open yet). */
 export function openWorkAreaFile(channelId: string, file: WorkAreaFileRef) {
   commit(channelId, (current) =>

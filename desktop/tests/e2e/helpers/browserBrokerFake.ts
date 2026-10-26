@@ -25,6 +25,15 @@ export type BrowserControlFixture = {
   site(origin: string): void;
   /** Default access: the broker approves a site the agent asked for itself. */
   approveOnItsOwn(origin: string): void;
+  /** The agent did something in a tab (an `agent-action` event). */
+  agentAction(
+    agentId: string,
+    taskId: string,
+    tabId: string | undefined,
+    tool?: string,
+  ): void;
+  /** Default access: the agent takes over a tab the person opened. */
+  adopt(tabId: string): void;
 };
 
 declare global {
@@ -34,9 +43,13 @@ declare global {
 }
 
 /** Person-control IPC contract only. Real policy remains in the Electron fixture. */
-export async function installBrowserBrokerFake(page: Page, enabled = true) {
+export async function installBrowserBrokerFake(
+  page: Page,
+  enabled = true,
+  options: { defaultAccess?: boolean } = {},
+) {
   await page.addInitScript(
-    ({ enabled }) => {
+    ({ enabled, defaultAccess }) => {
       let grant: BrowserGrant | null = null;
       const pending = new Map<string, BrowserConfirmation>();
       const listeners = new Set<(event: BrowserBrokerEvent) => void>();
@@ -59,7 +72,8 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
         async request(action, input = {}) {
           const payload = input as Record<string, unknown>;
           calls.push({ action, payload: structuredClone(payload) });
-          if (action === "agent-status") return { enabled, recoveryRequired };
+          if (action === "agent-status")
+            return { enabled, recoveryRequired, defaultAccess };
           if (!enabled) throw new Error("Agent browser is disabled");
           switch (action) {
             case "agent-recover-control":
@@ -130,6 +144,20 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
                 throw new Error("Native control recovery required");
               }
               return { revoked: true, takenOver: true };
+            }
+            case "agent-release-tab": {
+              // One tab goes back to the person; the task stays active.
+              if (!grant) throw new Error("No task");
+              grant.tabIds = grant.tabIds.filter(
+                (id) => id !== String(payload.tabId),
+              );
+              emit({
+                type: "grant-changed",
+                grantId: grant.id,
+                state: "active",
+                change: "tab-released",
+              });
+              return { released: true };
             }
             case "agent-approve-origin": {
               if (!grant) throw new Error("No task");
@@ -221,6 +249,36 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
               change: "origin-approved",
             });
           },
+          agentAction(
+            agentId: string,
+            taskId: string,
+            tabId: string | undefined,
+            tool = "browser_snapshot",
+          ) {
+            emit({
+              type: "agent-action",
+              entry: {
+                seq: calls.length + 1000,
+                ts: Date.now(),
+                agentId,
+                taskId,
+                grantId: grant?.id,
+                tabId,
+                tool,
+                status: "ok",
+              },
+            });
+          },
+          adopt(tabId: string) {
+            if (!grant) throw new Error("No task");
+            if (!grant.tabIds.includes(tabId)) grant.tabIds.push(tabId);
+            emit({
+              type: "grant-changed",
+              grantId: grant.id,
+              state: "active",
+              change: "tab-bound",
+            });
+          },
           site(origin: string) {
             if (!grant) throw new Error("No task");
             emit({
@@ -234,6 +292,6 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
         },
       });
     },
-    { enabled },
+    { enabled, defaultAccess: options.defaultAccess === true },
   );
 }

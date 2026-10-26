@@ -125,6 +125,29 @@ export const FUNCTIONS = Object.freeze({
     return true;
   }`,
 
+  /**
+   * this = element or document, args [dx, dy]. Scroll what a wheel would scroll
+   * there: the nearest scrollable ancestor, else the page. Done by the page
+   * itself so it works when the page is not on screen.
+   */
+  scrollBy: `function (dx, dy) {
+    const scrollable = (el) => {
+      const style = getComputedStyle(el);
+      return /(auto|scroll|overlay)/.test(style.overflowY + style.overflowX) &&
+        (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth);
+    };
+    let el = this.nodeType === 9 ? null : this;
+    while (el && el !== document.documentElement && el !== document.body) {
+      if (scrollable(el)) {
+        el.scrollBy({ left: dx, top: dy, behavior: "instant" });
+        return true;
+      }
+      el = el.parentElement;
+    }
+    window.scrollBy({ left: dx, top: dy, behavior: "instant" });
+    return true;
+  }`,
+
   /** this = element or document. True when a node with the ref is still connected. */
   isConnected: `function () { return Boolean(this.isConnected); }`,
 

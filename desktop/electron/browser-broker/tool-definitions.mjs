@@ -28,7 +28,8 @@ export const WEB_TASKS =
 const tab = {
   type: "string",
   pattern: TAB_PATTERN,
-  description: "Tab id from browser_tabs or browser_open.",
+  description:
+    "Tab id from browser_tabs or browser_open. A tab the person has open works too.",
 };
 const ref = {
   type: "string",
@@ -56,7 +57,8 @@ export const TOOLS = Object.freeze([
   {
     name: "browser_tabs",
     description:
-      "List the browser tabs this task may use: id, url, title, loading state.",
+      "List the browser tabs you can use: id, url, title, loading state, `shown` (the person is looking at it) and `control` (you, free, or another AI employee). It includes the tabs the person has open, except ones they keep private. Pass a tab's id as `tab` to work in it." +
+      UNTRUSTED,
     inputSchema: object({}),
   },
   {

@@ -198,3 +198,22 @@ test("navigate and wait require exactly one selector", () => {
     false,
   );
 });
+
+test("browser_tabs says it lists the person's tabs too, and what shown and control mean", () => {
+  const tabs = toolDescriptors().find((tool) => tool.name === "browser_tabs");
+  for (const word of [
+    "the tabs the person has open",
+    "`shown`",
+    "`control`",
+    "keep private",
+    "Pass a tab's id as `tab`",
+  ])
+    assert.ok(tabs.description.includes(word), word);
+  const click = toolDescriptors().find((tool) => tool.name === "browser_click");
+  assert.ok(
+    click.inputSchema.properties.tab.description.includes(
+      "A tab the person has open works too.",
+    ),
+  );
+  assert.equal(/—/u.test(JSON.stringify(toolDescriptors())), false);
+});

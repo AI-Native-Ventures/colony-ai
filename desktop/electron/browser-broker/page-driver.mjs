@@ -119,6 +119,8 @@ export function createPageDriver({
   adapter,
   downloads,
   cdpTimeoutMs = 15_000,
+  /** How long a page that looks on screen gets to produce a frame for a screenshot. */
+  directShotMs = 2_500,
   loadTimeoutMs = 30_000,
   pollMs = 150,
   sleep = (ms) => delay(ms),
@@ -129,7 +131,13 @@ export function createPageDriver({
 
   // ---- CDP plumbing ------------------------------------------------------
 
-  async function rawSend(session, method, params, signal) {
+  async function rawSend(
+    session,
+    method,
+    params,
+    signal,
+    timeoutMs = cdpTimeoutMs,
+  ) {
     if (signal?.aborted) throw new DriverError("cdp_timeout");
     if (!ALLOWED_CDP_METHODS.has(method))
       throw new Error(`CDP method not allowed: ${String(method).slice(0, 60)}`);
@@ -138,7 +146,7 @@ export function createPageDriver({
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(new DriverError("cdp_timeout")),
-        cdpTimeoutMs,
+        timeoutMs,
       );
       timer.unref?.();
     });
@@ -149,6 +157,10 @@ export function createPageDriver({
           signal.addEventListener("abort", onAbort, { once: true });
         })
       : null;
+    // The page cannot tell the agent's key and mouse events from the
+    // person's. The host can, if told the agent is the one pressing.
+    const agentInput = method.startsWith("Input.");
+    if (agentInput) adapter.markAgentInput?.(session.tabId, 1);
     try {
       return await Promise.race(
         [
@@ -160,6 +172,7 @@ export function createPageDriver({
     } finally {
       clearTimeout(timer);
       if (onAbort) signal.removeEventListener("abort", onAbort);
+      if (agentInput) adapter.markAgentInput?.(session.tabId, -1);
     }
   }
 
@@ -199,8 +212,8 @@ export function createPageDriver({
     return session;
   }
 
-  const send = (session, method, params, signal) =>
-    rawSend(session, method, params, signal);
+  const send = (session, method, params, signal, timeoutMs) =>
+    rawSend(session, method, params, signal, timeoutMs);
 
   /** One isolated world per document, so the page cannot tamper with built-ins. */
   async function worldFor(session, signal) {
@@ -290,6 +303,32 @@ export function createPageDriver({
     return box;
   }
 
+  const pick = ({
+    id,
+    businessId,
+    clientId,
+    url,
+    title,
+    loading,
+    controlOwner,
+    private: isPrivate,
+    attached,
+    visible,
+    humanInputAt,
+  }) => ({
+    id,
+    businessId,
+    clientId,
+    url,
+    title,
+    loading,
+    controlOwner,
+    private: isPrivate === true,
+    attached: attached === true,
+    visible: visible === true,
+    humanInputAt,
+  });
+
   // ---- PageDriver interface ------------------------------------------------
 
   // Test hook: lets unit tests prove the CDP allowlist actually guards.
@@ -297,12 +336,217 @@ export function createPageDriver({
     internals.send = async (tabId, method, params) =>
       send(await sessionFor(tabId), method, params);
 
+  async function takeScreenshot(
+    tabId,
+    {
+      backendNodeId,
+      fullPage = false,
+      maskCredentialFields = true,
+      signal,
+    } = {},
+    shotTimeoutMs = cdpTimeoutMs,
+  ) {
+    const session = await sessionFor(tabId);
+    const objectId = await documentObject(session, signal);
+    let masked = false;
+    try {
+      if (maskCredentialFields) {
+        // Fail closed: no mask, no screenshot.
+        masked = true;
+        await call(session, objectId, "maskCredentials", [], signal);
+      }
+      let clip;
+      if (backendNodeId !== undefined) {
+        const box = await boxOf(session, backendNodeId, signal);
+        clip = {
+          x: box.left,
+          y: box.top,
+          width: box.width,
+          height: box.height,
+        };
+      } else {
+        const metrics = await send(
+          session,
+          "Page.getLayoutMetrics",
+          {},
+          signal,
+        );
+        const view = fullPage
+          ? (metrics.cssContentSize ?? metrics.contentSize)
+          : (metrics.cssVisualViewport ?? {
+              clientWidth: 800,
+              clientHeight: 600,
+            });
+        const width = view.width ?? view.clientWidth;
+        const height = view.height ?? view.clientHeight;
+        clip = { x: 0, y: 0, width, height };
+      }
+      const scale = Math.min(
+        1,
+        MAX_SHOT_EDGE / Math.max(clip.width, clip.height, 1),
+      );
+      const shot = await send(
+        session,
+        "Page.captureScreenshot",
+        {
+          format: "png",
+          clip: { ...clip, scale },
+          captureBeyondViewport: fullPage,
+        },
+        signal,
+        shotTimeoutMs,
+      );
+      return { mimeType: "image/png", data: shot.data };
+    } finally {
+      if (masked)
+        await call(session, objectId, "unmaskCredentials", [], undefined).catch(
+          () => undefined,
+        );
+      await release(session, objectId);
+    }
+  }
+
+  /**
+   * Run page input while the page is drawn. A page that is not on screen has
+   * no frames to acknowledge input with, so on some platforms a click waits
+   * several seconds for an answer that never comes; on the stage it is
+   * answered at once. A page that is on screen is not touched.
+   */
+  async function whileRendered(tabId, work) {
+    const lease = await adapter.renderLease?.(tabId);
+    try {
+      return await work();
+    } finally {
+      await lease?.release();
+    }
+  }
+
+  async function clickOnPage(tabId, backendNodeId, { signal, check } = {}) {
+    const session = await sessionFor(tabId);
+    const objectId = await resolve(session, backendNodeId, signal).catch(() => {
+      throw new DriverError("element_not_actionable");
+    });
+    try {
+      const box = await boxOf(session, backendNodeId, signal);
+      check?.();
+      const hit = await call(
+        session,
+        objectId,
+        "hitTest",
+        [box.x, box.y],
+        signal,
+      );
+      if (!hit) throw new DriverError("click_intercepted");
+      // Last gate before real input: a revoke or take over lands here.
+      check?.();
+      adapter.consumeBlocked?.(tabId);
+      const base = {
+        x: box.x,
+        y: box.y,
+        button: "left",
+        pointerType: "mouse",
+      };
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mouseMoved" },
+        signal,
+      );
+      check?.();
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mousePressed", clickCount: 1 },
+        signal,
+      );
+      check?.();
+      await send(
+        session,
+        "Input.dispatchMouseEvent",
+        { ...base, type: "mouseReleased", clickCount: 1 },
+        signal,
+      );
+    } finally {
+      await release(session, objectId);
+    }
+    const blocked = adapter.consumeBlocked?.(tabId);
+    return blocked ? { blocked } : {};
+  }
+
+  async function typeOnPage(
+    tabId,
+    backendNodeId,
+    text,
+    { submit = false, signal, check } = {},
+  ) {
+    const session = await sessionFor(tabId);
+    const objectId = await resolve(session, backendNodeId, signal).catch(() => {
+      throw new DriverError("element_not_actionable");
+    });
+    try {
+      await send(session, "DOM.focus", { backendNodeId }, signal).catch(() => {
+        throw new DriverError("element_not_actionable");
+      });
+      await call(session, objectId, "selectContents", [], signal);
+      check?.();
+      adapter.consumeBlocked?.(tabId);
+      if (text.length > 0) {
+        await send(session, "Input.insertText", { text }, signal);
+      } else {
+        for (const type of ["keyDown", "keyUp"])
+          await send(
+            session,
+            "Input.dispatchKeyEvent",
+            {
+              type,
+              key: "Delete",
+              code: "Delete",
+              windowsVirtualKeyCode: 46,
+            },
+            signal,
+          );
+      }
+      if (submit) {
+        check?.();
+        await send(
+          session,
+          "Input.dispatchKeyEvent",
+          {
+            type: "keyDown",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13,
+            text: "\r",
+          },
+          signal,
+        );
+        await send(
+          session,
+          "Input.dispatchKeyEvent",
+          {
+            type: "keyUp",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13,
+          },
+          signal,
+        );
+      }
+    } finally {
+      await release(session, objectId);
+    }
+    const blocked = adapter.consumeBlocked?.(tabId);
+    return blocked ? { blocked } : {};
+  }
+
   const driver = {
     attach(value) {
       broker = value;
       adapter.onDocumentChanged?.((tabId) =>
         broker?.notifyDocumentChanged(tabId),
       );
+      adapter.onHumanInput?.((tabId) => broker?.notifyHumanInput(tabId));
+      adapter.onTabPrivate?.((tabId) => broker?.notifyTabPrivate(tabId));
       adapter.onTabClosed?.((tabId) => {
         downloads?.cancelTab(tabId);
         sessions.delete(tabId);
@@ -318,9 +562,12 @@ export function createPageDriver({
     async getTab(tabId) {
       const tab = adapter.getTab(tabId);
       if (!tab) return null;
-      const { id, businessId, clientId, url, title, loading, controlOwner } =
-        tab;
-      return { id, businessId, clientId, url, title, loading, controlOwner };
+      return pick(tab);
+    },
+
+    /** Every tab of one business: the person's and the agents'. */
+    async listTabs(businessId, clientId) {
+      return (adapter.listTabs?.(businessId, clientId ?? null) ?? []).map(pick);
     },
 
     controlOwnerOf: (tabId) => adapter.getTab(tabId)?.controlOwner,
@@ -431,129 +678,13 @@ export function createPageDriver({
       }
     },
 
-    async click(tabId, backendNodeId, { signal, check } = {}) {
-      const session = await sessionFor(tabId);
-      const objectId = await resolve(session, backendNodeId, signal).catch(
-        () => {
-          throw new DriverError("element_not_actionable");
-        },
-      );
-      try {
-        const box = await boxOf(session, backendNodeId, signal);
-        check?.();
-        const hit = await call(
-          session,
-          objectId,
-          "hitTest",
-          [box.x, box.y],
-          signal,
-        );
-        if (!hit) throw new DriverError("click_intercepted");
-        // Last gate before real input: a revoke or take over lands here.
-        check?.();
-        adapter.consumeBlocked?.(tabId);
-        const base = {
-          x: box.x,
-          y: box.y,
-          button: "left",
-          pointerType: "mouse",
-        };
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mouseMoved" },
-          signal,
-        );
-        check?.();
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mousePressed", clickCount: 1 },
-          signal,
-        );
-        check?.();
-        await send(
-          session,
-          "Input.dispatchMouseEvent",
-          { ...base, type: "mouseReleased", clickCount: 1 },
-          signal,
-        );
-      } finally {
-        await release(session, objectId);
-      }
-      const blocked = adapter.consumeBlocked?.(tabId);
-      return blocked ? { blocked } : {};
-    },
+    click: (tabId, backendNodeId, options) =>
+      whileRendered(tabId, () => clickOnPage(tabId, backendNodeId, options)),
 
-    async type(
-      tabId,
-      backendNodeId,
-      text,
-      { submit = false, signal, check } = {},
-    ) {
-      const session = await sessionFor(tabId);
-      const objectId = await resolve(session, backendNodeId, signal).catch(
-        () => {
-          throw new DriverError("element_not_actionable");
-        },
-      );
-      try {
-        await send(session, "DOM.focus", { backendNodeId }, signal).catch(
-          () => {
-            throw new DriverError("element_not_actionable");
-          },
-        );
-        await call(session, objectId, "selectContents", [], signal);
-        check?.();
-        adapter.consumeBlocked?.(tabId);
-        if (text.length > 0) {
-          await send(session, "Input.insertText", { text }, signal);
-        } else {
-          for (const type of ["keyDown", "keyUp"])
-            await send(
-              session,
-              "Input.dispatchKeyEvent",
-              {
-                type,
-                key: "Delete",
-                code: "Delete",
-                windowsVirtualKeyCode: 46,
-              },
-              signal,
-            );
-        }
-        if (submit) {
-          check?.();
-          await send(
-            session,
-            "Input.dispatchKeyEvent",
-            {
-              type: "keyDown",
-              key: "Enter",
-              code: "Enter",
-              windowsVirtualKeyCode: 13,
-              text: "\r",
-            },
-            signal,
-          );
-          await send(
-            session,
-            "Input.dispatchKeyEvent",
-            {
-              type: "keyUp",
-              key: "Enter",
-              code: "Enter",
-              windowsVirtualKeyCode: 13,
-            },
-            signal,
-          );
-        }
-      } finally {
-        await release(session, objectId);
-      }
-      const blocked = adapter.consumeBlocked?.(tabId);
-      return blocked ? { blocked } : {};
-    },
+    type: (tabId, backendNodeId, text, options) =>
+      whileRendered(tabId, () =>
+        typeOnPage(tabId, backendNodeId, text, options),
+      ),
 
     async select(tabId, backendNodeId, values, { signal, check } = {}) {
       const session = await sessionFor(tabId);
@@ -598,126 +729,61 @@ export function createPageDriver({
       { backendNodeId, direction, amount = 600, signal } = {},
     ) {
       const session = await sessionFor(tabId);
-      if (
-        (direction === "top" || direction === "bottom") &&
+      const edge = direction === "top" || direction === "bottom";
+      const objectId =
         backendNodeId === undefined
-      ) {
-        const objectId = await documentObject(session, signal);
-        try {
+          ? await documentObject(session, signal)
+          : await resolve(session, backendNodeId, signal).catch(() => {
+              throw new DriverError("element_not_actionable");
+            });
+      try {
+        if (edge && backendNodeId === undefined) {
           await call(session, objectId, "scrollPageTo", [direction], signal);
-        } finally {
-          await release(session, objectId);
+          return {};
         }
+        // The page scrolls itself. A wheel event waits for a drawn frame, which
+        // a page that is not on screen never produces, and then does nothing.
+        const deltas = {
+          up: [0, -amount],
+          down: [0, amount],
+          left: [-amount, 0],
+          right: [amount, 0],
+          top: [0, -100_000],
+          bottom: [0, 100_000],
+        }[direction] ?? [0, amount];
+        await call(session, objectId, "scrollBy", deltas, signal);
         return {};
+      } finally {
+        await release(session, objectId);
       }
-      let point;
-      if (backendNodeId !== undefined) {
-        point = await boxOf(session, backendNodeId, signal);
-      } else {
-        const metrics = await send(
-          session,
-          "Page.getLayoutMetrics",
-          {},
-          signal,
-        );
-        const view = metrics.cssVisualViewport ?? {
-          clientWidth: 800,
-          clientHeight: 600,
-        };
-        point = { x: view.clientWidth / 2, y: view.clientHeight / 2 };
-      }
-      const deltas = {
-        up: [0, -amount],
-        down: [0, amount],
-        left: [-amount, 0],
-        right: [amount, 0],
-        top: [0, -100_000],
-        bottom: [0, 100_000],
-      }[direction] ?? [0, amount];
-      await send(
-        session,
-        "Input.dispatchMouseEvent",
-        {
-          type: "mouseWheel",
-          x: point.x,
-          y: point.y,
-          deltaX: deltas[0],
-          deltaY: deltas[1],
-        },
-        signal,
-      );
-      return {};
     },
 
-    async screenshot(
-      tabId,
-      {
-        backendNodeId,
-        fullPage = false,
-        maskCredentialFields = true,
-        signal,
-      } = {},
-    ) {
-      const session = await sessionFor(tabId);
-      const objectId = await documentObject(session, signal);
-      let masked = false;
+    async screenshot(tabId, options = {}) {
+      let lease = await adapter.renderLease?.(tabId);
       try {
-        if (maskCredentialFields) {
-          // Fail closed: no mask, no screenshot.
-          masked = true;
-          await call(session, objectId, "maskCredentials", [], signal);
-        }
-        let clip;
-        if (backendNodeId !== undefined) {
-          const box = await boxOf(session, backendNodeId, signal);
-          clip = {
-            x: box.left,
-            y: box.top,
-            width: box.width,
-            height: box.height,
-          };
-        } else {
-          const metrics = await send(
-            session,
-            "Page.getLayoutMetrics",
-            {},
-            signal,
+        try {
+          return await takeScreenshot(
+            tabId,
+            options,
+            lease?.staged ? cdpTimeoutMs : directShotMs,
           );
-          const view = fullPage
-            ? (metrics.cssContentSize ?? metrics.contentSize)
-            : (metrics.cssVisualViewport ?? {
-                clientWidth: 800,
-                clientHeight: 600,
-              });
-          const width = view.width ?? view.clientWidth;
-          const height = view.height ?? view.clientHeight;
-          clip = { x: 0, y: 0, width, height };
+        } catch (error) {
+          // A page that looked on screen but is covered by another window
+          // draws nothing: try once more on the stage.
+          if (
+            lease?.staged ||
+            !adapter.renderLease ||
+            options.signal?.aborted ||
+            !(error instanceof DriverError) ||
+            error.driverCode !== "cdp_timeout"
+          )
+            throw error;
+          await lease?.release();
+          lease = await adapter.renderLease(tabId, { force: true });
+          return await takeScreenshot(tabId, options, cdpTimeoutMs);
         }
-        const scale = Math.min(
-          1,
-          MAX_SHOT_EDGE / Math.max(clip.width, clip.height, 1),
-        );
-        const shot = await send(
-          session,
-          "Page.captureScreenshot",
-          {
-            format: "png",
-            clip: { ...clip, scale },
-            captureBeyondViewport: fullPage,
-          },
-          signal,
-        );
-        return { mimeType: "image/png", data: shot.data };
       } finally {
-        if (masked)
-          await call(
-            session,
-            objectId,
-            "unmaskCredentials",
-            [],
-            undefined,
-          ).catch(() => undefined);
-        await release(session, objectId);
+        await lease?.release();
       }
     },
 

@@ -37,6 +37,8 @@ export type BrowserHostFakeControls = {
   emit: (event: BrowserHostEvent) => void;
   /** A page script opened a window (`window.open`). */
   popup: (fromTabId: string, url: string) => void;
+  /** An AI employee opened a page for itself (the host adds it in the background). */
+  agentOpened: (fromTabId: string, url: string) => void;
   /** A key pressed while the page, not the app, has focus. */
   shortcut: (tabId: string, action: BrowserShortcutAction) => void;
   finishLoading: (tabId: string) => void;
@@ -98,6 +100,7 @@ export async function installBrowserHostFake(
       history: string[];
       cursor: number;
       holding: boolean;
+      private: boolean;
     };
     const tabs = new Map<string, Tab>();
     const calls: FakeCall[] = [];
@@ -124,6 +127,7 @@ export async function installBrowserHostFake(
       attached: tab.attached,
       visible: tab.visible,
       bounds: tab.bounds,
+      private: tab.private,
     });
     const sendState = (tab: Tab) => emit({ type: "state", tab: snapshot(tab) });
     const find = (tabId: string) => {
@@ -222,6 +226,7 @@ export async function installBrowserHostFake(
           history: [],
           cursor: -1,
           holding: false,
+          private: false,
         };
         tabs.set(tab.id, tab);
         emit({ type: "created", tab: snapshot(tab) });
@@ -295,6 +300,13 @@ export async function installBrowserHostFake(
       async setControlOwner(tabId, controlOwner) {
         const tab = find(tabId);
         tab.controlOwner = controlOwner;
+        return snapshot(tab);
+      },
+      async setPrivate(tabId, value) {
+        const tab = find(tabId);
+        calls.push({ op: "setPrivate", tabId, value });
+        tab.private = value;
+        sendState(tab);
         return snapshot(tab);
       },
       async focus(tabId) {
@@ -387,6 +399,22 @@ export async function installBrowserHostFake(
           emit({ type: "new-tab", tab: created, openedFrom: fromTabId });
           load(find(created.id), checked.href, true);
         });
+      },
+      agentOpened: (fromTabId, url) => {
+        const parent = find(fromTabId);
+        void host
+          .createTab({ businessId: parent.businessId })
+          .then((created) => {
+            emit({
+              type: "new-tab",
+              tab: created,
+              openedFrom: fromTabId,
+              background: true,
+            });
+            void window.__browserPolicyUrl?.(url).then((checked) => {
+              if (checked.ok) load(find(created.id), checked.href, true);
+            });
+          });
       },
       shortcut: (tabId, action) => emit({ type: "shortcut", tabId, action }),
       finishLoading: (tabId) => {

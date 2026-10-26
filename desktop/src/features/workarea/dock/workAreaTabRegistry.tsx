@@ -3,6 +3,7 @@ import type * as React from "react";
 
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
 
+import { BrowserTabExtras } from "../browser/BrowserTabExtras";
 import {
   browserTabLabels,
   closeBrowserTab,
@@ -56,6 +57,13 @@ export type WorkAreaTabDefinition = {
    * by what it shows (a file tab opens from a file link or the Files list).
    */
   readonly hiddenFromMenu?: boolean;
+  /** Extra small controls on the tab itself, after its label (a browser page's privacy switch). */
+  readonly TabExtras?: React.ComponentType<{
+    channelId: string;
+    tabId: string;
+    /** This tab is the one on screen. */
+    selected: boolean;
+  }>;
   /** A small count after the label (the Work tab's open work), read live. */
   readonly Badge?: React.ComponentType<{ channelId: string; id?: string }>;
   /** A tab's own label (a page's title) instead of the kind's `label`. */
@@ -83,6 +91,7 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     newTabId: newBrowserTabId,
     onTabClosed: closeBrowserTab,
     tabLabels: browserTabLabels,
+    TabExtras: BrowserTabExtras,
     Panel: WorkAreaBrowserTab,
   },
   terminal: {

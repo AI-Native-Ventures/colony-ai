@@ -13,6 +13,11 @@ import { browserApprovalOrigin } from "./browserTaskScope";
 
 export type BrowserControlState = {
   enabled: boolean;
+  /**
+   * Default access: AI employees of this business share its tabs with no
+   * approval. False on the packaged gate, where grants are made by the person.
+   */
+  defaultAccess: boolean;
   loading: boolean;
   recoveryRequired: boolean;
   busy: string | null;
@@ -39,6 +44,7 @@ export function createBrowserControlStore({
 }) {
   let state: BrowserControlState = {
     enabled: false,
+    defaultAccess: false,
     loading: true,
     recoveryRequired: false,
     busy: null,
@@ -130,7 +136,10 @@ export function createBrowserControlStore({
             update({ enabled: false, loading: false });
             return;
           }
-          update({ enabled: true });
+          update({
+            enabled: true,
+            defaultAccess: status.defaultAccess === true,
+          });
           const [grants, pending, log] = await Promise.all([
             api.grants(),
             api.pending(),
@@ -340,9 +349,17 @@ export function createBrowserControlStore({
     },
     takeOver() {
       const grant = state.grant;
-      return grant
-        ? run("take-over", () => api.takeOver(grant.id), true)
-        : Promise.resolve();
+      if (!grant) return Promise.resolve();
+      // Under default access the person takes back this tab; the agent keeps
+      // its others. A grant the person made is one tab, so it simply ends.
+      return run(
+        "take-over",
+        async () => {
+          if (grant.defaultAccess) await api.releaseTab(grant.id, tabId);
+          else await api.takeOver(grant.id);
+        },
+        true,
+      );
     },
     allowSite(origin: string) {
       const grant = state.grant;

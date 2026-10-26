@@ -148,6 +148,10 @@ function createRig({ url = "https://shop.example/cart" } = {}) {
             cssContentSize: { width: 1280, height: 6000 },
           };
         case "Page.captureScreenshot":
+          if (state.shotHangs > 0) {
+            state.shotHangs -= 1;
+            return new Promise(() => {});
+          }
           if (state.screenshotFails) throw new Error("capture failed");
           return { data: "QUJD" };
         default:
@@ -593,6 +597,121 @@ test("screenshot clips are scaled to the longest edge limit and fullPage uses th
   );
 });
 
+test("a screenshot of a page the system is not drawing is taken on the stage, then the page goes back", async () => {
+  const rig = createRig();
+  const order = [];
+  rig.adapter.renderLease = async (id, options) => {
+    order.push(["lease", id, options?.force ?? false]);
+    return {
+      staged: true,
+      release: async () => order.push(["release"]),
+    };
+  };
+  const original = rig.debuggerFake.sendCommand;
+  rig.debuggerFake.sendCommand = async (method, params) => {
+    if (method === "Page.captureScreenshot") order.push(["capture"]);
+    return original(method, params);
+  };
+  const shot = await rig.driver.screenshot("tab-1");
+  assert.equal(shot.data, "QUJD");
+  assert.deepEqual(order, [
+    ["lease", "tab-1", false],
+    ["capture"],
+    ["release"],
+  ]);
+});
+
+test("a page that looks on screen but draws nothing is photographed once more on the stage", async () => {
+  const rig = createRig();
+  rig.state.shotHangs = 1;
+  const leases = [];
+  rig.adapter.renderLease = async (_id, options) => {
+    const lease = {
+      staged: options?.force === true,
+      released: 0,
+      release: async () => {
+        lease.released += 1;
+      },
+    };
+    leases.push(lease);
+    return lease;
+  };
+  const driver = createPageDriver({
+    adapter: rig.adapter,
+    directShotMs: 20,
+    cdpTimeoutMs: 500,
+  });
+  const shot = await driver.screenshot("tab-1");
+  assert.equal(shot.data, "QUJD");
+  assert.deepEqual(
+    leases.map((lease) => [lease.staged, lease.released]),
+    [
+      [false, 1],
+      [true, 1],
+    ],
+  );
+});
+
+test("a screenshot that cannot be taken even on the stage fails with a plain error and puts the page back", async () => {
+  const rig = createRig();
+  rig.state.shotHangs = 2;
+  let released = 0;
+  rig.adapter.renderLease = async () => ({
+    staged: true,
+    release: async () => {
+      released += 1;
+    },
+  });
+  const driver = createPageDriver({
+    adapter: rig.adapter,
+    cdpTimeoutMs: 40,
+  });
+  await assert.rejects(driver.screenshot("tab-1"), (error) => {
+    assert.equal(error.driverCode, "cdp_timeout");
+    return true;
+  });
+  assert.equal(released, 1);
+  // Credential fields were masked for the shot and are shown again.
+  const names = rig.calls
+    .filter((c) => c.method === "Runtime.callFunctionOn")
+    .map((c) => NAME_OF.get(c.params.functionDeclaration));
+  assert.ok(names.includes("unmaskCredentials"));
+});
+
+test("a click and typing on a page that is not on screen happen on the stage and the page goes back after", async () => {
+  const rig = createRig();
+  const order = [];
+  rig.adapter.renderLease = async (id) => {
+    order.push(["lease", id]);
+    return { staged: true, release: async () => order.push(["release"]) };
+  };
+  const original = rig.debuggerFake.sendCommand;
+  rig.debuggerFake.sendCommand = async (method, params) => {
+    if (method.startsWith("Input.")) order.push(["input", method]);
+    return original(method, params);
+  };
+  await rig.driver.click("tab-1", 11);
+  assert.deepEqual(order[0], ["lease", "tab-1"]);
+  assert.deepEqual(order.at(-1), ["release"]);
+  assert.equal(
+    order.filter((entry) => entry[0] === "input").length,
+    3,
+    "move, press and release",
+  );
+  order.length = 0;
+  await rig.driver.type("tab-1", 11, "hello");
+  assert.deepEqual(order[0], ["lease", "tab-1"]);
+  assert.deepEqual(order.at(-1), ["release"]);
+  assert.ok(order.some((entry) => entry[1] === "Input.insertText"));
+  // A refused click still gives the page back.
+  rig.state.hit = false;
+  order.length = 0;
+  await assert.rejects(rig.driver.click("tab-1", 11), {
+    driverCode: "click_intercepted",
+  });
+  assert.deepEqual(order.at(-1), ["release"]);
+});
+
 test("snapshot returns the tree, DOM derived extras and the document id", async () => {
   const rig = createRig();
   rig.state.domChildren = [
@@ -777,22 +896,35 @@ test("read and scroll use real input and bounded text", async () => {
     text: "visible text",
   });
   await rig.driver.scroll("tab-1", { direction: "down", amount: 300 });
-  const wheel = rig.calls.find((c) => c.method === "Input.dispatchMouseEvent");
-  assert.deepEqual(
-    [wheel.params.type, wheel.params.deltaY, wheel.params.x, wheel.params.y],
-    ["mouseWheel", 300, 640, 400],
-  );
   await rig.driver.scroll("tab-1", {
     direction: "up",
     backendNodeId: 11,
     amount: 50,
   });
-  const second = rig.calls.filter(
-    (c) => c.method === "Input.dispatchMouseEvent",
-  )[1];
+  const scrolls = rig.calls.filter(
+    (c) =>
+      c.method === "Runtime.callFunctionOn" &&
+      NAME_OF.get(c.params.functionDeclaration) === "scrollBy",
+  );
   assert.deepEqual(
-    [second.params.deltaY, second.params.x, second.params.y],
-    [-50, 140, 215],
+    scrolls.map((c) => c.params.arguments.map((argument) => argument.value)),
+    [
+      [0, 300],
+      [0, -50],
+    ],
+  );
+});
+
+test("scrolling never waits on a drawn frame: no wheel event is sent", async () => {
+  // A wheel event is acknowledged by a frame. A page that is hidden, covered or
+  // in a hidden window draws none, so the wheel stalls and then does nothing.
+  const rig = createRig();
+  for (const direction of ["down", "up", "left", "right", "top", "bottom"])
+    await rig.driver.scroll("tab-1", { direction });
+  await rig.driver.scroll("tab-1", { direction: "bottom", backendNodeId: 11 });
+  assert.equal(
+    rig.calls.some((c) => c.method === "Input.dispatchMouseEvent"),
+    false,
   );
 });
 

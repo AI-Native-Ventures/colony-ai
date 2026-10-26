@@ -223,7 +223,11 @@ export async function createElectronBrowserAgentHost({
   });
   adapter.setHumanActionHandler((tabId) => {
     const grant = host.capabilities.grantForTab(tabId);
-    if (grant) host.broker.takeOver(grant.id);
+    if (!grant) return;
+    // Under default access the person using one tab takes back only that tab.
+    if (grant.defaultAccess)
+      host.broker.releaseTab(grant.id, tabId, "person is using it");
+    else host.broker.takeOver(grant.id);
   });
 
   async function handleRequest(action, payload, senderId) {
@@ -231,10 +235,12 @@ export async function createElectronBrowserAgentHost({
     if (!payload || typeof payload !== "object" || Array.isArray(payload))
       throw new Error("Invalid agent browser request");
     if (action === "agent-status") {
-      if (!payload.tabId) return { enabled: true };
+      if (!payload.tabId)
+        return { enabled: true, defaultAccess: host.defaultAccess === true };
       const tab = ownedTab(payload, senderId);
       return {
         enabled: true,
+        defaultAccess: host.defaultAccess === true,
         recoveryRequired:
           host.broker.controlRecoveryRequired(tab.id) ||
           uploadFailure ||
@@ -327,7 +333,10 @@ export async function createElectronBrowserAgentHost({
       );
     }
     const result = await host.handleRequest(action, payload);
-    if (["agent-revoke", "agent-take-over"].includes(action)) await tail;
+    if (
+      ["agent-revoke", "agent-take-over", "agent-release-tab"].includes(action)
+    )
+      await tail;
     return result;
   }
 
@@ -376,7 +385,10 @@ export function createBrowserBrokerIpcHandler({ windows, trusted, getHost }) {
       throw new Error("Untrusted agent browser caller");
     const host = getHost();
     if (action === "agent-status" && (!host.enabled || !payload?.tabId))
-      return { enabled: host.enabled };
+      return {
+        enabled: host.enabled,
+        defaultAccess: host.defaultAccess === true,
+      };
     if (host.stopped) {
       // The app is quitting while its window still refreshes the controls.
       // There is nothing to report, so say so instead of logging an error.
