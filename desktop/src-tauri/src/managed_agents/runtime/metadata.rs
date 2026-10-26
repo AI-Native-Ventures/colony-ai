@@ -51,6 +51,32 @@ pub(crate) fn apply_agent_display_env(command: &mut std::process::Command, title
 /// place.
 pub(crate) const REPLAY_FLOOR_ENV_VAR: &str = "BUZZ_ACP_REPLAY_FLOOR";
 
+/// Env var carrying the wake-ledger file path to the harness (`buzz-acp`
+/// reads it as `COLONY_WAKE_LEDGER`).
+pub(crate) const WAKE_LEDGER_ENV_VAR: &str = "COLONY_WAKE_LEDGER";
+
+/// Point the harness at its wake ledger, or clear the key when there is none.
+///
+/// Without a ledger a restarted harness only listens from its own start (or
+/// from the one replay floor the host hands it), so a mention that arrived
+/// while the previous harness was dead or stalled is skipped for good. The
+/// host alone decides the path: it is written after the saved user env, and an
+/// inherited value is removed when `ledger_path` is `None`, so neither can
+/// aim the harness at another file.
+pub(crate) fn apply_wake_ledger_env(
+    command: &mut std::process::Command,
+    ledger_path: Option<&std::path::Path>,
+) {
+    match ledger_path {
+        Some(path) => {
+            command.env(WAKE_LEDGER_ENV_VAR, path);
+        }
+        None => {
+            command.env_remove(WAKE_LEDGER_ENV_VAR);
+        }
+    }
+}
+
 /// Apply the publish-first replay floor: inject [`REPLAY_FLOOR_ENV_VAR`] from
 /// `replay_floor_unix` (or leave the key untouched if `None`).
 ///
@@ -121,7 +147,10 @@ pub(crate) fn child_rust_log_filter() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_replay_floor_env, resolve_session_title, REPLAY_FLOOR_ENV_VAR};
+    use super::{
+        apply_replay_floor_env, apply_wake_ledger_env, resolve_session_title, REPLAY_FLOOR_ENV_VAR,
+        WAKE_LEDGER_ENV_VAR,
+    };
 
     fn replay_floor_of(cmd: &std::process::Command) -> Option<String> {
         cmd.get_envs()
@@ -253,5 +282,42 @@ mod tests {
     #[test]
     fn resolve_session_title_returns_none_when_both_candidates_are_control_chars_only() {
         assert_eq!(resolve_session_title(Some("\u{0}"), "\u{0}"), None);
+    }
+
+    /// What the child would see for the wake-ledger key: `Some(Some(v))` set,
+    /// `Some(None)` explicitly removed, `None` untouched.
+    fn wake_ledger_of(cmd: &std::process::Command) -> Option<Option<String>> {
+        cmd.get_envs()
+            .find(|(key, _)| *key == std::ffi::OsStr::new(WAKE_LEDGER_ENV_VAR))
+            .map(|(_, value)| value.map(|v| v.to_string_lossy().into_owned()))
+    }
+
+    #[test]
+    fn wake_ledger_path_reaches_the_harness_env() {
+        let mut cmd = std::process::Command::new("true");
+        apply_wake_ledger_env(&mut cmd, Some(std::path::Path::new("/data/wake/a__b.json")));
+        assert_eq!(
+            wake_ledger_of(&cmd),
+            Some(Some("/data/wake/a__b.json".to_string()))
+        );
+    }
+
+    #[test]
+    fn wake_ledger_path_wins_over_a_user_env_collision() {
+        let mut cmd = std::process::Command::new("true");
+        cmd.env(WAKE_LEDGER_ENV_VAR, "/tmp/elsewhere.json");
+        apply_wake_ledger_env(&mut cmd, Some(std::path::Path::new("/data/wake/a__b.json")));
+        assert_eq!(
+            wake_ledger_of(&cmd),
+            Some(Some("/data/wake/a__b.json".to_string()))
+        );
+    }
+
+    #[test]
+    fn no_wake_ledger_removes_an_inherited_value() {
+        let mut cmd = std::process::Command::new("true");
+        cmd.env(WAKE_LEDGER_ENV_VAR, "/tmp/inherited.json");
+        apply_wake_ledger_env(&mut cmd, None);
+        assert_eq!(wake_ledger_of(&cmd), Some(None));
     }
 }
