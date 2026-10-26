@@ -26,6 +26,8 @@ export const MAX_GRANT_TTL_MS = 60 * 60_000;
 /** Default access lasts as long as the rules allow; the next call renews it. */
 export const DEFAULT_ACCESS_TTL_MS = MAX_GRANT_TTL_MS;
 export const MAX_EXTRA_TABS = 3;
+/** Work area tabs one task may take over from the person or another agent. */
+export const MAX_ADOPTED_TABS = 8;
 export const MAX_ACTIVE_GRANTS = 32;
 export const MAX_ALLOWED_ORIGINS = 32;
 const MAX_ENDED_GRANTS = 64;
@@ -54,6 +56,7 @@ export function createCapabilityStore({
   randomToken = () => randomBytes(32).toString("base64url"),
   randomId = randomUUID,
   maxExtraTabs = MAX_EXTRA_TABS,
+  maxAdoptedTabs = MAX_ADOPTED_TABS,
   maxActiveGrants = MAX_ACTIVE_GRANTS,
 } = {}) {
   const grants = new Map();
@@ -87,6 +90,7 @@ export function createCapabilityStore({
       clientId: grant.clientId,
       primaryTabId: grant.primaryTabId,
       tabIds: [...grant.tabIds],
+      adoptedTabIds: [...grant.adoptedTabIds],
       allowedOrigins: [...grant.allowedOrigins],
       privateExceptions: [...grant.privateExceptions],
       defaultAccess: grant.defaultAccess,
@@ -217,6 +221,7 @@ export function createCapabilityStore({
       clientId,
       primaryTabId,
       tabIds: new Set(primaryTabId ? [primaryTabId] : []),
+      adoptedTabIds: new Set(),
       allowedOrigins,
       privateExceptions,
       defaultAccess,
@@ -366,14 +371,20 @@ export function createCapabilityStore({
     return view(grant);
   }
 
-  function bindTab(grantId, tabId) {
+  function bindTab(grantId, tabId, { adopted = false } = {}) {
     const grant = requireActive(grantId);
     const id = checkedId(tabId, "tab id");
     if (grant.tabIds.has(id)) return view(grant);
-    if (grant.tabIds.size >= 1 + maxExtraTabs)
+    // Tabs the task opened itself and tabs it took over count apart, so
+    // reading the person's open pages never uses up the task's own room.
+    if (adopted) {
+      if (grant.adoptedTabIds.size >= maxAdoptedTabs)
+        throw new CapabilityError("tab_limit", "Too many tabs for this grant");
+      grant.adoptedTabIds.add(id);
+    } else if (grant.tabIds.size - grant.adoptedTabIds.size >= 1 + maxExtraTabs)
       throw new CapabilityError("tab_limit", "Too many tabs for this grant");
     grant.tabIds.add(id);
-    if (!grant.primaryTabId) grant.primaryTabId = id;
+    if (!adopted && !grant.primaryTabId) grant.primaryTabId = id;
     emit("tab-bound", grant, { tabId: id });
     return view(grant);
   }
@@ -381,9 +392,24 @@ export function createCapabilityStore({
   function unbindTab(grantId, tabId) {
     const grant = grants.get(grantId);
     if (!grant?.tabIds.delete(tabId)) return false;
+    grant.adoptedTabIds.delete(tabId);
     if (grant.primaryTabId === tabId) grant.primaryTabId = null;
     grant.epoch += 1;
     emit("tab-unbound", grant, { tabId });
+    return true;
+  }
+
+  /**
+   * The tab goes back to the person (or to whoever asks next). The grant keeps
+   * living and keeps its primary tab as its home page. Fences pending work.
+   */
+  function releaseTab(grantId, tabId, reason = "released") {
+    const grant = grants.get(grantId);
+    if (!grant || current(grant).state !== "active") return false;
+    if (!grant.tabIds.delete(tabId)) return false;
+    grant.adoptedTabIds.delete(tabId);
+    grant.epoch += 1;
+    emit("tab-released", grant, { tabId, reason });
     return true;
   }
 
@@ -460,6 +486,7 @@ export function createCapabilityStore({
     removeOrigin,
     bindTab,
     unbindTab,
+    releaseTab,
     revoke,
     takeOver,
     revokeAgent: (agentId, reason = "revoked") =>

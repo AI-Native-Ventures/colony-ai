@@ -122,6 +122,16 @@ export async function createBrowserAgentHost({
         await broker.completeControlRelease(grantId);
         return { takenOver };
       }
+      case "agent-release-tab": {
+        // The person takes one tab back; the task keeps the others.
+        const grantId = text(payload.grantId, "grant id");
+        const released = broker.releaseTab(
+          grantId,
+          text(payload.tabId, "tab id"),
+        );
+        await broker.completeControlRelease(grantId);
+        return { released };
+      }
       case "agent-approve-origin":
         return broker.approveOrigin(
           text(payload.grantId, "grant id"),

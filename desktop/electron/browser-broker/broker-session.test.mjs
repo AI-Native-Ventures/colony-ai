@@ -147,7 +147,7 @@ for (const [label, change] of [
   });
 }
 
-test("changing the approved task fences the old session and revocation cannot revive it", async (t) => {
+test("the same agent keeps a session for each task it is approved for, and re-approving a task fences only that task's old session", async (t) => {
   const f = await fixture(t);
   const next = {
     ...session,
@@ -158,12 +158,22 @@ test("changing the approved task fences the old session and revocation cannot re
   const previous = f.grant();
   assert.ok((await first.listTools()).length > 0);
   const replacement = f.grant(next);
+  // Two channels at once: approving the second does not end the first.
+  assert.ok((await first.listTools()).length > 0);
+  assert.ok((await second.listTools()).length > 0);
+  assert.equal((await first.callTool("browser_tabs", {})).ok, true);
+  f.broker.revoke(previous.id);
   assert.deepEqual(await first.listTools(), []);
   assert.equal((await first.callTool("browser_tabs", {})).code, "no_grant");
   assert.ok((await second.listTools()).length > 0);
-  f.broker.revoke(previous.id);
+  // Approving the same task again replaces its old grant, and the old one
+  // cannot be revived.
+  const again = f.grant(next);
+  assert.notEqual(again.id, replacement.id);
   assert.ok((await second.listTools()).length > 0);
   f.broker.revoke(replacement.id);
+  assert.ok((await second.listTools()).length > 0);
+  f.broker.revoke(again.id);
   assert.deepEqual(await second.listTools(), []);
 });
 

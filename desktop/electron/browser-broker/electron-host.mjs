@@ -223,7 +223,11 @@ export async function createElectronBrowserAgentHost({
   });
   adapter.setHumanActionHandler((tabId) => {
     const grant = host.capabilities.grantForTab(tabId);
-    if (grant) host.broker.takeOver(grant.id);
+    if (!grant) return;
+    // Under default access the person using one tab takes back only that tab.
+    if (grant.defaultAccess)
+      host.broker.releaseTab(grant.id, tabId, "person is using it");
+    else host.broker.takeOver(grant.id);
   });
 
   async function handleRequest(action, payload, senderId) {
@@ -327,7 +331,10 @@ export async function createElectronBrowserAgentHost({
       );
     }
     const result = await host.handleRequest(action, payload);
-    if (["agent-revoke", "agent-take-over"].includes(action)) await tail;
+    if (
+      ["agent-revoke", "agent-take-over", "agent-release-tab"].includes(action)
+    )
+      await tail;
     return result;
   }
 

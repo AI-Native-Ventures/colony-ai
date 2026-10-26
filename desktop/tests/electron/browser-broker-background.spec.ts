@@ -93,16 +93,30 @@ async function useEveryTool(
 
   const click = await call("browser_click", { ref: ref("Change") });
   expect(click, JSON.stringify(click)).toMatchObject({ ok: true });
-  const waited = await call("browser_wait", { text: "Changed", timeoutMs: 4000 });
+  const waited = await call("browser_wait", {
+    text: "Changed",
+    timeoutMs: 4000,
+  });
   expect(waited, JSON.stringify(waited)).toMatchObject({ matched: true });
 
   const typed = await call("browser_type", { ref: ref("Note"), text: "hello" });
   expect(typed, JSON.stringify(typed)).toMatchObject({ ok: true });
-  expect(await evaluateIn<string>(app, tabId, "document.querySelector('#note').value")).toBe("hello");
+  expect(
+    await evaluateIn<string>(
+      app,
+      tabId,
+      "document.querySelector('#note').value",
+    ),
+  ).toBe("hello");
 
-  const scrolled = await call("browser_scroll", { direction: "down", amount: 700 });
+  const scrolled = await call("browser_scroll", {
+    direction: "down",
+    amount: 700,
+  });
   expect(scrolled, JSON.stringify(scrolled)).toMatchObject({ ok: true });
-  expect(await evaluateIn<number>(app, tabId, "window.scrollY")).toBeGreaterThan(300);
+  expect(
+    await evaluateIn<number>(app, tabId, "window.scrollY"),
+  ).toBeGreaterThan(300);
   const bottom = await call("browser_scroll", { direction: "bottom" });
   expect(bottom, JSON.stringify(bottom)).toMatchObject({ ok: true });
 
@@ -158,14 +172,27 @@ test("real Electron background: an agent's tab that was never shown, shown then 
     const person = await app.createTab(origin, "visible");
     // A reference screenshot of the page while it is on screen.
     const reference = await app.agent(taskFor("0"), person.id, [origin]);
-    const baseline = await useEveryTool(app, reference.client, person.id, origin);
+    const baseline = await useEveryTool(
+      app,
+      reference.client,
+      person.id,
+      origin,
+    );
     await app.request("agent-revoke", { grantId: reference.grant?.id });
 
     const cases = [
       // The dock never mounted this tab: the app made it for the agent only.
-      { name: "never shown", tab: await app.createTab(origin, "never"), letter: "a" },
+      {
+        name: "never shown",
+        tab: await app.createTab(origin, "never"),
+        letter: "a",
+      },
       // The person's tab is shown instead: the agent's tab is attached but hidden.
-      { name: "hidden behind the person's tab", tab: await app.createTab(origin, "hidden"), letter: "b" },
+      {
+        name: "hidden behind the person's tab",
+        tab: await app.createTab(origin, "hidden"),
+        letter: "b",
+      },
     ];
     // Shown once, then the dock closed: the page keeps its size, detached.
     const closedDock = await app.createTab(origin, "never");

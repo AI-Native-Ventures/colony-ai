@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { GATE_MARKER, GATE_HOME_PREFIX } from "./packaged-gate.mjs";
-import { createBrowserHost } from "../browser-host.mjs";
+import { DEFAULT_TAB_BOUNDS, createBrowserHost } from "../browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
   createBrowserBrokerIpcHandler,
@@ -78,15 +78,20 @@ async function fixture(t, options = {}) {
       network.push("clear");
     },
   });
+  const views = [];
   const browser = createBrowserHost({
     userDataPath: dir,
     downloadsPath: path.join(dir, "downloads"),
     session: { fromPartition: () => profile },
+    BrowserWindow: options.BrowserWindow,
     WebContentsView: class {
-      constructor() {
+      constructor(viewOptions) {
+        this.options = viewOptions;
         this.webContents = new Contents();
         this.webContents.session = profile;
         this.bounds = { x: 0, y: 0, width: 0, height: 0 };
+        this.shown = true;
+        views.push(this);
       }
       setBounds(bounds) {
         this.bounds = bounds;
@@ -94,13 +99,26 @@ async function fixture(t, options = {}) {
       getBounds() {
         return this.bounds;
       }
-      setVisible() {}
+      setVisible(value) {
+        this.shown = value;
+      }
     },
   });
   const sender = new Contents();
   const owner = {
     isDestroyed: () => false,
-    contentView: { removeChildView() {} },
+    isVisible: () => options.ownerVisible ?? true,
+    isMinimized: () => false,
+    getContentBounds: () => ({ x: 0, y: 0, width: 1280, height: 800 }),
+    contentView: {
+      children: new Set(),
+      addChildView(view) {
+        this.children.add(view);
+      },
+      removeChildView(view) {
+        this.children.delete(view);
+      },
+    },
   };
   const tab = await browser.handleRequest(owner, sender, "create", {
     businessId: "business-a",
@@ -139,7 +157,7 @@ async function fixture(t, options = {}) {
       },
       sender.id,
     );
-  return { browser, host, sender, owner, tab, grant, network, dir };
+  return { browser, host, sender, owner, tab, grant, network, dir, views };
 }
 
 test("flag off creates no adapter, proxy or socket and denies grants", async () => {
@@ -831,5 +849,302 @@ test("a host built without default access (the Electron fixture) refuses default
   await assert.rejects(
     f.grant({ allowedOrigins: [], defaultAccess: true }),
     /Default browser access is not enabled/u,
+  );
+});
+
+// ---- shared tabs: the real host and adapter, with a fake page ----
+
+const defaultGrant = (f) =>
+  f.grant({ allowedOrigins: [], defaultAccess: true, ttlMs: 60 * 60_000 });
+
+test("the person's key or click in a page is the person; the agent's own input is not", async (t) => {
+  const f = await fixture(t);
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  const seen = [];
+  f.browser.agentAdapter.onHumanInput((id) => seen.push(id));
+  // A pointer move is not use.
+  contents.emit("input-event", {}, { type: "mouseMove" });
+  assert.deepEqual(seen, []);
+  assert.equal(f.browser.agentAdapter.getTab(f.tab.id).humanInputAt, null);
+  // While the agent is the one pressing, nothing counts.
+  f.browser.agentAdapter.markAgentInput(f.tab.id, 1);
+  contents.emit("input-event", {}, { type: "mouseDown" });
+  contents.emit("input-event", {}, { type: "keyDown" });
+  f.browser.agentAdapter.markAgentInput(f.tab.id, -1);
+  assert.deepEqual(seen, []);
+  // The person.
+  for (const type of ["mouseDown", "mouseWheel", "keyDown", "char"]) {
+    contents.emit("input-event", {}, { type });
+  }
+  assert.deepEqual(seen, [f.tab.id, f.tab.id, f.tab.id, f.tab.id]);
+  assert.equal(
+    typeof f.browser.agentAdapter.getTab(f.tab.id).humanInputAt,
+    "number",
+  );
+  // The count never goes below zero, so a stray decrement cannot hide the person.
+  f.browser.agentAdapter.markAgentInput(f.tab.id, -1);
+  contents.emit("input-event", {}, { type: "mouseDown" });
+  assert.equal(seen.length, 5);
+});
+
+test("the person typing in a tab takes back only that tab from a default task", async (t) => {
+  const f = await fixture(t);
+  const grant = await defaultGrant(f);
+  const second = await f.browser.handleRequest(f.owner, f.sender, "create", {
+    businessId: "business-a",
+  });
+  // The task takes the person's second tab the way an agent call does.
+  f.host.broker.notifyHumanInput(second.id);
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  contents.emit("input-event", {}, { type: "keyDown" });
+  assert.equal(f.host.capabilities.getGrant(grant.id).state, "active");
+  assert.deepEqual(f.host.capabilities.getGrant(grant.id).tabIds, []);
+  assert.equal(f.browser.agentAdapter.getTab(f.tab.id).controlOwner, "human");
+});
+
+test("a person's navigation in a default task's tab releases that tab; in a person made task it still ends the task", async (t) => {
+  const f = await fixture(t);
+  const grant = await defaultGrant(f);
+  await f.browser.handleRequest(f.owner, f.sender, "stop", {
+    tabId: f.tab.id,
+  });
+  assert.equal(f.host.capabilities.getGrant(grant.id).state, "active");
+  assert.deepEqual(f.host.capabilities.getGrant(grant.id).tabIds, []);
+
+  const g = await fixture(t);
+  const manual = await g.grant();
+  await g.browser.handleRequest(g.owner, g.sender, "stop", {
+    tabId: g.tab.id,
+  });
+  assert.equal(g.host.capabilities.getGrant(manual.id).state, "taken-over");
+});
+
+test("Take over on one tab releases it and the window can only do that for its own tabs", async (t) => {
+  const f = await fixture(t);
+  const grant = await defaultGrant(f);
+  await assert.rejects(
+    f.host.handleRequest(
+      "agent-release-tab",
+      { grantId: grant.id, tabId: f.tab.id },
+      111111,
+    ),
+    /unavailable/u,
+  );
+  assert.deepEqual(
+    await f.host.handleRequest(
+      "agent-release-tab",
+      { grantId: grant.id, tabId: f.tab.id },
+      f.sender.id,
+    ),
+    { released: true },
+  );
+  assert.equal(f.host.capabilities.getGrant(grant.id).state, "active");
+  assert.equal(f.browser.agentAdapter.getTab(f.tab.id).controlOwner, "human");
+});
+
+test("Keep private is a per tab switch the host reports and the broker honours", async (t) => {
+  const f = await fixture(t);
+  const grant = await defaultGrant(f);
+  const state = await f.browser.handleRequest(
+    f.owner,
+    f.sender,
+    "set-private",
+    {
+      tabId: f.tab.id,
+      private: true,
+    },
+  );
+  assert.equal(state.private, true);
+  assert.equal(f.browser.agentAdapter.getTab(f.tab.id).private, true);
+  assert.deepEqual(f.host.capabilities.getGrant(grant.id).tabIds, []);
+  await assert.rejects(
+    f.browser.handleRequest(f.owner, f.sender, "set-private", {
+      tabId: f.tab.id,
+      private: "yes",
+    }),
+    /Invalid browser privacy setting/u,
+  );
+  const back = await f.browser.handleRequest(f.owner, f.sender, "set-private", {
+    tabId: f.tab.id,
+    private: false,
+  });
+  assert.equal(back.private, false);
+  // Only the owning window can change it.
+  await assert.rejects(
+    f.browser.handleRequest(f.owner, { ...f.sender, id: 999 }, "set-private", {
+      tabId: f.tab.id,
+      private: true,
+    }),
+  );
+});
+
+test("a tab a window listed is shared with the business's agents only through the adapter, never the renderer view", async (t) => {
+  const f = await fixture(t);
+  const second = await f.browser.handleRequest(f.owner, f.sender, "create", {
+    businessId: "business-b",
+  });
+  const tabs = f.browser.agentAdapter.listTabs("business-a", null);
+  assert.deepEqual(
+    tabs.map((tab) => tab.id),
+    [f.tab.id],
+  );
+  assert.ok(Object.hasOwn(tabs[0], "humanInputAt"));
+  // The window's own list carries the privacy flag but not input timing.
+  const listed = await f.browser.handleRequest(f.owner, f.sender, "list", {});
+  assert.equal(
+    listed.every((tab) => tab.private === false),
+    true,
+  );
+  assert.equal(
+    listed.some((tab) => Object.hasOwn(tab, "humanInputAt")),
+    false,
+  );
+  assert.ok(second.id);
+});
+
+test("a view the dock never mounted still has a real size, and views never throttle in the background", async (t) => {
+  const f = await fixture(t);
+  const [view] = f.views;
+  assert.equal(view.options.webPreferences.backgroundThrottling, false);
+  assert.deepEqual(view.bounds, DEFAULT_TAB_BOUNDS);
+  assert.equal(f.tab.attached, false);
+});
+
+class FakeStage {
+  static made = [];
+  constructor(options) {
+    this.options = options;
+    this.destroyed = false;
+    this.opacity = 1;
+    this.shown = false;
+    this.contentView = {
+      children: new Set(),
+      addChildView: (view) => this.contentView.children.add(view),
+      removeChildView: (view) => this.contentView.children.delete(view),
+    };
+    FakeStage.made.push(this);
+  }
+  setIgnoreMouseEvents(value) {
+    this.clickThrough = value;
+  }
+  setOpacity(value) {
+    this.opacity = value;
+  }
+  showInactive() {
+    this.shown = true;
+  }
+  isDestroyed() {
+    return this.destroyed;
+  }
+  destroy() {
+    this.destroyed = true;
+  }
+}
+
+test("a page that is not on screen is drawn on a transparent click through stage for a screenshot, then goes back exactly where it was", async (t) => {
+  FakeStage.made = [];
+  const f = await fixture(t, { BrowserWindow: FakeStage });
+  const view = f.views[0];
+  const bounds = { x: 10, y: 20, width: 640, height: 480 };
+  await f.browser.handleRequest(f.owner, f.sender, "attach", {
+    tabId: f.tab.id,
+    bounds,
+    visible: false,
+  });
+  assert.ok(f.owner.contentView.children.has(view));
+  const lease = await f.browser.agentAdapter.renderLease(f.tab.id);
+  assert.equal(lease.staged, true);
+  const [stage] = FakeStage.made;
+  assert.equal(stage.opacity, 0);
+  assert.equal(stage.clickThrough, true);
+  assert.equal(stage.options.focusable, false);
+  assert.equal(stage.options.skipTaskbar, true);
+  assert.equal(stage.shown, true);
+  assert.ok(stage.contentView.children.has(view));
+  assert.equal(f.owner.contentView.children.has(view), false);
+  assert.equal(view.shown, true);
+  assert.deepEqual(view.bounds, { x: 0, y: 0, width: 640, height: 480 });
+  // The app's show or hide arrives while it is out: it waits for the page to return.
+  let attached = false;
+  const attaching = f.browser
+    .handleRequest(f.owner, f.sender, "attach", {
+      tabId: f.tab.id,
+      bounds: { x: 0, y: 0, width: 300, height: 200 },
+      visible: true,
+    })
+    .then(() => {
+      attached = true;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(attached, false);
+  await lease.release();
+  await lease.release();
+  await attaching;
+  assert.equal(stage.destroyed, true);
+  assert.ok(f.owner.contentView.children.has(view));
+  assert.deepEqual(view.bounds, { x: 0, y: 0, width: 300, height: 200 });
+  assert.equal(view.shown, true);
+});
+
+test("a page that is already on screen is left alone unless the caller asks for the stage", async (t) => {
+  FakeStage.made = [];
+  const f = await fixture(t, { BrowserWindow: FakeStage });
+  await f.browser.handleRequest(f.owner, f.sender, "attach", {
+    tabId: f.tab.id,
+    bounds: { x: 0, y: 0, width: 640, height: 480 },
+    visible: true,
+  });
+  const lease = await f.browser.agentAdapter.renderLease(f.tab.id);
+  assert.equal(lease.staged, false);
+  assert.equal(FakeStage.made.length, 0);
+  await lease.release();
+  const forced = await f.browser.agentAdapter.renderLease(f.tab.id, {
+    force: true,
+  });
+  assert.equal(forced.staged, true);
+  await forced.release();
+  assert.ok(f.owner.contentView.children.has(f.views[0]));
+});
+
+test("a page in a hidden window is staged even though the app thinks it is visible", async (t) => {
+  FakeStage.made = [];
+  const f = await fixture(t, { BrowserWindow: FakeStage, ownerVisible: false });
+  await f.browser.handleRequest(f.owner, f.sender, "attach", {
+    tabId: f.tab.id,
+    bounds: { x: 0, y: 0, width: 640, height: 480 },
+    visible: true,
+  });
+  const lease = await f.browser.agentAdapter.renderLease(f.tab.id);
+  assert.equal(lease.staged, true);
+  await lease.release();
+});
+
+test("two screenshots take the stage one after the other and a closed page ends its turn", async (t) => {
+  FakeStage.made = [];
+  const f = await fixture(t, { BrowserWindow: FakeStage });
+  const second = await f.browser.handleRequest(f.owner, f.sender, "create", {
+    businessId: "business-a",
+  });
+  const first = await f.browser.agentAdapter.renderLease(f.tab.id);
+  let secondStarted = false;
+  const waiting = f.browser.agentAdapter
+    .renderLease(second.id)
+    .then((lease) => {
+      secondStarted = true;
+      return lease;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(secondStarted, false);
+  // The first page is closed while it is out.
+  await f.browser.handleRequest(f.owner, f.sender, "close", {
+    tabId: f.tab.id,
+  });
+  await first.release();
+  const lease = await waiting;
+  assert.equal(lease.staged, true);
+  await lease.release();
+  assert.equal(
+    FakeStage.made.every((stage) => stage.destroyed),
+    true,
   );
 });

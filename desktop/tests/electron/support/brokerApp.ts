@@ -108,17 +108,29 @@ export async function launchBrokerApp(options: {
     request,
     /** A tab the app made. Shown (attached and visible) only when asked. */
     async createTab(
-      url: string,
+      url: string | null,
       show: "visible" | "hidden" | "never" = "never",
+      businessId = BUSINESS,
     ) {
       const tab = await hostCall<BrowserTabState>("createTab", {
-        businessId: BUSINESS,
-        url,
+        businessId,
+        ...(url ? { url } : {}),
       });
       if (show !== "never")
         await hostCall("attach", tab.id, BOUNDS, show === "visible");
       return tab;
     },
+    /** The person marks a tab private (or not) from the tab bar. */
+    setPrivate: (id: string, value: boolean) =>
+      page.evaluate(
+        async ({ id, value }) =>
+          (
+            window.colonyBrowserHost as unknown as {
+              setPrivate(id: string, value: boolean): Promise<unknown>;
+            }
+          ).setPrivate(id, value),
+        { id, value },
+      ),
     attach: (id: string, visible: boolean) =>
       hostCall<BrowserTabState>("attach", id, BOUNDS, visible),
     detach: (id: string) => hostCall<BrowserTabState>("detach", id),
@@ -228,7 +240,9 @@ export function pngSize(base64: string) {
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
 }
 
-export const visibleTabs = async (app: { listTabs(): Promise<BrowserTabState[]> }) =>
+export const visibleTabs = async (app: {
+  listTabs(): Promise<BrowserTabState[]>;
+}) =>
   (await app.listTabs())
     .filter((tab) => tab.attached && tab.visible)
     .map((tab) => tab.id);

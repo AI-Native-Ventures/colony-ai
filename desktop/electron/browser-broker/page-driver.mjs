@@ -157,6 +157,10 @@ export function createPageDriver({
           signal.addEventListener("abort", onAbort, { once: true });
         })
       : null;
+    // The page cannot tell the agent's key and mouse events from the
+    // person's. The host can, if told the agent is the one pressing.
+    const agentInput = method.startsWith("Input.");
+    if (agentInput) adapter.markAgentInput?.(session.tabId, 1);
     try {
       return await Promise.race(
         [
@@ -168,6 +172,7 @@ export function createPageDriver({
     } finally {
       clearTimeout(timer);
       if (onAbort) signal.removeEventListener("abort", onAbort);
+      if (agentInput) adapter.markAgentInput?.(session.tabId, -1);
     }
   }
 
@@ -298,6 +303,32 @@ export function createPageDriver({
     return box;
   }
 
+  const pick = ({
+    id,
+    businessId,
+    clientId,
+    url,
+    title,
+    loading,
+    controlOwner,
+    private: isPrivate,
+    attached,
+    visible,
+    humanInputAt,
+  }) => ({
+    id,
+    businessId,
+    clientId,
+    url,
+    title,
+    loading,
+    controlOwner,
+    private: isPrivate === true,
+    attached: attached === true,
+    visible: visible === true,
+    humanInputAt,
+  });
+
   // ---- PageDriver interface ------------------------------------------------
 
   // Test hook: lets unit tests prove the CDP allowlist actually guards.
@@ -368,13 +399,9 @@ export function createPageDriver({
       return { mimeType: "image/png", data: shot.data };
     } finally {
       if (masked)
-        await call(
-          session,
-          objectId,
-          "unmaskCredentials",
-          [],
-          undefined,
-        ).catch(() => undefined);
+        await call(session, objectId, "unmaskCredentials", [], undefined).catch(
+          () => undefined,
+        );
       await release(session, objectId);
     }
   }
@@ -385,6 +412,8 @@ export function createPageDriver({
       adapter.onDocumentChanged?.((tabId) =>
         broker?.notifyDocumentChanged(tabId),
       );
+      adapter.onHumanInput?.((tabId) => broker?.notifyHumanInput(tabId));
+      adapter.onTabPrivate?.((tabId) => broker?.notifyTabPrivate(tabId));
       adapter.onTabClosed?.((tabId) => {
         downloads?.cancelTab(tabId);
         sessions.delete(tabId);
@@ -400,9 +429,12 @@ export function createPageDriver({
     async getTab(tabId) {
       const tab = adapter.getTab(tabId);
       if (!tab) return null;
-      const { id, businessId, clientId, url, title, loading, controlOwner } =
-        tab;
-      return { id, businessId, clientId, url, title, loading, controlOwner };
+      return pick(tab);
+    },
+
+    /** Every tab of one business: the person's and the agents'. */
+    async listTabs(businessId, clientId) {
+      return (adapter.listTabs?.(businessId, clientId ?? null) ?? []).map(pick);
     },
 
     controlOwnerOf: (tabId) => adapter.getTab(tabId)?.controlOwner,
@@ -737,7 +769,6 @@ export function createPageDriver({
         await lease?.release();
       }
     },
-
 
     async readText(tabId, { backendNodeId, maxChars = 8_000, signal } = {}) {
       const session = await sessionFor(tabId);

@@ -25,6 +25,8 @@ export type BrowserTabState = {
   attached: boolean;
   visible: boolean;
   bounds: BrowserTabBounds | null;
+  /** The person marked this tab private: AI employees cannot see or use it. */
+  private: boolean;
 };
 
 /** Keys the host relays from a focused page to the app window. */
@@ -117,6 +119,8 @@ export type BrowserHostApi = {
     tabId: string,
     controlOwner: BrowserControlOwner,
   ): Promise<BrowserTabState>;
+  /** Keep a tab to the person (true) or share it with AI employees again. */
+  setPrivate(tabId: string, value: boolean): Promise<BrowserTabState>;
   /** Move keyboard focus into the page (keyboard route into the native view). */
   focus(tabId: string): Promise<BrowserTabState>;
   /** Show a completed download in the system file manager. */
@@ -177,6 +181,8 @@ export const browserHost = {
   stop: (tabId: string) => requireBrowserHost().stop(tabId),
   setControlOwner: (tabId: string, controlOwner: BrowserControlOwner) =>
     requireBrowserHost().setControlOwner(tabId, controlOwner),
+  setPrivate: (tabId: string, value: boolean) =>
+    requireBrowserHost().setPrivate(tabId, value),
   focus: (tabId: string) => requireBrowserHost().focus(tabId),
   revealDownload: (downloadId: string) =>
     requireBrowserHost().revealDownload(downloadId),

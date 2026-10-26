@@ -614,7 +614,11 @@ test("a screenshot of a page the system is not drawing is taken on the stage, th
   };
   const shot = await rig.driver.screenshot("tab-1");
   assert.equal(shot.data, "QUJD");
-  assert.deepEqual(order, [["lease", "tab-1", false], ["capture"], ["release"]]);
+  assert.deepEqual(order, [
+    ["lease", "tab-1", false],
+    ["capture"],
+    ["release"],
+  ]);
 });
 
 test("a page that looks on screen but draws nothing is photographed once more on the stage", async () => {

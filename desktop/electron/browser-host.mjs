@@ -16,6 +16,16 @@ import {
 
 export const BROWSER_HOST_EVENT_CHANNEL = "colony:browser-event";
 
+/** Input that means the person is using the page (not a mere pointer move). */
+const HUMAN_INPUT_TYPES = new Set([
+  "mouseDown",
+  "mouseWheel",
+  "rawKeyDown",
+  "keyDown",
+  "char",
+  "touchStart",
+]);
+
 /**
  * The size a page has before the app shows it, and the size it keeps when the
  * dock that showed it closes. A page the app never mounted (an agent's page in a
@@ -55,6 +65,8 @@ export function createBrowserHost({
   let onHumanAction = () => {};
   const documentListeners = new Set();
   const closeListeners = new Set();
+  const humanInputListeners = new Set();
+  const privateListeners = new Set();
   const blockedNavigations = new Map();
   let stageTurn = Promise.resolve();
 
@@ -94,6 +106,7 @@ export function createBrowserHost({
       attached: tab.attached,
       visible: tab.visible,
       bounds: tab.bounds,
+      private: tab.private,
     };
   }
 
@@ -153,7 +166,12 @@ export function createBrowserHost({
       if (tab.attached && !owner.isDestroyed())
         owner.contentView.removeChildView(tab.view);
       stage.contentView.addChildView(tab.view);
-      tab.view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+      tab.view.setBounds({
+        x: 0,
+        y: 0,
+        width: size.width,
+        height: size.height,
+      });
       tab.view.setVisible(true);
       tab.stagedIn = stage;
     } catch (error) {
@@ -191,6 +209,11 @@ export function createBrowserHost({
         finishTurn();
       },
     };
+  }
+
+  /** What the broker sees of a tab: the page state plus when the person last used it. */
+  function agentView(tab) {
+    return { ...snapshot(tab), humanInputAt: tab.humanInputAt };
   }
 
   function sendState(tab) {
@@ -348,6 +371,14 @@ export function createBrowserHost({
           reason: "unsupported-redirect",
         });
     });
+    // The person pressing a key or the mouse in a page. The agent's own events
+    // (sent while `agentInputs` is up) are not the person.
+    contents.on("input-event", (_event, input) => {
+      if (!tabs.has(tab.id) || tab.agentInputs > 0) return;
+      if (!HUMAN_INPUT_TYPES.has(input.type)) return;
+      tab.humanInputAt = Date.now();
+      for (const listener of humanInputListeners) listener(tab.id);
+    });
     // A native page view takes key events before the app window sees them, so
     // the few browser shortcuts (address bar, tabs, history, reload, dock) are
     // relayed to the app window and the page never receives them.
@@ -451,6 +482,9 @@ export function createBrowserHost({
         bounds: null,
         staging: null,
         stagedIn: null,
+        private: false,
+        agentInputs: 0,
+        humanInputAt: null,
       };
       tabs.set(tab.id, tab);
       tabsByContents.set(tab.webContents.id, tab);
@@ -736,6 +770,14 @@ export function createBrowserHost({
       case "focus":
         tab.webContents.focus();
         return snapshot(tab);
+      case "set-private":
+        if (typeof payload.private !== "boolean")
+          throw new Error("Invalid browser privacy setting");
+        tab.private = payload.private;
+        sendState(tab);
+        if (tab.private)
+          for (const listener of privateListeners) listener(tab.id);
+        return snapshot(tab);
       case "control-owner":
         if (!["human", "agent"].includes(payload.controlOwner))
           throw new Error("Invalid browser control owner");
@@ -772,12 +814,30 @@ export function createBrowserHost({
         bytes,
       ),
     tabIds: () => [...tabs.keys()],
+    listTabs: (businessId, clientId) =>
+      [...tabs.values()]
+        .filter(
+          (tab) => tab.businessId === businessId && tab.clientId === clientId,
+        )
+        .map(agentView),
+    markAgentInput(id, delta) {
+      const tab = tabs.get(id);
+      if (tab) tab.agentInputs = Math.max(0, tab.agentInputs + delta);
+    },
+    onHumanInput(callback) {
+      humanInputListeners.add(callback);
+      return () => humanInputListeners.delete(callback);
+    },
+    onTabPrivate(callback) {
+      privateListeners.add(callback);
+      return () => privateListeners.delete(callback);
+    },
     renderLease: (id, options) => {
       const tab = tabs.get(id);
       if (!tab) throw new Error("Browser tab closed");
       return lendRenderedView(tab, options);
     },
-    getTab: (id) => (tabs.has(id) ? snapshot(tabs.get(id)) : null),
+    getTab: (id) => (tabs.has(id) ? agentView(tabs.get(id)) : null),
     webContents: (id) => tabs.get(id)?.webContents,
     session: (id) => tabs.get(id)?.webContents.session,
     ownedBy: (id, senderId) => tabs.get(id)?.appWebContents.id === senderId,
