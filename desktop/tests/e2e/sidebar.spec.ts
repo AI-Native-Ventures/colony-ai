@@ -800,8 +800,8 @@ test("reflects an install started from the header update button on the sidebar c
 });
 
 // Regression test for packages where automatic installation is unavailable.
-// The update check must show a GitHub link and must NEVER invoke the in-app
-// download or install commands.
+// The update check must show the colony.global download link and must NEVER
+// invoke the in-app download or install commands.
 test("shows a manual-required update card without starting installation", async ({
   page,
 }) => {
@@ -835,10 +835,10 @@ test("shows a manual-required update card without starting installation", async 
 
   // Settings panel shows the manual-required state, not "ready".
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "Automatic installation isn't available for this build.",
+    "Colony can't update itself from here.",
   );
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "Download the new version from GitHub.",
+    "Download the new version from colony.global.",
   );
 
   await page.getByTestId("settings-back-to-app").click();
@@ -847,8 +847,11 @@ test("shows a manual-required update card without starting installation", async 
   const updateCard = page.getByTestId("sidebar-update-card-manual");
   await expect(updateCard).toBeVisible();
   await expect(updateCard).toContainText(
-    "Download the new version from GitHub.",
+    "Download the new version from colony.global.",
   );
+  await expect(
+    page.getByTestId("sidebar-update-download"),
+  ).toHaveAccessibleName("Download update from colony.global");
 
   // In-app download and install must NEVER have been called.
   const commands = await page.evaluate(

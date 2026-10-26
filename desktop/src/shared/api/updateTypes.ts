@@ -4,8 +4,8 @@ export type UpdateStatus =
   | { state: "up-to-date" }
   | { state: "unavailable" }
   | { state: "available"; version: string }
-  | { state: "downloading" }
+  | { state: "downloading"; percent?: number }
   | { state: "installing" }
-  | { state: "ready" }
-  | { state: "error"; message: string }
+  | { state: "ready"; version?: string }
+  | { state: "error"; message: string; releaseUrl?: string }
   | { state: "manual-required"; version: string; releaseUrl: string };

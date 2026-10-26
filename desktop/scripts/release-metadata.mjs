@@ -193,7 +193,11 @@ export async function writeReleaseMetadata({
     platforms: {
       "darwin-arm64": {
         signed: macSigned,
+        // Signed Mac builds update through electron-updater; unsigned ones
+        // update themselves (selfUpdate). Clients that predate selfUpdate read
+        // autoUpdate: false and keep showing the manual download card.
         autoUpdate: macSigned,
+        selfUpdate: !macSigned,
         installer: macDmg,
         updateArchive: macZip,
         updateMetadata: macUpdateMetadata,

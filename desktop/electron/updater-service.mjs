@@ -3,21 +3,56 @@ import semver from "semver";
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const UPDATE_METADATA_URL =
   "https://github.com/AI-Native-Ventures/colony-ai/releases/latest/download/update-metadata.json";
-export const UPDATE_RELEASE_URL =
-  "https://github.com/AI-Native-Ventures/colony-ai/releases/latest";
-export const UPDATE_ASSETS_URL =
-  "https://github.com/AI-Native-Ventures/colony-ai/releases/latest/download/";
+// Where a person goes to download Colony by hand. Every manual update card and
+// link points here, never at GitHub.
+export const UPDATE_DOWNLOAD_URL = "https://colony.global/#download";
+export const UPDATE_TEST_METADATA_ENV = "COLONY_UPDATE_TEST_METADATA_URL";
 
 const MAX_METADATA_BYTES = 256 * 1024;
 const METADATA_TIMEOUT_MS = 10_000;
+const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024;
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+// A download that failed for a reason other than the network is not repeated
+// by background checks beyond this many tries per version; a manual check,
+// Retry, or the next launch tries again.
+const MAX_BACKGROUND_REFUSALS = 2;
+// "manual-required" is not here on purpose: its card names a version, so a
+// background check must keep that version current.
 const BLOCKED_BACKGROUND_STATES = new Set([
   "checking",
   "available",
   "downloading",
   "installing",
   "ready",
-  "manual-required",
 ]);
+
+/**
+ * The manifest URL for this build. It is always the official release URL,
+ * except in a packaged test build (never a release build) that was started
+ * with COLONY_UPDATE_TEST_METADATA_URL pointing at a loopback server.
+ */
+export function resolveUpdateMetadataUrl({ capabilities, env }) {
+  const override = env?.[UPDATE_TEST_METADATA_ENV];
+  if (
+    !override ||
+    capabilities?.updateTestOverride !== true ||
+    capabilities?.release !== false
+  ) {
+    return UPDATE_METADATA_URL;
+  }
+  let url;
+  try {
+    url = new URL(override);
+  } catch {
+    url = null;
+  }
+  if (url?.protocol !== "http:" || !LOOPBACK_HOSTS.has(url.hostname)) {
+    throw new Error(
+      "The update test address must be a loopback address such as http://127.0.0.1:8123/.",
+    );
+  }
+  return url.href;
+}
 
 export function isNewerVersion(candidate, current) {
   const candidateVersion = semver.valid(candidate);
@@ -73,13 +108,56 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+// Matched by name: the updater may be bundled apart from the module that
+// creates the refusal, so `instanceof` cannot be trusted across the two.
+function isRefusal(error) {
+  return error?.name === "UpdateRefusedError";
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The macOS update archive the manifest names, with its size and sha256. */
+function findMacArchive(manifest, release) {
+  const invalid = () => {
+    const error = new Error(
+      "The update information is not valid, so it was not installed.",
+    );
+    error.name = "UpdateRefusedError";
+    return error;
+  };
+  const name = release.updateArchive;
+  const expectedName = new RegExp(
+    `^Colony-${escapeRegExp(manifest.version)}-arm64-UNSIGNED\\.zip$`,
+  );
+  if (typeof name !== "string" || !expectedName.test(name)) throw invalid();
+  const asset = Array.isArray(manifest.assets)
+    ? manifest.assets.find(
+        (entry) => entry?.name === name && entry.platform === "darwin-arm64",
+      )
+    : undefined;
+  if (
+    asset?.signed !== false ||
+    !Number.isSafeInteger(asset.size) ||
+    asset.size <= 0 ||
+    asset.size > MAX_ARCHIVE_BYTES ||
+    typeof asset.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(asset.sha256)
+  ) {
+    throw invalid();
+  }
+  return { name, size: asset.size, sha256: asset.sha256 };
+}
+
 export function createElectronUpdaterService({
   autoUpdater,
   currentVersion,
   currentBuild,
   platformKey,
   metadataUrl = UPDATE_METADATA_URL,
-  releaseUrl = UPDATE_RELEASE_URL,
+  releaseUrl = UPDATE_DOWNLOAD_URL,
+  macSelfUpdater = null,
   fetchImpl = globalThis.fetch,
   setIntervalImpl = globalThis.setInterval,
   clearIntervalImpl = globalThis.clearInterval,
@@ -97,6 +175,8 @@ export function createElectronUpdaterService({
   let started = false;
   let stopped = false;
   let installRequested = false;
+  let macUpdateStaged = false;
+  const refusalCounts = new Map();
   const updaterListeners = [];
 
   function setStatus(next) {
@@ -174,14 +254,85 @@ export function createElectronUpdaterService({
     return validateManifest(await readLimitedJson(response));
   }
 
-  async function check({ background = false } = {}) {
+  function manualRequired(version) {
+    return setStatus({ state: "manual-required", version, releaseUrl });
+  }
+
+  function refusedStatus(error) {
+    const message = isRefusal(error)
+      ? error.message
+      : "The update could not be prepared, so it was not installed.";
+    return setStatus({ state: "error", message, releaseUrl });
+  }
+
+  // Unsigned Mac build: download, verify and stage the new app, then wait for
+  // the person's click. Anything that cannot be proven safe ends in a card with
+  // the manual download link, and the running app is never touched.
+  async function runMacSelfUpdate(manifest, release, { background }) {
+    const version = manifest.version;
+    if (
+      background &&
+      (refusalCounts.get(version) ?? 0) >= MAX_BACKGROUND_REFUSALS
+    ) {
+      return status;
+    }
+    const location = await macSelfUpdater.assess();
     if (stopped) return status;
+    if (!location.ok) {
+      expectedVersion = version;
+      return manualRequired(version);
+    }
+    let archive;
+    try {
+      archive = findMacArchive(manifest, release);
+    } catch (error) {
+      expectedVersion = null;
+      return refusedStatus(error);
+    }
+    setStatus({ state: "available", version });
+    setStatus({ state: "downloading", percent: 0 });
+    try {
+      await macSelfUpdater.stage({
+        version,
+        archiveUrl: new URL(archive.name, new URL("./", metadataUrl)).href,
+        size: archive.size,
+        sha256: archive.sha256,
+        onProgress: (percent) => {
+          if (!stopped && status.state === "downloading") {
+            setStatus({ state: "downloading", percent });
+          }
+        },
+      });
+    } catch (error) {
+      expectedVersion = null;
+      if (error?.code !== "network") {
+        refusalCounts.set(version, (refusalCounts.get(version) ?? 0) + 1);
+      }
+      return refusedStatus(error);
+    }
+    if (stopped) {
+      await macSelfUpdater.discardStaged().catch(() => {});
+      return status;
+    }
+    macUpdateStaged = true;
+    return setStatus({ state: "ready", version });
+  }
+
+  async function check({ background = false } = {}) {
+    if (stopped || installRequested) return status;
     if (background && BLOCKED_BACKGROUND_STATES.has(status.state))
       return status;
     if (checkInFlight) return checkInFlight;
 
+    // A card that already names a version (or a refused update with its
+    // download link) is refreshed in place: no flicker through "checking", and
+    // a failed refresh leaves the card as it was.
+    const refreshingManual =
+      background &&
+      (status.state === "manual-required" ||
+        (status.state === "error" && Boolean(status.releaseUrl)));
     checkInFlight = (async () => {
-      setStatus({ state: "checking" });
+      if (!refreshingManual) setStatus({ state: "checking" });
       try {
         const manifest = await loadManifest();
         if (stopped) return status;
@@ -206,6 +357,17 @@ export function createElectronUpdaterService({
 
         const signatureChanged =
           Boolean(currentBuild?.signed) !== Boolean(release.signed);
+        if (
+          macSelfUpdater &&
+          currentBuild?.selfUpdate === true &&
+          release.selfUpdate === true &&
+          platformKey === "darwin-arm64" &&
+          !currentBuild.signed &&
+          !signatureChanged
+        ) {
+          expectedVersion = manifest.version;
+          return await runMacSelfUpdate(manifest, release, { background });
+        }
         if (
           !currentBuild?.autoUpdate ||
           release.autoUpdate !== true ||
@@ -246,6 +408,7 @@ export function createElectronUpdaterService({
         return status;
       } catch (error) {
         if (stopped) return status;
+        if (refreshingManual) return status;
         expectedVersion = null;
         setStatus({ state: "error", message: errorMessage(error) });
         return status;
@@ -261,26 +424,46 @@ export function createElectronUpdaterService({
     if (started || stopped) return status;
     started = true;
     attachUpdater();
-    void check({ background: true });
     timer = setIntervalImpl(() => {
       void check({ background: true });
     }, checkIntervalMs);
+    const lastInstall = await macSelfUpdater
+      ?.takeLastResult()
+      .catch(() => null);
+    void macSelfUpdater?.cleanupStale().catch(() => {});
+    if (lastInstall?.status === "failed") {
+      // Say so now; the update is tried again at the next interval or Retry.
+      setStatus({ state: "error", message: lastInstall.message, releaseUrl });
+    } else {
+      void check({ background: true });
+    }
     return status;
   }
 
   async function installAndRelaunch() {
-    if (
-      stopped ||
-      status.state !== "ready" ||
-      installRequested ||
-      !autoUpdater
-    ) {
-      return false;
-    }
+    if (stopped || status.state !== "ready" || installRequested) return false;
+    if (macUpdateStaged) return installMacUpdate();
+    if (!autoUpdater) return false;
     installRequested = true;
     setStatus({ state: "installing" });
     autoUpdater.quitAndInstall(false, true);
     return true;
+  }
+
+  async function installMacUpdate() {
+    installRequested = true;
+    setStatus({ state: "installing" });
+    try {
+      await macSelfUpdater.apply();
+      return true;
+    } catch (error) {
+      installRequested = false;
+      macUpdateStaged = false;
+      // The prepared files are no use now; the next check prepares them again.
+      await macSelfUpdater.discardStaged().catch(() => {});
+      refusedStatus(error);
+      return false;
+    }
   }
 
   function stop() {
@@ -292,6 +475,8 @@ export function createElectronUpdaterService({
       autoUpdater?.removeListener(event, listener);
     }
     updaterListeners.length = 0;
+    // An update that was prepared but never applied should not sit on disk.
+    if (!installRequested) void macSelfUpdater?.discardStaged().catch(() => {});
   }
 
   return {

@@ -98,12 +98,31 @@ export function SidebarUpdateCard({ onDismiss }: SidebarUpdateCardProps) {
     return null;
   }
 
+  if (status.state === "error" && status.releaseUrl) {
+    const { message, releaseUrl } = status;
+    return (
+      <SidebarCompactActionCard
+        actionAriaLabel="Download update from colony.global"
+        actionTestId="sidebar-update-download-error"
+        description={message}
+        dismissLabel="Dismiss update notification"
+        icon={<UpdateAvailableIcon size={20} />}
+        iconKey="error"
+        onAction={() => void openUrl(releaseUrl)}
+        onDismiss={onDismiss}
+        testId="sidebar-update-card-error"
+        title="Update not installed"
+        tone="danger"
+      />
+    );
+  }
+
   if (status.state === "manual-required") {
     return (
       <SidebarCompactActionCard
-        actionAriaLabel="Download update from GitHub"
-        actionTestId="sidebar-update-download-github"
-        description={`v${status.version} available. Download the new version from GitHub.`}
+        actionAriaLabel="Download update from colony.global"
+        actionTestId="sidebar-update-download"
+        description={`v${status.version} available. Download the new version from colony.global.`}
         dismissLabel="Dismiss update notification"
         icon={<UpdateAvailableIcon size={20} />}
         iconKey="manual"

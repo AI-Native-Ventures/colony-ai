@@ -420,6 +420,23 @@ jobs:
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true' && secrets.WINDOWS_SIGNING_CERT_PASSWORD || '' }}
         run: pnpm --dir desktop run electron:installer -- ${{ matrix.platform }} ${{ matrix.arch }}
 
+      # Installed Macs update by unpacking this archive and swapping the app in
+      # place, so it must unpack to a Colony app whose signature verifies.
+      - name: Verify the Mac update archive unpacks to a valid app
+        if: inputs.release && matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(ls desktop/dist-electron/release/Colony-*-arm64-*.zip)"
+          check="$RUNNER_TEMP/colony-update-archive-check"
+          rm -rf "${check:?}"
+          mkdir -p "$check"
+          ditto -x -k "$archive" "$check"
+          app="$check/Colony.app"
+          codesign --verify --deep --strict "$app"
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist")" = "xyz.block.buzz.app.electron"
+          rm -rf "${check:?}"
+
       - name: Remove temporary signing credentials
         if: always() && runner.os == 'macOS'
         shell: bash

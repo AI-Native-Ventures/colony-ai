@@ -18,13 +18,24 @@ test("hides the card for states with nothing actionable to show", () => {
   assert.equal(shouldShowSidebarUpdateCard({ state: "downloading" }), false);
 });
 
-// Pre-existing behavior, unchanged by this fix: an install failure hides the
-// card rather than surfacing an error state in the sidebar. The background
-// check will retry and can re-show "available"/"ready" on its own schedule,
-// so this is left as-is rather than scoped into the installing-state fix.
-test("hides the card on error, matching pre-existing behavior", () => {
+// An error with no manual link (a failed background check, a Windows install
+// failure) stays quiet: the background check retries on its own schedule.
+test("hides the card on an error that has no manual download link", () => {
   assert.equal(
     shouldShowSidebarUpdateCard({ state: "error", message: "boom" }),
     false,
+  );
+});
+
+// A refused or failed Mac update carries the download link, and the person
+// needs to know their app was not updated.
+test("shows the card on an error that carries the manual download link", () => {
+  assert.equal(
+    shouldShowSidebarUpdateCard({
+      state: "error",
+      message: "The downloaded update did not match its checksum.",
+      releaseUrl: "https://colony.global/#download",
+    }),
+    true,
   );
 });
