@@ -239,6 +239,51 @@ test("unsigned macOS builds expose manual download instead of auto-install", asy
   }
 });
 
+test("a card that already shows a manual update stays when the refresh fails", async () => {
+  let failing = false;
+  const server = createServer((_request, response) => {
+    if (failing) {
+      response.writeHead(503);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        schemaVersion: 1,
+        version: "3.0.1",
+        platforms: { "darwin-arm64": { signed: false, autoUpdate: false } },
+      }),
+    );
+  });
+  const feedUrl = await listen(server);
+  const service = createElectronUpdaterService({
+    autoUpdater: new FakeFeedUpdater(feedUrl),
+    currentVersion: "3.0.0",
+    currentBuild: { autoUpdate: false, signed: false },
+    platformKey: "darwin-arm64",
+    metadataUrl: feedUrl,
+    fetchImpl: fetch,
+    setIntervalImpl: () => 1,
+    clearIntervalImpl: () => {},
+  });
+  try {
+    await service.check({ background: true });
+    const shown = service.snapshot();
+    assert.equal(shown.state, "manual-required");
+    failing = true;
+    await service.check({ background: true });
+    assert.deepEqual(
+      service.snapshot(),
+      shown,
+      "an offline refresh keeps the card",
+    );
+  } finally {
+    service.stop();
+    await close(server);
+  }
+});
+
 test("the manual download link is the Colony download page, not GitHub", () => {
   assert.equal(UPDATE_DOWNLOAD_URL, "https://colony.global/#download");
 });
