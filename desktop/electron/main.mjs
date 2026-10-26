@@ -17,6 +17,7 @@ import {
   shell,
 } from "electron";
 import { installAppMenu } from "./app-menu.mjs";
+import { APP_NAME, applyAppBranding, keepWindowTitle } from "./branding.mjs";
 import { createBrowserHost } from "./browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
@@ -37,7 +38,11 @@ import { browserAgentEnabled } from "./browser-broker/feature-flag.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
-import { runtimePaths } from "./runtime-paths.mjs";
+import {
+  nativeProfileId,
+  runtimePaths,
+  userDataPath,
+} from "./runtime-paths.mjs";
 import { createChatGptRuntime } from "./chatgpt/runtime.mjs";
 const updaterRuntimeModule = await import(
   app.isPackaged
@@ -87,15 +92,16 @@ const releaseCapabilities = (() => {
 })();
 const deepLinkSchemes = deepLinkSchemesFromConfig(tauriConfig);
 
-// Product name shown in the macOS app menu and About panel.
-app.setName(tauriConfig.productName);
+// The name people see (app menu, About panel, window titles, taskbar). It never
+// feeds a data path: the userData folder below is fixed.
+applyAppBranding(app);
 app.setPath(
   "userData",
-  process.env.COLONY_ELECTRON_USER_DATA ||
-    path.join(
-      app.getPath("appData"),
-      app.isPackaged ? "Colony Electron" : "Colony Electron Dev",
-    ),
+  userDataPath({
+    appData: app.getPath("appData"),
+    packaged: app.isPackaged,
+    env: process.env,
+  }),
 );
 // Kill switch for the visible browser tab. It is on by default; setting
 // COLONY_DISABLE_BROWSER_TAB=1 removes the renderer bridge and refuses tabs.
@@ -278,10 +284,7 @@ async function boot() {
   const csp = await contentSecurityPolicy(html);
   serveRenderer(csp);
 
-  const profileId = createHash("sha256")
-    .update(app.getPath("userData"))
-    .digest("hex")
-    .slice(0, 16);
+  const profileId = nativeProfileId(app.getPath("userData"));
   host = new NativeHost(runtime.nativeHost, {
     browserAgentHost,
     env: {
@@ -314,6 +317,7 @@ async function boot() {
       chatGpt,
       browserTabEnabled,
     });
+    keepWindowTitle(entry.window);
     const id = entry.window.webContents.id;
     windows.set(id, entry);
     entry.window.on("closed", () => {
@@ -328,7 +332,7 @@ async function boot() {
     height: 820,
     minWidth: 800,
     minHeight: 500,
-    title: tauriConfig.productName,
+    title: APP_NAME,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
   });
   const window = main.window;
