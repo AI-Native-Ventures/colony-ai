@@ -17,8 +17,7 @@ const BACKGROUND_BLOCKED_STATES = new Set<UpdateStatus["state"]>([
   "manual-required",
 ]);
 
-const GITHUB_RELEASES_URL =
-  "https://github.com/AI-Native-Ventures/colony-ai/releases/latest";
+const DOWNLOAD_URL = "https://colony.global/#download";
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -94,7 +93,11 @@ export function useUpdater() {
       try {
         setStatus({ state: "installing" });
         const accepted = await electronUpdater.install();
-        if (!accepted) setStatus({ state: "unavailable" });
+        // A refused install has already pushed its own error (with the manual
+        // download link); only an unexplained refusal falls back to this.
+        if (!accepted && statusRef.current.state === "installing") {
+          setStatus({ state: "unavailable" });
+        }
       } catch (err) {
         setStatus({ state: "error", message: toErrorMessage(err) });
       } finally {
@@ -191,7 +194,7 @@ export function useUpdater() {
             setStatus({
               state: "manual-required",
               version: update.version,
-              releaseUrl: GITHUB_RELEASES_URL,
+              releaseUrl: DOWNLOAD_URL,
             });
           }
         } else if (shouldShowQuietResult) {

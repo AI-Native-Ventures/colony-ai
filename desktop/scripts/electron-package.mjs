@@ -24,6 +24,7 @@ import {
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
+  releaseCapabilities as createReleaseCapabilities,
   sidecarFilenames,
   verifySignatureArguments,
 } from "./electron-package-config.mjs";
@@ -266,14 +267,11 @@ try {
       source === sourceElectronPath ||
       (!/\.test\.mjs$/i.test(source) && path.basename(source) !== "README.md"),
   });
-  const releaseCapabilities = {
-    schemaVersion: 1,
-    release: process.env.COLONY_ELECTRON_RELEASE === "1",
-    platformKey: `${platform}-${arch}`,
-    autoUpdate: process.env.COLONY_ELECTRON_AUTO_UPDATE === "1",
-    signed: process.env.COLONY_ELECTRON_SIGNED === "1",
-    publisherName: process.env.COLONY_ELECTRON_PUBLISHER_NAME || null,
-  };
+  const releaseCapabilities = createReleaseCapabilities({
+    platform,
+    arch,
+    env: process.env,
+  });
   const stagedUpdateConfigPath = path.join(stageRoot, "app-update.yml");
   const releaseResources = [];
   if (process.env.COLONY_ELECTRON_RELEASE === "1") {

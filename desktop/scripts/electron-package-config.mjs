@@ -101,6 +101,38 @@ export function verifySignatureArguments(appPath) {
   return ["--verify", "--deep", "--strict", appPath];
 }
 
+/**
+ * What the packaged app is told about itself (release-capabilities.json).
+ *
+ * `selfUpdate` is the unsigned Mac build that replaces its own bundle.
+ * `updateTestOverride` lets a local test build read its update manifest from a
+ * loopback server; it exists only when COLONY_ELECTRON_UPDATE_TEST=1 and never
+ * together with a release, so a shipped build cannot be pointed elsewhere.
+ */
+export function releaseCapabilities({ platform, arch, env }) {
+  assertPlatform(platform);
+  assertArchitecture(arch);
+  const release = env.COLONY_ELECTRON_RELEASE === "1";
+  const signed = env.COLONY_ELECTRON_SIGNED === "1";
+  const updateTestOverride = env.COLONY_ELECTRON_UPDATE_TEST === "1";
+  if (release && updateTestOverride) {
+    throw new Error(
+      "A release build cannot enable the update test override (COLONY_ELECTRON_UPDATE_TEST).",
+    );
+  }
+  return {
+    schemaVersion: 1,
+    release,
+    platformKey: `${platform}-${arch}`,
+    autoUpdate: env.COLONY_ELECTRON_AUTO_UPDATE === "1",
+    signed,
+    publisherName: env.COLONY_ELECTRON_PUBLISHER_NAME || null,
+    selfUpdate:
+      platform === "darwin" && !signed && (release || updateTestOverride),
+    updateTestOverride,
+  };
+}
+
 export function createPackagerOptions({
   dir,
   out,

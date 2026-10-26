@@ -30,6 +30,7 @@ export function UpdateChecker() {
     label: "Check for updates",
     onClick: checkForUpdate,
   };
+  let secondaryAction: { label: string; onClick: () => void } | null = null;
 
   switch (status.state) {
     case "checking":
@@ -50,7 +51,7 @@ export function UpdateChecker() {
         "Automatic updates aren't available on this build. Download the latest release manually.";
       break;
     case "manual-required":
-      line = `Update available · v${status.version}. Automatic installation isn't available for this build. Download the new version from GitHub.`;
+      line = `Update available · v${status.version}. Colony can't update itself from here. Download the new version from colony.global.`;
       action = {
         label: "Download update",
         onClick: () => void openUrl(status.releaseUrl),
@@ -61,7 +62,10 @@ export function UpdateChecker() {
       action = null;
       break;
     case "downloading":
-      line = "Downloading update...";
+      line =
+        typeof status.percent === "number"
+          ? `Downloading update... ${status.percent}%`
+          : "Downloading update...";
       action = null;
       break;
     case "installing":
@@ -69,13 +73,22 @@ export function UpdateChecker() {
       action = null;
       break;
     case "ready":
-      line = "Update downloaded. Click to apply.";
+      line = status.version
+        ? `Update v${status.version} is ready. Colony will restart to apply it.`
+        : "Update downloaded. Click to apply.";
       action = { label: "Update now", onClick: installAndRelaunch };
       break;
     case "error":
       line = `Update failed: ${status.message}`;
       tone = "bad";
       action = { label: "Retry", onClick: checkForUpdate };
+      if (status.releaseUrl) {
+        const { releaseUrl } = status;
+        secondaryAction = {
+          label: "Download update",
+          onClick: () => void openUrl(releaseUrl),
+        };
+      }
       break;
     default:
       break;
@@ -103,6 +116,16 @@ export function UpdateChecker() {
           type="button"
         >
           {action.label}
+        </button>
+      ) : null}
+      {secondaryAction ? (
+        <button
+          className="cs-button"
+          data-testid="updates-secondary-action"
+          onClick={secondaryAction.onClick}
+          type="button"
+        >
+          {secondaryAction.label}
         </button>
       ) : null}
     </section>

@@ -45,7 +45,7 @@ const variants: Record<
   },
   "manual-required": {
     Icon: ExternalLink,
-    label: "Update available. Download the new version from GitHub.",
+    label: "Update available. Download the new version from colony.global.",
     badgeColor: "bg-primary",
   },
   ready: {

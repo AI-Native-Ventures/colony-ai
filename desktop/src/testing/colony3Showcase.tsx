@@ -308,8 +308,8 @@ function NoticesBoard() {
           </Floating>
           <Floating>
             <SidebarCompactActionCard
-              actionAriaLabel="Download update from GitHub"
-              description="v[VERSION] available. Download the new version from GitHub."
+              actionAriaLabel="Download update from colony.global"
+              description="v[VERSION] available. Download the new version from colony.global."
               icon={<UpdateAvailableIcon size={20} />}
               onAction={noop}
               testId="notice-update-available"

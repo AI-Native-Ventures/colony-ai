@@ -52,6 +52,7 @@ test("release metadata records all installers, update feeds and SHA-256 checksum
     assert.deepEqual(metadata.platforms["darwin-arm64"], {
       signed: false,
       autoUpdate: false,
+      selfUpdate: true,
       installer: "Colony-1.2.3-arm64-UNSIGNED.dmg",
       updateArchive: "Colony-1.2.3-arm64-UNSIGNED.zip",
       updateMetadata: "latest-mac.yml",
@@ -136,6 +137,90 @@ test("release metadata rejects updater feeds with mismatched installer hashes", 
       }),
       /checksum or size does not match/,
     );
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("an unsigned Mac release lists the update archive for in-app self-update and still reads as manual to older clients", async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "colony-release-metadata-"),
+  );
+  try {
+    await makeAssets(temporaryDirectory, validAssets);
+    const metadata = await writeReleaseMetadata({
+      assetsDir: temporaryDirectory,
+      version: "1.2.3",
+      macSigned: false,
+      windowsSigned: false,
+    });
+    const mac = metadata.platforms["darwin-arm64"];
+    assert.equal(mac.selfUpdate, true);
+    // Clients before selfUpdate only read these two flags: they must keep
+    // concluding "manual download".
+    assert.equal(mac.signed, false);
+    assert.equal(mac.autoUpdate, false);
+    // The archive a new client downloads is named here and carries size and sha256.
+    const archive = metadata.assets.find(
+      (asset) => asset.name === mac.updateArchive,
+    );
+    assert.deepEqual(archive, {
+      name: "Colony-1.2.3-arm64-UNSIGNED.zip",
+      platform: "darwin-arm64",
+      size: Buffer.byteLength("asset:Colony-1.2.3-arm64-UNSIGNED.zip"),
+      sha256: createHash("sha256")
+        .update("asset:Colony-1.2.3-arm64-UNSIGNED.zip")
+        .digest("hex"),
+      signed: false,
+    });
+    const onDisk = JSON.parse(
+      await readFile(
+        path.join(temporaryDirectory, "update-metadata.json"),
+        "utf8",
+      ),
+    );
+    assert.deepEqual(onDisk, metadata);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("a signed Mac release keeps electron-updater and does not offer self-update", async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "colony-release-metadata-"),
+  );
+  try {
+    const names = [
+      "Colony-1.2.3-arm64-SIGNED.dmg",
+      "Colony-1.2.3-arm64-SIGNED.zip",
+      "Colony-1.2.3-x64-UNSIGNED.exe",
+      "latest-mac.yml",
+      "latest.yml",
+    ];
+    for (const name of names) {
+      if (!name.endsWith(".yml")) {
+        await writeFile(path.join(temporaryDirectory, name), `asset:${name}`);
+      }
+    }
+    for (const [feed, artifact] of [
+      ["latest-mac.yml", "Colony-1.2.3-arm64-SIGNED.zip"],
+      ["latest.yml", "Colony-1.2.3-x64-UNSIGNED.exe"],
+    ]) {
+      const bytes = await readFile(path.join(temporaryDirectory, artifact));
+      await writeFile(
+        path.join(temporaryDirectory, feed),
+        `version: 1.2.3\nfiles:\n  - url: ${artifact}\n    sha512: ${createHash("sha512").update(bytes).digest("base64")}\n`,
+      );
+    }
+    const metadata = await writeReleaseMetadata({
+      assetsDir: temporaryDirectory,
+      version: "1.2.3",
+      macSigned: true,
+      windowsSigned: false,
+    });
+    const mac = metadata.platforms["darwin-arm64"];
+    assert.equal(mac.autoUpdate, true);
+    assert.equal(mac.selfUpdate, false);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
