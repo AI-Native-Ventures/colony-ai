@@ -153,6 +153,8 @@ pub struct AcpClient {
     connection_probe: bool,
     prompt_started: Option<std::time::Instant>,
     first_token_ms: Option<u64>,
+    /// The assistant message the running turn ended on (see `turn_reply`).
+    final_text: crate::turn_reply::FinalTextCapture,
     own_process_group: bool,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
@@ -611,6 +613,7 @@ impl AcpClient {
             connection_probe: !own_process_group,
             prompt_started: None,
             first_token_ms: None,
+            final_text: crate::turn_reply::FinalTextCapture::default(),
             own_process_group,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
@@ -649,6 +652,12 @@ impl AcpClient {
     /// Time from the current prompt to its first assistant text, without retaining text.
     pub(crate) fn first_token_ms(&self) -> Option<u64> {
         self.first_token_ms
+    }
+
+    /// Take the assistant message the last prompt ended on: only the text after
+    /// its final tool call, never thinking or earlier narration.
+    pub(crate) fn take_final_assistant_text(&mut self) -> String {
+        self.final_text.take()
     }
 
     /// Take the bounded assistant reply captured by the connection proof.
@@ -888,6 +897,7 @@ impl AcpClient {
     ) -> Result<StopReason, AcpError> {
         self.prompt_started = Some(std::time::Instant::now());
         self.first_token_ms = None;
+        self.final_text.reset();
         let params = build_prompt_params(session_id, prompt_blocks);
         let hard_deadline = tokio::time::Instant::now() + max_duration;
         self.current_hard_deadline = Some(hard_deadline);
@@ -1898,11 +1908,15 @@ impl AcpClient {
                             reply.push_str(&text[..end]);
                         }
                     }
+                    self.final_text
+                        .push_chunk(update.get("messageId").and_then(|v| v.as_str()), text);
                     tracing::info!(target: "acp::stream", "{text}");
                 }
                 false
             }
             "tool_call" => {
+                // Whatever the agent said so far was narration before work.
+                self.final_text.tool_started();
                 if self.connection_probe
                     || self.connection_reply.as_ref().is_some_and(|(session, _)| {
                         msg["params"]["sessionId"].as_str() == Some(session.as_str())

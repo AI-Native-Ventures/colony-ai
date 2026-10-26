@@ -24,6 +24,7 @@ mod scope;
 mod setup_mode;
 mod startup_watch;
 mod tool_permissions;
+mod turn_reply;
 mod usage;
 mod wake_ledger;
 
