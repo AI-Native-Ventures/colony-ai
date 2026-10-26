@@ -40,11 +40,36 @@ export async function startManagedAgent(
   return fromRawManagedAgent(response);
 }
 
-export async function stopManagedAgent(pubkey: string): Promise<ManagedAgent> {
+/**
+ * Stops the agent's harness. `reason` is written to the agent's log and the
+ * host's stderr before the harness is signalled, so a stop is never anonymous
+ * (GATE-304: Scout was stopped 5.5 s after it started and nothing named who).
+ */
+export async function stopManagedAgent(
+  pubkey: string,
+  reason?: string,
+): Promise<ManagedAgent> {
   const response = await invokeTauri<RawManagedAgent>("stop_managed_agent", {
     pubkey,
+    reason: reason ?? null,
   });
   return fromRawManagedAgent(response);
+}
+
+/**
+ * Hands mentions the agent's last harness queued and lost back to its wake
+ * ledger, so the next harness answers them once. The agent must be stopped;
+ * rejects when it is running. Resolves to how many of `eventIds` the ledger
+ * held as handled.
+ */
+export async function releaseWakeEvents(
+  pubkey: string,
+  eventIds: readonly string[],
+): Promise<number> {
+  return invokeTauri<number>("release_wake_events", {
+    pubkey,
+    eventIds: [...eventIds],
+  });
 }
 
 export async function setManagedAgentStartOnAppLaunch(
@@ -93,8 +118,13 @@ export async function startManagedAgentRuntime(
 export async function stopManagedAgentRuntime(
   pubkey: string,
   relayUrl: string,
+  reason?: string,
 ): Promise<ManagedAgentRuntimeStatus> {
-  return invokeTauri("stop_managed_agent_runtime", { pubkey, relayUrl });
+  return invokeTauri("stop_managed_agent_runtime", {
+    pubkey,
+    relayUrl,
+    reason: reason ?? null,
+  });
 }
 
 export async function restartManagedAgentRuntime(

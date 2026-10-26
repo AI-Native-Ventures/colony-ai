@@ -173,6 +173,11 @@ export async function setup({ lifecycle = false, ...startup } = {}) {
     // apart from `calls`, so it cannot disturb the order-sensitive assertions.
     "@/features/agents/mentionReconcilerHandle": {
       noteMentionSentToAgents: (pubkeys) => control.notes.push([...pubkeys]),
+      retryAgentWithMentions: async () => false,
+    },
+    // Starts are tracked so a reconcile waits for them; no reconcile here.
+    "@/features/agents/agentLifecycle": {
+      trackAgentStart: noop,
     },
     "@/features/agents/channelAgents": {
       applyReusableAgentAccessPolicy: async (agent) => {

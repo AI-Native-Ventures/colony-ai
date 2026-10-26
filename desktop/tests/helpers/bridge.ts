@@ -1171,6 +1171,39 @@ export async function installMockBridge(
     forceRelayPacing?: boolean;
   },
 ) {
+  const proofTheme = process.env.COLONY3_PROOF_THEME;
+  if (
+    proofTheme === "dark" ||
+    proofTheme === "light" ||
+    proofTheme === "system-dark"
+  ) {
+    const followsSystem = proofTheme === "system-dark";
+    const theme = proofTheme === "dark" ? "buzz-dark" : "buzz";
+    if (followsSystem) await page.emulateMedia({ colorScheme: "dark" });
+    const relayUrl = (
+      process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
+    ).replace(/^http/u, "ws");
+    await page.addInitScript(
+      ({ theme, relayUrl, followsSystem }) => {
+        window.localStorage.setItem("buzz-theme", theme);
+        window.localStorage.setItem(
+          "buzz-follow-system",
+          followsSystem ? "true" : "false",
+        );
+        window.localStorage.setItem("buzz-accent-color", "#5B45BE");
+        window.localStorage.setItem(
+          `buzz-community-theme.v1:${"deadbeef".repeat(8)}:${encodeURIComponent(relayUrl)}`,
+          JSON.stringify({
+            version: 1,
+            theme,
+            accent: "#5B45BE",
+            followSystem: followsSystem,
+          }),
+        );
+      },
+      { theme, relayUrl, followsSystem },
+    );
+  }
   await installBridge(page, {
     mode: "mock",
     forceRelayPacing: options?.forceRelayPacing,

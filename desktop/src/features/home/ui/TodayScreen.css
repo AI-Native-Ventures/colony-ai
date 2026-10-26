@@ -154,7 +154,7 @@
 }
 
 .ct-group-by button[aria-pressed="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 1px 2px rgb(60 40 80 / 12%);
   color: hsl(var(--colony-fg));
   font-weight: 800;
@@ -170,7 +170,7 @@
   padding: 0 1rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.6875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-family: inherit;
   font-size: calc(15 * var(--colony-px));
@@ -183,8 +183,8 @@
   gap: 0.75rem;
   padding: 0.875rem 1rem;
   border-radius: 1rem;
-  background: #fff6e6;
-  color: #5f3a00;
+  background: var(--colony-warning-surface);
+  color: var(--colony-warning-ink);
   font-size: calc(15.5 * var(--colony-px));
   line-height: 1.45;
 }
@@ -221,7 +221,7 @@
   padding: 1rem 1.125rem;
   border: 0;
   border-radius: 1.125rem;
-  background: #fff;
+  background: var(--colony-pop);
   box-shadow:
     0 0 0 1px hsl(var(--colony-border)),
     0 1px 2px rgb(40 20 60 / 4%);
@@ -281,7 +281,7 @@
   align-items: center;
   padding: 0 0.625rem;
   border-radius: 999px;
-  background: #f1eef2;
+  background: var(--colony-soft-chip);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(13.5 * var(--colony-px));
   font-weight: 800;
@@ -370,7 +370,7 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--colony-pop);
   box-shadow:
     0 0 0 1px hsl(var(--colony-border)),
     0 1px 2px rgb(40 20 60 / 4%);

@@ -5,40 +5,6 @@
  * preference and zoom.
  */
 
-:root {
-  --colony-field-top: #f5a4d5;
-  --colony-field-middle: #c6b3f4;
-  --colony-field-bottom: #94b4fa;
-  --colony-field-wall: #f8f4f8;
-  --colony-field-wall-fallback: #f4edf5;
-  --colony-field-veil-top: rgb(255 255 255 / 34%);
-  --colony-field-veil-middle: rgb(255 255 255 / 20%);
-  --colony-field-veil-bottom: rgb(255 255 255 / 36%);
-  --colony-field-blob-opacity: 0.85;
-  --colony-field-blob-opacity-middle: 0.8;
-  --colony-field-grain-opacity: 0.14;
-  --colony-rail-top: #e7b9d6;
-  --colony-rail-middle: #cbbdf0;
-  --colony-rail-bottom: #afc5f5;
-  --colony-rail-shade: rgb(37 34 44 / 7%);
-  --colony-sidebar-ink: #25222c;
-  --colony-sidebar-ink-soft: #4a4453;
-  --colony-sidebar-line: rgb(255 255 255 / 75%);
-  --colony-sidebar-line-soft: rgb(255 255 255 / 60%);
-  --colony-sidebar-glass: rgb(255 255 255 / 62%);
-  --colony-sidebar-active: rgb(255 255 255 / 84%);
-  --colony-sidebar-active-shadow:
-    0 1px 2px rgb(70 40 90 / 10%), 0 8px 20px -10px rgb(70 40 90 / 22%);
-  --colony-sidebar-pill: rgb(255 255 255 / 80%);
-  --colony-sidebar-kbd: rgb(255 255 255 / 75%);
-  --colony-sidebar-search-ring: rgb(255 255 255 / 70%);
-  --colony-sidebar-online: #2e9a62;
-  --colony-sidebar-avatar: #efe7e1;
-  --colony-sidebar-avatar-ring: #f3ecf6;
-  --colony-notice-surface: rgb(255 255 255 / 82%);
-  --colony-notice-shadow: 0 8px 20px -12px rgb(70 40 90 / 35%);
-}
-
 /* --------------------------------------------------------------- sidebar -- */
 
 .app-sidebar-full-shell {
@@ -130,7 +96,7 @@
   border: 0;
   border-radius: 0.75rem;
   background: var(--colony-sidebar-ink);
-  color: #fffdfa;
+  color: var(--colony-accent-foreground);
   font-size: calc(18 * var(--colony-px));
   font-weight: 800;
   line-height: 1;
@@ -467,7 +433,7 @@
   padding: 0 0.4375rem;
   border-radius: 999px;
   background: var(--colony-sidebar-ink);
-  color: #fffdfa;
+  color: var(--colony-accent-foreground);
   font-size: calc(12.5 * var(--colony-px));
   font-weight: 800;
   line-height: 1;
@@ -963,7 +929,7 @@
   padding: 0 0.25rem;
   border-radius: 999px;
   background: var(--colony-sidebar-ink);
-  color: #fffdfa;
+  color: var(--colony-accent-foreground);
   font-size: calc(10.5 * var(--colony-px));
   font-weight: 800;
   line-height: 1;

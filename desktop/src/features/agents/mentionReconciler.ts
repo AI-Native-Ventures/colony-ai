@@ -27,11 +27,31 @@ import type { UnansweredMention } from "./unansweredMentions";
  * note with a way to try again (the start watch). A read that fails is retried
  * with a back-off and then reported; it is never taken for "nothing is
  * waiting".
+ *
+ * Only an answer ends the wait. GATE-304 (26 Oct, published 3.0.4): Scout was
+ * started for a mention, queued it (the harness reacts 👀 when it does) and
+ * was stopped 5.5 s after it started. The harness had already written the
+ * mention into its wake ledger as handled, so a Scout started again skipped it
+ * for good, and a check that counted the 👀 as an answer stopped looking. A
+ * mention the agent queued and lost is handed back to the harness before the
+ * agent is started again, so it is answered once. A mention whose turn had
+ * begun (💬) may already have been acted on: running it again is the person's
+ * call, so it is shown as stalled with a way to try again.
  */
 
 /** Delay before the first look after a send, then between looks while an
- * unanswered mention is still waiting. */
-export const SENT_CHECK_DELAYS_MS = [6_000, 20_000, 50_000] as const;
+ * unanswered mention is still waiting. After the quick looks, one a minute
+ * until the harness would no longer replay the mention (15 minutes), so an
+ * agent that dies late is still found. */
+export const SENT_CHECK_DELAYS_MS = [
+  6_000,
+  20_000,
+  50_000,
+  ...Array.from({ length: 12 }, () => 60_000),
+] as const;
+/** Times one trigger starts a dead agent again before saying it keeps
+ * stopping. */
+export const MAX_AUTOMATIC_RESTARTS = 2;
 /** Back-off between retries of a read that failed. */
 export const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const;
 /** How far back a check right after a send looks. */
@@ -57,6 +77,18 @@ export type MentionReconcilerDeps = {
   ) => Promise<UnansweredMention[]>;
   /** The tenant scope to start agents under, or `null` while it is unknown. */
   getScope: () => TenantScope | null;
+  /** Stops the agent's harness; `reason` is written to the agent's log. */
+  stopAgent: (pubkey: string, reason: string) => Promise<unknown>;
+  /** Hands mentions the harness queued and lost back to it so the next
+   * harness answers them. The agent must be stopped; rejects when it is not. */
+  handBack: (pubkey: string, eventIds: string[]) => Promise<unknown>;
+  /** Runs `work` with every other start, stop or restart of the agent held
+   * back until it finishes. */
+  exclusive: <T>(
+    pubkey: string,
+    label: string,
+    work: () => Promise<T>,
+  ) => Promise<T>;
   /** Starts the agent under `scope`. */
   startAgent: (
     agent: ManagedAgent,
@@ -74,10 +106,17 @@ export type MentionReconcilerDeps = {
     quiet: boolean;
     start: AgentStartRunner;
   }) => void;
-  /** The agent picked everything up: stop waiting on it. */
-  resolve: (agentPubkey: string) => void;
+  /** The agent picked everything up: stop waiting on it. Only waits registered
+   * before `registeredBefore` (desktop-clock ms) end: a look cannot have seen
+   * a mention sent after it began. */
+  resolve: (agentPubkey: string, registeredBefore: number) => void;
+  /** Desktop clock, ms. */
+  now: () => number;
   /** The agent could not be started: say so now. */
   fail: (agentPubkey: string, reason: string) => void;
+  /** The agent started and went away with the mention unanswered, and will not
+   * be started again on its own: say so now, in `note`, with Try again. */
+  stall: (agentPubkey: string, note: string) => void;
   /** Mentions already used to start an agent at launch (once per mention). */
   caughtUp: { has: (id: string) => boolean; add: (id: string) => void };
   /** Tell the person a read kept failing. Not the place for per-try noise. */
@@ -91,6 +130,17 @@ export type MentionReconciler = {
   noteMentionSent: (mentionedPubkeys: readonly string[]) => void;
   /** The community opened: look for mentions sent while nothing was running. */
   catchUpOnLaunch: () => void;
+  /**
+   * Before a harness is spawned for the agent: hand back the mentions its last
+   * harness queued and lost, and say how far back the oldest unanswered one
+   * reaches. Rejects when the relay cannot be read.
+   */
+  prepareStart: (agentPubkey: string) => Promise<number | undefined>;
+  /**
+   * The person asked to try again: replace the harness, hand back everything
+   * unanswered (the person decides to run it again) and start from the oldest.
+   */
+  retryAgent: (agentPubkey: string, floorUnix: number) => Promise<void>;
   /** Stop everything (the community is going away). */
   dispose: () => void;
 };
@@ -103,6 +153,8 @@ type AgentRun = {
   checks: number;
   /** Failed reads since the last success. */
   retries: number;
+  /** Times this trigger started the agent again after its harness was gone. */
+  restarts: number;
 };
 
 function isLocal(agent: ManagedAgent) {
@@ -137,7 +189,7 @@ export function createMentionReconciler(
   function runFor(pubkey: string): AgentRun {
     let run = runs.get(pubkey);
     if (!run) {
-      run = { generation: 0, cancel: null, checks: 0, retries: 0 };
+      run = { generation: 0, cancel: null, checks: 0, retries: 0, restarts: 0 };
       runs.set(pubkey, run);
     }
     return run;
@@ -155,6 +207,7 @@ export function createMentionReconciler(
     run.cancel?.();
     run.checks = 0;
     run.retries = 0;
+    run.restarts = 0;
     run.cancel = later(
       () => void reconcile(pubkey, run, lookbackSeconds, reason),
       delayMs,
@@ -175,6 +228,93 @@ export function createMentionReconciler(
     }, delayMs);
   }
 
+  /** Mentions the harness queued (👀) and lost go back to the ledger so the
+   * next harness answers them once. Never throws: a ledger that cannot be
+   * edited costs the replay of those mentions, not the start. */
+  async function handBackQueued(
+    pubkey: string,
+    mentions: readonly UnansweredMention[],
+    everything = false,
+  ) {
+    const ids = mentions
+      .filter((mention) => everything || mention.progress === "seen")
+      .filter((mention) => mention.progress !== "none")
+      .map((mention) => mention.id);
+    if (ids.length === 0) return;
+    try {
+      await deps.handBack(pubkey, ids);
+    } catch (error) {
+      deps.warn(
+        `[mentionReconciler] could not hand ${ids.length} mention(s) back to ${pubkey}`,
+        error,
+      );
+    }
+  }
+
+  /** The watch's own restart: a harness that is gone is replaced, one that is
+   * running is left alone. */
+  async function restartForMentions(pubkey: string, floorUnix: number) {
+    const scope = deps.getScope();
+    if (!scope) {
+      throw new Error("Colony is still connecting to this community.");
+    }
+    await deps.exclusive(pubkey, "mention restart", async () => {
+      const agents = await deps.loadAgents();
+      const agent = agents.find(
+        (candidate) => normalizePubkey(candidate.pubkey) === pubkey,
+      );
+      if (!agent || !isLocal(agent) || agent.status === "running") return;
+      const found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
+      await handBackQueued(pubkey, found);
+      await deps.startAgent(
+        agent,
+        {
+          force: false,
+          floorUnix: Math.min(floorUnix, found[0]?.createdAt ?? floorUnix),
+        },
+        scope,
+      );
+    });
+  }
+
+  async function retryAgent(pubkey: string, floorUnix: number) {
+    const scope = deps.getScope();
+    if (!scope) {
+      throw new Error("Colony is still connecting to this community.");
+    }
+    await deps.exclusive(pubkey, "try again", async () => {
+      const agents = await deps.loadAgents();
+      const agent = agents.find(
+        (candidate) => normalizePubkey(candidate.pubkey) === pubkey,
+      );
+      if (!agent || !isLocal(agent)) {
+        throw new Error("This agent is not one of your local agents.");
+      }
+      let found: UnansweredMention[] = [];
+      try {
+        found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
+      } catch (error) {
+        deps.warn(
+          `[mentionReconciler] retrying ${pubkey} without the relay's view`,
+          error,
+        );
+      }
+      if (agent.status === "running") {
+        await deps.stopAgent(pubkey, "the person asked to try again");
+      }
+      // The person asked: run what the agent began and lost as well.
+      await handBackQueued(pubkey, found, true);
+      await deps.startAgent(
+        agent,
+        {
+          force: false,
+          floorUnix: Math.min(floorUnix, found[0]?.createdAt ?? floorUnix),
+        },
+        scope,
+      );
+    });
+  }
+
   async function reconcile(
     pubkey: string,
     run: AgentRun,
@@ -183,6 +323,8 @@ export function createMentionReconciler(
   ) {
     const generation = run.generation;
     const stale = () => disposed || run.generation !== generation;
+    // Nothing sent after this moment can be in what the relay answers.
+    const lookBeganAt = deps.now();
 
     let agent: ManagedAgent | undefined;
     let found: UnansweredMention[];
@@ -219,21 +361,15 @@ export function createMentionReconciler(
         ? found.filter((mention) => !deps.caughtUp.has(mention.id))
         : found;
     if (waiting.length === 0) {
-      deps.resolve(pubkey);
+      deps.resolve(pubkey, lookBeganAt);
       return;
     }
 
     const running = agent.status === "running";
-    const floorUnix = waiting[0].createdAt;
-    const start: AgentStartRunner = (attempt) => {
-      const scope = deps.getScope();
-      if (!scope) {
-        return Promise.reject(
-          new Error("Colony is still connecting to this community."),
-        );
-      }
-      return deps.startAgent(agent, attempt, scope);
-    };
+    const start: AgentStartRunner = (attempt) =>
+      attempt.force
+        ? retryAgent(pubkey, attempt.floorUnix)
+        : restartForMentions(pubkey, attempt.floorUnix);
     for (const mention of waiting) {
       deps.watch({
         pubkey,
@@ -248,9 +384,31 @@ export function createMentionReconciler(
     if (!running && !deps.isStartInFlight(pubkey)) {
       const scope = deps.getScope();
       if (scope) {
+        const replayable = waiting.filter(
+          (mention) => mention.progress !== "working",
+        );
+        if (replayable.length === 0) {
+          // Every waiting mention had a turn begin and then end with no
+          // answer. The model may have acted on them: say so, and let the
+          // person decide to run them again.
+          deps.stall(pubkey, `${agent.name} stopped while working on this.`);
+          return;
+        }
+        if (run.restarts >= MAX_AUTOMATIC_RESTARTS) {
+          deps.stall(pubkey, `${agent.name} keeps stopping before it answers.`);
+          return;
+        }
+        run.restarts += 1;
         for (const mention of waiting) deps.caughtUp.add(mention.id);
         try {
-          await deps.startAgent(agent, { force: false, floorUnix }, scope);
+          await deps.exclusive(pubkey, "mention reconcile", async () => {
+            await handBackQueued(pubkey, replayable);
+            await deps.startAgent(
+              agent,
+              { force: false, floorUnix: replayable[0].createdAt },
+              scope,
+            );
+          });
         } catch (error) {
           if (stale()) return;
           deps.warn(`[mentionReconciler] could not start ${pubkey}`, error);
@@ -327,6 +485,15 @@ export function createMentionReconciler(
     catchUpOnLaunch() {
       if (disposed) return;
       forLocalAgents(null, 0, LAUNCH_LOOKBACK_SECONDS, "launch");
+    },
+    async prepareStart(agentPubkey) {
+      const pubkey = normalizePubkey(agentPubkey);
+      const found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
+      await handBackQueued(pubkey, found);
+      return found[0]?.createdAt;
+    },
+    retryAgent(agentPubkey, floorUnix) {
+      return retryAgent(normalizePubkey(agentPubkey), floorUnix);
     },
     dispose() {
       disposed = true;

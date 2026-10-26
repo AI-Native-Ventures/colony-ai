@@ -170,12 +170,12 @@ export function NoticeGlyph({ size = 18, strokeWidth = 2.2 }: IconProps) {
 /* ------------------------------------------------------------ industries -- */
 
 const TILE_COLOURS = [
-  "#FBEAF2",
-  "#FFF1E3",
-  "#E9F0FC",
-  "#EFEAFB",
-  "#E5F5EF",
-  "#FFF6DC",
+  "var(--colony-discovery-tile-rose)",
+  "var(--colony-discovery-tile-amber)",
+  "var(--colony-discovery-tile-blue)",
+  "var(--colony-discovery-tile-violet)",
+  "var(--colony-discovery-tile-green)",
+  "var(--colony-discovery-tile-gold)",
 ] as const;
 
 type IndustryArt = { tile: string; glyph: () => React.ReactNode };
@@ -190,13 +190,13 @@ type LucideGlyph = React.ComponentType<{
 /** The industries the board draws, with the board's own tile and strokes. */
 const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
   "fashion-apparel": {
-    tile: "#FBEAF2",
+    tile: "var(--colony-discovery-tile-rose)",
     glyph: () => (
       <path d="M8.5 4 12 6l3.5-2 4.5 3-2.5 3.5-2-1V20h-7V9.5l-2 1L4 7z" />
     ),
   },
   "home-living": {
-    tile: "#FFF1E3",
+    tile: "var(--colony-discovery-tile-amber)",
     glyph: () => (
       <>
         <path d="M3.5 11 12 4l8.5 7" />
@@ -205,13 +205,13 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
     ),
   },
   healthcare: {
-    tile: "#E9F0FC",
+    tile: "var(--colony-discovery-tile-blue)",
     glyph: () => (
       <path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z" />
     ),
   },
   legal: {
-    tile: "#EFEAFB",
+    tile: "var(--colony-discovery-tile-violet)",
     glyph: () => (
       <>
         <path d="M12 4v16M7.5 20h9M5 7.5h14" />
@@ -220,7 +220,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
     ),
   },
   "financial-services": {
-    tile: "#E5F5EF",
+    tile: "var(--colony-discovery-tile-green)",
     glyph: () => (
       <>
         <path d="M3.5 9.5 12 4.5l8.5 5" />
@@ -229,7 +229,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
     ),
   },
   "real-estate": {
-    tile: "#FFF6DC",
+    tile: "var(--colony-discovery-tile-gold)",
     glyph: () => (
       <>
         <rect height="17" rx="1.5" width="14" x="5" y="3.5" />

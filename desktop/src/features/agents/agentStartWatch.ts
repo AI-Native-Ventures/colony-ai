@@ -48,6 +48,9 @@ export type AgentStartWatch = {
   phase: AgentStartPhase;
   /** Why the start failed, when it failed outright. */
   reason: string | null;
+  /** A plain sentence the stalled note says in place of "hasn't picked this
+   * up yet", when the agent did start and then went away. */
+  note: string | null;
   /**
    * The agent was believed to be running, so nothing says "starting" while it
    * has time to pick the mention up. The watch still stands guard: if nobody
@@ -131,6 +134,15 @@ function oldestFloorFor(pubkey: string): number | undefined {
         : Math.min(oldest, entry.watch.floorUnix);
   }
   return oldest;
+}
+
+/**
+ * Whether anybody is still waiting on `pubkey` for a mention it has not
+ * answered. Anything that would stop or replace the agent for its own reasons
+ * must leave it alone while this is true.
+ */
+export function hasAgentStartWatch(pubkey: string): boolean {
+  return entriesFor(normalizePubkey(pubkey)).length > 0;
 }
 
 function dropEntry(key: string) {
@@ -264,6 +276,7 @@ export function registerAgentStartWatch(input: {
         floorUnix,
         phase: "starting",
         reason: null,
+        note: null,
         quiet: input.quiet ?? false,
       },
       start: input.start,
@@ -293,15 +306,28 @@ export function lowerAgentStartFloor(pubkey: string, floorUnix: number) {
   }
 }
 
-/** The agent picked the mention up (or answered): stop waiting on it. */
-export function resolveAgentStartWatches(pubkey: string) {
+/**
+ * The agent picked the mention up (or answered): stop waiting on it.
+ *
+ * With `registeredBefore` (desktop-clock ms) only the waits registered before
+ * that moment end. A look at the relay that began at that moment cannot have
+ * seen a mention sent after it, so it must not end the wait for one: GATE-304
+ * (26 Oct), the launch look at the relay was still reading when the person's
+ * first mention registered its wait, found nothing unanswered, and ended the
+ * wait for a mention it had never seen.
+ */
+export function resolveAgentStartWatches(
+  pubkey: string,
+  options?: { registeredBefore?: number },
+) {
   const key = normalizePubkey(pubkey);
+  const before = options?.registeredBefore;
   let changed = false;
   for (const [entryId, entry] of entries) {
-    if (entry.watch.pubkey === key) {
-      dropEntry(entryId);
-      changed = true;
-    }
+    if (entry.watch.pubkey !== key) continue;
+    if (before !== undefined && entry.watch.since >= before) continue;
+    dropEntry(entryId);
+    changed = true;
   }
   syncWorkingSubscription();
   if (changed) notify();
@@ -341,6 +367,24 @@ export function failAgentStartWatches(
   if (changed) notify();
 }
 
+/**
+ * The agent started and then went away with the mention unanswered, and will
+ * not be started again on its own: say so now, in `note`, with a way to try
+ * again. Unlike [`failAgentStartWatches`] the start did not fail.
+ */
+export function stallAgentStartWatches(pubkey: string, note: string) {
+  const key = normalizePubkey(pubkey);
+  let changed = false;
+  for (const entry of entries.values()) {
+    if (entry.watch.pubkey !== key) continue;
+    clearTimers(entry);
+    entry.retried = true;
+    entry.watch = { ...entry.watch, phase: "stalled", note, quiet: false };
+    changed = true;
+  }
+  if (changed) notify();
+}
+
 /** The person asked to try again: replace the harness and replay from the
  * oldest unanswered mention, with a fresh countdown. */
 export function retryAgentStart(pubkey: string) {
@@ -359,6 +403,7 @@ export function retryAgentStart(pubkey: string) {
       phase: "starting",
       since: now,
       reason: null,
+      note: null,
       quiet: false,
     };
     startTimers(entryId, entry);

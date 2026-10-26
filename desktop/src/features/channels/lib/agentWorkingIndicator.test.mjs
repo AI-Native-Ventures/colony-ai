@@ -390,6 +390,7 @@ describe("agents that were woken for a mention", () => {
     floorUnix: 1_000,
     phase: "starting",
     reason: null,
+    note: null,
     quiet: false,
     ...overrides,
   });
@@ -409,6 +410,40 @@ describe("agents that were woken for a mention", () => {
       input({ starts: [watch({ quiet: true })] }),
     );
     assert.equal(state.kind, "hidden");
+  });
+
+  it("says the agent's own sentence when it started and went away", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [
+          watch({
+            phase: "stalled",
+            note: "Scout keeps stopping before it answers.",
+          }),
+        ],
+      }),
+    );
+    assert.equal(state.kind, "stalled");
+    assert.equal(
+      formatWorkingIndicatorLabel(state),
+      "Scout keeps stopping before it answers.",
+    );
+  });
+
+  it("falls back to the plain note when several agents are stalled", () => {
+    const state = selectChannelWorkingIndicator(
+      input({
+        starts: [
+          watch({ phase: "stalled", note: "Scout keeps stopping." }),
+          watch({ pubkey: NOVA, phase: "stalled" }),
+        ],
+        nameOf: (pubkey) => (pubkey === SCOUT ? "Scout" : "Nova"),
+      }),
+    );
+    assert.equal(
+      formatWorkingIndicatorLabel(state),
+      "Scout and Nova haven't picked this up yet.",
+    );
   });
 
   it("still says so when that quiet wait stalls", () => {

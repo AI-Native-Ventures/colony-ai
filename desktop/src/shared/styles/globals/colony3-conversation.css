@@ -5,7 +5,7 @@
  * Soft Field tokens in theme.css.
  */
 :root {
-  --c3c-row-hover: #f7f3fa;
+  --c3c-row-hover: var(--colony-row-hover);
   --c3c-content-max: 920;
   --c3c-gutter: 28;
 }
@@ -98,7 +98,7 @@
 
 .c3c-reaction--mine {
   background-color: hsl(var(--colony-accent-soft));
-  box-shadow: inset 0 0 0 1px #d9cff5;
+  box-shadow: inset 0 0 0 1px var(--colony-accent-line);
   color: hsl(var(--colony-accent-ink));
 }
 
@@ -110,14 +110,14 @@
 
 /* Thread summary: the pill under a message that opens its thread. */
 .c3c-thread-summary {
-  background-color: #fff;
+  background-color: var(--colony-overlay);
   box-shadow: 0 0 0 1px hsl(var(--colony-border));
 }
 
 .c3c-thread-summary:hover,
 .c3c-thread-summary:focus-visible {
   background-color: hsl(var(--colony-accent-soft));
-  box-shadow: 0 0 0 1px #d9cff5;
+  box-shadow: 0 0 0 1px var(--colony-accent-line);
 }
 
 .c3c-thread-summary-count {
@@ -382,7 +382,7 @@
   align-items: center;
   border-radius: 999px;
   padding: 0 calc(10 * var(--colony-px));
-  background-color: #f1eef2;
+  background-color: var(--colony-soft-chip);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(13 * var(--colony-px));
   font-weight: 800;
@@ -409,7 +409,7 @@
   pointer-events: none;
   font-size: calc(13 * var(--colony-px));
   font-weight: 800;
-  color: #3b3446;
+  color: hsl(var(--colony-fg-secondary));
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
 }
 

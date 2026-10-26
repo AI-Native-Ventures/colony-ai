@@ -23,6 +23,8 @@ export type WorkingIndicatorAgent = {
   name: string;
   /** Desktop-clock ms: turn start while working, error time on an error. */
   anchorAt: number;
+  /** A stalled agent's own sentence, when the default does not fit. */
+  note?: string | null;
 };
 
 export type AgentWorkingIndicatorState =
@@ -138,6 +140,7 @@ function waitingOn(
       pubkey: watch.pubkey,
       name: nameOf(watch.pubkey),
       anchorAt: watch.since,
+      ...(watch.note ? { note: watch.note } : {}),
     });
   }
   return { starting, stalled };
@@ -336,6 +339,8 @@ export function formatWorkingIndicatorLabel(
     return `${joinNames(names)} hit a problem and stopped.`;
   }
   if (state.kind === "stalled") {
+    const note = state.agents.length === 1 ? state.agents[0].note : null;
+    if (note) return note;
     return `${joinNames(names)} ${names.length === 1 ? "hasn't" : "haven't"} picked this up yet.`;
   }
   if (state.kind === "starting") {

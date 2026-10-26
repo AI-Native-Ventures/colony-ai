@@ -10,9 +10,9 @@ export function UnreadDivider() {
       className="relative flex items-center gap-2.5 pb-6"
       data-testid="message-unread-divider"
     >
-      <div className="h-[1.5px] flex-1 bg-[#b9a9ee]" />
+      <div className="h-[1.5px] flex-1 bg-[var(--colony-focus-soft)]" />
       <span className="c3c-new-label shrink-0">New</span>
-      <div className="h-[1.5px] flex-1 bg-[#b9a9ee]" />
+      <div className="h-[1.5px] flex-1 bg-[var(--colony-focus-soft)]" />
     </section>
   );
 }

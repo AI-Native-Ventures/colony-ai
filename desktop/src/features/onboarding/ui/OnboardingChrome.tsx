@@ -18,7 +18,7 @@ const ONBOARDING_CTA_SHAPE = "h-[2.375rem] rounded-full px-6";
 export const ONBOARDING_PRIMARY_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} text-[var(--buzz-onboarding-cta-label)]`;
 
 /** Inverted primary action used only on dark backup-security surfaces. */
-export const ONBOARDING_SECURITY_PRIMARY_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} bg-white text-black/80 hover:bg-white/90 hover:text-black`;
+export const ONBOARDING_SECURITY_PRIMARY_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} bg-[var(--colony-onboarding-security-cta)] text-[color:var(--colony-onboarding-security-cta-ink)] hover:bg-[var(--colony-onboarding-security-cta-hover)] hover:text-[color:var(--colony-onboarding-security-cta-ink-hover)]`;
 
 /**
  * Primary-CTA styling for the landing screen only: the shared pill with the

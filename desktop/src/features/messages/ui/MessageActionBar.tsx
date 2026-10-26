@@ -367,7 +367,7 @@ function MoreActionsMenu({
 const QUICK_GLYPHS: Record<string, { glyph: React.ReactNode; tone?: string }> =
   {
     "\u2764\uFE0F": {
-      glyph: <HeartGlyph className="text-[#C2416A]" size={17} />,
+      glyph: <HeartGlyph className="text-[var(--colony-heart)]" size={17} />,
     },
     "\u{1F44D}": {
       glyph: <ThumbsUpGlyph size={17} />,
@@ -554,7 +554,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
       data-testid={`message-action-bar-${message.id}`}
       ref={ref}
     >
-      <div className="c3c-action-bar rounded-[calc(13*var(--colony-px))] bg-white">
+      <div className="c3c-action-bar rounded-[calc(13*var(--colony-px))] bg-[var(--colony-overlay)]">
         <div className="flex items-center gap-0.5 p-1">
           {hasReactionAction && quickReactionItems.length > 0 ? (
             <div className="hidden items-center gap-0.5 sm:flex">

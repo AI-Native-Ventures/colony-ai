@@ -30,22 +30,61 @@ pub(crate) fn managed_agent_runtime_relay_urls<T>(
         .collect()
 }
 
+/// Longest reason text written to a log; a caller-supplied reason is data.
+const MAX_STOP_REASON_CHARS: usize = 160;
+
+/// One line in the pair's log and one on the host's stderr saying who asked
+/// for the stop, written BEFORE the harness is signalled.
+///
+/// GATE-304 (26 Oct): Scout's harness was stopped 5.5 s after it started and
+/// nothing in either log named the caller, so the cause could only be guessed.
+/// The line goes first so a harness that is killed mid-stop, or a host that
+/// dies right after, still leaves it. A harness that gets a signal with no
+/// such line before it was not stopped by this app.
+pub(crate) fn stop_request_line(name: &str, pubkey: &str, reason: &str, at: &str) -> String {
+    let reason: String = reason
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_STOP_REASON_CHARS)
+        .collect();
+    format!("=== stop requested for {name} ({pubkey}) at {at}: {reason} ===")
+}
+
+fn log_stop_request(
+    log_path: &std::path::Path,
+    record: &ManagedAgentRecord,
+    key: &ManagedAgentRuntimeKey,
+    reason: &str,
+) {
+    let line = stop_request_line(&record.name, &record.pubkey, reason, &now_iso());
+    if let Err(error) = append_log_marker(log_path, &line) {
+        eprintln!(
+            "buzz-desktop: failed to append stop request for {} on {}: {error}",
+            record.pubkey, key.relay_url
+        );
+    }
+    eprintln!("buzz-desktop: {line} (relay {})", key.relay_url);
+}
+
 /// Stop the single tracked runtime pair at `key`, if present.
 ///
 /// Terminates the child, records the exit code, removes the pair receipt,
 /// and appends a stop marker to the pair log. On teardown failure the
 /// runtime is reinserted so the pair stays visible and stoppable instead of
 /// becoming an invisible orphan. Touches no other pair for the agent and
-/// does no record-level stop bookkeeping — callers own that.
+/// does no record-level stop bookkeeping: callers own that. `reason` names
+/// the caller in the pair log and on stderr before the harness is signalled.
 pub(super) fn stop_managed_agent_pair<R: tauri::Runtime>(
     app: &AppHandle<R>,
     record: &mut ManagedAgentRecord,
     runtimes: &mut HashMap<ManagedAgentRuntimeKey, ManagedAgentPairRuntime>,
     key: &ManagedAgentRuntimeKey,
+    reason: &str,
 ) -> Result<(), String> {
     let Some(mut runtime) = runtimes.remove(key) else {
         return Ok(());
     };
+    log_stop_request(&runtime.log_path, record, key, reason);
     let result = (|| -> Result<(), String> {
         #[cfg(unix)]
         terminate_process(runtime.child.id())?;
@@ -124,12 +163,13 @@ pub fn stop_managed_agent_workspace_pair(
     app: &AppHandle,
     record: &mut ManagedAgentRecord,
     runtimes: &mut HashMap<ManagedAgentRuntimeKey, ManagedAgentPairRuntime>,
+    reason: &str,
 ) -> Result<(), String> {
     use tauri::Manager;
     let state = app.state::<crate::app_state::AppState>();
     match super::workspace_pair_key(app, record) {
         Some(pair_key) if runtimes.contains_key(&pair_key) => {
-            stop_managed_agent_pair(app, record, runtimes, &pair_key)?;
+            stop_managed_agent_pair(app, record, runtimes, &pair_key, reason)?;
             state.clear_agent_session_cache(&pair_key);
             super::super::remove_agent_pid_file(app, &record.pubkey);
             let now = now_iso();
@@ -157,6 +197,7 @@ pub fn stop_managed_agent_process<R: tauri::Runtime>(
     app: &AppHandle<R>,
     record: &mut ManagedAgentRecord,
     runtimes: &mut HashMap<ManagedAgentRuntimeKey, ManagedAgentPairRuntime>,
+    reason: &str,
 ) -> Result<(), String> {
     let keys = managed_agent_runtime_keys(runtimes, &record.pubkey);
     if keys.is_empty() {
@@ -165,7 +206,7 @@ pub fn stop_managed_agent_process<R: tauri::Runtime>(
 
     let mut errors = Vec::new();
     for key in keys {
-        if let Err(error) = stop_managed_agent_pair(app, record, runtimes, &key) {
+        if let Err(error) = stop_managed_agent_pair(app, record, runtimes, &key, reason) {
             errors.push(format!("{}: {error}", key.relay_url));
         }
     }
@@ -191,6 +232,31 @@ pub fn stop_managed_agent_process<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stop_request_line_names_the_agent_the_time_and_the_caller() {
+        let line = stop_request_line(
+            "Scout",
+            &"ab".repeat(32),
+            "welcome starter reconcile: launch fields changed",
+            "2026-10-26T12:14:54+00:00",
+        );
+        assert!(line.starts_with("=== stop requested for Scout ("), "{line}");
+        assert!(line.contains("2026-10-26T12:14:54+00:00"), "{line}");
+        assert!(
+            line.ends_with("welcome starter reconcile: launch fields changed ==="),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn a_stop_reason_is_data_so_control_characters_and_length_are_bounded() {
+        let hostile = format!("line one\nline two\r\u{7}{}", "x".repeat(1_000));
+        let line = stop_request_line("Scout", "pk", &hostile, "now");
+        assert!(!line.contains('\n') && !line.contains('\r'), "{line:?}");
+        assert!(!line.contains('\u{7}'), "{line:?}");
+        assert!(line.chars().count() < 160 + 120, "{}", line.chars().count());
+    }
 
     #[test]
     fn pair_preserving_restart_targets_exact_original_relays() {

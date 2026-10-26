@@ -190,12 +190,23 @@ export function useManagedAgentRuntimeAction() {
       pubkey: string;
       relayUrl: string;
     }) => {
-      if (action === "stop") return stopManagedAgentRuntime(pubkey, relayUrl);
+      if (action === "stop") {
+        return stopManagedAgentRuntime(
+          pubkey,
+          relayUrl,
+          "runtime stopped from the app's agent controls",
+        );
+      }
       if (action === "restart") {
         return restartManagedAgentPair(
           pubkey,
           relayUrl,
-          stopManagedAgentRuntime,
+          (stopPubkey, stopRelayUrl) =>
+            stopManagedAgentRuntime(
+              stopPubkey,
+              stopRelayUrl,
+              "runtime restarted from the app's agent controls",
+            ),
           clearActiveTurnsForAgentOnStop,
           startManagedAgentRuntime,
         );

@@ -31,7 +31,7 @@
 }
 
 .b3-page .b3-tab[aria-current="page"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 calc(1 * var(--b3u)) calc(3 * var(--b3u)) rgba(60, 40, 80, 0.12);
   color: var(--b3-fg);
   font-weight: 800;
@@ -52,7 +52,7 @@
   gap: calc(10 * var(--b3u));
   padding: 0 calc(8 * var(--b3u)) 0 calc(14 * var(--b3u));
   border-radius: calc(12 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 0 0 calc(1 * var(--b3u)) var(--b3-line2);
   color: var(--b3-fg2);
   font-size: calc(14 * var(--colony-px));
@@ -211,7 +211,7 @@
   flex: none;
   place-items: center;
   border-radius: calc(12 * var(--b3u));
-  background: #f3e5d8;
+  background: var(--colony-rust);
   font-size: calc(14.5 * var(--colony-px));
   font-weight: 800;
 }
@@ -365,7 +365,7 @@
   height: calc(48 * var(--b3u));
   border-top: calc(1 * var(--b3u)) solid var(--b3-line);
   border-bottom: calc(1 * var(--b3u)) solid var(--b3-line);
-  background: #fbf9f7;
+  background: var(--colony-cool-surface);
 }
 
 .b3-invoices thead th {
@@ -551,7 +551,7 @@
   gap: calc(24 * var(--b3u));
   padding: calc(32 * var(--b3u)) calc(34 * var(--b3u));
   border-radius: calc(20 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow:
     0 0 0 calc(1 * var(--b3u)) var(--b3-line),
     0 calc(12 * var(--b3u)) calc(40 * var(--b3u)) calc(-28 * var(--b3u))
@@ -673,7 +673,7 @@
   gap: calc(10 * var(--b3u));
   padding: calc(18 * var(--b3u)) calc(20 * var(--b3u));
   border-radius: calc(16 * var(--b3u));
-  background: #fbf8f5;
+  background: var(--colony-warm-surface);
 }
 
 .b3-totals-row {
@@ -835,7 +835,7 @@
   gap: calc(10 * var(--b3u));
   padding: calc(12 * var(--b3u)) calc(14 * var(--b3u));
   border-radius: calc(12 * var(--b3u));
-  background: #fbf8f5;
+  background: var(--colony-warm-surface);
   color: var(--b3-fg);
   font-size: calc(15.5 * var(--colony-px));
   font-weight: 700;
@@ -929,7 +929,7 @@
   gap: calc(4 * var(--b3u));
   padding: calc(14 * var(--b3u)) calc(16 * var(--b3u));
   border-radius: calc(14 * var(--b3u));
-  background: #fbf8f5;
+  background: var(--colony-warm-surface);
 }
 
 .b3-dialog-summary[data-kind="client"] {
@@ -975,7 +975,7 @@
   padding: calc(12 * var(--b3u)) calc(14 * var(--b3u));
   border-radius: calc(14 * var(--b3u));
   background: var(--b3-need-bg);
-  color: #5f3a00;
+  color: var(--colony-warning-ink);
   font-size: calc(15 * var(--colony-px));
   font-weight: 600;
   line-height: 1.45;
@@ -1032,7 +1032,7 @@
   padding: 0 calc(14 * var(--b3u));
   border: calc(1 * var(--b3u)) solid var(--b3-line2);
   border-radius: calc(12 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--b3-fg);
   font-family: inherit;
   font-size: calc(16 * var(--colony-px));
@@ -1146,13 +1146,13 @@
 }
 
 .b3-dialog-actions .b3-btn[data-variant="danger"] {
-  background: #a62e4e;
+  background: hsl(var(--colony-danger));
   box-shadow: none;
-  color: #fff;
+  color: var(--colony-state-foreground);
 }
 
 .b3-dialog-actions .b3-btn:disabled {
-  background: #e9e4ec;
+  background: var(--colony-line-soft);
   box-shadow: none;
   color: var(--b3-muted);
   opacity: 1;
