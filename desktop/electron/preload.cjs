@@ -119,6 +119,8 @@ if (browserTabEnabled)
     stop: (tabId) => browserRequest("stop", { tabId }),
     setControlOwner: (tabId, controlOwner) =>
       browserRequest("control-owner", { tabId, controlOwner }),
+    setPrivate: (tabId, value) =>
+      browserRequest("set-private", { tabId, private: value }),
     focus: (tabId) => browserRequest("focus", { tabId }),
     revealDownload: (downloadId) =>
       browserRequest("reveal-download", { downloadId }),

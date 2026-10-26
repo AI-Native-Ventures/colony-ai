@@ -156,6 +156,11 @@ beforeEach(async () => {
     "@/features/agents/agentStartWatch.ts"
   );
   resetAgentStartWatches();
+  // And the relay lookup the mention reconciler registers while mounted.
+  const { setStartFloorLookup } = await import(
+    "@/features/agents/startFloorLookup.ts"
+  );
+  setStartFloorLookup(null);
   // The toast-scope mirror is a module singleton too. Point it at community A
   // — what `useCommunityInit` does when A's apply completes — so failure
   // warnings deliver by default, as in the running app.
@@ -921,4 +926,95 @@ test("settling one signer's start leaves the other signer's suppression intact",
   assert.equal(startCalls.length, 3);
   assert.equal(startCalls[2].expectedSignerPubkey, IMPORTED_SELF);
   rendered.unmount();
+});
+
+test("a refused wake is still waited on: a stalled notice, and Try again starts the agent once the scope is known", async () => {
+  // GATE-303: the wake was refused for want of a scope and the only trace was
+  // a toast that is gone in seconds. The mention had been sent, so the
+  // conversation keeps saying so, with a way to try again.
+  holdIdentity = true;
+  const { act, rendered } = await renderDetachedStart();
+  const { getAgentStartWatches, retryAgentStart } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  const floor = Math.floor(Date.now() / 1000) - 3;
+
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, floor, {
+      channelId: "welcome",
+      threadHeadId: null,
+    });
+    await settle();
+  });
+
+  assert.equal(startCalls.length, 0, "an unscoped wake must not be fired");
+  const [watch] = getAgentStartWatches("welcome");
+  assert.ok(watch, "the conversation waits on the agent");
+  assert.equal(watch.phase, "stalled");
+  assert.match(watch.reason ?? "", /still connecting/);
+
+  // Colony connects; the person presses Try again.
+  for (const resolveIdentity of heldIdentity.splice(0)) resolveIdentity();
+  await waitForIdentity(act, rendered);
+  await act(async () => {
+    retryAgentStart(AGENT);
+    await settle();
+  });
+
+  assert.equal(startCalls.length, 1);
+  assert.equal(startCalls[0].expectedRelayUrl, RELAY_A);
+  assert.equal(startCalls[0].expectedSignerPubkey, SELF);
+  assert.equal(startCalls[0].forceRestart, true);
+  assert.equal(startCalls[0].replayFloorUnix, floor);
+  rendered.unmount();
+});
+
+test("a start reaches back to an older mention the relay shows nobody answered", async () => {
+  // GATE-303: a newer mention must not move the replay floor past an older one
+  // this session never recorded (it was sent before the app was relaunched).
+  const { setStartFloorLookup } = await import(
+    "@/features/agents/startFloorLookup.ts"
+  );
+  const newer = Math.floor(Date.now() / 1000) - 2;
+  const older = newer - 130;
+  const asked = [];
+  setStartFloorLookup(async (pubkey) => {
+    asked.push(pubkey);
+    return older;
+  });
+  const { act, rendered } = await renderDetachedStart();
+
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, newer);
+    await settle();
+  });
+
+  assert.deepEqual(asked, [AGENT]);
+  assert.equal(startCalls.length, 1);
+  assert.equal(startCalls[0].replayFloorUnix, older);
+  rendered.unmount();
+});
+
+test("a relay that cannot be read does not stop the start", async () => {
+  const { setStartFloorLookup } = await import(
+    "@/features/agents/startFloorLookup.ts"
+  );
+  const given = Math.floor(Date.now() / 1000) - 2;
+  setStartFloorLookup(async () => {
+    throw new Error("relay down");
+  });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const { act, rendered } = await renderDetachedStart();
+    await act(async () => {
+      rendered.result.current.startDetached(AGENT_RECORD, given);
+      await settle();
+    });
+    assert.equal(startCalls.length, 1);
+    assert.equal(startCalls[0].replayFloorUnix, given);
+    rendered.unmount();
+  } finally {
+    console.warn = warn;
+  }
 });

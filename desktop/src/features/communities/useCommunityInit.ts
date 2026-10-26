@@ -39,6 +39,8 @@ import {
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
 import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
+import { resetMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
+import { setStartFloorLookup } from "@/features/agents/startFloorLookup";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
@@ -87,6 +89,8 @@ async function resetCommunityState({
   // were sent in: dropping them keeps their replay floors and "starting" notices
   // from reaching the next one.
   resetAgentStartWatches();
+  resetMentionReconciler();
+  setStartFloorLookup(null);
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();
   }

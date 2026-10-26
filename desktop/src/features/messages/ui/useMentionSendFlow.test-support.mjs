@@ -56,6 +56,10 @@ function load(name, stubs) {
       Error,
       Map,
       Set,
+      // The send flow waits (bounded) for the managed agents to load.
+      clearTimeout,
+      console,
+      setTimeout,
       require: (key) => {
         assert.ok(key in stubs, `unmocked dependency: ${key}`);
         return stubs[key];
@@ -64,7 +68,7 @@ function load(name, stubs) {
   );
   return exports;
 }
-export async function setup({ lifecycle = false } = {}) {
+export async function setup({ lifecycle = false, ...startup } = {}) {
   const { act, renderHook } = await import("@testing-library/react");
   draftStore.clearAllDrafts();
   dom.window.localStorage.clear();
@@ -76,13 +80,29 @@ export async function setup({ lifecycle = false } = {}) {
     publish: null,
     inventory: null,
     watches: [],
+    notes: [],
   };
   const refs = [{ displayName: "RemoteScout", pubkey: KEY, isAgent: true }];
   const query = {
-    data: [],
-    refetch: async () => {
+    // `agents: undefined` is the managed-agents query before its first answer.
+    data: "agents" in startup ? startup.agents : [],
+    // Reads the host answers with, in order, once it answers at all. An
+    // `Error` is a read that failed. Defaults to what `query.data` holds.
+    reads: startup.reads ?? [],
+    refetchCalls: 0,
+    refetch: async (options) => {
       if (control.inventory) await control.inventory.promise;
-      return { data: [] };
+      query.refetchCalls += 1;
+      const next = query.reads.shift();
+      if (next instanceof Error) {
+        // react-query's refetch resolves with an error result unless asked to
+        // throw; the send flow asks.
+        if (options?.throwOnError) throw next;
+        return { data: undefined, error: next };
+      }
+      // The host reports what it holds now, as the real refetch does.
+      if (next !== undefined) query.data = next;
+      return { data: query.data };
     },
   };
   const mutation = {
@@ -142,6 +162,17 @@ export async function setup({ lifecycle = false } = {}) {
       },
       beginAgentStartAttempt: () => 1,
       failAgentStartWatches: noop,
+      lowerAgentStartFloor: noop,
+    },
+    // No relay in these suites: starts use the floor they were given.
+    "@/features/agents/startFloorLookup": {
+      getStartFloorLookup: () => null,
+      lowerFloorFromRelay: async (_pubkey, floorUnix) => floorUnix,
+    },
+    // The reconciler's handle: what the send flow asks of it is recorded here,
+    // apart from `calls`, so it cannot disturb the order-sensitive assertions.
+    "@/features/agents/mentionReconcilerHandle": {
+      noteMentionSentToAgents: (pubkeys) => control.notes.push([...pubkeys]),
     },
     "@/features/agents/channelAgents": {
       applyReusableAgentAccessPolicy: async (agent) => {
@@ -194,6 +225,7 @@ export async function setup({ lifecycle = false } = {}) {
       AgentMentionAuthorizationError: class extends Error {},
     },
   };
+  stubs["./managedAgentsForSend"] = load("managedAgentsForSend", stubs);
   stubs["./useDetachedAgentStart"] = load("useDetachedAgentStart", stubs);
   stubs["./useEnsureAgentMentionsReady"] = load(
     "useEnsureAgentMentionsReady",
@@ -265,7 +297,7 @@ export async function setup({ lifecycle = false } = {}) {
     channelType: "stream",
     customEmoji: [],
     mentions: {
-      memberPubkeys: new Set(),
+      memberPubkeys: new Set(startup.members ?? []),
       hasResolvedMembers: true,
       settlePendingMentionBindings: async () => {},
       extractMentionPersonas: () => [],

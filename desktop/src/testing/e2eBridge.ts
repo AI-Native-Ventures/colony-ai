@@ -2178,6 +2178,12 @@ declare global {
      *  exit: the agent and its runtime rows read as stopped from the next
      *  list on. */
     __BUZZ_E2E_END_MANAGED_AGENT__?: (pubkey: string) => Promise<void>;
+    /** The host cannot list managed agents (launch, before it is ready):
+     *  every `list_managed_agents` rejects until
+     *  `__BUZZ_E2E_RELEASE_MANAGED_AGENT_LIST__()` is called. */
+    __BUZZ_E2E_BLOCK_MANAGED_AGENT_LIST__?: () => void;
+    /** Let `list_managed_agents` answer again. */
+    __BUZZ_E2E_RELEASE_MANAGED_AGENT_LIST__?: () => void;
     /** Release every `sync_agents_to_active_huddle` currently held behind
      *  `syncAgentsToActiveHuddleDelayMs`, letting it resolve without waiting
      *  out the delay. Returns the number of holds flushed. */
@@ -2358,6 +2364,7 @@ let heldChannelMembersReadReleases: Array<() => void> = [];
 // start across a community round-trip needs the hold long enough to be
 // deterministic AND a way to settle it on demand afterwards.
 let heldManagedAgentStartReleases: Array<() => void> = [];
+let managedAgentListBlocked = false;
 // Huddle agent syncs currently held behind `syncAgentsToActiveHuddleDelayMs`,
 // releasable early via `__BUZZ_E2E_RELEASE_HUDDLE_AGENT_SYNCS__()`. The hold
 // must outlast the mid-send mutation a spec injects, then settle on demand
@@ -15642,6 +15649,9 @@ async function handleListManagedAgents(
   config: E2eConfig | undefined,
 ): Promise<RawManagedAgent[]> {
   await delayAgentList(config);
+  if (managedAgentListBlocked) {
+    throw new Error("host not ready");
+  }
   return mockManagedAgents.map(cloneManagedAgent);
 }
 
@@ -18081,14 +18091,53 @@ function sendToMockSocket(args: {
       }
     }
     if (channelIds.length === 0) {
+      // Mentions of one pubkey, read across every channel (the desktop asks
+      // which mentions to a local agent it never touched): serve them from
+      // all channel stores like the relay, honoring authors and since.
+      const mentionedPubkeys = filter["#p"];
+      if (
+        mentionedPubkeys &&
+        mentionedPubkeys.length > 0 &&
+        filter.kinds?.some(
+          (kind) =>
+            kind === KIND_STREAM_MESSAGE || kind === KIND_STREAM_MESSAGE_V2,
+        )
+      ) {
+        const authors = filter.authors?.map((author) => author.toLowerCase());
+        for (const events of mockMessages.values()) {
+          for (const event of events) {
+            if (!filter.kinds?.includes(event.kind)) continue;
+            if (authors && !authors.includes(event.pubkey.toLowerCase())) {
+              continue;
+            }
+            if (filter.since !== undefined && event.created_at < filter.since) {
+              continue;
+            }
+            if (
+              !event.tags.some(
+                (tag) => tag[0] === "p" && mentionedPubkeys.includes(tag[1]),
+              )
+            ) {
+              continue;
+            }
+            sendWsText(socket.handler, ["EVENT", subId, event]);
+          }
+        }
+        sendWsText(socket.handler, ["EOSE", subId]);
+        return;
+      }
       // Aux-backfill filters (reactions/deletions) are `#e`-keyed with no
       // channel tag — serve them across all channel stores like the relay.
       const referencedIds = filter["#e"];
       if (referencedIds && referencedIds.length > 0) {
         const targets = new Set(referencedIds);
+        const authors = filter.authors?.map((author) => author.toLowerCase());
         for (const events of mockMessages.values()) {
           for (const event of events) {
             if (filter.kinds && !filter.kinds.includes(event.kind)) {
+              continue;
+            }
+            if (authors && !authors.includes(event.pubkey.toLowerCase())) {
               continue;
             }
             if (
@@ -19396,6 +19445,13 @@ export function maybeInstallE2eTauriMocks() {
   };
   window.__BUZZ_E2E_END_MANAGED_AGENT__ = async (pubkey: string) => {
     await handleStopManagedAgent({ pubkey });
+  };
+  managedAgentListBlocked = false;
+  window.__BUZZ_E2E_BLOCK_MANAGED_AGENT_LIST__ = () => {
+    managedAgentListBlocked = true;
+  };
+  window.__BUZZ_E2E_RELEASE_MANAGED_AGENT_LIST__ = () => {
+    managedAgentListBlocked = false;
   };
   heldHuddleAgentSyncReleases = [];
   window.__BUZZ_E2E_RELEASE_HUDDLE_AGENT_SYNCS__ = () => {

@@ -18,19 +18,30 @@ import {
 } from "./browserTaskScope";
 import { useWaitingAgentAccess } from "./useBrowserTabs";
 
+/** What the page's footer says about who can use this tab. */
+export type BrowserSharing = {
+  /** AI employees of the business share its tabs (no approval needed). */
+  defaultAccess: boolean;
+  /** An AI employee has control of this tab right now. */
+  agentHasIt: boolean;
+};
+
 /** Person-owned approval and recovery controls above the native browser view. */
 export function BrowserAgentControls({
   channelId,
   hostId,
   active,
   url,
+  isPrivate = false,
   onSharingChange,
 }: {
   channelId: string;
   hostId: string | null;
   active: boolean;
   url: string;
-  onSharingChange?: (shared: boolean) => void;
+  /** The person keeps this tab to themselves: AI employees cannot see it. */
+  isPrivate?: boolean;
+  onSharingChange?: (sharing: BrowserSharing) => void;
 }) {
   const channel = useWorkAreaChannel();
   const { activeCommunity } = useCommunities();
@@ -96,6 +107,9 @@ export function BrowserAgentControls({
       80,
     );
   const busy = state.busy !== null;
+  // Default access: AI employees of the business share its tabs, so there is
+  // nothing to allow. The person keeps a tab private, or takes it back.
+  const shared = state.defaultAccess;
 
   React.useEffect(() => {
     setApproving(false);
@@ -103,10 +117,12 @@ export function BrowserAgentControls({
     void store.start();
     return () => store.dispose();
   }, [store]);
+  const defaultAccess = state.defaultAccess;
+  const agentHasIt = Boolean(grant);
   React.useEffect(() => {
-    onSharingChange?.(Boolean(grant));
-    return () => onSharingChange?.(false);
-  }, [grant, onSharingChange]);
+    onSharingChange?.({ defaultAccess, agentHasIt });
+    return () => onSharingChange?.({ defaultAccess: false, agentHasIt: false });
+  }, [defaultAccess, agentHasIt, onSharingChange]);
 
   React.useEffect(() => {
     if (grant) setApproving(false);
@@ -131,7 +147,11 @@ export function BrowserAgentControls({
             ? `${name} has control`
             : state.recoveryRequired
               ? "Agent access revoked; control recovery needed"
-              : "You’re browsing"}
+              : shared
+                ? isPrivate
+                  ? "Private: AI employees cannot see this tab"
+                  : "AI employees can use this tab"
+                : "You’re browsing"}
         </span>
         {grant ? (
           <div className="flex gap-2">
@@ -152,7 +172,7 @@ export function BrowserAgentControls({
               Take over
             </button>
           </div>
-        ) : (
+        ) : shared ? null : (
           <button
             className="colony-work-area-choice"
             disabled={
@@ -193,7 +213,7 @@ export function BrowserAgentControls({
             : "Updating browser access…"}
         </p>
       ) : null}
-      {!grant && !taskId ? (
+      {!grant && !taskId && !shared ? (
         <p className="text-muted-foreground">
           Open a conversation to approve a browser task.
         </p>
@@ -230,7 +250,7 @@ export function BrowserAgentControls({
             </fieldset>
           ))
         : null}
-      {approving && !grant ? (
+      {approving && !grant && !shared ? (
         <form
           className="flex flex-col gap-2"
           onSubmit={(event) => {
@@ -297,11 +317,11 @@ export function BrowserAgentControls({
           <summary className="cursor-pointer">Approved sites and files</summary>
           <div className="flex flex-col gap-2 pt-2">
             <p>
-              {grant.taskId === taskId
-                ? grant.defaultAccess
-                  ? `${name} opened this browser for ${taskLabel}. Sites it opens are listed here.`
-                  : `Approved for ${taskLabel}.`
-                : "Approved for another conversation task."}
+              {grant.defaultAccess
+                ? `${name} is using this tab. The sites it has used are listed here.`
+                : grant.taskId === taskId
+                  ? `Approved for ${taskLabel}.`
+                  : "Approved for another conversation task."}
             </p>
             <ul className="list-inside list-disc">
               {grant.allowedOrigins.map((origin) => (

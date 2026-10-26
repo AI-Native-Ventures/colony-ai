@@ -4,8 +4,13 @@ import { beforeEach, test } from "node:test";
 import {
   getWorkAreaState,
   initWorkAreaStore,
+  openWorkArea,
   resetWorkAreaStore,
 } from "../dock/workAreaStore.ts";
+import {
+  getBrowserActivityForChannel,
+  noteBrowserEvent,
+} from "./agentBrowserActivity.ts";
 import {
   DEFAULT_ACCESS_TTL_MS,
   allowAgentAccess,
@@ -143,16 +148,16 @@ beforeEach(() => {
   });
 });
 
-test("an agent's first browser call opens the work area browser and grants it that page", async () => {
+test("an agent's first browser call makes a browser page and grants it, and shows the person nothing", async () => {
   broker.emit(ask());
   await settle();
 
   const state = getWorkAreaState(CHANNEL);
-  assert.equal(state.open, true, "the panel is open for the person");
-  assert.equal(state.activeTabId, browserTabId("page-1"));
+  assert.equal(state.open, false, "the dock does not open by itself");
   assert.deepEqual(
-    state.tabs.map((tab) => tab.kind),
-    ["browser"],
+    state.tabs.map((tab) => [tab.id, tab.kind]),
+    [[browserTabId("page-1"), "browser"]],
+    "the page is in the tab strip for the person to find",
   );
 
   assert.deepEqual(
@@ -176,12 +181,71 @@ test("an agent's first browser call opens the work area browser and grants it th
   ]);
 });
 
-test("a thread task opens the browser in its channel", async () => {
+test("an agent never moves what the person is looking at: the dock, the selected tab and a closed dock stay as they are", async () => {
+  openWorkArea(CHANNEL, "terminal");
+  const before = getWorkAreaState(CHANNEL);
+  broker.emit(ask());
+  await settle();
+  const after = getWorkAreaState(CHANNEL);
+  assert.equal(after.open, true);
+  assert.equal(
+    after.activeTabId,
+    before.activeTabId,
+    "the selected tab is unchanged",
+  );
+  assert.deepEqual(
+    after.tabs.map((tab) => tab.kind),
+    ["terminal", "browser"],
+  );
+  assert.equal(after.width, before.width);
+  assert.equal(broker.grants.length, 1);
+
+  // A second request from another agent in the same channel: still quiet.
+  broker.emit(ask({ agentId: "b".repeat(64) }));
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, before.activeTabId);
+  assert.equal(getWorkAreaState(CHANNEL).tabs.length, 3);
+  assert.equal(broker.grants.length, 2);
+});
+
+test("a thread task makes its page in its channel and leaves the dock shut", async () => {
   const root = "cd".repeat(32);
   broker.emit(ask({ taskId: `thread:${CHANNEL}:${root}` }));
   await settle();
-  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  assert.equal(getWorkAreaState(CHANNEL).open, false);
+  assert.equal(getWorkAreaState(CHANNEL).tabs.length, 1);
   assert.equal(broker.grants[0].taskId, `thread:${CHANNEL}:${root}`);
+});
+
+test("several agents get a page each and each shows as using the browser once it acts", async () => {
+  const other = "b".repeat(64);
+  broker.emit(ask());
+  broker.emit(ask({ agentId: other }));
+  await settle();
+  assert.deepEqual(
+    broker.grants.map((grant) => grant.tabId),
+    ["host-1", "host-2"],
+  );
+  noteBrowserEvent({
+    type: "agent-action",
+    entry: {
+      seq: 1,
+      ts: 1,
+      agentId: AGENT,
+      taskId: `conversation:${CHANNEL}`,
+      tabId: "host-1",
+      tool: "browser_open",
+      status: "ok",
+    },
+  });
+  assert.deepEqual(
+    getBrowserActivityForChannel(CHANNEL).map((item) => [
+      item.agentId,
+      item.state,
+      item.hostIds,
+    ]),
+    [[AGENT, "working", ["host-1"]]],
+  );
 });
 
 test("one request at a time per task, and the same page is reused when the grant is renewed", async () => {
@@ -243,11 +307,22 @@ test("requests for another community, another agent shape or a bad task are igno
   assert.equal(getWorkAreaState(CHANNEL).open, false);
 });
 
-test("after the person stopped the agent the panel opens with one Allow card and no grant", async () => {
+test("after the person stopped the agent there is one Allow card and no grant, and the agent shows as waiting for the person", async () => {
   broker.emit(ask({ resume: true }));
   await settle();
   assert.deepEqual(broker.grants, [], "never granted without the person");
-  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  assert.equal(
+    getWorkAreaState(CHANNEL).open,
+    false,
+    "the dock does not open by itself",
+  );
+  assert.deepEqual(
+    getBrowserActivityForChannel(CHANNEL).map((item) => [
+      item.agentId,
+      item.state,
+    ]),
+    [[AGENT, "needs-you"]],
+  );
   const [card] = getWaitingAgentAccess();
   assert.deepEqual(
     [card.agentId, card.taskId, card.channelId, card.hostId],
@@ -259,6 +334,7 @@ test("after the person stopped the agent the panel opens with one Allow card and
   assert.equal(broker.grants[0].tabId, "host-1");
   assert.equal(broker.grants[0].defaultAccess, true);
   assert.deepEqual(getWaitingAgentAccess(), []);
+  assert.deepEqual(getBrowserActivityForChannel(CHANNEL), []);
 });
 
 test("Not now clears the card and grants nothing", async () => {

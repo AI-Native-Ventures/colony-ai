@@ -118,6 +118,10 @@ export function createFakePageDriver() {
       page = { text: "", elements: [] },
       redirects = {},
       sites = {},
+      private: isPrivate = false,
+      attached = false,
+      visible = false,
+      humanInputAt = null,
     } = {}) {
       const tab = {
         id,
@@ -132,6 +136,10 @@ export function createFakePageDriver() {
         history: [],
         loading: false,
         docId: "",
+        private: isPrivate,
+        attached,
+        visible,
+        humanInputAt,
       };
       docCounter += 1;
       tab.docId = `doc-${docCounter}`;
@@ -149,8 +157,42 @@ export function createFakePageDriver() {
     async getTab(id) {
       const tab = tabs.get(id);
       if (!tab) return null;
-      const { businessId, clientId, url, title, controlOwner, loading } = tab;
-      return { id, businessId, clientId, url, title, controlOwner, loading };
+      const {
+        businessId,
+        clientId,
+        url,
+        title,
+        controlOwner,
+        loading,
+        private: isPrivate,
+        attached,
+        visible,
+        humanInputAt,
+      } = tab;
+      return {
+        id,
+        businessId,
+        clientId,
+        url,
+        title,
+        controlOwner,
+        loading,
+        private: isPrivate,
+        attached,
+        visible,
+        humanInputAt,
+      };
+    },
+    async listTabs(businessId, clientId) {
+      return Promise.all(
+        [...tabs.values()]
+          .filter(
+            (tab) =>
+              tab.businessId === businessId &&
+              (tab.clientId ?? null) === (clientId ?? null),
+          )
+          .map((tab) => driver.getTab(tab.id)),
+      );
     },
     controlOwnerOf: (id) => tabs.get(id)?.controlOwner,
     async openTab({ businessId, clientId, url }) {

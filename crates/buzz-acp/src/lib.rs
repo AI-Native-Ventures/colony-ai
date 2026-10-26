@@ -24,6 +24,7 @@ mod scope;
 mod setup_mode;
 mod startup_watch;
 mod tool_permissions;
+mod turn_reply;
 mod usage;
 mod wake_ledger;
 
@@ -3636,6 +3637,7 @@ async fn tokio_main() -> Result<()> {
                             // launched by the same human). Allowlist adds the
                             // explicit pubkey list on top, for external people;
                             // it never revokes same-owner team bots.
+                            let event_id_for_log = buzz_event.event.id;
                             let Some(authorized_event) = authorize_normal_listener_event(
                                 &mut author_gate_ctx,
                                 buzz_event,
@@ -3647,6 +3649,10 @@ async fn tokio_main() -> Result<()> {
                             )
                             .await
                             else {
+                                tracing::info!(
+                                    event_id = %event_id_for_log,
+                                    "event not authorized for this agent - dropping"
+                                );
                                 continue;
                             };
                             let Some(ingress) =
@@ -3654,7 +3660,10 @@ async fn tokio_main() -> Result<()> {
                                     .match_subscription(&rules, &pubkey_hex)
                                     .await
                             else {
-                                tracing::debug!("authorized event matched no rule — dropping");
+                                tracing::info!(
+                                    event_id = %event_id_for_log,
+                                    "authorized event matched no rule - dropping"
+                                );
                                 continue;
                             };
                             // Derive the session scope once, at admission, from
@@ -4440,9 +4449,20 @@ fn wake_ledger_admits(
     match ledger.admit(event, now) {
         wake_ledger::Admission::Duplicate => false,
         wake_ledger::Admission::Live => true,
-        wake_ledger::Admission::CaughtUp => !OWNER_CONTROL_COMMANDS
-            .iter()
-            .any(|command| is_owner_control_command(event, kind_u32, command, agent_pubkey_hex)),
+        wake_ledger::Admission::CaughtUp => {
+            let admitted = !OWNER_CONTROL_COMMANDS.iter().any(|command| {
+                is_owner_control_command(event, kind_u32, command, agent_pubkey_hex)
+            });
+            // A replayed event is the one a person is waiting on after a
+            // restart; GATE-303 lost one with nothing in the log to say why.
+            tracing::info!(
+                event_id = %event.id.to_hex(),
+                created_at = event.created_at.as_secs(),
+                admitted,
+                "replay: caught-up wake event reached the listener"
+            );
+            admitted
+        }
     }
 }
 

@@ -1399,3 +1399,322 @@ test("a person made grant always opens a new tab, even over a blank one", async 
   assert.notEqual(opened.tab.id, "tab-1");
   assert.equal(env.driver.count("openTab"), 1);
 });
+
+// ---- shared tabs (owner decision 26 Oct): default access reaches every tab ----
+
+function sharedSetup(options = {}) {
+  const env = setup({
+    origins: [],
+    defaultAccess: true,
+    url: "about:blank",
+    ...options,
+  });
+  env.driver.addTab({
+    id: "person",
+    url: "https://news.example/home",
+    title: "News",
+    controlOwner: "human",
+    attached: true,
+    visible: true,
+    page: { text: "Headlines", elements: [] },
+  });
+  return env;
+}
+
+test("under default access browser_tabs lists the business's tabs the person has not made private, and says who holds each", async () => {
+  const env = sharedSetup();
+  env.driver.addTab({
+    id: "secret",
+    url: "https://bank.example/",
+    controlOwner: "human",
+    private: true,
+  });
+  env.driver.addTab({
+    id: "other-business",
+    businessId: "biz-2",
+    url: "https://news.example/other",
+    controlOwner: "human",
+  });
+  env.driver.addTab({
+    id: "other-client",
+    clientId: "client-1",
+    url: "https://news.example/client",
+    controlOwner: "human",
+  });
+  const result = await env.call("browser_tabs", {});
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.tabs.map((tab) => [tab.id, tab.shown, tab.control, tab.primary]),
+    [
+      ["tab-1", false, "you", true],
+      ["person", true, "free", false],
+    ],
+  );
+  assert.equal(result.tabs[1].title, "News");
+  assert.equal(result.tabs[1].url, "https://news.example/home");
+});
+
+test("a person made grant still lists only its own tabs", async () => {
+  const env = setup();
+  env.driver.addTab({
+    id: "person",
+    url: "https://shop.example/p",
+    controlOwner: "human",
+  });
+  const result = await env.call("browser_tabs", {});
+  assert.deepEqual(
+    result.tabs.map((tab) => tab.id),
+    ["tab-1"],
+  );
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).code,
+    "not_found",
+  );
+});
+
+test("under default access a task takes over the person's tab on first use, with no approval", async () => {
+  const env = sharedSetup();
+  const result = await env.call("browser_snapshot", { tab: "person" });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.ok(result.snapshot.includes("untrusted-page-content"));
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds.sort(), [
+    "person",
+    "tab-1",
+  ]);
+  assert.ok(
+    env.caps
+      .getGrant(env.grant.id)
+      .allowedOrigins.includes("https://news.example"),
+  );
+  assert.equal(env.driver.tabs.get("person").controlOwner, "agent");
+  assert.ok(
+    env.driver.calls.some(
+      (call) =>
+        call.op === "setControl" &&
+        call.id === "person" &&
+        call.owner === "agent",
+    ),
+  );
+  assert.equal(
+    env.events.some((event) => event.type === "origin-approval-requested"),
+    false,
+  );
+  // Control is the agent's now, and shows in the list.
+  const tabs = await env.call("browser_tabs", {});
+  assert.equal(tabs.tabs.find((tab) => tab.id === "person").control, "you");
+  assert.ok(
+    env.events.some(
+      (event) => event.type === "grant-changed" && event.change === "tab-bound",
+    ),
+  );
+});
+
+test("a private tab, a tab of another business and a tab another task holds are all refused", async () => {
+  const env = sharedSetup();
+  env.driver.addTab({
+    id: "secret",
+    url: "https://bank.example/",
+    controlOwner: "human",
+    private: true,
+  });
+  env.driver.addTab({
+    id: "other-business",
+    businessId: "biz-2",
+    url: "https://news.example/o",
+    controlOwner: "human",
+  });
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "secret" })).code,
+    "not_found",
+  );
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "other-business" })).code,
+    "not_found",
+  );
+  assert.equal(env.driver.tabs.get("secret").controlOwner, "human");
+  assert.equal(env.driver.tabs.get("other-business").controlOwner, "human");
+  // Another task takes the person's tab first: this one is told it is busy.
+  const second = env.caps.issue({
+    agentId: "agent-b",
+    taskId: "task-2",
+    businessId: "biz-1",
+    tabId: "tab-b",
+    allowedOrigins: [],
+    defaultAccess: true,
+  });
+  env.driver.addTab({ id: "tab-b", url: "about:blank" });
+  assert.equal(
+    (await env.broker.call(second.token, "browser_snapshot", { tab: "person" }))
+      .ok,
+    true,
+  );
+  const busy = await env.call("browser_snapshot", { tab: "person" });
+  assert.equal(busy.code, "tab_busy");
+  const tabs = await env.call("browser_tabs", {});
+  assert.equal(
+    tabs.tabs.find((tab) => tab.id === "person").control,
+    "another AI employee",
+  );
+  assert.equal(env.driver.tabs.get("person").controlOwner, "agent");
+});
+
+test("a tab on a private network address or another scheme is not taken over", async () => {
+  const env = sharedSetup();
+  env.driver.addTab({
+    id: "local",
+    url: "http://127.0.0.1:3000/",
+    controlOwner: "human",
+  });
+  env.driver.addTab({
+    id: "file",
+    url: "file:///etc/passwd",
+    controlOwner: "human",
+  });
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "local" })).ok,
+    false,
+  );
+  assert.equal((await env.call("browser_snapshot", { tab: "file" })).ok, false);
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, ["tab-1"]);
+  assert.equal(env.driver.tabs.get("local").controlOwner, "human");
+});
+
+test("the person using a tab takes it back at once, the task lives on, and the agent waits before asking again", async () => {
+  const env = sharedSetup();
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).ok,
+    true,
+  );
+  const epochBefore = env.caps.getGrant(env.grant.id).epoch;
+  env.broker.notifyHumanInput("person");
+  assert.equal(env.caps.getGrant(env.grant.id).state, "active");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, ["tab-1"]);
+  assert.ok(env.caps.getGrant(env.grant.id).epoch > epochBefore);
+  assert.equal(env.driver.tabs.get("person").controlOwner, "human");
+  assert.ok(
+    env.events.some(
+      (event) =>
+        event.type === "grant-changed" && event.change === "tab-released",
+    ),
+  );
+  // Its own other tab still works.
+  assert.equal((await env.call("browser_snapshot", { tab: "tab-1" })).ok, true);
+  // The person pressed a key a moment ago: wait.
+  env.driver.tabs.get("person").humanInputAt = env.clock.wall - 1_000;
+  assert.equal(
+    (await env.call("browser_read", { tab: "person" })).code,
+    "person_active",
+  );
+  assert.equal(env.driver.tabs.get("person").controlOwner, "human");
+  // Asking again once the person has been quiet works.
+  env.clock.wall += 5_000;
+  assert.equal((await env.call("browser_read", { tab: "person" })).ok, true);
+  assert.equal(env.driver.tabs.get("person").controlOwner, "agent");
+});
+
+test("the person's input cancels what the agent was doing in that tab", async () => {
+  const env = sharedSetup();
+  const gate = env.driver.hold("snapshot");
+  const pending = env.call("browser_snapshot", { tab: "person" });
+  await until(() => env.driver.count("snapshot") >= 1);
+  env.broker.notifyHumanInput("person");
+  gate.resolve();
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "fenced");
+});
+
+test("a person made grant keeps its tab when the person types in it", async () => {
+  const env = setup();
+  env.broker.notifyHumanInput("tab-1");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, ["tab-1"]);
+});
+
+test("marking a tab private lets a default task go, and ends a person made task on it", async () => {
+  const env = sharedSetup();
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).ok,
+    true,
+  );
+  env.driver.tabs.get("person").private = true;
+  env.broker.notifyTabPrivate("person");
+  assert.equal(env.caps.getGrant(env.grant.id).state, "active");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, ["tab-1"]);
+  assert.equal(env.driver.tabs.get("person").controlOwner, "human");
+  assert.equal(
+    (await env.call("browser_read", { tab: "person" })).code,
+    "not_found",
+  );
+
+  const manual = setup();
+  manual.broker.notifyTabPrivate("tab-1");
+  assert.equal(manual.caps.getGrant(manual.grant.id).state, "revoked");
+});
+
+test("the person can take one tab back with Take over and the task keeps its others", async () => {
+  const env = sharedSetup();
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).ok,
+    true,
+  );
+  assert.equal(env.broker.releaseTab(env.grant.id, "person"), true);
+  assert.equal(env.caps.getGrant(env.grant.id).state, "active");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, ["tab-1"]);
+  assert.equal(env.driver.tabs.get("person").controlOwner, "human");
+  assert.equal(env.broker.releaseTab(env.grant.id, "person"), false);
+});
+
+test("a task cannot close the person's tab, even one it controls", async () => {
+  const env = sharedSetup();
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).ok,
+    true,
+  );
+  const closed = await env.call("browser_close", { tab: "person" });
+  assert.equal(closed.code, "invalid_input");
+  assert.ok(env.driver.tabs.has("person"));
+});
+
+test("the tabs a task took over return to the person when the task ends", async () => {
+  const env = sharedSetup();
+  assert.equal(
+    (await env.call("browser_snapshot", { tab: "person" })).ok,
+    true,
+  );
+  env.caps.revoke(env.grant.id);
+  await until(() => env.driver.tabs.get("person").controlOwner === "human");
+  assert.equal(env.driver.tabs.get("person").controlOwner, "human");
+});
+
+test("taking over the person's tabs is capped apart from the task's own tabs", async () => {
+  const env = sharedSetup();
+  for (let index = 0; index < 9; index += 1)
+    env.driver.addTab({
+      id: `p${index}`,
+      url: "https://news.example/",
+      controlOwner: "human",
+    });
+  let refused = null;
+  for (let index = 0; index < 9; index += 1) {
+    const result = await env.call("browser_read", { tab: `p${index}` });
+    if (!result.ok) refused = { index, code: result.code };
+  }
+  assert.deepEqual(refused, { index: 8, code: "tab_limit" });
+  // The task can still open pages of its own.
+  assert.equal(
+    (await env.call("browser_open", { url: "https://news.example/x" })).ok,
+    true,
+  );
+});
+
+test("browser_open uses the home page unless the person is using it, then it opens a tab of its own", async () => {
+  const env = sharedSetup();
+  env.broker.notifyHumanInput("tab-1");
+  env.driver.tabs.get("tab-1").humanInputAt = env.clock.wall - 500;
+  const result = await env.call("browser_open", {
+    url: "https://news.example/x",
+  });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.notEqual(result.tab.id, "tab-1");
+  assert.equal(env.driver.count("openTab"), 1);
+});

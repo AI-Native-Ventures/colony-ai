@@ -1,4 +1,5 @@
 import {
+  addWorkAreaTab,
   getWorkAreaState,
   MAX_TABS_PER_CHANNEL,
   openWorkArea,
@@ -65,6 +66,11 @@ export type BrowserPage = {
   error: string | null;
   /** True while the host tab is being created. */
   opening: boolean;
+  /**
+   * Kept to the person: AI employees cannot see or use this page. Persisted,
+   * and applied to the live tab whenever one is made.
+   */
+  private: boolean;
 };
 
 export type BrowserNotice = {
@@ -82,7 +88,12 @@ export type BrowserShortcutRequest = {
   action: BrowserShortcutAction;
 };
 
-type StoredPage = { key: string; url: string; title: string };
+type StoredPage = {
+  key: string;
+  url: string;
+  title: string;
+  private?: boolean;
+};
 type StoredChannel = { pages: StoredPage[]; touchedAt: number };
 
 const STORAGE_PREFIX = "colony-work-area-browser.v1:";
@@ -146,6 +157,11 @@ export function getBrowserNotices(key: string): readonly BrowserNotice[] {
 }
 
 /** The active community's business id, or null before `initBrowserTabsStore`. */
+/** The page whose live host tab is `hostId`, or null. */
+export function getBrowserPageByHost(hostId: string): BrowserPage | null {
+  return pageForHost(hostId);
+}
+
 export function getBrowserBusinessId(): string | null {
   return scope;
 }
@@ -216,6 +232,7 @@ function parseStored(raw: string | null): Record<string, StoredChannel> {
               typeof page.title === "string"
                 ? page.title.slice(0, MAX_STORED_TITLE)
                 : "",
+            ...(page.private === true ? { private: true } : {}),
           });
           if (remembered.length >= MAX_BROWSER_PAGES_PER_CHANNEL) break;
         }
@@ -285,6 +302,7 @@ function rememberPage(page: BrowserPage) {
       key: page.key,
       url: page.url.slice(0, MAX_STORED_URL),
       title: page.title.slice(0, MAX_STORED_TITLE),
+      ...(page.private ? { private: true } : {}),
     };
     return current.some((item) => item.key === page.key)
       ? current.map((item) => (item.key === page.key ? entry : item))
@@ -316,6 +334,7 @@ function blankPage(key: string, channelId: string): BrowserPage {
     canGoForward: false,
     error: null,
     opening: false,
+    private: false,
   };
 }
 
@@ -445,6 +464,7 @@ export function ensureBrowserPage(channelId: string, key: string) {
       ...blankPage(key, channelId),
       url: remembered?.url ?? "",
       title: remembered?.title ?? "",
+      private: remembered?.private === true,
     };
     setPage(page, { persist: !remembered });
   }
@@ -468,6 +488,7 @@ function applyTabState(page: BrowserPage, tab: BrowserTabState): BrowserPage {
     // A blocked link leaves the current page on screen; it is a notice, not
     // an error page, and is reported once through `applyBlockedLinkNotice`.
     error: blockedLink ? null : tab.error,
+    private: tab.private === true,
   };
   return samePage(page, next) ? page : next;
 }
@@ -481,7 +502,8 @@ function samePage(a: BrowserPage, b: BrowserPage) {
     a.canGoBack === b.canGoBack &&
     a.canGoForward === b.canGoForward &&
     a.error === b.error &&
-    a.opening === b.opening
+    a.opening === b.opening &&
+    a.private === b.private
   );
 }
 
@@ -561,7 +583,7 @@ function handleHostEvent(event: BrowserHostEvent) {
         closeHostTab(event.tab.id);
         return;
       }
-      adoptPopup(opener.channelId, event.tab);
+      adoptPopup(opener.channelId, event.tab, event.background === true);
       return;
     }
     case "closed": {
@@ -626,8 +648,16 @@ function handleHostEvent(event: BrowserHostEvent) {
   }
 }
 
-/** A window a page opened: a new page and dock tab beside it, in front. */
-function adoptPopup(channelId: string, tab: BrowserTabState) {
+/**
+ * A window a page opened: a new page and dock tab beside it, in front. A page
+ * an AI employee opened (`background`) is added to the tab strip and nothing
+ * else: the dock does not open and the person's selected tab does not change.
+ */
+function adoptPopup(
+  channelId: string,
+  tab: BrowserTabState,
+  background = false,
+) {
   if (getWorkAreaState(channelId).tabs.length >= MAX_TABS_PER_CHANNEL) {
     closeHostTab(tab.id);
     return;
@@ -638,7 +668,8 @@ function adoptPopup(channelId: string, tab: BrowserTabState) {
   const page = applyTabState(blankPage(key, channelId), latest);
   hostIndex.set(tab.id, key);
   setPage(page, { persist: true });
-  openWorkArea(channelId, "browser", browserTabId(key));
+  if (background) addWorkAreaTab(channelId, "browser", browserTabId(key));
+  else openWorkArea(channelId, "browser", browserTabId(key));
 }
 
 /**
@@ -676,9 +707,20 @@ async function startHostTab(key: string, url?: string) {
   hostIndex.set(tab.id, key);
   const latest = pendingStates.get(tab.id) ?? tab;
   pendingStates.delete(tab.id);
-  updatePage(key, (current) => applyTabState(current, latest), {
-    persist: true,
-  });
+  // A page the person kept private stays private in its new live tab.
+  const keepPrivate = page.private;
+  updatePage(
+    key,
+    (current) => ({
+      ...applyTabState(current, latest),
+      private: keepPrivate || latest.private === true,
+    }),
+    { persist: true },
+  );
+  if (keepPrivate && latest.private !== true)
+    void callHost(() => host.setPrivate(tab.id, true)).catch(() => {
+      // The page shows as private; the next refresh of its state corrects it.
+    });
   applyBlockedLinkNotice(key, latest);
 }
 
@@ -728,6 +770,25 @@ export async function ensureBrowserHostTab(
   if (page.hostId) return page.hostId;
   if (!page.opening) await startHostTab(key, page.url || undefined);
   return pages.get(key)?.hostId ?? null;
+}
+
+/**
+ * The person keeps a page to themselves (or shares it again). The page shows
+ * the change at once and the live tab follows; a refusal puts it back.
+ */
+export function setBrowserPagePrivate(key: string, value: boolean) {
+  const page = pages.get(key);
+  if (!page || page.private === value) return;
+  updatePage(key, (current) => ({ ...current, private: value }), {
+    persist: true,
+  });
+  const hostId = page.hostId;
+  if (!hostId) return;
+  void callHost(() => host.setPrivate(hostId, value)).catch(() => {
+    updatePage(key, (current) => ({ ...current, private: !value }), {
+      persist: true,
+    });
+  });
 }
 
 /** Navigate a page to what the person typed. Refusals come back as a message. */

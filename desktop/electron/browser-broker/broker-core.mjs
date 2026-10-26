@@ -68,6 +68,9 @@ const MESSAGES = {
   use_upload_tool: "File choosers open through browser_upload.",
   timeout: "The page did not respond in time.",
   tab_limit: "Too many tabs for this task.",
+  tab_busy: "Another AI employee is using that tab.",
+  person_active:
+    "The person is using that tab right now. Try again in a few seconds.",
   invalid_input: "Invalid input.",
   busy: "Another browser action is still running for this task.",
   too_large: "The result was too large.",
@@ -148,6 +151,9 @@ function describeHash(described) {
     described?.form?.fields?.length,
   ]);
 }
+
+/** After the person acts in a tab the agent leaves it alone for this long. */
+export const HUMAN_QUIET_MS = 4_000;
 
 export function createBroker({
   capabilities,
@@ -456,7 +462,15 @@ export function createBroker({
 
   async function resolveTab(ctx, tabId) {
     ctx.check();
-    const authorized = capabilities.authorize(ctx.token, { tabId });
+    let authorized = capabilities.authorize(ctx.token, { tabId });
+    if (
+      !authorized.ok &&
+      authorized.code === "tab_denied" &&
+      ctx.grant.defaultAccess
+    ) {
+      await adoptTab(ctx, tabId);
+      authorized = capabilities.authorize(ctx.token, { tabId });
+    }
     if (!authorized.ok)
       throw new BrokerError(
         authorized.code === "tab_denied" ? "not_found" : authorized.code,
@@ -538,6 +552,70 @@ export function createBroker({
       loading: Boolean(info.loading),
       primary: grant.primaryTabId === info.id,
     };
+  }
+
+  /**
+   * Under default access a task can take over any work area tab of its own
+   * business that the person has not marked private: the person's, or one an
+   * agent opened for another task. One agent controls a tab at a time, and the
+   * person's own use of it always wins (see `notifyHumanInput`).
+   */
+  async function adoptTab(ctx, tabId) {
+    const info = await driver.getTab(tabId);
+    if (
+      !info ||
+      info.private ||
+      info.businessId !== ctx.grant.businessId ||
+      (info.clientId ?? null) !== ctx.grant.clientId
+    )
+      throw new BrokerError("not_found");
+    const holder = capabilities.grantForTab(tabId);
+    if (holder && holder.id !== ctx.grant.id) throw new BrokerError("tab_busy");
+    if (
+      Number.isFinite(info.humanInputAt) &&
+      now() - info.humanInputAt < HUMAN_QUIET_MS
+    )
+      throw new BrokerError("person_active");
+    if (!approvedAboutBlank(info.url)) {
+      // The site is already open in the owner's own browser, in their own
+      // business: the address rules still apply, nothing else is asked.
+      const checked = checkUrl(info.url, {
+        privateExceptions: ctx.grant.privateExceptions,
+      });
+      if (!checked.ok) throw new BrokerError(checked.code, checked.reason);
+      try {
+        capabilities.approveOrigin(ctx.grant.id, checked.url);
+      } catch {
+        throw new BrokerError("origin_approval_required", undefined, {
+          origin: checked.origin,
+        });
+      }
+    }
+    try {
+      capabilities.bindTab(ctx.grant.id, tabId, { adopted: true });
+    } catch (error) {
+      throw new BrokerError(error?.code ?? "tab_limit");
+    }
+    ctx.refresh();
+    try {
+      await driver.setControl?.(tabId, "agent");
+    } catch (error) {
+      capabilities.releaseTab(ctx.grant.id, tabId, "control unavailable");
+      throw error;
+    }
+    ctx.check();
+  }
+
+  /** Hand one tab back: the grant lives on, the agent just loses that page. */
+  function handBack(grant, tabId, reason) {
+    if (!capabilities.releaseTab(grant.id, tabId, reason)) return false;
+    registries.delete(tabId);
+    documentIds.delete(tabId);
+    for (const [actionId, entry] of pending) {
+      if (entry.tabId === tabId) settle(actionId, "fenced");
+    }
+    releaseTabControl(tabId, grant);
+    return true;
   }
 
   async function pageFinal(ctx, tabId) {
@@ -650,6 +728,34 @@ export function createBroker({
     },
 
     async browser_tabs(ctx) {
+      if (ctx.grant.defaultAccess && driver.listTabs) {
+        const infos = await driver.listTabs(
+          ctx.grant.businessId,
+          ctx.grant.clientId,
+        );
+        return {
+          tabs: infos
+            .filter(
+              (info) =>
+                !info.private &&
+                info.businessId === ctx.grant.businessId &&
+                (info.clientId ?? null) === ctx.grant.clientId,
+            )
+            .map((info) => {
+              const holder = capabilities.grantForTab(info.id);
+              return {
+                ...tabView(info, ctx.grant),
+                // The page the person is looking at right now.
+                shown: Boolean(info.attached && info.visible),
+                control: holder
+                  ? holder.id === ctx.grant.id
+                    ? "you"
+                    : "another AI employee"
+                  : "free",
+              };
+            }),
+        };
+      }
       const tabs = [];
       for (const tabId of ctx.grant.tabIds) {
         const info = await driver.getTab(tabId);
@@ -664,18 +770,33 @@ export function createBroker({
       // The tab the app made for this task is still empty: use it, so the
       // person watches the page load where they are already looking.
       if (ctx.grant.defaultAccess && ctx.grant.primaryTabId) {
-        const primary = await resolveTab(ctx, ctx.grant.primaryTabId);
+        const home = await driver.getTab(ctx.grant.primaryTabId);
         if (
-          approvedAboutBlank(primary.url) &&
+          home &&
+          approvedAboutBlank(home.url) &&
           !openedTabs.get(ctx.grant.id)?.size
         ) {
-          const result = await driver.navigate(primary.id, target.url, {
-            pinned: target.pinned,
-            signal: ctx.signal,
-            check: ctx.check,
+          // A home page the person is using, or another task holds, is left
+          // alone: the page opens in a new tab of its own instead.
+          const primary = await resolveTab(ctx, home.id).catch((error) => {
+            if (
+              error instanceof BrokerError &&
+              ["person_active", "tab_busy", "not_found"].includes(error.code)
+            )
+              return null;
+            throw error;
           });
-          blocked(result);
-          return { tab: tabView(await driver.getTab(primary.id), ctx.grant) };
+          if (primary) {
+            const result = await driver.navigate(primary.id, target.url, {
+              pinned: target.pinned,
+              signal: ctx.signal,
+              check: ctx.check,
+            });
+            blocked(result);
+            return {
+              tab: tabView(await driver.getTab(primary.id), ctx.grant),
+            };
+          }
         }
       }
       const created = await driver.openTab({
@@ -706,12 +827,13 @@ export function createBroker({
     },
 
     async browser_close(ctx, args) {
-      await resolveTab(ctx, args.tab);
+      // The person's tabs, and tabs other tasks opened, are never closed here.
       if (!openedTabs.get(ctx.grant.id)?.has(args.tab))
         throw new BrokerError(
           "invalid_input",
           "Only tabs opened by this task can be closed.",
         );
+      await resolveTab(ctx, args.tab);
       await driver.closeTab(args.tab);
       capabilities.unbindTab(ctx.grant.id, args.tab);
       openedTabs.get(ctx.grant.id)?.delete(args.tab);
@@ -1109,6 +1231,27 @@ export function createBroker({
       capabilities.approveOrigin(grantId, url, options),
     revoke: (grantId, reason) => capabilities.revoke(grantId, reason),
     takeOver: (grantId) => capabilities.takeOver(grantId),
+    /** The person takes one tab back. The task keeps its other tabs. */
+    releaseTab(grantId, tabId, reason = "person took over") {
+      const grant = capabilities.getGrant(grantId);
+      return grant ? handBack(grant, tabId, reason) : false;
+    },
+    /**
+     * The person pressed a key or the mouse in a tab (never the agent's own
+     * input). A task under default access loses that one tab until it asks
+     * again; a task the person made keeps it, as it always did.
+     */
+    notifyHumanInput(tabId) {
+      const grant = capabilities.grantForTab(tabId);
+      if (grant?.defaultAccess) handBack(grant, tabId, "person is using it");
+    },
+    /** The person marked a tab private: no task may hold or see it. */
+    notifyTabPrivate(tabId) {
+      const grant = capabilities.grantForTab(tabId);
+      if (!grant) return;
+      if (grant.defaultAccess) handBack(grant, tabId, "made private");
+      else capabilities.revoke(grant.id, "made private");
+    },
     /** Native cleanup is separate from immediate, authoritative access fencing. */
     completeControlRelease: (grantId) =>
       Promise.all(

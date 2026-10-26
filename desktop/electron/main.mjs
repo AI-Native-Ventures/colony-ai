@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  BrowserWindow,
   Menu,
   WebContentsView,
   app,
@@ -117,6 +118,7 @@ app.setPath(
 const browserTabEnabled = process.env.COLONY_DISABLE_BROWSER_TAB !== "1";
 const browserHost = createBrowserHost({
   WebContentsView,
+  BrowserWindow,
   session,
   userDataPath: app.getPath("userData"),
   downloadsPath: app.getPath("downloads"),

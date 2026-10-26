@@ -65,7 +65,7 @@ export function BrowserViewport({ page, active }: BrowserViewportProps) {
           <p>Open a website or a local app. Type its address above.</p>
           <p className="colony-browser-state-note">
             You sign in to sites yourself here. This browser is kept separate
-            for this business and is not shared with agents.
+            for this business.
           </p>
         </div>
       ) : null}

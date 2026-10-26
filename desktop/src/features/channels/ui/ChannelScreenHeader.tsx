@@ -19,6 +19,7 @@ import {
 } from "@/features/profile/ui/ProfileAvatarWithStatus";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 import { UserNameIndicators } from "@/features/user-status/ui/UserNameIndicators";
+import { ChannelBrowserActivityButton } from "@/features/workarea/browser/BrowserActivity";
 import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
 import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
@@ -152,6 +153,9 @@ export function ChannelScreenHeader({
           </button>
         </HeaderTip>
       ) : null}
+      {showJoinButton || !workArea ? null : (
+        <ChannelBrowserActivityButton channelId={activeChannel.id} />
+      )}
       {showJoinButton || !workArea ? null : (
         <HeaderTip label="Work area">
           <button
