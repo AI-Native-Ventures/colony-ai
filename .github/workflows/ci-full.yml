@@ -1,0 +1,104 @@
+name: CI full suite
+
+# Manual only. The everyday gate (ci.yml) tests what a change touches; this runs
+# everything the project has: every Rust crate (lint, unit, cross-compile,
+# Windows), the PostgreSQL suite, relay end-to-end tests, the full desktop E2E
+# suites (all smoke shards and the relay-backed integration project), the macOS
+# desktop build, the web and mobile clients, and the dependency policy.
+#
+# Run it from Actions > "CI full suite" > Run workflow before a release, or
+# whenever a broad refactor needs the whole net. It reuses the _ci-*.yml
+# workflows with every input set to true.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-full-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust
+    uses: ./.github/workflows/_ci-rust.yml
+    with:
+      rust: true
+      desktop_rust: true
+      lane: required
+
+  rust-cross-compile-domain:
+    name: Rust Cross-Compile
+    uses: ./.github/workflows/_ci-rust.yml
+    with:
+      rust: true
+      desktop_rust: true
+      lane: cross-compile
+
+  desktop-domain:
+    name: Desktop Domain
+    uses: ./.github/workflows/_ci-desktop.yml
+    with:
+      rust: true
+      desktop: true
+      desktop_rust: true
+
+  relay-artifacts-domain:
+    name: Relay Artifact Producer
+    uses: ./.github/workflows/_ci-relay.yml
+    with:
+      rust: true
+      desktop: true
+      desktop_rust: true
+      lane: artifacts
+
+  postgres-domain:
+    name: PostgreSQL Domain
+    needs: [relay-artifacts-domain]
+    uses: ./.github/workflows/_ci-relay.yml
+    with:
+      rust: true
+      desktop: true
+      desktop_rust: true
+      lane: postgres
+
+  desktop-macos-domain:
+    name: Desktop macOS Domain
+    uses: ./.github/workflows/_ci-desktop-macos.yml
+    with:
+      rust: true
+      desktop: true
+      desktop_rust: true
+
+  relay-domain:
+    name: Relay and PostgreSQL
+    needs: [relay-artifacts-domain]
+    uses: ./.github/workflows/_ci-relay.yml
+    with:
+      rust: true
+      desktop: true
+      desktop_rust: true
+      lane: required
+
+  clients:
+    name: Clients
+    uses: ./.github/workflows/_ci-clients.yml
+    with:
+      web: true
+      mobile: true
+      lane: required
+
+  mobile-swift-domain:
+    name: Mobile Swift Domain
+    uses: ./.github/workflows/_ci-clients.yml
+    with:
+      web: true
+      mobile: true
+      lane: mobile-swift
+
+  security-domain:
+    name: Security Domain
+    uses: ./.github/workflows/_ci-security.yml
+    with:
+      rust: true

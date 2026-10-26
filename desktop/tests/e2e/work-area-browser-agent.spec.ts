@@ -5,20 +5,6 @@ import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { installBrowserBrokerFake } from "./helpers/browserBrokerFake";
 
 const agentId = "a".repeat(64);
-type Fixture = {
-  calls: { action: string; payload: Record<string, unknown> }[];
-  grant(): { allowedOrigins: string[] } | null;
-  confirmed(): number;
-  holdConfirmation(): void;
-  failNextStop(): void;
-  confirmation(category: string, summary: string): void;
-  site(origin: string): void;
-};
-declare global {
-  interface Window {
-    colonyBrowserControlFixture?: Fixture;
-  }
-}
 
 async function boot(page: Page, enabled = true, channelName = "alice-tyler") {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -275,7 +261,14 @@ test("stream thread task reaches browser approval and updates while the dock sta
   const approve = controls(page).getByRole("button", {
     name: "Allow an agent",
   });
-  await expect(approve).toBeDisabled();
+  // A channel with no thread open is its own conversation task. The agent in
+  // this fixture keeps a session per thread, so it cannot be allowed here.
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  await expect(controls(page)).toContainText(
+    "No running agent is available for this channel.",
+  );
+  await controls(page).getByRole("button", { name: "Cancel" }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -340,7 +333,7 @@ test("stream thread task reaches browser approval and updates while the dock sta
       .getByTestId("auxiliary-panel-close")
       .click();
     await expect(page.getByTestId("message-thread-panel")).toHaveCount(0);
-    await expect(approve).toBeDisabled();
+    await expect(approve).toBeEnabled();
   }
   await dock.getByRole("tab", { name: "Canvas", exact: true }).click();
   await expect(dock.getByTestId("channel-canvas-editor")).toHaveValue(

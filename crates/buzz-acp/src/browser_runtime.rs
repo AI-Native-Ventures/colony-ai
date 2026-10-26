@@ -63,7 +63,6 @@ fn credential(master: &str, agent: &str, task: &str, origin: &str) -> Result<Str
 fn with_browser_server(
     mut servers: Vec<McpServer>,
     scope: Option<&SessionScope>,
-    channel_type: Option<&str>,
     agent: &str,
     relay: &str,
     get_env: impl Fn(&str) -> Option<String>,
@@ -87,10 +86,11 @@ fn with_browser_server(
             }
             format!("thread:{channel_id}:{root_event_id}")
         }
-        Some(SessionScope::Conversation { channel_id }) if channel_type == Some("dm") => {
-            format!("conversation:{channel_id}")
-        }
-        _ => return Ok(servers),
+        // A DM, or a channel the agent answers as one conversation. The task is
+        // the same either way: the channel's own conversation.
+        Some(SessionScope::Conversation { channel_id }) => format!("conversation:{channel_id}"),
+        // Heartbeats and other turns outside a channel have no task to browse for.
+        None => return Ok(servers),
     };
     let Some(launch) = LAUNCH_KEYS
         .iter()
@@ -153,13 +153,10 @@ fn with_browser_server(
 pub(crate) fn mcp_servers_with_browser(
     servers: Vec<McpServer>,
     scope: Option<&SessionScope>,
-    channel_type: Option<&str>,
     agent: &str,
     relay: &str,
 ) -> Result<Vec<McpServer>, AcpError> {
-    with_browser_server(servers, scope, channel_type, agent, relay, |key| {
-        std::env::var(key).ok()
-    })
+    with_browser_server(servers, scope, agent, relay, |key| std::env::var(key).ok())
 }
 
 /// Browser authority is never inherited by the general agent subprocess.
@@ -278,7 +275,6 @@ mod tests {
         let servers = with_browser_server(
             vec![],
             Some(&thread()),
-            Some("channel"),
             &"ab".repeat(32),
             "wss://RELAY.example:443/events?auth=fake",
             launch,
@@ -315,14 +311,10 @@ mod tests {
     #[test]
     fn no_server_without_opt_in_complete_launch_and_eligible_scope() {
         let scope = thread();
-        let conversation = SessionScope::Conversation {
-            channel_id: scope.channel_id(),
-        };
         for flag in [None, Some("0"), Some("true"), Some("01"), Some("1 ")] {
             let servers = with_browser_server(
                 vec![],
                 Some(&scope),
-                None,
                 &"a".repeat(64),
                 "https://relay.example",
                 |key| {
@@ -340,7 +332,6 @@ mod tests {
             let servers = with_browser_server(
                 vec![],
                 Some(&scope),
-                None,
                 &"a".repeat(64),
                 "https://relay.example",
                 |name| if name == *key { None } else { launch(name) },
@@ -348,35 +339,19 @@ mod tests {
             .expect("missing live host");
             assert!(servers.is_empty());
         }
-        for scope in [None, Some(&conversation)] {
-            let servers = with_browser_server(
-                vec![],
-                scope,
-                Some("channel"),
-                &"a".repeat(64),
-                "https://relay.example",
-                launch,
-            )
-            .expect("ineligible scope");
-            assert!(servers.is_empty());
-        }
-        assert_eq!(
-            with_browser_server(
-                vec![],
-                Some(&conversation),
-                Some("dm"),
-                &"a".repeat(64),
-                "https://relay.example",
-                launch,
-            )
-            .expect("DM server")
-            .len(),
-            1
-        );
+        // A turn outside any channel (a heartbeat) has no task to browse for.
+        let servers = with_browser_server(
+            vec![],
+            None,
+            &"a".repeat(64),
+            "https://relay.example",
+            launch,
+        )
+        .expect("ineligible scope");
+        assert!(servers.is_empty());
         let servers = with_browser_server(
             vec![],
             Some(&scope),
-            None,
             &"a".repeat(64),
             "https://relay.example",
             |key| {
@@ -394,6 +369,35 @@ mod tests {
             .any(|entry| entry.name == "ELECTRON_RUN_AS_NODE"));
     }
 
+    /// Owner report, 25 Oct: Scout answered "No browser access in this chat
+    /// yet". A channel conversation (the default session policy) used to get
+    /// no browser server at all; only DMs and thread sessions did.
+    #[test]
+    fn channel_conversation_gets_the_browser_server_like_a_dm() {
+        let channel_id =
+            Uuid::parse_str("12345678-1234-5678-9abc-123456789abc").expect("fixture UUID");
+        let conversation = SessionScope::Conversation { channel_id };
+        let servers = with_browser_server(
+            vec![],
+            Some(&conversation),
+            &"a".repeat(64),
+            "https://relay.example",
+            launch,
+        )
+        .expect("conversation server");
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "colony-browser");
+        let task = servers[0]
+            .env
+            .iter()
+            .find(|entry| entry.name == "COLONY_BROWSER_TASK_ID")
+            .expect("task id env");
+        assert_eq!(
+            task.value,
+            "conversation:12345678-1234-5678-9abc-123456789abc"
+        );
+    }
+
     #[test]
     fn invalid_identity_and_launcher_fail_closed() {
         for relay in [
@@ -404,20 +408,14 @@ mod tests {
             "https://relay.example/\n",
             " https://relay.example",
         ] {
-            assert!(with_browser_server(
-                vec![],
-                Some(&thread()),
-                None,
-                &"a".repeat(64),
-                relay,
-                launch,
-            )
-            .is_err());
+            assert!(
+                with_browser_server(vec![], Some(&thread()), &"a".repeat(64), relay, launch,)
+                    .is_err()
+            );
         }
         assert!(with_browser_server(
             vec![],
             Some(&thread()),
-            None,
             "invalid-agent",
             "https://relay.example",
             launch,
@@ -427,7 +425,6 @@ mod tests {
             assert!(with_browser_server(
                 vec![],
                 Some(&thread()),
-                None,
                 &"a".repeat(64),
                 "https://relay.example",
                 |key| {
@@ -453,7 +450,6 @@ mod tests {
         let disabled = with_browser_server(
             vec![supplied.clone()],
             Some(&thread()),
-            None,
             &"a".repeat(64),
             "https://relay.example",
             |_| None,
@@ -463,7 +459,6 @@ mod tests {
         let enabled = with_browser_server(
             vec![supplied],
             Some(&thread()),
-            None,
             &"a".repeat(64),
             "https://relay.example",
             launch,

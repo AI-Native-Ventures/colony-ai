@@ -5,6 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { createJsonLines, MAX_QUEUED_OUTPUT_BYTES } from "./json-lines.mjs";
+import { toolDescriptors } from "./tool-definitions.mjs";
 import {
   browserSessionCredential,
   browserSessionKey,
@@ -31,6 +32,12 @@ export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 export const MAX_CONNECTIONS = 16;
 const HELLO_TIMEOUT_MS = 5_000;
 const MAX_HELLO_FAILURES = 3;
+/** Under the client's own request timeout, so the agent gets an answer. */
+export const ACCESS_WAIT_MS = 30_000;
+/** Ways a grant ends because the person said stop. Expiry is not one. */
+const STOP_REASONS = new Set(["person revoked", "tab closed", "taken-over"]);
+const STOPPED_MESSAGE =
+  "The person stopped your browser access. Do not try again on your own: tell them you are waiting, and ask them to tap Allow in the Colony browser panel when they want you to continue.";
 
 const digest = (value) => createHash("sha256").update(String(value)).digest();
 
@@ -85,12 +92,20 @@ export function createBrokerServer({
   maxFrame = MAX_FRAME_BYTES,
   helloTimeoutMs = HELLO_TIMEOUT_MS,
   maxPending = 16,
+  // Default access: the owner's own agent gets a browser on its first call.
+  defaultAccess = false,
+  onAccessRequested = () => {},
+  accessWaitMs = ACCESS_WAIT_MS,
 } = {}) {
   if (typeof secret !== "string" || secret.length < 16 || secret.length > 256)
     throw new Error("A broker secret of at least 16 characters is required");
   const connections = new Set();
   const tokens = new Map();
   const grantKeys = new Map();
+  // Sessions whose grant the person ended; only the person undoes that.
+  const stopped = new Set();
+  // Calls waiting for the app to open a browser, one wait per session.
+  const waits = new Map();
   let server = null;
 
   function connectionsFor(key) {
@@ -108,9 +123,53 @@ export function createBrokerServer({
       if (key === undefined) return;
       grantKeys.delete(event.grantId);
       if (tokens.get(key)?.grantId === event.grantId) tokens.delete(key);
+      if (STOP_REASONS.has(event.reason)) stopped.add(key);
       pushToolsChanged(key);
     }
   });
+
+  function settleWait(key, granted) {
+    const wait = waits.get(key);
+    if (!wait) return;
+    waits.delete(key);
+    clearTimeout(wait.timer);
+    wait.resolve(granted);
+  }
+
+  /** Ask the app for a browser, once, and wait for the grant it issues. */
+  function waitForAccess(connection) {
+    const { key, context } = connection;
+    const existing = waits.get(key);
+    if (existing) return existing.promise;
+    const wait = {};
+    wait.promise = new Promise((resolve) => {
+      wait.resolve = resolve;
+    });
+    wait.timer = setTimeout(() => settleWait(key, false), accessWaitMs);
+    wait.timer.unref?.();
+    waits.set(key, wait);
+    try {
+      onAccessRequested({
+        agentId: context.agentId,
+        taskId: context.taskId,
+        communityOrigin: context.communityOrigin,
+        resume: stopped.has(key),
+      });
+    } catch {
+      // The wait still ends; the agent hears the approval guidance.
+    }
+    return wait.promise;
+  }
+
+  function liveToken(connection) {
+    const entry = tokens.get(connection.key);
+    const grant = entry && capabilities.getGrant(entry.grantId);
+    return grant?.state === "active" &&
+      grant.agentId === connection.context.agentId &&
+      grant.taskId === connection.context.taskId
+      ? entry.token
+      : null;
+  }
 
   /** Host API: create the grant and hand its token to the agent's channel. */
   function issueGrant(request) {
@@ -119,7 +178,9 @@ export function createBrokerServer({
     const { grant, token } = capabilities.issue(request);
     tokens.set(key, { token, grantId: grant.id });
     grantKeys.set(grant.id, key);
+    stopped.delete(key);
     pushToolsChanged(key);
+    settleWait(key, true);
     return grant;
   }
 
@@ -162,23 +223,35 @@ export function createBrokerServer({
       write(socket, { id, type: "hello", ok: true });
       return;
     }
-    const entry = tokens.get(connection.key);
-    const grant = entry && capabilities.getGrant(entry.grantId);
-    const token =
-      grant?.state === "active" &&
-      grant.agentId === connection.context.agentId &&
-      grant.taskId === connection.context.taskId
-        ? entry.token
-        : null;
+    let token = liveToken(connection);
     if (message.type === "tools") {
       write(socket, {
         id,
         ok: true,
-        tools: token ? broker.toolsFor(token) : [],
+        // Default access lists the tools from the start: an agent harness may
+        // read the list once and never again, and a missing tool reads as
+        // "no browser here".
+        tools: token
+          ? broker.toolsFor(token)
+          : defaultAccess
+            ? toolDescriptors()
+            : [],
       });
       return;
     }
     if (message.type === "call") {
+      if (!token && defaultAccess) {
+        const wasStopped = stopped.has(connection.key);
+        if (await waitForAccess(connection)) token = liveToken(connection);
+        else if (wasStopped) {
+          write(socket, {
+            id,
+            ok: true,
+            result: { ok: false, code: "no_grant", message: STOPPED_MESSAGE },
+          });
+          return;
+        }
+      }
       if (!token) {
         write(socket, {
           id,
@@ -271,6 +344,8 @@ export function createBrokerServer({
   }
 
   async function stop() {
+    for (const key of [...waits.keys()]) settleWait(key, false);
+    stopped.clear();
     tokens.clear();
     grantKeys.clear();
     for (const connection of connections) connection.socket.destroy();

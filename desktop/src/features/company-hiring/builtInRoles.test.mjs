@@ -82,6 +82,17 @@ test("built-in roles are valid, distinct role packs in plain words", () => {
   ]);
 });
 
+test("every built-in role talks like a person in chat", () => {
+  for (const entry of BUILT_IN_ROLES) {
+    assert.match(
+      entry.systemPrompt,
+      /one to three short sentences/,
+      entry.displayName,
+    );
+    assert.match(entry.systemPrompt, /at most one question/, entry.displayName);
+  }
+});
+
 test("the catalog lists the business's own roles first, then the built-ins it lacks", () => {
   const own = persona({ id: "mine", displayName: "  bookkeeper  " });
   const custom = persona({

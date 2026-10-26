@@ -54,6 +54,7 @@ const releaseDownloadPattern = /href="https:\/\/github\.com\/AI-Native-Ventures\
 
 // The Download section must point at one tag-pinned desktop release that has every
 // installer the page promises, so a stale or half-edited link fails the build.
+// Colony ships for Mac and Windows only: a Linux installer link or mention fails too.
 function assertDownloadLinks(html) {
   const section = html.match(/<section[^>]*id="download"[\s\S]*?<\/section>/)?.[0];
   if (!section) throw new Error("index.html is missing the #download section");
@@ -65,7 +66,6 @@ function assertDownloadLinks(html) {
   const required = [
     [`Colony-${version}-arm64`, ".dmg"],
     [`Colony-${version}-x64`, ".exe"],
-    [`Colony-${version}-x64`, ".AppImage"],
   ];
   for (const [prefix, ext] of required) {
     if (!files.some((f) => f.startsWith(prefix) && f.endsWith(ext))) {
@@ -73,6 +73,9 @@ function assertDownloadLinks(html) {
     }
   }
   if (!files.includes("checksums.txt")) throw new Error("#download is missing the checksums.txt link");
+  if (files.some((f) => /\.AppImage$/i.test(f)) || /\bLinux\b/i.test(section)) {
+    throw new Error("#download must not offer Linux: Colony ships for Mac and Windows only");
+  }
 }
 
 async function validate(files) {

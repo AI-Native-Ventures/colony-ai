@@ -12,12 +12,19 @@ import {
  * agent, one task, one business, specific tabs, exact origins, an expiry.
  * Pure given injected clocks and randomness.
  *
+ * A default access grant is the same bundle, made by the app for the owner's
+ * own agent in the owner's own business. It may start with no sites: the
+ * broker approves the addresses the agent itself asks for. The person can
+ * still Stop or take over it like any other grant.
+ *
  * The raw bearer token is returned once by `issue` and never stored: only its
  * SHA-256 is kept. Nothing here reads page content.
  */
 
 export const DEFAULT_GRANT_TTL_MS = 15 * 60_000;
 export const MAX_GRANT_TTL_MS = 60 * 60_000;
+/** Default access lasts as long as the rules allow; the next call renews it. */
+export const DEFAULT_ACCESS_TTL_MS = MAX_GRANT_TTL_MS;
 export const MAX_EXTRA_TABS = 3;
 export const MAX_ACTIVE_GRANTS = 32;
 export const MAX_ALLOWED_ORIGINS = 32;
@@ -82,6 +89,7 @@ export function createCapabilityStore({
       tabIds: [...grant.tabIds],
       allowedOrigins: [...grant.allowedOrigins],
       privateExceptions: [...grant.privateExceptions],
+      defaultAccess: grant.defaultAccess,
       issuedAt: grant.issuedAt,
       expiresAt: grant.expiresAtWall,
       epoch: grant.epoch,
@@ -162,8 +170,14 @@ export function createCapabilityStore({
       throw new CapabilityError("invalid_input", "Invalid private exceptions");
     }
     if (
+      input.defaultAccess !== undefined &&
+      typeof input.defaultAccess !== "boolean"
+    )
+      throw new CapabilityError("invalid_input", "Invalid grant request");
+    const defaultAccess = input.defaultAccess === true;
+    if (
       !Array.isArray(input.allowedOrigins) ||
-      input.allowedOrigins.length === 0 ||
+      (input.allowedOrigins.length === 0 && !defaultAccess) ||
       input.allowedOrigins.length > MAX_ALLOWED_ORIGINS
     )
       throw new CapabilityError("invalid_input", "Invalid allowed origins");
@@ -199,6 +213,7 @@ export function createCapabilityStore({
       tabIds: new Set(primaryTabId ? [primaryTabId] : []),
       allowedOrigins,
       privateExceptions,
+      defaultAccess,
       issuedAt,
       expiresAtWall: issuedAt + ttlMs,
       expiresAtMono: monotonic() + ttlMs,

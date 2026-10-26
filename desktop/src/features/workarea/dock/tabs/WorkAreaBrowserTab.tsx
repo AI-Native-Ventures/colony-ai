@@ -36,8 +36,10 @@ import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
  * One browser page in the dock: a real, isolated browser beside the
  * conversation. The page is an Electron view (never an iframe) in a profile
  * that belongs to this business alone, so cookies and storage are not shared
- * with any other community. The person signs in to sites themselves, and
- * agents see it only after the person approves a task and its sites.
+ * with any other community. The person signs in to sites themselves. The
+ * owner's own AI employees open this browser on their own when they need a
+ * site (see `agentBrowserAccess.ts`); the person watches, and can Stop them
+ * or take over at any time.
  *
  * Keyboard and pointer reach every control: the toolbar, the address bar,
  * notices and the page itself (Enter on the page region hands it the keyboard;

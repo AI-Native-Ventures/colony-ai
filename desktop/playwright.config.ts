@@ -1,6 +1,28 @@
 import { defineConfig, devices } from "@playwright/test";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The core journeys CI runs on every change to shared code. The same file maps
+// folders to the specs a change needs (see scripts/ci-plan.mjs).
+const affectedMap = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("./tests/e2e/affected-map.json", import.meta.url)),
+    "utf8",
+  ),
+) as {
+  essential: {
+    specs: string[];
+    focus: { specs: string[]; titles: string[] };
+  };
+};
+const specMatch = (specs: string[]) => specs.map((spec) => `**/${spec}`);
+const titlePattern = (titles: string[]) =>
+  new RegExp(
+    titles
+      .map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|"),
+  );
 
 const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
 const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
@@ -106,6 +128,7 @@ export default defineConfig({
         "**/work-area-browser.spec.ts",
         "**/browser-profile-forget.spec.ts",
         "**/work-area-browser-agent.spec.ts",
+        "**/work-area-browser-agent-auto.spec.ts",
         "**/work-area-browser-screenshots.spec.ts",
         "**/work-area-knowledge.spec.ts",
         "**/work-area-pins.spec.ts",
@@ -165,6 +188,10 @@ export default defineConfig({
         "**/channel-star.spec.ts",
         "**/channel-controls.spec.ts",
         "**/channel-activity-popover.spec.ts",
+        "**/agent-working-indicator.spec.ts",
+        "**/agent-working-indicator-screenshots.spec.ts",
+        "**/thread-open-tint.spec.ts",
+        "**/thread-open-tint-screenshots.spec.ts",
         "**/active-turn-resilience.spec.ts",
         "**/profile-active-turn.spec.ts",
         "**/welcome-agent-modal-screenshots.spec.ts",
@@ -284,8 +311,25 @@ export default defineConfig({
       },
     },
     {
+      name: "essential",
+      testMatch: specMatch(affectedMap.essential.specs),
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "essential-focus",
+      testMatch: specMatch(affectedMap.essential.focus.specs),
+      grep: titlePattern(affectedMap.essential.focus.titles),
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
       name: "integration",
       testMatch: [
+        "**/agent-working-indicator.spec.ts",
+        "**/thread-open-tint.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/workspace-file-links.spec.ts",
@@ -296,6 +340,7 @@ export default defineConfig({
         "**/work-area-browser.spec.ts",
         "**/browser-profile-forget.spec.ts",
         "**/work-area-browser-agent.spec.ts",
+        "**/work-area-browser-agent-auto.spec.ts",
         "**/work-area-browser-screenshots.spec.ts",
         "**/work-area-knowledge.spec.ts",
         "**/work-area-pins.spec.ts",

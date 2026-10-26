@@ -49,6 +49,10 @@ mod templates;
 mod terminal_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod terminal_transport;
+// The ant glyph is plain pixel math, so its tests run on every platform; only
+// the macOS tray draws it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod tray_mark;
 #[cfg(target_os = "macos")]
 mod tray_menu;
 mod unread_catch_up;

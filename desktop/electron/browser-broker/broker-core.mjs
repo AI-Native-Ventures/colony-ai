@@ -102,6 +102,32 @@ const fail = (code, message, extra = {}) => ({
 
 const approvedAboutBlank = (url) => url === "about:blank" || url === "";
 
+/**
+ * Sites that differ only by a leading "www." (same scheme and port) are one
+ * site to the person: linkedin.com sends everyone to www.linkedin.com.
+ */
+function isWwwTwin(origin, approvedOrigins) {
+  let wanted;
+  try {
+    wanted = new URL(origin);
+  } catch {
+    return false;
+  }
+  const bare = (host) => host.replace(/^www\./u, "");
+  return approvedOrigins.some((entry) => {
+    try {
+      const known = new URL(entry);
+      return (
+        known.protocol === wanted.protocol &&
+        known.port === wanted.port &&
+        bare(known.hostname) === bare(wanted.hostname)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function describeHash(described) {
   const element = described?.element ?? {};
   return JSON.stringify([
@@ -461,6 +487,16 @@ export function createBroker({
       privateExceptions: ctx.grant.privateExceptions,
     });
     if (!checked.ok) throw new BrokerError(checked.code, checked.reason);
+    if (ctx.grant.defaultAccess) {
+      // The owner's own agent asked for this address itself, in a browser the
+      // owner is watching, and it passed the address rules above. Pages that
+      // send the browser elsewhere are not covered: see checkNavigationSync.
+      try {
+        capabilities.approveOrigin(ctx.grant.id, checked.url);
+      } catch {
+        // Too many sites for one task: the normal approval path asks instead.
+      }
+    }
     const authorized = capabilities.authorize(ctx.token, { url: checked.url });
     if (!authorized.ok) {
       if (authorized.code === "origin_approval_required") {
@@ -617,6 +653,23 @@ export function createBroker({
 
     async browser_open(ctx, args) {
       const target = await approvedNavigationTarget(ctx, undefined, args.url);
+      // The tab the app made for this task is still empty: use it, so the
+      // person watches the page load where they are already looking.
+      if (ctx.grant.defaultAccess && ctx.grant.primaryTabId) {
+        const primary = await resolveTab(ctx, ctx.grant.primaryTabId);
+        if (
+          approvedAboutBlank(primary.url) &&
+          !openedTabs.get(ctx.grant.id)?.size
+        ) {
+          const result = await driver.navigate(primary.id, target.url, {
+            pinned: target.pinned,
+            signal: ctx.signal,
+            check: ctx.check,
+          });
+          blocked(result);
+          return { tab: tabView(await driver.getTab(primary.id), ctx.grant) };
+        }
+      }
       const created = await driver.openTab({
         businessId: ctx.grant.businessId,
         clientId: ctx.grant.clientId,
@@ -1099,6 +1152,15 @@ export function createBroker({
     },
     getLog: (options) => log.entries(options),
     sweep: () => capabilities.sweep(),
+    /** The agent needs a browser and has none yet: the app should open one. */
+    notifyAccessRequested({ agentId, taskId, communityOrigin, resume }) {
+      emit("access-requested", {
+        agentId,
+        taskId,
+        communityOrigin,
+        resume: resume === true,
+      });
+    },
     notifyDocumentChanged(tabId) {
       registries.get(tabId)?.reset();
       documentIds.delete(tabId);
@@ -1130,6 +1192,17 @@ export function createBroker({
       });
       if (!checked.ok) return { allow: false, code: checked.code };
       if (!grant.allowedOrigins.includes(checked.origin)) {
+        if (
+          grant.defaultAccess &&
+          isWwwTwin(checked.origin, grant.allowedOrigins)
+        ) {
+          try {
+            capabilities.approveOrigin(grant.id, url);
+            return { allow: true };
+          } catch {
+            // Fall through: the person is asked.
+          }
+        }
         noticeOrigin(grant, tabId, checked.origin, url);
         return {
           allow: false,

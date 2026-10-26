@@ -15,7 +15,6 @@ async function makeAssets(directory, names) {
   const feeds = {
     "latest-mac.yml": "Colony-1.2.3-arm64-UNSIGNED.zip",
     "latest.yml": "Colony-1.2.3-x64-UNSIGNED.exe",
-    "latest-linux.yml": "Colony-1.2.3-x64-UNSIGNED.AppImage",
   };
   for (const [feedName, artifactName] of Object.entries(feeds)) {
     const artifact = await readFile(path.join(directory, artifactName));
@@ -31,10 +30,8 @@ const validAssets = [
   "Colony-1.2.3-arm64-UNSIGNED.dmg",
   "Colony-1.2.3-arm64-UNSIGNED.zip",
   "Colony-1.2.3-x64-UNSIGNED.exe",
-  "Colony-1.2.3-x64-UNSIGNED.AppImage",
   "latest-mac.yml",
   "latest.yml",
-  "latest-linux.yml",
 ];
 
 test("release metadata records all installers, update feeds and SHA-256 checksums", async () => {
@@ -65,8 +62,11 @@ test("release metadata records all installers, update feeds and SHA-256 checksum
       installer: "Colony-1.2.3-x64-UNSIGNED.exe",
       updateMetadata: "latest.yml",
     });
-    assert.equal(metadata.platforms["linux-x64"].autoUpdate, true);
-    assert.equal(metadata.platforms["linux-x64"].signed, false);
+    // Colony ships for Mac and Windows only.
+    assert.deepEqual(Object.keys(metadata.platforms), [
+      "darwin-arm64",
+      "win32-x64",
+    ]);
 
     const installer = metadata.assets.find(
       (asset) => asset.name === "Colony-1.2.3-x64-UNSIGNED.exe",
@@ -124,8 +124,8 @@ test("release metadata rejects updater feeds with mismatched installer hashes", 
   try {
     await makeAssets(temporaryDirectory, validAssets);
     await writeFile(
-      path.join(temporaryDirectory, "latest-linux.yml"),
-      "version: 1.2.3\nfiles:\n  - url: Colony-1.2.3-x64-UNSIGNED.AppImage\n    sha512: bad-checksum\n    size: 1\n",
+      path.join(temporaryDirectory, "latest.yml"),
+      "version: 1.2.3\nfiles:\n  - url: Colony-1.2.3-x64-UNSIGNED.exe\n    sha512: bad-checksum\n    size: 1\n",
     );
     await assert.rejects(
       writeReleaseMetadata({

@@ -4,16 +4,10 @@ name: Mobile live-relay interop harness
 # disposable relay, with a second live session as the oracle peer. No
 # Electron peer yet (blocked on PR19/PR20 socket activation), no devices,
 # no pairing, no production relay.
+# Manual only: mobile live-relay interop harness.
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
-  pull_request:
-    branches:
-      - develop
-      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
-      - codex/phase2-integration
-    paths:
-      - ".github/workflows/mobile-interop.yml"
-      - "mobile/test/shared/relay/relay_live_interop_test.dart"
-      - "mobile/lib/shared/relay/**"
   workflow_dispatch:
 
 permissions:

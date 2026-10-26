@@ -5,6 +5,10 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { sanitizeUntrusted } from "../../../../electron/browser-broker/redaction.mjs";
 import { browserCommunityOrigin } from "../../../../electron/browser-broker/session-context.mjs";
 import { useWorkAreaChannel } from "../dock/workAreaChannelContext";
+import {
+  allowAgentAccess,
+  dismissAgentAccessRequest,
+} from "./agentBrowserAccess";
 import { createBrowserControlStore } from "./browserControlStore";
 import { getBrowserBusinessId } from "./browserTabsStore";
 import {
@@ -12,6 +16,7 @@ import {
   browserConfirmationTitle,
   browserTaskScope,
 } from "./browserTaskScope";
+import { useWaitingAgentAccess } from "./useBrowserTabs";
 
 /** Person-owned approval and recovery controls above the native browser view. */
 export function BrowserAgentControls({
@@ -68,14 +73,28 @@ export function BrowserAgentControls({
       "Agent",
     80,
   );
+  // The agent's own session decides its task: threads for a thread policy,
+  // otherwise the channel (or DM) conversation.
+  const threadTask = taskId?.startsWith("thread:") === true;
   const eligible = (agents.data ?? []).filter(
     (agent) =>
       agent.status === "running" &&
       agent.relayUrl === activeCommunity?.relayUrl &&
-      (channel?.channelType === "dm" || agent.sessionPolicy === "thread"),
+      (threadTask
+        ? agent.sessionPolicy === "thread"
+        : channel?.channelType === "dm" || agent.sessionPolicy !== "thread"),
   );
-  const taskLabel =
-    channel?.channelType === "dm" ? "this conversation" : "this thread";
+  const taskLabel = threadTask
+    ? "this thread"
+    : channel?.channelType === "dm"
+      ? "this conversation"
+      : "this channel";
+  const waitingAgents = useWaitingAgentAccess(hostId);
+  const agentName = (pubkey: string) =>
+    sanitizeUntrusted(
+      agents.data?.find((agent) => agent.pubkey === pubkey)?.name ?? "Agent",
+      80,
+    );
   const busy = state.busy !== null;
 
   React.useEffect(() => {
@@ -176,9 +195,41 @@ export function BrowserAgentControls({
       ) : null}
       {!grant && !taskId ? (
         <p className="text-muted-foreground">
-          Open a conversation thread to approve a browser task.
+          Open a conversation to approve a browser task.
         </p>
       ) : null}
+      {!grant
+        ? waitingAgents.map((request) => (
+            <fieldset
+              className="flex min-w-0 flex-col gap-2 rounded border border-border p-2"
+              data-testid="browser-agent-resume"
+              key={`${request.agentId}|${request.taskId}`}
+            >
+              <legend className="sr-only">Agent waiting for the browser</legend>
+              <p>
+                {agentName(request.agentId)} wants to use the browser again.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="colony-work-area-choice"
+                  disabled={busy}
+                  onClick={() => run(() => allowAgentAccess(request))}
+                  type="button"
+                >
+                  Allow
+                </button>
+                <button
+                  className="colony-work-area-choice"
+                  disabled={busy}
+                  onClick={() => dismissAgentAccessRequest(request)}
+                  type="button"
+                >
+                  Not now
+                </button>
+              </div>
+            </fieldset>
+          ))
+        : null}
       {approving && !grant ? (
         <form
           className="flex flex-col gap-2"
@@ -247,7 +298,9 @@ export function BrowserAgentControls({
           <div className="flex flex-col gap-2 pt-2">
             <p>
               {grant.taskId === taskId
-                ? `Approved for ${taskLabel}.`
+                ? grant.defaultAccess
+                  ? `${name} opened this browser for ${taskLabel}. Sites it opens are listed here.`
+                  : `Approved for ${taskLabel}.`
                 : "Approved for another conversation task."}
             </p>
             <ul className="list-inside list-disc">

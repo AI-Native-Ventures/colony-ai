@@ -70,8 +70,12 @@ test("initialize negotiates a supported version and advertises listChanged tools
   });
   assert.equal(frames[0].result.serverInfo.name, "colony-browser");
   assert.ok(/untrusted/u.test(frames[0].result.instructions));
-  // Instructions reach the agent even before any grant, when tools/list is
-  // empty: that is when it must ask for access instead of improvising.
+  // Instructions reach the agent before any call: it opens sites itself, and
+  // asks the person only when a tool says it has no access.
+  assert.match(
+    frames[0].result.instructions,
+    /Open sites yourself with browser_open/u,
+  );
   assert.match(
     frames[0].result.instructions,
     /Ask the person to approve the Colony browser for this task, then wait/u,

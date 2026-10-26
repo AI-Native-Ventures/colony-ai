@@ -50,6 +50,11 @@ const MAX_TURNS_PER_AGENT = 32;
 const MAX_TERMINAL_TOMBSTONES = MAX_TURNS_PER_AGENT * 4;
 /** Interval for pruning stale/expired turns. */
 const PRUNE_INTERVAL_MS = 5_000;
+/** A turn that ended in an error is only surfaced to the conversation while it
+ * is this fresh; older terminal frames are history replays, not news. */
+const TURN_ERROR_FRESH_MS = 30_000;
+/** Drop recorded turn errors after this long so the map cannot grow. */
+const TURN_ERROR_RETENTION_MS = 60_000;
 
 type ActiveTurn = {
   turnId: string;
@@ -62,6 +67,14 @@ type ActiveTurn = {
 export type ActiveTurnSummary = {
   channelId: string;
   anchorAt: number;
+};
+
+/** A turn that stopped with an error, for the one-line conversation notice. */
+export type RecentTurnError = {
+  agentPubkey: string;
+  channelId: string;
+  /** Desktop clock (ms) when the error reached this store. */
+  at: number;
 };
 
 /** One channel with active agent work, aggregated across agents. */
@@ -77,6 +90,9 @@ export type ActiveChannelTurnSummary = {
 
 // Module-level state: agentPubkey → turnId → ActiveTurn
 const activeTurnsByAgent = new Map<string, Map<string, ActiveTurn>>();
+// agentPubkey → channelId → desktop-clock ms of the latest fresh turn error.
+// A new turn for the same agent and channel clears its error.
+const recentTurnErrorsByAgent = new Map<string, Map<string, number>>();
 const listeners = new Set<() => void>();
 
 // Per-agent clock offset: the desktop clock minus the agent-host clock, in
@@ -100,6 +116,7 @@ const clockOffsetByAgent = new Map<string, number>();
 // Only regenerated when the underlying turn map for an agent actually changes.
 const cachedTurnSummaries = new Map<string, ActiveTurnSummary[]>();
 let cachedChannelTurnSummaries: ActiveChannelTurnSummary[] | null = null;
+let cachedRecentTurnErrors: RecentTurnError[] | null = null;
 
 // Composite watermark per (agent, channel): the newest observer event
 // processed for that channel, by (timestamp, seq) ordering. An event is
@@ -211,7 +228,41 @@ function startTurn(
     startedAt,
     lastActivityAt: Date.now(),
   });
+  clearTurnError(key, channelId);
   invalidateCache(key);
+}
+
+function clearTurnError(agentKey: string, channelId: string) {
+  const errors = recentTurnErrorsByAgent.get(agentKey);
+  if (!errors?.delete(channelId)) return;
+  if (errors.size === 0) recentTurnErrorsByAgent.delete(agentKey);
+  cachedRecentTurnErrors = null;
+}
+
+/**
+ * Remember that an agent's turn stopped with an error so the conversation can
+ * say so. Only fresh terminal frames count: a full-buffer replay of old
+ * history must not raise a notice. Raw timestamps are compared on purpose; a
+ * skew-corrected age would read as zero for a lone replayed frame.
+ */
+function recordTurnError(
+  agentKey: string,
+  channelIds: readonly string[],
+  eventTimestamp: string,
+) {
+  const eventAt = parseTimestamp(eventTimestamp);
+  const now = Date.now();
+  if (eventAt !== null && now - eventAt > TURN_ERROR_FRESH_MS) return;
+  if (channelIds.length === 0) return;
+  let errors = recentTurnErrorsByAgent.get(agentKey);
+  if (!errors) {
+    errors = new Map();
+    recentTurnErrorsByAgent.set(agentKey, errors);
+  }
+  for (const channelId of channelIds) {
+    errors.set(channelId, now);
+  }
+  cachedRecentTurnErrors = null;
 }
 
 function recordActivity(agentPubkey: string, turnId: string | null): boolean {
@@ -277,6 +328,21 @@ function recordTerminal(agentKey: string, turnId: string, terminalAt: number) {
     const oldest = terminals.keys().next().value;
     if (oldest !== undefined) terminals.delete(oldest);
   }
+}
+
+/** Channels a terminal error applies to: the event's own, else the turn's, else
+ * (agent_panic, no channel) every channel the agent was working in. */
+function turnErrorChannelIds(
+  agentKey: string,
+  turnId: string | null,
+  channelId: string | null,
+): string[] {
+  if (channelId) return [channelId];
+  const agentTurns = activeTurnsByAgent.get(agentKey);
+  if (!agentTurns) return [];
+  const turn = turnId ? agentTurns.get(turnId) : undefined;
+  if (turn) return [turn.channelId];
+  return [...new Set([...agentTurns.values()].map((t) => t.channelId))];
 }
 
 function endTurn(
@@ -355,9 +421,27 @@ function pruneExpired() {
       activeTurnsByAgent.delete(agentKey);
     }
   }
+  if (pruneTurnErrors(now)) {
+    changed = true;
+  }
   if (changed) {
     notifyListeners();
   }
+}
+
+function pruneTurnErrors(now: number): boolean {
+  let changed = false;
+  for (const [agentKey, errors] of recentTurnErrorsByAgent) {
+    for (const [channelId, at] of errors) {
+      if (now - at > TURN_ERROR_RETENTION_MS) {
+        errors.delete(channelId);
+        changed = true;
+      }
+    }
+    if (errors.size === 0) recentTurnErrorsByAgent.delete(agentKey);
+  }
+  if (changed) cachedRecentTurnErrors = null;
+  return changed;
 }
 
 // INVARIANT: events must be sorted by (timestamp, seq) ascending.
@@ -418,6 +502,13 @@ function processEvent(agentPubkey: string, event: ObserverEvent) {
     case "turn_completed":
     case "turn_error":
     case "agent_panic":
+      if (event.kind !== "turn_completed") {
+        recordTurnError(
+          key,
+          turnErrorChannelIds(key, event.turnId ?? null, event.channelId),
+          event.timestamp,
+        );
+      }
       endTurn(
         agentPubkey,
         event.turnId ?? null,
@@ -588,6 +679,31 @@ export function getActiveTurnsByChannel(): ActiveChannelTurnSummary[] {
   return result;
 }
 
+const EMPTY_TURN_ERRORS: RecentTurnError[] = [];
+
+/**
+ * Fresh turn errors across agents, sorted by channel then agent. Consumers
+ * decide how long to show one (see `at`); the array is reference-stable until
+ * an error is recorded, cleared or pruned.
+ */
+export function getRecentTurnErrors(): RecentTurnError[] {
+  if (cachedRecentTurnErrors) return cachedRecentTurnErrors;
+  if (recentTurnErrorsByAgent.size === 0) return EMPTY_TURN_ERRORS;
+  const result: RecentTurnError[] = [];
+  for (const [agentPubkey, errors] of recentTurnErrorsByAgent) {
+    for (const [channelId, at] of errors) {
+      result.push({ agentPubkey, channelId, at });
+    }
+  }
+  result.sort(
+    (a, b) =>
+      a.channelId.localeCompare(b.channelId) ||
+      a.agentPubkey.localeCompare(b.agentPubkey),
+  );
+  cachedRecentTurnErrors = result;
+  return result;
+}
+
 /**
  * Synchronize the active-turns store with the latest observer events for a
  * given agent.
@@ -698,6 +814,10 @@ export function useActiveAgentTurnsBridge(
  */
 export function clearActiveTurnsForAgent(agentPubkey: string): void {
   const key = normalizePubkey(agentPubkey);
+  if (recentTurnErrorsByAgent.delete(key)) {
+    cachedRecentTurnErrors = null;
+    notifyListeners();
+  }
   const agentTurns = activeTurnsByAgent.get(key);
   if (!agentTurns || agentTurns.size === 0) return;
 
@@ -718,10 +838,12 @@ export function clearActiveTurnsForAgent(agentPubkey: string): void {
  */
 export function resetActiveAgentTurnsStore() {
   activeTurnsByAgent.clear();
+  recentTurnErrorsByAgent.clear();
   lastProcessed.clear();
   clockOffsetByAgent.clear();
   cachedTurnSummaries.clear();
   cachedChannelTurnSummaries = null;
+  cachedRecentTurnErrors = null;
   terminalAtByAgent.clear();
   notifyListeners();
 }
@@ -810,6 +932,8 @@ export function restoreActiveAgentTurnsForCommunity(communityId: string): void {
 
   // Clear before writing so this is a replace, not a merge.
   activeTurnsByAgent.clear();
+  recentTurnErrorsByAgent.clear();
+  cachedRecentTurnErrors = null;
   clockOffsetByAgent.clear();
   lastProcessed.clear();
   terminalAtByAgent.clear();

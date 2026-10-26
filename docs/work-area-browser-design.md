@@ -212,6 +212,36 @@ Rules
 - Take over by the person is a revoke that also sets control owner to `human`.
 - Tokens are never logged, never returned by any tool, and compared by hash.
 
+### 6.1 Default access (25 Oct 2026)
+
+The owner's own AI employee does not wait for the person to open the browser
+and click Allow. The flow, end to end:
+
+1. `buzz-acp` attaches `colony-browser` to every admitted channel session
+   (`thread:` for thread sessions, `conversation:` for DMs and for channels
+   answered as one conversation).
+2. `tools/list` is never empty while default access is on, so a harness that
+   reads the list once still shows the browser tools.
+3. A call with no grant becomes an `access-requested` event and waits (30 s,
+   under the client's 90 s timeout). The trusted app window opens the
+   channel's work area on an empty Colony browser page and answers with an
+   ordinary `agent-grant` that has `defaultAccess: true` and no sites yet.
+4. A default grant approves the addresses the agent itself asks for in
+   `browser_open` and `browser_navigate` (public http and https only: private,
+   loopback and file addresses stay refused). A page that sends the browser to
+   another site still waits for the person, except the `www.` twin of an
+   approved site. Sends, posts, purchases, permission changes, credentials and
+   uploads are unchanged.
+5. The first `browser_open` uses the task's own empty tab; later ones open new
+   tabs, which the app adopts as work area tabs.
+6. Stop, Take over and closing the tab end the grant and mark the task as
+   stopped. The agent's next call arrives as `access-requested` with
+   `resume: true`: the app opens the panel and shows one Allow card, and only
+   the person's click grants again. Expiry (60 minutes) is not a stop: the
+   next call renews it silently.
+7. The packaged gate (`COLONY_BROWSER_PACKAGED_GATE`) turns default access off
+   so it keeps proving the person-made grant path.
+
 ## 7. Network policy
 
 Default deny for agent navigation and for all requests of a business session

@@ -5,6 +5,7 @@ import {
   type ActiveChannelTurnSummary,
   getActiveTurnsByChannel,
   getActiveTurnsForAgent,
+  getRecentTurnErrors,
   subscribeActiveAgentTurns,
 } from "./activeAgentTurnsStore";
 
@@ -45,6 +46,23 @@ export type AgentWorkingState = {
   channels: AgentWorkingChannel[];
 };
 
+/** One agent working in a channel, with the clock anchor for its elapsed time. */
+export type ChannelWorkingAgent = {
+  /** Normalized pubkey. */
+  pubkey: string;
+  /** Desktop-clock anchor (turn start, or first typing for the fallback). */
+  anchorAt: number;
+  source: Exclude<AgentWorkingSource, "none">;
+};
+
+/** An agent whose turn in a channel stopped with an error, recently. */
+export type ChannelTurnError = {
+  /** Normalized pubkey. */
+  pubkey: string;
+  /** Desktop-clock ms when the error arrived. */
+  at: number;
+};
+
 export type WorkingChannelSummary = ActiveChannelTurnSummary & {
   source: Exclude<AgentWorkingSource, "none">;
 };
@@ -69,11 +87,15 @@ let unsubscribeTurns: (() => void) | null = null;
 const stateCache = new Map<string, AgentWorkingState>();
 let channelsCache: WorkingChannelSummary[] | null = null;
 const channelPubkeysCache = new Map<string, string[]>();
+const channelAgentsCache = new Map<string, ChannelWorkingAgent[]>();
+const channelErrorsCache = new Map<string, ChannelTurnError[]>();
 
 function invalidateCaches() {
   stateCache.clear();
   channelsCache = null;
   channelPubkeysCache.clear();
+  channelAgentsCache.clear();
+  channelErrorsCache.clear();
 }
 
 function notify() {
@@ -296,6 +318,75 @@ export function getWorkingAgentPubkeysForChannel(
   return result;
 }
 
+const EMPTY_CHANNEL_AGENTS: ChannelWorkingAgent[] = [];
+const EMPTY_CHANNEL_ERRORS: ChannelTurnError[] = [];
+
+/**
+ * Every agent working in the channel with its own elapsed anchor (observer
+ * turn start, else first typing), oldest first. Same membership as
+ * `getWorkingAgentPubkeysForChannel`. Stable while subscribed.
+ */
+export function getWorkingAgentsForChannel(
+  channelId: string | null | undefined,
+): ChannelWorkingAgent[] {
+  if (!channelId) {
+    return EMPTY_CHANNEL_AGENTS;
+  }
+  const cached = channelAgentsCache.get(channelId);
+  if (cached) {
+    return cached;
+  }
+  const byAgent = new Map<string, ChannelWorkingAgent>();
+  for (const summary of getActiveTurnsByChannel()) {
+    if (summary.channelId !== channelId) {
+      continue;
+    }
+    for (const pubkey of summary.agentPubkeys) {
+      const key = normalizePubkey(pubkey);
+      byAgent.set(key, {
+        pubkey: key,
+        anchorAt: summary.agentAnchors?.[pubkey] ?? summary.anchorAt,
+        source: "observer",
+      });
+    }
+  }
+  for (const [pubkey, since] of typingByChannel.get(channelId) ?? []) {
+    if (!byAgent.has(pubkey)) {
+      byAgent.set(pubkey, { pubkey, anchorAt: since, source: "typing" });
+    }
+  }
+  const result =
+    byAgent.size === 0
+      ? EMPTY_CHANNEL_AGENTS
+      : [...byAgent.values()].sort(
+          (a, b) => a.anchorAt - b.anchorAt || a.pubkey.localeCompare(b.pubkey),
+        );
+  channelAgentsCache.set(channelId, result);
+  return result;
+}
+
+/** Recent turn errors in one channel (see the turns store for freshness). */
+export function getTurnErrorsForChannel(
+  channelId: string | null | undefined,
+): ChannelTurnError[] {
+  if (!channelId) {
+    return EMPTY_CHANNEL_ERRORS;
+  }
+  const cached = channelErrorsCache.get(channelId);
+  if (cached) {
+    return cached;
+  }
+  const matching = getRecentTurnErrors()
+    .filter((error) => error.channelId === channelId)
+    .map((error) => ({
+      pubkey: normalizePubkey(error.agentPubkey),
+      at: error.at,
+    }));
+  const result = matching.length === 0 ? EMPTY_CHANNEL_ERRORS : matching;
+  channelErrorsCache.set(channelId, result);
+  return result;
+}
+
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
 /** Working state for one agent, optionally scoped to a channel. */
@@ -322,6 +413,24 @@ export function useChannelWorkingAgentPubkeys(
 ): string[] {
   return React.useSyncExternalStore(subscribeAgentWorkingSignal, () =>
     getWorkingAgentPubkeysForChannel(channelId),
+  );
+}
+
+/** Agents working in a channel, each with its own elapsed anchor. */
+export function useChannelWorkingAgents(
+  channelId: string | null | undefined,
+): ChannelWorkingAgent[] {
+  return React.useSyncExternalStore(subscribeAgentWorkingSignal, () =>
+    getWorkingAgentsForChannel(channelId),
+  );
+}
+
+/** Agents whose turn in a channel recently stopped with an error. */
+export function useChannelTurnErrors(
+  channelId: string | null | undefined,
+): ChannelTurnError[] {
+  return React.useSyncExternalStore(subscribeAgentWorkingSignal, () =>
+    getTurnErrorsForChannel(channelId),
   );
 }
 

@@ -105,6 +105,7 @@ async function fixture(t, options = {}) {
     uploadStagingOptions: options.uploadStagingOptions ?? {},
     socketPath: path.join(dir, "s", "b.sock"),
     gateEnvironment: options.gateEnvironment ?? {},
+    hostOptions: options.hostOptions ?? {},
     proxyFactory: () => ({
       start: async () => 9999,
       stop: async () => network.push("stop-proxy"),
@@ -660,5 +661,57 @@ test("packaged grant seam binds one task and origin, preserves refusal hooks and
   await assert.rejects(
     f.grant({ allowedOrigins: [gate.config.origin] }),
     /one exact/u,
+  );
+});
+
+test("default access is on in the app and an empty default grant is made on the window's own tab", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.host.defaultAccess, true);
+  const grant = await f.grant({
+    allowedOrigins: [],
+    defaultAccess: true,
+    ttlMs: 60 * 60_000,
+  });
+  assert.equal(grant.state, "active");
+  assert.equal(grant.defaultAccess, true);
+  assert.deepEqual(grant.allowedOrigins, []);
+  // Containment still precedes the grant, exactly as for a person made grant.
+  assert.equal(f.network[0].proxyBypassRules, "<-loopback>");
+  // Another window cannot give itself a default grant on this tab.
+  await assert.rejects(
+    f.host.handleRequest(
+      "agent-grant",
+      {
+        agentId: "b".repeat(64),
+        taskId: "conversation:22222222-2222-4222-8222-222222222222",
+        communityOrigin: "https://relay.example",
+        businessId: "business-a",
+        tabId: f.tab.id,
+        allowedOrigins: [],
+        defaultAccess: true,
+      },
+      111111,
+    ),
+    /unavailable/u,
+  );
+});
+
+test("the packaged gate keeps grants person made: no default access, no empty grant", async (t) => {
+  const gate = await gateFixture(t);
+  const f = await fixture(t, gate);
+  assert.equal(f.host.defaultAccess, false);
+  await assert.rejects(
+    f.grant({ allowedOrigins: [], defaultAccess: true }),
+    /Default browser access is not enabled/u,
+  );
+  assert.equal(f.host.capabilities.grantsForAgent("a".repeat(64)).length, 0);
+});
+
+test("a host built without default access (the Electron fixture) refuses default grants", async (t) => {
+  const f = await fixture(t, { hostOptions: { defaultAccess: false } });
+  assert.equal(f.host.defaultAccess, false);
+  await assert.rejects(
+    f.grant({ allowedOrigins: [], defaultAccess: true }),
+    /Default browser access is not enabled/u,
   );
 });

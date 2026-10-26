@@ -1993,25 +1993,37 @@ test("channel date divider keeps the date sticky while the separator rule scroll
   expect(metrics.dividerPillShadow).toBe("none");
 });
 
-test("agent typing does not show a live activity strip above the composer", async ({
+test("an agent that is typing shows the one-line working notice above the composer", async ({
   page,
 }) => {
+  await installMockBridge(page, {
+    managedAgents: [
+      {
+        pubkey: TEST_IDENTITIES.charlie.pubkey,
+        name: "Charlie",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
   await page.goto("/");
 
-  await page.getByTestId("channel-agents").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("agents");
-  await waitForMockLiveSubscription(page, "agents", KIND_TYPING_INDICATOR);
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("chat-title")).toHaveText("general");
+  await waitForMockLiveSubscription(page, "general", KIND_TYPING_INDICATOR);
 
   await page.evaluate((pubkey) => {
     window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
-      channelName: "agents",
+      channelName: "general",
       pubkey,
     });
-  }, TEST_IDENTITIES.alice.pubkey);
+  }, TEST_IDENTITIES.charlie.pubkey);
 
-  // The Colony 3.0 conversation has no live agent activity panel; an agent that
-  // is working is not announced above the composer.
-  await page.waitForTimeout(600);
+  // Owner 25 Oct: the working indicator is back, but as one light line, not the
+  // old live activity strip with its hover panel.
+  const notice = page.getByTestId("channel-agent-working-indicator");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-state", "working");
   await expect(page.getByTestId("bot-activity-composer-trigger")).toHaveCount(
     0,
   );

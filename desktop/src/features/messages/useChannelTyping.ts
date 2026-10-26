@@ -16,6 +16,8 @@ import { resolveEventAuthorPubkey } from "@/shared/lib/authors";
 export type TypingIndicatorEntry = {
   pubkey: string;
   threadHeadId: string | null;
+  /** When this agent or person first started typing in this scope (ms). */
+  firstSeenAt?: number;
 };
 
 type TypingEntry = {
@@ -234,7 +236,11 @@ export function useChannelTyping(
     () =>
       Object.values(typingByPubkey)
         .sort((left, right) => left.firstSeenAt - right.firstSeenAt)
-        .map(({ pubkey, threadHeadId }) => ({ pubkey, threadHeadId })),
+        .map(({ firstSeenAt, pubkey, threadHeadId }) => ({
+          firstSeenAt,
+          pubkey,
+          threadHeadId,
+        })),
     [typingByPubkey],
   );
 }

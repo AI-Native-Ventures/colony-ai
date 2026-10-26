@@ -85,6 +85,72 @@ fn slow_or_briefly_failing_providers_get_busy_copy_not_sign_in_advice() {
         .contains("sign-in"));
 }
 
+/// The text OpenCode logs when the free model's daily quota is used up.
+const OPENCODE_FREE_LIMIT: &str = "AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going";
+const FREE_LIMIT_COPY: &str = "Today's free AI limit is used up. Connect your own AI in Settings > Agents, or try again later.";
+
+#[test]
+fn the_free_quota_error_gets_plain_copy_and_a_stable_code_not_busy() {
+    // Arrives as an agent error, whatever code or wrapper the adapter gives it.
+    for (code, message) in [
+        (-32603, OPENCODE_FREE_LIMIT.to_owned()),
+        (-32603, format!("Internal error: {OPENCODE_FREE_LIMIT}")),
+        (-32000, format!("llm: {OPENCODE_FREE_LIMIT}")),
+    ] {
+        let error = anyhow::Error::from(crate::AcpError::AgentError { code, message });
+        assert!(!transient(&error), "{error}");
+        let result = error_result(&error);
+        assert_eq!(result["error"], FREE_LIMIT_COPY);
+        assert_eq!(result["code"], "free_limit_reached");
+        assert_ne!(result["error"], AI_BUSY);
+    }
+    // Arrives as the reply text of the hello turn.
+    let reply = completed_reply(OPENCODE_FREE_LIMIT.into(), StopReason::EndTurn)
+        .expect_err("the quota error is not a hello");
+    let result = error_result(&reply);
+    assert_eq!(result["error"], FREE_LIMIT_COPY);
+    assert_eq!(result["code"], "free_limit_reached");
+    // Even with a non-final stop reason, the cause is named.
+    let cancelled = completed_reply(OPENCODE_FREE_LIMIT.into(), StopReason::Cancelled)
+        .expect_err("not a hello");
+    assert_eq!(error_result(&cancelled)["code"], "free_limit_reached");
+}
+
+#[test]
+fn a_silent_failure_is_blamed_on_the_free_quota_only_when_opencode_logged_it() {
+    for error in [
+        crate::AcpError::IdleTimeout(Duration::from_secs(SILENCE_SECS)),
+        crate::AcpError::AgentError {
+            code: -32603,
+            message: "Internal error: Internal Server Error".into(),
+        },
+    ] {
+        let error = anyhow::Error::from(error);
+        assert_eq!(error_result_with_log(&error, false)["error"], AI_BUSY);
+        let logged = error_result_with_log(&error, true);
+        assert_eq!(logged["error"], FREE_LIMIT_COPY);
+        assert_eq!(logged["code"], "free_limit_reached");
+    }
+    let incomplete = completed_reply(String::new(), StopReason::EndTurn).expect_err("empty");
+    assert_eq!(
+        error_result_with_log(&incomplete, true)["code"],
+        "free_limit_reached"
+    );
+    // A cause the harness named itself is never overruled by a log line.
+    let rejected = anyhow::Error::from(crate::AcpError::AgentError {
+        code: -32001,
+        message: "llm auth: provider=OpenRouter; private body".into(),
+    });
+    let result = error_result_with_log(&rejected, true);
+    assert!(result.get("code").is_none(), "{result}");
+    assert!(result["error"]
+        .as_str()
+        .expect("copy")
+        .contains("authentication"));
+    let tool = anyhow::Error::from(ConnectionFailure("The harness requested a tool."));
+    assert!(error_result_with_log(&tool, true).get("code").is_none());
+}
+
 #[test]
 fn the_whole_budget_is_named_in_minutes() {
     assert_eq!(budget_words(Duration::from_secs(300)), "5 minutes");
@@ -253,6 +319,27 @@ async fn retries_stop_at_the_attempt_cap_with_busy_copy() {
     let (outcome, spawned) = run_scripts(&[SILENT]).await;
     assert_eq!(outcome["error"], AI_BUSY);
     assert_eq!(spawned, MAX_ATTEMPTS as usize);
+}
+
+/// OpenCode answers the hello with its quota error: no retry, plain copy.
+#[cfg(unix)]
+const FREE_LIMIT_ERROR: &str = r#"
+    read _init
+    echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
+    read _session
+    echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"probe"}}'
+    read _prompt
+    echo '{"jsonrpc":"2.0","id":2,"error":{"code":-32603,"message":"Internal error: AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going"}}'
+    read _never
+"#;
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_free_quota_error_ends_the_test_at_once_with_plain_copy() {
+    let (outcome, spawned) = run_scripts(&[FREE_LIMIT_ERROR, REPLIES]).await;
+    assert_eq!(outcome["error"], FREE_LIMIT_COPY, "{outcome}");
+    assert_eq!(outcome["code"], "free_limit_reached");
+    assert_eq!(spawned, 1);
 }
 
 #[cfg(unix)]

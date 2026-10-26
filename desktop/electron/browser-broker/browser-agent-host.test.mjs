@@ -234,3 +234,117 @@ test("stopping the host revokes every grant and closes the channel", async () =>
   assert.equal(fs.existsSync(socketPath), false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("default access: a first browser call becomes an event, the app's grant answers it, the tab is used", async () => {
+  const { dir, socketPath } = tmpSocket();
+  const driver = createFakePageDriver();
+  driver.addTab({
+    id: "tab-1",
+    url: "about:blank",
+    controlOwner: "human",
+    page: { text: "", elements: [] },
+  });
+  const secret = "k".repeat(32);
+  const host = await createBrowserAgentHost({
+    enabled: true,
+    defaultAccess: true,
+    brokerOptions: {
+      resolver: async () => [{ address: "93.184.216.34", family: 4 }],
+    },
+    driver,
+    execPath: "/bin/node",
+    scriptPath: "/x/mcp.mjs",
+    socketPath,
+    secret,
+  });
+  assert.equal(host.defaultAccess, true);
+  const events = [];
+  host.onEvent((event) => events.push(event));
+  const client = createBrokerClient({
+    socketPath,
+    secret: browserSessionCredential(secret, {
+      agentId: AGENT,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+    }),
+    agent: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+  });
+  client.start();
+  await until(() => client.isReady());
+  assert.ok((await client.listTools()).length > 0);
+
+  const opening = client.callTool("browser_open", {
+    url: "https://news.example/a",
+  });
+  const asked = await until(() =>
+    events.find((event) => event.type === "access-requested"),
+  );
+  assert.deepEqual(asked, {
+    type: "access-requested",
+    agentId: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+    resume: false,
+  });
+
+  // What the trusted app window does on that event.
+  const grant = await host.handleRequest("agent-grant", {
+    agentId: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+    businessId: "biz-1",
+    tabId: "tab-1",
+    allowedOrigins: [],
+    defaultAccess: true,
+    ttlMs: 60 * 60_000,
+  });
+  assert.equal(grant.defaultAccess, true);
+  assert.equal(driver.tabs.get("tab-1").controlOwner, "agent");
+
+  const opened = await opening;
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.equal(opened.tab.id, "tab-1");
+  assert.equal(driver.tabs.get("tab-1").url, "https://news.example/a");
+
+  // Stop ends it, and the next call asks again as a resume.
+  await host.handleRequest("agent-revoke", { grantId: grant.id });
+  const after = client.callTool("browser_tabs", {});
+  const resume = await until(() =>
+    events.filter((event) => event.type === "access-requested").at(1),
+  );
+  assert.equal(resume.resume, true);
+  client.close();
+  await host.stop();
+  assert.equal((await after).ok, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a host without default access refuses an empty grant and never asks the app", async () => {
+  const { dir, socketPath } = tmpSocket();
+  const driver = createFakePageDriver();
+  driver.addTab({ id: "tab-1", url: "about:blank", controlOwner: "human" });
+  const host = await createBrowserAgentHost({
+    enabled: true,
+    driver,
+    execPath: "/bin/node",
+    scriptPath: "/x/mcp.mjs",
+    socketPath,
+    secret: "k".repeat(32),
+  });
+  assert.equal(host.defaultAccess, false);
+  await assert.rejects(
+    host.handleRequest("agent-grant", {
+      agentId: AGENT,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+      businessId: "biz-1",
+      tabId: "tab-1",
+      allowedOrigins: [],
+      defaultAccess: true,
+    }),
+  );
+  await host.stop();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

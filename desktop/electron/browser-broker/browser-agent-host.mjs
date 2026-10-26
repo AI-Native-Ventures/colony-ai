@@ -15,6 +15,11 @@ import { createCapabilityStore } from "./capability.mjs";
  * `handleRequest` is the ONLY way grants are created, widened, confirmed or
  * revoked. It must be reachable from trusted app windows only; agents and page
  * content have no path to it.
+ *
+ * Default access: the owner's own agent does not wait for the person to open
+ * the browser first. Its first browser call becomes an `access-requested`
+ * event; the trusted app window opens the work area browser and answers with
+ * an ordinary `agent-grant`. Stop and take over still end it.
  */
 
 const isRecord = (value) =>
@@ -32,6 +37,7 @@ export async function createBrowserAgentHost({
   execPath,
   scriptPath,
   runAsNode = true,
+  defaultAccess = false,
   socketPath = defaultSocketPath(),
   secret = randomBytes(24).toString("hex"),
   chooseFile = async () => null,
@@ -41,6 +47,7 @@ export async function createBrowserAgentHost({
   if (!enabled) {
     return {
       enabled: false,
+      defaultAccess: false,
       env: {},
       stop: async () => {},
       handleRequest: async () => {
@@ -60,6 +67,8 @@ export async function createBrowserAgentHost({
     capabilities,
     secret,
     socketPath,
+    defaultAccess,
+    onAccessRequested: (request) => broker.notifyAccessRequested(request),
   });
   await server.start();
   const sweeper = setInterval(() => broker.sweep(), 1_000);
@@ -78,6 +87,8 @@ export async function createBrowserAgentHost({
       throw new Error("Invalid agent browser request");
     switch (action) {
       case "agent-grant": {
+        if (payload.defaultAccess === true && !defaultAccess)
+          throw new Error("Default browser access is not enabled");
         await broker.recoverControl(text(payload.tabId, "tab id"));
         const grant = server.issueGrant({
           agentId: text(payload.agentId, "agent id"),
@@ -88,6 +99,7 @@ export async function createBrowserAgentHost({
           tabId: text(payload.tabId, "tab id"),
           allowedOrigins: payload.allowedOrigins,
           privateExceptions: payload.privateExceptions,
+          defaultAccess: payload.defaultAccess === true,
           ttlMs: payload.ttlMs,
         });
         try {
@@ -164,6 +176,7 @@ export async function createBrowserAgentHost({
 
   return {
     enabled: true,
+    defaultAccess,
     env,
     broker,
     server,

@@ -646,7 +646,7 @@ function adoptPopup(channelId: string, tab: BrowserTabState) {
  * re-checks that the community, the page and its intent are still current
  * (rule 2): a stale result closes the tab it created instead of attaching it.
  */
-async function startHostTab(key: string, url: string) {
+async function startHostTab(key: string, url?: string) {
   const mine = generation;
   const businessId = scope;
   if (businessId === null) return;
@@ -657,7 +657,7 @@ async function startHostTab(key: string, url: string) {
   let tab: BrowserTabState;
   try {
     await ready;
-    tab = await host.createTab({ businessId, url });
+    tab = await host.createTab(url ? { businessId, url } : { businessId });
   } catch (error) {
     if (mine !== generation) return;
     updatePage(key, (page) => ({
@@ -713,6 +713,21 @@ export function createBrowserPage(
   if (options.focusAddress) addressFocusRequests.add(key);
   if (target?.ok) void startHostTab(key, target.url);
   return { ok: true, key, url: target?.ok ? target.url : "" };
+}
+
+/**
+ * The live host tab of a page, creating an empty one when the page has none.
+ * An agent needs it before the page is on screen: the tab is what its access
+ * is granted on. Null when the page is gone or the host could not make a tab.
+ */
+export async function ensureBrowserHostTab(
+  key: string,
+): Promise<string | null> {
+  const page = pages.get(key);
+  if (!page) return null;
+  if (page.hostId) return page.hostId;
+  if (!page.opening) await startHostTab(key, page.url || undefined);
+  return pages.get(key)?.hostId ?? null;
 }
 
 /** Navigate a page to what the person typed. Refusals come back as a message. */

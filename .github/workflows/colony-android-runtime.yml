@@ -1,40 +1,10 @@
 name: Colony Android runtime proof
 
+# Manual only: Android runtime proof (emulator).
+# Run it from Actions > Run workflow. Moved out of automatic CI by the
+# CI strip; the full list is in the CI strip pull request.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "feat/**"
-      - "fix/**"
-      - "chore/**"
-    paths:
-      - ".github/workflows/colony-android-runtime.yml"
-      - "scripts/android-runtime-proof.sh"
-      - "scripts/android-runtime-proof-parser.py"
-      - "scripts/mobile-worktree-overrides.sh"
-      - "justfile"
-      - "mobile/android/**"
-      - "mobile/assets/**"
-      - "mobile/lib/**"
-      - "mobile/pubspec.yaml"
-      - "mobile/pubspec.lock"
-  pull_request:
-    branches:
-      - feat/phase3-auth
-      - develop
-      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
-      - codex/phase2-integration
-    paths:
-      - ".github/workflows/colony-android-runtime.yml"
-      - "scripts/android-runtime-proof.sh"
-      - "scripts/android-runtime-proof-parser.py"
-      - "scripts/mobile-worktree-overrides.sh"
-      - "justfile"
-      - "mobile/android/**"
-      - "mobile/assets/**"
-      - "mobile/lib/**"
-      - "mobile/pubspec.yaml"
-      - "mobile/pubspec.lock"
 
 permissions:
   contents: read

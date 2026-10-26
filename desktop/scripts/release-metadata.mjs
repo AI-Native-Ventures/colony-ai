@@ -124,11 +124,6 @@ export async function writeReleaseMetadata({
     new RegExp(`^${versionPrefix}x64-(SIGNED|UNSIGNED)\\.exe$`),
     "Windows installer",
   );
-  const linuxAppImage = findOne(
-    files,
-    new RegExp(`^${versionPrefix}x64-UNSIGNED\\.AppImage$`, "i"),
-    "Linux AppImage",
-  );
   const macUpdateMetadata = findOne(
     files,
     /^latest-mac\.yml$/,
@@ -139,17 +134,11 @@ export async function writeReleaseMetadata({
     /^latest\.yml$/,
     "Windows update metadata",
   );
-  const linuxUpdateMetadata = findOne(
-    files,
-    /^latest-linux\.yml$/,
-    "Linux update metadata",
-  );
 
   const signedByName = new Map([
     [macDmg, macSigned],
     [macZip, macSigned],
     [windowsInstaller, windowsSigned],
-    [linuxAppImage, false],
   ]);
   if (macDmg.includes("UNSIGNED") === macSigned) {
     throw new Error("macOS installer label does not match its signing state.");
@@ -158,9 +147,6 @@ export async function writeReleaseMetadata({
     throw new Error(
       "Windows installer label does not match its signing state.",
     );
-  }
-  if (!linuxAppImage.includes("UNSIGNED")) {
-    throw new Error("Linux AppImage must be labelled UNSIGNED.");
   }
 
   await Promise.all([
@@ -176,12 +162,6 @@ export async function writeReleaseMetadata({
       version: normalizedVersion,
       artifactName: windowsInstaller,
     }),
-    verifyUpdaterFeed({
-      assetsDir,
-      fileName: linuxUpdateMetadata,
-      version: normalizedVersion,
-      artifactName: linuxAppImage,
-    }),
   ]);
 
   const assets = await Promise.all(
@@ -195,9 +175,7 @@ export async function writeReleaseMetadata({
               name === windowsUpdateMetadata ||
               name === "latest.yml"
             ? "win32-x64"
-            : name === linuxAppImage || name === linuxUpdateMetadata
-              ? "linux-x64"
-              : "shared";
+            : "shared";
       return {
         name,
         platform,
@@ -225,12 +203,6 @@ export async function writeReleaseMetadata({
         autoUpdate: true,
         installer: windowsInstaller,
         updateMetadata: windowsUpdateMetadata,
-      },
-      "linux-x64": {
-        signed: false,
-        autoUpdate: true,
-        installer: linuxAppImage,
-        updateMetadata: linuxUpdateMetadata,
       },
     },
     assets,
