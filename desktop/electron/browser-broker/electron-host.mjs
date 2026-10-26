@@ -333,6 +333,10 @@ export async function createElectronBrowserAgentHost({
 
   return {
     ...host,
+    /** True once the app began shutting the agent browser down. */
+    get stopped() {
+      return stopped;
+    },
     // A cleared native or network fence cannot hide retained file cleanup.
     onEvent: (listener) =>
       host.onEvent((event) => {
@@ -373,6 +377,13 @@ export function createBrowserBrokerIpcHandler({ windows, trusted, getHost }) {
     const host = getHost();
     if (action === "agent-status" && (!host.enabled || !payload?.tabId))
       return { enabled: host.enabled };
+    if (host.stopped) {
+      // The app is quitting while its window still refreshes the controls.
+      // There is nothing to report, so say so instead of logging an error.
+      if (action === "agent-status") return { enabled: false };
+      if (["agent-grants", "agent-pending", "agent-log"].includes(action))
+        return [];
+    }
     return host.handleRequest(action, payload, event.sender.id);
   };
 }

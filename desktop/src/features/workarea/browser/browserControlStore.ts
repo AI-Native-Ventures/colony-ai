@@ -58,6 +58,20 @@ export function createBrowserControlStore({
   let refreshPromise: Promise<void> | null = null;
   let refreshAgain = false;
   const siteRequests = new Map<string, readonly string[]>();
+  /**
+   * The sites still waiting for the person. A site the grant already holds has
+   * nothing left to ask: under default access the broker approves the
+   * addresses an agent opens itself, after the page asked once.
+   */
+  const awaitingApproval = (grant: BrowserGrant | null) => {
+    if (!grant) return [];
+    const requested = siteRequests.get(grant.id) ?? [];
+    const open = requested.filter(
+      (origin) => !grant.allowedOrigins.includes(origin),
+    );
+    if (open.length !== requested.length) siteRequests.set(grant.id, open);
+    return open;
+  };
   const update = (patch: Partial<BrowserControlState>) => {
     if (!alive) return;
     state = { ...state, ...patch };
@@ -137,7 +151,7 @@ export function createBrowserControlStore({
           update({
             pending: safePending(pending),
             log: mergeLog(log, [...state.log]),
-            requestedSites: grant ? (siteRequests.get(grant.id) ?? []) : [],
+            requestedSites: awaitingApproval(grant),
           });
           if (!refreshAgain) return;
         } catch {
@@ -207,6 +221,11 @@ export function createBrowserControlStore({
     ) {
       const origin = browserApprovalOrigin(event.origin);
       if (!origin) return;
+      if (
+        event.grantId === state.grant?.id &&
+        state.grant.allowedOrigins.includes(origin)
+      )
+        return;
       const sites = siteRequests.get(event.grantId) ?? [];
       if (sites.includes(origin)) return;
       if (siteRequests.size >= 8 && !siteRequests.has(event.grantId)) {

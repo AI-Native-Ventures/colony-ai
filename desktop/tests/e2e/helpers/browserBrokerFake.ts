@@ -23,6 +23,8 @@ export type BrowserControlFixture = {
   /** The active grant ran out. */
   expire(): void;
   site(origin: string): void;
+  /** Default access: the broker approves a site the agent asked for itself. */
+  approveOnItsOwn(origin: string): void;
 };
 
 declare global {
@@ -208,6 +210,16 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
                 grantId: old.id,
                 state: "expired",
               });
+          },
+          approveOnItsOwn(origin: string) {
+            if (!grant) throw new Error("No task");
+            grant.allowedOrigins.push(origin);
+            emit({
+              type: "grant-changed",
+              grantId: grant.id,
+              state: "active",
+              change: "origin-approved",
+            });
           },
           site(origin: string) {
             if (!grant) throw new Error("No task");

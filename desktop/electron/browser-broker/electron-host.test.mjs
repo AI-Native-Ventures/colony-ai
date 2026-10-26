@@ -261,6 +261,116 @@ test("broker IPC accepts only the registered main window main frame", async () =
   );
 });
 
+test("after the host stops, the window's polling gets an empty answer, not an error in the app log", async (t) => {
+  // The 25 Oct run logged "The agent browser is stopped" four times at quit:
+  // the window still refreshed its controls while the host was shutting down.
+  const f = await fixture(t);
+  const frame = { url: "colony://app/" };
+  const windows = new Map([
+    [
+      f.sender.id,
+      { label: "main", window: { webContents: { mainFrame: frame } } },
+    ],
+  ]);
+  const sender = { id: f.sender.id, mainFrame: frame };
+  windows.get(f.sender.id).window.webContents = sender;
+  const ipc = createBrowserBrokerIpcHandler({
+    windows,
+    trusted: (url) => url === frame.url,
+    getHost: () => f.host,
+  });
+  const ask = (action, payload = {}) =>
+    ipc({ sender, senderFrame: frame }, action, payload);
+  assert.deepEqual(await ask("agent-status", { tabId: f.tab.id }), {
+    enabled: true,
+    recoveryRequired: false,
+  });
+  await f.host.stop();
+  assert.deepEqual(await ask("agent-status", { tabId: f.tab.id }), {
+    enabled: false,
+  });
+  for (const action of ["agent-grants", "agent-pending", "agent-log"])
+    assert.deepEqual(await ask(action), [], action);
+  // Nothing that changes a grant or the page is answered after the stop.
+  await assert.rejects(
+    ask("agent-grant", { tabId: f.tab.id }),
+    /agent browser is stopped/u,
+  );
+});
+
+test("a redirect the gate stops leaves a notice, never an error page, and a real failure still shows one", async (t) => {
+  // The 25 Oct run: the site redirected to an address nobody approved, the
+  // gate stopped it, and Chromium's ERR_FAILED for the stopped load became
+  // "This page could not be opened" on a page that was only waiting.
+  const f = await fixture(t);
+  await f.grant();
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  const sent = [];
+  // Host events go to the app window that owns the tab.
+  f.sender.send = (_channel, event) => sent.push(event);
+  const redirected = { prevented: false };
+  contents.loadURL = async (url) => {
+    contents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+      url,
+    });
+    contents.emit("will-redirect", {
+      url: "https://other.example/",
+      isMainFrame: true,
+      preventDefault: () => {
+        redirected.prevented = true;
+      },
+    });
+    contents.emit("did-fail-load", {}, -2, "ERR_FAILED", url, true);
+    throw new Error(`ERR_FAILED (-2) loading '${url}'`);
+  };
+  await f.browser.agentAdapter.loadUrl(f.tab.id, "https://example.com/");
+  assert.equal(redirected.prevented, true);
+  assert.equal(
+    f.browser.agentAdapter.consumeBlocked(f.tab.id).code,
+    "origin_approval_required",
+  );
+  assert.equal(f.browser.agentAdapter.getTab(f.tab.id).error, null);
+  assert.equal(
+    sent.some(
+      (event) =>
+        event.type === "navigation-blocked" &&
+        event.reason === "origin_approval_required",
+    ),
+    true,
+  );
+  assert.equal(
+    sent.some((event) => event.type === "state" && event.tab.error),
+    false,
+  );
+  // A load that really fails, on an address the grant allows, still says so.
+  contents.loadURL = async (url) => {
+    contents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+      url,
+    });
+    contents.emit(
+      "did-fail-load",
+      {},
+      -102,
+      "ERR_CONNECTION_REFUSED",
+      url,
+      true,
+    );
+    throw new Error(`ERR_CONNECTION_REFUSED (-102) loading '${url}'`);
+  };
+  await assert.rejects(
+    f.browser.agentAdapter.loadUrl(f.tab.id, "https://example.com/down"),
+    /failed/u,
+  );
+  assert.match(
+    f.browser.agentAdapter.getTab(f.tab.id).error,
+    /ERR_CONNECTION_REFUSED/u,
+  );
+});
+
 test("history checks the target entry before dispatch and navigation failures propagate", async (t) => {
   const f = await fixture(t);
   await f.grant();
