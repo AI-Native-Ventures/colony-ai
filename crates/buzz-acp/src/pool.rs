@@ -2910,6 +2910,9 @@ pub async fn run_prompt_task(
     // (`prompt[0].text.startsWith("/")`) fires; the wrapped Buzz context
     // follows as a second block.
     let mut slash_command: Option<String> = None;
+    // Set for a turn a person started, so it cannot end without a reply (see
+    // `turn_reply`). Stays `None` where silence is a valid ending.
+    let mut reply_plan: Option<crate::turn_reply::ReplyPlan> = None;
     // Event IDs represented by this prompt. Commit only after ACP reports a
     // successful turn; failed/cancelled prompts must be retryable without loss.
     let mut pending_delivered_event_ids = HashSet::new();
@@ -3009,6 +3012,12 @@ pub async fn run_prompt_task(
 
         let profile_lookup =
             fetch_prompt_profile_lookup(b, conversation_context.as_ref(), &ctx.rest_client).await;
+        reply_plan = crate::turn_reply::ReplyPlan::for_batch(
+            b,
+            is_dm,
+            &ctx.agent_keys.public_key(),
+            profile_lookup.as_ref(),
+        );
         let profile_for_turn = crate::business_profile::for_turn(
             latest_business_profile.as_deref(),
             agent
@@ -3124,6 +3133,8 @@ pub async fn run_prompt_task(
         "turn starting for {}",
         prompt_label(&source)
     );
+    // Anything the agent publishes from here on belongs to this turn.
+    let turn_started_unix = crate::turn_reply::unix_now();
 
     // When control_rx is Some (channel tasks), wrap the prompt in select! so
     // the main loop can cancel, interrupt, or rotate it. Heartbeats
@@ -3269,6 +3280,14 @@ pub async fn run_prompt_task(
                             );
                         }
                         log_stop_reason(&source, &StopReason::EndTurn);
+                        guarantee_turn_reply(
+                            &ctx,
+                            &mut agent,
+                            reply_plan.as_ref(),
+                            turn_started_unix,
+                            &StopReason::EndTurn,
+                        )
+                        .await;
                         if let PromptSource::Channel(scope) = &source {
                             let standing_sent = !agent.has_system_prompt_support();
                             record_scope_delivery_success(
@@ -3313,6 +3332,14 @@ pub async fn run_prompt_task(
     match prompt_result {
         Ok(stop_reason) => {
             log_stop_reason(&source, &stop_reason);
+            guarantee_turn_reply(
+                &ctx,
+                &mut agent,
+                reply_plan.as_ref(),
+                turn_started_unix,
+                &stop_reason,
+            )
+            .await;
 
             if let PromptSource::Channel(scope) = &source {
                 let standing_sent = !agent.has_system_prompt_support();
@@ -4912,6 +4939,32 @@ fn prompt_label(source: &PromptSource) -> String {
 }
 
 /// Log a stop reason at the appropriate tracing level.
+/// Make sure the person who started a turn hears back.
+///
+/// Always drains the final assistant message so it cannot leak into the next
+/// turn. When `plan` says a person is waiting and the agent published nothing
+/// into the conversation, posts that message (or the short fallback line) as
+/// the agent's reply. See `turn_reply` for the rules and bounds.
+async fn guarantee_turn_reply(
+    ctx: &PromptContext,
+    agent: &mut OwnedAgent,
+    plan: Option<&crate::turn_reply::ReplyPlan>,
+    turn_started_unix: u64,
+    stop_reason: &StopReason,
+) {
+    let final_text = agent.acp.take_final_assistant_text();
+    if let Some(plan) = plan {
+        crate::turn_reply::ensure_reply(
+            &ctx.rest_client,
+            plan,
+            turn_started_unix,
+            stop_reason,
+            &final_text,
+        )
+        .await;
+    }
+}
+
 fn log_stop_reason(source: &PromptSource, stop_reason: &StopReason) {
     let label = prompt_label(source);
     match stop_reason {

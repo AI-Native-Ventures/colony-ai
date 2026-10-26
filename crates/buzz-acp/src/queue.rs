@@ -1467,6 +1467,55 @@ fn resolve_reply_anchor(
     )
 }
 
+/// Where a reply to a turn belongs, as the harness itself must route it when it
+/// speaks for an agent that ended the turn without publishing.
+///
+/// This is the same decision the `<context>` block hands the agent as
+/// `--reply-to`, expressed as the NIP-10 root and parent the CLI would derive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ReplyDestination {
+    /// Agent to agent turn. Silence is a valid ending, so the harness never
+    /// answers on the agent's behalf.
+    NotHumanFacing,
+    /// The top level of the conversation: a DM message that is not a thread reply.
+    TopLevel,
+    /// A reply into a thread; both ids are lowercase hex event ids.
+    Thread { root: String, parent: String },
+}
+
+/// Route the reply for a turn whose newest trigger is `last_event`.
+///
+/// Mirrors the anchors in [`format_prompt`]:
+///   - DM thread reply → under that message (`--reply-to <message>`)
+///   - DM message      → top level of the DM
+///   - channel thread  → the thread ROOT, keeping the reply flat at layer 1
+///   - channel message → the message itself, which becomes the thread root
+pub(crate) fn reply_destination(
+    last_event: &Event,
+    is_dm: bool,
+    profile_lookup: Option<&PromptProfileLookup>,
+) -> ReplyDestination {
+    let thread_tags = parse_thread_tags(last_event);
+    if !turn_is_human_facing(&last_event.pubkey.to_hex(), &thread_tags, profile_lookup) {
+        return ReplyDestination::NotHumanFacing;
+    }
+    let event_id = last_event.id.to_hex();
+    if is_dm {
+        return match thread_tags.root_event_id {
+            Some(root) => ReplyDestination::Thread {
+                root,
+                parent: event_id,
+            },
+            None => ReplyDestination::TopLevel,
+        };
+    }
+    let anchor = thread_tags.root_event_id.unwrap_or(event_id);
+    ReplyDestination::Thread {
+        root: anchor.clone(),
+        parent: anchor,
+    }
+}
+
 /// Maximum length (in characters) of a channel description rendered into `<context>`.
 ///
 /// Limits prompt bloat from unusually long descriptions. Multi-line
@@ -4555,6 +4604,93 @@ mod tests {
         assert_eq!(
             resolve_prompt_label(pubkey, Some(&profiles)),
             Some("wes@example.com".into()),
+        );
+    }
+
+    /// The harness routes its own reply exactly where the prompt tells the agent
+    /// to reply, for every shape of turn.
+    #[test]
+    fn reply_destination_matches_the_reply_to_the_prompt_asks_for() {
+        let root_id = "c".repeat(64);
+        let parent_id = "d".repeat(64);
+        let threaded = || {
+            vec![
+                vec!["e".into(), root_id.clone(), "".into(), "root".into()],
+                vec!["e".into(), parent_id.clone(), "".into(), "reply".into()],
+            ]
+        };
+        let cases = [
+            ("channel message", false, vec![]),
+            ("channel thread reply", false, threaded()),
+            ("dm message", true, vec![]),
+            ("dm thread reply", true, threaded()),
+        ];
+        for (label, is_dm, tags) in cases {
+            let ch = Uuid::new_v4();
+            let event = make_event_with_tags("@bot help", tags);
+            let ci = PromptChannelInfo {
+                name: "chan".into(),
+                channel_type: if is_dm { "dm" } else { "stream" }.into(),
+                description: None,
+                project: None,
+            };
+            let destination = reply_destination(&event, is_dm, None);
+            let batch = FlushBatch {
+                channel_id: ch,
+                scope: conv(ch),
+                events: vec![BatchEvent {
+                    event,
+                    prompt_tag: "@mention".into(),
+                    received_at: Instant::now(),
+                }],
+                cancelled_events: vec![],
+                cancel_reason: None,
+            };
+            let prompt = format_prompt(
+                &batch,
+                &FormatPromptArgs {
+                    channel_info: Some(&ci),
+                    ..Default::default()
+                },
+            )
+            .join("\n\n");
+            let asked_for = prompt
+                .split("--reply-to ")
+                .nth(1)
+                .map(|rest| rest.chars().take(64).collect::<String>());
+            match destination {
+                ReplyDestination::TopLevel => {
+                    assert_eq!(asked_for, None, "{label}: prompt asks for no --reply-to");
+                }
+                ReplyDestination::Thread { root, parent } => {
+                    let asked_for = asked_for.unwrap_or_else(|| panic!("{label}: no --reply-to"));
+                    if is_dm {
+                        assert_eq!(parent, asked_for, "{label}: reply goes under the message");
+                        assert_eq!(root, root_id, "{label}: the thread root is kept");
+                    } else {
+                        assert_eq!(root, asked_for, "{label}: reply goes to the anchor");
+                        assert_eq!(parent, asked_for, "{label}: flat at layer 1");
+                    }
+                }
+                ReplyDestination::NotHumanFacing => panic!("{label}: a human asked"),
+            }
+        }
+    }
+
+    #[test]
+    fn reply_destination_leaves_agent_to_agent_turns_silent() {
+        let agent_keys = Keys::generate();
+        let event = EventBuilder::new(Kind::Custom(9), "status")
+            .sign_with_keys(&agent_keys)
+            .unwrap();
+        let lookup = HashMap::from([(agent_keys.public_key().to_hex(), profile(true))]);
+        assert_eq!(
+            reply_destination(&event, false, Some(&lookup)),
+            ReplyDestination::NotHumanFacing
+        );
+        assert_eq!(
+            reply_destination(&event, true, Some(&lookup)),
+            ReplyDestination::NotHumanFacing
         );
     }
 
