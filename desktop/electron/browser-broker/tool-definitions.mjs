@@ -70,7 +70,8 @@ export const TOOLS = Object.freeze([
         url: {
           type: "string",
           maxLength: MAX_URL,
-          description: "https or http URL.",
+          description:
+            "Full address, starting with https:// (use http:// only for a site that has no https).",
         },
       },
       ["url"],

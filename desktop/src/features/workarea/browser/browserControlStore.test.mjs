@@ -181,6 +181,59 @@ test("untrusted notifications never approve a site or an action", async () => {
   f.store.dispose();
 });
 
+test("an Allow card goes away once the grant holds that site, and no card is made for a held site", async () => {
+  // Default access approves the addresses an agent opens itself. A card the
+  // page raised earlier for the same site has nothing left to ask.
+  const f = fixture();
+  await f.store.start();
+  f.emit({
+    type: "origin-approval-requested",
+    grantId: grant.id,
+    tabId: "tab-one",
+    origin: "https://other.example",
+    url: "https://other.example",
+  });
+  assert.deepEqual(f.store.getSnapshot().requestedSites, [
+    "https://other.example",
+  ]);
+  // The broker approves the site on its own, then tells the window.
+  f.setGrants([
+    {
+      ...structuredClone(grant),
+      allowedOrigins: ["https://example.com", "https://other.example"],
+    },
+  ]);
+  f.emit({
+    type: "grant-changed",
+    grantId: grant.id,
+    state: "active",
+    change: "origin-approved",
+  });
+  await f.store.refresh();
+  assert.deepEqual(f.store.getSnapshot().requestedSites, []);
+  // A late notice for a site the grant already holds raises nothing.
+  f.emit({
+    type: "origin-approval-requested",
+    grantId: grant.id,
+    tabId: "tab-one",
+    origin: "https://other.example",
+    url: "https://other.example/late",
+  });
+  assert.deepEqual(f.store.getSnapshot().requestedSites, []);
+  // A different site still asks.
+  f.emit({
+    type: "origin-approval-requested",
+    grantId: grant.id,
+    tabId: "tab-one",
+    origin: "https://third.example",
+    url: "https://third.example",
+  });
+  assert.deepEqual(f.store.getSnapshot().requestedSites, [
+    "https://third.example",
+  ]);
+  f.store.dispose();
+});
+
 test("takeover remains available while confirmation is pending and fences late completion", async () => {
   const f = fixture();
   await f.store.start();

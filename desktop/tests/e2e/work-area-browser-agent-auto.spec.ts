@@ -196,6 +196,48 @@ test("Not now clears the card and leaves the agent without the browser", async (
   await expect(controller(page)).toHaveText("You’re browsing");
 });
 
+test("an Allow card goes away when the broker approves that site itself, and a held site never raises one", async ({
+  page,
+}) => {
+  // The 25 Oct run: the agent opened a site, a redirect raised a card for it,
+  // and the agent then opened that address itself. The card stayed.
+  const channelId = await boot(page, "engineering");
+  await page.evaluate(
+    ([agent, taskId]) =>
+      window.colonyBrowserControlFixture?.requestAccess(agent, taskId),
+    [agentId, `conversation:${channelId}`],
+  );
+  await expect(controller(page)).toHaveText("Scout has control");
+
+  await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.site("https://colony.global"),
+  );
+  const card = controls(page).getByRole("group", { name: "Site approval" });
+  await expect(card).toContainText(
+    "Allow Scout to use https://colony.global for this task?",
+  );
+
+  await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.approveOnItsOwn(
+      "https://colony.global",
+    ),
+  );
+  await expect(card).toHaveCount(0);
+
+  // A late notice for a site the grant already holds raises nothing.
+  await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.site("https://colony.global"),
+  );
+  await page.waitForTimeout(300);
+  await expect(card).toHaveCount(0);
+
+  // A different site still asks.
+  await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.site("https://other.example"),
+  );
+  await expect(card).toContainText("https://other.example");
+});
+
 test("a request for a different community or a malformed task changes nothing", async ({
   page,
 }) => {

@@ -73,7 +73,13 @@ export type BrowserBrokerEvent =
       communityOrigin: string;
       resume: boolean;
     }
-  | { type: "grant-changed"; grantId: string; state: BrowserGrant["state"] }
+  | {
+      type: "grant-changed";
+      grantId: string;
+      state: BrowserGrant["state"];
+      /** What changed on a grant that is still active, for example "origin-approved". */
+      change?: string;
+    }
   | { type: "agent-action"; entry: BrowserActionEntry }
   | { type: "control-recovery"; tabId: string; required: boolean };
 

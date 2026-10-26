@@ -37,9 +37,9 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts
+            xvfb-run -a pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts tests/electron/browser-broker-default-access.spec.ts
           else
-            pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts
+            pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts tests/electron/browser-broker-default-access.spec.ts
           fi
       - name: Upload fixture evidence
         if: always()

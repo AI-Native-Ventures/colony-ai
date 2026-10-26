@@ -46,11 +46,21 @@ async function boot() {
     chooseFile: async () =>
       process.env.COLONY_BROWSER_FIXTURE_UPLOAD_PATH ?? null,
     enabled: process.env.COLONY_BROWSER_AGENT === "1",
-    // This fixture proves the person-made grant path exactly; default access
-    // (the app opening the browser for the agent) has its own tests.
-    hostOptions: { defaultAccess: false },
+    // The default is the person-made grant path, proved exactly. The default
+    // access spec sets this to run the app-opens-the-browser path instead.
+    hostOptions: {
+      defaultAccess: process.env.COLONY_BROWSER_FIXTURE_DEFAULT_ACCESS === "1",
+    },
     fixturePrivateExceptions: [
       `${fixtureOrigin.hostname}:${fixtureOrigin.port}`,
+      // A second local origin, for specs that need a site the first redirects to.
+      ...(process.env.COLONY_BROWSER_FIXTURE_EXTRA_ORIGINS ?? "")
+        .split(",")
+        .filter(Boolean)
+        .map((value) => {
+          const extra = new URL(value);
+          return `${extra.hostname}:${extra.port}`;
+        }),
     ],
   });
   const appUrl = new URL("./browser-broker.html", import.meta.url).href;

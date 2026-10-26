@@ -229,9 +229,18 @@ and click Allow. The flow, end to end:
 4. A default grant approves the addresses the agent itself asks for in
    `browser_open` and `browser_navigate` (public http and https only: private,
    loopback and file addresses stay refused). A page that sends the browser to
-   another site still waits for the person, except the `www.` twin of an
-   approved site. Sends, posts, purchases, permission changes, credentials and
-   uploads are unchanged.
+   another site still waits for the person, except the same site under another
+   spelling: the `www.` twin, and the https upgrade of an approved http site on
+   the standard ports (never https back down to http). An agent that opens
+   `http://colony.global` is not stopped by the site's own redirect to
+   `https://colony.global`. Sends, posts, purchases, permission changes,
+   credentials and uploads are unchanged.
+   What the person sees on this path is a page loading and "Scout has control".
+   No Allow card and no error page appear for it. A redirect the gate does stop
+   leaves a notice and a card for that other site and the page as it was, never
+   an error page (the host does not report the cancelled load as a failure). A
+   card goes away by itself once the grant holds that site, for example when
+   the agent then opens that address itself.
 5. The first `browser_open` uses the task's own empty tab; later ones open new
    tabs, which the app adopts as work area tabs.
 6. Stop, Take over and closing the tab end the grant and mark the task as

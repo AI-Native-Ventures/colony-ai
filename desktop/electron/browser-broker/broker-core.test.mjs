@@ -1301,6 +1301,66 @@ test("under default access a page's own jump to another site still waits for the
   }
 });
 
+test("under default access a site the agent opened over http may upgrade itself to https, with no approval card", async () => {
+  // The 25 Oct run: the agent opened http://colony.global, the site answered
+  // with a redirect to https, and the redirect was held for the person.
+  const env = setup({ origins: [], defaultAccess: true, url: "about:blank" });
+  env.driver.tabs.get("tab-1").redirects = {
+    "http://news.example/": "https://news.example/",
+  };
+  env.driver.tabs.get("tab-1").sites = {
+    "https://news.example/": {
+      title: "News",
+      page: { text: "", elements: [] },
+    },
+  };
+  const opened = await env.call("browser_open", {
+    url: "http://news.example/",
+  });
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.equal(opened.tab.url, "https://news.example/");
+  assert.deepEqual(env.caps.getGrant(env.grant.id).allowedOrigins, [
+    "http://news.example",
+    "https://news.example",
+  ]);
+  assert.deepEqual(
+    env.events.filter((event) => event.type === "origin-approval-requested"),
+    [],
+  );
+});
+
+test("the https upgrade of an approved http site may also add www, and nothing else is let through", () => {
+  const env = setup({ origins: [], defaultAccess: true });
+  env.caps.approveOrigin(env.grant.id, "http://news.example/");
+  assert.equal(
+    env.broker.checkNavigationSync("tab-1", "https://www.news.example/").allow,
+    true,
+  );
+  for (const url of [
+    "https://news.example:8443/",
+    "http://news.example:8080/",
+    "https://news.example.evil.example/",
+    "https://sub.news.example/",
+    "https://other.example/",
+  ]) {
+    const verdict = env.broker.checkNavigationSync("tab-1", url);
+    assert.equal(verdict.allow, false, url);
+  }
+  // Only upward: an approved https site never falls back to plain http.
+  const secure = setup({ origins: [], defaultAccess: true });
+  secure.caps.approveOrigin(secure.grant.id, "https://news.example/");
+  assert.equal(
+    secure.broker.checkNavigationSync("tab-1", "http://news.example/").allow,
+    false,
+  );
+  // And not for a grant the person made: they approved those sites by hand.
+  const person = setup({ origins: ["http://news.example"] });
+  assert.equal(
+    person.broker.checkNavigationSync("tab-1", "https://news.example/").allow,
+    false,
+  );
+});
+
 test("under a person made grant the www twin is not approved for the person", () => {
   const env = setup({ origins: ["https://news.example"] });
   assert.equal(
