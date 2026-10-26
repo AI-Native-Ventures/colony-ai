@@ -40,10 +40,10 @@ name: Docker image
 # semver, so relay-v0.3.0-rc.1 publishes :0.3.0-rc.1 without moving :latest,
 # and main pushes (no semver tag) never produce :latest.
 
+# Manual only for Colony: this publishes the upstream ghcr.io/block/buzz images,
+# which Colony does not use (the Fly deploy workflows build their own relay
+# image), and its push to the upstream registry fails on every main push.
 on:
-  push:
-    branches: [main]
-    tags: ["relay-v[0-9]*"]
   workflow_dispatch:
     inputs:
       version:
