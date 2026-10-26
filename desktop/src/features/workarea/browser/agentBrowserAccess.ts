@@ -1,9 +1,16 @@
-import { openWorkArea } from "@/features/workarea/dock/workAreaStore";
+import { addWorkAreaTab } from "@/features/workarea/dock/workAreaStore";
 import {
   type BrowserBrokerEvent,
   browserBroker,
 } from "@/shared/api/browserBroker";
 
+import {
+  answerBrowserContinue,
+  askBrowserContinue,
+  noteBrowserEvent,
+  noteBrowserGrant,
+  resetBrowserActivity,
+} from "./agentBrowserActivity";
 import { browserTabId } from "./browserTabId";
 import {
   createBrowserPage,
@@ -13,9 +20,13 @@ import {
 
 /**
  * Default browser access for the owner's own AI employees. An agent that makes
- * its first browser call has no browser yet; the app answers by opening the
- * channel's work area on a Colony browser page and giving the agent that page.
- * The person did not have to open anything first, and watches the agent work.
+ * its first browser call has no browser yet; the app answers by making a Colony
+ * browser page in the channel's work area and giving the agent that page. The
+ * person did not have to open anything first. Nothing is shown to them either:
+ * the page joins the tab strip, the dock does not open, the selected tab and
+ * the focus do not move. A small "using the browser" mark (see
+ * `agentBrowserActivity.ts`) says the agent is working, and the person watches
+ * by clicking it.
  *
  * The grant is the ordinary `agent-grant` request, made here, in the trusted
  * app window, never by the agent or by a page. It starts with no sites: the
@@ -23,8 +34,9 @@ import {
  * page that sends the browser somewhere else. Stop and Take over end it.
  *
  * After the person ended a grant, the agent's next call arrives as a `resume`
- * request. The app opens the panel again but does not grant: it shows one
- * Allow card, and only the person's click brings the browser back.
+ * request. The app does not grant: it shows one Allow card on the agent's page
+ * and marks the agent as waiting for the person, and only the person's click
+ * brings the browser back.
  *
  * Community scoped: `resetAgentBrowserAccess` is wired into
  * `resetWorkAreaState()` and so `resetCommunityState()`.
@@ -91,14 +103,18 @@ function forgetCard(key: string) {
   const timer = cardTimers.get(key);
   if (timer !== undefined) clearTimeout(timer);
   cardTimers.delete(key);
-  if (waiting.some((entry) => taskKey(entry) === key))
+  const card = waiting.find((entry) => taskKey(entry) === key);
+  if (card) {
+    answerBrowserContinue(card.agentId, card.hostId);
     publish(waiting.filter((entry) => taskKey(entry) !== key));
+  }
 }
 
 function showCard(request: AgentAccessRequest) {
   const key = taskKey(request);
   forgetCard(key);
   publish([...waiting, request].slice(-4));
+  askBrowserContinue(request.agentId, request.channelId, request.hostId);
   cardTimers.set(
     key,
     setTimeout(() => forgetCard(key), ALLOW_CARD_MS),
@@ -127,8 +143,9 @@ async function pageFor(
     key = created.key;
     pageByTask.set(taskKey(request), key);
   }
-  // The panel appears at once; the page behind it is made while it does.
-  openWorkArea(channelId, "browser", browserTabId(key));
+  // The page joins the tab strip and nothing else: the dock stays shut or on
+  // whatever the person is looking at, and no focus moves.
+  addWorkAreaTab(channelId, "browser", browserTabId(key));
   const hostId = await ensureBrowserHostTab(key);
   return hostId ? { key, hostId, reused } : null;
 }
@@ -138,7 +155,7 @@ async function grantOn(
   request: { agentId: string; taskId: string; communityOrigin: string },
   hostId: string,
 ) {
-  await current.api.grant({
+  const grant = await current.api.grant({
     agentId: request.agentId,
     taskId: request.taskId,
     communityOrigin: request.communityOrigin,
@@ -148,6 +165,7 @@ async function grantOn(
     defaultAccess: true,
     ttlMs: DEFAULT_ACCESS_TTL_MS,
   });
+  noteBrowserGrant(grant);
 }
 
 /** Open the browser for a task and give the agent that page. */
@@ -263,7 +281,9 @@ export function startAgentBrowserAccess({
   };
   running = current;
   current.unsubscribe = api.onEvent((event) => {
-    if (running === current) handle(current, mine, event);
+    if (running !== current) return;
+    noteBrowserEvent(event);
+    handle(current, mine, event);
   });
 }
 
@@ -275,5 +295,6 @@ export function resetAgentBrowserAccess() {
   serving.clear();
   for (const timer of cardTimers.values()) clearTimeout(timer);
   cardTimers.clear();
+  resetBrowserActivity();
   if (waiting.length > 0) publish([]);
 }

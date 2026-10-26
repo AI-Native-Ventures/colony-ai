@@ -165,7 +165,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         },
         { action, payload },
       ) as Promise<T>;
-    expect(await request("agent-status")).toEqual({ enabled: true });
+    expect(await request("agent-status")).toEqual({
+      enabled: true,
+      defaultAccess: false,
+    });
     // Bundle the real renderer store and viewport, not a test-only page model.
     const renderer = await build({
       stdin: {

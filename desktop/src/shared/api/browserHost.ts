@@ -67,6 +67,8 @@ export type BrowserHostEvent =
       type: "created" | "new-tab" | "state";
       tab: BrowserTabState;
       openedFrom?: string;
+      /** An AI employee opened it: add the tab quietly, do not bring it forward. */
+      background?: boolean;
     }
   | { type: "closed"; tabId: string }
   | {

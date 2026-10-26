@@ -494,6 +494,7 @@ export function createBrowserHost({
         type: options.openedFrom ? "new-tab" : "created",
         tab: snapshot(tab),
         openedFrom: options.openedFrom,
+        ...(options.background ? { background: true } : {}),
       });
       if (url)
         void loadTab(tab, url).catch((error) => {
@@ -855,6 +856,8 @@ export function createBrowserHost({
         businessId,
         clientId,
         openedFrom: primaryTabId,
+        // The person is not looking: the app adds the tab and leaves the view be.
+        background: true,
       });
     },
     closeTab(id) {

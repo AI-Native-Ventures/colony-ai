@@ -1,3 +1,4 @@
+import { ChannelBrowserBadge } from "@/features/workarea/browser/BrowserActivity";
 import type * as React from "react";
 import { BellOff, ChevronDown, CircleDot, X } from "lucide-react";
 
@@ -343,6 +344,11 @@ export function ChannelMenuButton({
           summary={activeWorking}
         />
       ) : null}
+      <ChannelBrowserBadge
+        channelId={channel.id}
+        channelName={channel.name}
+        isActive={isActive}
+      />
       {isMuted ? (
         <BellOff
           className={cn(

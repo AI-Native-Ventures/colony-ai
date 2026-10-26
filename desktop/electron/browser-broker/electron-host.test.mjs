@@ -268,7 +268,7 @@ test("broker IPC accepts only the registered main window main frame", async () =
   });
   assert.deepEqual(
     await ipc({ sender: contents, senderFrame: frame }, "agent-status"),
-    { enabled: true },
+    { enabled: true, defaultAccess: false },
   );
   assert.equal(
     await ipc({ sender: contents, senderFrame: frame }, "agent-grants"),
@@ -309,6 +309,7 @@ test("after the host stops, the window's polling gets an empty answer, not an er
     ipc({ sender, senderFrame: frame }, action, payload);
   assert.deepEqual(await ask("agent-status", { tabId: f.tab.id }), {
     enabled: true,
+    defaultAccess: true,
     recoveryRequired: false,
   });
   await f.host.stop();
@@ -448,7 +449,7 @@ test("native Stop failure propagates with revoked access and recovery is window 
       { tabId: f.tab.id },
       f.sender.id,
     ),
-    { enabled: true, recoveryRequired: true },
+    { enabled: true, defaultAccess: true, recoveryRequired: true },
   );
   await assert.rejects(
     f.host.handleRequest(
@@ -475,7 +476,7 @@ test("native Stop failure propagates with revoked access and recovery is window 
       { tabId: f.tab.id },
       f.sender.id,
     ),
-    { enabled: true, recoveryRequired: false },
+    { enabled: true, defaultAccess: true, recoveryRequired: false },
   );
   assert.equal((await f.grant()).state, "active");
 });
@@ -497,7 +498,7 @@ test("failed network cleanup is visible and retained for explicit person recover
       { tabId: f.tab.id },
       f.sender.id,
     ),
-    { enabled: true, recoveryRequired: true },
+    { enabled: true, defaultAccess: true, recoveryRequired: true },
   );
   assert.equal(
     f.network.some((item) => item?.mode === "direct"),
@@ -523,7 +524,7 @@ test("failed network cleanup is visible and retained for explicit person recover
       { tabId: f.tab.id },
       f.sender.id,
     ),
-    { enabled: true, recoveryRequired: false },
+    { enabled: true, defaultAccess: true, recoveryRequired: false },
   );
 });
 

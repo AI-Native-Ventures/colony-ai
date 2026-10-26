@@ -39,7 +39,7 @@ function fixture(communityOrigin = "https://relay.example") {
   let logs = [];
   const api = {
     async status() {
-      return { enabled: true };
+      return { enabled: true, defaultAccess: api.defaultAccess === true };
     },
     async grants() {
       return structuredClone(grants);
@@ -70,6 +70,22 @@ function fixture(communityOrigin = "https://relay.example") {
       grants = [];
       emit({ type: "grant-changed", grantId: id, state: "taken-over" });
       return { takenOver: true };
+    },
+    async releaseTab(id, tab) {
+      calls.push(["release-tab", id, tab]);
+      grants = [
+        {
+          ...grants[0],
+          tabIds: grants[0].tabIds.filter((item) => item !== tab),
+        },
+      ];
+      emit({
+        type: "grant-changed",
+        grantId: id,
+        state: "active",
+        change: "tab-released",
+      });
+      return { released: true };
     },
     async approveOrigin(id, origin) {
       calls.push(["site", id, origin]);
@@ -418,4 +434,58 @@ test("person approval carries the trusted community and missing community cannot
   );
   assert.deepEqual(missing.calls, []);
   missing.store.dispose();
+});
+
+test("under default access the store knows it, and Take over takes back this tab only", async () => {
+  const f = fixture();
+  f.api.defaultAccess = true;
+  f.setGrants([
+    {
+      ...structuredClone(grant),
+      defaultAccess: true,
+      tabIds: ["tab-one", "tab-two"],
+      allowedOrigins: [],
+    },
+  ]);
+  await f.store.start();
+  assert.equal(f.store.getSnapshot().defaultAccess, true);
+  assert.equal(f.store.getSnapshot().grant.id, grant.id);
+  await f.store.takeOver();
+  assert.deepEqual(f.calls, [["release-tab", grant.id, "tab-one"]]);
+  // The agent still has its other tab; this tab is the person's again.
+  assert.equal(f.store.getSnapshot().grant, null);
+  f.store.dispose();
+});
+
+test("a grant the person made is not default access, and Take over ends it", async () => {
+  const f = fixture();
+  await f.store.start();
+  assert.equal(f.store.getSnapshot().defaultAccess, false);
+  await f.store.takeOver();
+  assert.deepEqual(f.calls, [["take-over", grant.id]]);
+  f.store.dispose();
+});
+
+test("the tab the agent takes shows as controlled the moment the grant binds it", async () => {
+  const f = fixture();
+  f.api.defaultAccess = true;
+  f.setGrants([]);
+  await f.store.start();
+  assert.equal(f.store.getSnapshot().grant, null);
+  f.setGrants([
+    {
+      ...structuredClone(grant),
+      defaultAccess: true,
+      tabIds: ["tab-two", "tab-one"],
+    },
+  ]);
+  f.emit({
+    type: "grant-changed",
+    grantId: grant.id,
+    state: "active",
+    change: "tab-bound",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.store.getSnapshot().grant.id, grant.id);
+  f.store.dispose();
 });

@@ -10,6 +10,8 @@ export type BrowserGrant = {
   allowedOrigins: string[];
   /** Made by the app for the owner's own agent; the person can still stop it. */
   defaultAccess?: boolean;
+  /** Tabs it took over from the person or from other tasks (a subset of `tabIds`). */
+  adoptedTabIds?: string[];
   issuedAt: number;
   expiresAt: number;
   epoch: number;
@@ -106,12 +108,18 @@ function request<T>(action: string, payload?: object): Promise<T> {
 export const browserBroker = {
   status: (
     tabId?: string,
-  ): Promise<{ enabled: boolean; recoveryRequired?: boolean }> =>
+  ): Promise<{
+    enabled: boolean;
+    recoveryRequired?: boolean;
+    /** Default access: AI employees share the business's tabs with no approval. */
+    defaultAccess?: boolean;
+  }> =>
     window.colonyBrowserBroker
-      ? request<{ enabled: boolean; recoveryRequired?: boolean }>(
-          "agent-status",
-          { tabId },
-        )
+      ? request<{
+          enabled: boolean;
+          recoveryRequired?: boolean;
+          defaultAccess?: boolean;
+        }>("agent-status", { tabId })
       : Promise.resolve({ enabled: false }),
   recoverControl: (tabId: string) =>
     request<{ recovered: boolean }>("agent-recover-control", { tabId }),
@@ -122,6 +130,9 @@ export const browserBroker = {
     request<{ revoked: boolean }>("agent-revoke", { grantId }),
   takeOver: (grantId: string) =>
     request<{ takenOver: boolean }>("agent-take-over", { grantId }),
+  /** Take one tab back; the task keeps the others. */
+  releaseTab: (grantId: string, tabId: string) =>
+    request<{ released: boolean }>("agent-release-tab", { grantId, tabId }),
   approveOrigin: (grantId: string, url: string) =>
     request<BrowserGrant>("agent-approve-origin", { grantId, url }),
   confirm: (actionId: string) =>

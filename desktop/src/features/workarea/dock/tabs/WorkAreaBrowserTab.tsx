@@ -4,7 +4,10 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import type { BrowserShortcutAction } from "@/shared/api/browserHost";
 import { isMacPlatform } from "@/shared/lib/platform";
 
-import { BrowserAgentControls } from "../../browser/BrowserAgentControls";
+import {
+  BrowserAgentControls,
+  type BrowserSharing,
+} from "../../browser/BrowserAgentControls";
 import { BrowserNotices } from "../../browser/BrowserNotices";
 import {
   BrowserToolbar,
@@ -47,6 +50,22 @@ import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
  * controls here and from a focused page through the host relay. Opening and
  * closing pages is the dock's: new and close go through its requests.
  */
+/**
+ * Who can use this tab. With default access every AI employee of the business
+ * can, unless the person keeps the tab private. On a host that still asks the
+ * person to approve each task, nothing is shared until they do.
+ */
+function sharingStatus(isPrivate: boolean, sharing: BrowserSharing): string {
+  if (!sharing.defaultAccess)
+    return sharing.agentHasIt
+      ? "Shared for an approved task"
+      : "Not shared with agents";
+  if (isPrivate) return "Private to you";
+  return sharing.agentHasIt
+    ? "An AI employee is using this tab"
+    : "Shared with this business’s AI employees";
+}
+
 export function WorkAreaBrowserTab({
   channelId,
   tabId,
@@ -57,7 +76,10 @@ export function WorkAreaBrowserTab({
   const notices = useBrowserNotices(pageKey);
   const { activeCommunity } = useCommunities();
   const toolbarRef = React.useRef<BrowserToolbarHandle>(null);
-  const [sharedWithAgent, setSharedWithAgent] = React.useState(false);
+  const [sharing, setSharing] = React.useState<BrowserSharing>({
+    defaultAccess: false,
+    agentHasIt: false,
+  });
   const hasPage = page !== null;
 
   // A page the person just made takes the address bar, once its tab is shown.
@@ -144,7 +166,8 @@ export function WorkAreaBrowserTab({
         channelId={channelId}
         hostId={page.hostId}
         url={page.url}
-        onSharingChange={setSharedWithAgent}
+        isPrivate={page.private}
+        onSharingChange={setSharing}
       />
       <BrowserNotices notices={notices} pageKey={pageKey} />
       <BrowserViewport active={active} page={page} />
@@ -152,10 +175,8 @@ export function WorkAreaBrowserTab({
         <span>
           {activeCommunity?.name ?? "This business"} · Separate browser profile
         </span>
-        <span>
-          {sharedWithAgent
-            ? "Shared for an approved task"
-            : "Not shared with agents"}
+        <span data-testid="browser-status-sharing">
+          {sharingStatus(page.private, sharing)}
         </span>
       </footer>
     </div>
