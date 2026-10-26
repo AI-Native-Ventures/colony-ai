@@ -369,6 +369,21 @@ async function boot() {
             currentVersion: app.getVersion(),
             requestQuit: () => quitApp(),
             allowInsecureLoopback: updateTestBuild,
+            // A local test build relaunches with the same throwaway profile
+            // and host; a release relaunches with a plain environment.
+            relaunchEnv: updateTestBuild
+              ? Object.fromEntries(
+                  [
+                    "HOME",
+                    "COLONY_ELECTRON_USER_DATA",
+                    "COLONY_NATIVE_HOST",
+                    "COLONY_ELECTRON_BACKGROUND",
+                    "COLONY_UPDATE_TEST_METADATA_URL",
+                  ]
+                    .filter((name) => typeof process.env[name] === "string")
+                    .map((name) => [name, process.env[name]]),
+                )
+              : {},
           })
         : null;
     updaterService = createElectronUpdaterService({

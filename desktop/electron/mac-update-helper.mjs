@@ -26,6 +26,17 @@ export const HELPER_MESSAGES = Object.freeze({
     "The new version failed its signature check after it was put in place, so the current version was restored.",
 });
 
+function relaunchArguments(relaunchEnv) {
+  return Object.entries(relaunchEnv)
+    .map(([name, value]) => {
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name) || typeof value !== "string") {
+        throw new Error("Relaunch environment is not valid.");
+      }
+      return `--env ${shellQuote(`${name}=${value}`)}`;
+    })
+    .join(" ");
+}
+
 export function shellQuote(value) {
   const text = String(value);
   if (text.includes("\0")) throw new Error("Shell value contains a NUL byte.");
@@ -43,6 +54,9 @@ export function shellQuote(value) {
  * @param {string} options.logPath      Append-only log kept outside the stage folder.
  * @param {string} options.fromVersion
  * @param {string} options.toVersion
+ * @param {Record<string, string>} [options.relaunchEnv] Passed to the relaunched app
+ *   with `open --env`. Empty in a release; only a local test build sets it, so a
+ *   throwaway profile survives the relaunch.
  * @param {string} [options.openCommand]
  * @param {string} [options.xattrCommand]
  * @param {string} [options.codesignCommand]
@@ -58,6 +72,7 @@ export function renderSwapHelper({
   logPath,
   fromVersion,
   toVersion,
+  relaunchEnv = {},
   openCommand = "/usr/bin/open",
   xattrCommand = "/usr/bin/xattr",
   codesignCommand = "/usr/bin/codesign",
@@ -67,6 +82,7 @@ export function renderSwapHelper({
     throw new Error("The helper needs the process id of the running app.");
   }
   const polls = Math.max(1, Math.round(waitSeconds * 5));
+  const envArguments = relaunchArguments(relaunchEnv);
   return `#!/bin/sh
 # Colony update helper: waits for Colony to quit, swaps the app, relaunches.
 PID=${pid}
@@ -90,6 +106,8 @@ write_result() {
   printf '{"status":"%s","from":"%s","to":"%s","message":"%s"}\\n' "$1" "$FROM" "$TO" "$2" > "$tmp" && mv -f "$tmp" "$RESULT"
 }
 
+relaunch() { "$OPEN" ${envArguments} "$BUNDLE" >> "$LOG" 2>&1; }
+
 # The staged files and the parked old app go once the swap has settled.
 cleanup_stage() {
   case "$STAGE_DIR" in
@@ -101,7 +119,7 @@ cleanup_stage() {
 fail_keep_old() {
   log "failed: $1"
   write_result failed "$1"
-  "$OPEN" "$BUNDLE" >> "$LOG" 2>&1 || log "could not reopen the current version"
+  relaunch || log "could not reopen the current version"
   cleanup_stage
   exit 1
 }
@@ -141,7 +159,7 @@ fi
 
 write_result installed ""
 log "installed $TO over $FROM"
-"$OPEN" "$BUNDLE" >> "$LOG" 2>&1 || log "could not open the new version"
+relaunch || log "could not open the new version"
 
 # The new app is in place and opened; the parked old app and the staged files go.
 cleanup_stage

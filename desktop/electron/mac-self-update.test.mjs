@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import {
   chmod,
@@ -8,6 +10,7 @@ import {
   readdir,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -17,6 +20,7 @@ import test from "node:test";
 import {
   appBundleFromExecutable,
   assessBundleLocation,
+  createMacSelfUpdater,
 } from "./mac-self-update.mjs";
 import { HELPER_MESSAGES, renderSwapHelper } from "./mac-update-helper.mjs";
 
@@ -245,6 +249,38 @@ test("the helper swaps the bundle, clears quarantine, relaunches and cleans up",
   }
 });
 
+test("a local test build relaunches with its throwaway profile, a release with a plain environment", async () => {
+  const withEnv = await makeSwapRig();
+  try {
+    const script = withEnv.script(99999991, {
+      relaunchEnv: { COLONY_ELECTRON_USER_DATA: "/tmp/it's a profile" },
+    });
+    assert.equal(await withEnv.run(script), 0);
+    assert.deepEqual(
+      (await withEnv.calls()).at(-1),
+      `open --env COLONY_ELECTRON_USER_DATA=/tmp/it's a profile ${withEnv.bundle}`,
+    );
+  } finally {
+    await withEnv.cleanup();
+  }
+  assert.throws(
+    () =>
+      renderSwapHelper({
+        pid: 99999991,
+        bundlePath: "/a/Colony.app",
+        stagedPath: "/a/s/Colony.app",
+        previousPath: "/a/s/p/Colony.app",
+        stageDir: "/a/.colony-update-x",
+        resultPath: "/r.json",
+        logPath: "/l.log",
+        fromVersion: "1.0.0",
+        toVersion: "1.0.1",
+        relaunchEnv: { "bad name": "x" },
+      }),
+    /Relaunch environment is not valid/,
+  );
+});
+
 test("the helper copes with spaces and quotes in the install path", async () => {
   const rig = await makeSwapRig({ spaces: true });
   try {
@@ -359,5 +395,248 @@ test("the helper refuses to remove a folder that is not an update stage", async 
     );
   } finally {
     await rig.cleanup();
+  }
+});
+
+// --- staging, against a local server and stand-in system commands -----------
+
+const BUNDLE_ID = "xyz.block.buzz.app.electron";
+
+function serve(bytes) {
+  const server = createServer((request, response) => {
+    if (request.url === "/missing.zip") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-length": bytes.byteLength });
+    response.end(bytes);
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () =>
+      resolve({
+        url: `http://127.0.0.1:${server.address().port}`,
+        close: () => new Promise((done) => server.close(done)),
+      }),
+    );
+  });
+}
+
+async function makeInstalledApp() {
+  const root = await mkdtemp(path.join(os.tmpdir(), "colony-stage-"));
+  const bundle = path.join(root, "Apps", "Colony.app");
+  await mkdir(path.join(bundle, "Contents", "MacOS"), { recursive: true });
+  await writeFile(
+    path.join(bundle, "Contents", "Info.plist"),
+    JSON.stringify({ CFBundleIdentifier: BUNDLE_ID }),
+  );
+  return { root, bundle, parent: path.dirname(bundle) };
+}
+
+function commandsExtracting(apps) {
+  return async (file, args) => {
+    if (file === "/usr/bin/ditto") {
+      for (const name of apps) {
+        const dir = path.join(args[3], name, "Contents", "MacOS");
+        await mkdir(dir, { recursive: true });
+        await writeFile(path.join(dir, "Colony"), "x", { mode: 0o755 });
+        await writeFile(
+          path.join(args[3], name, "Contents", "Info.plist"),
+          JSON.stringify({
+            CFBundleIdentifier: BUNDLE_ID,
+            CFBundleShortVersionString: "3.0.91",
+            CFBundleExecutable: "Colony",
+          }),
+        );
+      }
+      return { stdout: "" };
+    }
+    if (file === "/usr/bin/plutil") {
+      const plist = JSON.parse(await readFile(args.at(-1), "utf8"));
+      return { stdout: `${plist[args[1]]}\n` };
+    }
+    return { stdout: "" };
+  };
+}
+
+function updaterFor(install, overrides = {}) {
+  return createMacSelfUpdater({
+    executablePath: path.join(install.bundle, "Contents", "MacOS", "Colony"),
+    userDataDir: path.join(install.root, "userData"),
+    currentVersion: "3.0.90",
+    requestQuit: async () => {},
+    fetchImpl: fetch,
+    allowInsecureLoopback: true,
+    ...overrides,
+  });
+}
+
+test("a production updater never downloads over plain http", async () => {
+  const bytes = Buffer.from("archive");
+  const server = await serve(bytes);
+  const install = await makeInstalledApp();
+  try {
+    const updater = updaterFor(install, {
+      allowInsecureLoopback: false,
+      runCommand: commandsExtracting(["Colony.app"]),
+    });
+    await assert.rejects(
+      updater.stage({
+        version: "3.0.91",
+        archiveUrl: `${server.url}/a.zip`,
+        size: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      }),
+      /not secure/,
+    );
+    assert.deepEqual(
+      (await readdir(install.parent)).filter((name) =>
+        name.startsWith(".colony-update-"),
+      ),
+      [],
+    );
+  } finally {
+    await server.close();
+    await rm(install.root, { recursive: true, force: true });
+  }
+});
+
+test("a download that returns an error status is refused with a plain message", async () => {
+  const server = await serve(Buffer.from("x"));
+  const install = await makeInstalledApp();
+  try {
+    await assert.rejects(
+      updaterFor(install, {
+        runCommand: commandsExtracting(["Colony.app"]),
+      }).stage({
+        version: "3.0.91",
+        archiveUrl: `${server.url}/missing.zip`,
+        size: 1,
+        sha256: "0".repeat(64),
+      }),
+      /could not be downloaded \(status 404\)/,
+    );
+  } finally {
+    await server.close();
+    await rm(install.root, { recursive: true, force: true });
+  }
+});
+
+test("an archive that holds more than one app is refused", async () => {
+  const bytes = Buffer.from("archive");
+  const server = await serve(bytes);
+  const install = await makeInstalledApp();
+  try {
+    await assert.rejects(
+      updaterFor(install, {
+        runCommand: commandsExtracting(["Colony.app", "Other.app"]),
+      }).stage({
+        version: "3.0.91",
+        archiveUrl: `${server.url}/a.zip`,
+        size: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      }),
+      /not a single Colony app/,
+    );
+  } finally {
+    await server.close();
+    await rm(install.root, { recursive: true, force: true });
+  }
+});
+
+test("download progress climbs to 100 and a good archive is staged beside the app", async () => {
+  const bytes = Buffer.alloc(300_000, 7);
+  const server = await serve(bytes);
+  const install = await makeInstalledApp();
+  try {
+    const seen = [];
+    const updater = updaterFor(install, {
+      runCommand: commandsExtracting(["Colony.app"]),
+    });
+    await updater.stage({
+      version: "3.0.91",
+      archiveUrl: `${server.url}/a.zip`,
+      size: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      onProgress: (percent) => seen.push(percent),
+    });
+    assert.equal(seen.at(-1), 100);
+    assert.deepEqual(
+      seen,
+      [...seen].sort((a, b) => a - b),
+    );
+    assert.equal(updater.hasStaged(), true);
+    const [stage] = (await readdir(install.parent)).filter((name) =>
+      name.startsWith(".colony-update-3.0.91-"),
+    );
+    assert.ok(stage, "the stage folder sits in the same folder as the app");
+    // The archive is deleted once unpacked; only the checked app remains.
+    assert.deepEqual(await readdir(path.join(install.parent, stage)), [
+      "extracted",
+    ]);
+    await updater.discardStaged();
+    assert.equal(updater.hasStaged(), false);
+    assert.deepEqual(
+      (await readdir(install.parent)).filter((name) =>
+        name.startsWith(".colony-update-"),
+      ),
+      [],
+    );
+  } finally {
+    await server.close();
+    await rm(install.root, { recursive: true, force: true });
+  }
+});
+
+test("old stage folders are cleaned up at start and fresh ones are left alone", async () => {
+  const install = await makeInstalledApp();
+  try {
+    const old = path.join(install.parent, ".colony-update-3.0.80-aaaa");
+    const fresh = path.join(install.parent, ".colony-update-3.0.91-bbbb");
+    const unrelated = path.join(install.parent, ".something-else");
+    for (const dir of [old, fresh, unrelated]) await mkdir(dir);
+    const longAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    await utimes(old, longAgo, longAgo);
+    await utimes(unrelated, longAgo, longAgo);
+    await updaterFor(install).cleanupStale();
+    const left = await readdir(install.parent);
+    assert.ok(!left.includes(".colony-update-3.0.80-aaaa"));
+    assert.ok(left.includes(".colony-update-3.0.91-bbbb"));
+    assert.ok(left.includes(".something-else"));
+  } finally {
+    await rm(install.root, { recursive: true, force: true });
+  }
+});
+
+test("the helper's result is read once, and a damaged result is ignored", async () => {
+  const install = await makeInstalledApp();
+  try {
+    const updater = updaterFor(install);
+    const updates = path.join(install.root, "userData", "updates");
+    await mkdir(updates, { recursive: true });
+    const resultPath = path.join(updates, "last-install.json");
+
+    await writeFile(
+      resultPath,
+      JSON.stringify({
+        status: "installed",
+        from: "3.0.90",
+        to: "3.0.91",
+        message: "",
+      }),
+    );
+    assert.deepEqual(await updater.takeLastResult(), {
+      status: "installed",
+      from: "3.0.90",
+      to: "3.0.91",
+      message: "",
+    });
+    assert.equal(await updater.takeLastResult(), null);
+
+    await writeFile(resultPath, "{ not json");
+    assert.equal(await updater.takeLastResult(), null);
+    assert.equal(await stat(resultPath).catch(() => null), null);
+  } finally {
+    await rm(install.root, { recursive: true, force: true });
   }
 });

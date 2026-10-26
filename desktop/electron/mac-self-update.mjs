@@ -180,6 +180,12 @@ async function downloadArchive({
     new UpdateRefusedError(code, message, cause ? { cause } : undefined);
   let output = null;
   try {
+    if (!allowedProtocols.includes(new URL(url).protocol)) {
+      throw fail(
+        "network",
+        "The update address is not secure, so nothing was downloaded.",
+      );
+    }
     armStall();
     let response;
     try {
@@ -311,6 +317,7 @@ export function createMacSelfUpdater({
   allowInsecureLoopback = false,
   now = () => Date.now(),
   helperCommands = {},
+  relaunchEnv = {},
 }) {
   const bundlePath = appBundleFromExecutable(executablePath);
   const updatesDir = userDataDir ? posix.join(userDataDir, "updates") : null;
@@ -502,6 +509,7 @@ export function createMacSelfUpdater({
         logPath: posix.join(updatesDir, LOG_FILE),
         fromVersion: currentVersion,
         toVersion: current.version,
+        relaunchEnv,
         ...helperCommands,
       });
       const scriptPath = posix.join(current.stageDir, "swap.sh");
