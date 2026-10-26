@@ -16707,6 +16707,22 @@ async function handleStopManagedAgent(args: {
   return cloneManagedAgent(agent);
 }
 
+/**
+ * Hand mentions back to a stopped harness's wake ledger. Like the host, it
+ * refuses while a harness runs for the agent: a running harness owns its
+ * ledger.
+ */
+async function handleReleaseWakeEvents(args: {
+  pubkey: string;
+  eventIds: string[];
+}): Promise<number> {
+  const agent = getMockManagedAgent(args.pubkey);
+  if (agent.status === "running") {
+    throw new Error("stop the agent before handing mentions back to it");
+  }
+  return args.eventIds.length;
+}
+
 async function handleDeleteManagedAgent(args: {
   pubkey: string;
   forceRemoteDelete?: boolean | null;
@@ -22018,6 +22034,10 @@ export function maybeInstallE2eTauriMocks() {
       case "stop_managed_agent":
         return handleStopManagedAgent(
           payload as Parameters<typeof handleStopManagedAgent>[0],
+        );
+      case "release_wake_events":
+        return handleReleaseWakeEvents(
+          payload as Parameters<typeof handleReleaseWakeEvents>[0],
         );
       case "list_managed_agent_runtimes":
         return mockManagedAgentRuntimes.map((row) => ({ ...row }));

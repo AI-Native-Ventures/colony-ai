@@ -7,6 +7,8 @@ import { isStockScoutPrompt } from "./scoutPersona";
 import { readWelcomeBusinessContext } from "./welcomeConnection";
 import scoutSvg from "./assets/scout.svg?raw";
 import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
+import { runAgentLifecycle } from "@/features/agents/agentLifecycle";
+import { hasAgentStartWatch } from "@/features/agents/agentStartWatch";
 import {
   startManagedAgent,
   stopManagedAgent,
@@ -325,15 +327,43 @@ export function welcomeStarterRuntimeUpdate(
   };
 }
 
-/** Stop a running starter before applying changed launch fields, then start it again on the new runtime. */
+/** Pause before the one more try at starting the starter after a stop. */
+const RESTART_RETRY_DELAY_MS = 1_000;
+
+/**
+ * Apply changed launch fields to the Welcome starter, and make sure it is
+ * running again if it had to be stopped for them.
+ *
+ * GATE-304 (26 Oct, published 3.0.4): Scout was started for a mention and
+ * stopped 5.5 s later with nothing starting it again. This runs on every
+ * launch, from a read of the agents taken before slow awaits, and stopped the
+ * starter on the strength of that old read. So now:
+ *
+ * - it runs behind any start or restart of the agent (`runAgentLifecycle`),
+ *   so it never stops an agent in the middle of starting;
+ * - it reads the starter again just before deciding;
+ * - a starter somebody is waiting on (a mention it has not answered) is not
+ *   stopped at all: the new settings apply the next time it starts, and the
+ *   auto-restart policy takes it from there once it is idle;
+ * - when it does stop the starter it starts it again whatever else fails, and
+ *   once more if the first start fails.
+ */
 export async function reconcileWelcomeStarter(
   existing: ManagedAgent,
   desired: CreateManagedAgentInput,
-  stop = stopManagedAgent,
+  stop: (
+    pubkey: string,
+    reason?: string,
+  ) => Promise<unknown> = stopManagedAgent,
   update = updateManagedAgent,
   options: {
     start?: typeof startManagedAgent;
     runtimeDefaultArgs?: readonly string[];
+    /** The starter as the host knows it now. */
+    reload?: (pubkey: string) => Promise<ManagedAgent | undefined>;
+    /** Whether somebody is waiting on the agent. */
+    isWanted?: (pubkey: string) => boolean;
+    retryDelayMs?: number;
   } = {},
 ): Promise<ManagedAgent> {
   const runtimeUpdate = welcomeStarterRuntimeUpdate(
@@ -361,20 +391,68 @@ export async function reconcileWelcomeStarter(
     !Object.keys(stockNameUpdate).length
   )
     return existing;
-  const wasRunning = existing.status === "running";
-  if (wasRunning) await stop(existing.pubkey);
-  const updated = (
-    await update({
-      pubkey: existing.pubkey,
-      ...runtimeUpdate,
-      ...stockPromptUpdate,
-      ...stockNameUpdate,
-    })
-  ).agent;
-  // Kickoff only starts the lead before its first message, so a starter that
-  // was running must not be left stopped by this reconcile.
-  if (!wasRunning) return updated;
-  return (options.start ?? startManagedAgent)(existing.pubkey);
+  const start = options.start ?? startManagedAgent;
+  const isWanted = options.isWanted ?? hasAgentStartWatch;
+  const retryDelayMs = options.retryDelayMs ?? RESTART_RETRY_DELAY_MS;
+  return runAgentLifecycle(
+    existing.pubkey,
+    "welcome starter reconcile",
+    async () => {
+      let current = existing;
+      if (options.reload) {
+        try {
+          current = (await options.reload(existing.pubkey)) ?? existing;
+        } catch (error) {
+          console.warn(
+            "[welcomeGuide] could not read the starter again, using the earlier read",
+            error,
+          );
+        }
+      }
+      const wasRunning = current.status === "running";
+      // Somebody is waiting on this agent: it keeps running, on its old
+      // settings, until it is next started.
+      const stopIt = wasRunning && !isWanted(existing.pubkey);
+      if (stopIt) {
+        await stop(
+          existing.pubkey,
+          "welcome starter reconcile: its launch settings changed",
+        );
+      }
+      let updated: ManagedAgent | undefined;
+      let updateError: unknown;
+      try {
+        updated = (
+          await update({
+            pubkey: existing.pubkey,
+            ...runtimeUpdate,
+            ...stockPromptUpdate,
+            ...stockNameUpdate,
+          })
+        ).agent;
+      } catch (error) {
+        updateError = error;
+      }
+      // Kickoff only starts the lead before its first message, so a starter that
+      // was running must not be left stopped by this reconcile, even when the
+      // update failed.
+      let restarted: ManagedAgent | undefined;
+      if (stopIt) {
+        try {
+          restarted = await start(existing.pubkey);
+        } catch (firstError) {
+          console.warn(
+            "[welcomeGuide] the starter did not start again, trying once more",
+            firstError,
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          restarted = await start(existing.pubkey);
+        }
+      }
+      if (updateError) throw updateError;
+      return restarted ?? (updated as ManagedAgent);
+    },
+  );
 }
 
 export function welcomeTeammateHasExpectedAccess(
@@ -496,6 +574,13 @@ async function provisionWelcomeTeam(
             runtimeDefaultArgs: runtimes.find(
               (runtime) => runtime.command === desired.agentCommand,
             )?.defaultArgs,
+            // The agents were read before several slow awaits; the stop
+            // decision reads the starter again.
+            reload: async (pubkey) =>
+              (await listManagedAgents()).find(
+                (agent) =>
+                  normalizePubkey(agent.pubkey) === normalizePubkey(pubkey),
+              ),
           },
         ),
       );

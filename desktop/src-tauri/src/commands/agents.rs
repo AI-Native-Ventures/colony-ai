@@ -1038,8 +1038,15 @@ pub async fn start_managed_agent(
 #[tauri::command]
 pub async fn stop_managed_agent(
     pubkey: String,
+    reason: Option<String>,
     app: AppHandle,
 ) -> Result<ManagedAgentSummary, String> {
+    // The caller says why: the pair log and the host's stderr name it before
+    // the harness is signalled (GATE-304, nothing named who stopped Scout).
+    let reason = reason
+        .map(|reason| reason.trim().to_string())
+        .filter(|reason| !reason.is_empty())
+        .unwrap_or_else(|| "stop_managed_agent, no reason given".to_string());
     use tauri::Manager;
     tokio::task::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -1073,7 +1080,7 @@ pub async fn stop_managed_agent(
             }
             // Pair-scoped: stops only the active workspace's pair; delete and
             // the config-restart flows still drain every pair.
-            stop_managed_agent_workspace_pair(&app, record, &mut runtimes)?;
+            stop_managed_agent_workspace_pair(&app, record, &mut runtimes, &reason)?;
         }
         save_managed_agents(&app, &records)?;
         let record = records
@@ -1161,7 +1168,7 @@ pub async fn delete_managed_agent(
             }
             run_managed_agent_deletion(&base_dir, &pubkey, &mut records, |records| {
                 if let Some(record) = records.iter_mut().find(|record| record.pubkey == pubkey) {
-                    stop_managed_agent_process(&app, record, &mut runtimes)?;
+                    stop_managed_agent_process(&app, record, &mut runtimes, "agent deleted")?;
                 }
                 state.clear_agent_session_caches(&pubkey);
                 records.retain(|record| record.pubkey != pubkey);

@@ -184,6 +184,20 @@ pub(crate) fn shutdown_managed_agents(app: &tauri::AppHandle) -> Result<(), Stri
     if !to_stop.is_empty() {
         changed = true;
 
+        // Name the caller in each pair's log before anything is signalled.
+        for agent in &to_stop {
+            if let Some(rt) = agent.runtime.as_ref() {
+                let record = &records[agent.idx];
+                let line = managed_agents::stop_request_line(
+                    &record.name,
+                    &record.pubkey,
+                    "the app is shutting down",
+                    &util::now_iso(),
+                );
+                let _ = managed_agents::append_log_marker(&rt.log_path, &line);
+            }
+        }
+
         // Fan-out: send SIGTERM to all process groups at once.
         #[cfg(unix)]
         for agent in &to_stop {

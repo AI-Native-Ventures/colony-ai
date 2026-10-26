@@ -1,5 +1,7 @@
 import * as React from "react";
 import { toast } from "sonner";
+import { trackAgentStart } from "@/features/agents/agentLifecycle";
+import { retryAgentWithMentions } from "@/features/agents/mentionReconcilerHandle";
 import {
   beginAgentStartAttempt,
   failAgentStartWatches,
@@ -182,6 +184,35 @@ export function useDetachedAgentStart(): (
     expectedSignerPubkey,
   });
   latestScopeRef.current = { expectedRelayUrl, expectedSignerPubkey };
+  // What a watch runs to start the agent again. Try again replaces the harness
+  // through the mention reconciler, which hands back what the old harness
+  // queued and lost (a plain forced start would reuse the ledger that marks
+  // it handled). Without a reconciler the start is forced as before.
+  const startOrRetry = React.useCallback(
+    async (input: {
+      force: boolean;
+      pubkey: string;
+      floorUnix: number;
+      expectedRelayUrl: string;
+      expectedSignerPubkey: string;
+    }) => {
+      if (input.force) {
+        const retried = await retryAgentWithMentions(
+          input.pubkey,
+          input.floorUnix,
+        );
+        if (retried) return;
+      }
+      await startAgentMutateAsync({
+        pubkey: input.pubkey,
+        expectedRelayUrl: input.expectedRelayUrl,
+        expectedSignerPubkey: input.expectedSignerPubkey,
+        replayFloorUnix: input.floorUnix,
+        forceRestart: input.force,
+      });
+    },
+    [startAgentMutateAsync],
+  );
   return React.useCallback(
     (
       agent: ManagedAgent,
@@ -209,12 +240,12 @@ export function useDetachedAgentStart(): (
                 new Error("Colony is still connecting to this community."),
               );
             }
-            return startAgentMutateAsync({
+            return startOrRetry({
+              force,
               pubkey: agent.pubkey,
+              floorUnix: attemptFloorUnix,
               expectedRelayUrl: latest.expectedRelayUrl,
               expectedSignerPubkey: latest.expectedSignerPubkey,
-              replayFloorUnix: attemptFloorUnix,
-              forceRestart: force,
             });
           },
         });
@@ -248,12 +279,12 @@ export function useDetachedAgentStart(): (
         threadHeadId: scope?.threadHeadId ?? null,
         floorUnix: replayFloorUnix ?? Math.floor(Date.now() / 1000),
         start: ({ force, floorUnix: attemptFloorUnix }) =>
-          startAgentMutateAsync({
+          startOrRetry({
+            force,
             pubkey: agent.pubkey,
+            floorUnix: attemptFloorUnix,
             expectedRelayUrl,
             expectedSignerPubkey,
-            replayFloorUnix: attemptFloorUnix,
-            forceRestart: force,
           }),
       });
       if (inFlightDetachedStarts.has(key)) {
@@ -277,6 +308,7 @@ export function useDetachedAgentStart(): (
           expectedSignerPubkey,
           replayFloorUnix: startFloorUnix,
         });
+
       // With the mention reconciler mounted, the start also reaches back to
       // any older mention the relay shows the agent never touched: a newer
       // mention must not move the floor past an older unanswered one. Without
@@ -328,8 +360,17 @@ export function useDetachedAgentStart(): (
           }
         });
       inFlightDetachedStarts.set(key, started);
+      // Anything that stops or restarts this agent on its own waits for the
+      // start to land: a reconcile that stopped it mid-start is how Scout was
+      // stopped 5.5 s after it started (GATE-304).
+      trackAgentStart(agent.pubkey, started);
       return true;
     },
-    [expectedRelayUrl, expectedSignerPubkey, startAgentMutateAsync],
+    [
+      expectedRelayUrl,
+      expectedSignerPubkey,
+      startAgentMutateAsync,
+      startOrRetry,
+    ],
   );
 }

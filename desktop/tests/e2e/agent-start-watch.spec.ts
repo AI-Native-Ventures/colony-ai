@@ -178,7 +178,10 @@ test.describe("a mention to an agent that has to be started", () => {
 
     await expect.poll(async () => (await readStartCalls(page)).length).toBe(3);
     const [, , retried] = await readStartCalls(page);
-    expect(retried.forceRestart).toBe(true);
+    // Try again replaces the harness itself: a stop that says why, then a
+    // plain start (a forced start would reuse the ledger that marks a queued
+    // mention handled).
+    expect(retried.forceRestart ?? false).toBe(false);
     expect(retried.replayFloorUnix).toBe(first.replayFloorUnix);
     await expect(indicator(page)).toHaveAttribute("data-state", "starting");
 
@@ -275,7 +278,7 @@ test.describe("a mention to an agent that has to be started", () => {
       .click();
     await expect.poll(async () => (await readStartCalls(page)).length).toBe(2);
     const [first, retried] = await readStartCalls(page);
-    expect(retried.forceRestart).toBe(true);
+    expect(retried.forceRestart ?? false).toBe(false);
     expect(retried.replayFloorUnix).toBe(first.replayFloorUnix);
     await expect(indicator(page)).toHaveAttribute("data-state", "starting");
   });

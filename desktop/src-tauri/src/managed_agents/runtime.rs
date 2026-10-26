@@ -31,7 +31,7 @@ mod setup_payload;
 use setup_payload::apply_setup_payload_env;
 
 mod stop;
-pub(crate) use stop::managed_agent_runtime_keys;
+pub(crate) use stop::{managed_agent_runtime_keys, stop_request_line};
 pub use stop::{stop_managed_agent_process, stop_managed_agent_workspace_pair};
 
 mod sweep;
@@ -1013,7 +1013,13 @@ pub fn start_managed_agent_process(
                         now_iso()
                     ),
                 );
-                stop::stop_managed_agent_pair(app, record, runtimes, &key)?;
+                stop::stop_managed_agent_pair(
+                    app,
+                    record,
+                    runtimes,
+                    &key,
+                    "start with forceRestart: replacing a running harness",
+                )?;
             }
             TrackedHarness::Discard => {
                 runtimes.remove(&key);

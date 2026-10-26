@@ -339,7 +339,12 @@ async fn restart_local_agent_on_config_change(
 
         // Stop the process.
         let record_mut = find_managed_agent_mut(&mut records, &pubkey_owned)?;
-        stop_managed_agent_process(&app_for_stop, record_mut, &mut runtimes)?;
+        stop_managed_agent_process(
+            &app_for_stop,
+            record_mut,
+            &mut runtimes,
+            "global agent config changed: restarting on the new config",
+        )?;
         save_managed_agents(&app_for_stop, &records)?;
 
         Ok(runtime_keys)

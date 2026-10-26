@@ -5,6 +5,8 @@ import {
   managedAgentsQueryKey,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
+import { runAgentLifecycle } from "@/features/agents/agentLifecycle";
+import { hasAgentStartWatch } from "@/features/agents/agentStartWatch";
 import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
 import {
   startManagedAgent,
@@ -104,19 +106,28 @@ export function useAutoRestartPolicy() {
       void (async () => {
         try {
           // Pre-fire re-fetch: shrink the stale-decision window to ~0.
-          const fresh = await listManagedAgents();
-          const current = fresh.find((a) => a.pubkey === agent.pubkey);
-          if (
-            !current?.needsRestart ||
-            !current.autoRestartOnConfigChange ||
-            current.status !== "running" ||
-            getAgentWorkingState(agent.pubkey).source !== "none"
-          ) {
-            return;
-          }
-          await stopManagedAgent(agent.pubkey);
-          clearActiveTurnsForAgentOnStop(agent.pubkey);
-          await startManagedAgent(agent.pubkey);
+          // Behind any start in flight, and re-read once it is this policy's
+          // turn: a mention woke the agent a moment ago, or is still waiting
+          // on it, and a stop now would lose it (GATE-304).
+          await runAgentLifecycle(agent.pubkey, "auto-restart", async () => {
+            const fresh = await listManagedAgents();
+            const current = fresh.find((a) => a.pubkey === agent.pubkey);
+            if (
+              !current?.needsRestart ||
+              !current.autoRestartOnConfigChange ||
+              current.status !== "running" ||
+              getAgentWorkingState(agent.pubkey).source !== "none" ||
+              hasAgentStartWatch(agent.pubkey)
+            ) {
+              return;
+            }
+            await stopManagedAgent(
+              agent.pubkey,
+              "auto-restart: its settings changed and it was idle",
+            );
+            clearActiveTurnsForAgentOnStop(agent.pubkey);
+            await startManagedAgent(agent.pubkey);
+          });
         } catch {
           // Failed attempt: edge stays consumed — badge-only until the
           // needsRestart edge cycles. No retry loops by design.

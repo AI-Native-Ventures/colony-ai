@@ -41,6 +41,7 @@ import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMe
 import { getPresence, listManagedAgents } from "@/shared/api/tauri";
 import { getProfile } from "@/shared/api/tauriProfiles";
 import type { Channel, ManagedAgent, RelayEvent } from "@/shared/api/types";
+import { runAgentLifecycle } from "@/features/agents/agentLifecycle";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -500,11 +501,21 @@ export async function restartWelcomeTeammate(
 ) {
   const stopAgent = options.stopAgent ?? stopManagedAgent;
   const startAgent = options.startAgent ?? startManagedAgent;
-  if (agent.status === "running") {
-    await stopAgent(agent.pubkey);
-    options.onStopped?.();
-  }
-  return startAgent(agent.pubkey);
+  // Behind any start of the agent that is in flight.
+  return runAgentLifecycle(
+    agent.pubkey,
+    "welcome teammate restart",
+    async () => {
+      if (agent.status === "running") {
+        await stopAgent(
+          agent.pubkey,
+          "welcome kickoff: restarting a teammate that needs new access settings",
+        );
+        options.onStopped?.();
+      }
+      return startAgent(agent.pubkey);
+    },
+  );
 }
 
 async function sendWelcomeKickoffCloser({

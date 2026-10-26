@@ -616,7 +616,12 @@ async fn restart_single_agent_after_install(
 
         // Stop the process.
         let record_mut = find_managed_agent_mut(&mut records, &pubkey_owned)?;
-        stop_managed_agent_process(&app_for_stop, record_mut, &mut runtimes)?;
+        stop_managed_agent_process(
+            &app_for_stop,
+            record_mut,
+            &mut runtimes,
+            "setup mode: restarting after the runtime install finished",
+        )?;
         save_managed_agents(&app_for_stop, &records)?;
 
         Ok(runtime_keys)

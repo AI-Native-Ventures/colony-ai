@@ -364,6 +364,7 @@ fn reconcile_inbound_persona_event_blocking<R: tauri::Runtime>(
                                 &app,
                                 record,
                                 &mut runtimes,
+                                "access policy changed by a synced persona event",
                             )?;
                             runtime_refresh = Some(InboundRuntimeRefresh::Local {
                                 pubkey: d_tag.clone(),

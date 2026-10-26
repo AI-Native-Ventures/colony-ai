@@ -6,7 +6,7 @@ use super::{
     agent_readiness, append_log_marker, current_instance_id, find_managed_agent_mut,
     load_global_agent_config, load_managed_agents, load_personas, managed_agent_runtime_log_path,
     process_is_running, record_agent_command, resolve_effective_agent_env, save_managed_agents,
-    spawn_agent_child, terminate_process, terminate_untracked_pair_runtime,
+    spawn_agent_child, stop_request_line, terminate_process, terminate_untracked_pair_runtime,
     write_agent_runtime_receipt, AgentReadiness, BackendKind, ManagedAgentPairRuntime,
     ManagedAgentRuntimeKey, ManagedAgentRuntimeLifecycle, ManagedAgentRuntimeReceipt,
     ManagedAgentRuntimeStatus,
@@ -319,8 +319,14 @@ fn start_pair(
 pub fn stop_managed_agent_runtime(
     pubkey: String,
     relay_url: String,
+    reason: Option<String>,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
+    let reason = reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .unwrap_or("stop_managed_agent_runtime, no reason given");
     let state = app.state::<AppState>();
     let _transition = state
         .managed_agent_runtime_transition
@@ -338,6 +344,19 @@ pub fn stop_managed_agent_runtime(
         .lock()
         .map_err(|e| e.to_string())?;
     if let Some(mut runtime) = runtimes.remove(&key) {
+        let _ = append_log_marker(
+            &runtime.log_path,
+            &stop_request_line(
+                &record.name,
+                &record.pubkey,
+                reason,
+                &crate::util::now_iso(),
+            ),
+        );
+        eprintln!(
+            "buzz-desktop: stopping {} on {}: {reason}",
+            record.pubkey, key.relay_url
+        );
         let stop_result = if process_is_running(runtime.child.id()) {
             terminate_process(runtime.child.id())
         } else {
@@ -388,7 +407,12 @@ pub fn restart_managed_agent_runtime(
     relay_url: String,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
-    stop_managed_agent_runtime(pubkey.clone(), relay_url.clone(), app.clone())?;
+    stop_managed_agent_runtime(
+        pubkey.clone(),
+        relay_url.clone(),
+        Some("restart_managed_agent_runtime: stop before start".to_string()),
+        app.clone(),
+    )?;
     start_pair(pubkey, relay_url, true, None, app)
 }
 

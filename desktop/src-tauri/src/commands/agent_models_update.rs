@@ -304,7 +304,12 @@ pub async fn update_managed_agent(
                 ));
             }
             if !access_restart_relays.is_empty() {
-                crate::managed_agents::stop_managed_agent_process(&app, record, &mut runtimes)?;
+                crate::managed_agents::stop_managed_agent_process(
+                    &app,
+                    record,
+                    &mut runtimes,
+                    "access policy changed: restarting on the new policy",
+                )?;
             }
         }
 

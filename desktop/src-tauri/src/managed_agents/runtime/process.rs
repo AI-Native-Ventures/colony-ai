@@ -526,6 +526,12 @@ pub(crate) fn terminate_untracked_pair_runtime(
     else {
         return Ok(());
     };
+    // A harness left by an earlier session is about to be signalled; say so,
+    // since this path leaves no marker in the agent's log (GATE-304).
+    eprintln!(
+        "buzz-desktop: terminating the prior-session harness {} for {} on {} before starting a new one",
+        receipt.pid, key.pubkey, key.relay_url
+    );
 
     terminate_runtime_receipt_with(
         &path,

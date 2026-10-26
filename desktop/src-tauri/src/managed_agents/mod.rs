@@ -55,6 +55,7 @@ mod team_repair;
 pub(crate) use team_repair::team_persona_key;
 mod teams;
 mod types;
+mod wake_release;
 
 // Shared lock for tests that call `lock_path_mutex` or `lock_env_mutex`.
 // Both helpers delegate here so any two tests using either helper are mutually
@@ -121,6 +122,7 @@ pub(crate) use session_policy::{
 pub use storage::*;
 pub use teams::*;
 pub use types::*;
+pub use wake_release::*;
 
 pub(crate) use start_free::apply_start_free_env;
 #[cfg(test)]
