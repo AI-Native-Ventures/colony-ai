@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { BusinessRecords } from "./businessRecordRelay";
 import { publishProspectAction } from "./businessRecordMutations";
 import { errorMessage } from "./BusinessCommon";
@@ -25,7 +26,7 @@ import "./colony3-discovery.css";
 
 type CampaignContext = {
   channelId: string;
-  communityId: string;
+  communityId: TenantCommunityId;
   records: BusinessRecords;
   refresh: () => Promise<void>;
   role: BusinessRecords["role"];

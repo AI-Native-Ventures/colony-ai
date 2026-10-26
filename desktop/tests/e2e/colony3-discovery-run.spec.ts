@@ -290,8 +290,9 @@ test.describe("Real discovery run", () => {
       page.getByText("Search complete", { exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(campaignRows(page)).toHaveCount(5);
-    // Resume asked for the same page again, from the saved cursor.
+    // The page that arrived after the pause was already paid for, so Resume
+    // saves it instead of asking for it again.
     const calls = await searchCalls(page);
-    expect(calls.map((call) => call.skip)).toEqual([0, 5, 5]);
+    expect(calls.map((call) => call.skip)).toEqual([0, 5]);
   });
 });

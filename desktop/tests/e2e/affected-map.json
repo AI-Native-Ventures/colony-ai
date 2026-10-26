@@ -154,7 +154,8 @@
         "invite-link-copy.spec.ts",
         "deep-link-invite.spec.ts",
         "invited-onboarding.spec.ts",
-        "self-serve-community-onboarding.spec.ts"
+        "self-serve-community-onboarding.spec.ts",
+        "colony3-business-tenant-scope.spec.ts"
       ]
     },
     {
@@ -202,7 +203,8 @@
         "colony3-discovery-run.spec.ts",
         "colony3-discovery-leads-proof.spec.ts",
         "colony3-lead-reference.spec.ts",
-        "colony3-sales-setup.spec.ts"
+        "colony3-sales-setup.spec.ts",
+        "colony3-business-tenant-scope.spec.ts"
       ]
     },
     {
