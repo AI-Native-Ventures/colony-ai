@@ -374,7 +374,7 @@ export function ChannelBrowserDialog({
                   <input
                     autoCapitalize="none"
                     autoCorrect="off"
-                    className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
+                    className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-colony-fg shadow-none outline-hidden placeholder:text-[var(--colony-placeholder)]"
                     data-testid="channel-browser-search"
                     id="channel-browser-search"
                     onChange={(event) => {

@@ -5,17 +5,12 @@
  */
 
 .agents-c3 {
-  --a3-tile: #fbf8f6;
-  --a3-line-soft: #f1ecf3;
+  --a3-tile: var(--colony-agent-tile);
+  --a3-line-soft: var(--colony-agent-line-soft);
   --a3-card-shadow:
     0 0 0 1px hsl(var(--colony-border)), 0 1px 2px rgb(40 20 60 / 4%);
   color: hsl(var(--colony-fg));
   font-family: var(--colony-font-sans);
-}
-
-.dark .agents-c3 {
-  --a3-tile: hsl(var(--colony-surface-raised));
-  --a3-line-soft: hsl(var(--colony-border));
 }
 
 /* ------------------------------------------------------------ page frame -- */
@@ -94,7 +89,7 @@
 .agents-c3-btn[data-variant="danger"] {
   background: hsl(var(--colony-danger));
   box-shadow: none;
-  color: #fff;
+  color: var(--colony-state-foreground);
 }
 
 .agents-c3-link {
@@ -621,7 +616,7 @@
   padding: 14px 16px;
   border-radius: 16px;
   background: hsl(var(--colony-info-bg));
-  color: #1f4377;
+  color: var(--colony-info-ink);
 }
 
 .dark .agents-c3-banner,
@@ -651,7 +646,7 @@
   border: 0;
   border-radius: 10px;
   background: var(--colony-pop);
-  color: #1f4377;
+  color: var(--colony-info-ink);
   cursor: pointer;
   font: inherit;
   font-size: calc(15 * var(--colony-px));

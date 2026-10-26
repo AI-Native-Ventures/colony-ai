@@ -240,7 +240,7 @@ export function AddChannelBotDialog({
           <input
             aria-label="Find an agent"
             autoComplete="off"
-            className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
+            className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[var(--colony-placeholder)]"
             data-testid="add-channel-bot-search"
             id="add-channel-bot-search"
             onChange={(event) => setAgentQuery(event.target.value)}

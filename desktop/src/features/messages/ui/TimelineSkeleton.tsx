@@ -232,7 +232,7 @@ export function TimelineSkeleton({ rows }: TimelineSkeletonProps) {
           <span className="flex min-w-0 flex-1 flex-col gap-[calc(9*var(--colony-px))] pt-1">
             <span
               className={cn(
-                "h-[calc(11*var(--colony-px))] rounded-md bg-[#e8e2ec]",
+                "h-[calc(11*var(--colony-px))] rounded-md bg-[var(--colony-skeleton)]",
                 row.authorWidthClass,
               )}
             />

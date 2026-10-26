@@ -123,7 +123,7 @@ export function ChannelScreenHeader({
     <>
       {showJoinButton ? (
         <button
-          className="c3c-button mr-1 inline-flex h-10 items-center gap-2 rounded-xl bg-colony-accent px-4 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="c3c-button mr-1 inline-flex h-10 items-center gap-2 rounded-xl bg-colony-accent px-4 text-[var(--colony-state-foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
           data-testid="channel-header-join"
           disabled={isJoining}
           onClick={() => void onJoinChannel()}

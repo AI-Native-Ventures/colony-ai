@@ -716,7 +716,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               {isNonMemberView ? (
                 <div
                   data-testid="join-banner"
-                  className="flex flex-wrap items-center gap-3.5 border-t border-colony-border bg-[#fbf8f6] px-7 py-3.5"
+                  className="flex flex-wrap items-center gap-3.5 border-t border-colony-border bg-[var(--colony-warm-surface-alt)] px-7 py-3.5"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2.5 text-colony-muted">
                     {activeChannel ? (
@@ -733,7 +733,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                     </span>
                   </div>
                   <button
-                    className="c3c-join-button inline-flex items-center gap-2 rounded-xl bg-colony-accent px-5 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                    className="c3c-join-button inline-flex items-center gap-2 rounded-xl bg-colony-accent px-5 text-[var(--colony-state-foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
                     disabled={isJoining}
                     onClick={() => {
                       void onJoinChannel?.();

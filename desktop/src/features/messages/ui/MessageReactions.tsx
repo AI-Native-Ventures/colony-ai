@@ -100,7 +100,7 @@ function EmojiGlyph({
         )}
         title={displayName}
       >
-        <HeartGlyph className="text-[#C2416A]" size={14} />
+        <HeartGlyph className="text-[var(--colony-heart)]" size={14} />
       </span>
     );
   }

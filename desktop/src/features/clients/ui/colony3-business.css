@@ -114,7 +114,7 @@
 /* Cards */
 .b3-card {
   border-radius: calc(20 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: var(--b3-card-shadow);
 }
 
@@ -135,7 +135,7 @@
   padding: 0 calc(18 * var(--b3u));
   border: 0;
   border-radius: calc(12 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: inset 0 0 0 calc(1 * var(--b3u)) var(--b3-line2);
   color: var(--b3-fg);
   cursor: pointer;
@@ -645,7 +645,7 @@
   gap: calc(10 * var(--b3u));
   padding: calc(18 * var(--b3u));
   border-radius: calc(18 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: var(--b3-card-shadow);
 }
 
@@ -829,7 +829,7 @@
   padding: 0 calc(12 * var(--b3u));
   border: calc(1 * var(--b3u)) solid var(--b3-line2);
   border-radius: calc(12 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--b3-fg);
   font-family: inherit;
   font-size: calc(15 * var(--colony-px));
@@ -864,7 +864,7 @@
 }
 
 .b3-seg-btn[aria-pressed="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 calc(1 * var(--b3u)) calc(2 * var(--b3u)) rgba(60, 40, 80, 0.12);
   color: var(--b3-fg);
   font-weight: 800;
@@ -906,7 +906,7 @@
 }
 
 .b3-work-table tbody tr[data-needs-review="true"] {
-  background: #fffbf3;
+  background: var(--colony-review-surface);
 }
 
 .b3-work-table tbody tr:hover {
@@ -1086,7 +1086,7 @@
 }
 
 .b3-column-dot[data-status="blocked"] {
-  background: #c2416a;
+  background: var(--colony-heart);
 }
 
 .b3-column-dot[data-status="complete"] {
@@ -1125,7 +1125,7 @@
   padding: calc(16 * var(--b3u));
   border: 0;
   border-radius: calc(16 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow:
     0 0 0 calc(1 * var(--b3u)) var(--b3-line),
     0 calc(2 * var(--b3u)) calc(6 * var(--b3u)) calc(-2 * var(--b3u))
@@ -1520,7 +1520,7 @@
   justify-content: center;
   border: calc(1 * var(--b3u)) solid var(--b3-line2);
   border-radius: calc(12 * var(--b3u));
-  background: #fff;
+  background: var(--colony-overlay);
   color: var(--b3-fg);
   cursor: pointer;
   font-family: inherit;

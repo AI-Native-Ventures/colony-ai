@@ -47,6 +47,7 @@ const VIDEO_REVIEW_NEUTRAL_ACCENT = "0 0% 98%";
 const VIDEO_REVIEW_CHIP_SURFACE = "#161616";
 const VIDEO_REVIEW_TEXT_CONTRAST = 4.5;
 const VIDEO_REVIEW_CHIP_BACKGROUND_ALPHAS = [0.15, 0.3] as const;
+const COLONY_DARK_ACCENT_TEXT_CONTRAST = 4.8;
 const GLASS_VIBRANCY_MATERIAL = "sidebar";
 
 /** The accent choices Colony 3.0 offers (Settings, Appearance). */
@@ -214,6 +215,42 @@ function getReviewAccentForeground(hex: string): string {
   return hexToHsl(rgbToHex(mixRgb(accent, white, high)));
 }
 
+function getDarkAccentPalette(hex: string) {
+  const styles = window.getComputedStyle(document.documentElement);
+  const overlayToken = styles.getPropertyValue("--colony-overlay").trim();
+  const darkSurfaceToken = styles
+    .getPropertyValue("--colony-accent-foreground")
+    .trim();
+  const overlay = hexToRgb(
+    /^#[\da-f]{6}$/iu.test(overlayToken) ? overlayToken : "#302d39",
+  );
+  const darkSurface = hexToRgb(
+    /^#[\da-f]{6}$/iu.test(darkSurfaceToken) ? darkSurfaceToken : "#1a1920",
+  );
+  const white = { r: 255, g: 255, b: 255 };
+  const accent = hexToRgb(hex);
+  let low = 0;
+  let high = 1;
+
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (
+      contrastRatio(mixRgb(accent, white, mid), overlay) >=
+      COLONY_DARK_ACCENT_TEXT_CONTRAST
+    ) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  const accentHex = rgbToHex(mixRgb(accent, white, high));
+  const accentSoftHex = rgbToHex(
+    mixRgb(darkSurface, hexToRgb(accentHex), 0.12),
+  );
+  return { accentHex, accentSoftHex };
+}
+
 function rgbToHex({ r, g, b }: Rgb): string {
   const clamp = (value: number) =>
     Math.max(0, Math.min(255, Math.round(value)));
@@ -274,9 +311,37 @@ function applyAccentColor(value: string) {
     ]) {
       root.style.removeProperty(name);
     }
+    if (isBrandedTheme) {
+      const styles = window.getComputedStyle(root);
+      const accent = styles.getPropertyValue("--colony-accent").trim();
+      const focus = styles.getPropertyValue("--colony-focus").trim() || accent;
+      const accentSoft = styles.getPropertyValue("--colony-accent-soft").trim();
+      const foreground =
+        styles.getPropertyValue("--colony-accent-foreground").trim() ||
+        styles.getPropertyValue("--colony-surface").trim();
+      root.style.setProperty("--buzz-selected-accent", accent);
+      root.style.setProperty("--buzz-video-review-accent", accent);
+      root.style.setProperty(
+        "--buzz-video-review-accent-foreground",
+        foreground,
+      );
+      root.style.setProperty("--primary", accent);
+      root.style.setProperty("--ring", focus);
+      root.style.setProperty("--sidebar-ring", focus);
+      root.style.setProperty("--primary-foreground", foreground);
+      root.style.setProperty("--sidebar-primary", accent);
+      root.style.setProperty("--sidebar-primary-foreground", foreground);
+      root.style.setProperty("--sidebar-active", accentSoft);
+      root.style.setProperty("--sidebar-active-foreground", accent);
+      return;
+    }
   }
 
-  const hex = value;
+  const darkAccent = isBrandedTheme && root.classList.contains("dark");
+  const { accentHex, accentSoftHex } = darkAccent
+    ? getDarkAccentPalette(value)
+    : { accentHex: value, accentSoftHex: null };
+  const hex = accentHex;
   const accentHsl = hexToHsl(hex);
   const fgHsl = hexToHsl(getContrastColor(hex));
   root.style.setProperty("--buzz-selected-accent", accentHsl);
@@ -295,13 +360,17 @@ function applyAccentColor(value: string) {
     // and a deeper shade of it.
     root.style.setProperty(
       "--colony-accent-soft",
-      hexToHsl(
-        rgbToHex(mixRgb(hexToRgb(hex), { r: 255, g: 255, b: 255 }, 0.9)),
-      ),
+      darkAccent && accentSoftHex
+        ? hexToHsl(accentSoftHex)
+        : hexToHsl(
+            rgbToHex(mixRgb(hexToRgb(hex), { r: 255, g: 255, b: 255 }, 0.9)),
+          ),
     );
     root.style.setProperty(
       "--colony-accent-ink",
-      hexToHsl(rgbToHex(mixRgb(hexToRgb(hex), { r: 0, g: 0, b: 0 }, 0.15))),
+      darkAccent
+        ? accentHsl
+        : hexToHsl(rgbToHex(mixRgb(hexToRgb(hex), { r: 0, g: 0, b: 0 }, 0.15))),
     );
   }
   root.style.setProperty("--primary-foreground", fgHsl);

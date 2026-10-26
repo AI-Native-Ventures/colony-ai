@@ -331,7 +331,7 @@
   gap: 0.4375rem;
   padding: 0 0.75rem;
   border-radius: 999px;
-  background: #f1eef2;
+  background: var(--colony-soft-chip);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(14 * var(--colony-px));
   font-weight: 800;
@@ -368,7 +368,7 @@
 }
 
 .cs-tab[aria-selected="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 1px 3px rgb(60 40 80 / 12%);
   color: hsl(var(--colony-fg));
   font-weight: 800;
@@ -409,7 +409,7 @@
   min-width: 0;
   overflow: hidden;
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow:
     0 0 0 1px hsl(var(--colony-border)),
     0 1px 2px rgb(40 20 60 / 4%);
@@ -519,7 +519,7 @@
 }
 
 .cs-choice button[aria-pressed="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 1px 2px rgb(60 40 80 / 12%);
   color: hsl(var(--colony-fg));
   font-weight: 800;
@@ -551,7 +551,7 @@
   padding: 0 0.875rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.75rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-sizing: border-box;
   color: hsl(var(--colony-fg));
   font-family: inherit;
@@ -593,7 +593,7 @@
 }
 
 .cs-link:hover {
-  color: #36257f;
+  color: var(--colony-brand-ink);
 }
 
 /* Buttons that sit on cards (a shade smaller than the 46px primary). */
@@ -605,7 +605,7 @@
   padding: 0 1rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.6875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-family: inherit;
   font-size: calc(15 * var(--colony-px));
@@ -629,7 +629,7 @@
 }
 
 .cs-button[data-tone="danger"] {
-  border-color: #f1c9d5;
+  border-color: var(--colony-danger-pale-line);
   color: hsl(var(--colony-danger));
 }
 
@@ -676,7 +676,7 @@
   gap: 0.375rem;
   padding: 0 0.75rem;
   border-radius: 999px;
-  background: #f1eef2;
+  background: var(--colony-soft-chip);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(13.5 * var(--colony-px));
   font-weight: 800;
@@ -729,8 +729,8 @@
 }
 
 .cs-notice[data-tone="need"] {
-  background: #fff6e6;
-  color: #5f3a00;
+  background: var(--colony-warning-surface);
+  color: var(--colony-warning-ink);
 }
 
 /* A section's panels sit one page gap apart. */

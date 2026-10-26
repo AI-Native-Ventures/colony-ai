@@ -7,16 +7,10 @@
  */
 
 :root {
-  --c3c-focus-ring: #b9a9ee;
-  --c3c-recording: #c2416a;
-  --c3c-wave-idle: #d9cff5;
-  --c3c-placeholder: #757575;
-}
-
-:root.dark {
-  --c3c-focus-ring: hsl(var(--colony-accent) / 0.65);
-  --c3c-wave-idle: hsl(var(--colony-accent) / 0.3);
-  --c3c-placeholder: hsl(var(--colony-muted));
+  --c3c-focus-ring: var(--colony-focus-soft);
+  --c3c-recording: var(--colony-heart);
+  --c3c-wave-idle: var(--colony-accent-line);
+  --c3c-placeholder: var(--colony-placeholder);
 }
 
 /* ------------------------------------------------------------------ card -- */
@@ -286,7 +280,7 @@
   border: 0;
   border-radius: 0.75rem;
   background: hsl(var(--colony-accent));
-  color: #fff;
+  color: var(--colony-state-foreground);
   cursor: pointer;
 }
 
@@ -942,7 +936,7 @@
   right: 0.5rem;
   z-index: 1;
   overflow: hidden;
-  color: #3b3446;
+  color: hsl(var(--colony-fg-secondary));
   font-size: calc(12.5 * var(--colony-px));
   font-weight: 800;
   pointer-events: none;
@@ -960,7 +954,7 @@
   gap: 0.1875rem;
   padding: 0.1875rem;
   border-radius: 0.5625rem;
-  background: rgb(255 255 255 / 92%);
+  background: var(--colony-composer-tile-toolbar);
 }
 
 .c3c-tile-tool {

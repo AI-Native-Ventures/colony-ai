@@ -13,7 +13,7 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  background: #fbf8f6;
+  background: var(--colony-activity-list-surface);
   color: hsl(var(--colony-fg));
   font-family: var(--colony-font-sans);
 }
@@ -55,7 +55,7 @@
   padding: 0 0.75rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.6875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-family: inherit;
   font-size: calc(14.5 * var(--colony-px));
@@ -112,7 +112,7 @@
   padding: 0 0.75rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 999px;
-  background: #fff;
+  background: var(--colony-overlay);
   box-sizing: border-box;
   color: hsl(var(--colony-fg));
   font-family: inherit;
@@ -176,13 +176,13 @@
 
 .ca-row:hover,
 .ca-row:focus-within {
-  background: rgb(255 255 255 / 70%);
+  background: var(--colony-activity-row-hover);
 }
 
 .ca-row[data-selected="true"] {
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow:
-    0 0 0 1.5px #d9cff5,
+    0 0 0 1.5px var(--colony-accent-line),
     0 6px 18px -12px rgb(60 40 90 / 35%);
 }
 
@@ -389,7 +389,7 @@
   gap: 0.125rem;
   padding: 0.25rem;
   border-radius: 999px;
-  background: rgb(255 255 255 / 92%);
+  background: var(--colony-activity-tools-surface);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease-out;
@@ -544,7 +544,7 @@
   padding: 0 0.875rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.6875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-family: inherit;
   font-size: calc(15 * var(--colony-px));
@@ -733,7 +733,7 @@
 .ca-new-divider span {
   height: 1.5px;
   flex: 1;
-  background: #d9cff5;
+  background: var(--colony-accent-line);
 }
 
 .ca-new-divider strong {
@@ -755,7 +755,7 @@
   gap: 0.75rem;
   padding: 1.125rem;
   border-radius: 1.125rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow:
     0 0 0 1px hsl(var(--colony-border)),
     0 1px 2px rgb(40 20 60 / 4%);
@@ -774,7 +774,7 @@
   align-items: center;
   padding: 0 0.625rem;
   border-radius: 999px;
-  background: #f1eef2;
+  background: var(--colony-soft-chip);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(13.5 * var(--colony-px));
   font-weight: 800;
@@ -831,7 +831,7 @@
 .ca-outline-button {
   padding: 0 1rem;
   border: 1px solid hsl(var(--colony-border-strong));
-  background: #fff;
+  background: var(--colony-overlay);
   color: hsl(var(--colony-fg));
   font-weight: 600;
 }
@@ -875,7 +875,7 @@
   padding: 0 0.75rem;
   border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.6875rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-sizing: border-box;
   font-family: inherit;
   font-size: calc(15 * var(--colony-px));
@@ -903,7 +903,7 @@
   padding: 0.75rem 1rem 0.75rem 0.75rem;
   border: 0;
   border-radius: 1rem;
-  background: #fff;
+  background: var(--colony-overlay);
   box-shadow: 0 0 0 1px hsl(var(--colony-border));
   color: hsl(var(--colony-fg));
   font-family: inherit;
