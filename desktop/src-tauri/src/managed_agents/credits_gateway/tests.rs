@@ -479,6 +479,16 @@ fn credits_readiness_and_saved_choice_need_no_key_or_customer_model() {
 }
 
 #[test]
+fn build_env_value_turns_the_marker_on_only_for_exactly_one() {
+    assert!(build_env_is_one(Some("1")));
+    assert!(!build_env_is_one(None));
+    assert!(!build_env_is_one(Some("")));
+    assert!(!build_env_is_one(Some("0")));
+    assert!(!build_env_is_one(Some("11")));
+    assert!(!build_env_is_one(Some("true")));
+}
+
+#[test]
 fn build_marker_tells_a_release_with_the_flag_from_one_without() {
     assert!(build_flag_on("colony-credits-gateway-build=on"));
     assert!(!build_flag_on("colony-credits-gateway-build=off"));
