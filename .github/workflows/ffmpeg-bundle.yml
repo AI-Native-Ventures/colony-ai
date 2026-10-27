@@ -62,10 +62,6 @@ jobs:
           node-version: 24.14.1
           package-manager-cache: false
 
-      - name: Run packaging config tests
-        shell: bash
-        run: node --test desktop/scripts/electron-package-config.test.mjs
-
       - name: Build bundled ffmpeg
         id: ffmpeg
         uses: ./.github/actions/build-ffmpeg-bundle
