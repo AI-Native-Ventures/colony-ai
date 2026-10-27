@@ -37,6 +37,18 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
 }
 
 async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: bool) -> Fixture {
+    fixture_in(response, upstream_status, direct, false).await
+}
+
+/// Production runs a closed relay (`BUZZ_REQUIRE_RELAY_MEMBERSHIP=true`), where
+/// only `relay_members` rows are admitted. `closed_relay` seeds the owner and
+/// the agent as members of the fixture business only, like a real business.
+async fn fixture_in(
+    response: Value,
+    upstream_status: StatusCode,
+    direct: bool,
+    closed_relay: bool,
+) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -128,6 +140,17 @@ async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: 
         .execute(&pool)
         .await
         .unwrap();
+    if closed_relay {
+        for (member, role) in [(&owner, "owner"), (&agent, "member")] {
+            sqlx::query("INSERT INTO relay_members (community_id,pubkey,role) VALUES ($1,$2,$3)")
+                .bind(community)
+                .bind(member.public_key().to_hex())
+                .bind(role)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+    }
     sqlx::query("INSERT INTO account_credit_ledger (account_id,entry_type,amount_nanousd,source_id,description) VALUES ($1,'purchase',1000000000,'fixture','test grant')").bind(account).execute(&pool).await.unwrap();
     let session = db
         .create_credit_ai_session(
@@ -138,7 +161,7 @@ async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: 
         .await
         .unwrap();
     let mut config = crate::config::Config::from_env().unwrap();
-    config.require_relay_membership = false;
+    config.require_relay_membership = closed_relay;
     config.relay_url = format!("wss://{host}");
     config.redis_url =
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
@@ -207,7 +230,17 @@ fn signed(f: &Fixture, body: &str, nonce: &str) -> Request<Body> {
     signed_path(f, body, nonce, "/managed-inference", &f.agent)
 }
 fn signed_path(f: &Fixture, body: &str, nonce: &str, path: &str, keys: &Keys) -> Request<Body> {
-    let url = format!("https://{}/api/credits-gateway{path}", f.host);
+    signed_path_on(f, &f.host, body, nonce, path, keys)
+}
+fn signed_path_on(
+    f: &Fixture,
+    host: &str,
+    body: &str,
+    nonce: &str,
+    path: &str,
+    keys: &Keys,
+) -> Request<Body> {
+    let url = format!("https://{host}/api/credits-gateway{path}");
     let event = EventBuilder::new(Kind::HttpAuth, "")
         .custom_created_at(f.auth_time)
         .tags([
@@ -219,7 +252,7 @@ fn signed_path(f: &Fixture, body: &str, nonce: &str, path: &str, keys: &Keys) ->
         .sign_with_keys(keys)
         .unwrap();
     Request::post(path)
-        .header("host", &f.host)
+        .header("host", host)
         .header(
             "authorization",
             format!(
@@ -763,7 +796,10 @@ async fn account_email(f: &Fixture) -> String {
 }
 
 fn signed_get(f: &Fixture, path: &str, nonce: &str, keys: &Keys) -> Request<Body> {
-    let url = format!("https://{}/api/credits-gateway{path}", f.host);
+    signed_get_on(f, &f.host, path, nonce, keys)
+}
+fn signed_get_on(f: &Fixture, host: &str, path: &str, nonce: &str, keys: &Keys) -> Request<Body> {
+    let url = format!("https://{host}/api/credits-gateway{path}");
     let event = EventBuilder::new(Kind::HttpAuth, "")
         .custom_created_at(f.auth_time)
         .tags([
@@ -774,7 +810,7 @@ fn signed_get(f: &Fixture, path: &str, nonce: &str, keys: &Keys) -> Request<Body
         .sign_with_keys(keys)
         .unwrap();
     Request::get(path)
-        .header("host", &f.host)
+        .header("host", host)
         .header(
             "authorization",
             format!(
@@ -928,4 +964,115 @@ async fn access_route_reports_only_the_callers_own_free_ai_status() {
     f.gateway.enabled = false;
     let (_, value) = get_json(&f, signed_get(&f, "/access", "disabled", &f.owner)).await;
     assert_eq!(value["freeAi"], false);
+}
+
+/// A second host the owner has never joined, like the deployment's root host a
+/// returning device talks to before it opens a business.
+async fn unjoined_host(f: &Fixture) -> String {
+    let community = Uuid::new_v4();
+    let host = format!("root-{community}.example");
+    sqlx::query("INSERT INTO communities (id,host) VALUES ($1,$2)")
+        .bind(community)
+        .bind(&host)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    host
+}
+
+fn free_policy(email: String) -> Arc<GatewayPolicy> {
+    Arc::new(GatewayPolicy {
+        free_ai_accounts: vec![email],
+        ..GatewayPolicy::default()
+    })
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn closed_relay_owner_learns_free_ai_status_from_a_host_they_have_not_joined() {
+    let mut f = fixture_in(upstream_response(), StatusCode::OK, false, true).await;
+    f.gateway.policy = free_policy(account_email(&f).await);
+    let root = unjoined_host(&f).await;
+
+    // The host a returning device uses before it opens a business: the owner
+    // signed in with a verified account but is not a member of this host.
+    let (status, value) = get_json(
+        &f,
+        signed_get_on(&f, &root, "/access", "root-owner", &f.owner),
+    )
+    .await;
+    assert_eq!((status, &value["freeAi"]), (StatusCode::OK, &json!(true)));
+    assert_eq!(
+        value.as_object().unwrap().len(),
+        1,
+        "no list or email leaks"
+    );
+
+    // The same event cannot be replayed to learn the answer again.
+    let replay = signed_get_on(&f, &root, "/access", "root-replay", &f.owner);
+    let (parts, _) = replay.into_parts();
+    let again = |parts: &axum::http::request::Parts| {
+        let mut request = Request::get("/access").body(Body::empty()).unwrap();
+        *request.headers_mut() = parts.headers.clone();
+        request
+    };
+    assert_eq!(get_json(&f, again(&parts)).await.0, StatusCode::OK);
+    assert_eq!(
+        get_json(&f, again(&parts)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A signer with no verified account is told nothing, not even "forbidden".
+    let (status, value) = get_json(
+        &f,
+        signed_get_on(&f, &root, "/access", "root-agent", &f.agent),
+    )
+    .await;
+    assert_eq!((status, &value["freeAi"]), (StatusCode::OK, &json!(false)));
+
+    // The business the owner belongs to still answers the same way.
+    let (status, value) = get_json(&f, signed_get(&f, "/access", "member", &f.owner)).await;
+    assert_eq!((status, &value["freeAi"]), (StatusCode::OK, &json!(true)));
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn closed_relay_still_refuses_spending_from_a_host_the_owner_has_not_joined() {
+    let mut f = fixture_in(upstream_response(), StatusCode::OK, false, true).await;
+    f.gateway.policy = free_policy(account_email(&f).await);
+    let root = unjoined_host(&f).await;
+
+    // Only the account-level answer relaxed. Opening a session for an agent and
+    // spending through it stay bound to a community the caller belongs to.
+    let session = json!({"agent_pubkey": f.agent.public_key().to_hex()}).to_string();
+    let response = routes(f.gateway.clone())
+        .oneshot(signed_path_on(
+            &f,
+            &root,
+            &session,
+            "root-session",
+            "/sessions",
+            &f.owner,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload = body(&f, Uuid::new_v4());
+    let response = routes(f.gateway.clone())
+        .oneshot(signed_path_on(
+            &f,
+            &root,
+            &payload,
+            "root-spend",
+            "/managed-inference",
+            &f.agent,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 0, "no upstream call");
+
+    // Inside the owner's own business the same spending works.
+    let (status, value) = call(&f, &payload, "member-spend").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
 }
