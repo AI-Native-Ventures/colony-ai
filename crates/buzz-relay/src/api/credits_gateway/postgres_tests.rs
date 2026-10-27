@@ -183,6 +183,7 @@ async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: 
             Upstream::fake(origin, Duration::from_secs(1))
         })),
         enabled: true,
+        policy: Arc::new(GatewayPolicy::default()),
     };
     Fixture {
         gateway,
@@ -751,4 +752,180 @@ async fn gateway_response_never_exports_upstream_credentials_or_general_api_acce
             .status(),
         StatusCode::NOT_FOUND
     );
+}
+
+async fn account_email(f: &Fixture) -> String {
+    sqlx::query_scalar("SELECT email FROM accounts WHERE id = $1")
+        .bind(f.account)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap()
+}
+
+fn signed_get(f: &Fixture, path: &str, nonce: &str, keys: &Keys) -> Request<Body> {
+    let url = format!("https://{}/api/credits-gateway{path}", f.host);
+    let event = EventBuilder::new(Kind::HttpAuth, "")
+        .custom_created_at(f.auth_time)
+        .tags([
+            Tag::parse(["u", &url]).unwrap(),
+            Tag::parse(["method", "GET"]).unwrap(),
+            Tag::parse(["nonce", nonce]).unwrap(),
+        ])
+        .sign_with_keys(keys)
+        .unwrap();
+    Request::get(path)
+        .header("host", &f.host)
+        .header(
+            "authorization",
+            format!(
+                "Nostr {}",
+                base64::engine::general_purpose::STANDARD
+                    .encode(serde_json::to_vec(&event).unwrap())
+            ),
+        )
+        .body(Body::empty())
+        .unwrap()
+}
+
+async fn get_json(f: &Fixture, request: Request<Body>) -> (StatusCode, Value) {
+    let response = routes(f.gateway.clone()).oneshot(request).await.unwrap();
+    let status = response.status();
+    let value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+        .unwrap_or(Value::Null);
+    (status, value)
+}
+
+async fn ledger_rows(f: &Fixture) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM account_credit_ledger WHERE account_id = $1")
+        .bind(f.account)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn free_ai_account_gets_a_real_reply_with_zero_balance_and_a_metered_journal() {
+    let mut f = fixture(upstream_response()).await;
+    sqlx::query("DELETE FROM account_credit_ledger WHERE account_id = $1")
+        .bind(f.account)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    // Control: every other account still needs credits, before any upstream call.
+    let (status, value) = call(&f, &body(&f, Uuid::new_v4()), "control").await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 0);
+    f.gateway.policy = Arc::new(GatewayPolicy {
+        free_ai_accounts: vec![account_email(&f).await],
+        ..GatewayPolicy::default()
+    });
+    let request = Uuid::new_v4();
+    let payload = body(&f, request);
+    let (status, value) = call(&f, &payload, "free").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["choices"][0]["message"]["content"], "Hello");
+    assert_eq!(value["chargedNanousd"], "12000000");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    // Metered in the journal, invisible to the credit ledger and balance.
+    let (status, charged): (String, i64) =
+        sqlx::query_as("SELECT status, charged_nanousd FROM account_ai_requests WHERE id = $1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_str(), charged), ("settled", 12_000_000));
+    assert_eq!(ledger_rows(&f).await, 0);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        0
+    );
+    // Free access does not weaken authentication or replay protection.
+    let (status, _) = call(&f, &payload, "free").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn global_daily_cap_refuses_with_a_distinct_code_before_any_upstream_call() {
+    let mut f = fixture(upstream_response()).await;
+    for cap in [1, 0] {
+        f.gateway.policy = Arc::new(GatewayPolicy {
+            global_daily_cap_nanousd: Some(cap),
+            ..GatewayPolicy::default()
+        });
+        let (status, value) = call(&f, &body(&f, Uuid::new_v4()), &format!("cap-{cap}")).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{value}");
+        assert_eq!(value["code"], "daily_limit");
+        assert!(value["error"].as_str().unwrap().contains("daily limit"));
+    }
+    assert_eq!(f.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+    // Without a ceiling the same request is served.
+    f.gateway.policy = Arc::new(GatewayPolicy::default());
+    let (status, value) = call(&f, &body(&f, Uuid::new_v4()), "no-cap").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn access_route_reports_only_the_callers_own_free_ai_status() {
+    let mut f = fixture(upstream_response()).await;
+    let (status, value) = get_json(&f, signed_get(&f, "/access", "plain", &f.owner)).await;
+    assert_eq!((status, &value["freeAi"]), (StatusCode::OK, &json!(false)));
+    let (_, value) = get_json(
+        &f,
+        Request::get("/capabilities")
+            .header("host", &f.host)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(value["freeAiConfigured"], false);
+    f.gateway.policy = Arc::new(GatewayPolicy {
+        free_ai_accounts: vec![account_email(&f).await],
+        ..GatewayPolicy::default()
+    });
+    let (status, value) = get_json(&f, signed_get(&f, "/access", "owner", &f.owner)).await;
+    assert_eq!((status, &value["freeAi"]), (StatusCode::OK, &json!(true)));
+    assert!(
+        value.as_object().unwrap().len() == 1,
+        "no list or email leaks"
+    );
+    let (_, value) = get_json(
+        &f,
+        Request::get("/capabilities")
+            .header("host", &f.host)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(value["freeAiConfigured"], true);
+    assert!(!value.to_string().contains("example.invalid"));
+    // A signer without a verified account is not free.
+    let (_, value) = get_json(&f, signed_get(&f, "/access", "agent", &f.agent)).await;
+    assert_eq!(value["freeAi"], false);
+    // Anonymous callers are rejected, and a disabled gateway never reports free.
+    let anonymous = Request::get("/access")
+        .header("host", &f.host)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(get_json(&f, anonymous).await.0, StatusCode::UNAUTHORIZED);
+    f.gateway.enabled = false;
+    let (_, value) = get_json(&f, signed_get(&f, "/access", "disabled", &f.owner)).await;
+    assert_eq!(value["freeAi"], false);
 }

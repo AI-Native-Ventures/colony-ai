@@ -592,3 +592,423 @@ async fn migration_schema_community_deletion_fences_new_spend_and_preserves_bill
     crate::migration::run_migrations(&pool).await.unwrap();
     deletion_preserves_billing_recovery().await;
 }
+
+async fn account_email(pool: &PgPool, account: Uuid) -> String {
+    sqlx::query_scalar("SELECT email FROM accounts WHERE id = $1")
+        .bind(account)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+fn free_policy(email: String) -> GatewayPolicy {
+    GatewayPolicy {
+        free_ai_accounts: vec![email],
+        ..GatewayPolicy::default()
+    }
+}
+
+async fn ledger_rows(pool: &PgPool, account: Uuid) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM account_credit_ledger WHERE account_id = $1")
+        .bind(account)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn free_ai_account_runs_without_credits_and_never_touches_its_ledger() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    sqlx::query("DELETE FROM account_credit_ledger WHERE account_id = $1")
+        .bind(ids[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    let policy = free_policy(account_email(&pool, ids[0]).await);
+    let digest = "a".repeat(64);
+    let request = Uuid::new_v4();
+    // Control: the same empty account cannot start a request without the policy.
+    assert_eq!(
+        db.admit_credit_ai_request(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            request,
+            &digest,
+            100_000_000
+        )
+        .await
+        .unwrap(),
+        Admission::Insufficient
+    );
+    assert_eq!(
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            request,
+            &digest,
+            100_000_000,
+            &policy
+        )
+        .await
+        .unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+    assert_eq!(ledger_rows(&pool, ids[0]).await, 0);
+    db.settle_credit_ai_request(request, 12_000_000, false)
+        .await
+        .unwrap();
+    // A lost settlement acknowledgement replays without error or ledger rows.
+    db.settle_credit_ai_request(request, 12_000_000, false)
+        .await
+        .unwrap();
+    let (status, charged): (String, i64) =
+        sqlx::query_as("SELECT status, charged_nanousd FROM account_ai_requests WHERE id = $1")
+            .bind(request)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_str(), charged), ("settled", 12_000_000));
+    // Provisional recovery and its downward correction stay journal-only too.
+    let second = Uuid::new_v4();
+    assert_eq!(
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            second,
+            &digest,
+            100_000_000,
+            &policy
+        )
+        .await
+        .unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+    db.settle_credit_ai_request(second, 100_000_000, true)
+        .await
+        .unwrap();
+    db.settle_credit_ai_request(second, 5_000_000, false)
+        .await
+        .unwrap();
+    let (status, charged): (String, i64) =
+        sqlx::query_as("SELECT status, charged_nanousd FROM account_ai_requests WHERE id = $1")
+            .bind(second)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((status.as_str(), charged), ("settled", 5_000_000));
+    assert_eq!(ledger_rows(&pool, ids[0]).await, 0);
+    assert_eq!(db.account_credit_balance(ids[0]).await.unwrap(), 0);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn payer_account_balance_and_ledger_behave_exactly_as_before_when_another_account_is_free() {
+    let (db, _pool, community, agent, ids) = fixture().await;
+    // The policy names some other account, never this payer.
+    let policy = free_policy("someone-else@example.invalid".into());
+    let digest = "a".repeat(64);
+    let request = Uuid::new_v4();
+    assert_eq!(
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            request,
+            &digest,
+            100_000_000,
+            &policy
+        )
+        .await
+        .unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+    assert_eq!(
+        db.account_credit_balance(ids[0]).await.unwrap(),
+        900_000_000
+    );
+    db.settle_credit_ai_request(request, 12_000_000, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.account_credit_balance(ids[0]).await.unwrap(),
+        988_000_000
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn free_ai_accounts_share_many_in_flight_requests_across_devices() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    let policy = GatewayPolicy {
+        free_ai_max_in_flight: 6,
+        ..free_policy(account_email(&pool, ids[0]).await)
+    };
+    let mut sessions = vec![ids[1]];
+    for _ in 0..6 {
+        sessions.push(extra_session(&pool, ids[0], community, &agent).await);
+    }
+    let digest = "a".repeat(64);
+    // Six devices at once: well past the regular four.
+    for session in &sessions[..6] {
+        assert_eq!(
+            db.admit_credit_ai_request_with_policy(
+                "fixture",
+                community,
+                agent.public_key().as_bytes(),
+                *session,
+                Uuid::new_v4(),
+                &digest,
+                1_000_000,
+                &policy
+            )
+            .await
+            .unwrap(),
+            Admission::New { account_id: ids[0] }
+        );
+    }
+    // The configured ceiling still bounds the account.
+    assert_eq!(
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            sessions[6],
+            Uuid::new_v4(),
+            &digest,
+            1_000_000,
+            &policy
+        )
+        .await
+        .unwrap(),
+        Admission::Busy
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn free_ai_account_gets_a_session_per_device_beyond_the_regular_limit() {
+    let (db, pool, community, _agent, ids) = fixture().await;
+    let owner: String = sqlx::query_scalar("SELECT pubkey FROM accounts WHERE id = $1")
+        .bind(ids[0])
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let policy = free_policy(account_email(&pool, ids[0]).await);
+    let mut devices = Vec::new();
+    for _ in 0..24 {
+        let device = Keys::generate();
+        sqlx::query("INSERT INTO users (community_id,pubkey,agent_owner_pubkey) VALUES ($1,$2,decode($3,'hex'))")
+            .bind(community.as_uuid())
+            .bind(device.public_key().to_bytes().to_vec())
+            .bind(&owner)
+            .execute(&pool)
+            .await
+            .unwrap();
+        devices.push(device);
+    }
+    // The fixture holds one live session; fifteen more reach the regular limit.
+    for device in &devices[..15] {
+        db.create_credit_ai_session(&owner, community, device.public_key().as_bytes())
+            .await
+            .unwrap();
+    }
+    assert!(matches!(
+        db.create_credit_ai_session(&owner, community, devices[15].public_key().as_bytes())
+            .await,
+        Err(DbError::InvalidData(_))
+    ));
+    for device in &devices[15..] {
+        db.create_credit_ai_session_with_policy(
+            &owner,
+            community,
+            device.public_key().as_bytes(),
+            &policy,
+        )
+        .await
+        .unwrap();
+    }
+    let active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM account_ai_sessions WHERE account_id = $1 AND NOT revoked AND expires_at > now()",
+    )
+    .bind(ids[0])
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(active, 25);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn global_daily_cap_counts_holds_and_spend_refuses_new_inference_and_resets_at_utc_day() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    let policy = GatewayPolicy {
+        global_daily_cap_nanousd: Some(150_000_000),
+        ..GatewayPolicy::default()
+    };
+    let sessions = [
+        ids[1],
+        extra_session(&pool, ids[0], community, &agent).await,
+        extra_session(&pool, ids[0], community, &agent).await,
+    ];
+    let requests: Vec<_> = (0..3).map(|_| Uuid::new_v4()).collect();
+    let digest = "a".repeat(64);
+    let agent_pubkey = agent.public_key();
+    let admit = |session: Uuid, request: Uuid| {
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent_pubkey.as_bytes(),
+            session,
+            request,
+            &digest,
+            100_000_000,
+            &policy,
+        )
+    };
+    assert_eq!(
+        admit(sessions[0], requests[0]).await.unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+    // The first hold already counts, so a second hold would pass the ceiling.
+    assert_eq!(
+        admit(sessions[1], requests[1]).await.unwrap(),
+        Admission::DailyLimit
+    );
+    let journaled: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM account_ai_requests WHERE id = $1")
+            .bind(requests[1])
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(journaled, 0, "a refused request leaves no hold or journal");
+    assert_eq!(
+        db.account_credit_balance(ids[0]).await.unwrap(),
+        900_000_000
+    );
+    // Settled usage counts what was charged, not the hold.
+    db.settle_credit_ai_request(requests[0], 10_000_000, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        admit(sessions[1], requests[1]).await.unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+    // A replay of finished work is never new spend, even at the ceiling.
+    assert_eq!(
+        admit(sessions[0], requests[0]).await.unwrap(),
+        Admission::Completed {
+            charged: 10_000_000,
+            provisional: false
+        }
+    );
+    assert_eq!(
+        admit(sessions[2], requests[2]).await.unwrap(),
+        Admission::DailyLimit
+    );
+    // The ceiling is per UTC day: yesterday's spend no longer counts.
+    db.settle_credit_ai_request(requests[1], 100_000_000, false)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE account_ai_requests SET created_at = created_at - interval '1 day'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        admit(sessions[2], requests[2]).await.unwrap(),
+        Admission::New { account_id: ids[0] }
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn global_daily_cap_also_bounds_free_ai_accounts_and_leaves_their_ledger_empty() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    sqlx::query("DELETE FROM account_credit_ledger WHERE account_id = $1")
+        .bind(ids[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    let policy = GatewayPolicy {
+        global_daily_cap_nanousd: Some(50_000_000),
+        ..free_policy(account_email(&pool, ids[0]).await)
+    };
+    assert_eq!(
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            Uuid::new_v4(),
+            &"a".repeat(64),
+            100_000_000,
+            &policy
+        )
+        .await
+        .unwrap(),
+        Admission::DailyLimit
+    );
+    assert_eq!(ledger_rows(&pool, ids[0]).await, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn global_daily_cap_holds_under_concurrent_admissions_from_different_payers() {
+    let payers = tokio::join!(
+        fixture(),
+        fixture(),
+        fixture(),
+        fixture(),
+        fixture(),
+        fixture()
+    );
+    let payers = [payers.0, payers.1, payers.2, payers.3, payers.4, payers.5];
+    // Two 100M holds fit under 250M; the other four must be refused even
+    // though each payer's own balance and row lock are independent.
+    let policy = GatewayPolicy {
+        global_daily_cap_nanousd: Some(250_000_000),
+        ..GatewayPolicy::default()
+    };
+    let digest = "a".repeat(64);
+    let pubkeys: Vec<_> = payers.iter().map(|payer| payer.3.public_key()).collect();
+    let attempt = |index: usize| {
+        let (db, _, community, _, ids) = &payers[index];
+        db.admit_credit_ai_request_with_policy(
+            "fixture",
+            *community,
+            pubkeys[index].as_bytes(),
+            ids[1],
+            Uuid::new_v4(),
+            &digest,
+            100_000_000,
+            &policy,
+        )
+    };
+    let results = tokio::join!(
+        attempt(0),
+        attempt(1),
+        attempt(2),
+        attempt(3),
+        attempt(4),
+        attempt(5)
+    );
+    let results = [
+        results.0, results.1, results.2, results.3, results.4, results.5,
+    ];
+    let admitted = results
+        .iter()
+        .filter(|result| matches!(result, Ok(Admission::New { .. })))
+        .count();
+    let refused = results
+        .iter()
+        .filter(|result| matches!(result, Ok(Admission::DailyLimit)))
+        .count();
+    assert_eq!((admitted, refused), (2, 4), "{results:?}");
+}

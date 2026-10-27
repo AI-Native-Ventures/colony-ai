@@ -159,6 +159,8 @@ run_unit_tests() {
     cargo test -p buzz-relay --lib credit_packs::tests:: -- --nocapture
   run_test_step "buzz-relay payment HTTP and payload tests" \
     cargo test -p buzz-relay --lib api::payments::tests:: -- --nocapture
+  run_test_step "buzz-relay credits gateway limits tests" \
+    cargo test -p buzz-relay --lib api::credits_gateway_limits::tests:: -- --nocapture
   run_test_step "buzz-relay Stripe configuration tests" \
     cargo test -p buzz-relay --lib config::tests::stripe_ -- --nocapture
   run_test_step "buzz-relay policy URL configuration tests" \

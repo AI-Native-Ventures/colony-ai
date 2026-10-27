@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use buzz_core::TenantContext;
-use buzz_db::credits_gateway::Admission;
+use buzz_db::credits_gateway::{Admission, GatewayPolicy};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -30,6 +30,7 @@ struct Gateway {
     relay: Arc<AppState>,
     upstream: Option<Arc<Upstream>>,
     enabled: bool,
+    policy: Arc<GatewayPolicy>,
 }
 
 /// Mount the private session routes. OFF unless both flag and server key exist.
@@ -43,6 +44,7 @@ pub fn router(relay: Arc<AppState>) -> Router {
         relay,
         upstream,
         enabled,
+        policy: Arc::new(super::credits_gateway_limits::policy_from_env()),
     };
     let worker = gateway.clone();
     tokio::spawn(async move {
@@ -62,6 +64,7 @@ pub fn router(relay: Arc<AppState>) -> Router {
 fn routes(gateway: Gateway) -> Router {
     Router::new()
         .route("/capabilities", get(capabilities))
+        .route("/access", get(access))
         .route("/sessions", post(create_session))
         .route("/sessions/revoke", post(revoke_session))
         .route("/managed-inference", post(inference))
@@ -72,8 +75,29 @@ fn routes(gateway: Gateway) -> Router {
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
     Json(
-        json!({"enabled":gateway.enabled,"runtime":"colony","model":gateway.upstream.as_ref().map(|u| &u.model),"marginPercent":20}),
+        json!({"enabled":gateway.enabled,"runtime":"colony","model":gateway.upstream.as_ref().map(|u| &u.model),"marginPercent":20,"freeAiConfigured":!gateway.policy.free_ai_accounts.is_empty()}),
     )
+}
+
+/// Whether the signed-in owner's account uses the gateway without credits. The
+/// answer is about the caller's own account only and names no email or list.
+async fn access(State(gateway): State<Gateway>, headers: HeaderMap) -> ApiResult {
+    let (_, owner) = authenticate_as(
+        &gateway,
+        &headers,
+        "GET",
+        "/api/credits-gateway/access",
+        None,
+    )
+    .await?;
+    let free_ai = gateway.enabled
+        && gateway
+            .relay
+            .db
+            .credit_ai_account_is_free(&owner.to_hex(), &gateway.policy)
+            .await
+            .map_err(database_error)?;
+    Ok(Json(json!({"freeAi":free_ai})))
 }
 
 fn unavailable() -> (StatusCode, Json<Value>) {
@@ -108,6 +132,16 @@ async fn authenticate(
     path: &str,
     body: &[u8],
 ) -> Result<(TenantContext, nostr::PublicKey), (StatusCode, Json<Value>)> {
+    authenticate_as(gateway, headers, "POST", path, Some(body)).await
+}
+
+async fn authenticate_as(
+    gateway: &Gateway,
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Result<(TenantContext, nostr::PublicKey), (StatusCode, Json<Value>)> {
     let host = headers
         .get(axum::http::header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -117,7 +151,7 @@ async fn authenticate(
         .map_err(|_| api_error(StatusCode::NOT_FOUND, "not_found"))?;
     let url = bridge::nip98_expected_url(&gateway.relay.config.relay_url, &tenant, path);
     let auth =
-        bridge::verify_bridge_auth_with_options(headers, "POST", &url, Some(body), true, true)?;
+        bridge::verify_bridge_auth_with_options(headers, method, &url, body, true, body.is_some())?;
     bridge::check_nip98_replay(&gateway.relay, &tenant, auth.event_id_bytes).await?;
     relay_members::enforce_relay_membership(
         &gateway.relay,
@@ -154,7 +188,12 @@ async fn create_session(
     let session = gateway
         .relay
         .db
-        .create_credit_ai_session(&owner.to_hex(), tenant.community(), agent.as_bytes())
+        .create_credit_ai_session_with_policy(
+            &owner.to_hex(),
+            tenant.community(),
+            agent.as_bytes(),
+            &gateway.policy,
+        )
         .await
         .map_err(database_error)?;
     Ok(Json(
@@ -215,7 +254,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     let account_id = match gateway
         .relay
         .db
-        .admit_credit_ai_request(
+        .admit_credit_ai_request_with_policy(
             &upstream.fingerprint,
             tenant.community(),
             agent.as_bytes(),
@@ -223,6 +262,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
             request.request_id,
             &digest,
             reserve,
+            &gateway.policy,
         )
         .await
         .map_err(database_error)?
@@ -238,6 +278,14 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
             return Err(api_error(
                 StatusCode::TOO_MANY_REQUESTS,
                 "Your Colony Agents are busy. Try again shortly.",
+            ))
+        }
+        Admission::DailyLimit => {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(
+                    json!({"error":"Colony AI has reached its daily limit. Try again tomorrow.","code":"daily_limit"}),
+                ),
             ))
         }
         Admission::Pending => return Err(recovering()),
