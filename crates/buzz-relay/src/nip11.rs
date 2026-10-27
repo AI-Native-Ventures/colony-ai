@@ -200,8 +200,8 @@ impl RelayInfo {
         });
 
         Self {
-            name: "Buzz Relay".to_string(),
-            description: "Buzz — private team communication relay".to_string(),
+            name: "Colony".to_string(),
+            description: "Colony relay for your business, your team and your AI employees".to_string(),
             icon: icon.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             pubkey: None,
             contact: None,
@@ -447,6 +447,15 @@ mod tests {
             SUPPORTED_NIPS.contains(&56),
             "NIP-56 (reporting) must be advertised — kind:1984 ingest is live"
         );
+    }
+
+    #[test]
+    fn build_advertises_colony_name_without_buzz_branding() {
+        let info = RelayInfo::build(None, None, false, DEFAULT_MAX_FRAME_BYTES, None, None, None);
+        assert_eq!(info.name, "Colony");
+        assert!(!info.name.contains("Buzz"));
+        assert!(!info.description.contains("Buzz"));
+        assert!(!info.description.contains('\u{2014}'));
     }
 
     #[test]
