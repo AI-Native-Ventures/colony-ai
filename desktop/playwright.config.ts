@@ -400,6 +400,7 @@ export default defineConfig({
         "**/relay-restart.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
         "**/colony3-sales-setup.spec.ts",
+        "**/colony3-scout-dupes.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
