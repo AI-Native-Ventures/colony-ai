@@ -422,8 +422,10 @@ test-unit:
         nt buzz-db --lib
         # Storage accounting crosses three crates whose focused regression
         # suites are otherwise absent from the infra-free unit lane.
+        # The desktop voice-note envelope fixture proves the relay's video
+        # validator accepts what the desktop uploads for a voice note.
         nt buzz-media --lib \
-            -E 'test(=bucket_index::tests::bucket_snapshot_json_round_trip_preserves_community_keys)'
+            -E 'test(=bucket_index::tests::bucket_snapshot_json_round_trip_preserves_community_keys) | test(=validation::tests::test_desktop_voice_note_envelope_matches_relay_contract)'
         nt buzz-admin \
             -E 'test(=storage_snapshot_tests::failed_fold_never_invokes_snapshot_persistence)'
         # Multi-tenant conformance gate (buzz-conformance): the independent

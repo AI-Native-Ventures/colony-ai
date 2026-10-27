@@ -1218,6 +1218,27 @@ mod tests {
     }
 
     #[test]
+    fn test_desktop_voice_note_envelope_matches_relay_contract() {
+        // Produced by the desktop's `transcode_voice_note_to_mp4` ffmpeg
+        // command from a real speech recording (Opus/WebM, decoded and
+        // re-encoded to 24 kHz mono WAV like `useVoiceNoteRecorder` does).
+        // See tests/fixtures/desktop/README.md.
+        let bytes = include_bytes!("../tests/fixtures/desktop/voice-note-envelope.mp4");
+        assert!(looks_like_mp4_iso_bmff(bytes));
+        assert_eq!(
+            infer::get(bytes).map(|kind| kind.mime_type()),
+            Some("video/mp4")
+        );
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), bytes).unwrap();
+        let meta = validate_video_file(tmp.path(), &test_config())
+            .unwrap_or_else(|error| panic!("rejected desktop voice-note envelope: {error}"));
+        assert_eq!((meta.width, meta.height), (16, 16));
+        assert!(meta.has_audio);
+        assert!(meta.duration_secs > 0.0 && meta.duration_secs <= 600.0);
+    }
+
+    #[test]
     fn test_android_bitmap_encoder_outputs_require_sanitization() {
         let config = test_config();
         let srgb_png = include_bytes!("../tests/fixtures/android/bitmap-srgb.png").as_slice();
