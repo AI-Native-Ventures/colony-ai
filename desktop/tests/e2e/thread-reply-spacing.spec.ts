@@ -18,6 +18,7 @@ import {
 } from "../helpers/colony3Conversations";
 import { COLONY3_NOW } from "../helpers/colony3Fixture";
 import { AYA_DM_CHANNEL, eid } from "../helpers/colony3TimelineFixture";
+import { installBrowserHostFake } from "./helpers/browserHostFake";
 
 type MockMessage = NonNullable<Colony3Extras["messages"]>[number];
 type PanelMode = "focus" | "split";
@@ -25,6 +26,7 @@ type Theme = "dark" | "light";
 
 const MINA_PUBKEY = REFERENCE_AGENTS.mina.pubkey;
 const SCOUT_PUBKEY = REFERENCE_AGENTS.scout.pubkey;
+const BROWSER_HUMAN_PUBKEY = eid("thread-spacing-browser-human");
 const OLIVE_CHANNEL_ID = REFERENCE_CHANNEL_IDS.oliveHouse;
 const PROOF_DIR = process.env.THREAD_SPACING_PROOF_DIR;
 const PROOF_PREFIX = process.env.THREAD_SPACING_PROOF_PREFIX ?? "proof";
@@ -36,7 +38,12 @@ test.use({
 });
 test.describe.configure({ timeout: 120_000 });
 
-function createSpacingThread(channelId: string, label: string) {
+function createSpacingThread(
+  channelId: string,
+  label: string,
+  agentPubkey = MINA_PUBKEY,
+  humanPubkey = COLONY3_SELF,
+) {
   const rootId = eid(`${label}-root`);
   const replyIds = [1, 2, 3, 4, 5, 6, 7].map((number) =>
     eid(`${label}-reply-${number}`),
@@ -63,32 +70,27 @@ function createSpacingThread(channelId: string, label: string) {
     {
       channelId,
       id: rootId,
-      pubkey: COLONY3_SELF,
+      pubkey: humanPubkey,
       createdAt: colony3At(18, 20),
       content: "A thread for planning the week with Mina.",
     },
     reply(
       1,
-      MINA_PUBKEY,
+      agentPubkey,
       rootId,
       "Short version: I keep the work moving.\n\n1. Plan: turn goals into tasks and track who does what.\n2. Find customers: research and track leads from Discovery.\n3. Create content: draft posts for your approval.",
     ),
-    reply(
-      2,
-      COLONY3_SELF,
-      rootId,
-      "Keep the plan and customer notes together.",
-    ),
+    reply(2, humanPubkey, rootId, "Keep the plan and customer notes together."),
     reply(
       3,
-      MINA_PUBKEY,
+      agentPubkey,
       replyIds[1],
       "1. Plan: put the owner and next step beside each goal.\n2. Find customers: keep the source with every lead.",
     ),
-    reply(4, COLONY3_SELF, replyIds[2], "That makes the handoff clear."),
-    reply(5, MINA_PUBKEY, replyIds[3], "I will update the shared plan now."),
-    reply(6, COLONY3_SELF, rootId, "Please keep the review in this thread."),
-    reply(7, MINA_PUBKEY, rootId, "Done. The plan is ready for review."),
+    reply(4, humanPubkey, replyIds[2], "That makes the handoff clear."),
+    reply(5, agentPubkey, replyIds[3], "I will update the shared plan now."),
+    reply(6, humanPubkey, rootId, "Please keep the review in this thread."),
+    reply(7, agentPubkey, rootId, "Done. The plan is ready for review."),
   ];
 
   return { messages, replyIds, rootId };
@@ -103,9 +105,13 @@ async function openSpacingThread(
     label: string;
     mode: PanelMode;
     theme: Theme;
+    browserWorkArea?: boolean;
   },
 ) {
-  await page.setViewportSize({ width: 1440, height: 960 });
+  const viewport = options.browserWorkArea
+    ? { width: 2000, height: 1260 }
+    : { width: 1440, height: 960 };
+  await page.setViewportSize(viewport);
   await page.clock.setFixedTime(new Date(COLONY3_NOW));
   await page.emulateMedia({
     colorScheme: options.theme === "dark" ? "dark" : "light",
@@ -134,7 +140,15 @@ async function openSpacingThread(
     },
   );
 
-  const fixture = createSpacingThread(options.channelId, options.label);
+  if (options.browserWorkArea) {
+    await installBrowserHostFake(page, { contentSize: viewport });
+  }
+  const fixture = createSpacingThread(
+    options.channelId,
+    options.label,
+    options.browserWorkArea ? SCOUT_PUBKEY : MINA_PUBKEY,
+    options.browserWorkArea ? BROWSER_HUMAN_PUBKEY : COLONY3_SELF,
+  );
   const managedAgents = [
     {
       pubkey: MINA_PUBKEY,
@@ -145,7 +159,7 @@ async function openSpacingThread(
     {
       pubkey: SCOUT_PUBKEY,
       name: "Scout",
-      channelNames: ["The Olive House", "Aya"],
+      channelNames: ["The Olive House", "Aya", "Welcome"],
       status: "running" as const,
     },
   ];
@@ -177,6 +191,16 @@ async function openSpacingThread(
           ownerPubkey: COLONY3_SELF,
           presence: "online" as const,
         },
+        ...(options.browserWorkArea
+          ? [
+              {
+                pubkey: BROWSER_HUMAN_PUBKEY,
+                displayName: "basheerphiri",
+                isAgent: false,
+                presence: "online" as const,
+              },
+            ]
+          : []),
       ],
     }),
   });
@@ -185,6 +209,35 @@ async function openSpacingThread(
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId(`channel-${options.channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(options.channelName);
+
+  if (options.browserWorkArea) {
+    await page.getByTestId("channel-work-area-trigger").click();
+    await expect(page.getByTestId("work-area-empty")).toBeVisible();
+    await page.getByTestId("work-area-open-browser").click();
+    const browser = page.getByTestId("work-area-panel");
+    const browserTabPanel = browser.locator(
+      'section[role="tabpanel"]:not([hidden])',
+    );
+    const address = browserTabPanel.getByTestId("browser-address");
+    await address.fill("instagram.com/accounts/login/");
+    await address.press("Enter");
+    await expect(address).toHaveValue("https://instagram.com/accounts/login/");
+    await expect(
+      browserTabPanel.getByTestId("browser-page-slot"),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const fill = document.querySelector<HTMLElement>(
+        'section[role="tabpanel"]:not([hidden]) .colony-browser-slot-fill',
+      );
+      if (!fill) throw new Error("Browser page stand-in has no host slot");
+      const rect = fill.getBoundingClientRect();
+      const standIn = document.createElement("div");
+      standIn.setAttribute("data-testid", "browser-page-stand-in");
+      standIn.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;box-sizing:border-box;padding:5vh 6vw;background:#fff;color:#222;font-family:Arial,sans-serif;z-index:2147483000;pointer-events:none`;
+      standIn.innerHTML = `<div style="max-width:420px;margin:8vh auto;text-align:center"><div style="font-size:34px;font-weight:700;letter-spacing:-2px;margin-bottom:54px">Instagram</div><div style="border:1px solid #ddd;border-radius:4px;padding:36px 28px"><div style="font-size:20px;font-weight:600;margin-bottom:28px">Log into Instagram</div><div style="border:1px solid #ddd;border-radius:4px;padding:16px;color:#777;text-align:left;margin-bottom:12px">Mobile number, username or email</div><div style="border:1px solid #ddd;border-radius:4px;padding:16px;color:#777;text-align:left;margin-bottom:18px">Password</div><div style="border-radius:8px;background:#9ec1f7;color:white;padding:14px">Log in</div></div></div>`;
+      document.body.appendChild(standIn);
+    });
+  }
 
   const summary = page.locator(
     `[data-testid="message-thread-summary"][data-thread-head-id="${fixture.rootId}"]`,
@@ -235,11 +288,13 @@ async function openSpacingThread(
   await body.evaluate((element) => {
     element.scrollTop = 0;
   });
-  await seedComposerWorkingIndicators(
-    page,
-    options.channelName,
-    fixture.rootId,
-  );
+  if (!options.browserWorkArea) {
+    await seedComposerWorkingIndicators(
+      page,
+      options.channelName,
+      fixture.rootId,
+    );
+  }
   await waitForAnimations(page);
 
   return { panel, replyIds: fixture.replyIds };
@@ -286,10 +341,14 @@ async function seedComposerWorkingIndicators(
   ).toContainText("Scout is working…");
 }
 
-async function captureProof(page: Page, name: string) {
+async function captureProof(
+  page: Page,
+  name: string,
+  cursor = { x: 300, y: 700 },
+) {
   if (!PROOF_DIR) return;
   mkdirSync(PROOF_DIR, { recursive: true });
-  await page.mouse.move(300, 700);
+  await page.mouse.move(cursor.x, cursor.y);
   await waitForAnimations(page);
   await page.screenshot({
     animations: "disabled",
@@ -429,4 +488,25 @@ test("DM threads use the same reply spacing", async ({ page }) => {
   await expectThreadComposerActivitySpacing(page);
   await expectChannelComposerActivitySpacing(page);
   await expectThreadReplySpacing(panel, replyIds);
+});
+
+test("narrow thread beside the Browser work area keeps reply spacing", async ({
+  page,
+}) => {
+  const { panel, replyIds } = await openSpacingThread(page, {
+    channelId: REFERENCE_CHANNEL_IDS.welcome,
+    channelName: "Welcome",
+    label: "thread-spacing-browser-work-area",
+    mode: "split",
+    theme: "light",
+    browserWorkArea: true,
+  });
+  await expect(page.getByTestId("work-area-browser")).toBeVisible();
+  const panelBounds = await panel.boundingBox();
+  expect(
+    panelBounds?.width,
+    "thread remains in the narrow side column beside the browser",
+  ).toBeLessThan(600);
+  await expectThreadReplySpacing(panel, replyIds);
+  await captureProof(page, "browser-light", { x: 1990, y: 1255 });
 });
