@@ -556,6 +556,11 @@ pub(in crate::api) mod scout_session {
         json!({"session_id":session,"request_id":request,
             "messages":messages(rounds, result_bytes),"tools":tools()})
     }
+
+    pub(in crate::api) const PACKAGED_FIRST_HELLO: &str =
+        include_str!("testdata/packaged_first_hello.json");
+    pub(in crate::api) const PACKAGED_TOOL_ROUND: &str =
+        include_str!("testdata/packaged_tool_round.json");
 }
 
 #[cfg(test)]

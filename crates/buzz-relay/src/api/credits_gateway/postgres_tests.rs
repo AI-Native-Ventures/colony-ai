@@ -326,6 +326,39 @@ async fn real_route_admits_a_full_scout_session_and_charges_returned_cost() {
     assert_eq!(sent[0]["tools"].as_array().unwrap().len(), 20);
 }
 
+/// The bytes the shipped 3.0.9 client really posts, through the real route. Its
+/// messages carry `"tool_calls": null`, which hand-built bodies never did, so the
+/// relay refused every request the app ever made.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn real_route_admits_what_the_packaged_client_really_posts() {
+    use super::super::credits_gateway_upstream::scout_session::{
+        PACKAGED_FIRST_HELLO, PACKAGED_TOOL_ROUND,
+    };
+    for (name, packaged, messages) in [
+        ("first-hello", PACKAGED_FIRST_HELLO, 2),
+        ("tool-round", PACKAGED_TOOL_ROUND, 4),
+    ] {
+        let f = fixture(upstream_response()).await;
+        let mut value: Value = serde_json::from_str(packaged).unwrap();
+        value["session_id"] = json!(f.session);
+        value["request_id"] = json!(Uuid::new_v4());
+        let (status, reply) = call(&f, &value.to_string(), name).await;
+        assert_eq!(status, StatusCode::OK, "{name}: {reply}");
+        assert_eq!(f.calls.load(Ordering::SeqCst), 1, "{name}");
+        let sent = f.sent.lock().unwrap();
+        let forwarded = sent[0]["messages"].as_array().unwrap();
+        assert_eq!(forwarded.len(), messages, "{name}");
+        // A null optional field is dropped before the provider sees it.
+        for message in forwarded {
+            assert!(
+                message.as_object().unwrap().values().all(|v| !v.is_null()),
+                "{name}: {message}"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
 async fn real_route_rejects_anonymous_tampered_and_empty_balance_before_upstream() {
