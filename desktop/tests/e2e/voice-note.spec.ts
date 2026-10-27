@@ -910,3 +910,49 @@ test("starting a duplicate voice-note player pauses the other instance", async (
   await expect(firstAudio).toHaveJSProperty("paused", true);
   await expect(secondAudio).toHaveJSProperty("paused", false);
 });
+
+async function recordVoiceNote(page: Page, scope: ReturnType<Page["locator"]>) {
+  await scope.getByRole("button", { name: "Record voice note" }).click();
+  await expect(page.getByTestId("voice-note-recorder")).toBeVisible();
+  await page.waitForTimeout(100);
+  await page.getByRole("button", { name: "Finish voice note" }).click();
+  await expect(scope.getByTestId("composer-voice-note-card")).toBeVisible();
+}
+
+test("sends a voice note from the channel composer and shows the clip on the sent message", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+
+  await recordVoiceNote(page, page.getByTestId("message-composer"));
+  await page.getByTestId("send-message").click();
+
+  await expect(page.getByTestId("composer-voice-note-card")).toHaveCount(0);
+  await expect(
+    page.getByTestId("audio-message-attachment").last(),
+  ).toBeVisible();
+});
+
+test("sends a voice note from the thread composer and shows the clip on the reply", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+
+  const row = page.locator('[data-message-id="mock-general-welcome"]');
+  await row.hover();
+  await page.getByTestId("reply-message-mock-general-welcome").click({
+    force: true,
+  });
+  const panel = page.getByTestId("message-thread-panel");
+  await expect(panel).toBeVisible();
+
+  await recordVoiceNote(page, panel);
+  await panel.getByTestId("send-message").click();
+
+  await expect(panel.getByTestId("composer-voice-note-card")).toHaveCount(0);
+  await expect(
+    panel.getByTestId("audio-message-attachment").last(),
+  ).toBeVisible();
+});
