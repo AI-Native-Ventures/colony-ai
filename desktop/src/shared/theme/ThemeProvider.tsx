@@ -7,6 +7,12 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  DARK_ACCENT_PALETTE_FALLBACKS,
+  DEFAULT_ACCENT as COLONY_DEFAULT_ACCENT,
+  resolveColonyAccentPalette,
+} from "./colonyAccentPalette";
+export { ACCENT_COLORS } from "./colonyAccentPalette";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invokeTauri } from "@/shared/api/tauri";
@@ -47,18 +53,7 @@ const VIDEO_REVIEW_NEUTRAL_ACCENT = "0 0% 98%";
 const VIDEO_REVIEW_CHIP_SURFACE = "#161616";
 const VIDEO_REVIEW_TEXT_CONTRAST = 4.5;
 const VIDEO_REVIEW_CHIP_BACKGROUND_ALPHAS = [0.15, 0.3] as const;
-const COLONY_DARK_ACCENT_TEXT_CONTRAST = 4.8;
 const GLASS_VIBRANCY_MATERIAL = "sidebar";
-
-/** The accent choices Colony 3.0 offers (Settings, Appearance). */
-export const ACCENT_COLORS = [
-  { name: "Violet", value: "#5B45BE" },
-  { name: "Rose", value: "#B23A6E" },
-  { name: "Teal", value: "#1F7A70" },
-  { name: "Blue", value: "#2B5899" },
-  { name: "Amber", value: "#9A5B00" },
-  { name: "Ink", value: "#25222C" },
-] as const;
 
 /**
  * Accents earlier versions offered. They are no longer in the picker, but a
@@ -78,7 +73,7 @@ export const LEGACY_ACCENT_COLORS = [
   { name: "Indigo", value: "#6366f1" },
 ] as const;
 
-export const DEFAULT_ACCENT = "#5B45BE";
+export const DEFAULT_ACCENT = COLONY_DEFAULT_ACCENT;
 
 type ThemeContextValue = {
   themeName: string;
@@ -215,42 +210,6 @@ function getReviewAccentForeground(hex: string): string {
   return hexToHsl(rgbToHex(mixRgb(accent, white, high)));
 }
 
-function getDarkAccentPalette(hex: string) {
-  const styles = window.getComputedStyle(document.documentElement);
-  const overlayToken = styles.getPropertyValue("--colony-overlay").trim();
-  const darkSurfaceToken = styles
-    .getPropertyValue("--colony-accent-foreground")
-    .trim();
-  const overlay = hexToRgb(
-    /^#[\da-f]{6}$/iu.test(overlayToken) ? overlayToken : "#302d39",
-  );
-  const darkSurface = hexToRgb(
-    /^#[\da-f]{6}$/iu.test(darkSurfaceToken) ? darkSurfaceToken : "#1a1920",
-  );
-  const white = { r: 255, g: 255, b: 255 };
-  const accent = hexToRgb(hex);
-  let low = 0;
-  let high = 1;
-
-  for (let i = 0; i < 24; i++) {
-    const mid = (low + high) / 2;
-    if (
-      contrastRatio(mixRgb(accent, white, mid), overlay) >=
-      COLONY_DARK_ACCENT_TEXT_CONTRAST
-    ) {
-      high = mid;
-    } else {
-      low = mid;
-    }
-  }
-
-  const accentHex = rgbToHex(mixRgb(accent, white, high));
-  const accentSoftHex = rgbToHex(
-    mixRgb(darkSurface, hexToRgb(accentHex), 0.12),
-  );
-  return { accentHex, accentSoftHex };
-}
-
 function rgbToHex({ r, g, b }: Rgb): string {
   const clamp = (value: number) =>
     Math.max(0, Math.min(255, Math.round(value)));
@@ -338,9 +297,28 @@ function applyAccentColor(value: string) {
   }
 
   const darkAccent = isBrandedTheme && root.classList.contains("dark");
-  const { accentHex, accentSoftHex } = darkAccent
-    ? getDarkAccentPalette(value)
-    : { accentHex: value, accentSoftHex: null };
+  let darkSurfaces: { overlay: string; surface: string } | undefined;
+  if (darkAccent) {
+    const styles = window.getComputedStyle(root);
+    const overlay = styles.getPropertyValue("--colony-overlay").trim();
+    const surface = styles
+      .getPropertyValue("--colony-accent-foreground")
+      .trim();
+    darkSurfaces = {
+      overlay: /^#[\da-f]{6}$/iu.test(overlay)
+        ? overlay
+        : DARK_ACCENT_PALETTE_FALLBACKS.overlay,
+      surface: /^#[\da-f]{6}$/iu.test(surface)
+        ? surface
+        : DARK_ACCENT_PALETTE_FALLBACKS.surface,
+    };
+  }
+  const palette = resolveColonyAccentPalette(
+    value,
+    darkAccent ? "dark" : "light",
+    darkSurfaces,
+  );
+  const { accentHex, accentSoftHex, accentInkHex } = palette;
   const hex = accentHex;
   const accentHsl = hexToHsl(hex);
   const fgHsl = hexToHsl(getContrastColor(hex));
@@ -356,22 +334,8 @@ function applyAccentColor(value: string) {
   if (value.toLowerCase() !== DEFAULT_ACCENT.toLowerCase()) {
     root.style.setProperty("--colony-accent", accentHsl);
     root.style.setProperty("--colony-focus", accentHsl);
-    // The soft tint and the ink follow a chosen accent: a light wash of it
-    // and a deeper shade of it.
-    root.style.setProperty(
-      "--colony-accent-soft",
-      darkAccent && accentSoftHex
-        ? hexToHsl(accentSoftHex)
-        : hexToHsl(
-            rgbToHex(mixRgb(hexToRgb(hex), { r: 255, g: 255, b: 255 }, 0.9)),
-          ),
-    );
-    root.style.setProperty(
-      "--colony-accent-ink",
-      darkAccent
-        ? accentHsl
-        : hexToHsl(rgbToHex(mixRgb(hexToRgb(hex), { r: 0, g: 0, b: 0 }, 0.15))),
-    );
+    root.style.setProperty("--colony-accent-soft", hexToHsl(accentSoftHex));
+    root.style.setProperty("--colony-accent-ink", hexToHsl(accentInkHex));
   }
   root.style.setProperty("--primary-foreground", fgHsl);
   root.style.setProperty("--sidebar-primary", accentHsl);

@@ -191,6 +191,9 @@ export function AppearanceSettingsPanel() {
     const global = readAppearanceSnapshot(globalKey);
     return loadPreferences(current, business, global);
   });
+  const previewIsDark = preferences.followSystem
+    ? theme.isDark
+    : !LIGHT_THEMES.has(preferences.theme as SyntaxThemeName);
   const [saved, setSaved] = React.useState(true);
   const [appliedPreferences, setAppliedPreferences] =
     React.useState(preferences);
@@ -621,7 +624,10 @@ export function AppearanceSettingsPanel() {
 
       <aside aria-label="Appearance preview" className="cs-appearance-preview">
         <div className="cs-preview-card">
-          <LiveAppearancePreview preferences={preferences} />
+          <LiveAppearancePreview
+            isDark={previewIsDark}
+            preferences={preferences}
+          />
           <div className="cs-preview-foot">
             <span
               className="cs-preview-status"
