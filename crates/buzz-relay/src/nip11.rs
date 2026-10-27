@@ -201,7 +201,8 @@ impl RelayInfo {
 
         Self {
             name: "Colony".to_string(),
-            description: "Colony relay for your business, your team and your AI employees".to_string(),
+            description: "Colony relay for your business, your team and your AI employees"
+                .to_string(),
             icon: icon.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             pubkey: None,
             contact: None,
