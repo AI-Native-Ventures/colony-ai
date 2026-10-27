@@ -455,6 +455,62 @@ pub(super) fn charge_decimal(raw: &str) -> Result<i64, ()> {
     i64::try_from(result).map_err(|_| ())
 }
 
+/// What a Scout session really sends. The prompt is the bytes `buzz-acp` gives
+/// every agent and the tools are the 20 definitions the shipped dev and browser
+/// servers register (captured in the agent crate's `testdata`), in the wire
+/// shape the managed client posts.
+#[cfg(test)]
+pub(in crate::api) mod scout_session {
+    use serde_json::{json, Value};
+
+    const BASE_PROMPT: &str = concat!(
+        include_str!("../../../buzz-acp/src/base_prompt.md"),
+        "\n",
+        include_str!("../../../buzz-acp/src/voice.md"),
+        "\n",
+        include_str!("../../../buzz-acp/src/web_tasks.md")
+    );
+
+    pub(in crate::api) fn tools() -> Vec<Value> {
+        let defs: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../buzz-agent/src/llm/testdata/scout_tool_defs.json"
+        ))
+        .unwrap();
+        defs.into_iter()
+            .map(|def| {
+                json!({"type":"function","function":{
+                    "name":def["name"],"description":def["description"],"parameters":def["input_schema"]}})
+            })
+            .collect()
+    }
+
+    /// The system message, a user turn, `rounds` shell rounds, then the next user turn.
+    pub(in crate::api) fn messages(rounds: usize, result_bytes: usize) -> Vec<Value> {
+        let mut messages = vec![
+            json!({"role":"system","content":format!("{BASE_PROMPT}\n\nYou are Scout, the owner's Chief of Staff.")}),
+            json!({"role":"user","content":"Go through the lead list and tell me who to call first."}),
+        ];
+        for i in 0..rounds {
+            messages.push(json!({"role":"assistant","content":"","tool_calls":[{
+                "id":format!("call_{i}"),"type":"function",
+                "function":{"name":"dev__shell","arguments":json!({"command":format!("ls -la /work/{i}")}).to_string()}}]}));
+            messages.push(json!({"role":"tool","tool_call_id":format!("call_{i}"),"content":"x".repeat(result_bytes)}));
+        }
+        messages.push(json!({"role":"user","content":"Now summarise what you found."}));
+        messages
+    }
+
+    pub(in crate::api) fn request(
+        session: uuid::Uuid,
+        request: uuid::Uuid,
+        rounds: usize,
+        result_bytes: usize,
+    ) -> Value {
+        json!({"session_id":session,"request_id":request,
+            "messages":messages(rounds, result_bytes),"tools":tools()})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,5 +706,67 @@ mod tests {
             .await
             .is_err());
         task.abort();
+    }
+
+    fn managed(value: Value) -> ManagedRequest {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn a_scout_session_that_has_used_tools_is_admitted_with_a_bounded_hold() {
+        // 100 shell rounds of 3 KB: 203 messages and 20 real tools, well past 64 KiB.
+        let value = scout_session::request(uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), 100, 3_000);
+        assert!(value.to_string().len() > 64 * 1024);
+        let (body, reserve) = managed(value)
+            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .unwrap();
+        assert_eq!(body["messages"].as_array().unwrap().len(), 203);
+        assert!((1..=400_000_000).contains(&reserve), "{reserve}");
+    }
+
+    #[test]
+    fn the_largest_admitted_body_holds_no_more_than_the_ledger_allows() {
+        // One message of 1,000,000 bytes: the body cap is 1 MiB.
+        let value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[{"role":"user","content":"x".repeat(1_000_000)}]});
+        let (_, reserve) = managed(value)
+            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .unwrap();
+        assert!((1..=400_000_000).contains(&reserve), "{reserve}");
+        let over = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[{"role":"user","content":"x".repeat(1024 * 1024)}]});
+        assert!(managed(over)
+            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .is_err());
+    }
+
+    #[test]
+    fn long_sessions_may_carry_a_thousand_messages_and_no_more() {
+        let session = |count: usize| {
+            json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+                "messages":(0..count).map(|_| json!({"role":"user","content":"hi"})).collect::<Vec<_>>()})
+        };
+        let ceiling = TokenPrices::openrouter_ceiling();
+        assert!(managed(session(1024))
+            .upstream_body(MODEL, true, Some(&ceiling))
+            .is_ok());
+        assert!(managed(session(1025))
+            .upstream_body(MODEL, true, Some(&ceiling))
+            .is_err());
+    }
+
+    #[test]
+    fn a_free_model_priced_at_zero_still_gets_a_positive_hold() {
+        // A zero price passes startup validation, so it must not turn every
+        // request into "unsupported" by holding nothing.
+        let prices = TokenPrices {
+            input_nanousd_per_million: "0".into(),
+            output_nanousd_per_million: "0".into(),
+        };
+        let upstream = Upstream::fake_direct("https://upstream.invalid".into(), prices);
+        let value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[{"role":"user","content":"Hello Colony"}]});
+        let (_, reserve) = upstream.request(&managed(value)).unwrap();
+        assert!(reserve >= 1, "{reserve}");
     }
 }
