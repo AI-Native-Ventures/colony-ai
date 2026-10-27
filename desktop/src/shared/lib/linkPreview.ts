@@ -663,12 +663,17 @@ type LinkPreviewCandidate = {
   order: number;
 };
 
-/** Extract supported link previews from message text, preserving first-seen order. */
-export function extractSupportedLinkPreviews(
+type ExtractedLinkPreview = {
+  preview: SupportedLinkPreview;
+  /** The link as written in the message, trailing punctuation removed. */
+  source: string;
+};
+
+function extractLinkPreviewsWithSource(
   content: string,
   activeRelayOrigin?: string | null,
-): SupportedLinkPreview[] {
-  const previews: SupportedLinkPreview[] = [];
+): ExtractedLinkPreview[] {
+  const extracted: ExtractedLinkPreview[] = [];
   const seen = new Set<string>();
   const searchable = stripHiddenLinkPreviewContent(content);
   const candidates: LinkPreviewCandidate[] = [];
@@ -715,18 +720,46 @@ export function extractSupportedLinkPreviews(
       continue;
 
     seen.add(preview.href);
-    previews.push(
-      withTitle(
+    extracted.push({
+      preview: withTitle(
         preview,
         candidate.label
           ? titleFromMarkdownLabel(candidate.label, preview, relayOrigin)
           : null,
       ),
-    );
-    if (previews.length >= MAX_PREVIEWS) break;
+      source: trimUrlCandidate(candidate.href),
+    });
+    if (extracted.length >= MAX_PREVIEWS) break;
   }
 
-  return previews;
+  return extracted;
+}
+
+/** Extract supported link previews from message text, preserving first-seen order. */
+export function extractSupportedLinkPreviews(
+  content: string,
+  activeRelayOrigin?: string | null,
+): SupportedLinkPreview[] {
+  return extractLinkPreviewsWithSource(content, activeRelayOrigin).map(
+    ({ preview }) => preview,
+  );
+}
+
+/**
+ * Map each extracted preview href to the link text exactly as the message
+ * spells it (`https://example.com` for the preview href
+ * `https://example.com/`). A preview href is the URL parser's normal form, so
+ * it is not necessarily text that appears in the message.
+ */
+export function extractSupportedLinkSources(
+  content: string,
+  activeRelayOrigin?: string | null,
+): Map<string, string> {
+  return new Map(
+    extractLinkPreviewsWithSource(content, activeRelayOrigin).map(
+      ({ preview, source }) => [preview.href, source],
+    ),
+  );
 }
 
 export { parseSupportedLinkPreview as parsePreview };

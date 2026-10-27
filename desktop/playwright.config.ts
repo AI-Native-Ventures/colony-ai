@@ -178,6 +178,7 @@ export default defineConfig({
         "**/hosted-communities-settings-screenshots.spec.ts",
         "**/invites-settings-screenshots.spec.ts",
         "**/messaging.spec.ts",
+        "**/link-preview-bare-domain.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/send-feedback-settings.spec.ts",
@@ -332,6 +333,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/link-preview-bare-domain.spec.ts",
         "**/colony3-dark-mode.spec.ts",
         "**/agent-working-indicator.spec.ts",
         "**/agent-start-watch.spec.ts",

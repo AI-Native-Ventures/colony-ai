@@ -37,6 +37,7 @@ import {
 
 export { mergeMessages, mergeTimelineCacheMessages };
 import { splitOutgoingTags } from "@/features/messages/lib/imetaMediaMarkdown";
+import { alignLinkPreviewTagsWithContent } from "@/shared/lib/linkPreviewSnapshot";
 import { messageMentionPubkeys } from "@/features/messages/lib/messageMentionPubkeys";
 import { buildSentFromThreadTag } from "@/features/messages/lib/sentFromThread";
 import {
@@ -542,8 +543,19 @@ export function useSendMessageMutation(
         mediaTags: imetaTags,
         emojiTags,
         mentionTags,
-        linkPreviewTags,
+        linkPreviewTags: preparedLinkPreviewTags,
       } = splitOutgoingTags(mediaTags);
+      // The relay refuses a snapshot whose URL is not text in the message. A
+      // preview problem must never cost the user the message: re-point the
+      // snapshot at the link as written, or send without that preview.
+      const { tags: linkPreviewTags, dropped: droppedLinkPreviews } =
+        alignLinkPreviewTagsWithContent(preparedLinkPreviewTags, content);
+      if (droppedLinkPreviews.length > 0) {
+        console.warn(
+          "Sending without link previews whose URL is not in the message",
+          droppedLinkPreviews,
+        );
+      }
       const recipientPubkeys = messageMentionPubkeys(
         effectiveChannel,
         identity.pubkey,

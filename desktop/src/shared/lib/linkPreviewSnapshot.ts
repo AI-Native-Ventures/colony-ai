@@ -1,5 +1,6 @@
 import {
   extractSupportedLinkPreviews,
+  extractSupportedLinkSources,
   parseSupportedLinkPreview,
 } from "./linkPreview";
 import type { ResolvedLinkPreview } from "./useResolvedLinkPreviews";
@@ -18,6 +19,14 @@ export function isValidLinkPreviewSnapshotCanonicalUrl(value: string): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+function normalizeUrl(value: string): string | null {
+  try {
+    return new URL(value).href;
+  } catch {
+    return null;
   }
 }
 
@@ -124,12 +133,17 @@ export function parseLinkPreviewSnapshots(
       faviconUrl,
       faviconSha256,
     ] = tag;
+    // The canonical URL may be the message's own spelling of the link
+    // (`https://example.com`) rather than the parser's normal form
+    // (`https://example.com/`); compare and dedupe on the normal form.
+    const normalizedUrl = normalizeUrl(canonicalUrl);
     const parsed = parseSupportedLinkPreview(canonicalUrl);
     if (
       !parsed ||
-      parsed.href !== canonicalUrl ||
-      !contentUrls.has(canonicalUrl) ||
-      seen.has(canonicalUrl)
+      normalizedUrl === null ||
+      parsed.href !== normalizedUrl ||
+      !contentUrls.has(normalizedUrl) ||
+      seen.has(normalizedUrl)
     )
       continue;
     if (
@@ -143,7 +157,7 @@ export function parseLinkPreviewSnapshots(
       !isRelayMediaPair(faviconUrl, faviconSha256, relayOrigin)
     )
       continue;
-    seen.add(canonicalUrl);
+    seen.add(normalizedUrl);
     snapshots.push({
       ...parsed,
       title: title || parsed.title,
@@ -176,4 +190,55 @@ export function buildLinkPreviewSnapshotTag(
     snapshot.faviconUrl,
     snapshot.faviconSha256,
   ];
+}
+
+function isSnapshotTag(tag: readonly string[]): boolean {
+  return tag[0] === "link-preview" && tag[1] === "snapshot";
+}
+
+/**
+ * Make every snapshot tag's canonical URL text that appears in `content`.
+ *
+ * The relay refuses a snapshot whose canonical URL is not a verbatim substring
+ * of the message, and a preview href is the URL parser's normal form, which
+ * differs from what was typed for a bare origin (`https://example.com` becomes
+ * `https://example.com/`), an uppercase host, a default port, non-ASCII text
+ * and dot segments. Such a tag is re-pointed at the link as the message spells
+ * it. A tag with no URL text in the message to point at (a schemeless
+ * `github.com/...` link, or a link edited out after the preview was prepared)
+ * is dropped and reported in `dropped`, so the message sends without that
+ * preview instead of failing. Suppression markers pass through untouched.
+ */
+export function alignLinkPreviewTagsWithContent(
+  tags: readonly (readonly string[])[],
+  content: string,
+): { tags: string[][]; dropped: string[] } {
+  const aligned: string[][] = [];
+  const dropped: string[] = [];
+  let sources: Map<string, string> | null = null;
+  for (const tag of tags) {
+    if (!isSnapshotTag(tag)) {
+      aligned.push([...tag]);
+      continue;
+    }
+    const canonicalUrl = tag[3] ?? "";
+    if (content.includes(canonicalUrl)) {
+      aligned.push([...tag]);
+      continue;
+    }
+    sources ??= extractSupportedLinkSources(content);
+    // A fragment is never part of the canonical URL, and the relay refuses one.
+    const written = sources.get(canonicalUrl)?.split("#")[0];
+    if (
+      !written ||
+      !content.includes(written) ||
+      !isValidLinkPreviewSnapshotCanonicalUrl(written) ||
+      normalizeUrl(written) !== canonicalUrl
+    ) {
+      dropped.push(canonicalUrl);
+      continue;
+    }
+    aligned.push([...tag.slice(0, 3), written, ...tag.slice(4)]);
+  }
+  return { tags: aligned, dropped };
 }
