@@ -1,4 +1,6 @@
-const DEFAULT_OUTPUT_SAMPLE_RATE = 24_000;
+// Speech needs 16 kHz. The WAV travels to the native host as base64 in one
+// request frame (16 MiB cap), so 16 kHz keeps a maximum-length note inside it.
+const DEFAULT_OUTPUT_SAMPLE_RATE = 16_000;
 
 function writeAscii(view: DataView, offset: number, value: string) {
   for (let index = 0; index < value.length; index += 1) {
