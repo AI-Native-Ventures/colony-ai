@@ -51,6 +51,7 @@ import { useStableSendToChannel } from "./useStableSendToChannel";
 import { useAnchoredScroll } from "./useAnchoredScroll";
 import { selectDeferredListRenderState } from "@/features/messages/lib/timelineSnapshot";
 import { selectThreadRowHighlight } from "@/features/messages/lib/threadReplyHighlight";
+import { getThreadReplySpacingClass } from "@/features/messages/lib/messageThreadPanelLayout";
 
 type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   channel: Channel | null;
@@ -655,7 +656,7 @@ export function MessageThreadPanel({
             renderList={() =>
               visibleThreadHeadSummary ? (
                 <div
-                  className="space-y-0"
+                  className="flex flex-col"
                   data-render-pending={isRepliesPending ? "true" : undefined}
                 >
                   <MessageThreadSummaryRow
@@ -696,9 +697,16 @@ export function MessageThreadPanel({
                       <div
                         className={cn(
                           "flex flex-col gap-0",
+                          getThreadReplySpacingClass({
+                            depth: entry.message.depth,
+                            index,
+                            isContinuation,
+                          }),
                           entry.summary &&
                             "group/message rounded-2xl px-0 py-0.5 transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
                         )}
+                        data-testid="message-thread-reply-row"
+                        data-thread-reply-id={entry.message.id}
                         key={entry.message.renderKey ?? entry.message.id}
                       >
                         {showUnreadDivider ? <UnreadDivider /> : null}
