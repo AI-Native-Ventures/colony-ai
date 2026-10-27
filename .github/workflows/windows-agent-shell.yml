@@ -38,7 +38,6 @@ jobs:
     env:
       TARGET: x86_64-pc-windows-msvc
       CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-      COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # MSVC needs windows.h (aws-lc-sys et al.), so this runs on a real Windows
@@ -67,6 +66,9 @@ jobs:
         run: cargo test -p buzz-dev-mcp --target $env:TARGET -- --test-threads=1
       - name: Live check (Colony's own shell tools install and run)
         shell: bash
+        # The runner context is only available in step level env.
+        env:
+          COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
@@ -80,4 +82,6 @@ jobs:
             sleep 20
           done
       - name: Live check (agent shell tool on Colony's own bash)
+        env:
+          COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
         run: cargo test -p buzz-dev-mcp --target $env:TARGET live_mingit -- --ignored --test-threads=1 --nocapture
