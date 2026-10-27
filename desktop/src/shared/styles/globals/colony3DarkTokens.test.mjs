@@ -4,6 +4,11 @@ import path from "node:path";
 import test from "node:test";
 
 import postcss from "postcss";
+import {
+  ACCENT_COLORS,
+  DARK_ACCENT_PALETTE_FALLBACKS,
+  resolveColonyAccentPalette,
+} from "../../theme/colonyAccentPalette.ts";
 
 const themePath = path.resolve("src/shared/styles/globals/theme.css");
 
@@ -96,6 +101,103 @@ function assertContrast(tokens, foreground, background, minimum) {
     `${foreground} on ${background} is ${ratio.toFixed(2)}:1; expected ${minimum}:1 or better`,
   );
 }
+
+function colorContrast(foreground, background) {
+  const rgb = (color) => (typeof color === "string" ? parseHex(color) : color);
+  const first = luminance(rgb(foreground));
+  const second = luminance(rgb(background));
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+function mixHex(fromHex, toHex, amount) {
+  const from = parseHex(fromHex).map((channel) => channel * 255);
+  const to = parseHex(toHex).map((channel) => channel * 255);
+  return `#${from
+    .map((channel, index) =>
+      Math.round(channel + (to[index] - channel) * amount)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+test("all built-in and custom accents preserve Light and meet Dark contrast", () => {
+  const tokens = darkPalette();
+  const accents = [
+    ...ACCENT_COLORS,
+    { name: "Custom ink", value: "#121116" },
+    { name: "Custom gold", value: "#e8c634" },
+  ];
+  const darkBackgrounds = [
+    "--colony-canvas",
+    "--colony-surface",
+    "--colony-surface-raised",
+    "--colony-pop",
+    "--colony-overlay",
+  ];
+  const darkSurface = tokens.get("--colony-accent-foreground");
+
+  for (const accent of accents) {
+    for (const mode of ["light", "dark"]) {
+      const palette = resolveColonyAccentPalette(accent.value, mode, {
+        overlay: tokens.get("--colony-overlay"),
+        surface: darkSurface,
+      });
+
+      if (mode === "light") {
+        assert.equal(palette.accentHex, accent.value, `${accent.name} fill`);
+        assert.equal(
+          palette.accentSoftHex,
+          mixHex(accent.value, "#ffffff", 0.9),
+          `${accent.name} soft fill`,
+        );
+        assert.equal(
+          palette.accentInkHex,
+          mixHex(accent.value, "#000000", 0.15),
+          `${accent.name} ink`,
+        );
+        assert.equal(palette.accentForegroundHex, "#fffdfa");
+        continue;
+      }
+
+      for (const background of darkBackgrounds) {
+        const ratio = colorContrast(
+          palette.accentHex,
+          resolveColor(tokens, background),
+        );
+        assert.ok(
+          ratio >= 4.5,
+          `${accent.name} Dark accent text on ${background} is ${ratio.toFixed(2)}:1`,
+        );
+        assert.ok(
+          ratio >= 3,
+          `${accent.name} Dark focus ring on ${background} is ${ratio.toFixed(2)}:1`,
+        );
+      }
+
+      const buttonRatio = colorContrast(darkSurface, palette.accentHex);
+      assert.ok(
+        buttonRatio >= 4.5,
+        `${accent.name} Dark button label on fill is ${buttonRatio.toFixed(2)}:1`,
+      );
+
+      const chipRatio = colorContrast(
+        palette.accentInkHex,
+        palette.accentSoftHex,
+      );
+      assert.ok(
+        chipRatio >= 4.5,
+        `${accent.name} Dark accent text on soft fill is ${chipRatio.toFixed(2)}:1`,
+      );
+    }
+  }
+
+  assert.equal(
+    DARK_ACCENT_PALETTE_FALLBACKS.overlay,
+    tokens.get("--colony-overlay"),
+  );
+  assert.equal(DARK_ACCENT_PALETTE_FALLBACKS.surface, darkSurface);
+});
 
 test("dark text, states and controls keep WCAG AA contrast", () => {
   const tokens = darkPalette();

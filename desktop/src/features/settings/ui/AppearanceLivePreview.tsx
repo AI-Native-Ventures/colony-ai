@@ -1,6 +1,11 @@
 import type * as React from "react";
 
 import {
+  ACCENT_COLORS,
+  DEFAULT_ACCENT,
+  resolveColonyAccentPalette,
+} from "@/shared/theme/colonyAccentPalette";
+import {
   DEFAULT_FIELD_COLORS,
   type FieldColors,
 } from "@/shared/theme/sidebarField";
@@ -8,15 +13,10 @@ import {
 import type { AppearanceSnapshot } from "../lib/appearanceSnapshot";
 import { conversationMessageSizeCss } from "../lib/conversationMessageSizePreference";
 
-/** The six accents the Colony 3.0 design offers. */
-export const ACCENTS = [
-  ["Violet", "#5B45BE"],
-  ["Rose", "#B23A6E"],
-  ["Teal", "#1F7A70"],
-  ["Blue", "#2B5899"],
-  ["Amber", "#9A5B00"],
-  ["Ink", "#25222C"],
-] as const;
+/** The six accents the Colony 3.0 design offers (Settings, Appearance). */
+export const ACCENTS = ACCENT_COLORS.map(
+  ({ name, value }) => [name, value] as const,
+);
 
 /**
  * The preview card on the Appearance page: a sidebar drawn from the person's
@@ -25,24 +25,31 @@ export const ACCENTS = [
  */
 export function LiveAppearancePreview({
   preferences,
+  isDark,
 }: {
   preferences: AppearanceSnapshot;
+  isDark: boolean;
 }) {
   const field: FieldColors = preferences.field ?? [...DEFAULT_FIELD_COLORS];
   const accent =
-    ACCENTS.find(
-      ([, hex]) => hex.toLowerCase() === preferences.accent.toLowerCase(),
-    )?.[1] ?? preferences.accent;
+    ACCENT_COLORS.find(
+      ({ value }) => value.toLowerCase() === preferences.accent.toLowerCase(),
+    )?.value ?? preferences.accent;
+  const previewAccent = isDark
+    ? accent.toLowerCase() === DEFAULT_ACCENT.toLowerCase()
+      ? "hsl(var(--colony-accent))"
+      : resolveColonyAccentPalette(accent, "dark").accentHex
+    : accent;
   return (
     <div
-      className="cs-preview"
+      className={isDark ? "cs-preview dark" : "cs-preview"}
       data-testid="appearance-live-preview"
       style={
         {
           "--ap-field-top": field[0],
           "--ap-field-middle": field[1],
           "--ap-field-bottom": field[2],
-          "--cs-preview-accent": accent,
+          "--cs-preview-accent": previewAccent,
           "--cs-preview-message": conversationMessageSizeCss(
             preferences.messageSize,
           ),
