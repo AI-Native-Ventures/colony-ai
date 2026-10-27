@@ -27,8 +27,52 @@ pub enum Admission {
     },
     /// The payer cannot cover the entire conservative hold.
     Insufficient,
-    /// Four account requests or one session request are already pending.
+    /// Four account requests (or the free-AI ceiling) or one session request are already pending.
     Busy,
+    /// The deployment-wide UTC-day spend ceiling would be exceeded by this hold.
+    DailyLimit,
+}
+
+/// Regular accounts may hold this many unresolved requests at once.
+const MAX_IN_FLIGHT: i64 = 4;
+/// Regular accounts may hold this many live managed sessions at once.
+const MAX_SESSIONS: i64 = 16;
+/// Default in-flight ceiling for free-AI accounts shared by many devices.
+pub const DEFAULT_FREE_AI_MAX_IN_FLIGHT: i64 = 32;
+/// Live managed sessions a free-AI account may hold, one per device.
+const FREE_AI_MAX_SESSIONS: i64 = 128;
+
+/// Server-side admission policy, read once from relay configuration.
+///
+/// A free-AI account uses the gateway without a credit balance: its requests
+/// are metered in `account_ai_requests` and logged, but never touch the
+/// payer's credit ledger. Every other account is governed exactly as before.
+#[derive(Debug, Clone)]
+pub struct GatewayPolicy {
+    /// Lowercased verified account emails that use the gateway without credits.
+    pub free_ai_accounts: Vec<String>,
+    /// Unresolved-request ceiling for free-AI accounts.
+    pub free_ai_max_in_flight: i64,
+    /// Total gateway spend ceiling per UTC day, in nanoUSD. `None` means no ceiling.
+    pub global_daily_cap_nanousd: Option<i64>,
+}
+
+impl Default for GatewayPolicy {
+    fn default() -> Self {
+        Self {
+            free_ai_accounts: Vec::new(),
+            free_ai_max_in_flight: DEFAULT_FREE_AI_MAX_IN_FLIGHT,
+            global_daily_cap_nanousd: None,
+        }
+    }
+}
+
+impl GatewayPolicy {
+    /// Whether this verified account email uses the gateway without credits.
+    pub fn is_free(&self, email: &str) -> bool {
+        let email = email.trim().to_ascii_lowercase();
+        self.free_ai_accounts.contains(&email)
+    }
 }
 
 /// One durable request available to the bounded recovery worker.
@@ -50,13 +94,35 @@ pub struct RecoveryRequest {
 }
 
 impl Db {
-    /// Authorize a fresh Colony Agent session using an existing owner mapping.
-    /// Replaces the same agent's previous authorization without reviving it.
+    /// Authorize a fresh Colony Agent session under the default policy
+    /// (no free-AI accounts). Production routes use
+    /// [`Db::create_credit_ai_session_with_policy`].
+    #[doc(hidden)]
     pub async fn create_credit_ai_session(
         &self,
         owner: &str,
         community: CommunityId,
         agent: &[u8],
+    ) -> Result<Uuid> {
+        self.create_credit_ai_session_with_policy(
+            owner,
+            community,
+            agent,
+            &GatewayPolicy::default(),
+        )
+        .await
+    }
+
+    /// Authorize a fresh Colony Agent session using an existing owner mapping.
+    /// Replaces the same agent's previous authorization without reviving it.
+    /// Free-AI accounts may hold one session per device, well above the
+    /// regular ceiling.
+    pub async fn create_credit_ai_session_with_policy(
+        &self,
+        owner: &str,
+        community: CommunityId,
+        agent: &[u8],
+        policy: &GatewayPolicy,
     ) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
         // Sessions are account-global recovery anchors, excluded from tenant
@@ -65,11 +131,16 @@ impl Db {
             .bind(community.as_uuid())
             .execute(&mut *tx)
             .await?;
-        let account: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL FOR UPDATE",
+        let account: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT id, email FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL FOR UPDATE",
         ).bind(owner).fetch_optional(&mut *tx).await?;
-        let account =
+        let (account, email) =
             account.ok_or_else(|| DbError::NotFound("verified account required".into()))?;
+        let session_limit = if policy.is_free(&email) {
+            FREE_AI_MAX_SESSIONS
+        } else {
+            MAX_SESSIONS
+        };
         let owned: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM users WHERE community_id = $1 AND pubkey = $2 AND agent_owner_pubkey = decode($3, 'hex'))",
         ).bind(community.as_uuid()).bind(agent).bind(owner).fetch_one(&mut *tx).await?;
@@ -82,7 +153,7 @@ impl Db {
             .bind(account).bind(community.as_uuid()).bind(agent).execute(&mut *tx).await?;
         let active: i64 = sqlx::query_scalar("SELECT count(*) FROM account_ai_sessions WHERE account_id = $1 AND NOT revoked AND expires_at > now()")
             .bind(account).fetch_one(&mut *tx).await?;
-        if active >= 16 {
+        if active >= session_limit {
             return Err(DbError::InvalidData("managed session limit reached".into()));
         }
         let id = Uuid::new_v4();
@@ -92,6 +163,25 @@ impl Db {
         Ok(id)
     }
 
+    /// Whether the verified account owning this signer uses the gateway
+    /// without credits. Unknown or unverified signers answer `false`.
+    pub async fn credit_ai_account_is_free(
+        &self,
+        owner: &str,
+        policy: &GatewayPolicy,
+    ) -> Result<bool> {
+        if policy.free_ai_accounts.is_empty() {
+            return Ok(false);
+        }
+        let email: Option<String> = sqlx::query_scalar(
+            "SELECT email FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL",
+        )
+        .bind(owner)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(email.is_some_and(|email| policy.is_free(&email)))
+    }
+
     /// Revoke an authorization immediately; existing spending still settles.
     pub async fn revoke_credit_ai_session(&self, owner: &str, session: Uuid) -> Result<()> {
         sqlx::query("UPDATE account_ai_sessions s SET revoked = true FROM accounts a WHERE s.account_id = a.id AND a.pubkey = $1 AND s.id = $2")
@@ -99,7 +189,9 @@ impl Db {
         Ok(())
     }
 
-    /// Authenticate the session, reserve funds and journal before upstream spend.
+    /// Admit under the default policy (no free-AI accounts, no daily ceiling).
+    /// Production routes use [`Db::admit_credit_ai_request_with_policy`].
+    #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
     pub async fn admit_credit_ai_request(
         &self,
@@ -110,6 +202,37 @@ impl Db {
         request: Uuid,
         digest: &str,
         reserve: i64,
+    ) -> Result<Admission> {
+        self.admit_credit_ai_request_with_policy(
+            upstream_id,
+            community,
+            agent,
+            session,
+            request,
+            digest,
+            reserve,
+            &GatewayPolicy::default(),
+        )
+        .await
+    }
+
+    /// Authenticate the session, reserve funds and journal before upstream spend.
+    ///
+    /// A free-AI account skips the balance check and writes no ledger rows: its
+    /// request is metered in the journal only. The optional global daily
+    /// ceiling is checked under one deployment-wide advisory lock so concurrent
+    /// payers cannot overshoot it together.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn admit_credit_ai_request_with_policy(
+        &self,
+        upstream_id: &str,
+        community: CommunityId,
+        agent: &[u8],
+        session: Uuid,
+        request: Uuid,
+        digest: &str,
+        reserve: i64,
+        policy: &GatewayPolicy,
     ) -> Result<Admission> {
         if !(1..=400_000_000).contains(&reserve)
             || digest.len() != 64
@@ -125,8 +248,8 @@ impl Db {
             .execute(&mut *tx)
             .await?;
         // Always use the same payer lock as every existing ledger debit.
-        let account: Option<Uuid> = sqlx::query_scalar(
-            "SELECT a.id FROM accounts a JOIN account_ai_sessions s ON s.account_id = a.id \
+        let account: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT a.id, a.email FROM accounts a JOIN account_ai_sessions s ON s.account_id = a.id \
              JOIN users u ON u.community_id = s.community_id AND u.pubkey = s.agent_pubkey \
              WHERE s.id = $1 AND s.community_id = $2 AND s.agent_pubkey = $3 \
              AND NOT s.revoked AND s.expires_at > now() AND a.email_verified_at IS NOT NULL \
@@ -137,8 +260,9 @@ impl Db {
         .bind(agent)
         .fetch_optional(&mut *tx)
         .await?;
-        let account = account
+        let (account, email) = account
             .ok_or_else(|| DbError::NotFound("managed session expired or unauthorized".into()))?;
+        let free = policy.is_free(&email);
         // A recovery backlog must never strand a person after the fifteen-minute
         // window. At most four expired holds exist for this locked payer.
         let expired: Vec<(Uuid, i64, Option<i64>)> = sqlx::query_as("SELECT id, reserved_nanousd, observed_nanousd FROM account_ai_requests WHERE account_id = $1 AND status = 'pending' AND created_at <= now() - interval '15 minutes' ORDER BY id LIMIT 4 FOR UPDATE")
@@ -171,21 +295,45 @@ impl Db {
         }
         let (pending, same_session): (i64, bool) = sqlx::query_as("SELECT count(*), COALESCE(bool_or(session_id = $2), false) FROM account_ai_requests WHERE account_id = $1 AND status = 'pending'")
             .bind(account).bind(session).fetch_one(&mut *tx).await?;
-        if pending >= 4 || same_session {
+        let in_flight_limit = if free {
+            policy.free_ai_max_in_flight
+        } else {
+            MAX_IN_FLIGHT
+        };
+        if pending >= in_flight_limit || same_session {
             tx.commit().await?;
             return Ok(Admission::Busy);
         }
-        // Includes all outstanding negative holds, including other communities.
-        let balance: i64 = sqlx::query_scalar("SELECT COALESCE(sum(amount_nanousd), 0)::bigint FROM account_credit_ledger WHERE account_id = $1")
-            .bind(account).fetch_one(&mut *tx).await?;
-        if balance < reserve {
-            tx.commit().await?;
-            return Ok(Admission::Insufficient);
+        if let Some(cap) = policy.global_daily_cap_nanousd {
+            // Lock order is payer row, then this lock. Nothing below waits on
+            // another payer, so holders cannot deadlock.
+            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('colony-credits-global-daily-cap', 0))")
+                .execute(&mut *tx)
+                .await?;
+            // Settled and estimated rows count what they charged; pending rows
+            // count the hold they could still become. Free-AI rows are included.
+            let spent: i64 = sqlx::query_scalar("SELECT COALESCE(sum(COALESCE(charged_nanousd, reserved_nanousd)), 0)::bigint FROM account_ai_requests WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'")
+                .fetch_one(&mut *tx).await?;
+            if spent.saturating_add(reserve) > cap {
+                tx.commit().await?;
+                return Ok(Admission::DailyLimit);
+            }
+        }
+        if !free {
+            // Includes all outstanding negative holds, including other communities.
+            let balance: i64 = sqlx::query_scalar("SELECT COALESCE(sum(amount_nanousd), 0)::bigint FROM account_credit_ledger WHERE account_id = $1")
+                .bind(account).fetch_one(&mut *tx).await?;
+            if balance < reserve {
+                tx.commit().await?;
+                return Ok(Admission::Insufficient);
+            }
         }
         sqlx::query("INSERT INTO account_ai_requests (id, account_id, session_id, body_sha256, reserved_nanousd, upstream_id) VALUES ($1,$2,$3,$4,$5,$6)")
             .bind(request).bind(account).bind(session).bind(digest).bind(reserve).bind(upstream_id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO account_credit_ledger (account_id, entry_type, amount_nanousd, source_id, description, metadata) VALUES ($1,'adjustment',$2,$3,'Colony Agent pending usage hold',$4)")
-            .bind(account).bind(-reserve).bind(format!("ai:{request}:hold")).bind(json!({"requestId":request,"pending":true})).execute(&mut *tx).await?;
+        if !free {
+            sqlx::query("INSERT INTO account_credit_ledger (account_id, entry_type, amount_nanousd, source_id, description, metadata) VALUES ($1,'adjustment',$2,$3,'Colony Agent pending usage hold',$4)")
+                .bind(account).bind(-reserve).bind(format!("ai:{request}:hold")).bind(json!({"requestId":request,"pending":true})).execute(&mut *tx).await?;
+        }
         tx.commit().await?;
         Ok(Admission::New {
             account_id: account,
@@ -288,7 +436,20 @@ async fn settle_locked(
     if status == "estimated" && provisional {
         return Ok(());
     }
-    if status == "pending" {
+    // Admission wrote a ledger hold for every payer request. A request with no
+    // hold belongs to a free-AI account: the journal alone meters it, so no
+    // release, debit or refund may touch that account's credit balance. This
+    // is derived from durable rows, so it survives a config change mid-flight.
+    let funded: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM account_credit_ledger WHERE account_id = $1 AND source_id = $2)",
+    )
+    .bind(account)
+    .bind(format!("ai:{id}:hold"))
+    .fetch_one(&mut **tx)
+    .await?;
+    if !funded {
+        tracing::info!(request_id = %id, charged_nanousd = charged, provisional, "Free Colony AI usage metered; no credit ledger entry written");
+    } else if status == "pending" {
         sqlx::query("INSERT INTO account_credit_ledger (account_id, entry_type, amount_nanousd, source_id, description) VALUES ($1,'adjustment',$2,$3,'Colony Agent usage hold released')")
                 .bind(account).bind(reserve).bind(format!("ai:{id}:release")).execute(&mut **tx).await?;
         if charged > 0 {
