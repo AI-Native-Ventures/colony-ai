@@ -355,6 +355,15 @@ jobs:
           appendFileSync(process.env.GITHUB_ENV, `COLONY_ELECTRON_RUNTIME=${runtimeDir}${os.EOL}`);
           NODE
 
+      # The app carries its own LGPL-only ffmpeg so voice notes, video and HEIC
+      # photos work on a machine without Homebrew. Built from the pinned source
+      # in desktop/ffmpeg-bundle and cached; the packager fails without it.
+      - name: Build bundled ffmpeg
+        id: ffmpeg
+        uses: ./.github/actions/build-ffmpeg-bundle
+        with:
+          platform-key: ${{ matrix.platform }}-${{ matrix.arch }}
+
       - name: Prepare temporary Apple signing keychain
         if: inputs.release && matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true'
         shell: bash
@@ -415,6 +424,7 @@ jobs:
       - name: Package Electron app
         shell: bash
         env:
+          COLONY_FFMPEG_BUNDLE_DIR: ${{ steps.ffmpeg.outputs.directory }}
           COLONY_ELECTRON_RELEASE: ${{ inputs.release && '1' || '0' }}
           COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
           COLONY_ELECTRON_SIGNED: ${{ inputs.release && ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}

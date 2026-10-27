@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 export const ELECTRON_BUNDLE_ID = "xyz.block.buzz.app.electron";
@@ -33,6 +34,7 @@ export function parseElectronPackageArgs(args) {
       "--arch": "arch",
       "--host": "host",
       "--sidecar-dir": "sidecarDir",
+      "--ffmpeg-dir": "ffmpegDir",
     }[flag];
 
     if (!key) throw new Error(`Unknown argument ${JSON.stringify(argument)}.`);
@@ -84,6 +86,109 @@ export function sidecarFilenames(platform) {
   ];
   if (platform !== "win32") binaries.push("buzz-backend-kubernetes");
   return binaries.map((binary) => `${binary}${extension}`);
+}
+
+const ffmpegManifest = JSON.parse(
+  readFileSync(
+    new URL("../ffmpeg-bundle/manifest.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+/**
+ * The ffmpeg that ships inside the app for a platform, or null where none does
+ * (the app then looks for one on the machine). The build recipe and pinned
+ * source are in desktop/ffmpeg-bundle; the app resolves `executable` next to
+ * its native host (see `bundled_ffmpeg_in` in media_transcode.rs).
+ */
+export function ffmpegBundle(platform, arch) {
+  assertPlatform(platform);
+  assertArchitecture(arch);
+  const platformKey = `${platform}-${arch}`;
+  const entry = ffmpegManifest.platforms[platformKey];
+  if (!entry) return null;
+  return {
+    platformKey,
+    version: ffmpegManifest.version,
+    license: ffmpegManifest.license,
+    source: ffmpegManifest.source,
+    executable: entry.executable,
+    h264Encoder: entry.h264Encoder,
+    noticeFilename: "ffmpeg-NOTICE.txt",
+    licenseFilename: "ffmpeg-COPYING.LGPLv2.1.txt",
+  };
+}
+
+/** Files the packaged app carries in its resources folder for ffmpeg. */
+export function ffmpegResourceFilenames(platform, arch) {
+  const bundle = ffmpegBundle(platform, arch);
+  return bundle
+    ? [bundle.executable, bundle.noticeFilename, bundle.licenseFilename]
+    : [];
+}
+
+// What a bundled build may be configured with. A GPL or nonfree ffmpeg, or one
+// that links an external codec library, would change what Colony may ship.
+const FORBIDDEN_FFMPEG_CONFIGURATION =
+  /--enable-(gpl|nonfree|version3|libx264|libx265|libfdk[-_]aac|libxvid)\b/;
+
+/** Throws unless the `configuration:` line of `ffmpeg -version` is LGPL-only. */
+export function assertLgplFfmpegConfiguration(versionOutput) {
+  const line = versionOutput
+    .split(/\r?\n/)
+    .find((candidate) => candidate.startsWith("configuration:"));
+  if (!line) throw new Error("ffmpeg -version printed no configuration line.");
+  const forbidden = FORBIDDEN_FFMPEG_CONFIGURATION.exec(line);
+  if (forbidden)
+    throw new Error(
+      `The bundled ffmpeg is not an LGPL-only build (${forbidden[0]}).`,
+    );
+  if (!line.includes("--disable-gpl"))
+    throw new Error(
+      "The bundled ffmpeg was not configured with --disable-gpl.",
+    );
+  return line.slice("configuration:".length).trim();
+}
+
+/** The notice shipped beside the ffmpeg binary: licence, source, how it is built. */
+export function ffmpegNoticeText({ bundle, configuration }) {
+  const encoder =
+    bundle.h264Encoder === "h264_videotoolbox"
+      ? "Apple VideoToolbox"
+      : "Windows Media Foundation";
+  return [
+    `FFmpeg ${bundle.version}`,
+    "",
+    "Colony includes FFmpeg, a separate program it runs to prepare voice notes,",
+    "videos and HEIC photos for upload. FFmpeg is licensed under the GNU Lesser",
+    "General Public License, version 2.1 or later. The licence text is in",
+    `${bundle.licenseFilename}, next to this file.`,
+    "",
+    "This build is LGPL only. It was configured without --enable-gpl and",
+    "--enable-nonfree and links no external codec library, so it contains no",
+    `x264 or x265. H.264 video is encoded by the operating system (${encoder});`,
+    "AAC audio is encoded by FFmpeg's own encoder. FFmpeg is a trademark of",
+    "Fabrice Bellard, originator of the FFmpeg project.",
+    "",
+    "Source code",
+    "-----------",
+    `This is the unmodified FFmpeg ${bundle.version} release:`,
+    `  ${bundle.source.url}`,
+    `  SHA-256 ${bundle.source.sha256}`,
+    `  signed with the FFmpeg release key ${bundle.source.signingKeyFingerprint}`,
+    "The build script and its settings are in the Colony repository:",
+    "  desktop/ffmpeg-bundle/build.sh and manifest.json",
+    "If you cannot get the source from those places, ask for a copy at",
+    "https://colony.global and it will be sent to you.",
+    "",
+    "Build configuration",
+    "-------------------",
+    configuration,
+    "",
+    "Because FFmpeg runs as its own program, you may replace the ffmpeg file in",
+    "this folder with another build of your own.",
+    "",
+  ].join("\n");
 }
 
 // Colony app icon, without extension: the packager appends .icns or .ico.
