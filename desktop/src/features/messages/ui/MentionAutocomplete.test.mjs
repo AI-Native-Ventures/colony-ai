@@ -383,3 +383,67 @@ for (const duplicate of [false, true]) {
     assert.equal(view.queryByTitle("From another Buzz setup"), null);
   });
 }
+
+test("a Scout that is not on this Mac says so when another row shares its name", async () => {
+  const React = await import("react");
+  const { render } = await import("@testing-library/react");
+  const { MentionAutocomplete } = await import("./MentionAutocomplete.tsx");
+  const { TooltipProvider } = await import("@/shared/ui/tooltip");
+  const thisMac = {
+    pubkey: "5".repeat(64),
+    displayName: "Scout",
+    isAgent: true,
+    agentProvenance: "managed-here",
+  };
+  const elsewhere = {
+    pubkey: "7".repeat(64),
+    displayName: "Scout",
+    isAgent: true,
+    agentProvenance: "managed-elsewhere",
+    ownerLabel: "you",
+  };
+  const view = render(
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(MentionAutocomplete, {
+        suggestions: [thisMac, elsewhere],
+        selectedIndex: 0,
+        onSelect() {},
+      }),
+    ),
+  );
+
+  const here = view.getByTestId(`mention-suggestion-${thisMac.pubkey}`);
+  const there = view.getByTestId(`mention-suggestion-${elsewhere.pubkey}`);
+  assert.doesNotMatch(here.textContent ?? "", /Not on this Mac/);
+  assert.match(there.textContent ?? "", /Not on this Mac/);
+});
+
+test("a lone Scout that is not on this Mac keeps the marker without the written hint", async () => {
+  const React = await import("react");
+  const { render } = await import("@testing-library/react");
+  const { MentionAutocomplete } = await import("./MentionAutocomplete.tsx");
+  const { TooltipProvider } = await import("@/shared/ui/tooltip");
+  const view = render(
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(MentionAutocomplete, {
+        suggestions: [
+          {
+            pubkey: "7".repeat(64),
+            displayName: "Scout",
+            isAgent: true,
+            agentProvenance: "managed-elsewhere",
+          },
+        ],
+        selectedIndex: 0,
+        onSelect() {},
+      }),
+    ),
+  );
+
+  assert.doesNotMatch(view.container.textContent ?? "", /Not on this Mac/);
+  assert.equal(view.getAllByTestId("mention-agent-provenance").length, 1);
+});

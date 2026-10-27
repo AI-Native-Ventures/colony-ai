@@ -51,6 +51,9 @@ type MentionAutocompleteProps = {
 
 const NO_JOB_TITLE = () => null;
 
+/** Shown on an agent of the person's own that this device does not run. */
+const NOT_ON_THIS_MAC_HINT = "Not on this Mac";
+
 export function showMentionAgentProvenanceMarker(
   suggestion: MentionSuggestion,
 ): boolean {
@@ -270,6 +273,11 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
               if (jobTitle) agentSubtitleParts.push(jobTitle);
               if (ownerLabel)
                 agentSubtitleParts.push(`managed by ${ownerLabel}`);
+              // The cloud marker alone cannot tell two Scouts apart. When
+              // another row shares the name, say it in words.
+              if (hasNameCollision && showAgentProvenanceMarker) {
+                agentSubtitleParts.push(NOT_ON_THIS_MAC_HINT);
+              }
               if (suggestion.notInChannel) {
                 agentSubtitleParts.push("not in channel");
               }

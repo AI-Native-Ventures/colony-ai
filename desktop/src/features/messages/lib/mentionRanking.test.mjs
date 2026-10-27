@@ -247,3 +247,66 @@ test("pickDefaultAgentCandidate: returns null without an addressable agent", () 
   assert.equal(pickDefaultAgentCandidate([]), null);
   assert.equal(pickDefaultAgentCandidate([candidate()]), null);
 });
+
+const THIS_MAC_SCOUT_PUBKEY = "5".repeat(64);
+const OLD_SCOUT_PUBKEYS = ["7".repeat(64), "8".repeat(64), "9".repeat(64)];
+
+function scout(pubkey, overrides = {}) {
+  return candidate({
+    displayName: "Scout",
+    isAgent: true,
+    isMember: true,
+    pubkey,
+    ...overrides,
+  });
+}
+
+test("rankMentionCandidates: the Scout this Mac runs comes before same-named Scouts that rank alike", () => {
+  const oldScouts = OLD_SCOUT_PUBKEYS.map((pubkey) => scout(pubkey));
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, { isManagedAgent: true });
+
+  assert.deepEqual(rankedPubkeys([...oldScouts, thisMac], "scout"), [
+    THIS_MAC_SCOUT_PUBKEY,
+    ...OLD_SCOUT_PUBKEYS,
+  ]);
+});
+
+test("rankMentionCandidates: the Scout this Mac runs comes first even when it is not in the channel", () => {
+  const oldScouts = OLD_SCOUT_PUBKEYS.map((pubkey) => scout(pubkey));
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+  });
+
+  assert.deepEqual(rankedPubkeys([...oldScouts, thisMac], "scout"), [
+    THIS_MAC_SCOUT_PUBKEY,
+    ...OLD_SCOUT_PUBKEYS,
+  ]);
+});
+
+test("rankMentionCandidates: an agent this Mac runs does not jump ahead of channel members with other names", () => {
+  const scotty = candidate({
+    displayName: "Scotty",
+    isMember: true,
+    pubkey: "6".repeat(64),
+  });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+  });
+
+  assert.deepEqual(rankedPubkeys([thisMac, scotty], "sc"), [
+    "6".repeat(64),
+    THIS_MAC_SCOUT_PUBKEY,
+  ]);
+});
+
+test("rankMentionCandidates: input order still decides between agents this Mac runs", () => {
+  const first = scout("a".repeat(64), { isManagedAgent: true });
+  const second = scout("b".repeat(64), { isManagedAgent: true });
+
+  assert.deepEqual(rankedPubkeys([second, first], "scout"), [
+    "b".repeat(64),
+    "a".repeat(64),
+  ]);
+});

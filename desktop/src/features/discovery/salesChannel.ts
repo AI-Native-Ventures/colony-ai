@@ -40,7 +40,8 @@ export type SalesChannelPeople = {
   /** The business's owners and admins. They must see the private channel, or
    * the first one to open Leads would make a second Sales of their own. */
   leaders: string[];
-  /** The business's AI employees, added as bots. */
+  /** The AI employees this device runs, added as bots. Agents the business
+   * holds from other installs are left out (see `salesChannelPeople.ts`). */
   employees: string[];
 };
 

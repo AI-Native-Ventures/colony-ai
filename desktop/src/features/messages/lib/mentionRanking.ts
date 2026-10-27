@@ -4,6 +4,8 @@ export type MentionCandidateForRanking = {
   displayName: string | null;
   isAgent: boolean;
   isActiveAgent?: boolean;
+  /** An agent with a record on this device, so this device can run it. */
+  isManagedAgent?: boolean;
   isMember: boolean;
   kind: "identity" | "persona" | "team";
   personaId?: string | null;
@@ -15,6 +17,8 @@ export type MentionCandidateForRanking = {
 export type RankedMentionCandidate<T extends MentionCandidateForRanking> = {
   candidate: T;
   groupRank: number;
+  /** 0 for the agent this device runs when other agents share its name. */
+  localRank: number;
   label: string;
   order: number;
   score: number;
@@ -35,6 +39,35 @@ function getMentionCandidateGroupRank(
   if (!candidate.isAgent) return 2;
 
   return 3;
+}
+
+function sameNameKey(candidate: MentionCandidateForRanking) {
+  return candidate.kind === "identity" && candidate.isAgent
+    ? (candidate.displayName?.trim().toLowerCase() ?? "")
+    : "";
+}
+
+/**
+ * How many agents share each name, and the best group any of them ranks in.
+ * One account can hold many agents under one name (every reinstall makes a new
+ * agent key), and only one of them is the agent this device runs.
+ */
+function sameNameAgents(
+  candidates: readonly MentionCandidateForRanking[],
+  activePersonaIds: ReadonlySet<string>,
+) {
+  const stats = new Map<string, { count: number; bestGroupRank: number }>();
+  for (const candidate of candidates) {
+    const key = sameNameKey(candidate);
+    if (!key) continue;
+    const groupRank = getMentionCandidateGroupRank(candidate, activePersonaIds);
+    const stat = stats.get(key);
+    stats.set(key, {
+      count: (stat?.count ?? 0) + 1,
+      bestGroupRank: Math.min(stat?.bestGroupRank ?? groupRank, groupRank),
+    });
+  }
+  return stats;
 }
 
 function scoreMentionCandidateLabel(
@@ -110,6 +143,7 @@ export function rankMentionCandidates<T extends MentionCandidateForRanking>(
   activePersonaIds: ReadonlySet<string> = new Set(),
 ): RankedMentionCandidate<T>[] {
   const lowerQuery = query.toLowerCase();
+  const sameName = sameNameAgents(candidates, activePersonaIds);
 
   return candidates
     .map((candidate, order) => {
@@ -119,10 +153,21 @@ export function rankMentionCandidates<T extends MentionCandidateForRanking>(
       const label =
         candidate.displayName ??
         (candidate.pubkey ? truncateNpub(candidate.pubkey) : "agent");
-      const groupRank = getMentionCandidateGroupRank(
+      const ownGroupRank = getMentionCandidateGroupRank(
         candidate,
         activePersonaIds,
       );
+      // Among agents with one name, the one this device runs leads: a person
+      // who picks another one gets no answer, however the roster is ordered.
+      const sharedName = sameName.get(sameNameKey(candidate));
+      const isLocalAmongSameName =
+        candidate.isManagedAgent === true &&
+        sharedName !== undefined &&
+        sharedName.count > 1;
+      const groupRank = isLocalAmongSameName
+        ? Math.min(ownGroupRank, sharedName.bestGroupRank)
+        : ownGroupRank;
+      const localRank = isLocalAmongSameName ? 0 : 1;
 
       const labelScores = [
         candidate.displayName,
@@ -145,11 +190,14 @@ export function rankMentionCandidates<T extends MentionCandidateForRanking>(
         : null;
       const score = labelScore !== null ? labelScore : pubkeyScore;
 
-      return { candidate, groupRank, label, order, score };
+      return { candidate, groupRank, label, localRank, order, score };
     })
     .filter((item): item is RankedMentionCandidate<T> => item.score !== null)
     .sort(
       (a, b) =>
-        a.groupRank - b.groupRank || a.score - b.score || a.order - b.order,
+        a.groupRank - b.groupRank ||
+        a.score - b.score ||
+        a.localRank - b.localRank ||
+        a.order - b.order,
     );
 }
