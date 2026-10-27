@@ -455,6 +455,62 @@ pub(super) fn charge_decimal(raw: &str) -> Result<i64, ()> {
     i64::try_from(result).map_err(|_| ())
 }
 
+/// What a Scout session really sends. The prompt is the bytes `buzz-acp` gives
+/// every agent and the tools are the 20 definitions the shipped dev and browser
+/// servers register (captured in the agent crate's `testdata`), in the wire
+/// shape the managed client posts.
+#[cfg(test)]
+pub(in crate::api) mod scout_session {
+    use serde_json::{json, Value};
+
+    const BASE_PROMPT: &str = concat!(
+        include_str!("../../../buzz-acp/src/base_prompt.md"),
+        "\n",
+        include_str!("../../../buzz-acp/src/voice.md"),
+        "\n",
+        include_str!("../../../buzz-acp/src/web_tasks.md")
+    );
+
+    pub(in crate::api) fn tools() -> Vec<Value> {
+        let defs: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../buzz-agent/src/llm/testdata/scout_tool_defs.json"
+        ))
+        .unwrap();
+        defs.into_iter()
+            .map(|def| {
+                json!({"type":"function","function":{
+                    "name":def["name"],"description":def["description"],"parameters":def["input_schema"]}})
+            })
+            .collect()
+    }
+
+    /// The system message, a user turn, `rounds` shell rounds, then the next user turn.
+    pub(in crate::api) fn messages(rounds: usize, result_bytes: usize) -> Vec<Value> {
+        let mut messages = vec![
+            json!({"role":"system","content":format!("{BASE_PROMPT}\n\nYou are Scout, the owner's Chief of Staff.")}),
+            json!({"role":"user","content":"Go through the lead list and tell me who to call first."}),
+        ];
+        for i in 0..rounds {
+            messages.push(json!({"role":"assistant","content":"","tool_calls":[{
+                "id":format!("call_{i}"),"type":"function",
+                "function":{"name":"dev__shell","arguments":json!({"command":format!("ls -la /work/{i}")}).to_string()}}]}));
+            messages.push(json!({"role":"tool","tool_call_id":format!("call_{i}"),"content":"x".repeat(result_bytes)}));
+        }
+        messages.push(json!({"role":"user","content":"Now summarise what you found."}));
+        messages
+    }
+
+    pub(in crate::api) fn request(
+        session: uuid::Uuid,
+        request: uuid::Uuid,
+        rounds: usize,
+        result_bytes: usize,
+    ) -> Value {
+        json!({"session_id":session,"request_id":request,
+            "messages":messages(rounds, result_bytes),"tools":tools()})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
