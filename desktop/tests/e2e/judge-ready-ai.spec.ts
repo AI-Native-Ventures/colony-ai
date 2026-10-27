@@ -138,7 +138,17 @@ test.describe("free Colony AI for judges", () => {
   test("a new account with no AI tools skips Connect and gets the Colony Agent", async ({
     page,
   }) => {
-    await openR17BusinessSetup(page, { mock: mock() });
+    const reply = "Hi, I am Scout, running on Colony's own AI.";
+    await openR17BusinessSetup(page, {
+      mock: mock({
+        onboardingConnectionResult: {
+          reply,
+          model: "openai/gpt-4.1-mini",
+          startupMs: 20,
+          totalMs: 50,
+        },
+      }),
+    });
     const requests = await fakeGateway(page, { freeAi: true });
     await fillBusinessAndContinue(page);
 
@@ -160,6 +170,9 @@ test.describe("free Colony AI for judges", () => {
     ).toHaveLength(1);
     expect(JSON.stringify(await savedConfig(page))).not.toMatch(/KEY|sk-or/i);
     expect(requests).toEqual(["capabilities", "access"]);
+    // The real first reply from the gateway reaches Scout's Welcome thread.
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.getByText(reply).first()).toBeVisible();
   });
 
   test("a returning owner on a new Mac skips Connect and opens the business", async ({
