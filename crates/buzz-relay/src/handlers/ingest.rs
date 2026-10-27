@@ -314,6 +314,76 @@ fn valid_link_preview_text(value: &str, max: usize, allow_newlines: bool) -> boo
             .any(|character| character.is_control() && !(allow_newlines && character == '\n'))
 }
 
+/// Trim the punctuation a sentence puts after a link, as the desktop composer
+/// does when it extracts links from a message: trailing `.,!?;:`, then any
+/// trailing closing bracket that has no opening bracket in the link.
+fn trim_url_candidate(candidate: &str) -> &str {
+    let mut value = candidate.trim_end_matches(['.', ',', '!', '?', ';', ':']);
+    let mut brackets = [(')', '('), (']', '['), ('}', '{')].map(|(close, open)| {
+        (
+            close,
+            value.matches(close).count(),
+            value.matches(open).count(),
+        )
+    });
+    loop {
+        let mut trimmed = false;
+        for (close, closes, opens) in brackets.iter_mut() {
+            if value.ends_with(*close) && *closes > *opens {
+                value = &value[..value.len() - close.len_utf8()];
+                *closes -= 1;
+                trimmed = true;
+            }
+        }
+        if !trimmed {
+            return value;
+        }
+    }
+}
+
+/// Whether `content` writes `canonical` under an equivalent spelling.
+///
+/// Clients send the canonical URL as the URL parser's normal form
+/// (`new URL(link).href`), which is not always text in the message: a bare
+/// origin gains a trailing slash (`https://example.com` becomes
+/// `https://example.com/`), the host is lowercased, a default port is dropped,
+/// non-ASCII text is percent-encoded or punycoded and dot segments are
+/// resolved. Each `https://` link in the content is parsed the same way (also
+/// without the punctuation a sentence puts after it, and without a fragment)
+/// and compared to `canonical`, so a snapshot can only describe a link the
+/// message actually contains. Links are taken left to right without overlap,
+/// so the scan is linear in the content.
+fn content_has_equivalent_url(content: &str, canonical: &url::Url) -> bool {
+    const SCHEME: &[u8] = b"https://";
+    let bytes = content.as_bytes();
+    let mut cursor = 0;
+    while let Some(offset) = bytes[cursor..]
+        .windows(SCHEME.len())
+        .position(|window| window.eq_ignore_ascii_case(SCHEME))
+    {
+        let start = cursor + offset;
+        let token = &content[start..];
+        let token = &token[..token
+            .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | '\'' | ']'))
+            .unwrap_or(token.len())];
+        cursor = start + token.len();
+        // A markdown link ends at its closing parenthesis.
+        let inline = token.split(')').next().unwrap_or(token);
+        let found = [token, trim_url_candidate(token), trim_url_candidate(inline)]
+            .into_iter()
+            .any(|candidate| {
+                url::Url::parse(candidate).is_ok_and(|mut url| {
+                    url.set_fragment(None);
+                    url.as_str() == canonical.as_str()
+                })
+            });
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
 fn validate_link_preview_tags(event: &Event, media_base_url: &str) -> Result<(), String> {
     const MAX_SNAPSHOTS: usize = 8;
     const MAX_TITLE: usize = 300;
@@ -350,8 +420,9 @@ fn validate_link_preview_tags(event: &Event, media_base_url: &str) -> Result<(),
             || !canonical.username().is_empty()
             || canonical.password().is_some()
             || canonical.fragment().is_some()
-            || !seen.insert(parts[3].clone())
-            || !event.content.contains(&parts[3])
+            || !seen.insert(canonical.as_str().to_owned())
+            || !(event.content.contains(&parts[3])
+                || content_has_equivalent_url(&event.content, &canonical))
         {
             return Err("invalid link-preview canonical URL".into());
         }
