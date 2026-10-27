@@ -32,18 +32,19 @@
   [data-testid="thread-composer-overlay"]
   .composer-dock {
   --composer-dock-quiet-inset: 0.9375rem;
+  --composer-dock-active-rail: 3.25rem;
   border-top: 1px solid hsl(var(--border));
   width: calc(100% - 1px);
   margin-left: 1px;
   padding: 10px 0 15px;
 }
 
-/* The notice above the thread composer (agent working, someone typing) sits in
-   its own strip under the "Also send to" row instead of covering it. */
+/* The notice below the thread composer (agent working, someone typing) gets
+   the timeline's 24px of breathing room after the "Also send to" row. */
 :root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   .composer-dock--with-activity {
-  padding-bottom: calc(var(--composer-dock-quiet-inset) + 1.25rem);
+  padding-bottom: var(--composer-dock-active-rail);
 }
 
 :root:has([data-colony-workspace-route="true"])
