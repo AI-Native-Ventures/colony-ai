@@ -16,7 +16,7 @@ import {
   colony3Extras,
   colony3PositionOptions,
 } from "../helpers/colony3Conversations";
-import { COLONY3_NOW, seedColony3Activity } from "../helpers/colony3Fixture";
+import { COLONY3_NOW } from "../helpers/colony3Fixture";
 import { AYA_DM_CHANNEL, eid } from "../helpers/colony3TimelineFixture";
 
 type MockMessage = NonNullable<Colony3Extras["messages"]>[number];
@@ -24,6 +24,7 @@ type PanelMode = "focus" | "split";
 type Theme = "dark" | "light";
 
 const MINA_PUBKEY = REFERENCE_AGENTS.mina.pubkey;
+const SCOUT_PUBKEY = REFERENCE_AGENTS.scout.pubkey;
 const OLIVE_CHANNEL_ID = REFERENCE_CHANNEL_IDS.oliveHouse;
 const PROOF_DIR = process.env.THREAD_SPACING_PROOF_DIR;
 const PROOF_PREFIX = process.env.THREAD_SPACING_PROOF_PREFIX ?? "proof";
@@ -141,6 +142,12 @@ async function openSpacingThread(
       channelNames: ["The Olive House", "Aya"],
       status: "running" as const,
     },
+    {
+      pubkey: SCOUT_PUBKEY,
+      name: "Scout",
+      channelNames: ["The Olive House", "Aya"],
+      status: "running" as const,
+    },
   ];
   await installMockBridge(page, {
     referenceWorkspace: true,
@@ -175,7 +182,6 @@ async function openSpacingThread(
   });
 
   await page.goto("/#/today");
-  await seedColony3Activity(page);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId(`channel-${options.channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(options.channelName);
@@ -229,9 +235,55 @@ async function openSpacingThread(
   await body.evaluate((element) => {
     element.scrollTop = 0;
   });
+  await seedComposerWorkingIndicators(
+    page,
+    options.channelName,
+    fixture.rootId,
+  );
   await waitForAnimations(page);
 
   return { panel, replyIds: fixture.replyIds };
+}
+
+async function seedComposerWorkingIndicators(
+  page: Page,
+  channelName: string,
+  threadHeadId: string,
+) {
+  await page.waitForFunction(
+    ({ name, kind }) =>
+      window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+        channelName: name,
+        kind,
+      }) ?? false,
+    { name: channelName, kind: 20002 },
+  );
+  await page.evaluate(
+    ({ name, pubkey, headId }) => {
+      const emit = window.__BUZZ_E2E_EMIT_MOCK_TYPING__;
+      if (!emit) throw new Error("Mock typing event helper is unavailable");
+      emit({ channelName: name, pubkey });
+      emit({ channelName: name, pubkey, threadHeadId: headId });
+    },
+    { name: channelName, pubkey: SCOUT_PUBKEY, headId: threadHeadId },
+  );
+
+  await expect(
+    page.getByTestId("channel-agent-working-indicator"),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("channel-agent-working-indicator")
+      .getByTestId("agent-working-indicator-label"),
+  ).toContainText("Scout is working…");
+  await expect(
+    page.getByTestId("thread-agent-working-indicator"),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("thread-agent-working-indicator")
+      .getByTestId("agent-working-indicator-label"),
+  ).toContainText("Scout is working…");
 }
 
 async function captureProof(page: Page, name: string) {
@@ -289,6 +341,53 @@ async function expectThreadReplySpacing(panel: Locator, replyIds: string[]) {
   }
 }
 
+async function measureComposerActivityGap(
+  overlay: Locator,
+  indicatorTestId: string,
+) {
+  return overlay.evaluate((element, testId) => {
+    const indicator = element.querySelector<HTMLElement>(
+      `[data-testid="${testId}"]`,
+    );
+    const composer = element.querySelector<HTMLElement>(
+      '[data-testid="message-composer"]',
+    );
+    const broadcast = element.querySelector<HTMLElement>(
+      '[data-testid="thread-broadcast-reply"]',
+    );
+    const boundary = broadcast?.closest<HTMLElement>("label") ?? composer;
+    if (!indicator || !boundary) {
+      throw new Error(`Composer activity geometry is missing for ${testId}`);
+    }
+    return (
+      indicator.getBoundingClientRect().top -
+      boundary.getBoundingClientRect().bottom
+    );
+  }, indicatorTestId);
+}
+
+async function expectThreadComposerActivitySpacing(page: Page) {
+  const gap = await measureComposerActivityGap(
+    page.getByTestId("thread-composer-overlay"),
+    "thread-agent-working-indicator",
+  );
+  expect(
+    gap,
+    `thread working status should have the timeline's 24px breathing room; received ${gap.toFixed(1)}px`,
+  ).toBeGreaterThanOrEqual(23.5);
+}
+
+async function expectChannelComposerActivitySpacing(page: Page) {
+  const gap = await measureComposerActivityGap(
+    page.getByTestId("channel-composer-overlay"),
+    "channel-agent-working-indicator",
+  );
+  expect(
+    gap,
+    `channel working status should have the timeline's 24px breathing room; received ${gap.toFixed(1)}px`,
+  ).toBeGreaterThanOrEqual(23.5);
+}
+
 const captures: Array<{ mode: PanelMode; theme: Theme; name: string }> = [
   { mode: "split", theme: "light", name: "side-light" },
   { mode: "split", theme: "dark", name: "side-dark" },
@@ -309,6 +408,10 @@ for (const capture of captures) {
     });
 
     await captureProof(page, capture.name);
+    if (capture.mode === "split") {
+      await expectChannelComposerActivitySpacing(page);
+    }
+    await expectThreadComposerActivitySpacing(page);
     await expectThreadReplySpacing(panel, replyIds);
   });
 }
@@ -323,5 +426,7 @@ test("DM threads use the same reply spacing", async ({ page }) => {
     theme: "light",
   });
 
+  await expectThreadComposerActivitySpacing(page);
+  await expectChannelComposerActivitySpacing(page);
   await expectThreadReplySpacing(panel, replyIds);
 });

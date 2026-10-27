@@ -23,7 +23,7 @@
   .composer-dock {
   border-top: 1px solid hsl(var(--border));
   padding: 10px 18px 15px;
-  --composer-dock-active-rail: 1.8125rem;
+  --composer-dock-active-rail: 3.25rem;
   --composer-dock-quiet-inset: 0.9375rem;
 }
 
