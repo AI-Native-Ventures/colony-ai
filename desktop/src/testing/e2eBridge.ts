@@ -17138,6 +17138,17 @@ async function handleSendChannelMessage(
     ) {
       throw new Error("invalid link-preview snapshot tag");
     }
+    // The relay's strictest rule, which every client must satisfy against
+    // every relay: a snapshot's canonical URL is text in the message as sent.
+    // `new URL("https://example.com").href` is `https://example.com/`, which
+    // is not, so a client that sends the parser's normal form fails here just
+    // as it did against the relay.
+    const sentContent = args.content.trim();
+    if (snapshots.some((tag) => !sentContent.includes(tag[3] ?? ""))) {
+      throw new Error(
+        "relay returned 400 Bad Request: invalid link-preview canonical URL",
+      );
+    }
   }
   // All independently validated kinds end up on the stored event's tag set,
   // just like the real relay.

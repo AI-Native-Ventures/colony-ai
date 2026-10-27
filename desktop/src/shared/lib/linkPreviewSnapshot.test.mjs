@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { extractSupportedLinkPreviews } from "./linkPreview.ts";
+
 import {
+  alignLinkPreviewTagsWithContent,
   buildLinkPreviewSnapshotTag,
   parseLinkPreviewSnapshots,
 } from "./linkPreviewSnapshot.ts";
@@ -113,4 +116,168 @@ test("snapshot tags omit canonical URLs rejected by native validation", () => {
 test("messages without authored snapshots never create recipient previews", () => {
   assert.deepEqual(parseLinkPreviewSnapshots([], CONTENT, ORIGIN), []);
   assert.deepEqual(parseLinkPreviewSnapshots(undefined, CONTENT, ORIGIN), []);
+});
+
+// GATE-306B: a bare origin is typed as `https://example.com` but the preview
+// identity is `new URL(...).href`, `https://example.com/`. The relay refuses a
+// snapshot whose canonical URL is not text in the message, so the 400 blocked
+// the whole send.
+function snapshotTagFor(canonicalUrl) {
+  const tag = buildLinkPreviewSnapshotTag({
+    canonicalUrl,
+    title: "Example Domain",
+    siteName: "example.com",
+    description: "",
+    imageUrl: "",
+    imageSha256: "",
+    faviconUrl: "",
+    faviconSha256: "",
+  });
+  assert.ok(tag, canonicalUrl);
+  return tag;
+}
+
+test("a bare-origin preview is sent under the text the message contains", () => {
+  const content = "see https://example.com";
+  const preview = extractSupportedLinkPreviews(content)[0];
+  assert.equal(preview.href, "https://example.com/");
+
+  const { tags, dropped } = alignLinkPreviewTagsWithContent(
+    [snapshotTagFor(preview.href)],
+    content,
+  );
+
+  assert.deepEqual(dropped, []);
+  assert.equal(tags.length, 1);
+  assert.equal(tags[0][3], "https://example.com");
+  assert.ok(content.includes(tags[0][3]));
+  // Everything but the URL is untouched.
+  assert.deepEqual(tags[0].slice(4), snapshotTagFor(preview.href).slice(4));
+});
+
+test("every spelling the URL parser rewrites is sent as written", () => {
+  for (const [content, written] of [
+    ["https://example.com", "https://example.com"],
+    ["open https://example.com now", "https://example.com"],
+    ["(https://example.com)", "https://example.com"],
+    ["[the site](https://example.com)", "https://example.com"],
+    ["visit https://example.com.", "https://example.com"],
+    ["really? https://example.com!", "https://example.com"],
+    ["https://example.com#top", "https://example.com"],
+    ["https://EXAMPLE.com/Path", "https://EXAMPLE.com/Path"],
+    ["HTTPS://example.com/Path", "HTTPS://example.com/Path"],
+    ["https://example.com:443/path", "https://example.com:443/path"],
+    ["https://example.com?a=1", "https://example.com?a=1"],
+    ["https://example.com/a/../b", "https://example.com/a/../b"],
+    ["https://example.com/caf\u00e9", "https://example.com/caf\u00e9"],
+    ["https://m\u00fcnchen.de/x", "https://m\u00fcnchen.de/x"],
+  ]) {
+    const [preview] = extractSupportedLinkPreviews(content);
+    assert.ok(preview, content);
+    const { tags, dropped } = alignLinkPreviewTagsWithContent(
+      [snapshotTagFor(preview.href)],
+      content,
+    );
+    assert.deepEqual(dropped, [], content);
+    assert.equal(tags.length, 1, content);
+    assert.equal(tags[0][3], written, content);
+    // The relay's strict rule: the canonical URL is text in the message.
+    assert.ok(content.includes(tags[0][3]), content);
+  }
+});
+
+test("a canonical URL already written in the message is left alone", () => {
+  for (const content of [
+    "see https://example.com/",
+    "see https://example.com/page?a=1",
+    "see https://example.com/p#frag",
+  ]) {
+    const [preview] = extractSupportedLinkPreviews(content);
+    const tag = snapshotTagFor(preview.href);
+    const { tags, dropped } = alignLinkPreviewTagsWithContent([tag], content);
+    assert.deepEqual(dropped, [], content);
+    assert.deepEqual(tags, [tag], content);
+  }
+});
+
+test("a preview with no URL text in the message is dropped, never sent", () => {
+  for (const [content, canonicalUrl] of [
+    // Schemeless GitHub link: the https:// spelling is not in the message.
+    [
+      "see github.com/block/buzz/pull/3",
+      "https://github.com/block/buzz/pull/3",
+    ],
+    // The link was edited out after the preview was prepared.
+    ["no link any more", "https://example.com/"],
+    ["https://other.example", "https://example.com/"],
+  ]) {
+    const { tags, dropped } = alignLinkPreviewTagsWithContent(
+      [snapshotTagFor(canonicalUrl)],
+      content,
+    );
+    assert.deepEqual(tags, [], content);
+    assert.deepEqual(dropped, [canonicalUrl], content);
+  }
+});
+
+test("dropping one preview keeps the others and the suppression marker", () => {
+  const content = "https://example.com and https://example.org/x";
+  const kept = snapshotTagFor("https://example.org/x");
+  const { tags, dropped } = alignLinkPreviewTagsWithContent(
+    [snapshotTagFor("https://example.net/"), kept],
+    content,
+  );
+  assert.deepEqual(tags, [kept]);
+  assert.deepEqual(dropped, ["https://example.net/"]);
+
+  const none = ["link-preview", "none"];
+  assert.deepEqual(alignLinkPreviewTagsWithContent([none], content), {
+    tags: [none],
+    dropped: [],
+  });
+});
+
+test("two spellings of one URL stay one snapshot", () => {
+  const content = "https://example.com then https://example.com/";
+  const { tags } = alignLinkPreviewTagsWithContent(
+    [snapshotTagFor("https://example.com/")],
+    content,
+  );
+  assert.equal(tags.length, 1);
+  assert.ok(content.includes(tags[0][3]));
+});
+
+test("recipients render a snapshot sent under the message's own spelling", () => {
+  const content = "see https://example.com";
+  const { tags } = alignLinkPreviewTagsWithContent(
+    [snapshotTagFor("https://example.com/")],
+    content,
+  );
+  const previews = parseLinkPreviewSnapshots(tags, content, ORIGIN);
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].href, "https://example.com/");
+  assert.equal(previews[0].title, "Example Domain");
+  // Snapshots from clients that sent the normalized form still render.
+  assert.equal(
+    parseLinkPreviewSnapshots(
+      [snapshotTagFor("https://example.com/")],
+      content,
+      ORIGIN,
+    ).length,
+    1,
+  );
+});
+
+test("a snapshot whose URL is not a spelling of a link in the message is ignored", () => {
+  const tag = snapshotTagFor("https://example.com");
+  assert.equal(
+    parseLinkPreviewSnapshots([tag], "see https://other.example", ORIGIN)
+      .length,
+    0,
+  );
+  assert.equal(
+    parseLinkPreviewSnapshots([tag, tag], "see https://example.com", ORIGIN)
+      .length,
+    1,
+  );
 });

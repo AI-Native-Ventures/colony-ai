@@ -250,6 +250,7 @@
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
         "messaging.spec.ts",
+        "link-preview-bare-domain.spec.ts",
         "mentions.spec.ts",
         "mention-clipboard.spec.ts",
         "mention-recipients.spec.ts",
