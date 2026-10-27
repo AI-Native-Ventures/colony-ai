@@ -840,7 +840,10 @@ type MockBridgeOptions = {
     path: string | null;
     install_instructions_url: string;
     install_hint: string;
+    managed_install_supported?: boolean;
   } | null;
+  /** After a successful mocked install, report Git Bash as available. */
+  gitBashAvailableAfterInstall?: boolean;
   backendProviders?: Array<{ id: string; binaryPath: string }>;
   /**
    * Result returned by `probe_backend_provider`. Defaults to

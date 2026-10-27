@@ -88,7 +88,7 @@ export function TestingScene({
     },
     {
       title: "Starting your agent",
-      detail: "Scout is waking up",
+      detail: data.shellTools ? "Setting up shell tools" : "Scout is waking up",
       state: waiting ? "done" : "working",
     },
     {
@@ -129,7 +129,11 @@ export function TestingScene({
       <div className="c3fr-actions" data-stack="true">
         <div className="c3fr-banner" role="status">
           <span aria-hidden="true" className="c3fr-banner-dot c3fr-live" />
-          {saving ? "Saving your connection…" : "Waiting for Scout’s reply…"}
+          {data.shellTools
+            ? data.shellTools
+            : saving
+              ? "Saving your connection…"
+              : "Waiting for Scout’s reply…"}
         </div>
         <FirstRunButton
           disabled={saving}

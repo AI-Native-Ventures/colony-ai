@@ -188,6 +188,7 @@ export function WelcomeSetup({
   if (page === "connect" && connectTarget) {
     return (
       <ConnectSetupStep
+        autoPick
         business={connectTarget.profile}
         communityId={connectTarget.business.id}
         error={connectError}

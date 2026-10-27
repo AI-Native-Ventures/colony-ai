@@ -187,6 +187,8 @@ The agent shell tool runs commands under bash. On macOS and Linux that's already
 
 Install [Git for Windows](https://git-scm.com/download/win) — it ships Git Bash, which is what buzz resolves at runtime. Once it's installed, everything works the same as on other platforms.
 
+The Colony desktop app does this for you. When the Colony Agent needs a shell and no bash is found, Settings → Agent runtimes (and the first-run Connect screen) offers **Set up shell tools**. Colony then downloads a pinned [MinGit](https://github.com/git-for-windows/git/releases) (Git for Windows' minimal build, about 40 MB, SHA256 checked) into its own app-data folder (`%APPDATA%\Colony\runtimes\mingit`). It needs no admin rights, installs nothing system wide, and is only used when no other bash is found, so installing Git for Windows later takes over without a step. MinGit ships fewer Unix tools than full Git for Windows (for example no `chmod`, `tar`, `sleep` or `curl`); install Git for Windows if you need them.
+
 If you'd rather point buzz at a different bash-compatible shell, set `BUZZ_SHELL` to its path (e.g. `BUZZ_SHELL=C:\path\to\bash.exe`). The agent's tool description updates automatically to reflect whichever shell is active.
 
 ---

@@ -209,6 +209,7 @@ type RawGitBashPrerequisite = {
   path: string | null;
   install_instructions_url: string;
   install_hint: string;
+  managed_install_supported?: boolean;
 };
 
 type RawCommandAvailability = {
@@ -798,6 +799,7 @@ export async function discoverGitBashPrerequisite(): Promise<GitBashPrerequisite
       path: prerequisite.path,
       installInstructionsUrl: prerequisite.install_instructions_url,
       installHint: prerequisite.install_hint,
+      managedInstallSupported: prerequisite.managed_install_supported === true,
     }
   );
 }

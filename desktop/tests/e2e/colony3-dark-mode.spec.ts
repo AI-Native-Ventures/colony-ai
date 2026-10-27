@@ -51,7 +51,9 @@ async function seedTheme(
   );
 }
 
-const FOLLOWUP_PROOF_DIR = process.env.COLONY3_DARK_MODE_2_PROOF_DIR;
+const FOLLOWUP_PROOF_DIR =
+  process.env.COLONY3_DARK_MODE_3_PROOF_DIR ??
+  process.env.COLONY3_DARK_MODE_2_PROOF_DIR;
 
 async function captureFollowupScreen(
   page: Page,
@@ -599,4 +601,49 @@ test("built-in accents keep text contrast in Dark", async ({ page }) => {
       `${accentName} ink on accent surface`,
     ).toBeGreaterThanOrEqual(4.5);
   }
+});
+
+test("Ink accent keeps the Appearance preview and a real button readable in Dark", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedTheme(page, "explicit-dark");
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+  });
+  await page.goto("/#/settings?section=appearance");
+  await expect(page.getByTestId("settings-appearance")).toBeVisible();
+
+  const inkAccent = page.getByTestId("appearance-accent-ink");
+  if ((await inkAccent.getAttribute("aria-pressed")) !== "true") {
+    await inkAccent.click();
+    await page.getByTestId("appearance-apply").click();
+  }
+
+  const approve = page.getByText("Approve", { exact: true });
+  await expect(approve).toBeVisible();
+  const previewColors = await approve.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(
+    contrastRatio(previewColors.color, previewColors.background),
+    "Ink preview Approve label on its fill",
+  ).toBeGreaterThanOrEqual(4.5);
+  await captureFollowupScreen(page, "dark-ink-appearance.png");
+
+  await page.goto("/#/leads");
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+  const findProspects = page.getByRole("button", { name: "Find prospects" });
+  await expect(findProspects).toBeVisible();
+  const buttonColors = await findProspects.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(
+    contrastRatio(buttonColors.color, buttonColors.background),
+    "Dark Ink accent label on the Find prospects button",
+  ).toBeGreaterThanOrEqual(4.5);
+  await captureFollowupScreen(page, "dark-ink-leads.png");
 });

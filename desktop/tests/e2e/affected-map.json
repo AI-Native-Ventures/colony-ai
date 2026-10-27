@@ -212,6 +212,7 @@
         "colony3-discovery-leads-proof.spec.ts",
         "colony3-lead-reference.spec.ts",
         "colony3-sales-setup.spec.ts",
+        "colony3-scout-dupes.spec.ts",
         "colony3-business-tenant-scope.spec.ts"
       ]
     },
@@ -250,11 +251,13 @@
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
         "messaging.spec.ts",
+        "link-preview-bare-domain.spec.ts",
         "mentions.spec.ts",
         "mention-clipboard.spec.ts",
         "mention-recipients.spec.ts",
         "mention-spacing.spec.ts",
         "remote-owned-mentions.spec.ts",
+        "colony3-scout-dupes.spec.ts",
         "composer-image-draw.spec.ts",
         "composer-link-shortcut.spec.ts",
         "composer-selection-formatting.spec.ts",

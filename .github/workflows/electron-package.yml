@@ -119,7 +119,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             platform: darwin
             arch: arm64
           - runner: windows-latest
@@ -233,6 +233,10 @@ jobs:
           # Release builds bake in the production relay; other builds are unchanged.
           if [ "$RELEASE_BUILD" = "true" ]; then
             export BUZZ_RELAY_URL="wss://relay.colony.ainative.ventures"
+            # The public app may offer the bundled Colony Agent through the relay
+            # gateway. It still falls back to Start free against a relay where
+            # the gateway is off, and no key is ever baked into the host.
+            export COLONY_CREDITS_GATEWAY=1
           fi
           cargo build --locked --release \
             --features electron-host \
@@ -253,6 +257,21 @@ jobs:
             exit 1
           fi
           echo "Production relay is present in the release native host."
+
+      - name: Verify the Colony Agent gateway flag is baked into the release host
+        if: inputs.release
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_dir="$(node -p 'JSON.parse(require("node:child_process").execFileSync("cargo", ["metadata", "--manifest-path", "desktop/src-tauri/Cargo.toml", "--format-version", "1", "--no-deps"], { encoding: "utf8" })).target_directory')"
+          host="$target_dir/release/colony-native-host"
+          if [ ! -f "$host" ]; then host="$host.exe"; fi
+          # The host carries one fixed marker: build=on only when the flag was set.
+          if ! LC_ALL=C grep -a -F -q "colony-credits-gateway-build=on" "$host"; then
+            echo "The release native host was built without COLONY_CREDITS_GATEWAY=1." >&2
+            exit 1
+          fi
+          echo "Colony Agent gateway flag is present in the release native host."
 
       - name: Build bundled sidecars
         shell: bash

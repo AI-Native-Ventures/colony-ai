@@ -45,3 +45,19 @@ html[data-palette] .product-showcase.ap-custom .app-frame{background:radial-grad
 /* Let the studio photograph blend into the selected section colour. */
 .r12-device{isolation:auto}
 .r12-laptop-photo{mask-image:linear-gradient(to bottom,transparent,#000 9%,#000 93%,transparent),linear-gradient(to right,transparent,#000 4%,#000 96%,transparent);mask-composite:intersect}
+
+/* Keep the landing page readable when the visitor prefers a dark appearance. */
+html[data-palette="night"]{color-scheme:dark}
+html[data-palette="night"] .navigation{background:color-mix(in srgb,var(--p-paper) 86%,transparent);border-color:var(--p-line);box-shadow:0 3px 18px #0006}
+html[data-palette="night"] .launch-motion-control{background:color-mix(in srgb,var(--p-paper) 86%,transparent);border-color:var(--p-line);color:var(--p-ink)}
+html[data-palette="night"] .launch-motion-control:hover{background:var(--p-wash)}
+html[data-palette="night"] .primary,html[data-palette="night"] .nav-cta,html[data-palette="night"] .r10-primary,html[data-palette="night"] .demo-play{background:var(--p-accent)!important;color:#fff!important}
+html[data-palette="night"] .r10-conversation{background:linear-gradient(145deg,color-mix(in srgb,var(--p-paper) 88%,var(--p-wash)),var(--p-paper));border-color:var(--p-line);box-shadow:0 25px 60px -35px #000b;color:var(--p-ink)}
+html[data-palette="night"] .r10-conversation>header{border-bottom-color:var(--p-line)}
+html[data-palette="night"] .r10-messages h3 small{color:var(--p-muted)}
+html[data-palette="night"] .r16-together .r10-attachment{background:color-mix(in srgb,var(--p-wash) 84%,var(--p-paper));border-color:var(--p-line);color:var(--p-ink)}
+html[data-palette="night"] .r16-together .r10-attachment:hover{background:var(--p-wash)}
+html[data-palette="night"] .launch-download .download-card{background:color-mix(in srgb,var(--p-paper) 78%,var(--p-wash));border-color:var(--p-line);color:var(--p-ink)}
+html[data-palette="night"] .download-help-grid>div{background:color-mix(in srgb,var(--p-paper) 74%,var(--p-wash))}
+html[data-palette="night"] .site-video-card{box-shadow:0 18px 45px -38px #0009}
+html[data-palette="night"] .r10-story .colony-end{border-top-color:var(--p-line)}

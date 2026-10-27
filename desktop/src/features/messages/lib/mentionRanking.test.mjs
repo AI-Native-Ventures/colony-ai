@@ -247,3 +247,155 @@ test("pickDefaultAgentCandidate: returns null without an addressable agent", () 
   assert.equal(pickDefaultAgentCandidate([]), null);
   assert.equal(pickDefaultAgentCandidate([candidate()]), null);
 });
+
+const THIS_MAC_SCOUT_PUBKEY = "5".repeat(64);
+const OLD_SCOUT_PUBKEYS = ["7".repeat(64), "8".repeat(64), "9".repeat(64)];
+
+function scout(pubkey, overrides = {}) {
+  return candidate({
+    displayName: "Scout",
+    isAgent: true,
+    isMember: true,
+    pubkey,
+    ...overrides,
+  });
+}
+
+test("rankMentionCandidates: the Scout this Mac runs comes before same-named Scouts that rank alike", () => {
+  const oldScouts = OLD_SCOUT_PUBKEYS.map((pubkey) => scout(pubkey));
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, { isManagedAgent: true });
+
+  assert.deepEqual(rankedPubkeys([...oldScouts, thisMac], "scout"), [
+    THIS_MAC_SCOUT_PUBKEY,
+    ...OLD_SCOUT_PUBKEYS,
+  ]);
+});
+
+test("rankMentionCandidates: the Scout this Mac runs comes first even when it is not in the channel", () => {
+  const oldScouts = OLD_SCOUT_PUBKEYS.map((pubkey) => scout(pubkey));
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+  });
+
+  assert.deepEqual(rankedPubkeys([...oldScouts, thisMac], "scout"), [
+    THIS_MAC_SCOUT_PUBKEY,
+    ...OLD_SCOUT_PUBKEYS,
+  ]);
+});
+
+test("rankMentionCandidates: an agent this Mac runs does not jump ahead of channel members with other names", () => {
+  const scotty = candidate({
+    displayName: "Scotty",
+    isMember: true,
+    pubkey: "6".repeat(64),
+  });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+  });
+
+  assert.deepEqual(rankedPubkeys([thisMac, scotty], "sc"), [
+    "6".repeat(64),
+    THIS_MAC_SCOUT_PUBKEY,
+  ]);
+});
+
+test("rankMentionCandidates: input order still decides between agents this Mac runs", () => {
+  const first = scout("a".repeat(64), { isManagedAgent: true });
+  const second = scout("b".repeat(64), { isManagedAgent: true });
+
+  assert.deepEqual(rankedPubkeys([second, first], "scout"), [
+    "b".repeat(64),
+    "a".repeat(64),
+  ]);
+});
+
+test("pickDefaultAgentCandidate: the Scout this Mac runs wins over a same-named Scout that ranks higher", () => {
+  const activeMemberScout = scout(OLD_SCOUT_PUBKEYS[0], {
+    isActiveAgent: true,
+  });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+    isActiveAgent: false,
+  });
+
+  assert.equal(
+    pickDefaultAgentCandidate([activeMemberScout, thisMac])?.pubkey,
+    THIS_MAC_SCOUT_PUBKEY,
+  );
+});
+
+test("pickDefaultAgentCandidate: a recent mention of another Scout still resolves to the Scout this Mac runs", () => {
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, { isManagedAgent: true });
+  const oldScouts = OLD_SCOUT_PUBKEYS.map((pubkey) => scout(pubkey));
+
+  assert.equal(
+    pickDefaultAgentCandidate([...oldScouts, thisMac], new Set(), [
+      OLD_SCOUT_PUBKEYS[1],
+    ])?.pubkey,
+    THIS_MAC_SCOUT_PUBKEY,
+  );
+});
+
+test("pickDefaultAgentCandidate: same names match without regard to case or padding", () => {
+  const winner = scout(OLD_SCOUT_PUBKEYS[0], { isActiveAgent: true });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    displayName: " scout ",
+    isManagedAgent: true,
+    isActiveAgent: false,
+  });
+
+  assert.equal(
+    pickDefaultAgentCandidate([winner, thisMac])?.pubkey,
+    THIS_MAC_SCOUT_PUBKEY,
+  );
+});
+
+test("pickDefaultAgentCandidate: an agent this Mac runs does not displace a better agent with another name", () => {
+  const aya = candidate({
+    displayName: "Aya",
+    isActiveAgent: true,
+    isAgent: true,
+    isMember: true,
+    pubkey: "6".repeat(64),
+  });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    isManagedAgent: true,
+    isMember: false,
+    isActiveAgent: false,
+  });
+
+  assert.equal(
+    pickDefaultAgentCandidate([thisMac, aya])?.pubkey,
+    "6".repeat(64),
+  );
+});
+
+test("pickDefaultAgentCandidate: the best of several agents this Mac runs under one name is picked", () => {
+  const running = scout("a".repeat(64), {
+    isManagedAgent: true,
+    isActiveAgent: true,
+  });
+  const stopped = scout("b".repeat(64), {
+    isManagedAgent: true,
+    isActiveAgent: false,
+  });
+  const remote = scout(OLD_SCOUT_PUBKEYS[0], { isActiveAgent: true });
+
+  assert.equal(
+    pickDefaultAgentCandidate([remote, stopped, running])?.pubkey,
+    "a".repeat(64),
+  );
+});
+
+test("pickDefaultAgentCandidate: without an agent this Mac runs the ranking is unchanged", () => {
+  const active = scout(OLD_SCOUT_PUBKEYS[0], { isActiveAgent: true });
+  const idle = scout(OLD_SCOUT_PUBKEYS[1]);
+
+  assert.equal(
+    pickDefaultAgentCandidate([idle, active])?.pubkey,
+    OLD_SCOUT_PUBKEYS[0],
+  );
+});

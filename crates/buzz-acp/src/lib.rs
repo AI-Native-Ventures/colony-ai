@@ -12533,6 +12533,7 @@ mod error_outcome_emission_tests {
             "This request was already charged. Its response could not be recovered. Start a new conversation turn.",
             "Managed session expired or unauthorized. Restart your Colony Agent.",
             "Colony credits are unavailable. Try again later.",
+            "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents.",
             "Colony credits currently support bounded text and function tools. This input cannot be sent.",
         ] {
             let notice = format!("⚠️ {message}");

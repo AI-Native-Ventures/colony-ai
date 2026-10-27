@@ -222,3 +222,63 @@ test("unstarted templates are not current business members", () => {
     [],
   );
 });
+
+test("one agent listed in the roster, the relay and this device is one candidate", () => {
+  const candidates = buildMentionCandidates(
+    input({
+      currentPubkey: MEMBER_PUBKEY,
+      members: [{ pubkey: AGENT_PUBKEY, displayName: "Scout", isAgent: true }],
+      managedAgentNamesByPubkey: new Map([[AGENT_PUBKEY, "Scout"]]),
+      managedAgents: [
+        { pubkey: AGENT_PUBKEY, name: "Scout", status: "running" },
+      ],
+      mentionableAgentPubkeys: new Set([AGENT_PUBKEY]),
+      relayAgents: [
+        {
+          pubkey: AGENT_PUBKEY.toUpperCase(),
+          name: "Scout",
+          ownerPubkey: MEMBER_PUBKEY,
+          status: "online",
+          channelIds: [],
+        },
+      ],
+    }),
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].pubkey, AGENT_PUBKEY);
+  assert.equal(candidates[0].isManagedAgent, true);
+});
+
+test("same-named agents with different keys stay separate candidates", () => {
+  const other = "e".repeat(64);
+  const candidates = buildMentionCandidates(
+    input({
+      currentPubkey: MEMBER_PUBKEY,
+      managedAgentNamesByPubkey: new Map([[AGENT_PUBKEY, "Scout"]]),
+      managedAgents: [
+        { pubkey: AGENT_PUBKEY, name: "Scout", status: "running" },
+      ],
+      mentionableAgentPubkeys: new Set([AGENT_PUBKEY, other]),
+      relayAgents: [
+        {
+          pubkey: other,
+          name: "Scout",
+          ownerPubkey: MEMBER_PUBKEY,
+          status: "offline",
+          channelIds: [],
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(
+    candidates
+      .map((candidate) => [candidate.pubkey, candidate.isManagedAgent === true])
+      .sort(([left], [right]) => left.localeCompare(right)),
+    [
+      [AGENT_PUBKEY, true],
+      [other, false],
+    ],
+  );
+});

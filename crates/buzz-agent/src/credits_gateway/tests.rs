@@ -105,6 +105,17 @@ async fn production_refusals_are_typed_safe_and_never_retried() {
         (403, json!({}), CreditRefusal::Unauthorized),
         (503, json!({}), CreditRefusal::Unavailable),
         (
+            503,
+            json!({"error":"DO_NOT_ECHO_PROVIDER_SECRET","code":"daily_limit"}),
+            CreditRefusal::DailyLimit,
+        ),
+        // Only the relay's machine code selects the daily-limit notice.
+        (
+            503,
+            json!({"error":"Colony AI has reached its daily limit. Try again tomorrow."}),
+            CreditRefusal::Unavailable,
+        ),
+        (
             200,
             json!({"error":"broken successful body"}),
             CreditRefusal::Recovering,

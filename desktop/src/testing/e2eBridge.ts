@@ -1166,7 +1166,11 @@ type E2eConfig = {
       path: string | null;
       install_instructions_url: string;
       install_hint: string;
+      managed_install_supported?: boolean;
     } | null;
+    /** After a successful mocked install, report Git Bash as available (the
+     *  host's own shell tools were set up). */
+    gitBashAvailableAfterInstall?: boolean;
     backendProviders?: Array<{ id: string; binaryPath: string }>;
     backendProviderProbeResult?: Record<string, unknown>;
     backendProviderProbeDelayMs?: number;
@@ -17138,6 +17142,17 @@ async function handleSendChannelMessage(
     ) {
       throw new Error("invalid link-preview snapshot tag");
     }
+    // The relay's strictest rule, which every client must satisfy against
+    // every relay: a snapshot's canonical URL is text in the message as sent.
+    // `new URL("https://example.com").href` is `https://example.com/`, which
+    // is not, so a client that sends the parser's normal form fails here just
+    // as it did against the relay.
+    const sentContent = args.content.trim();
+    if (snapshots.some((tag) => !sentContent.includes(tag[3] ?? ""))) {
+      throw new Error(
+        "relay returned 400 Bad Request: invalid link-preview canonical URL",
+      );
+    }
   }
   // All independently validated kinds end up on the stored event's tag set,
   // just like the real relay.
@@ -21435,8 +21450,21 @@ export function maybeInstallE2eTauriMocks() {
           payload as { runtimeId?: string },
           activeConfig,
         );
-      case "discover_git_bash_prerequisite":
-        return activeConfig?.mock?.gitBashPrerequisite ?? null;
+      case "discover_git_bash_prerequisite": {
+        const prerequisite = activeConfig?.mock?.gitBashPrerequisite ?? null;
+        if (
+          prerequisite &&
+          activeConfig?.mock?.gitBashAvailableAfterInstall &&
+          mockInstallCompleted
+        ) {
+          return {
+            ...prerequisite,
+            available: true,
+            path: "C:\\Users\\Judge\\AppData\\Roaming\\Colony\\runtimes\\mingit\\2.56.0.4\\windows-x64\\usr\\bin\\bash.exe",
+          };
+        }
+        return prerequisite;
+      }
       case "discover_backend_providers":
         return activeConfig?.mock?.backendProviders ?? [];
       case "probe_backend_provider": {

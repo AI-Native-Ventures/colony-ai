@@ -1,8 +1,8 @@
 /**
  * Production wiring for `ensureSalesChannel`: the relay's channel list, the
- * same create path the sidebar "+" uses, the business's owners, admins and AI
- * employees, and a lock shared by every window of the app. The logic lives in
- * `salesChannel.ts`.
+ * same create path the sidebar "+" uses, the business's owners, admins and the
+ * AI employees this Mac runs, and a lock shared by every window of the app.
+ * The logic lives in `salesChannel.ts`.
  */
 
 import { fetchCompanyTeam } from "@/features/company-team/teamRelay";
@@ -21,6 +21,7 @@ import { getIdentity } from "@/shared/api/tauriIdentity";
 import type { Channel } from "@/shared/api/types";
 
 import { resolveBusinessChannel, salesStreamsOf } from "./businessRecordRelay";
+import { pickSalesChannelPeople } from "./salesChannelPeople";
 import {
   ensureSalesChannel,
   SALES_CHANNEL_DESCRIPTION,
@@ -92,25 +93,11 @@ function productionDeps(community: Community): SalesChannelDeps {
         fetchCompanyTeam(community.relayUrl),
         listRelayMembers(),
       ]);
-      const me = self.toLowerCase();
-      const others = (pubkeys: string[]) =>
-        pubkeys.filter((pubkey) => pubkey.toLowerCase() !== me);
-      return {
-        leaders: others(
-          relayMembers
-            .filter(({ role }) => role === "owner" || role === "admin")
-            .map(({ pubkey }) => pubkey),
-        ),
-        employees: others(
-          team.members
-            .filter(
-              (member) =>
-                member.kind === "employee" &&
-                member.position?.head.status !== "terminated",
-            )
-            .map((member) => member.pubkey),
-        ),
-      };
+      return pickSalesChannelPeople({
+        selfPubkey: self,
+        relayMembers,
+        teamMembers: team.members,
+      });
     },
     addMembers: async (channelId, role, pubkeys) => {
       const result = await addChannelMembers({
