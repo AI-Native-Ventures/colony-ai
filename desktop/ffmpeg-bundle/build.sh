@@ -72,7 +72,9 @@ case "$platform_key" in
   win32-x64)
     platform_flags=(
       --arch=x86_64 --target-os=mingw32
-      --enable-mediafoundation --enable-encoder=h264_mf
+      # FFmpeg 8.1's Media Foundation encoder refers to D3D11 types even when
+      # it only takes system-memory frames, so it does not build without this.
+      --enable-d3d11va --enable-mediafoundation --enable-encoder=h264_mf
       --extra-ldflags=-static --extra-ldflags=-static-libgcc
     )
     exe=ffmpeg.exe
