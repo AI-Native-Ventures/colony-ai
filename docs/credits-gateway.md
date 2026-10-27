@@ -55,3 +55,15 @@ Use Colony credits rechecks capability and funds, builds `provider=colony-credit
 The native connection probe uses the shared managed authorization with a fresh ephemeral agent identity, owner/relay/cancellation fences, the authoritative keyless child environment, and bounded process-tree teardown. It revokes the temporary managed session after success, cancellation, spawn failure and timeout. Cleanup errors propagate and prevent a successful saved proof; the durable server session retains its fixed expiry. The probe never retries inference. This is a test of a managed Colony Agent session, not general model API access.
 
 UI/browser fixtures and CI do not prove deployment, flag activation, a funded live request or installed-app adoption. Those remain separate owner acceptance gates.
+
+## Free-AI accounts and automatic selection (C3-JUDGE-AI)
+
+The relay may list accounts that use the gateway with no credit balance (`COLONY_FREE_AI_ACCOUNTS`, see `credits-gateway-operations.md`). The desktop picks the bundled Colony Agent for such an account with no screen:
+
+1. Wherever Connect would open (a new business, a returning owner opening a business on a new computer, the Welcome owner path), Connect first calls `autoPickColonyAgent`.
+2. It asks `readFreeAiAccess`: the native build flag must be on, `GET /api/credits-gateway/capabilities` must report the gateway on with `freeAiConfigured`, and a signed `GET /api/credits-gateway/access` must answer `freeAi: true`. Any miss, 404 or network failure is a quiet "no".
+3. Claude Code or Codex installed and signed in always wins: Connect opens as today with it preselected. So does a missing bundled agent or, on Windows, missing Git for Windows.
+4. Otherwise it saves nothing until a real first reply succeeds through the gateway (the same probe and receipt as a hand-picked route), then stores `provider=colony-credits`, `preferred_runtime=buzz-agent`, `model=null` and continues with no screen. No key is stored anywhere on the computer.
+5. A failed proof opens today's Connect screen. Start free remains the fallback there.
+
+The release native host is built with `COLONY_CREDITS_GATEWAY=1` (`electron-package.yml`, release builds only), and the build greps the compiled host for `colony-credits-gateway-build=on`. A daily-limit refusal reaches Scout's thread as one plain notice naming Settings > Agents.
