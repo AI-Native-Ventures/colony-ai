@@ -15,7 +15,10 @@ import type {
 } from "@/shared/api/types";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import { saveVerifiedWelcomeConnection } from "../welcomeConnection";
-import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
+import {
+  canSetUpShellTools,
+  resolveAgentPrerequisiteReadiness,
+} from "./agentReadiness";
 import type { OnboardingBusinessProfile } from "./BusinessSetupStep";
 import {
   ConnectCard,
@@ -30,6 +33,7 @@ import {
   FirstRunLink,
 } from "./firstRunControls";
 import { FirstRunHead } from "./FirstRunFrame";
+import { ShellToolsSetup } from "./ShellToolsSetup";
 import {
   cancelOnboardingConnectionTest,
   runOnboardingBusinessConnectionTest,
@@ -471,7 +475,14 @@ export function ConnectSetupStep({
               (bundledPrerequisite.reason === "git-bash" ||
                 gitBashQuery.isError) ? (
                 bundledPrerequisite.reason === "git-bash" ? (
-                  <FirstRunError>{bundledPrerequisite.copy}</FirstRunError>
+                  canSetUpShellTools(gitBashPrerequisite) ? (
+                    <ShellToolsSetup
+                      copy={bundledPrerequisite.copy}
+                      onReady={() => void gitBashQuery.refetch()}
+                    />
+                  ) : (
+                    <FirstRunError>{bundledPrerequisite.copy}</FirstRunError>
+                  )
                 ) : (
                   <p className="c3fr-note" role="status">
                     {bundledPrerequisite.copy}

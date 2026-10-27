@@ -201,6 +201,34 @@ jobs:
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --target $env:TARGET
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      # A fresh Windows PC has no Git for Windows, so Colony downloads its own
+      # pinned MinGit for the Colony Agent's shell tool. The unit tests above
+      # cover the decision code and the unpacking with a stand-in archive; these
+      # two steps prove the real pin: Colony's own installer downloads the real
+      # zip (SHA256 checked), then the agent's real shell tool runs git and the
+      # Unix tools from it with only System32 on PATH. Retries cover a flaky
+      # network; a wrong pin fails every attempt.
+      - name: Live check (Colony's own shell tools install and run)
+        shell: bash
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cargo test --manifest-path desktop/src-tauri/Cargo.toml --target "$TARGET" managed_git_live -- --ignored --nocapture; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "ERROR: Colony's shell tools did not install in 3 attempts" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+      - name: Live check (agent shell tool on Colony's own bash)
+        env:
+          COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
+        run: cargo test -p buzz-dev-mcp --target $env:TARGET live_mingit -- --ignored --test-threads=1 --nocapture
 
 
   results:

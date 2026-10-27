@@ -190,7 +190,7 @@ impl RequirementPayload {
                 )
             }
             RequirementPayload::GitBash => {
-                "install Git for Windows from https://gitforwindows.org/ (open Agent runtimes in Settings to re-check)".to_string()
+                "set up the shell tools in Settings, Agent runtimes (Set up shell tools), or install Git for Windows from https://gitforwindows.org/ and re-check there".to_string()
             }
             RequirementPayload::MissingBinary { command } => {
                 format!("install `{command}` or add it to PATH")
@@ -277,7 +277,7 @@ impl SetupPayload {
                 .any(|r| matches!(r, RequirementPayload::CliConfigInvalid { .. }));
 
             let footer = if has_doctor_requirement {
-                "Open Agent runtimes in Settings, install Git for Windows, then re-check and restart the agent.".to_string()
+                "Open Agent runtimes in Settings, choose Set up shell tools (or install Git for Windows), then re-check and restart the agent.".to_string()
             } else if all_missing_binary {
                 "Install the missing binary or update PATH, then restart Colony.".to_string()
             } else if all_external {
@@ -946,6 +946,10 @@ mod tests {
         assert!(
             !body.contains("Doctor"),
             "Git Bash nudge must not point to the removed Doctor section; got: {body:?}"
+        );
+        assert!(
+            body.contains("Set up shell tools"),
+            "Git Bash nudge must name the one-click setup; got: {body:?}"
         );
     }
 

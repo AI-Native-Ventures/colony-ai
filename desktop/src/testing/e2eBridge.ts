@@ -1166,7 +1166,11 @@ type E2eConfig = {
       path: string | null;
       install_instructions_url: string;
       install_hint: string;
+      managed_install_supported?: boolean;
     } | null;
+    /** After a successful mocked install, report Git Bash as available (the
+     *  host's own shell tools were set up). */
+    gitBashAvailableAfterInstall?: boolean;
     backendProviders?: Array<{ id: string; binaryPath: string }>;
     backendProviderProbeResult?: Record<string, unknown>;
     backendProviderProbeDelayMs?: number;
@@ -21446,8 +21450,21 @@ export function maybeInstallE2eTauriMocks() {
           payload as { runtimeId?: string },
           activeConfig,
         );
-      case "discover_git_bash_prerequisite":
-        return activeConfig?.mock?.gitBashPrerequisite ?? null;
+      case "discover_git_bash_prerequisite": {
+        const prerequisite = activeConfig?.mock?.gitBashPrerequisite ?? null;
+        if (
+          prerequisite &&
+          activeConfig?.mock?.gitBashAvailableAfterInstall &&
+          mockInstallCompleted
+        ) {
+          return {
+            ...prerequisite,
+            available: true,
+            path: "C:\\Users\\Judge\\AppData\\Roaming\\Colony\\runtimes\\mingit\\2.56.0.4\\windows-x64\\usr\\bin\\bash.exe",
+          };
+        }
+        return prerequisite;
+      }
       case "discover_backend_providers":
         return activeConfig?.mock?.backendProviders ?? [];
       case "probe_backend_provider": {

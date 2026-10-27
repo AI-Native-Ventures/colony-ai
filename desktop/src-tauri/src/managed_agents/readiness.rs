@@ -292,6 +292,13 @@ fn resolve_effective_agent_env_with_def(
         effective_model.as_deref(),
     );
 
+    // The Colony Agent's shell tool needs bash. On a Windows PC with no Git for
+    // Windows it uses Colony's own MinGit once that is installed. Readiness and
+    // the spawn both read this env, so they cannot disagree.
+    if runtime.is_some_and(|rt| rt.id == "buzz-agent") {
+        super::managed_git_paths::apply_managed_shell(&mut env);
+    }
+
     EffectiveAgentEnv {
         env,
         config_file_path: runtime.and_then(|r| r.config_file_path),

@@ -6,6 +6,7 @@ import {
   useAcpRuntimesQueryForced,
   useGitBashPrerequisiteQuery,
 } from "@/features/agents/hooks";
+import { useManagedShellSetup } from "@/features/agents/lib/useManagedShellSetup";
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 
@@ -15,11 +16,16 @@ import { stableRowOrder, yourHarnessEntries } from "./harnessCatalogLogic";
 
 function GitBashCard({
   prerequisite,
+  onReady,
 }: {
   prerequisite: NonNullable<
     ReturnType<typeof useGitBashPrerequisiteQuery>["data"]
   >;
+  onReady: () => void;
 }) {
+  const setup = useManagedShellSetup(onReady);
+  const canSetUp =
+    !prerequisite.available && prerequisite.managedInstallSupported === true;
   return (
     <div
       className={cn(
@@ -47,13 +53,32 @@ function GitBashCard({
             </span>
           </div>
           {!prerequisite.available ? (
-            <button
-              className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              onClick={() => void openUrl(prerequisite.installInstructionsUrl)}
-              type="button"
-            >
-              <ExternalLink className="h-4 w-4" /> Install Git for Windows
-            </button>
+            <div className="flex shrink-0 items-center gap-3">
+              {canSetUp ? (
+                <button
+                  className="cs-button"
+                  data-testid="doctor-git-bash-setup"
+                  disabled={setup.pending}
+                  onClick={setup.start}
+                  type="button"
+                >
+                  {setup.pending
+                    ? "Setting up…"
+                    : setup.error
+                      ? "Try again"
+                      : "Set up shell tools"}
+                </button>
+              ) : null}
+              <button
+                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() =>
+                  void openUrl(prerequisite.installInstructionsUrl)
+                }
+                type="button"
+              >
+                <ExternalLink className="h-4 w-4" /> Install Git for Windows
+              </button>
+            </div>
           ) : null}
         </div>
         {!prerequisite.available ? (
@@ -62,7 +87,20 @@ function GitBashCard({
             data-settings-subcopy
           >
             <p>Required for buzz-agent shell tools on Windows.</p>
-            <p>{prerequisite.installHint}</p>
+            {canSetUp ? (
+              <p role="status">
+                {setup.pending
+                  ? (setup.line ?? "Setting up shell tools…")
+                  : "Colony can download its own copy once (about 40 MB), with no admin prompt."}
+              </p>
+            ) : (
+              <p>{prerequisite.installHint}</p>
+            )}
+            {setup.error ? (
+              <p className="text-destructive" role="alert">
+                {setup.error}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -143,7 +181,10 @@ export function HarnessesSettingsPanel() {
                 Windows tools required by supported agents.
               </p>
             </div>
-            <GitBashCard prerequisite={gitBashQuery.data} />
+            <GitBashCard
+              onReady={() => void gitBashQuery.refetch()}
+              prerequisite={gitBashQuery.data}
+            />
           </section>
         ) : null}
 
