@@ -71,6 +71,8 @@ type CandidateOverride = {
 type ConnectSetupStepProps = {
   business: OnboardingBusinessProfile;
   communityId: string;
+  /** The business's relay (`wss://host`), for a Colony Agent proof before it opens. */
+  relayUrl?: string;
   error?: string | null;
   onBack: () => void;
   onContinue: (destination?: "settings") => void;
@@ -89,6 +91,7 @@ type ConnectSetupStepProps = {
 export function ConnectSetupStep({
   business,
   communityId,
+  relayUrl,
   error,
   onBack,
   onContinue,
@@ -144,6 +147,7 @@ export function ConnectSetupStep({
       queryClient,
       isCurrent,
       communityId,
+      relayUrl,
       onShellTools: setSettingUpTools,
       business: {
         name: business.name,
@@ -166,6 +170,7 @@ export function ConnectSetupStep({
     business.website,
     communityId,
     queryClient,
+    relayUrl,
   ]);
   const [connectionPhase, setConnectionPhase] =
     React.useState<OnboardingConnectionProgress>("starting");
@@ -322,6 +327,7 @@ export function ConnectSetupStep({
           website: business.website,
           description: business.description,
         },
+        relayUrl,
       );
       if (!isCurrent()) return;
       await saveVerifiedWelcomeConnection(

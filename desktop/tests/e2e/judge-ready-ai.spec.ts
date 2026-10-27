@@ -29,12 +29,21 @@ type Gateway = {
   accessStatus?: number;
   /** Capabilities answer 404, like a relay older than the gateway. */
   missing?: boolean;
+  /**
+   * A closed relay, like production: only this host knows the signed-in owner,
+   * so the signed free-AI question is refused (403) on any other host.
+   */
+  memberHost?: string;
 };
 
 async function fakeGateway(page: Page, gateway: Gateway = {}) {
-  const requests: string[] = [];
+  const requests: string[] & { hosts?: string[] } = [];
+  const hosts: string[] = [];
+  // Not enumerable, so `toEqual` on the request names keeps comparing names only.
+  Object.defineProperty(requests, "hosts", { value: hosts });
   await page.route("**/api/credits-gateway/capabilities", (route) => {
     requests.push("capabilities");
+    hosts.push(new URL(route.request().url()).host);
     if (gateway.missing) return route.fulfill({ status: 404, json: {} });
     return route.fulfill({
       json: {
@@ -47,9 +56,16 @@ async function fakeGateway(page: Page, gateway: Gateway = {}) {
   });
   await page.route("**/api/credits-gateway/access", (route) => {
     requests.push("access");
+    const host = new URL(route.request().url()).host;
+    hosts.push(host);
     // Only a signed request may ask, and it asks as a GET.
     expect(route.request().method()).toBe("GET");
     expect(route.request().headers().authorization).toMatch(/^Nostr /);
+    if (gateway.memberHost && host !== gateway.memberHost)
+      return route.fulfill({
+        status: 403,
+        json: { error: "relay_membership_required" },
+      });
     if (gateway.accessStatus)
       return route.fulfill({ status: gateway.accessStatus, json: {} });
     return route.fulfill({ json: { freeAi: gateway.freeAi ?? true } });
@@ -158,6 +174,7 @@ test.describe("free Colony AI for judges", () => {
         source: "first-community",
         firstCommunityPage: "create",
       });
+    const created = await transaction(page);
     await expect(page.getByTestId("onboarding-scene-connect")).toHaveCount(0);
     expect(await savedConfig(page)).toMatchObject({
       preferred_runtime: "buzz-agent",
@@ -170,6 +187,11 @@ test.describe("free Colony AI for judges", () => {
     ).toHaveLength(1);
     expect(JSON.stringify(await savedConfig(page))).not.toMatch(/KEY|sk-or/i);
     expect(requests).toEqual(["capabilities", "access"]);
+    // The proof runs on the business that was just created.
+    expect(created.relayUrl).toMatch(/^wss:\/\//);
+    expect(
+      (await commandPayloads(page, "test_onboarding_connection"))[0].payload,
+    ).toMatchObject({ relayUrl: created.relayUrl });
     // The real first reply from the gateway reaches Scout's Welcome thread.
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
     await expect(page.getByText(reply).first()).toBeVisible();
@@ -178,7 +200,9 @@ test.describe("free Colony AI for judges", () => {
   test("a returning owner on a new Mac skips Connect and opens the business", async ({
     page,
   }) => {
-    await signInAsReturningOwner(page);
+    const requests = await signInAsReturningOwner(page, {
+      memberHost: "owned-business.example.test",
+    });
     await page.getByTestId("onboarding-business-owned-business").click();
 
     await expect
@@ -193,6 +217,17 @@ test.describe("free Colony AI for judges", () => {
     expect(await savedConfig(page)).toMatchObject({
       preferred_runtime: "buzz-agent",
       provider: "colony-credits",
+    });
+    // The app is still on its root relay while it asks: the question and the
+    // proof turn go to the business the owner is opening, where they belong.
+    expect(requests.hosts).toEqual([
+      "owned-business.example.test",
+      "owned-business.example.test",
+    ]);
+    const proofs = await commandPayloads(page, "test_onboarding_connection");
+    expect(proofs).toHaveLength(1);
+    expect(proofs[0].payload).toMatchObject({
+      relayUrl: "wss://owned-business.example.test",
     });
   });
 
@@ -209,7 +244,9 @@ test.describe("free Colony AI for judges", () => {
       skipOnboardingSeed: true,
       skipCommunitySeed: true,
     });
-    await fakeGateway(page);
+    const requests = await fakeGateway(page, {
+      memberHost: "owned-business.example.test",
+    });
     await page.route("**/api/communities/mine", (route) =>
       route.fulfill({
         json: {
@@ -240,6 +277,12 @@ test.describe("free Colony AI for judges", () => {
     expect(await savedConfig(page)).toMatchObject({
       provider: "colony-credits",
     });
+    expect(new Set(requests.hosts)).toEqual(
+      new Set(["owned-business.example.test"]),
+    );
+    expect(
+      (await commandPayloads(page, "test_onboarding_connection"))[0].payload,
+    ).toMatchObject({ relayUrl: "wss://owned-business.example.test" });
   });
 
   for (const [name, gateway, extra] of [
