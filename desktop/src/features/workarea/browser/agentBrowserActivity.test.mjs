@@ -99,7 +99,7 @@ test("two agents in one channel and one agent in two channels are told apart", (
   act(SCOUT, OTHER, "host-3");
   assert.deepEqual(
     getBrowserActivityForChannel(CHANNEL).map((item) => item.agentId),
-    [SCOUT, SAGE],
+    [SAGE, SCOUT],
   );
   assert.deepEqual(
     getBrowserActivityForChannel(OTHER).map((item) => item.agentId),

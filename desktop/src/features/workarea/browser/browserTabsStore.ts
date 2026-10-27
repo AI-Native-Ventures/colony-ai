@@ -27,6 +27,7 @@ import {
   isBlockedNavigationError,
 } from "./browserPageError";
 import { browserTabId } from "./browserTabId";
+import { noteWorkAreaPersonActivity } from "./agentBrowserPresentation";
 
 /**
  * The browser's pages for the active community (the business). Every page is a
@@ -574,6 +575,12 @@ function handleHostEvent(event: BrowserHostEvent) {
     case "created":
       // Our own tabs are adopted from `createTab`'s reply.
       return;
+    case "person-input": {
+      const found = pageForHost(event.tabId);
+      if (found)
+        noteWorkAreaPersonActivity(found.channelId, browserTabId(found.key));
+      return;
+    }
     case "state":
       handleTabState(event.tab);
       return;

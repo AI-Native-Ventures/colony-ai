@@ -1,4 +1,7 @@
-import { ChannelBrowserBadge } from "@/features/workarea/browser/BrowserActivity";
+import {
+  ChannelBrowserBadge,
+  watchLatestBrowserActivity,
+} from "@/features/workarea/browser/BrowserActivity";
 import type * as React from "react";
 import { BellOff, ChevronDown, CircleDot, X } from "lucide-react";
 
@@ -285,7 +288,20 @@ export function ChannelMenuButton({
       data-testid={`channel-${channel.name}`}
       data-unread={hasUnread || hasThreadUnread ? "true" : undefined}
       isActive={isActive}
-      onClick={() => onSelectChannel(channel.id)}
+      onClick={(event) => {
+        const marker = event.currentTarget.querySelector(
+          `[data-testid="channel-browser-${channel.name}"]`,
+        );
+        const activatedMarker =
+          event.target instanceof Element &&
+          event.target.closest(
+            `[data-testid="channel-browser-${channel.name}"]`,
+          );
+        if (marker && (activatedMarker || event.detail === 0)) {
+          watchLatestBrowserActivity(channel.id);
+        }
+        onSelectChannel(channel.id);
+      }}
       tooltip={resolvedLabel}
       type="button"
     >

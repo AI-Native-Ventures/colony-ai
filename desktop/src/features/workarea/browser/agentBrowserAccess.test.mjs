@@ -4,6 +4,7 @@ import { beforeEach, test } from "node:test";
 import {
   getWorkAreaState,
   initWorkAreaStore,
+  closeWorkArea,
   openWorkArea,
   resetWorkAreaStore,
 } from "../dock/workAreaStore.ts";
@@ -20,6 +21,11 @@ import {
   startAgentBrowserAccess,
 } from "./agentBrowserAccess.ts";
 import { browserTabId } from "./browserTabId.ts";
+import {
+  noteWorkAreaPersonActivity,
+  resetAgentBrowserPresentation,
+  setAgentBrowserConversationView,
+} from "./agentBrowserPresentation.ts";
 import {
   closeBrowserPage,
   getBrowserPage,
@@ -111,6 +117,7 @@ function fakeBroker() {
 const AGENT = "a".repeat(64);
 const CHANNEL = "12345678-1234-4234-8234-123456789abc";
 const COMMUNITY = "https://relay.example";
+const VIEW_OWNER = {};
 const ask = (overrides = {}) => ({
   type: "access-requested",
   agentId: AGENT,
@@ -130,9 +137,14 @@ let counter;
 
 beforeEach(() => {
   resetAgentBrowserAccess();
+  resetAgentBrowserPresentation();
   resetBrowserTabsStore();
   resetWorkAreaStore();
   globalThis.window = { localStorage: new MemoryStorage() };
+  globalThis.document = {
+    visibilityState: "hidden",
+    hasFocus: () => false,
+  };
   host = fakeHost();
   setBrowserHostForTests(host);
   counter = 0;
@@ -179,6 +191,75 @@ test("an agent's first browser call makes a browser page and grants it, and show
       ttlMs: DEFAULT_ACCESS_TTL_MS,
     },
   ]);
+});
+
+test("the visible conversation opens on the agent page without requiring a dock first", async () => {
+  globalThis.document = {
+    visibilityState: "visible",
+    hasFocus: () => true,
+  };
+  setAgentBrowserConversationView(VIEW_OWNER, {
+    channelId: CHANNEL,
+    channelType: "stream",
+  });
+
+  broker.emit(ask());
+  await settle();
+
+  const state = getWorkAreaState(CHANNEL);
+  assert.equal(state.open, true);
+  assert.equal(state.activeTabId, browserTabId("page-1"));
+  assert.deepEqual(
+    state.tabs.map((tab) => tab.kind),
+    ["browser"],
+  );
+});
+
+test("an open dock stays on the person's recently used tab, and closing it dismisses this task", async () => {
+  globalThis.document = {
+    visibilityState: "visible",
+    hasFocus: () => true,
+  };
+  setAgentBrowserConversationView(VIEW_OWNER, {
+    channelId: CHANNEL,
+    channelType: "stream",
+  });
+  openWorkArea(CHANNEL, "terminal");
+  noteWorkAreaPersonActivity(CHANNEL, "terminal");
+
+  broker.emit(ask());
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, "terminal");
+
+  closeWorkArea(CHANNEL);
+  openWorkArea(CHANNEL, "terminal");
+  noteWorkAreaPersonActivity(CHANNEL, "terminal", 0);
+  broker.emit(ask());
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, "terminal");
+
+  broker.emit(ask({ agentId: "b".repeat(64) }));
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, browserTabId("page-2"));
+});
+
+test("only the most recently requested agent can auto-select its page", async () => {
+  globalThis.document = {
+    visibilityState: "visible",
+    hasFocus: () => true,
+  };
+  setAgentBrowserConversationView(VIEW_OWNER, {
+    channelId: CHANNEL,
+    channelType: "stream",
+  });
+
+  broker.emit(ask());
+  broker.emit(ask({ agentId: "b".repeat(64) }));
+  await settle();
+
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, browserTabId("page-2"));
+  assert.equal(getWorkAreaState(CHANNEL).tabs.length, 2);
 });
 
 test("an agent never moves what the person is looking at: the dock, the selected tab and a closed dock stay as they are", async () => {

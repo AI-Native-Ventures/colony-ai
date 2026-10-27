@@ -108,6 +108,9 @@ export default defineConfig({
       ],
   use: {
     baseURL: `http://127.0.0.1:${appPort}`,
+    launchOptions: {
+      args: ["--use-mock-keychain", "--password-store=basic"],
+    },
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     video: "retain-on-failure",
@@ -130,6 +133,7 @@ export default defineConfig({
         "**/browser-profile-forget.spec.ts",
         "**/work-area-browser-agent.spec.ts",
         "**/work-area-browser-agent-auto.spec.ts",
+        "**/work-area-browser-agent-show.spec.ts",
         "**/work-area-browser-screenshots.spec.ts",
         "**/work-area-knowledge.spec.ts",
         "**/work-area-pins.spec.ts",
@@ -354,6 +358,7 @@ export default defineConfig({
         "**/browser-profile-forget.spec.ts",
         "**/work-area-browser-agent.spec.ts",
         "**/work-area-browser-agent-auto.spec.ts",
+        "**/work-area-browser-agent-show.spec.ts",
         "**/work-area-browser-screenshots.spec.ts",
         "**/work-area-knowledge.spec.ts",
         "**/work-area-pins.spec.ts",

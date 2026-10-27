@@ -379,6 +379,7 @@ export function createBrowserHost({
       if (!tabs.has(tab.id) || tab.agentInputs > 0) return;
       if (!HUMAN_INPUT_TYPES.has(input.type)) return;
       tab.humanInputAt = Date.now();
+      sendTabEvent(tab, "person-input");
       for (const listener of humanInputListeners) listener(tab.id);
     });
     // A native page view takes key events before the app window sees them, so
