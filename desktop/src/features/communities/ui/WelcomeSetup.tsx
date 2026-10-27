@@ -191,6 +191,7 @@ export function WelcomeSetup({
         autoPick
         business={connectTarget.profile}
         communityId={connectTarget.business.id}
+        relayUrl={businessCommunityRelayUrl(connectTarget.business)}
         error={connectError}
         onBack={() => {
           setConnectError(null);

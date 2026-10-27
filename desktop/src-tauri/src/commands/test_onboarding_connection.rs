@@ -26,6 +26,50 @@ pub fn colony_credits_gateway_enabled() -> bool {
     crate::managed_agents::credits_gateway::enabled()
 }
 
+/// The relay a Colony Agent proof runs against.
+#[derive(Debug, PartialEq, Eq)]
+struct ProbeRelay {
+    relay: String,
+    /// The workspace relay must still equal `relay` while the proof runs.
+    follows_workspace: bool,
+}
+
+/// First-run onboarding proves the Colony Agent before the business is applied,
+/// when the workspace relay is only the root host and the owner has joined
+/// nothing on it. The caller then names the business's relay; it must be a
+/// plain relay origin (https, or loopback for development), and the proof is
+/// bound to that relay rather than the workspace.
+fn credits_probe_relay(
+    requested: Option<&str>,
+    workspace_relay: String,
+) -> Result<ProbeRelay, String> {
+    let Some(requested) = requested.map(str::trim).filter(|url| !url.is_empty()) else {
+        return Ok(ProbeRelay {
+            relay: workspace_relay,
+            follows_workspace: true,
+        });
+    };
+    let origin = buzz_agent_pkg::credits_gateway::gateway_origin(requested)
+        .map_err(|_| "Colony could not read this business's address. Try again.".to_owned())?;
+    Ok(ProbeRelay {
+        relay: origin
+            .replacen("https://", "wss://", 1)
+            .replacen("http://", "ws://", 1),
+        follows_workspace: false,
+    })
+}
+
+/// Whether the proof may keep going: not cancelled, same signer, and, when it
+/// follows the workspace, the workspace has not moved to another relay.
+fn probe_is_current(
+    cancelled: bool,
+    probe: &ProbeRelay,
+    workspace_relay: &str,
+    signer_unchanged: bool,
+) -> bool {
+    !cancelled && (!probe.follows_workspace || workspace_relay == probe.relay) && signer_unchanged
+}
+
 /// Cancel only the named active attempt; stale UI cleanup cannot stop a newer test.
 #[tauri::command]
 pub fn cancel_onboarding_connection_test(request_id: String) -> Result<(), String> {
@@ -99,6 +143,7 @@ pub async fn test_onboarding_connection(
     config: GlobalAgentConfig,
     request_id: String,
     business: Option<serde_json::Value>,
+    relay_url: Option<String>,
 ) -> Result<Value, String> {
     let cancel = CancellationToken::new();
     {
@@ -136,7 +181,10 @@ pub async fn test_onboarding_connection(
     let credits_context = if credits_selected {
         let state = app.state::<crate::app_state::AppState>();
         Some((
-            crate::relay::relay_ws_url_with_override(&state),
+            credits_probe_relay(
+                relay_url.as_deref(),
+                crate::relay::relay_ws_url_with_override(&state),
+            )?,
             state.signing_keys()?,
         ))
     } else {
@@ -215,18 +263,21 @@ pub async fn test_onboarding_connection(
     let probe_app = app.clone();
     let probe_cancel = cancel.clone();
     let mut worker = tokio::task::spawn_blocking(move || {
-        if let Some((relay, owner)) = credits_context {
+        if let Some((probe, owner)) = credits_context {
             return crate::managed_agents::credits_gateway::run_connection_probe(
                 command,
-                &relay,
+                &probe.relay,
                 &owner,
                 || {
                     let state = probe_app.state::<crate::app_state::AppState>();
-                    !probe_cancel.is_cancelled()
-                        && crate::relay::relay_ws_url_with_override(&state) == relay
-                        && state
+                    probe_is_current(
+                        probe_cancel.is_cancelled(),
+                        &probe,
+                        &crate::relay::relay_ws_url_with_override(&state),
+                        state
                             .signing_keys()
-                            .is_ok_and(|current| current.public_key() == owner.public_key())
+                            .is_ok_and(|current| current.public_key() == owner.public_key()),
+                    )
                 },
                 Duration::from_secs(CONNECTION_OUTER_TIMEOUT_SECS),
             );
@@ -316,6 +367,92 @@ mod tests {
         drop(old);
         drop(retry.await.expect("retry join").expect("retry lock"));
         assert_eq!(CONNECTION_OUTER_TIMEOUT_SECS, CONNECTION_TIMEOUT_SECS + 20);
+    }
+
+    #[test]
+    fn without_a_requested_relay_the_proof_follows_the_workspace() {
+        let probe = credits_probe_relay(None, "wss://relay.example".into()).unwrap();
+        assert_eq!(
+            probe,
+            ProbeRelay {
+                relay: "wss://relay.example".into(),
+                follows_workspace: true
+            }
+        );
+        // A blank request is no request.
+        assert_eq!(
+            credits_probe_relay(Some("  "), "wss://relay.example".into()).unwrap(),
+            probe
+        );
+    }
+
+    #[test]
+    fn a_requested_business_relay_is_used_instead_of_the_root_workspace() {
+        let probe = credits_probe_relay(
+            Some("wss://north-star.example/"),
+            "wss://root.example".into(),
+        )
+        .unwrap();
+        assert_eq!(probe.relay, "wss://north-star.example");
+        assert!(!probe.follows_workspace);
+        // Loopback development relays keep their plain scheme.
+        let local =
+            credits_probe_relay(Some("ws://localhost:3000"), "wss://root.example".into()).unwrap();
+        assert_eq!(local.relay, "ws://localhost:3000");
+    }
+
+    #[test]
+    fn a_requested_relay_must_be_a_plain_relay_origin() {
+        for bad in [
+            "http://evil.example",
+            "ws://evil.example",
+            "wss://user:pass@evil.example",
+            "wss://evil.example/path",
+            "wss://evil.example/?x=1",
+            "file:///etc/passwd",
+            "not a url",
+        ] {
+            assert!(
+                credits_probe_relay(Some(bad), "wss://root.example".into()).is_err(),
+                "{bad} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn the_proof_stops_on_cancel_signer_change_or_a_moved_workspace() {
+        let following = ProbeRelay {
+            relay: "wss://a.example".into(),
+            follows_workspace: true,
+        };
+        assert!(probe_is_current(false, &following, "wss://a.example", true));
+        assert!(!probe_is_current(true, &following, "wss://a.example", true));
+        assert!(!probe_is_current(
+            false,
+            &following,
+            "wss://b.example",
+            true
+        ));
+        assert!(!probe_is_current(
+            false,
+            &following,
+            "wss://a.example",
+            false
+        ));
+        // A named business relay does not care where the workspace sits (it is
+        // the root host during first run), but still stops on cancel or signer.
+        let named = ProbeRelay {
+            relay: "wss://a.example".into(),
+            follows_workspace: false,
+        };
+        assert!(probe_is_current(false, &named, "wss://root.example", true));
+        assert!(!probe_is_current(true, &named, "wss://root.example", true));
+        assert!(!probe_is_current(
+            false,
+            &named,
+            "wss://root.example",
+            false
+        ));
     }
 
     #[tokio::test]

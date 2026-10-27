@@ -569,6 +569,7 @@ export function MachineOnboardingFlow({
         autoPick
         business={profile}
         communityId={community.id}
+        relayUrl={businessCommunityRelayUrl(community)}
         error={error}
         onBack={() => {
           setError(null);

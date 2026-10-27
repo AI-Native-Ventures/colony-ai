@@ -46,6 +46,7 @@ export async function cancelOnboardingConnectionTest() {
 async function invokeConnection(
   config: GlobalAgentConfig,
   business?: { name: string; website: string; description: string },
+  relayUrl?: string,
 ) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
@@ -66,7 +67,7 @@ async function invokeConnection(
       throw new Error("Connection test cancelled.");
     return await invokeTauri<
       OnboardingConnectionProof & { error?: string; code?: string }
-    >("test_onboarding_connection", { config, requestId, business });
+    >("test_onboarding_connection", { config, requestId, business, relayUrl });
   } finally {
     unlisten();
     if (activeRequestId === requestId) activeRequestId = null;
@@ -106,13 +107,19 @@ export async function runOnboardingConnectionTest(
   return { proof, config: saved.config };
 }
 
-/** Run the same proof turn with business facts so its real reply can introduce Scout in Welcome. */
+/**
+ * Run the same proof turn with business facts so its real reply can introduce
+ * Scout in Welcome. `relayUrl` is the business's relay: the Colony Agent proof
+ * runs there, because the app is still on its root relay before the business
+ * opens and the owner has joined nothing on that host.
+ */
 export function runOnboardingBusinessConnectionTest(
   config: GlobalAgentConfig,
   isCurrent: () => boolean,
   business: { name: string; website: string; description: string },
+  relayUrl?: string,
 ) {
   return runOnboardingConnectionTest(config, isCurrent, (candidate) =>
-    invokeConnection(candidate, business),
+    invokeConnection(candidate, business, relayUrl),
   );
 }

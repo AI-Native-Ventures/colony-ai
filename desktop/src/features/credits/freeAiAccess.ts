@@ -24,13 +24,31 @@ const dependencies = {
   nonce: () => crypto.randomUUID(),
 };
 
-/** Ask the relay about this account. Never throws: every failure is an answer. */
+/** `wss://host` or `https://host` as the `https://host` the HTTP routes live on. */
+function httpBase(relayUrl: string) {
+  return relayUrl
+    .trim()
+    .replace(/^ws(s?):\/\//, "http$1://")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * Ask the relay about this account. Never throws: every failure is an answer.
+ *
+ * `relayUrl` is the business being opened. Onboarding asks before that business
+ * is applied, when the app's own relay is only the root host (where the owner
+ * has not joined anything), so the question goes to the business itself, the
+ * same host the Colony Agent will use.
+ */
 export async function readFreeAiAccess(
   deps: typeof dependencies = dependencies,
+  relayUrl?: string,
 ): Promise<FreeAiAccess> {
   try {
     if (!(await deps.enabled())) return "off";
-    const base = (await deps.relay()).replace(/\/+$/, "");
+    const base = relayUrl
+      ? httpBase(relayUrl)
+      : (await deps.relay()).replace(/\/+$/, "");
     const capabilities = await deps.fetch(
       `${base}/api/credits-gateway/capabilities`,
       { signal: AbortSignal.timeout(8_000), redirect: "error" },
