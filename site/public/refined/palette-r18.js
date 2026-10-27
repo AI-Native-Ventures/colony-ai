@@ -1,4 +1,4 @@
-/* One palette per visit, shared by the landing page and its same-origin demos. */
+/* Respect dark system appearance and share the selected palette with demos. */
 (()=>{
 'use strict';
 const palettes={
@@ -6,15 +6,20 @@ const palettes={
  iris:{ink:'#353145',muted:'#72677f',accent:'#763dde',light:'#8f55da',paper:'#faf7fc',wash:'#eedcfe',line:'#d9bdf5',a:'#c48aff',b:'#f8d8f5',c:'#9368f4'},
  rose:{ink:'#473236',muted:'#83676c',accent:'#c93971',light:'#d64a89',paper:'#fcf7f5',wash:'#ffe0eb',line:'#f2b8cf',a:'#ff8fbc',b:'#ffe8cf',c:'#f45fa2'},
  coast:{ink:'#293b47',muted:'#637783',accent:'#087abb',light:'#2189bd',paper:'#f5f9fb',wash:'#d4f3ff',line:'#a8dfee',a:'#69d9ff',b:'#cef6f1',c:'#4b9df5'},
- amber:{ink:'#44392e',muted:'#7e705d',accent:'#b85c15',light:'#bd7828',paper:'#fbf8f0',wash:'#ffedc7',line:'#eed098',a:'#ffcf5a',b:'#fff1c6',c:'#ff965b'}
+ amber:{ink:'#44392e',muted:'#7e705d',accent:'#b85c15',light:'#bd7828',paper:'#fbf8f0',wash:'#ffedc7',line:'#eed098',a:'#ffcf5a',b:'#fff1c6',c:'#ff965b'},
+ night:{ink:'#e8efe7',muted:'#b2c0b0',accent:'#356f43',light:'#86c18d',paper:'#111a13',wash:'#1e3021',line:'#394e3d',a:'#21472b',b:'#284b31',c:'#276a43'}
 };
 let id;
 if(window!==parent){try{id=parent.document.documentElement.dataset.palette;}catch{}}
 if(!palettes[id]){
- const ids=Object.keys(palettes);let last;
- try{last=sessionStorage.getItem('colony-last-palette');}catch{}
- const choices=ids.filter(x=>x!==last);id=choices[Math.floor(Math.random()*choices.length)];
- try{sessionStorage.setItem('colony-last-palette',id);}catch{}
+ const prefersDark=window.matchMedia?.('(prefers-color-scheme: dark)').matches===true;
+ if(prefersDark){id='night';}
+ else {
+  const ids=Object.keys(palettes).filter(x=>x!=='night');let last;
+  try{last=sessionStorage.getItem('colony-last-palette');}catch{}
+  const choices=ids.filter(x=>x!==last);id=choices[Math.floor(Math.random()*choices.length)];
+  try{sessionStorage.setItem('colony-last-palette',id);}catch{}
+ }
 }
 const root=document.documentElement;root.dataset.palette=id;
 for(const [key,value] of Object.entries(palettes[id]))root.style.setProperty('--p-'+key,value);
