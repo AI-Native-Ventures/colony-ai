@@ -142,6 +142,31 @@ async fn authenticate_as(
     path: &str,
     body: Option<&[u8]>,
 ) -> Result<(TenantContext, nostr::PublicKey), (StatusCode, Json<Value>)> {
+    let (tenant, pubkey, signed_created_at) =
+        authenticate_signer(gateway, headers, method, path, body).await?;
+    relay_members::enforce_relay_membership(
+        &gateway.relay,
+        tenant.community(),
+        pubkey.as_bytes(),
+        relay_members::extract_auth_tag_header(headers),
+        signed_created_at,
+    )
+    .await?;
+    bridge::enforce_http_admission(&gateway.relay, &tenant, &pubkey).await?;
+    Ok((tenant, pubkey))
+}
+
+/// Host-bound NIP-98 signer check with replay protection, without community
+/// membership. Account-level reads that reveal only the caller's own status
+/// (like payments) use this, because a signed-in person on a new device may
+/// not yet belong to the community that the host resolves to.
+async fn authenticate_signer(
+    gateway: &Gateway,
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Result<(TenantContext, nostr::PublicKey, Option<u64>), (StatusCode, Json<Value>)> {
     let host = headers
         .get(axum::http::header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -153,16 +178,7 @@ async fn authenticate_as(
     let auth =
         bridge::verify_bridge_auth_with_options(headers, method, &url, body, true, body.is_some())?;
     bridge::check_nip98_replay(&gateway.relay, &tenant, auth.event_id_bytes).await?;
-    relay_members::enforce_relay_membership(
-        &gateway.relay,
-        tenant.community(),
-        auth.pubkey.as_bytes(),
-        relay_members::extract_auth_tag_header(headers),
-        auth.signed_created_at,
-    )
-    .await?;
-    bridge::enforce_http_admission(&gateway.relay, &tenant, &auth.pubkey).await?;
-    Ok((tenant, auth.pubkey))
+    Ok((tenant, auth.pubkey, auth.signed_created_at))
 }
 
 #[derive(Deserialize)]
