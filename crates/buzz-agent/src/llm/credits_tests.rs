@@ -113,12 +113,16 @@ mod scout_session {
         ]
     }
 
-    /// A user turn followed by `rounds` shell rounds, then the next user message.
+    /// A user turn followed by `rounds` shell rounds, with the owner speaking up
+    /// again every five rounds, then the next user message.
     pub(super) fn history(rounds: usize, result_bytes: usize) -> Vec<HistoryItem> {
         let mut items = vec![HistoryItem::User(
             "Go through the lead list and tell me who to call first.".into(),
         )];
         for i in 0..rounds {
+            if i > 0 && i % 5 == 0 {
+                items.push(HistoryItem::User(format!("Carry on with number {i}.")));
+            }
             items.extend(tool_round(
                 i,
                 vec![ToolResultContent::Text("x".repeat(result_bytes))],

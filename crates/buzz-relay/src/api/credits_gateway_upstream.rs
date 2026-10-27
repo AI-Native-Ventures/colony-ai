@@ -11,7 +11,25 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 pub(super) const MODEL: &str = "openai/gpt-4.1-mini";
-pub(super) const MAX_BODY: usize = 64 * 1024;
+/// Largest managed-inference request body, inbound and as forwarded upstream.
+///
+/// A real Scout session carries about 47 KB of prompt and tool definitions
+/// before its first message, and the agent keeps up to 200k tokens of history
+/// (roughly 600 KB) before it summarises, so 64 KiB refused every session after
+/// its first tool result. 1 MiB fits that window with headroom and stays
+/// bounded. The managed client stops 4 KiB short because this relay adds its
+/// routing fields to what it forwards.
+pub(super) const MAX_BODY: usize = 1024 * 1024;
+/// Most messages in one request. The agent keeps a session's history within its
+/// token window, so a long tool-using session reaches a few hundred.
+const MAX_MESSAGES: usize = 1024;
+/// Prompt tokens the hold assumes for a request when the model's own context
+/// window is not configured: the free Scout model's 262,144.
+const DEFAULT_CONTEXT_TOKENS: i64 = 262_144;
+/// Largest context window the hold can cover. At the price ceiling the hold for
+/// this many prompt tokens plus a full reply is 398,976,000 nanousd, just under
+/// the 400,000,000 the ledger allows for one request.
+const MAX_CONTEXT_TOKENS: i64 = 312_000;
 const MAX_RESPONSE: usize = 1024 * 1024;
 const MAX_OUTPUT: i64 = 4096;
 
@@ -25,6 +43,7 @@ pub(super) struct Upstream {
     openrouter: bool,
     prices: Option<TokenPrices>,
     policy: Policy,
+    context_tokens: i64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,6 +98,13 @@ impl Upstream {
             None
         };
         let policy = Policy::new(&model, allowed, openrouter, tracking).ok()?;
+        // The model's context window, in tokens. No prompt can be longer, so it
+        // bounds what a request can cost and what the relay holds for it. Set it
+        // when the server model's window is smaller than the default.
+        let context_tokens = match std::env::var("COLONY_CREDITS_MODEL_CONTEXT_TOKENS") {
+            Ok(raw) => raw.trim().parse::<i64>().ok()?,
+            Err(_) => DEFAULT_CONTEXT_TOKENS,
+        };
         Self::new(
             key,
             origin.trim_end_matches('/').into(),
@@ -87,6 +113,7 @@ impl Upstream {
             openrouter,
             prices,
             policy,
+            context_tokens,
         )
         .ok()
     }
@@ -100,8 +127,12 @@ impl Upstream {
         openrouter: bool,
         prices: Option<TokenPrices>,
         policy: Policy,
+        context_tokens: i64,
     ) -> Result<Self, ()> {
         policy.check_model(&model)?;
+        if !(8192..=MAX_CONTEXT_TOKENS).contains(&context_tokens) {
+            return Err(());
+        }
         if let Some(prices) = &prices {
             prices.validate()?;
         }
@@ -136,6 +167,7 @@ impl Upstream {
             openrouter,
             prices,
             policy,
+            context_tokens,
         })
     }
 
@@ -155,6 +187,7 @@ impl Upstream {
                 Some("synthetic-customer-hmac-key-at-least-32-bytes".into()),
             )
             .unwrap(),
+            DEFAULT_CONTEXT_TOKENS,
         )
         .unwrap()
     }
@@ -175,13 +208,19 @@ impl Upstream {
                 None,
             )
             .unwrap(),
+            DEFAULT_CONTEXT_TOKENS,
         )
         .unwrap()
     }
 
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), ()> {
         self.policy.check_model(&self.model)?;
-        request.upstream_body(&self.model, self.openrouter, self.prices.as_ref())
+        request.upstream_body(
+            &self.model,
+            self.openrouter,
+            self.prices.as_ref(),
+            self.context_tokens,
+        )
     }
 
     pub(super) fn attribute_customer(
@@ -282,8 +321,9 @@ impl ManagedRequest {
         model: &str,
         openrouter: bool,
         prices: Option<&TokenPrices>,
+        context_tokens: i64,
     ) -> Result<(Value, i64), ()> {
-        if self.messages.is_empty() || self.messages.len() > 128 || self.tools.len() > 64 {
+        if self.messages.is_empty() || self.messages.len() > MAX_MESSAGES || self.tools.len() > 64 {
             return Err(());
         }
         for message in &self.messages {
@@ -337,16 +377,23 @@ impl ManagedRequest {
             return Err(());
         }
         // Two tokens per serialized UTF-8 byte plus 32768 framing tokens is a
-        // conservative upper bound for this text-only, bounded-message model.
-        // max_price is USD / million tokens. Bill only actual returned cost.
-        let prompt_bound = i64::try_from(bytes.len()).map_err(|_| ())? * 2 + 32768;
+        // conservative upper bound for this text-only, bounded-message model,
+        // and no prompt can exceed the model's context window, so the hold never
+        // asks for more than that. max_price is USD / million tokens. Bill only
+        // actual returned cost.
+        let prompt_bound =
+            (i64::try_from(bytes.len()).map_err(|_| ())? * 2 + 32768).min(context_tokens);
         let ceiling = TokenPrices::openrouter_ceiling();
         let hold_prices = if openrouter {
             &ceiling
         } else {
             prices.ok_or(())?
         };
-        let reserve = hold_prices.charge(prompt_bound as u64, MAX_OUTPUT as u64)?;
+        // A model priced at zero (a free one) still holds one nanousd: the ledger
+        // refuses a hold of nothing, and that must not read as an unsupported input.
+        let reserve = hold_prices
+            .charge(prompt_bound as u64, MAX_OUTPUT as u64)?
+            .max(1);
         if !(1..=400_000_000).contains(&reserve) {
             return Err(());
         }
@@ -537,7 +584,12 @@ mod tests {
         let mut value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),"messages":[{"role":"user","content":"hello"}]});
         let request: ManagedRequest = serde_json::from_value(value.clone()).unwrap();
         let (body, reserve) = request
-            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS,
+            )
             .unwrap();
         assert_eq!(body["model"], MODEL);
         assert_eq!(body["stream"], false);
@@ -550,7 +602,12 @@ mod tests {
             json!([{"type":"image_url","image_url":{"url":"https://outside.invalid"}}]);
         assert!(serde_json::from_value::<ManagedRequest>(value)
             .unwrap()
-            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS
+            )
             .is_err());
     }
 
@@ -718,7 +775,12 @@ mod tests {
         let value = scout_session::request(uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), 100, 3_000);
         assert!(value.to_string().len() > 64 * 1024);
         let (body, reserve) = managed(value)
-            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS,
+            )
             .unwrap();
         assert_eq!(body["messages"].as_array().unwrap().len(), 203);
         assert!((1..=400_000_000).contains(&reserve), "{reserve}");
@@ -730,13 +792,25 @@ mod tests {
         let value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
             "messages":[{"role":"user","content":"x".repeat(1_000_000)}]});
         let (_, reserve) = managed(value)
-            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS,
+            )
             .unwrap();
-        assert!((1..=400_000_000).contains(&reserve), "{reserve}");
+        // A prompt cannot outgrow the model's window, so that is all the hold
+        // covers: 262,144 prompt tokens and a full reply at the price ceiling.
+        assert_eq!(reserve, 339_148_800);
         let over = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
             "messages":[{"role":"user","content":"x".repeat(1024 * 1024)}]});
         assert!(managed(over)
-            .upstream_body(MODEL, true, Some(&TokenPrices::openrouter_ceiling()))
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS
+            )
             .is_err());
     }
 
@@ -748,10 +822,10 @@ mod tests {
         };
         let ceiling = TokenPrices::openrouter_ceiling();
         assert!(managed(session(1024))
-            .upstream_body(MODEL, true, Some(&ceiling))
+            .upstream_body(MODEL, true, Some(&ceiling), DEFAULT_CONTEXT_TOKENS)
             .is_ok());
         assert!(managed(session(1025))
-            .upstream_body(MODEL, true, Some(&ceiling))
+            .upstream_body(MODEL, true, Some(&ceiling), DEFAULT_CONTEXT_TOKENS)
             .is_err());
     }
 
@@ -768,5 +842,38 @@ mod tests {
             "messages":[{"role":"user","content":"Hello Colony"}]});
         let (_, reserve) = upstream.request(&managed(value)).unwrap();
         assert!(reserve >= 1, "{reserve}");
+    }
+
+    #[test]
+    fn the_models_context_window_is_bounded_so_its_hold_always_fits_the_ledger() {
+        let policy = || {
+            Policy::new(
+                MODEL,
+                vec![MODEL.into()],
+                true,
+                Some("synthetic-customer-hmac-key-at-least-32-bytes".into()),
+            )
+            .unwrap()
+        };
+        let build = |context: i64| {
+            Upstream::new(
+                "synthetic-test-key".into(),
+                "https://upstream.invalid".into(),
+                Duration::from_secs(1),
+                MODEL.into(),
+                true,
+                Some(TokenPrices::openrouter_ceiling()),
+                policy(),
+                context,
+            )
+        };
+        assert!(build(8191).is_err());
+        assert!(build(MAX_CONTEXT_TOKENS + 1).is_err());
+        // The widest window the relay accepts still holds under the ledger cap.
+        let widest = build(MAX_CONTEXT_TOKENS).unwrap();
+        let value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[{"role":"user","content":"x".repeat(1_000_000)}]});
+        let (_, reserve) = widest.request(&managed(value)).unwrap();
+        assert_eq!(reserve, 398_976_000);
     }
 }
