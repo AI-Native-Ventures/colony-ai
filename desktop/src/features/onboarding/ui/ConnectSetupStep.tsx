@@ -14,6 +14,7 @@ import type {
   AcpRuntimeCatalogEntry,
 } from "@/shared/api/types";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
+import { useInstallOutputLine } from "@/features/agents/lib/useInstallOutputLine";
 import { autoPickColonyAgent } from "../autoPickAi";
 import { saveVerifiedWelcomeConnection } from "../welcomeConnection";
 import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
@@ -94,6 +95,9 @@ export function ConnectSetupStep({
     string | null
   >(null);
   const [saving, setSaving] = React.useState(autoPick);
+  // Colony is setting up its own shell tools on a Windows PC with no Git.
+  const [settingUpTools, setSettingUpTools] = React.useState(false);
+  const toolsLine = useInstallOutputLine("buzz-agent", settingUpTools);
   // The last explicit candidate (Start free), reused by Try again.
   const lastOverride = React.useRef<CandidateOverride | undefined>(undefined);
   const [choice, setChoice] = React.useState<ConnectChoiceId>("own");
@@ -136,6 +140,7 @@ export function ConnectSetupStep({
       queryClient,
       isCurrent,
       communityId,
+      onShellTools: setSettingUpTools,
       business: {
         name: business.name,
         website: business.website,
@@ -399,6 +404,9 @@ export function ConnectSetupStep({
             ? getRuntimeDisplayLabel(testedRuntime)
             : "Colony AI",
           connectionPhase,
+          shellTools: settingUpTools
+            ? (toolsLine ?? "Setting up shell tools, one time…")
+            : null,
           connectionReply: proof?.reply,
           effectiveModel: proofModelLabel,
           error: saveError,

@@ -7,7 +7,10 @@ import {
   readFreeAiAccess,
   type FreeAiAccess,
 } from "@/features/credits/freeAiAccess";
-import { discoverGitBashPrerequisite } from "@/shared/api/tauri";
+import {
+  discoverGitBashPrerequisite,
+  installAcpRuntime,
+} from "@/shared/api/tauri";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import type {
   AcpRuntimeCatalogEntry,
@@ -76,11 +79,30 @@ export function bundledAgentIsReady(
   );
 }
 
+/**
+ * A Windows PC with no Git for Windows, where the only thing between the
+ * bundled Colony Agent and a working shell is bash. Colony can fetch its own
+ * (see the native managed Git), so the pick waits for that instead of sending
+ * the person to the Connect screen. Own AI wins, as everywhere else.
+ */
+export function shellToolsNeeded(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+  gitBash: GitBashPrerequisite | null | undefined,
+) {
+  if (!gitBash || gitBash.available) return false;
+  if (ownAiIsReady(runtimes)) return false;
+  // Everything but the prerequisite is met: with it the agent can run.
+  return bundledAgentIsReady(runtimes, { ...gitBash, available: true });
+}
+
 const dependencies = {
   access: readFreeAiAccess,
   config: getGlobalAgentConfig,
   runtimes: (queryClient: QueryClient) => refreshAcpRuntimes(queryClient),
   gitBash: () => discoverGitBashPrerequisite().catch(() => undefined),
+  /** Colony's own shell tools, installed as the Colony Agent runtime. */
+  installShellTools: () =>
+    installAcpRuntime("buzz-agent").then((result) => result.success),
   prove: runOnboardingConnectionTest,
   proveBusiness: runOnboardingBusinessConnectionTest,
   saveReceipt: saveVerifiedWelcomeConnection,
@@ -92,6 +114,8 @@ export type AutoPickRequest = {
   /** The business being opened, so Welcome keeps a real reply to show. */
   business?: { name: string; website: string; description: string };
   communityId?: string;
+  /** True while Colony sets up its own shell tools, so the screen can say so. */
+  onShellTools?: (active: boolean) => void;
 };
 
 /**
@@ -110,11 +134,29 @@ export async function autoPickColonyAgent(
     const access = await deps.access();
     // Not free, or no gateway: skip the runtime scan, Connect handles it.
     if (access !== "free" || !isCurrent()) return false;
-    const [runtimes, gitBash] = await Promise.all([
+    const [runtimes, firstGitBash] = await Promise.all([
       deps.runtimes(queryClient),
       deps.gitBash(),
     ]);
     if (!runtimes || !isCurrent()) return false;
+    let gitBash = firstGitBash;
+    if (shellToolsNeeded(runtimes, gitBash)) {
+      request.onShellTools?.(true);
+      try {
+        // A failed or unsupported setup is not an error here: the check below
+        // sees no bash and Connect (with its own Try again) takes over.
+        let installed = false;
+        try {
+          installed = await deps.installShellTools();
+        } catch {
+          installed = false;
+        }
+        if (installed && isCurrent()) gitBash = await deps.gitBash();
+      } finally {
+        request.onShellTools?.(false);
+      }
+      if (!isCurrent()) return false;
+    }
     const decision = decideAutoPick({
       access,
       ownAiReady: ownAiIsReady(runtimes),

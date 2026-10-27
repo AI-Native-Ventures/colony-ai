@@ -5,6 +5,7 @@ import {
   bundledAgentIsReady,
   decideAutoPick,
   ownAiIsReady,
+  shellToolsNeeded,
 } from "./autoPickAi.ts";
 
 const claude = (status = "logged_in", availability = "available") => ({
@@ -87,6 +88,7 @@ test("the bundled agent needs to exist, and Git for Windows on Windows", () => {
 
 function fixture(options = {}) {
   const calls = [];
+  let installed = false;
   const queryClient = {
     setQueryData: (key, value) => calls.push(["cache", key, value]),
   };
@@ -106,7 +108,17 @@ function fixture(options = {}) {
       calls.push(["runtimes"]);
       return options.runtimes ?? [bundled()];
     },
-    gitBash: async () => options.gitBash ?? null,
+    gitBash: async () => {
+      return installed
+        ? (options.gitBashAfterInstall ?? null)
+        : (options.gitBash ?? null);
+    },
+    installShellTools: async () => {
+      calls.push(["installShellTools"]);
+      if (options.installError) throw new Error(options.installError);
+      installed = options.installOk ?? false;
+      return installed;
+    },
     prove: async (config, isCurrent) => {
       calls.push(["prove", config, isCurrent()]);
       if (options.proofError) throw new Error(options.proofError);
@@ -277,4 +289,133 @@ test("a superseded attempt neither proves nor saves", async () => {
   );
   assert.ok(!names(late.calls).includes("receipt"));
   assert.ok(!names(late.calls).includes("cache"));
+});
+
+const missingBash = { available: false, path: null };
+const freshBash = { available: true, path: "C:\\Colony\\usr\\bin\\bash.exe" };
+
+test("shell tools are needed only on Windows with no bash, no own AI and an otherwise ready bundled agent", () => {
+  assert.equal(shellToolsNeeded([bundled()], missingBash), true);
+  // Not Windows (null), still checking (undefined), or already available.
+  assert.equal(shellToolsNeeded([bundled()], null), false);
+  assert.equal(shellToolsNeeded([bundled()], undefined), false);
+  assert.equal(shellToolsNeeded([bundled()], freshBash), false);
+  // Own AI wins, so nothing is downloaded for someone who has Claude or Codex.
+  assert.equal(shellToolsNeeded([claude(), bundled()], missingBash), false);
+  assert.equal(shellToolsNeeded([codex(), bundled()], missingBash), false);
+  // Shell tools do not help an agent that is itself missing.
+  assert.equal(shellToolsNeeded([], missingBash), false);
+  assert.equal(shellToolsNeeded([bundled("missing")], missingBash), false);
+});
+
+test("a fresh Windows PC gets its shell tools, then the Colony Agent is picked with no screen", async () => {
+  const { calls, deps, queryClient } = fixture({
+    gitBash: missingBash,
+    installOk: true,
+    gitBashAfterInstall: freshBash,
+  });
+  const phases = [];
+  const picked = await autoPickColonyAgent(
+    {
+      queryClient,
+      isCurrent: () => true,
+      business,
+      communityId: "biz-1",
+      onShellTools: (active) => phases.push(active),
+    },
+    deps,
+  );
+  assert.equal(picked, true);
+  assert.deepEqual(names(calls), [
+    "access",
+    "runtimes",
+    "installShellTools",
+    "proveBusiness",
+    "receipt",
+    "cache",
+  ]);
+  // The screen is told when the download starts and when it is over.
+  assert.deepEqual(phases, [true, false]);
+});
+
+test("a failed shell tools setup falls back to the screen, which has its own Try again", async () => {
+  for (const options of [
+    { installOk: false },
+    { installError: "network down" },
+    // Reported success but bash still is not there (an old host).
+    { installOk: true, gitBashAfterInstall: missingBash },
+  ]) {
+    const { calls, deps, queryClient } = fixture({
+      gitBash: missingBash,
+      ...options,
+    });
+    const phases = [];
+    assert.equal(
+      await autoPickColonyAgent(
+        {
+          queryClient,
+          isCurrent: () => true,
+          business,
+          communityId: "b",
+          onShellTools: (active) => phases.push(active),
+        },
+        deps,
+      ),
+      false,
+      JSON.stringify(options),
+    );
+    assert.ok(names(calls).includes("installShellTools"));
+    assert.ok(!names(calls).includes("proveBusiness"));
+    assert.deepEqual(phases, [true, false], "the screen is never left waiting");
+  }
+});
+
+test("nothing is downloaded when Claude or Codex works, bash exists, or this is not Windows", async () => {
+  for (const options of [
+    { runtimes: [claude(), bundled()], gitBash: missingBash },
+    { gitBash: freshBash },
+    { gitBash: null },
+    { access: "not-free", gitBash: missingBash },
+  ]) {
+    const { calls, deps, queryClient } = fixture(options);
+    await autoPickColonyAgent(
+      { queryClient, isCurrent: () => true, business, communityId: "b" },
+      deps,
+    );
+    assert.ok(
+      !names(calls).includes("installShellTools"),
+      JSON.stringify(options),
+    );
+  }
+});
+
+test("a superseded attempt stops after the shell tools and proves nothing", async () => {
+  let current = true;
+  const { calls, deps, queryClient } = fixture({
+    gitBash: missingBash,
+    installOk: true,
+    gitBashAfterInstall: freshBash,
+  });
+  const install = deps.installShellTools;
+  deps.installShellTools = async () => {
+    const ok = await install();
+    current = false;
+    return ok;
+  };
+  const phases = [];
+  assert.equal(
+    await autoPickColonyAgent(
+      {
+        queryClient,
+        isCurrent: () => current,
+        business,
+        communityId: "b",
+        onShellTools: (active) => phases.push(active),
+      },
+      deps,
+    ),
+    false,
+  );
+  assert.ok(!names(calls).includes("proveBusiness"));
+  assert.deepEqual(phases, [true, false]);
 });
