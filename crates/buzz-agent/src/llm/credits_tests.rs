@@ -236,6 +236,29 @@ async fn a_scout_session_that_has_used_tools_is_sent_not_refused() {
 }
 
 #[tokio::test]
+async fn no_message_carries_a_null_field_the_relay_refuses() {
+    let gateway = scout_session::gateway().await;
+    // A user turn, two shell rounds and the next user turn: every role a real
+    // session sends.
+    gateway.send(&scout_session::history(2, 100)).await.unwrap();
+    let sent = gateway.sent.lock().unwrap();
+    let messages = sent[0].1["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 7);
+    for message in messages {
+        // The relay reads a present `tool_calls` as a claim about the turn, so a
+        // `null` on a system or user message got the whole request refused.
+        assert!(
+            message.as_object().unwrap().values().all(|v| !v.is_null()),
+            "{message}"
+        );
+    }
+    assert_eq!(
+        messages[2]["tool_calls"][0]["function"]["name"],
+        "dev__shell"
+    );
+}
+
+#[tokio::test]
 async fn a_screenshot_in_a_tool_result_is_described_not_refused() {
     let gateway = scout_session::gateway().await;
     gateway

@@ -556,6 +556,16 @@ pub(in crate::api) mod scout_session {
         json!({"session_id":session,"request_id":request,
             "messages":messages(rounds, result_bytes),"tools":tools()})
     }
+
+    /// The exact bytes the packaged 3.0.9 client posted. Captured from the
+    /// shipped `buzz-acp connection-test` (the onboarding first hello) and from a
+    /// shipped `buzz-agent` shell round, each against a loopback recorder. Every
+    /// message that is not an assistant turn with calls carries `"tool_calls":
+    /// null`, which no hand-built body in these tests ever had.
+    pub(in crate::api) const PACKAGED_FIRST_HELLO: &str =
+        include_str!("testdata/packaged_first_hello.json");
+    pub(in crate::api) const PACKAGED_TOOL_ROUND: &str =
+        include_str!("testdata/packaged_tool_round.json");
 }
 
 #[cfg(test)]
@@ -842,6 +852,84 @@ mod tests {
             "messages":[{"role":"user","content":"Hello Colony"}]});
         let (_, reserve) = upstream.request(&managed(value)).unwrap();
         assert!(reserve >= 1, "{reserve}");
+    }
+
+    fn admit(value: Value) -> Result<(Value, i64), ()> {
+        managed(value)
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS,
+            )
+            .map_err(|_| ())
+    }
+
+    /// The forwarded messages must carry no explicit null: providers read a
+    /// present `tool_calls` key as a claim about the turn.
+    fn assert_no_null_fields(body: &Value) {
+        for message in body["messages"].as_array().unwrap() {
+            assert!(
+                message.as_object().unwrap().values().all(|v| !v.is_null()),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_packaged_first_hello_is_admitted_and_forwarded_without_nulls() {
+        // The onboarding proof of the shipped app: two messages, no tools, and
+        // `"tool_calls": null` on both. The relay refused it as unsupported.
+        let value: Value = serde_json::from_str(scout_session::PACKAGED_FIRST_HELLO).unwrap();
+        assert!(value["messages"][0]["tool_calls"].is_null());
+        assert!(value["messages"][0].get("tool_calls").is_some());
+        let (body, reserve) = admit(value).unwrap();
+        assert_eq!(body["messages"].as_array().unwrap().len(), 2);
+        assert_no_null_fields(&body);
+        assert!((1..=400_000_000).contains(&reserve), "{reserve}");
+    }
+
+    #[test]
+    fn the_packaged_tool_round_is_admitted_and_keeps_its_calls() {
+        let value: Value = serde_json::from_str(scout_session::PACKAGED_TOOL_ROUND).unwrap();
+        let (body, _) = admit(value).unwrap();
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_no_null_fields(&body);
+        assert_eq!(
+            messages[2]["tool_calls"][0]["function"]["name"],
+            "dev__shell"
+        );
+        assert_eq!(messages[3]["tool_call_id"], "call_1");
+        assert_eq!(body["tools"].as_array().unwrap().len(), 5);
+    }
+
+    #[test]
+    fn an_empty_or_null_optional_field_means_the_same_as_an_absent_one() {
+        let value = json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[
+                {"role":"system","content":"s","tool_calls":null,"tool_call_id":null,"name":null},
+                {"role":"assistant","content":"hi","tool_calls":[]},
+                {"role":"user","content":"u"}]});
+        let (body, _) = admit(value).unwrap();
+        assert_no_null_fields(&body);
+        assert!(body["messages"][1].get("tool_calls").is_none());
+    }
+
+    #[test]
+    fn a_session_may_carry_every_tool_the_agent_can_register() {
+        // The agent registers up to 128 MCP tools and adds `load_skill` itself.
+        let tools = |count: usize| {
+            (0..count)
+                .map(|i| json!({"type":"function","function":{"name":format!("t{i}"),"description":"d","parameters":{"type":"object"}}}))
+                .collect::<Vec<_>>()
+        };
+        let request = |count: usize| {
+            json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+                "messages":[{"role":"user","content":"hi"}],"tools":tools(count)})
+        };
+        assert!(admit(request(129)).is_ok());
+        assert!(admit(request(161)).is_err());
     }
 
     #[test]
