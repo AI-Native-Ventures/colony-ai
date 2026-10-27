@@ -77,7 +77,28 @@ fn routes(gateway: Gateway) -> Router {
     let conversation = Router::new()
         .route("/managed-inference", post(inference))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(MAX_BODY));
-    small.merge(conversation).with_state(gateway)
+    small
+        .merge(conversation)
+        .layer(axum::middleware::from_fn(log_body_limit))
+        .with_state(gateway)
+}
+
+/// The limit layer refuses an oversized body before any handler runs, so name
+/// that refusal here. Like every other refusal, it logs the rule and never the
+/// request.
+async fn log_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let response = next.run(request).await;
+    if response.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        tracing::warn!(
+            check = "body_over_limit",
+            status = 413,
+            "Colony gateway refused a request body over the route limit"
+        );
+    }
+    response
 }
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
@@ -118,6 +139,18 @@ fn unavailable() -> (StatusCode, Json<Value>) {
         StatusCode::SERVICE_UNAVAILABLE,
         "Colony credits are unavailable. Try again later.",
     )
+}
+/// A 400 that also names the check that refused it in the relay log. The log
+/// carries the rule, never the request's content, a key or a value, so an
+/// operator can tell why a client was refused without reading anyone's prompt.
+fn refuse(check: &'static str, reason: &'static str) -> (StatusCode, Json<Value>) {
+    tracing::warn!(
+        check,
+        status = 400,
+        reason,
+        "Colony gateway refused a request"
+    );
+    api_error(StatusCode::BAD_REQUEST, reason)
 }
 fn recovering() -> (StatusCode, Json<Value>) {
     api_error(
@@ -211,9 +244,9 @@ async fn create_session(
     let (tenant, owner) =
         authenticate(&gateway, &headers, "/api/credits-gateway/sessions", &body).await?;
     let request: SessionRequest = serde_json::from_slice(&body)
-        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid managed session."))?;
+        .map_err(|_| refuse("session_body", "Invalid managed session."))?;
     let agent = nostr::PublicKey::from_hex(&request.agent_pubkey)
-        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid managed agent."))?;
+        .map_err(|_| refuse("agent_pubkey", "Invalid managed agent."))?;
     let session = gateway
         .relay
         .db
@@ -249,7 +282,7 @@ async fn revoke_session(
     )
     .await?;
     let request: RevokeRequest = serde_json::from_slice(&body)
-        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid managed session."))?;
+        .map_err(|_| refuse("revoke_body", "Invalid managed session."))?;
     gateway
         .relay
         .db
@@ -271,9 +304,25 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         &body,
     )
     .await?;
-    let request: ManagedRequest = serde_json::from_slice(&body)
-        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid Colony Agent request."))?;
-    let (mut upstream_body, reserve) = upstream.request(&request).map_err(|_| {
+    let request: ManagedRequest = serde_json::from_slice(&body).map_err(|error| {
+        tracing::warn!(
+            check = "request_parse",
+            category = ?error.classify(),
+            body_bytes = body.len(),
+            status = 400,
+            "Colony gateway refused a managed inference request"
+        );
+        api_error(StatusCode::BAD_REQUEST, "Invalid Colony Agent request.")
+    })?;
+    let (mut upstream_body, reserve) = upstream.request(&request).map_err(|check| {
+        tracing::warn!(
+            check,
+            body_bytes = body.len(),
+            messages = request.messages.len(),
+            tools = request.tools.len(),
+            status = 400,
+            "Colony gateway refused a managed inference request"
+        );
         api_error(
             StatusCode::BAD_REQUEST,
             "Unsupported Colony Agent request or context too large.",
@@ -456,7 +505,7 @@ async fn reconcile(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     }
     let upstream = gateway.upstream.as_ref().ok_or_else(unavailable)?;
     let request: ReconcileRequest = serde_json::from_slice(&body)
-        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid reconciliation request."))?;
+        .map_err(|_| refuse("reconcile_body", "Invalid reconciliation request."))?;
     let record = gateway
         .relay
         .db

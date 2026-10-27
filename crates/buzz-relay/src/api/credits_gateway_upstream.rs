@@ -23,6 +23,12 @@ pub(super) const MAX_BODY: usize = 1024 * 1024;
 /// Most messages in one request. The agent keeps a session's history within its
 /// token window, so a long tool-using session reaches a few hundred.
 const MAX_MESSAGES: usize = 1024;
+/// Most tool definitions in one request. The agent registers at most 128 MCP
+/// tools and adds its own `load_skill`, so a real session never exceeds 129;
+/// the rest is headroom. The 1 MiB body cap bounds what the definitions cost.
+const MAX_TOOLS: usize = 160;
+/// Most tool calls in one assistant message.
+const MAX_TOOL_CALLS: usize = 64;
 /// Prompt tokens the hold assumes for a request when the model's own context
 /// window is not configured: the free Scout model's 262,144.
 const DEFAULT_CONTEXT_TOKENS: i64 = 262_144;
@@ -213,8 +219,10 @@ impl Upstream {
         .unwrap()
     }
 
-    pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), ()> {
-        self.policy.check_model(&self.model)?;
+    pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), Refusal> {
+        self.policy
+            .check_model(&self.model)
+            .map_err(|_| "model_not_allowed")?;
         request.upstream_body(
             &self.model,
             self.openrouter,
@@ -315,6 +323,11 @@ pub(super) struct ManagedRequest {
     pub tools: Vec<Value>,
 }
 
+/// The rule that refused a managed request: a fixed name per check, never any
+/// request content, so the relay can log which rule fired without logging a
+/// prompt, a key or a value.
+pub(super) type Refusal = &'static str;
+
 impl ManagedRequest {
     fn upstream_body(
         &self,
@@ -322,44 +335,30 @@ impl ManagedRequest {
         openrouter: bool,
         prices: Option<&TokenPrices>,
         context_tokens: i64,
-    ) -> Result<(Value, i64), ()> {
-        if self.messages.is_empty() || self.messages.len() > MAX_MESSAGES || self.tools.len() > 64 {
-            return Err(());
+    ) -> Result<(Value, i64), Refusal> {
+        if self.messages.is_empty() {
+            return Err("messages_empty");
         }
-        for message in &self.messages {
-            let object = message.as_object().ok_or(())?;
-            if object.keys().any(|key| {
-                !["role", "content", "tool_calls", "tool_call_id", "name"].contains(&key.as_str())
-            }) {
-                return Err(());
-            }
-            if !matches!(
-                message["role"].as_str(),
-                Some("system" | "user" | "assistant" | "tool")
-            ) {
-                return Err(());
-            }
-            if !message["content"].is_null() && !message["content"].is_string() {
-                return Err(());
-            }
-            // No multimodal content or server-side plugins. Function tools run
-            // inside the managed Colony Agent's existing permission boundary.
-            if let Some(calls) = message.get("tool_calls") {
-                let calls = calls.as_array().ok_or(())?;
-                if calls.len() > 64 || calls.iter().any(|call| call["type"] != "function") {
-                    return Err(());
-                }
-            }
+        if self.messages.len() > MAX_MESSAGES {
+            return Err("messages_over_limit");
         }
+        if self.tools.len() > MAX_TOOLS {
+            return Err("tools_over_limit");
+        }
+        let messages = self
+            .messages
+            .iter()
+            .map(clean_message)
+            .collect::<Result<Vec<_>, _>>()?;
         if self
             .tools
             .iter()
             .any(|tool| tool["type"] != "function" || !tool["function"].is_object())
         {
-            return Err(());
+            return Err("tool_shape");
         }
         let mut body = json!({
-            "model": model, "messages": self.messages, "stream": false,
+            "model": model, "messages": messages, "stream": false,
             "max_tokens": MAX_OUTPUT,
         });
         if openrouter {
@@ -372,9 +371,9 @@ impl ManagedRequest {
         if !self.tools.is_empty() {
             body["tools"] = json!(self.tools);
         }
-        let bytes = serde_json::to_vec(&body).map_err(|_| ())?;
+        let bytes = serde_json::to_vec(&body).map_err(|_| "body_serialize")?;
         if bytes.len() > MAX_BODY {
-            return Err(());
+            return Err("body_over_limit");
         }
         // Two tokens per serialized UTF-8 byte plus 32768 framing tokens is a
         // conservative upper bound for this text-only, bounded-message model,
@@ -382,23 +381,71 @@ impl ManagedRequest {
         // asks for more than that. max_price is USD / million tokens. Bill only
         // actual returned cost.
         let prompt_bound =
-            (i64::try_from(bytes.len()).map_err(|_| ())? * 2 + 32768).min(context_tokens);
+            (i64::try_from(bytes.len()).map_err(|_| "body_size")? * 2 + 32768).min(context_tokens);
         let ceiling = TokenPrices::openrouter_ceiling();
         let hold_prices = if openrouter {
             &ceiling
         } else {
-            prices.ok_or(())?
+            prices.ok_or("price_table_missing")?
         };
         // A model priced at zero (a free one) still holds one nanousd: the ledger
         // refuses a hold of nothing, and that must not read as an unsupported input.
         let reserve = hold_prices
-            .charge(prompt_bound as u64, MAX_OUTPUT as u64)?
+            .charge(prompt_bound as u64, MAX_OUTPUT as u64)
+            .map_err(|_| "hold_price")?
             .max(1);
         if !(1..=400_000_000).contains(&reserve) {
-            return Err(());
+            return Err("hold_over_ledger_limit");
         }
         Ok((body, reserve))
     }
+}
+
+/// One message as the provider should see it. Text only, no multimodal content
+/// or server-side plugins: function tools run inside the managed Colony Agent's
+/// existing permission boundary.
+///
+/// An explicit `null` (or an empty list) for an optional field means the same as
+/// leaving it out, and is dropped. The shipped client sends `"tool_calls": null`
+/// on every system, user and tool message, and a provider would read a present
+/// key as a claim about the turn.
+fn clean_message(message: &Value) -> Result<Value, Refusal> {
+    let mut object = message.as_object().ok_or("message_not_object")?.clone();
+    if object.keys().any(|key| {
+        !["role", "content", "tool_calls", "tool_call_id", "name"].contains(&key.as_str())
+    }) {
+        return Err("message_key_not_allowed");
+    }
+    for key in ["tool_calls", "tool_call_id", "name"] {
+        if object.get(key).is_some_and(Value::is_null) {
+            object.remove(key);
+        }
+    }
+    if !matches!(
+        object.get("role").and_then(Value::as_str),
+        Some("system" | "user" | "assistant" | "tool")
+    ) {
+        return Err("message_role");
+    }
+    if !object
+        .get("content")
+        .is_none_or(|content| content.is_null() || content.is_string())
+    {
+        return Err("message_content");
+    }
+    if let Some(calls) = object.get("tool_calls") {
+        let calls = calls.as_array().ok_or("tool_calls_not_array")?;
+        if calls.len() > MAX_TOOL_CALLS {
+            return Err("tool_calls_over_limit");
+        }
+        if calls.iter().any(|call| call["type"] != "function") {
+            return Err("tool_call_type");
+        }
+        if calls.is_empty() {
+            object.remove("tool_calls");
+        }
+    }
+    Ok(Value::Object(object))
 }
 
 pub(super) struct ObservedResponse {
@@ -930,6 +977,83 @@ mod tests {
         };
         assert!(admit(request(129)).is_ok());
         assert!(admit(request(161)).is_err());
+    }
+
+    #[test]
+    fn a_refusal_names_the_check_that_fired_and_nothing_else() {
+        // The relay logs this name on every 400, so an operator can tell which
+        // rule refused a client. It is a fixed word, never request content.
+        let refused = |messages: Value, tools: Value| {
+            managed(
+                json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+                "messages":messages,"tools":tools}),
+            )
+            .upstream_body(
+                MODEL,
+                true,
+                Some(&TokenPrices::openrouter_ceiling()),
+                DEFAULT_CONTEXT_TOKENS,
+            )
+            .unwrap_err()
+        };
+        let user = json!({"role":"user","content":"hi"});
+        let ok = || json!([user.clone()]);
+        assert_eq!(refused(json!([]), json!([])), "messages_empty");
+        assert_eq!(refused(json!(["text"]), json!([])), "message_not_object");
+        assert_eq!(
+            refused(
+                json!([{"role":"user","content":"hi","model":"x"}]),
+                json!([])
+            ),
+            "message_key_not_allowed"
+        );
+        assert_eq!(
+            refused(json!([{"role":"developer","content":"hi"}]), json!([])),
+            "message_role"
+        );
+        assert_eq!(
+            refused(
+                json!([{"role":"user","content":[{"type":"text","text":"hi"}]}]),
+                json!([])
+            ),
+            "message_content"
+        );
+        assert_eq!(
+            refused(
+                json!([{"role":"assistant","content":"","tool_calls":"x"}]),
+                json!([])
+            ),
+            "tool_calls_not_array"
+        );
+        assert_eq!(
+            refused(
+                json!([{"role":"assistant","content":"","tool_calls":[{"type":"code","id":"1"}]}]),
+                json!([])
+            ),
+            "tool_call_type"
+        );
+        assert_eq!(refused(ok(), json!([{"type":"web_search"}])), "tool_shape");
+        assert_eq!(
+            refused(
+                ok(),
+                json!((0..=MAX_TOOLS).map(|_| json!({})).collect::<Vec<_>>())
+            ),
+            "tools_over_limit"
+        );
+        assert_eq!(
+            refused(
+                json!((0..=MAX_MESSAGES).map(|_| user.clone()).collect::<Vec<_>>()),
+                json!([])
+            ),
+            "messages_over_limit"
+        );
+        assert_eq!(
+            refused(
+                json!([{"role":"user","content":"x".repeat(MAX_BODY)}]),
+                json!([])
+            ),
+            "body_over_limit"
+        );
     }
 
     #[test]
