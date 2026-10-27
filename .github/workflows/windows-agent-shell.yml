@@ -1,0 +1,83 @@
+name: Windows agent shell
+
+# A fresh Windows PC has no Git for Windows, so Colony downloads its own pinned
+# MinGit for the Colony Agent's shell tool. The everyday gate (ci.yml) has no
+# Windows runner (the Windows lane only runs in the manual "CI full suite"), so
+# this small workflow runs on a pull request that touches the code that
+# decision depends on. It runs the decision and installer tests on Windows, then
+# proves the real pin: Colony's own installer downloads the real zip (SHA256
+# checked), and the agent's real shell tool runs git and the Unix tools from it
+# with only System32 on PATH. Retries cover a flaky network; a wrong pin fails
+# every attempt.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-agent-shell.yml"
+      - "crates/buzz-dev-mcp/**"
+      - "desktop/src-tauri/Cargo.toml"
+      - "desktop/src-tauri/src/managed_agents/git_bash.rs"
+      - "desktop/src-tauri/src/managed_agents/managed_git*.rs"
+      - "desktop/src-tauri/src/managed_agents/readiness.rs"
+      - "desktop/src-tauri/src/commands/agent_discovery.rs"
+      - "desktop/src-tauri/src/commands/agent_discovery/managed_*.rs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-agent-shell-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows-agent-shell:
+    name: Windows agent shell (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    # Windows runners are slow and this compiles the Tauri crate cold.
+    timeout-minutes: 60
+    env:
+      TARGET: x86_64-pc-windows-msvc
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      COLONY_LIVE_MINGIT_DIR: ${{ runner.temp }}\colony-live-mingit
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # MSVC needs windows.h (aws-lc-sys et al.), so this runs on a real Windows
+      # runner. The toolchain comes from the repo-root rust-toolchain.toml.
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: |
+            .
+            desktop/src-tauri
+          key: windows-agent-shell
+          save-if: ${{ github.event_name != 'pull_request' }}
+      # Tauri validates externalBin at compile time, so the Tauri-crate steps
+      # fail without these stubs. Same naming as _ci-rust.yml's Windows job.
+      - name: Create sidecar placeholders
+        shell: bash
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          for bin in buzz-acp buzz-agent buzz-dev-mcp git-credential-nostr buzz; do
+            touch "desktop/src-tauri/binaries/${bin}-${TARGET}.exe"
+          done
+      - name: Test (shell decision, installer and Git Bash resolver)
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --target $env:TARGET -- managed_git git_bash
+      - name: Test (buzz-dev-mcp)
+        # Serial: windows_resolver_tests mutate process-global env
+        # (BUZZ_SHELL/GIT_BASH/SystemRoot) that SharedState::new reads.
+        run: cargo test -p buzz-dev-mcp --target $env:TARGET -- --test-threads=1
+      - name: Live check (Colony's own shell tools install and run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cargo test --manifest-path desktop/src-tauri/Cargo.toml --target "$TARGET" managed_git_live -- --ignored --nocapture; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "ERROR: Colony's shell tools did not install in 3 attempts" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+      - name: Live check (agent shell tool on Colony's own bash)
+        run: cargo test -p buzz-dev-mcp --target $env:TARGET live_mingit -- --ignored --test-threads=1 --nocapture
