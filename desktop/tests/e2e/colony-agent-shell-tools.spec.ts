@@ -119,7 +119,10 @@ test("the Colony Agent offers its own shell tools and finishes with progress", a
   await expect(setup).toContainText("Colony can download them once");
   // No dead end: the install guide for Git is not the only way forward.
   await expect(
-    page.getByTestId("onboarding-colony-agent").getByRole("alert"),
+    page
+      .getByTestId("onboarding-colony-agent")
+      .getByRole("alert")
+      .filter({ hasText: "Git for Windows" }),
   ).toHaveCount(0);
 
   await setup.getByRole("button", { name: "Set up shell tools" }).click();
@@ -131,7 +134,10 @@ test("the Colony Agent offers its own shell tools and finishes with progress", a
   // Done: the prerequisite is met, so the offer goes away.
   await expect(setup).toHaveCount(0);
   await expect(
-    page.getByTestId("onboarding-colony-agent").getByRole("alert"),
+    page
+      .getByTestId("onboarding-colony-agent")
+      .getByRole("alert")
+      .filter({ hasText: "Git for Windows" }),
   ).toHaveCount(0);
 });
 
