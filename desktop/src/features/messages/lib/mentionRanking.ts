@@ -96,44 +96,56 @@ export function pickDefaultAgentCandidate<T extends MentionCandidateForRanking>(
       index,
     ]),
   );
-  return (
-    candidates
-      .filter((candidate) => candidate.isAgent && Boolean(candidate.pubkey))
-      .sort((left, right) => {
-        const leftRecentRank = left.pubkey
-          ? recentMentionRankByPubkey.get(normalizePubkey(left.pubkey))
-          : undefined;
-        const rightRecentRank = right.pubkey
-          ? recentMentionRankByPubkey.get(normalizePubkey(right.pubkey))
-          : undefined;
-        const recentDiff =
-          (leftRecentRank ?? recentMentionPubkeys.length) -
-          (rightRecentRank ?? recentMentionPubkeys.length);
-        if (recentDiff !== 0) return recentDiff;
-        const activeDiff =
-          Number(right.isActiveAgent === true) -
-          Number(left.isActiveAgent === true);
-        if (activeDiff !== 0) return activeDiff;
-        const memberDiff = Number(right.isMember) - Number(left.isMember);
-        if (memberDiff !== 0) return memberDiff;
-        const runnableDiff =
-          Number(
-            Boolean(right.personaId) &&
-              activePersonaIds.has(right.personaId ?? ""),
-          ) -
-          Number(
-            Boolean(left.personaId) &&
-              activePersonaIds.has(left.personaId ?? ""),
-          );
-        if (runnableDiff !== 0) return runnableDiff;
-        const labelDiff = (left.displayName ?? "").localeCompare(
-          right.displayName ?? "",
-          undefined,
-          { sensitivity: "base" },
+  const ranked = candidates
+    .filter((candidate) => candidate.isAgent && Boolean(candidate.pubkey))
+    .sort((left, right) => {
+      const leftRecentRank = left.pubkey
+        ? recentMentionRankByPubkey.get(normalizePubkey(left.pubkey))
+        : undefined;
+      const rightRecentRank = right.pubkey
+        ? recentMentionRankByPubkey.get(normalizePubkey(right.pubkey))
+        : undefined;
+      const recentDiff =
+        (leftRecentRank ?? recentMentionPubkeys.length) -
+        (rightRecentRank ?? recentMentionPubkeys.length);
+      if (recentDiff !== 0) return recentDiff;
+      const activeDiff =
+        Number(right.isActiveAgent === true) -
+        Number(left.isActiveAgent === true);
+      if (activeDiff !== 0) return activeDiff;
+      const memberDiff = Number(right.isMember) - Number(left.isMember);
+      if (memberDiff !== 0) return memberDiff;
+      const runnableDiff =
+        Number(
+          Boolean(right.personaId) &&
+            activePersonaIds.has(right.personaId ?? ""),
+        ) -
+        Number(
+          Boolean(left.personaId) && activePersonaIds.has(left.personaId ?? ""),
         );
-        if (labelDiff !== 0) return labelDiff;
-        return (left.pubkey ?? "").localeCompare(right.pubkey ?? "");
-      })[0] ?? null
+      if (runnableDiff !== 0) return runnableDiff;
+      const labelDiff = (left.displayName ?? "").localeCompare(
+        right.displayName ?? "",
+        undefined,
+        { sensitivity: "base" },
+      );
+      if (labelDiff !== 0) return labelDiff;
+      return (left.pubkey ?? "").localeCompare(right.pubkey ?? "");
+    });
+  const best = ranked[0];
+  if (!best || best.isManagedAgent === true) return best ?? null;
+  // Same rule as the picker: among agents that share a name, the one this
+  // device runs is the one to address. `ranked` is best first, so this is the
+  // best of them when several run here.
+  const bestName = sameNameKey(best);
+  return (
+    (bestName
+      ? ranked.find(
+          (candidate) =>
+            candidate.isManagedAgent === true &&
+            sameNameKey(candidate) === bestName,
+        )
+      : undefined) ?? best
   );
 }
 

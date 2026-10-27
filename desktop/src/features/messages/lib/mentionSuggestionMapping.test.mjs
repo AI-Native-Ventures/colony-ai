@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapMentionCandidateToSuggestion } from "./mentionSuggestionMapping.ts";
+import {
+  mapMentionCandidateToSuggestion,
+  pickDefaultAgentSuggestion,
+} from "./mentionSuggestionMapping.ts";
 
 const OWNER = "a".repeat(64);
 
@@ -57,4 +60,30 @@ test("does not attribute people or personas to a device", () => {
     suggestion({ kind: "persona", pubkey: undefined }).agentProvenance,
     undefined,
   );
+});
+
+test("the default agent for the always-address shortcut is the Scout this Mac runs", () => {
+  const thisMac = "5".repeat(64);
+  const picked = pickDefaultAgentSuggestion({
+    activePersonaIds: new Set(),
+    agentProvenanceReady: true,
+    candidates: [
+      candidate({
+        displayName: "Scout",
+        isActiveAgent: true,
+        pubkey: "7".repeat(64),
+      }),
+      candidate({
+        displayName: "Scout",
+        isManagedAgent: true,
+        isMember: false,
+        pubkey: thisMac,
+      }),
+    ],
+    currentPubkey: OWNER,
+    recentMentionPubkeys: ["7".repeat(64)],
+  });
+
+  assert.equal(picked?.pubkey, thisMac);
+  assert.equal(picked?.agentProvenance, "managed-here");
 });

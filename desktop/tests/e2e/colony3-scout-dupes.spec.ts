@@ -159,4 +159,61 @@ test.describe("One Scout per business", () => {
       path: "test-results/screenshots/scout-picker-1440.png",
     });
   });
+
+  test("the always-address shortcut picks the Scout this Mac runs, not a same-named Scout", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      managedAgents: [{ pubkey: THIS_MAC_SCOUT, name: "Scout" }],
+      relayAgents: oldScoutSeeds(["general"]),
+    });
+    await page.goto(
+      `/#/channels/${GENERAL}?messageId=mock-general-welcome&thread=mock-general-welcome`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await page.evaluate(
+      async ({ channelId, pubkeys }) => {
+        await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("add_channel_members", {
+          channelId,
+          pubkeys,
+          role: "bot",
+        });
+        await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
+          queryKey: ["channels"],
+        });
+        await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
+          queryKey: ["relay-agents"],
+        });
+      },
+      { channelId: GENERAL, pubkeys: OLD_SCOUTS },
+    );
+    // Someone just mentioned one of the earlier-install Scouts, which is what
+    // made the shortcut prefer it over the Scout this Mac runs.
+    await page.evaluate((pubkey) => {
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content: "Please ask Scout",
+        mentionPubkeys: [pubkey],
+      });
+    }, OLD_SCOUTS[0]);
+
+    const composer = page.getByTestId("thread-composer-overlay");
+    const input = composer.getByTestId("message-input");
+    await input.fill("draft text");
+    const isMac = await page.evaluate(() =>
+      /mac|iphone|ipad|ipod/i.test(navigator.platform),
+    );
+    await page.keyboard.press(`${isMac ? "Meta" : "Control"}+Shift+M`);
+
+    await expect(input).toHaveText("@Scout draft text");
+    await expect(
+      composer.getByTestId(`composer-address-lock-${THIS_MAC_SCOUT}`),
+    ).toBeVisible();
+    for (const pubkey of OLD_SCOUTS) {
+      await expect(
+        composer.getByTestId(`composer-address-lock-${pubkey}`),
+      ).toHaveCount(0);
+    }
+  });
 });
