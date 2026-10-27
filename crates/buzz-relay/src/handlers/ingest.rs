@@ -4350,6 +4350,151 @@ mod postgres_tests {
         }
     }
 
+    fn link_preview_snapshot_tag(canonical: &str) -> Vec<String> {
+        [
+            "link-preview",
+            "snapshot",
+            "1",
+            canonical,
+            "Example",
+            "Example",
+            "Description",
+            "",
+            "",
+            "",
+            "",
+        ]
+        .map(String::from)
+        .to_vec()
+    }
+
+    /// Validate `content` carrying one snapshot per entry of `canonicals`,
+    /// the way a client sends them (`new URL(link).href`, so a bare origin
+    /// arrives as `https://example.com/`).
+    fn validate_link_preview_snapshots(content: &str, canonicals: &[&str]) -> Result<(), String> {
+        let snapshots: Vec<Vec<String>> = canonicals
+            .iter()
+            .copied()
+            .map(link_preview_snapshot_tag)
+            .collect();
+        let tags: Vec<Vec<&str>> = snapshots
+            .iter()
+            .map(|snapshot| snapshot.iter().map(String::as_str).collect())
+            .collect();
+        let tag_refs: Vec<&[&str]> = tags.iter().map(Vec::as_slice).collect();
+        let event = make_event_with_tags(KIND_STREAM_MESSAGE, content, &tag_refs);
+        validate_link_preview_tags(&event, "https://media.example.com")
+    }
+
+    #[test]
+    fn link_preview_snapshot_accepts_normalized_form_of_bare_origin() {
+        // GATE-306B: the client builds the canonical with `new URL(href).href`,
+        // which adds the trailing slash to a bare origin. The message text only
+        // has `https://example.com`.
+        for content in [
+            "https://example.com",
+            "see https://example.com",
+            "see https://example.com now",
+            "open https://example.com\nthen report",
+            "(https://example.com)",
+            "[the site](https://example.com)",
+            "visit https://example.com.",
+            "really? https://example.com!",
+            "https://example.com#top",
+        ] {
+            assert_eq!(
+                validate_link_preview_snapshots(content, &["https://example.com/"]),
+                Ok(()),
+                "{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn link_preview_snapshot_accepts_other_equivalent_url_spellings() {
+        for (content, canonical) in [
+            ("https://EXAMPLE.com/Path", "https://example.com/Path"),
+            ("HTTPS://example.com/Path", "https://example.com/Path"),
+            ("https://example.com:443/path", "https://example.com/path"),
+            ("https://example.com?a=1", "https://example.com/?a=1"),
+            ("https://example.com/a/../b", "https://example.com/b"),
+            (
+                "https://example.com/caf\u{e9}",
+                "https://example.com/caf%C3%A9",
+            ),
+            ("https://m\u{fc}nchen.de/x", "https://xn--mnchen-3ya.de/x"),
+        ] {
+            assert_eq!(
+                validate_link_preview_snapshots(content, &[canonical]),
+                Ok(()),
+                "{content} -> {canonical}"
+            );
+        }
+    }
+
+    #[test]
+    fn link_preview_snapshot_still_accepts_verbatim_canonical() {
+        assert_eq!(
+            validate_link_preview_snapshots(
+                "see https://example.com/page?a=1",
+                &["https://example.com/page?a=1"]
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn link_preview_snapshot_rejects_canonical_absent_from_content() {
+        for (content, canonical) in [
+            ("hello", "https://example.com/"),
+            ("https://other.example", "https://example.com/"),
+            // Same host prefix is not the same host.
+            ("https://example.community", "https://example.com/"),
+            ("https://example.com/a", "https://example.com/b"),
+            // A different scheme is not an equivalent spelling.
+            ("http://example.com", "https://example.com/"),
+            ("example.com", "https://example.com/"),
+            // A URL with credentials is a different URL.
+            ("https://user@example.com", "https://example.com/"),
+            ("https://user:pw@example.com/x", "https://example.com/x"),
+        ] {
+            assert!(
+                validate_link_preview_snapshots(content, &[canonical]).is_err(),
+                "{content} -> {canonical}"
+            );
+        }
+    }
+
+    #[test]
+    fn link_preview_snapshot_keeps_scheme_credential_and_fragment_rules() {
+        for (content, canonical) in [
+            ("http://example.com/", "http://example.com/"),
+            ("https://user@example.com/", "https://user@example.com/"),
+            ("https://example.com/#top", "https://example.com/#top"),
+            ("https://example.com", "not a url"),
+        ] {
+            assert!(
+                validate_link_preview_snapshots(content, &[canonical]).is_err(),
+                "{content} -> {canonical}"
+            );
+        }
+    }
+
+    #[test]
+    fn link_preview_snapshot_rejects_duplicates_after_normalization() {
+        assert!(validate_link_preview_snapshots(
+            "https://example.com",
+            &["https://example.com/", "https://example.com/"]
+        )
+        .is_err());
+        // Two spellings of one URL are one snapshot, not two.
+        assert!(validate_link_preview_snapshots(
+            "https://example.com",
+            &["https://example.com", "https://example.com/"]
+        )
+        .is_err());
+    }
+
     fn make_dummy_event() -> Event {
         let keys = nostr::Keys::generate();
         nostr::EventBuilder::new(nostr::Kind::Custom(9), "")
