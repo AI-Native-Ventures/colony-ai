@@ -306,6 +306,28 @@ async fn real_route_charges_returned_cost_before_success_and_never_repeats_retry
 
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
+async fn real_route_admits_a_full_scout_session_and_charges_returned_cost() {
+    let f = fixture(upstream_response()).await;
+    // 100 shell rounds and the 20 real Scout tools: 203 messages, past 64 KiB.
+    let payload = super::super::credits_gateway_upstream::scout_session::request(
+        f.session,
+        Uuid::new_v4(),
+        100,
+        3_000,
+    )
+    .to_string();
+    assert!(payload.len() > 64 * 1024);
+    let (status, value) = call(&f, &payload, "scout-session").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["chargedNanousd"], "12000000");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    let sent = f.sent.lock().unwrap();
+    assert_eq!(sent[0]["messages"].as_array().unwrap().len(), 203);
+    assert_eq!(sent[0]["tools"].as_array().unwrap().len(), 20);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
 async fn real_route_rejects_anonymous_tampered_and_empty_balance_before_upstream() {
     let f = fixture(upstream_response()).await;
     let payload = body(&f, Uuid::new_v4());

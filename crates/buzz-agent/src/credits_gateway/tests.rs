@@ -135,21 +135,81 @@ async fn production_refusals_are_typed_safe_and_never_retried() {
 }
 
 #[tokio::test]
-async fn images_and_oversized_inputs_fail_before_spend() {
+async fn an_image_is_described_and_a_turn_no_trim_can_fit_fails_before_spend() {
     let (origin, captured, task) = fake(200, json!({"choices":[]})).await;
     let gateway =
         CreditsGateway::new(&origin, &Uuid::new_v4().to_string(), Keys::generate(), None).unwrap();
+    // A screenshot is not refused: the turn goes out with a line in its place.
+    gateway
+        .complete(json!({"messages":[
+            {"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]}))
+        .await
+        .unwrap();
+    {
+        let calls = captured.lock().unwrap();
+        let sent: Value = serde_json::from_slice(&calls[0].1).unwrap();
+        assert_eq!(
+            sent["messages"][0]["content"],
+            format!("look\n{OMITTED_PART}")
+        );
+        assert!(!String::from_utf8_lossy(&calls[0].1).contains("AAAA"));
+    }
+    // A part with no type, and a newest turn bigger than the body, cannot be sent.
     for input in [
-        json!({"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:..."}}]}]}),
-        json!({"messages":[{"role":"user","content":"x".repeat(65536)}]}),
+        json!({"messages":[{"role":"user","content":[{"text":"no type"}]}]}),
+        json!({"messages":[{"role":"user","content":"x".repeat(1024 * 1024)}]}),
+        json!({"messages":[]}),
     ] {
         assert!(matches!(
             gateway.complete(input).await,
             Err(AgentError::Credits(CreditRefusal::Unsupported))
         ));
     }
-    assert!(captured.lock().unwrap().is_empty());
+    assert_eq!(captured.lock().unwrap().len(), 1);
     task.abort();
+}
+
+#[test]
+fn trimming_keeps_the_system_message_the_newest_turn_and_whole_tool_rounds() {
+    let session = Uuid::new_v4();
+    let mut messages = vec![json!({"role":"system","content":"rules"})];
+    for i in 0..30 {
+        messages.push(json!({"role":"user","content":format!("turn {i}")}));
+        messages.push(json!({"role":"assistant","content":"","tool_calls":[{"id":format!("c{i}"),"type":"function","function":{"name":"shell","arguments":"{}"}}]}));
+        messages.push(
+            json!({"role":"tool","tool_call_id":format!("c{i}"),"content":"y".repeat(60_000)}),
+        );
+    }
+    let body = fit_body(&session, messages, json!([])).unwrap();
+    assert!(body.len() <= MAX_BODY_BYTES);
+    let sent: Value = serde_json::from_slice(&body).unwrap();
+    let kept = sent["messages"].as_array().unwrap();
+    assert_eq!(kept[0]["content"], "rules");
+    assert_eq!(kept[1]["role"], "user");
+    assert_eq!(kept.last().unwrap()["tool_call_id"], "c29");
+    assert_eq!((kept.len() - 1) % 3, 0, "only whole turns are kept");
+}
+
+#[test]
+fn a_session_may_carry_a_thousand_messages_and_is_trimmed_past_that() {
+    let session = Uuid::new_v4();
+    let turns = |count: usize| {
+        let mut messages = vec![json!({"role":"system","content":"rules"})];
+        messages.extend((0..count).map(|i| json!({"role":"user","content":format!("m{i}")})));
+        messages
+    };
+    let full = fit_body(&session, turns(MAX_MESSAGES - 1), json!([])).unwrap();
+    let sent: Value = serde_json::from_slice(&full).unwrap();
+    assert_eq!(sent["messages"].as_array().unwrap().len(), MAX_MESSAGES);
+    let over = fit_body(&session, turns(MAX_MESSAGES + 10), json!([])).unwrap();
+    let sent: Value = serde_json::from_slice(&over).unwrap();
+    let kept = sent["messages"].as_array().unwrap();
+    assert_eq!(kept.len(), MAX_MESSAGES);
+    assert_eq!(kept[0]["role"], "system");
+    assert_eq!(
+        kept.last().unwrap()["content"],
+        format!("m{}", MAX_MESSAGES + 9)
+    );
 }
 
 #[tokio::test]
