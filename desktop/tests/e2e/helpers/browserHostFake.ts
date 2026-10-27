@@ -41,6 +41,8 @@ export type BrowserHostFakeControls = {
   agentOpened: (fromTabId: string, url: string) => void;
   /** A key pressed while the page, not the app, has focus. */
   shortcut: (tabId: string, action: BrowserShortcutAction) => void;
+  /** Human input inside the embedded browser page. */
+  personInput: (tabId: string) => void;
   finishLoading: (tabId: string) => void;
   crash: (tabId: string) => void;
   /** A link the host refused (`navigation-blocked`). */
@@ -417,6 +419,7 @@ export async function installBrowserHostFake(
           });
       },
       shortcut: (tabId, action) => emit({ type: "shortcut", tabId, action }),
+      personInput: (tabId) => emit({ type: "person-input", tabId }),
       finishLoading: (tabId) => {
         const tab = find(tabId);
         tab.loading = false;

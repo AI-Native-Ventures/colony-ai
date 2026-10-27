@@ -14,7 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { GATE_MARKER, GATE_HOME_PREFIX } from "./packaged-gate.mjs";
-import { DEFAULT_TAB_BOUNDS, createBrowserHost } from "../browser-host.mjs";
+import {
+  BROWSER_HOST_EVENT_CHANNEL,
+  DEFAULT_TAB_BOUNDS,
+  createBrowserHost,
+} from "../browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
   createBrowserBrokerIpcHandler,
@@ -39,7 +43,10 @@ class Contents extends EventEmitter {
   isDestroyed() {
     return this.destroyed;
   }
-  send() {}
+  sent = [];
+  send(...args) {
+    this.sent.push(args);
+  }
   setWindowOpenHandler(handler) {
     this.popup = handler;
   }
@@ -774,7 +781,7 @@ test("packaged grant seam binds one task and origin, preserves refusal hooks and
   const contents = f.browser.agentAdapter.webContents(f.tab.id);
   for (const event of ["will-frame-navigate", "will-redirect"]) {
     for (const [url, blocked] of [
-      [gate.config.origin + "/ok", false],
+      [`${gate.config.origin}/ok`, false],
       ["http://127.0.0.1:43211/private", true],
       ["http://192.168.1.1/", true],
       ["file:///private/secret", true],
@@ -862,6 +869,7 @@ test("the person's key or click in a page is the person; the agent's own input i
   const f = await fixture(t);
   const contents = f.browser.agentAdapter.webContents(f.tab.id);
   const seen = [];
+  f.sender.sent.length = 0;
   f.browser.agentAdapter.onHumanInput((id) => seen.push(id));
   // A pointer move is not use.
   contents.emit("input-event", {}, { type: "mouseMove" });
@@ -881,6 +889,15 @@ test("the person's key or click in a page is the person; the agent's own input i
     contents.emit("input-event", {}, { type });
   }
   assert.deepEqual(seen, [f.tab.id, f.tab.id, f.tab.id, f.tab.id]);
+  assert.deepEqual(
+    f.sender.sent.filter(([channel]) => channel === BROWSER_HOST_EVENT_CHANNEL),
+    [
+      [BROWSER_HOST_EVENT_CHANNEL, { type: "person-input", tabId: f.tab.id }],
+      [BROWSER_HOST_EVENT_CHANNEL, { type: "person-input", tabId: f.tab.id }],
+      [BROWSER_HOST_EVENT_CHANNEL, { type: "person-input", tabId: f.tab.id }],
+      [BROWSER_HOST_EVENT_CHANNEL, { type: "person-input", tabId: f.tab.id }],
+    ],
+  );
   assert.equal(
     typeof f.browser.agentAdapter.getTab(f.tab.id).humanInputAt,
     "number",

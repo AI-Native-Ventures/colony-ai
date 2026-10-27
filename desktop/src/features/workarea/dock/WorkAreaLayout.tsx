@@ -7,6 +7,11 @@ import {
 import { hasPrimaryShortcutModifier } from "@/shared/lib/platform";
 import { useRelayOrigin } from "@/shared/lib/useRelayOrigin";
 
+import {
+  clearAgentBrowserConversationView,
+  noteWorkAreaPersonActivity,
+  setAgentBrowserConversationView,
+} from "../browser/agentBrowserPresentation";
 import { listenForFilesTab, listenForWorkspaceFiles } from "../workspaceFiles";
 import {
   closeWorkAreaRestoringFocus,
@@ -81,8 +86,55 @@ export function WorkAreaLayout({
 }) {
   const state = useWorkAreaDock(channelId);
   const layoutRef = React.useRef<HTMLDivElement>(null);
+  const browserViewOwner = React.useRef<object>({});
   const overlay = useOverlayMode(layoutRef);
   const relayOrigin = useRelayOrigin();
+
+  React.useLayoutEffect(() => {
+    setAgentBrowserConversationView(
+      browserViewOwner.current,
+      channelId
+        ? {
+            channelId,
+            channelType: channel?.channelType ?? "stream",
+            threadRootId: channel?.threadRootId,
+          }
+        : null,
+    );
+    return () => clearAgentBrowserConversationView(browserViewOwner.current);
+  }, [channelId, channel?.channelType, channel?.threadRootId]);
+
+  const noteDockActivity = React.useCallback(
+    (event: Event) => {
+      if (
+        !channelId ||
+        !(event.target instanceof Element) ||
+        !event.target.closest('[data-testid="work-area-panel"]')
+      ) {
+        return;
+      }
+      queueMicrotask(() => {
+        const activeTabId = getWorkAreaState(channelId).activeTabId;
+        if (activeTabId) noteWorkAreaPersonActivity(channelId, activeTabId);
+      });
+    },
+    [channelId],
+  );
+
+  React.useLayoutEffect(() => {
+    const layout = layoutRef.current;
+    if (!layout) return;
+    layout.addEventListener("click", noteDockActivity);
+    layout.addEventListener("input", noteDockActivity, true);
+    layout.addEventListener("keydown", noteDockActivity);
+    layout.addEventListener("pointerdown", noteDockActivity, true);
+    return () => {
+      layout.removeEventListener("click", noteDockActivity);
+      layout.removeEventListener("input", noteDockActivity, true);
+      layout.removeEventListener("keydown", noteDockActivity);
+      layout.removeEventListener("pointerdown", noteDockActivity, true);
+    };
+  }, [noteDockActivity]);
 
   const tabs = React.useMemo(
     () =>

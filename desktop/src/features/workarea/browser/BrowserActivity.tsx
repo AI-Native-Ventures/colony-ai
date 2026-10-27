@@ -71,16 +71,22 @@ export function useBrowserActivityLabel(
   });
 }
 
-/** Open the dock on the page the agent works in. The person asked to watch. */
+/** Open the dock on the newest page the agent is using. The person asked to view. */
 export function watchBrowserActivity(
   channelId: string,
   activities: readonly BrowserActivity[],
 ) {
-  const hostId = activities.flatMap((item) => item.hostIds)[0];
+  const newest = activities[0];
+  const hostIds = newest?.hostIds ?? [];
+  const hostId = hostIds[hostIds.length - 1];
   const page = hostId ? getBrowserPageByHost(hostId) : null;
   if (page && page.channelId === channelId)
     openWorkArea(channelId, "browser", browserTabId(page.key));
   else openWorkArea(channelId);
+}
+
+export function watchLatestBrowserActivity(channelId: string) {
+  watchBrowserActivity(channelId, getBrowserActivityForChannel(channelId));
 }
 
 /** The channel header's button: the way to watch an agent that is working. */
@@ -110,12 +116,12 @@ function ChannelBrowserActivityButtonBody({
   const asking = activities.some((item) => item.state === "needs-you");
   return (
     <button
-      aria-label={`${label}. Watch`}
+      aria-label={`${label}. View`}
       className="c3c-icon-button relative"
       data-state={asking ? "needs-you" : "working"}
       data-testid="channel-browser-activity"
       onClick={() => watchBrowserActivity(channelId, activities)}
-      title={`${label}. Click to watch`}
+      title={`${label}. Click to view`}
       type="button"
     >
       <Globe aria-hidden="true" className="size-[18px]" strokeWidth={2.2} />
@@ -174,7 +180,7 @@ function ChannelBrowserBadgeBody({
       data-state={asking ? "needs-you" : "working"}
       data-testid={`channel-browser-${channelName}`}
       role="img"
-      title={label}
+      title={`${label}. Click this conversation to view`}
     >
       <Globe aria-hidden="true" className="size-3.5" strokeWidth={2.4} />
     </span>

@@ -7,9 +7,8 @@ import type {
 /**
  * Who is using the browser right now, for the small "Scout is using the
  * browser" marks (the channel in the sidebar, the channel header and the page's
- * tab). An AI employee works in a page without the dock open, so these marks
- * are how the person knows, and how they choose to watch: they click one. The
- * dock never opens or switches by itself.
+ * tab). These marks tell the person where agents are working and let them open
+ * the newest agent page when they choose to watch.
  *
  * Two states per agent and channel. `working`: it did something in the last few
  * seconds. `needs-you`: it is stopped on a question only the person can answer
@@ -36,6 +35,7 @@ export type BrowserActivity = {
 type Entry = {
   agentId: string;
   channelId: string;
+  lastTouched: number;
   working: { until: number; hostIds: Set<string> } | null;
   questions: Map<string, { until: number; hostId: string | null }>;
 };
@@ -44,6 +44,7 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const TASK = new RegExp(`^(?:conversation:(${UUID})|thread:(${UUID}):)`, "u");
 
 let clock: () => number = () => Date.now();
+let activitySequence = 0;
 const entries = new Map<string, Entry>();
 const grantOwners = new Map<string, { agentId: string; channelId: string }>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -130,7 +131,13 @@ function entryFor(agentId: string, channelId: string): Entry {
   const key = keyOf(agentId, channelId);
   let entry = entries.get(key);
   if (!entry) {
-    entry = { agentId, channelId, working: null, questions: new Map() };
+    entry = {
+      agentId,
+      channelId,
+      lastTouched: 0,
+      working: null,
+      questions: new Map(),
+    };
     entries.set(key, entry);
   }
   return entry;
@@ -139,7 +146,11 @@ function entryFor(agentId: string, channelId: string): Entry {
 function markWorking(agentId: string, channelId: string, hostId?: string) {
   const entry = entryFor(agentId, channelId);
   const hostIds = entry.working?.hostIds ?? new Set<string>();
-  if (hostId) hostIds.add(hostId);
+  if (hostId) {
+    hostIds.delete(hostId);
+    hostIds.add(hostId);
+  }
+  entry.lastTouched = ++activitySequence;
   entry.working = { until: clock() + BROWSER_ACTIVITY_MS, hostIds };
   settle(entry);
 }
@@ -151,6 +162,7 @@ function ask(
   hostId: string | null,
 ) {
   const entry = entryFor(agentId, channelId);
+  entry.lastTouched = ++activitySequence;
   entry.questions.set(questionId, {
     until: clock() + BROWSER_QUESTION_MS,
     hostId,
@@ -263,6 +275,7 @@ export function getBrowserActivityForChannel(
   if (cached) return cached;
   const list = [...entries.values()]
     .filter((entry) => entry.channelId === channelId)
+    .sort((left, right) => right.lastTouched - left.lastTouched)
     .map(activitiesOf)
     .filter((item): item is BrowserActivity => item !== null);
   const result = list.length === 0 ? NONE : Object.freeze(list);
@@ -293,6 +306,7 @@ export function resetBrowserActivity() {
   timers.clear();
   const had = entries.size > 0;
   entries.clear();
+  activitySequence = 0;
   grantOwners.clear();
   if (had) publish();
 }
