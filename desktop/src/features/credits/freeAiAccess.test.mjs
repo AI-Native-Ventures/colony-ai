@@ -110,3 +110,40 @@ test("the account answer decides free and sends one signed same-origin GET", asy
   assert.match(init.headers.Authorization, /^Nostr [A-Za-z0-9+/=]+$/);
   assert.equal(init.method, undefined);
 });
+
+test("a business relay is asked directly, never the app's own root relay", async () => {
+  const { deps, calls } = fixture();
+  assert.equal(
+    await readFreeAiAccess(deps, "wss://north-star.example.test/"),
+    "free",
+  );
+  const urls = calls.filter(([kind]) => kind === "fetch").map(([, url]) => url);
+  assert.deepEqual(urls, [
+    "https://north-star.example.test/api/credits-gateway/capabilities",
+    "https://north-star.example.test/api/credits-gateway/access",
+  ]);
+  // The signed request names the same host the relay will check it against.
+  const signed = calls.find(([kind]) => kind === "sign")[1];
+  assert.deepEqual(signed.tags[0], [
+    "u",
+    "https://north-star.example.test/api/credits-gateway/access",
+  ]);
+});
+
+test("a loopback development relay keeps its plain http address", async () => {
+  const { deps, calls } = fixture();
+  await readFreeAiAccess(deps, "ws://localhost:3000");
+  assert.equal(
+    calls.find(([kind]) => kind === "fetch")[1],
+    "http://localhost:3000/api/credits-gateway/capabilities",
+  );
+});
+
+test("without a business relay the app's own relay is asked", async () => {
+  const { deps, calls } = fixture();
+  await readFreeAiAccess(deps);
+  assert.equal(
+    calls.find(([kind]) => kind === "fetch")[1],
+    "https://relay.example/api/credits-gateway/capabilities",
+  );
+});

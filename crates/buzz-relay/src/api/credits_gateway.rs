@@ -81,8 +81,13 @@ async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
 
 /// Whether the signed-in owner's account uses the gateway without credits. The
 /// answer is about the caller's own account only and names no email or list.
+///
+/// Signer-only on purpose: a returning device asks this before it opens any
+/// business, so the host is the root one, where the owner is not a member. The
+/// reply reveals nothing but the caller's own status, like the payments reads.
+/// Opening a session and spending stay behind community membership.
 async fn access(State(gateway): State<Gateway>, headers: HeaderMap) -> ApiResult {
-    let (_, owner) = authenticate_as(
+    let (tenant, owner, _) = authenticate_signer(
         &gateway,
         &headers,
         "GET",
@@ -90,6 +95,7 @@ async fn access(State(gateway): State<Gateway>, headers: HeaderMap) -> ApiResult
         None,
     )
     .await?;
+    bridge::enforce_http_admission(&gateway.relay, &tenant, &owner).await?;
     let free_ai = gateway.enabled
         && gateway
             .relay

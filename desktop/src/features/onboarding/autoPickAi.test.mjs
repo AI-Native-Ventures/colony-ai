@@ -99,8 +99,8 @@ function fixture(options = {}) {
     totalMs: 2,
   };
   const deps = {
-    access: async () => {
-      calls.push(["access"]);
+    access: async (relayUrl) => {
+      calls.push(["access", relayUrl]);
       return options.access ?? "free";
     },
     config: async () => emptyConfig,
@@ -124,8 +124,8 @@ function fixture(options = {}) {
       if (options.proofError) throw new Error(options.proofError);
       return { proof, config: { ...config, saved: true } };
     },
-    proveBusiness: async (config, _isCurrent, business) => {
-      calls.push(["proveBusiness", config, business]);
+    proveBusiness: async (config, _isCurrent, business, relayUrl) => {
+      calls.push(["proveBusiness", config, business, relayUrl]);
       if (options.proofError) throw new Error(options.proofError);
       return { proof, config: { ...config, saved: true } };
     },
@@ -167,6 +167,36 @@ test("a free account with no AI of its own is picked, proven, saved and remember
   const receipt = calls.find(([name]) => name === "receipt");
   assert.equal(receipt[1], "biz-1");
   assert.equal(receipt[2].saved, true);
+});
+
+test("the free check and the proof go to the business's own relay, not the app's root relay", async () => {
+  const { calls, deps, queryClient } = fixture();
+  const relayUrl = "wss://north-star.example.test";
+  assert.equal(
+    await autoPickColonyAgent(
+      {
+        queryClient,
+        isCurrent: () => true,
+        business,
+        communityId: "biz-1",
+        relayUrl,
+      },
+      deps,
+    ),
+    true,
+  );
+  assert.equal(calls.find(([name]) => name === "access")[1], relayUrl);
+  assert.equal(calls.find(([name]) => name === "proveBusiness")[3], relayUrl);
+});
+
+test("without a business relay both fall back to the app's own relay", async () => {
+  const { calls, deps, queryClient } = fixture();
+  await autoPickColonyAgent(
+    { queryClient, isCurrent: () => true, business, communityId: "biz-1" },
+    deps,
+  );
+  assert.equal(calls.find(([name]) => name === "access")[1], undefined);
+  assert.equal(calls.find(([name]) => name === "proveBusiness")[3], undefined);
 });
 
 test("a returning device with no business context proves without a Welcome receipt", async () => {

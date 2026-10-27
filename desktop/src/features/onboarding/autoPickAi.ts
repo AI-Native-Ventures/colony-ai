@@ -96,7 +96,7 @@ export function shellToolsNeeded(
 }
 
 const dependencies = {
-  access: readFreeAiAccess,
+  access: (relayUrl?: string) => readFreeAiAccess(undefined, relayUrl),
   config: getGlobalAgentConfig,
   runtimes: (queryClient: QueryClient) => refreshAcpRuntimes(queryClient),
   gitBash: () => discoverGitBashPrerequisite().catch(() => undefined),
@@ -114,6 +114,12 @@ export type AutoPickRequest = {
   /** The business being opened, so Welcome keeps a real reply to show. */
   business?: { name: string; website: string; description: string };
   communityId?: string;
+  /**
+   * The business's relay (`wss://host`). Before the business is opened the app
+   * is on its root relay, where the owner has joined nothing, so the free-AI
+   * question and the proof turn go to the business itself.
+   */
+  relayUrl?: string;
   /** True while Colony sets up its own shell tools, so the screen can say so. */
   onShellTools?: (active: boolean) => void;
 };
@@ -131,7 +137,7 @@ export async function autoPickColonyAgent(
 ): Promise<boolean> {
   const { queryClient, isCurrent } = request;
   try {
-    const access = await deps.access();
+    const access = await deps.access(request.relayUrl);
     // Not free, or no gateway: skip the runtime scan, Connect handles it.
     if (access !== "free" || !isCurrent()) return false;
     const [runtimes, firstGitBash] = await Promise.all([
@@ -166,7 +172,12 @@ export async function autoPickColonyAgent(
     const candidate = colonyCreditsCandidate(await deps.config());
     if (!isCurrent()) return false;
     const result = request.business
-      ? await deps.proveBusiness(candidate, isCurrent, request.business)
+      ? await deps.proveBusiness(
+          candidate,
+          isCurrent,
+          request.business,
+          request.relayUrl,
+        )
       : await deps.prove(candidate, isCurrent);
     if (!isCurrent()) return false;
     if (request.business && request.communityId)
