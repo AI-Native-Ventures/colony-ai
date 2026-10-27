@@ -181,6 +181,7 @@ fn credits_notice(message: &str) -> &'static str {
         "Usage is being recovered automatically. This turn was stopped; do not resend it automatically." => "Usage is being recovered automatically. This turn was stopped; do not resend it automatically.",
         "This request was already charged. Its response could not be recovered. Start a new conversation turn." => "This request was already charged. Its response could not be recovered. Start a new conversation turn.",
         "Managed session expired or unauthorized. Restart your Colony Agent." => "Managed session expired or unauthorized. Restart your Colony Agent.",
+        "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents." => "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents.",
         "Colony credits are unavailable. Try again later." => "Colony credits are unavailable. Try again later.",
         "Colony credits currently support bounded text and function tools. This input cannot be sent." => "Colony credits currently support bounded text and function tools. This input cannot be sent.",
         _ => "Colony credits could not complete this turn. Automatic replay was stopped. Check your balance and restart your Colony Agent if needed.",

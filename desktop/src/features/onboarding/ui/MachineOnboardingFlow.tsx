@@ -566,6 +566,7 @@ export function MachineOnboardingFlow({
     const { community, profile, origin } = connectTarget;
     return (
       <ConnectSetupStep
+        autoPick
         business={profile}
         communityId={community.id}
         error={error}

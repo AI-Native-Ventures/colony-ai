@@ -477,3 +477,14 @@ fn credits_readiness_and_saved_choice_need_no_key_or_customer_model() {
     assert!(restored.env_vars.is_empty());
     assert!(restored.model.is_none());
 }
+
+#[test]
+fn build_marker_tells_a_release_with_the_flag_from_one_without() {
+    assert!(build_flag_on("colony-credits-gateway-build=on"));
+    assert!(!build_flag_on("colony-credits-gateway-build=off"));
+    // The compiled host carries exactly one of the two literals.
+    assert!(
+        BUILD_FLAG_MARKER == "colony-credits-gateway-build=on"
+            || BUILD_FLAG_MARKER == "colony-credits-gateway-build=off"
+    );
+}

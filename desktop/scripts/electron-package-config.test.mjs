@@ -369,3 +369,34 @@ test("the update test override exists only in a non-release Mac test build", () 
     /release build cannot enable the update test override/,
   );
 });
+
+test("the release native host is built with the Colony Agent gateway flag and the build proves it", () => {
+  const workflow = readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../.github/workflows/electron-package.yml",
+    ),
+    "utf8",
+  );
+  const build = workflow.slice(
+    workflow.indexOf("- name: Build native host"),
+    workflow.indexOf("- name: Verify the production relay is baked"),
+  );
+  // The flag belongs to the release branch only; other packages stay unchanged.
+  assert.match(
+    build,
+    /if \[ "\$RELEASE_BUILD" = "true" \]; then[\s\S]*export COLONY_CREDITS_GATEWAY=1[\s\S]*\n\s*fi\n/,
+  );
+  assert.equal(build.split("COLONY_CREDITS_GATEWAY").length - 1, 1);
+  // The release job must grep the built host for the compiled marker.
+  const verify = workflow.slice(
+    workflow.indexOf("- name: Verify the Colony Agent gateway flag"),
+  );
+  assert.match(verify, /if: inputs\.release/);
+  assert.match(verify, /colony-credits-gateway-build=on/);
+  // The key never reaches a client build.
+  assert.doesNotMatch(
+    workflow,
+    /OPENROUTER_MASTER_KEY|COLONY_CREDITS_UPSTREAM_KEY/,
+  );
+});
