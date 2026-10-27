@@ -37,3 +37,20 @@ test("encodeVoiceNoteWav mixes stereo into mono", () => {
 test("encodeVoiceNoteWav rejects empty recordings", () => {
   assert.throws(() => encodeVoiceNoteWav([], 48_000), /empty voice note/);
 });
+
+test("a maximum-length voice note fits one native request frame", () => {
+  // The renderer sends the WAV to the native host as base64 inside one JSON
+  // line, and the host refuses any frame over 16 MiB (electron/native-host.mjs
+  // MAX_FRAME). A 5-minute note must stay under that with room for the JSON.
+  const maxSeconds = 5 * 60;
+  const inputRate = 48_000;
+  const bytes = encodeVoiceNoteWav(
+    [new Float32Array(maxSeconds * inputRate)],
+    inputRate,
+  );
+  const frameBytes = Math.ceil(bytes.length / 3) * 4 + 4096;
+  assert.ok(
+    frameBytes < 16 * 1024 * 1024,
+    `5-minute voice note needs a ${frameBytes} byte frame`,
+  );
+});

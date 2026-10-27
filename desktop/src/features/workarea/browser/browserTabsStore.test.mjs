@@ -34,6 +34,7 @@ import {
   takeBrowserAddressFocus,
 } from "./browserTabsStore.ts";
 import { browserPageKeyOf, browserTabId } from "./browserTabId.ts";
+import { isPersonActiveInWorkArea } from "./agentBrowserPresentation.ts";
 
 class MemoryStorage {
   data = new Map();
@@ -461,6 +462,18 @@ test("a page an AI employee opened joins the tab strip and nothing else moves", 
   assert.equal(dock.tabs.length, 2);
   const added = dock.tabs.find((tab) => tab.id !== before.activeTabId);
   assert.equal(getBrowserPage(browserPageKeyOf(added.id)).hostId, "host-9");
+});
+
+test("human input in the embedded page marks its dock tab person-active", async () => {
+  initBrowserTabsStore("community-a");
+  initWorkAreaStore("ws://a.example");
+  const key = openPage("chan", "example.com");
+  await settle();
+
+  host.emit({ type: "person-input", tabId: "host-1" });
+
+  assert.equal(isPersonActiveInWorkArea("chan", browserTabId(key)), true);
+  assert.equal(isPersonActiveInWorkArea("chan", "browser:another-page"), false);
 });
 
 test("a popup beyond the dock's tab limit is closed, not orphaned", async () => {

@@ -4,7 +4,10 @@ import {
   hasSameMessageAuthor,
   isWithinGroupingWindow,
 } from "@/features/messages/lib/messageGrouping";
-import { THREAD_PANEL_MESSAGE_GUTTER_CLASS } from "@/features/messages/lib/messageThreadPanelLayout";
+import {
+  getThreadReplySpacingClass,
+  THREAD_PANEL_MESSAGE_GUTTER_CLASS,
+} from "@/features/messages/lib/messageThreadPanelLayout";
 import type { TimelineMessage } from "@/features/messages/types";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { cn } from "@/shared/lib/cn";
@@ -46,12 +49,12 @@ export function MessageThreadTranscript({
 }: MessageThreadTranscriptProps) {
   const renderItems = React.useMemo(() => {
     let previousMessage: TimelineMessage | null = null;
-    return messages.map((message) => {
+    return messages.map((message, index) => {
       const isContinuation =
         hasSameMessageAuthor(previousMessage, message) &&
         isWithinGroupingWindow(previousMessage?.createdAt, message.createdAt);
       previousMessage = message;
-      return { isContinuation, message };
+      return { index, isContinuation, message };
     });
   }, [messages]);
 
@@ -59,13 +62,23 @@ export function MessageThreadTranscript({
     <div
       className={cn(
         THREAD_PANEL_MESSAGE_GUTTER_CLASS,
-        "space-y-0 pb-3 pt-0",
+        "flex flex-col pb-3 pt-0",
         className,
       )}
       data-testid={testId}
     >
-      {renderItems.map(({ isContinuation, message }) => (
-        <React.Fragment key={message.renderKey ?? message.id}>
+      {renderItems.map(({ index, isContinuation, message }) => (
+        <div
+          className={cn(
+            "flex flex-col gap-0",
+            getThreadReplySpacingClass({
+              depth: message.depth,
+              index,
+              isContinuation,
+            }),
+          )}
+          key={message.renderKey ?? message.id}
+        >
           <MessageThreadRow
             channelId={channelId}
             currentPubkey={currentPubkey}
@@ -77,7 +90,7 @@ export function MessageThreadTranscript({
           />
           {/* Above the row's hover padding, so controls under it stay clickable. */}
           <AfterMessage content={renderAfterMessage?.(message)} />
-        </React.Fragment>
+        </div>
       ))}
     </div>
   );

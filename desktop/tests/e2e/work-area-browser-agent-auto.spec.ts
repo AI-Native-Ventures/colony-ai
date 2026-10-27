@@ -13,9 +13,9 @@ import { installBrowserBrokerFake } from "./helpers/browserBrokerFake";
  * respected) is proven in `electron/browser-broker/*.test.mjs` and, against
  * real Electron, in `tests/electron/browser-broker-*.spec.ts`.
  *
- * The person's view never moves for an agent: no dock opens, no tab is
- * selected, no focus is taken. A small mark says an agent is using the
- * browser, and the person chooses to watch by clicking it.
+ * A request for the visible conversation opens its page without moving
+ * keyboard focus. Other conversations stay in the background and use a mark
+ * the person can click to navigate and show the page.
  */
 
 const agentId = "a".repeat(64);
@@ -104,13 +104,15 @@ async function watch(page: Page) {
   await expect(dock(page)).toBeVisible();
 }
 
-test("an agent's first browser call makes it a page and takes control, and the person's screen does not move", async ({
+test("an agent's first browser call shows its page in the visible conversation without taking focus", async ({
   page,
 }, testInfo) => {
   const channelId = await boot(page, "engineering");
   const task = `conversation:${channelId}`;
   // Nothing is open: the person has not touched the work area.
   await expect(dock(page)).toHaveCount(0);
+  const composer = page.getByTestId("message-input");
+  await composer.click();
 
   await ask(page, task);
   await expect.poll(async () => (await grants(page)).length).toBe(1);
@@ -129,23 +131,22 @@ test("an agent's first browser call makes it a page and takes control, and the p
   ]);
   expect(request.payload.tabId).toBe("fake-tab-1");
 
-  // The dock stays shut and no page was attached to the window.
-  await expect(dock(page)).toHaveCount(0);
-  expect(await hostCalls(page, "attach")).toEqual([]);
+  // The visible conversation's page is shown, but focus stays in the composer.
+  await expect(dock(page)).toBeVisible();
+  await expect(controller(page)).toHaveText("Scout has control");
+  await expect(composer).toBeFocused();
 
   // Once it works, a mark says so, in the header and beside the channel.
   await expect(activityButton(page)).toHaveCount(0);
   await acted(page, task);
   await expect(activityButton(page)).toBeVisible();
   await expect(activityButton(page)).toHaveAccessibleName(
-    "Scout is using the browser. Watch",
+    "Scout is using the browser. View",
   );
   await expect(
     page.getByTestId("channel-browser-engineering"),
   ).toHaveAccessibleName("Scout is using the browser");
-  await expect(dock(page)).toHaveCount(0);
-
-  // Watching is the person's choice.
+  // The page is already shown and the View action keeps it available.
   await watch(page);
   await expect(page.getByTestId("browser-agent-controls")).toBeVisible();
   await expect(controller(page)).toHaveText("Scout has control");
@@ -181,9 +182,12 @@ test("an agent working while the person reads another tab never changes the tab,
   await page.getByTestId("work-area-open-files").click();
   await expect(dock(page)).toBeVisible();
   const composer = page.getByTestId("message-input");
+  const filesTab = tabStrip(page).getByRole("tab", { name: "Files" });
+  // Clicking the open dock tab is recent person activity in the work area.
+  await filesTab.click();
+  await expect(filesTab).toHaveAttribute("aria-selected", "true");
   await composer.click();
   await composer.pressSequentially("half a sentence");
-  const filesTab = tabStrip(page).getByRole("tab", { name: "Files" });
   await expect(filesTab).toHaveAttribute("aria-selected", "true");
 
   await ask(page, task);
@@ -214,14 +218,15 @@ test("two agents at once each show, and a click on the mark opens the dock on th
 }) => {
   const channelId = await boot(page, "engineering");
   const task = `conversation:${channelId}`;
+  await page.getByTestId("message-input").click();
   await ask(page, task);
   await expect.poll(async () => (await grants(page)).length).toBe(1);
   await acted(page, task);
   await acted(page, task, otherAgentId);
   await expect(activityButton(page)).toHaveAccessibleName(
-    "Scout and Sage are using the browser. Watch",
+    "Sage and Scout are using the browser. View",
   );
-  await expect(dock(page)).toHaveCount(0);
+  await expect(dock(page)).toBeVisible();
   await watch(page);
   await expect(controller(page)).toHaveText("Scout has control");
 });
@@ -231,10 +236,13 @@ test("the same call in a DM works there too, and a renewed grant keeps the page"
 }) => {
   const channelId = await boot(page, "alice-tyler");
   const task = `conversation:${channelId}`;
+  // Auto-show is only appropriate while Colony is the focused, visible window.
+  await page.getByTestId("message-input").click();
+  expect(await page.evaluate(() => document.hasFocus())).toBe(true);
   await ask(page, task);
   await expect.poll(async () => (await grants(page)).length).toBe(1);
   await acted(page, task);
-  await watch(page);
+  await expect(dock(page)).toBeVisible();
   await expect(controller(page)).toHaveText("Scout has control");
 
   // The grant ran out; the next call asks again and the same page is reused.
@@ -270,7 +278,7 @@ test("after Stop the agent's next call shows one Allow card, marks the agent as 
   await expect(card).toContainText("Scout wants to use the browser again.");
   await expect(controller(page)).toHaveText("AI employees can use this tab");
   await expect(activityButton(page)).toHaveAccessibleName(
-    "Scout needs you in the browser. Watch",
+    "Scout needs you in the browser. View",
   );
   expect(await grants(page)).toHaveLength(1);
   await waitForAnimations(page);
@@ -297,7 +305,7 @@ test("Not now clears the card and leaves the agent without the browser", async (
   // Nothing opened by itself; the mark says the agent waits for the person.
   await expect(dock(page)).toHaveCount(0);
   await expect(activityButton(page)).toHaveAccessibleName(
-    "Scout needs you in the browser. Watch",
+    "Scout needs you in the browser. View",
   );
   await watch(page);
   const card = page.getByTestId("browser-agent-resume");

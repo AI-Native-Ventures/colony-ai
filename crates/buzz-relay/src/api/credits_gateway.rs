@@ -61,16 +61,23 @@ pub fn router(relay: Arc<AppState>) -> Router {
     routes(gateway)
 }
 
+/// Every route but inference takes a few hundred bytes of JSON.
+const SMALL_BODY: usize = 64 * 1024;
+
 fn routes(gateway: Gateway) -> Router {
-    Router::new()
+    // Only a conversation is large: it carries the agent's prompt, its tool
+    // definitions and its history. See `MAX_BODY`.
+    let small = Router::new()
         .route("/capabilities", get(capabilities))
         .route("/access", get(access))
         .route("/sessions", post(create_session))
         .route("/sessions/revoke", post(revoke_session))
-        .route("/managed-inference", post(inference))
         .route("/reconcile", post(reconcile))
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(MAX_BODY))
-        .with_state(gateway)
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(SMALL_BODY));
+    let conversation = Router::new()
+        .route("/managed-inference", post(inference))
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(MAX_BODY));
+    small.merge(conversation).with_state(gateway)
 }
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {

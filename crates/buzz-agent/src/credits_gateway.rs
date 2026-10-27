@@ -10,6 +10,20 @@ use uuid::Uuid;
 
 use crate::types::AgentError;
 
+/// Largest request body the relay takes (its `MAX_BODY` is 1 MiB), less 4 KiB
+/// because the relay adds its routing fields to what it forwards upstream.
+///
+/// A Scout session carries about 47 KB of prompt and tool definitions before its
+/// first message, and the agent keeps up to 200k tokens of history (roughly
+/// 600 KB) before it summarises, so the old 64 KiB refused every session after
+/// its first tool result.
+const MAX_BODY_BYTES: usize = 1024 * 1024 - 4096;
+/// Most messages in one request (the relay's `MAX_MESSAGES`).
+const MAX_MESSAGES: usize = 1024;
+/// Stands in for a part the text-only gateway cannot carry, such as a screenshot.
+const OMITTED_PART: &str =
+    "[An image was part of this result. Colony credits carry text only, so it is not included.]";
+
 /// Safe, terminal failures from the private credits operation. No provider bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreditRefusal {
@@ -122,14 +136,8 @@ impl CreditsGateway {
 
     pub(crate) async fn complete(&self, openai: Value) -> Result<Value, AgentError> {
         let messages = text_messages(&openai["messages"]).map_err(AgentError::Credits)?;
-        let body = serde_json::to_vec(&json!({
-            "session_id": self.session, "request_id": Uuid::new_v4(),
-            "messages": messages, "tools": openai.get("tools").cloned().unwrap_or(json!([])),
-        }))
-        .map_err(|_| AgentError::Credits(CreditRefusal::Unsupported))?;
-        if body.len() > 64 * 1024 {
-            return Err(AgentError::Credits(CreditRefusal::Unsupported));
-        }
+        let tools = openai.get("tools").cloned().unwrap_or(json!([]));
+        let body = fit_body(&self.session, messages, tools).map_err(AgentError::Credits)?;
         let hash = hex::encode(Sha256::digest(&body));
         let nonce = Uuid::new_v4().to_string();
         let tags = [
@@ -190,16 +198,84 @@ impl CreditsGateway {
             409 => CreditRefusal::Recovering,
             429 => CreditRefusal::Busy,
             503 if value["code"] == "daily_limit" => CreditRefusal::DailyLimit,
-            400 | 413 => CreditRefusal::Unsupported,
+            400 | 413 => {
+                // The relay answers with a fixed sentence, never a provider body,
+                // so it is safe to log and tells the two kinds of refusal apart.
+                let reason: String = value["error"]
+                    .as_str()
+                    .unwrap_or("")
+                    .chars()
+                    .take(120)
+                    .collect();
+                tracing::warn!(status, %reason, "Colony credits refused the request as unsupported");
+                CreditRefusal::Unsupported
+            }
             _ => CreditRefusal::Unavailable,
         };
         Err(AgentError::Credits(refusal))
     }
 }
 
+/// The request body, with the oldest turns dropped when the whole conversation
+/// would not fit the gateway's bounds. The agent's own history budget is far
+/// larger than the gateway's body, so a long session is trimmed here rather than
+/// refused. The system message stays, history restarts on a user message (a
+/// tool result is never left without the call it answers), and the newest turn
+/// is never cut. Refuses only when that turn alone does not fit.
+fn fit_body(session: &Uuid, messages: Vec<Value>, tools: Value) -> Result<Vec<u8>, CreditRefusal> {
+    let envelope = |messages: &[Value]| {
+        serde_json::to_vec(&json!({
+            "session_id": session, "request_id": Uuid::new_v4(),
+            "messages": messages, "tools": tools,
+        }))
+        .map_err(|_| CreditRefusal::Unsupported)
+    };
+    // Sizes once, so a 16 MiB history is not serialized again for every cut.
+    let fixed = envelope(&[])?.len();
+    let sizes = messages
+        .iter()
+        .map(|message| serde_json::to_vec(message).map(|bytes| bytes.len() + 1))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| CreditRefusal::Unsupported)?;
+    let pinned = usize::from(messages[0]["role"] == "system");
+    let pinned_bytes: usize = sizes[..pinned].iter().sum();
+    let mut suffix = vec![0usize; messages.len() + 1];
+    for (i, size) in sizes.iter().enumerate().rev() {
+        suffix[i] = suffix[i + 1] + size;
+    }
+    let fits = |start: usize| {
+        fixed + pinned_bytes + suffix[start] <= MAX_BODY_BYTES
+            && pinned + messages.len() - start <= MAX_MESSAGES
+    };
+    let start = if fits(pinned) {
+        pinned
+    } else {
+        (pinned + 1..messages.len())
+            .find(|&i| messages[i]["role"] == "user" && fits(i))
+            .ok_or(CreditRefusal::Unsupported)?
+    };
+    if start > pinned {
+        tracing::info!(
+            dropped = start - pinned,
+            kept = messages.len() - start,
+            "Colony credits request trimmed to the gateway body limit"
+        );
+    }
+    let kept: Vec<Value> = messages[..pinned]
+        .iter()
+        .chain(&messages[start..])
+        .cloned()
+        .collect();
+    let body = envelope(&kept)?;
+    if body.len() > MAX_BODY_BYTES {
+        return Err(CreditRefusal::Unsupported);
+    }
+    Ok(body)
+}
+
 fn text_messages(value: &Value) -> Result<Vec<Value>, CreditRefusal> {
     let messages = value.as_array().ok_or(CreditRefusal::Unsupported)?;
-    if messages.is_empty() || messages.len() > 128 {
+    if messages.is_empty() {
         return Err(CreditRefusal::Unsupported);
     }
     messages
@@ -209,10 +285,20 @@ fn text_messages(value: &Value) -> Result<Vec<Value>, CreditRefusal> {
             if let Some(parts) = message["content"].as_array() {
                 let mut text = String::new();
                 for part in parts {
-                    if part["type"] != "text" {
-                        return Err(CreditRefusal::Unsupported);
+                    match part["type"].as_str() {
+                        Some("text") => {
+                            text.push_str(part["text"].as_str().ok_or(CreditRefusal::Unsupported)?)
+                        }
+                        // A screenshot or other non-text part is described, not
+                        // sent: refusing it would fail the whole turn.
+                        Some(_) => {
+                            if !text.is_empty() {
+                                text.push('\n');
+                            }
+                            text.push_str(OMITTED_PART);
+                        }
+                        None => return Err(CreditRefusal::Unsupported),
                     }
-                    text.push_str(part["text"].as_str().ok_or(CreditRefusal::Unsupported)?);
                 }
                 result["content"] = json!(text);
             }

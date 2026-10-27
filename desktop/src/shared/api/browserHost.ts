@@ -70,6 +70,7 @@ export type BrowserHostEvent =
       /** An AI employee opened it: add the tab quietly, do not bring it forward. */
       background?: boolean;
     }
+  | { type: "person-input"; tabId: string }
   | { type: "closed"; tabId: string }
   | {
       type: "navigation-blocked";

@@ -1,4 +1,9 @@
-import { addWorkAreaTab } from "@/features/workarea/dock/workAreaStore";
+import {
+  addWorkAreaTab,
+  getWorkAreaState,
+  openWorkArea,
+  subscribeWorkArea,
+} from "@/features/workarea/dock/workAreaStore";
 import {
   type BrowserBrokerEvent,
   browserBroker,
@@ -13,6 +18,12 @@ import {
 } from "./agentBrowserActivity";
 import { browserTabId } from "./browserTabId";
 import {
+  decideAgentBrowserPresentation,
+  isAgentBrowserTaskInView,
+  isColonyWindowVisible,
+  isPersonActiveInWorkArea,
+} from "./agentBrowserPresentation";
+import {
   createBrowserPage,
   ensureBrowserHostTab,
   getBrowserPage,
@@ -21,12 +32,10 @@ import {
 /**
  * Default browser access for the owner's own AI employees. An agent that makes
  * its first browser call has no browser yet; the app answers by making a Colony
- * browser page in the channel's work area and giving the agent that page. The
- * person did not have to open anything first. Nothing is shown to them either:
- * the page joins the tab strip, the dock does not open, the selected tab and
- * the focus do not move. A small "using the browser" mark (see
- * `agentBrowserActivity.ts`) says the agent is working, and the person watches
- * by clicking it.
+ * browser page in the channel's work area and giving the agent that page. When
+ * the person is watching the same conversation, the dock opens on that page
+ * without moving keyboard or window focus. Otherwise the page joins the strip
+ * quietly and a small activity mark lets the person open it when they choose.
  *
  * The grant is the ordinary `agent-grant` request, made here, in the trusted
  * app window, never by the agent or by a page. It starts with no sites: the
@@ -68,6 +77,7 @@ type Running = {
   communityOrigin: string;
   api: Pick<typeof browserBroker, "grant" | "onEvent">;
   unsubscribe: () => void;
+  unsubscribeWorkArea: () => void;
 };
 
 let running: Running | null = null;
@@ -76,11 +86,72 @@ let generation = 0;
 const pageByTask = new Map<string, string>();
 const serving = new Map<string, Promise<void>>();
 const cardTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const taskChannels = new Map<string, string>();
+const dockWasOpenByTask = new Map<string, boolean>();
+const dismissedTasks = new Set<string>();
+const taskByGrant = new Map<string, string>();
+const latestRequestByChannel = new Map<string, number>();
+let requestSequence = 0;
+const MAX_TRACKED_TASKS = 256;
+const MAX_DISMISSED_TASKS = 256;
 let waiting: readonly AgentAccessRequest[] = Object.freeze([]);
 const listeners = new Set<() => void>();
 
 const taskKey = (request: { agentId: string; taskId: string }) =>
   `${request.agentId}|${request.taskId}`;
+
+function rememberDismissedTask(key: string) {
+  dismissedTasks.delete(key);
+  dismissedTasks.add(key);
+  while (dismissedTasks.size > MAX_DISMISSED_TASKS) {
+    const oldest = dismissedTasks.values().next().value;
+    if (oldest === undefined) break;
+    dismissedTasks.delete(oldest);
+  }
+}
+
+function trackTask(key: string, channelId: string) {
+  const wasTracked = taskChannels.has(key);
+  const previousChannel = taskChannels.get(key);
+  if (previousChannel && previousChannel !== channelId)
+    dockWasOpenByTask.delete(key);
+  taskChannels.delete(key);
+  taskChannels.set(key, channelId);
+  if (!wasTracked || previousChannel !== channelId)
+    dockWasOpenByTask.set(key, getWorkAreaState(channelId).open);
+  while (taskChannels.size > MAX_TRACKED_TASKS) {
+    const oldest = taskChannels.keys().next().value;
+    if (oldest === undefined) break;
+    taskChannels.delete(oldest);
+    dockWasOpenByTask.delete(oldest);
+  }
+}
+
+function observeWorkAreaState() {
+  for (const [key, channelId] of taskChannels) {
+    const wasOpen = dockWasOpenByTask.get(key) === true;
+    const isOpen = getWorkAreaState(channelId).open;
+    if (wasOpen && !isOpen) rememberDismissedTask(key);
+    dockWasOpenByTask.set(key, isOpen);
+  }
+}
+
+function trackGrant(grantId: string, key: string) {
+  taskByGrant.set(grantId, key);
+  if (taskByGrant.size > MAX_TRACKED_TASKS) {
+    const oldest = taskByGrant.keys().next().value;
+    if (oldest !== undefined) taskByGrant.delete(oldest);
+  }
+}
+
+function forgetEndedGrant(event: BrowserBrokerEvent) {
+  if (event.type !== "grant-changed" || event.state === "active") return;
+  const key = taskByGrant.get(event.grantId);
+  taskByGrant.delete(event.grantId);
+  if (!key || [...taskByGrant.values()].includes(key)) return;
+  taskChannels.delete(key);
+  dockWasOpenByTask.delete(key);
+}
 
 function publish(next: readonly AgentAccessRequest[]) {
   waiting = Object.freeze(next);
@@ -143,8 +214,8 @@ async function pageFor(
     key = created.key;
     pageByTask.set(taskKey(request), key);
   }
-  // The page joins the tab strip and nothing else: the dock stays shut or on
-  // whatever the person is looking at, and no focus moves.
+  // The page joins the tab strip. The caller may open it after the grant if
+  // the person is watching this conversation.
   addWorkAreaTab(channelId, "browser", browserTabId(key));
   const hostId = await ensureBrowserHostTab(key);
   return hostId ? { key, hostId, reused } : null;
@@ -166,6 +237,30 @@ async function grantOn(
     ttlMs: DEFAULT_ACCESS_TTL_MS,
   });
   noteBrowserGrant(grant);
+  trackGrant(grant.id, taskKey(request));
+  return grant;
+}
+
+function maybeShowAgentBrowserPage(
+  channelId: string,
+  taskId: string,
+  agentTaskKey: string,
+  pageKey: string,
+  sequence: number | null,
+) {
+  if (sequence === null || latestRequestByChannel.get(channelId) !== sequence) {
+    return;
+  }
+  const state = getWorkAreaState(channelId);
+  const decision = decideAgentBrowserPresentation({
+    viewingX: isAgentBrowserTaskInView(taskId, channelId),
+    windowVisible: isColonyWindowVisible(),
+    dockOpen: state.open,
+    personActive: isPersonActiveInWorkArea(channelId, state.activeTabId),
+    dismissedForTask: dismissedTasks.has(agentTaskKey),
+  });
+  if (decision === "show")
+    openWorkArea(channelId, "browser", browserTabId(pageKey));
 }
 
 /** Open the browser for a task and give the agent that page. */
@@ -179,6 +274,7 @@ async function open(
     resume: boolean;
   },
   channelId: string,
+  sequence: number | null,
 ) {
   let page = await pageFor(request, channelId, false);
   if (mine !== generation || !page) return;
@@ -194,6 +290,14 @@ async function open(
   }
   try {
     await grantOn(current, request, page.hostId);
+    if (mine === generation)
+      maybeShowAgentBrowserPage(
+        channelId,
+        request.taskId,
+        taskKey(request),
+        page.key,
+        sequence,
+      );
     return;
   } catch (error) {
     // A reused page can be busy with another agent's task: one fresh page.
@@ -204,6 +308,14 @@ async function open(
   page = await pageFor(request, channelId, true);
   if (mine !== generation || !page) return;
   await grantOn(current, request, page.hostId);
+  if (mine === generation)
+    maybeShowAgentBrowserPage(
+      channelId,
+      request.taskId,
+      taskKey(request),
+      page.key,
+      sequence,
+    );
 }
 
 /**
@@ -240,6 +352,17 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
   if (!channelId) return;
   const key = taskKey(event);
   if (serving.has(key)) return;
+  const normalizedChannelId = channelId.toLowerCase();
+  trackTask(key, normalizedChannelId);
+  const sequence = event.resume ? null : ++requestSequence;
+  if (sequence !== null) {
+    latestRequestByChannel.set(normalizedChannelId, sequence);
+    while (latestRequestByChannel.size > MAX_TRACKED_TASKS) {
+      const oldest = latestRequestByChannel.keys().next().value;
+      if (oldest === undefined) break;
+      latestRequestByChannel.delete(oldest);
+    }
+  }
   const job = open(
     current,
     mine,
@@ -249,9 +372,15 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
       communityOrigin: event.communityOrigin,
       resume: event.resume === true,
     },
-    channelId.toLowerCase(),
+    normalizedChannelId,
+    sequence,
   )
-    .catch(() => {})
+    .catch(() => {
+      if (![...taskByGrant.values()].includes(key)) {
+        taskChannels.delete(key);
+        dockWasOpenByTask.delete(key);
+      }
+    })
     .finally(() => {
       if (serving.get(key) === job) serving.delete(key);
     });
@@ -278,11 +407,14 @@ export function startAgentBrowserAccess({
     communityOrigin,
     api,
     unsubscribe: () => {},
+    unsubscribeWorkArea: () => {},
   };
   running = current;
+  current.unsubscribeWorkArea = subscribeWorkArea(observeWorkAreaState);
   current.unsubscribe = api.onEvent((event) => {
     if (running !== current) return;
     noteBrowserEvent(event);
+    forgetEndedGrant(event);
     handle(current, mine, event);
   });
 }
@@ -290,9 +422,16 @@ export function startAgentBrowserAccess({
 export function resetAgentBrowserAccess() {
   generation += 1;
   running?.unsubscribe();
+  running?.unsubscribeWorkArea();
   running = null;
   pageByTask.clear();
   serving.clear();
+  taskChannels.clear();
+  dockWasOpenByTask.clear();
+  dismissedTasks.clear();
+  taskByGrant.clear();
+  latestRequestByChannel.clear();
+  requestSequence = 0;
   for (const timer of cardTimers.values()) clearTimeout(timer);
   cardTimers.clear();
   resetBrowserActivity();
