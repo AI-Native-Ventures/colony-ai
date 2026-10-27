@@ -14,6 +14,8 @@ import type {
   AcpRuntimeCatalogEntry,
 } from "@/shared/api/types";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
+import { useInstallOutputLine } from "@/features/agents/lib/useInstallOutputLine";
+import { autoPickColonyAgent } from "../autoPickAi";
 import { saveVerifiedWelcomeConnection } from "../welcomeConnection";
 import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
 import type { OnboardingBusinessProfile } from "./BusinessSetupStep";
@@ -68,6 +70,11 @@ type ConnectSetupStepProps = {
   error?: string | null;
   onBack: () => void;
   onContinue: (destination?: "settings") => void;
+  /**
+   * Try the bundled Colony Agent first when the relay says this account may use
+   * it with no setup. The screen below opens only if nothing was picked.
+   */
+  autoPick?: boolean;
 };
 
 /**
@@ -81,12 +88,16 @@ export function ConnectSetupStep({
   error,
   onBack,
   onContinue,
+  autoPick = false,
 }: ConnectSetupStepProps) {
   const queryClient = useQueryClient();
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
     string | null
   >(null);
-  const [saving, setSaving] = React.useState(false);
+  const [saving, setSaving] = React.useState(autoPick);
+  // Colony is setting up its own shell tools on a Windows PC with no Git.
+  const [settingUpTools, setSettingUpTools] = React.useState(false);
+  const toolsLine = useInstallOutputLine("buzz-agent", settingUpTools);
   // The last explicit candidate (Start free), reused by Try again.
   const lastOverride = React.useRef<CandidateOverride | undefined>(undefined);
   const [choice, setChoice] = React.useState<ConnectChoiceId>("own");
@@ -108,7 +119,7 @@ export function ConnectSetupStep({
   );
   const [testState, setTestState] = React.useState<
     "connect" | "testing" | "connected" | "connection-error"
-  >("connect");
+  >(autoPick ? "testing" : "connect");
   const generation = React.useRef(0);
   React.useEffect(
     () => () => {
@@ -117,6 +128,41 @@ export function ConnectSetupStep({
     },
     [],
   );
+  const onContinueRef = React.useRef(onContinue);
+  onContinueRef.current = onContinue;
+  // The automatic pick shows the same "testing" scene as a hand-picked route,
+  // then moves on with no screen. Any miss opens the Connect screen as before.
+  React.useEffect(() => {
+    if (!autoPick) return;
+    const attempt = ++generation.current;
+    const isCurrent = () => generation.current === attempt;
+    void autoPickColonyAgent({
+      queryClient,
+      isCurrent,
+      communityId,
+      onShellTools: setSettingUpTools,
+      business: {
+        name: business.name,
+        website: business.website,
+        description: business.description,
+      },
+    }).then((picked) => {
+      if (!isCurrent()) return;
+      setSaving(false);
+      if (picked) onContinueRef.current();
+      else setTestState("connect");
+    });
+    return () => {
+      generation.current += 1;
+    };
+  }, [
+    autoPick,
+    business.description,
+    business.name,
+    business.website,
+    communityId,
+    queryClient,
+  ]);
   const [connectionPhase, setConnectionPhase] =
     React.useState<OnboardingConnectionProgress>("starting");
   React.useEffect(
@@ -358,6 +404,9 @@ export function ConnectSetupStep({
             ? getRuntimeDisplayLabel(testedRuntime)
             : "Colony AI",
           connectionPhase,
+          shellTools: settingUpTools
+            ? (toolsLine ?? "Setting up shell tools, one time…")
+            : null,
           connectionReply: proof?.reply,
           effectiveModel: proofModelLabel,
           error: saveError,

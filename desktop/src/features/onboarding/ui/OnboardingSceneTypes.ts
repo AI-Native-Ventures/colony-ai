@@ -25,6 +25,8 @@ export type OnboardingSceneData = {
   harnessStatus?: string;
   connectionReply?: string;
   connectionPhase?: "starting" | "waiting" | "saving";
+  /** Live line while Colony sets up its own shell tools (Windows, no Git). */
+  shellTools?: string | null;
   effectiveModel?: string | null;
   error?: string | null;
   pending?: boolean;

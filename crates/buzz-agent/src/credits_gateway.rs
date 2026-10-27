@@ -23,6 +23,8 @@ pub enum CreditRefusal {
     AlreadyCompleted,
     /// Owner authorization must be renewed by restarting the agent.
     Unauthorized,
+    /// The deployment-wide daily spend ceiling was reached. Not the person's fault.
+    DailyLimit,
     /// Gateway is disabled, unconfigured or temporarily unavailable.
     Unavailable,
     /// The bounded text/function contract cannot represent this input.
@@ -37,6 +39,7 @@ impl std::fmt::Display for CreditRefusal {
             Self::Recovering => "Usage is being recovered automatically. This turn was stopped; do not resend it automatically.",
             Self::AlreadyCompleted => "This request was already charged. Its response could not be recovered. Start a new conversation turn.",
             Self::Unauthorized => "Managed session expired or unauthorized. Restart your Colony Agent.",
+            Self::DailyLimit => "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents.",
             Self::Unavailable => "Colony credits are unavailable. Try again later.",
             Self::Unsupported => "Colony credits currently support bounded text and function tools. This input cannot be sent.",
         })
@@ -186,6 +189,7 @@ impl CreditsGateway {
             409 if value["error"] == "already_completed" => CreditRefusal::AlreadyCompleted,
             409 => CreditRefusal::Recovering,
             429 => CreditRefusal::Busy,
+            503 if value["code"] == "daily_limit" => CreditRefusal::DailyLimit,
             400 | 413 => CreditRefusal::Unsupported,
             _ => CreditRefusal::Unavailable,
         };

@@ -32,9 +32,34 @@ pub(crate) struct Authorization {
     auth_tag: Option<String>,
 }
 
+/// Fixed text that records, inside the compiled host, whether the release build
+/// set `COLONY_CREDITS_GATEWAY=1`. The Electron package workflow greps the
+/// built host for the `=on` form, so a release that silently lost the flag
+/// fails before it can ship. Only the selected literal reaches the binary.
+static BUILD_FLAG_MARKER: &str = if build_env_is_one(option_env!("COLONY_CREDITS_GATEWAY")) {
+    "colony-credits-gateway-build=on"
+} else {
+    "colony-credits-gateway-build=off"
+};
+
+/// `match` on a `&str` is not allowed in a static, so compare the bytes.
+const fn build_env_is_one(value: Option<&str>) -> bool {
+    match value {
+        Some(text) => {
+            let bytes = text.as_bytes();
+            bytes.len() == 1 && bytes[0] == b'1'
+        }
+        None => false,
+    }
+}
+
 pub(crate) fn enabled() -> bool {
     std::env::var("COLONY_CREDITS_GATEWAY").ok().as_deref() == Some("1")
-        || option_env!("COLONY_CREDITS_GATEWAY") == Some("1")
+        || build_flag_on(std::hint::black_box(BUILD_FLAG_MARKER))
+}
+
+fn build_flag_on(marker: &str) -> bool {
+    marker.ends_with("=on")
 }
 
 /// Refuse before network or process side effects. Only the saved provider opts in.

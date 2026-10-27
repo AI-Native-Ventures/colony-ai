@@ -134,6 +134,7 @@ export default defineConfig({
         "**/work-area-knowledge.spec.ts",
         "**/work-area-pins.spec.ts",
         "**/first-reply-runtime.spec.ts",
+        "**/judge-ready-ai.spec.ts",
         "**/connect-polish.spec.ts",
         "**/smoke.spec.ts",
         "**/shell-design.spec.ts",
@@ -335,6 +336,7 @@ export default defineConfig({
       testMatch: [
         "**/link-preview-bare-domain.spec.ts",
         "**/colony3-dark-mode.spec.ts",
+        "**/judge-ready-ai.spec.ts",
         "**/agent-working-indicator.spec.ts",
         "**/agent-start-watch.spec.ts",
         "**/mention-wake-after-launch.spec.ts",
