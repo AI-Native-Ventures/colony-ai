@@ -71,7 +71,7 @@ impl GatewayPolicy {
     /// Whether this verified account email uses the gateway without credits.
     pub fn is_free(&self, email: &str) -> bool {
         let email = email.trim().to_ascii_lowercase();
-        self.free_ai_accounts.iter().any(|free| *free == email)
+        self.free_ai_accounts.contains(&email)
     }
 }
 
