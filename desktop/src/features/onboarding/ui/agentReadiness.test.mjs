@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveAgentReadiness } from "./agentReadiness.ts";
+import {
+  GIT_BASH_REQUIRED_COPY,
+  SHELL_TOOLS_SETUP_COPY,
+  canSetUpShellTools,
+  resolveAgentPrerequisiteReadiness,
+  resolveAgentReadiness,
+} from "./agentReadiness.ts";
 
 // Minimal stub helpers.
 function makeRuntime(overrides = {}) {
@@ -552,4 +558,80 @@ test("resolveAgentReadiness_start_free_opencode_is_ready_after_a_verified_test",
     resolveAgentReadiness([opencode], config, "preferred", null, null).ready,
     false,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Shell tools: a Windows PC with no Git for Windows
+// ---------------------------------------------------------------------------
+
+const missingGit = {
+  available: false,
+  path: null,
+  installInstructionsUrl: "https://git-scm.com/download/win",
+  installHint: "Install Git for Windows",
+};
+
+test("canSetUpShellTools_is_true_only_when_git_bash_is_missing_and_colony_can_fetch_its_own", () => {
+  assert.equal(
+    canSetUpShellTools({ ...missingGit, managedInstallSupported: true }),
+    true,
+  );
+  assert.equal(canSetUpShellTools(missingGit), false);
+  assert.equal(
+    canSetUpShellTools({ ...missingGit, managedInstallSupported: false }),
+    false,
+  );
+  // Already available: nothing to set up.
+  assert.equal(
+    canSetUpShellTools({
+      ...missingGit,
+      available: true,
+      managedInstallSupported: true,
+    }),
+    false,
+  );
+  // Not Windows (null) and still checking (undefined).
+  assert.equal(canSetUpShellTools(null), false);
+  assert.equal(canSetUpShellTools(undefined), false);
+});
+
+test("the_colony_agent_prerequisite_offers_setup_copy_when_colony_can_fetch_shell_tools", () => {
+  assert.deepEqual(
+    resolveAgentPrerequisiteReadiness("buzz-agent", {
+      ...missingGit,
+      managedInstallSupported: true,
+    }),
+    { ready: false, reason: "git-bash", copy: SHELL_TOOLS_SETUP_COPY },
+  );
+});
+
+test("the_colony_agent_prerequisite_keeps_the_git_for_windows_guide_when_colony_cannot_fetch_shell_tools", () => {
+  assert.deepEqual(
+    resolveAgentPrerequisiteReadiness("buzz-agent", missingGit),
+    { ready: false, reason: "git-bash", copy: GIT_BASH_REQUIRED_COPY },
+  );
+});
+
+test("the_colony_agent_is_ready_once_shell_tools_exist_and_other_runtimes_never_need_them", () => {
+  assert.deepEqual(
+    resolveAgentPrerequisiteReadiness("buzz-agent", {
+      ...missingGit,
+      available: true,
+      path: "C:\\Users\\Judge\\Colony\\usr\\bin\\bash.exe",
+      managedInstallSupported: true,
+    }),
+    { ready: true },
+  );
+  assert.deepEqual(
+    resolveAgentPrerequisiteReadiness("claude", {
+      ...missingGit,
+      managedInstallSupported: true,
+    }),
+    { ready: true },
+  );
+});
+
+test("setup_copy_is_plain_and_has_no_em_dash", () => {
+  assert.ok(!SHELL_TOOLS_SETUP_COPY.includes("\u2014"));
+  assert.match(SHELL_TOOLS_SETUP_COPY, /no admin prompt/);
 });

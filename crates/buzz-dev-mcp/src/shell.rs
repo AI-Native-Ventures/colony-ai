@@ -174,7 +174,10 @@ pub async fn run(
     let mut cmd = Command::new(&bash);
     cmd.arg(shell_arg).arg(&p.command);
     cmd.current_dir(&workdir);
-    cmd.env("PATH", &state.shim.path_env);
+    cmd.env(
+        "PATH",
+        path_with_bundled_git_tools(&bash, &state.shim.path_env),
+    );
     // NOSTR_PRIVATE_KEY is already removed from this process's env (shim.rs).
     // BUZZ_PRIVATE_KEY is intentionally inherited — the buzz CLI needs it.
     for (k, v) in &state.shim.git_env {
@@ -352,6 +355,36 @@ fn shell_flag(shell: &Path) -> &'static str {
         Some("powershell" | "pwsh") => "-Command",
         _ => "-c",
     }
+}
+
+/// Colony's own MinGit (see `desktop`'s managed Git) is a bare unpack: it has no
+/// `bin\\bash.exe` launcher that puts `git` and the Unix tools on PATH the way a
+/// full Git for Windows does. When the shell is `<root>\\usr\\bin\\bash.exe` of
+/// such a tree, put `<root>\\cmd` and `<root>\\usr\\bin` first so `git`, `ls`,
+/// `sed` and the rest resolve. Any other shell keeps the PATH it was given.
+fn path_with_bundled_git_tools(bash: &Path, path_env: &str) -> String {
+    let Some(root) = bundled_git_root(bash) else {
+        return path_env.to_string();
+    };
+    let mut dirs = vec![root.join("cmd"), root.join("usr").join("bin")];
+    dirs.extend(std::env::split_paths(path_env));
+    std::env::join_paths(dirs)
+        .map(|joined| joined.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path_env.to_string())
+}
+
+/// The tree root when `bash` is `<root>/usr/bin/bash` and `<root>/cmd/git.exe`
+/// exists, which is how a MinGit unpack is laid out.
+fn bundled_git_root(bash: &Path) -> Option<&Path> {
+    let bin = bash.parent()?;
+    let usr = bin.parent()?;
+    let root = usr.parent()?;
+    let named = |dir: &Path, name: &str| {
+        dir.file_name()
+            .is_some_and(|file| file.eq_ignore_ascii_case(name))
+    };
+    (named(bin, "bin") && named(usr, "usr") && root.join("cmd").join("git.exe").is_file())
+        .then_some(root)
 }
 
 /// Extract a short display name from a resolved shell path (e.g. `pwsh.exe` → `"pwsh"`).
@@ -1151,6 +1184,84 @@ mod tests {
             "Unix bash must not be detected as a WindowsApps alias"
         );
     }
+
+    fn mingit_tree(root: &Path) -> PathBuf {
+        let bin = root.join("usr").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(root.join("cmd")).unwrap();
+        std::fs::write(root.join("cmd").join("git.exe"), b"git").unwrap();
+        let bash = bin.join("bash.exe");
+        std::fs::write(&bash, b"bash").unwrap();
+        bash
+    }
+
+    fn entries(path: &str) -> Vec<PathBuf> {
+        std::env::split_paths(path).collect()
+    }
+
+    #[test]
+    fn a_mingit_shell_gets_git_and_the_unix_tools_first_on_path() {
+        let dir = tempdir().expect("tempdir");
+        let bash = mingit_tree(dir.path());
+        let original = std::env::join_paths([Path::new("shim"), Path::new("system")])
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let path = path_with_bundled_git_tools(&bash, &original);
+
+        assert_eq!(
+            entries(&path),
+            vec![
+                dir.path().join("cmd"),
+                dir.path().join("usr").join("bin"),
+                PathBuf::from("shim"),
+                PathBuf::from("system"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_mingit_layout_is_recognised_in_any_letter_case() {
+        let dir = tempdir().expect("tempdir");
+        // Windows paths are case blind; so is the check.
+        let bin = dir.path().join("Usr").join("Bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(dir.path().join("cmd")).unwrap();
+        std::fs::write(dir.path().join("cmd").join("git.exe"), b"git").unwrap();
+        let bash = bin.join("BASH.EXE");
+        std::fs::write(&bash, b"bash").unwrap();
+
+        assert_eq!(bundled_git_root(&bash), Some(dir.path()));
+    }
+
+    #[test]
+    fn other_shells_keep_the_path_they_were_given() {
+        let dir = tempdir().expect("tempdir");
+        // Full Git for Windows resolves to <root>\bin\bash.exe: no change.
+        let full = dir.path().join("bin").join("bash.exe");
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(dir.path().join("cmd")).unwrap();
+        std::fs::write(dir.path().join("cmd").join("git.exe"), b"git").unwrap();
+        assert_eq!(path_with_bundled_git_tools(&full, "a:b"), "a:b");
+
+        // usr/bin/bash.exe without a sibling cmd/git.exe is not a MinGit tree.
+        let loose = dir
+            .path()
+            .join("other")
+            .join("usr")
+            .join("bin")
+            .join("bash.exe");
+        std::fs::create_dir_all(loose.parent().unwrap()).unwrap();
+        assert_eq!(path_with_bundled_git_tools(&loose, "a:b"), "a:b");
+
+        // A bare name or a shell with no parents is left alone too.
+        assert_eq!(path_with_bundled_git_tools(Path::new("bash"), "a:b"), "a:b");
+        assert_eq!(
+            path_with_bundled_git_tools(Path::new("pwsh.exe"), "a:b"),
+            "a:b"
+        );
+    }
 }
 
 #[cfg(all(test, windows))]
@@ -1516,5 +1627,65 @@ mod windows_resolver_tests {
             found.is_none(),
             "alias-only PATH must return None, not the WSL launcher"
         );
+    }
+
+    /// Runs the real shell tool against a MinGit that the Windows CI job
+    /// downloaded with Colony's own installer, on a PATH that holds only the
+    /// system folder (no Git for Windows). It proves the whole chain a fresh
+    /// PC depends on: `GIT_BASH` resolves, the PATH helper adds git and the Unix
+    /// tools, and bash runs commands.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "needs COLONY_LIVE_MINGIT_DIR, set by the Windows CI job"]
+    async fn live_mingit_runs_git_and_unix_tools_through_the_shell_tool() {
+        let root = PathBuf::from(
+            env::var_os("COLONY_LIVE_MINGIT_DIR").expect("COLONY_LIVE_MINGIT_DIR is set"),
+        );
+        let work = tempdir().expect("tempdir");
+        let state = {
+            let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+            let saved_path = env::var_os("PATH");
+            let system_root = env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+            env::set_var("GIT_BASH", root.join("usr").join("bin").join("bash.exe"));
+            env::set_var("PATH", format!("{system_root}\\System32"));
+            let shim = crate::shim::Shim::install().expect("shim");
+            let state = SharedState::new(work.path().to_path_buf(), shim).expect("state");
+            env::remove_var("GIT_BASH");
+            match saved_path {
+                Some(path) => env::set_var("PATH", path),
+                None => env::remove_var("PATH"),
+            }
+            state
+        };
+
+        let (resolved, name) = state.resolved_shell.as_ref().expect("bash resolved");
+        assert_eq!(resolved, &root.join("usr").join("bin").join("bash.exe"));
+        assert_eq!(name, "bash");
+
+        let result = run(
+            &state,
+            ShellParams {
+                command: "git --version && ls /usr/bin/bash.exe && echo hello | tr a-z A-Z \
+                          && sed --version | head -1"
+                    .into(),
+                workdir: None,
+                timeout_ms: Some(60_000),
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .expect("tool result");
+        let text = result
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.clone())
+            .expect("text content");
+        let body: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(body["exit_code"], 0, "{body}");
+        let stdout = body["stdout"].as_str().unwrap_or_default();
+        assert!(stdout.contains("git version"), "{body}");
+        assert!(stdout.contains("/usr/bin/bash.exe"), "{body}");
+        assert!(stdout.contains("HELLO"), "{body}");
+        assert!(stdout.contains("GNU sed"), "{body}");
     }
 }

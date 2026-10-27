@@ -527,6 +527,8 @@ export type GitBashPrerequisite = {
   path: string | null;
   installInstructionsUrl: string;
   installHint: string;
+  /** Colony can download its own shell tools when Git Bash is missing. */
+  managedInstallSupported?: boolean;
 };
 
 export type AcpAvailabilityStatus =

@@ -17,6 +17,9 @@ pub(crate) struct GitBashPrerequisite {
     pub path: Option<String>,
     pub install_instructions_url: String,
     pub install_hint: String,
+    /// Colony can download its own shell tools when `available` is false, so
+    /// the person is offered a one-click setup instead of an install guide.
+    pub managed_install_supported: bool,
 }
 
 #[cfg(windows)]
@@ -84,12 +87,15 @@ pub(crate) fn resolve_bash_path() -> Option<std::path::PathBuf> {
 pub(crate) fn discover_git_bash() -> Option<GitBashPrerequisite> {
     #[cfg(windows)]
     {
-        let path = resolve_git_bash_path();
+        // Colony's own MinGit counts: the agent is pointed at it when no other
+        // bash exists (see `apply_managed_shell`), so the answers agree.
+        let path = resolve_git_bash_path().or_else(super::managed_git_bash);
         return Some(GitBashPrerequisite {
             available: path.is_some(),
             path: path.map(|path| path.display().to_string()),
             install_instructions_url: INSTALL_URL.to_string(),
             install_hint: INSTALL_HINT.to_string(),
+            managed_install_supported: super::managed_git_install_supported(),
         });
     }
 

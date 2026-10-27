@@ -288,6 +288,25 @@ fn install_acp_runtime_blocking(
 
     let mut steps = Vec::new();
 
+    // The Colony Agent runs its shell commands through bash. A Windows PC with
+    // no Git for Windows gets Colony's own pinned MinGit, through the same
+    // install screen, progress and Try again as any other runtime.
+    if runtime.id == "buzz-agent" && managed_git_wanted() {
+        if let Err(step) = ensure_managed_git_blocking(&reporter) {
+            reporter.record_step(&mut steps, *step);
+            return Ok(reporter.failed(steps));
+        }
+        crate::managed_agents::clear_resolve_cache();
+        reporter.record_step(&mut steps, managed_git_ready_step());
+        return Ok(InstallRuntimeResult {
+            success: true,
+            steps,
+            restarted_count: 0,
+            failed_restart_count: 0,
+            log_path: reporter.log_path(),
+        });
+    }
+
     // Colony downloads managed binaries itself (pinned, checksummed); they
     // never use the CLI or adapter installer phases below.
     if crate::managed_agents::managed_binary_runtime(runtime.id) {
@@ -1023,8 +1042,10 @@ use install_report::InstallReporter;
 
 // ── managed Node/npm runtime ──────────────────────────────────────────────────
 mod managed_archive;
+mod managed_git;
 mod managed_node;
 mod managed_opencode;
+use managed_git::{ensure_managed_git_blocking, managed_git_ready_step, managed_git_wanted};
 use managed_node::{
     ensure_managed_node_runtime_blocking, managed_node_runtime_supported, managed_npm_command,
     npm_eacces_hint, resolve_adapter_path,

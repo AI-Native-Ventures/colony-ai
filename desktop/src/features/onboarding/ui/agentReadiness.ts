@@ -18,6 +18,24 @@ export type AgentReadinessResult =
 export const GIT_BASH_REQUIRED_COPY =
   "Install Git for Windows from https://gitforwindows.org/, then open Settings, Agent runtimes to re-check before starting your AI employees.";
 
+/** Shown instead when Colony can fetch its own shell tools on this PC. */
+export const SHELL_TOOLS_SETUP_COPY =
+  "Colony Agent needs a small set of shell tools on Windows. Colony can download them once (about 40 MB), with no admin prompt.";
+
+/**
+ * Colony can set up its own shell tools for the Colony Agent on this PC: bash
+ * is missing and the native host offers its own pinned download.
+ */
+export function canSetUpShellTools(
+  prerequisite: GitBashPrerequisite | null | undefined,
+): boolean {
+  return (
+    !!prerequisite &&
+    !prerequisite.available &&
+    prerequisite.managedInstallSupported === true
+  );
+}
+
 /**
  * Determine whether the user has a working agent path configured.
  *
@@ -142,9 +160,14 @@ export function resolveAgentPrerequisiteReadiness(
       copy: "Checking Git for Windows readiness. Open Settings, Agent runtimes if this check fails.",
     };
   }
-  return prerequisite.available
-    ? { ready: true }
-    : { ready: false, reason: "git-bash", copy: GIT_BASH_REQUIRED_COPY };
+  if (prerequisite.available) return { ready: true };
+  return {
+    ready: false,
+    reason: "git-bash",
+    copy: canSetUpShellTools(prerequisite)
+      ? SHELL_TOOLS_SETUP_COPY
+      : GIT_BASH_REQUIRED_COPY,
+  };
 }
 
 /** Legacy installs choose a ready runtime in the same order used for persona defaults. */
