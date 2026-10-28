@@ -14,7 +14,7 @@ export function DayDivider({
     <section
       aria-label={label}
       className={cn(
-        "pointer-events-none flex items-center gap-3.5",
+        "pointer-events-none flex items-center gap-3.5 bg-colony-surface",
         sticky && cn("sticky z-20", channelChrome.stickyTimelineTop),
       )}
       data-testid={testId}
