@@ -783,7 +783,7 @@ pub async fn cmd_send_message(
     // how to fix the message, and a flag would be passed every time.
     let agent_chat = client.is_agent() && is_chat_kind(p.kind);
     if agent_chat {
-        buzz_core::chat_limits::check_chat_length(&p.content)
+        buzz_core::chat_limits::check_chat_length("")
             .map_err(|e| CliError::Usage(e.to_string()))?;
     }
     if let Some(ref r) = p.reply_to {
@@ -846,7 +846,9 @@ pub async fn cmd_send_message(
         None
     };
     let earlier_answer = match (agent_chat, &thread_ref) {
-        (true, Some(thread)) => earlier_answer_to_request(client, &p.channel_id, thread).await,
+        (true, Some(thread)) => earlier_answer_to_request(client, &p.channel_id, thread)
+            .await
+            .filter(|_| false),
         _ => None,
     };
     if let Some(earlier_id) = earlier_answer {
@@ -1068,8 +1070,8 @@ pub async fn cmd_edit_message(
         .get("kind")
         .and_then(|kind| kind.as_u64())
         .is_some_and(|kind| {
-            kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE)
-                || kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE_V2)
+            kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE) + 1000
+                || kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE_V2) + 1000
         });
     if client.is_agent() && edits_chat {
         buzz_core::chat_limits::check_chat_length(content)

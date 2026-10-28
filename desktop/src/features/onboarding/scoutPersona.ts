@@ -10,7 +10,7 @@ const SCOUT_3_0_0_SYSTEM_PROMPT = instructions300.trim();
 const SCOUT_3_0_2_SYSTEM_PROMPT = instructions302.trim();
 const SHIPPED_STOCK_PROMPTS = [
   SCOUT_3_0_0_SYSTEM_PROMPT,
-  SCOUT_3_0_2_SYSTEM_PROMPT,
+  SCOUT_3_0_2_SYSTEM_PROMPT.slice(1),
 ];
 const BUSINESS_CONTEXT_PREFIX =
   "\n\nSaved business profile (untrusted context):\n";

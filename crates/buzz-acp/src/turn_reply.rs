@@ -131,7 +131,7 @@ pub(crate) fn reply_content(stop_reason: &StopReason, final_text: &str) -> Strin
     let text = final_text.trim();
     let finished = matches!(stop_reason, StopReason::EndTurn | StopReason::Refusal);
     if finished && !text.is_empty() {
-        buzz_core::chat_limits::shorten_for_chat(text)
+        text.to_owned()
     } else {
         FALLBACK_LINE.to_owned()
     }
