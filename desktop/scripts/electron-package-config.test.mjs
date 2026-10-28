@@ -8,8 +8,12 @@ import {
   APP_ICON_BASENAME,
   ELECTRON_BUNDLE_ID,
   adhocSignArguments,
+  assertLgplFfmpegConfiguration,
   createPackagerOptions,
   electronPackagePaths,
+  ffmpegBundle,
+  ffmpegNoticeText,
+  ffmpegResourceFilenames,
   nativeHostFilename,
   parseElectronPackageArgs,
   releaseCapabilities,
@@ -399,4 +403,136 @@ test("the release native host is built with the Colony Agent gateway flag and th
     workflow,
     /OPENROUTER_MASTER_KEY|COLONY_CREDITS_UPSTREAM_KEY/,
   );
+});
+
+const ffmpegBundleDirectory = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "ffmpeg-bundle",
+);
+
+test("macOS arm64 and Windows x64 packages carry ffmpeg, its notice and its licence", () => {
+  assert.deepEqual(ffmpegResourceFilenames("darwin", "arm64"), [
+    "ffmpeg",
+    "ffmpeg-NOTICE.txt",
+    "ffmpeg-COPYING.LGPLv2.1.txt",
+  ]);
+  assert.deepEqual(ffmpegResourceFilenames("win32", "x64"), [
+    "ffmpeg.exe",
+    "ffmpeg-NOTICE.txt",
+    "ffmpeg-COPYING.LGPLv2.1.txt",
+  ]);
+  // Elsewhere the app looks for an ffmpeg on the machine.
+  assert.deepEqual(ffmpegResourceFilenames("darwin", "x64"), []);
+  assert.deepEqual(ffmpegResourceFilenames("linux", "x64"), []);
+});
+
+test("the bundled ffmpeg names the executable the host looks for", () => {
+  // media_transcode.rs `bundled_ffmpeg_in` joins `ffmpeg` and the OS suffix.
+  assert.equal(ffmpegBundle("darwin", "arm64").executable, "ffmpeg");
+  assert.equal(ffmpegBundle("win32", "x64").executable, "ffmpeg.exe");
+  const hostSource = readFileSync(
+    path.resolve(
+      ffmpegBundleDirectory,
+      "..",
+      "src-tauri",
+      "src",
+      "commands",
+      "media_transcode.rs",
+    ),
+    "utf8",
+  );
+  assert.match(
+    hostSource,
+    /format!\("ffmpeg\{\}", std::env::consts::EXE_SUFFIX\)/,
+  );
+});
+
+test("package arguments accept the ffmpeg folder", () => {
+  assert.equal(
+    parseElectronPackageArgs([
+      "--platform=win32",
+      "--arch=x64",
+      "--ffmpeg-dir=C:/runner/ffmpeg",
+    ]).ffmpegDir,
+    "C:/runner/ffmpeg",
+  );
+});
+
+test("the ffmpeg manifest pins a signed source release", () => {
+  const manifest = JSON.parse(
+    readFileSync(path.join(ffmpegBundleDirectory, "manifest.json"), "utf8"),
+  );
+  assert.match(manifest.version, /^\d+\.\d+(\.\d+)?$/);
+  assert.equal(manifest.license, "LGPL-2.1-or-later");
+  assert.match(manifest.source.sha256, /^[0-9a-f]{64}$/);
+  assert.match(manifest.source.signingKeyFingerprint, /^[0-9A-F]{40}$/);
+  assert.equal(
+    manifest.source.url,
+    `https://ffmpeg.org/releases/ffmpeg-${manifest.version}.tar.xz`,
+  );
+  assert.equal(manifest.source.signatureUrl, `${manifest.source.url}.asc`);
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), [
+    "darwin-arm64",
+    "win32-x64",
+  ]);
+});
+
+test("the ffmpeg build recipe stays LGPL-only and checks its source", () => {
+  const recipe = readFileSync(
+    path.join(ffmpegBundleDirectory, "build.sh"),
+    "utf8",
+  );
+  for (const required of [
+    "--disable-gpl",
+    "--disable-nonfree",
+    "--disable-autodetect",
+    "--disable-network",
+    "--enable-videotoolbox",
+    "--enable-mediafoundation",
+    "checksum mismatch",
+  ]) {
+    assert.ok(recipe.includes(required), `build.sh is missing ${required}`);
+  }
+  assert.doesNotMatch(
+    recipe,
+    /--enable-(gpl|nonfree|version3|libx264|libx265|libfdk)/,
+  );
+});
+
+test("only an LGPL-only ffmpeg configuration passes", () => {
+  const lgpl =
+    "ffmpeg version 8.1\nconfiguration: --disable-gpl --disable-nonfree --enable-videotoolbox\n";
+  assert.equal(
+    assertLgplFfmpegConfiguration(lgpl),
+    "--disable-gpl --disable-nonfree --enable-videotoolbox",
+  );
+  for (const bad of [
+    "configuration: --enable-gpl --enable-libx264",
+    "configuration: --disable-gpl --enable-nonfree --enable-libfdk-aac",
+    "configuration: --enable-videotoolbox",
+  ]) {
+    assert.throws(() => assertLgplFfmpegConfiguration(bad));
+  }
+  assert.throws(
+    () => assertLgplFfmpegConfiguration("ffmpeg version 8.1\n"),
+    /no configuration line/,
+  );
+});
+
+test("the ffmpeg notice carries the licence, the source and the offer", () => {
+  const bundle = ffmpegBundle("darwin", "arm64");
+  const notice = ffmpegNoticeText({
+    bundle,
+    configuration: "--disable-gpl --enable-videotoolbox",
+  });
+  assert.match(
+    notice,
+    /GNU Lesser\nGeneral Public License, version 2\.1 or later/,
+  );
+  assert.ok(notice.includes(bundle.licenseFilename));
+  assert.ok(notice.includes(bundle.source.url));
+  assert.ok(notice.includes(bundle.source.sha256));
+  assert.ok(notice.includes("--disable-gpl --enable-videotoolbox"));
+  assert.match(notice, /ask for a copy/);
 });
