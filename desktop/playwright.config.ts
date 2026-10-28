@@ -343,6 +343,7 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/day-divider-overlap.spec.ts",
+        "**/colony3-lead-reference.spec.ts",
         "**/link-preview-bare-domain.spec.ts",
         "**/doc-card-collapse.spec.ts",
         "**/colony3-dark-mode.spec.ts",

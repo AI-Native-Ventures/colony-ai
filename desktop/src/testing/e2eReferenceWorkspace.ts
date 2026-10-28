@@ -949,6 +949,10 @@ const REFERENCE_LEADS = [
   ],
 ] as const;
 
+/** Deliberately long test name for lead-reference picker overflow coverage. */
+export const REFERENCE_LONG_LEAD_NAME =
+  "The Exceptionally Long Name of a Johannesburg Home and Living Business";
+
 function referenceW10Event(
   id: number,
   pubkey: string,
@@ -976,6 +980,7 @@ function referenceW10Event(
 export function referenceSalesRecordEvents(
   selfPubkey: string,
   communityId: TenantCommunityId,
+  options: { longLeadNames?: boolean } = {},
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const now = Math.floor(Date.now() / 1000);
@@ -1022,6 +1027,10 @@ export function referenceSalesRecordEvents(
       stage,
       value,
     ] = lead;
+    const displayName =
+      options.longLeadNames && slug === "cedar-co"
+        ? REFERENCE_LONG_LEAD_NAME
+        : name;
     const prospectId =
       REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS];
     const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
@@ -1044,7 +1053,7 @@ export function referenceSalesRecordEvents(
       party: {
         partyId: prospectId,
         partyType: "organization",
-        displayName: name,
+        displayName,
         externalIds: [],
       },
       industry: "Home & Living",

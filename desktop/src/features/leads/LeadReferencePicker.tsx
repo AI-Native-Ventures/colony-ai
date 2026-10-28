@@ -115,13 +115,13 @@ export function LeadReferencePicker({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        className="max-w-[34rem]"
+        className="box-border min-w-0 grid-cols-[minmax(0,1fr)] max-w-[34rem]"
         data-testid="lead-reference-picker"
         onCloseAutoFocus={onCloseAutoFocus}
       >
-        <DialogHeader>
+        <DialogHeader className="min-w-0 w-full">
           <DialogTitle>Reference a lead</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="min-w-0 break-words">
             Add a lead to your message so people and agents can open it, read
             its notes and work on it.
           </DialogDescription>
@@ -179,7 +179,9 @@ export function LeadReferencePicker({
                       {leadInitial(lead.name)}
                     </span>
                     <span className="c3r-copy">
-                      <span className="c3r-name">{lead.name}</span>
+                      <span className="c3r-name" title={lead.name}>
+                        {lead.name}
+                      </span>
                       {lead.meta ? (
                         <span className="c3r-meta">{lead.meta}</span>
                       ) : null}
