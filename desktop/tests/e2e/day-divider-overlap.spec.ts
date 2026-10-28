@@ -57,6 +57,7 @@ for (const theme of THEMES) {
     await page.addInitScript((themeValue) => {
       window.localStorage.setItem("buzz-theme", themeValue);
       window.localStorage.setItem("buzz-follow-system", "false");
+      window.localStorage.setItem("buzz.channels.threadViewMode", "split");
     }, theme.storageValue);
     await installMockBridge(page);
     await page.goto("/");
@@ -67,7 +68,7 @@ for (const theme of THEMES) {
     await expect(page.getByTestId("chat-title")).toHaveText(channelName);
     await waitForMockLiveSubscription(page, channelName);
 
-    await page.evaluate(
+    const threadRootId = await page.evaluate(
       ({ channelName: name, content, pubkey, yesterday, today }) => {
         const emit = (
           window as Window & {
@@ -75,19 +76,28 @@ for (const theme of THEMES) {
               channelName: string;
               content: string;
               createdAt: number;
+              parentEventId?: string | null;
               pubkey: string;
-            }) => unknown;
+            }) => { id: string };
           }
         ).__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
         if (!emit) throw new Error("mock message emitter is unavailable");
 
-        emit({
+        const root = emit({
           channelName: name,
           content: "A short message from the previous day.",
           createdAt: yesterday,
           pubkey,
         });
         emit({ channelName: name, content, createdAt: today, pubkey });
+        emit({
+          channelName: name,
+          content: "A reply from today in the adjacent thread panel.",
+          createdAt: today + 30,
+          parentEventId: root.id,
+          pubkey,
+        });
+        return root.id;
       },
       {
         channelName,
@@ -119,31 +129,52 @@ for (const theme of THEMES) {
       .first();
     const stickyPill = stickyRow.locator("p");
     const messageBody = messageRow.getByTestId("message-body");
-    const [paint, headerBox, pillBox, dividerBox, messageBox] =
-      await Promise.all([
-        stickyRow.evaluate((element) => {
-          const probe = document.createElement("div");
-          probe.className = "bg-colony-surface";
-          document.body.append(probe);
-          const expected = getComputedStyle(probe).backgroundColor;
-          probe.remove();
-          return {
-            actual: getComputedStyle(element).backgroundColor,
-            expected,
-          };
-        }),
-        page.getByTestId("chat-header").boundingBox(),
-        stickyPill.boundingBox(),
-        stickyRow.boundingBox(),
-        messageBody.boundingBox(),
-      ]);
+    const [
+      paint,
+      headerBox,
+      pillBox,
+      dividerBox,
+      messageBox,
+      stickyBandBox,
+      scrollerBox,
+    ] = await Promise.all([
+      stickyRow.evaluate((element) => {
+        const probe = document.createElement("div");
+        probe.className = "bg-colony-surface";
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return {
+          actual: getComputedStyle(element).backgroundColor,
+          expected,
+        };
+      }),
+      page.getByTestId("chat-header").boundingBox(),
+      stickyPill.boundingBox(),
+      stickyRow.boundingBox(),
+      messageBody.boundingBox(),
+      stickyDivider.boundingBox(),
+      scroller.boundingBox(),
+    ]);
     expect(paint.actual).toBe(paint.expected);
-    if (!headerBox || !pillBox || !dividerBox || !messageBox) {
+    if (
+      !headerBox ||
+      !pillBox ||
+      !dividerBox ||
+      !messageBox ||
+      !stickyBandBox ||
+      !scrollerBox
+    ) {
       throw new Error("the pinned divider or long message is not rendered");
     }
-    expect(
-      Math.abs(pillBox.y - (headerBox.y + headerBox.height) - 8),
-    ).toBeLessThanOrEqual(1);
+    // The scroller extends under the channel chrome; its visible top begins
+    // where the header ends.
+    const visibleScrollTop = Math.max(
+      scrollerBox.y,
+      headerBox.y + headerBox.height,
+    );
+    expect(stickyBandBox.y).toBeCloseTo(visibleScrollTop, 1);
+    expect(Math.abs(pillBox.y - stickyBandBox.y)).toBeLessThanOrEqual(1);
     const overlapHeight =
       Math.min(
         dividerBox.y + dividerBox.height,
@@ -154,7 +185,40 @@ for (const theme of THEMES) {
     await waitForAnimations(page);
     mkdirSync(SHOTS, { recursive: true });
     await page.screenshot({
-      path: `${SHOTS}/${testInfo.project.name}-${theme.name}.png`,
+      path: `${SHOTS}/${testInfo.project.name}-${theme.name}-channel.png`,
+    });
+
+    const threadSummary = page.locator(
+      `[data-testid="message-thread-summary"][data-thread-head-id="${threadRootId}"]`,
+    );
+    await expect(threadSummary).toBeVisible();
+    await threadSummary.click();
+    const threadPanel = page.getByTestId("message-thread-panel");
+    await expect(threadPanel).toBeVisible();
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect(stickyDivider).toHaveCSS("opacity", "1");
+    await waitForAnimations(page);
+
+    const [threadBandBox, threadScrollerBox, threadHeaderBox] =
+      await Promise.all([
+        stickyDivider.boundingBox(),
+        scroller.boundingBox(),
+        page.getByTestId("chat-header").boundingBox(),
+      ]);
+    if (!threadBandBox || !threadScrollerBox || !threadHeaderBox) {
+      throw new Error("the channel divider is not rendered beside the thread");
+    }
+    const threadVisibleScrollTop = Math.max(
+      threadScrollerBox.y,
+      threadHeaderBox.y + threadHeaderBox.height,
+    );
+    expect(threadBandBox.y).toBeCloseTo(threadVisibleScrollTop, 1);
+
+    await page.screenshot({
+      path: `${SHOTS}/${testInfo.project.name}-${theme.name}-thread.png`,
     });
   });
 }

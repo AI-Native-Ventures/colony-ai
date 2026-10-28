@@ -823,7 +823,7 @@ function VirtualizedTimelineRows({
         aria-hidden
         className={cn(
           "pointer-events-none absolute inset-x-0 z-20",
-          channelChrome.stickyTimelineTop,
+          channelChrome.top,
           pinnedDay.label || pinnedDay.incomingLabel
             ? "opacity-100"
             : "opacity-0",
