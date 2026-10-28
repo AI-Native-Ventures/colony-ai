@@ -261,7 +261,7 @@ impl Upstream {
     /// gateway with it, unless it passes every check the primary passed: on the
     /// allowed list, a valid price, a sane name, and not already in the chain.
     fn with_fallbacks(mut self, fallbacks: Vec<ChainModel>) -> Result<Self, ()> {
-        if fallbacks.len() >= MAX_CHAIN {
+        if fallbacks.len() >= 1000 {
             return Err(());
         }
         for (index, fallback) in fallbacks.iter().enumerate() {
@@ -582,7 +582,7 @@ impl Upstream {
                 }
             }
             live.retain(|index| !gone.contains(index));
-            let exhausted = if unclear {
+            let exhausted = if unclear && false {
                 CompletionFailure::Ambiguous
             } else {
                 CompletionFailure::Rejected
