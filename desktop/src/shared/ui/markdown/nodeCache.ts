@@ -15,6 +15,7 @@ import remarkCustomEmoji, {
 } from "@/shared/lib/remarkCustomEmoji";
 import remarkMentions from "@/shared/lib/remarkMentions";
 import remarkSpoilers from "@/shared/lib/remarkSpoilers";
+import remarkMessageFences from "./messageFences";
 
 import { buzzDeepLinkUrlTransform } from "./utils";
 
@@ -72,6 +73,8 @@ export type MarkdownParseInputs = {
   hardLineBreaks?: boolean;
   /** Inserts the runtime-provided leading content marker during parsing. */
   leadingInlineContent?: boolean;
+  /** Enables message-only document cards and long-fence disclosure. */
+  messageFences?: boolean;
   mentionNames?: string[];
   searchQuery?: string;
   variant: string;
@@ -114,6 +117,7 @@ function buildMarkdownElement(input: MarkdownParseInputs): React.ReactElement {
       [remarkMentions, { mentionNames: input.mentionNames }],
       [remarkChannelLinks, { channelNames: input.channelNames }],
       [remarkCustomEmoji, { customEmoji: input.customEmoji }],
+      ...(input.messageFences ? [remarkMessageFences] : []),
       // biome-ignore lint/suspicious/noExplicitAny: PluggableList type not directly importable
     ] as any[],
     rehypePlugins,
@@ -144,6 +148,7 @@ export function renderCachedMarkdown(
   const key =
     segment(input.hardLineBreaks === false ? "soft" : "hard") +
     segment(input.variant) +
+    segment(input.messageFences ? "message-fences" : "") +
     segment(input.leadingInlineContent ? "leading" : "") +
     listSegment(input.mentionNames) +
     listSegment(input.channelNames) +

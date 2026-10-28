@@ -510,6 +510,7 @@ export const MessageRow = React.memo(
               snapshotSharedBy={snapshotSharedBy}
               videoReviewCommentRootId={videoReviewCommentRootId}
               videoReviewContext={videoReviewContext}
+              messageFences
             />
           );
         }

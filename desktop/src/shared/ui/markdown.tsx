@@ -44,6 +44,7 @@ import { copyImageToClipboard, downloadImage } from "./markdown/imageActions";
 import { ImageGalleryStatus } from "./markdown/ImageGalleryStatus";
 import { ImageLightboxZoomControls } from "./markdown/ImageLightboxZoomControls";
 import { extractLanguage, MarkdownCodeBlock } from "./markdown/CodeBlock";
+import { DocumentCard } from "./markdown/DocumentCard";
 import { EntityLinkAnchor, useOpenEntityLink } from "./markdown/entityLinks";
 import { ExternalLinkAnchor } from "./markdown/ExternalLinkAnchor";
 import { FileCard } from "./markdown/FileCard";
@@ -1206,6 +1207,7 @@ export function createMarkdownComponents(
   interactive = true,
   mediaInset = false,
   blockCode = false,
+  messageFences = false,
 ): Components {
   const listItemClassName = "[&_p]:inline";
   const listClassName = "space-y-1 pl-6 marker:text-muted-foreground/80";
@@ -1368,6 +1370,49 @@ export function createMarkdownComponents(
     );
   }
 
+  const messageDocumentCard = function MessageDocumentCard({
+    body,
+    markdown,
+    title,
+    wordCount,
+  }: {
+    body?: string;
+    markdown?: string;
+    title?: string;
+    wordCount?: number;
+  }) {
+    const runtime = useMarkdownRuntime();
+    const cardBody = body ?? "";
+    return (
+      <DocumentCard
+        markdown={markdown ?? cardBody}
+        title={title ?? "Draft"}
+        wordCount={wordCount ?? 0}
+      >
+        <MarkdownInner
+          agentMentionPubkeysByName={runtime.agentMentionPubkeysByName}
+          blockCode={runtime.blockCode}
+          channelNames={runtime.channelNames}
+          content={cardBody}
+          customEmoji={runtime.customEmoji}
+          hardLineBreaks={runtime.hardLineBreaks}
+          imetaByUrl={runtime.imetaByUrl}
+          interactive={runtime.interactive}
+          linkPreviewsSuppressed
+          mediaInset={runtime.mediaInset}
+          messageFences={runtime.messageFences}
+          messageId={runtime.messageId}
+          mentionNames={runtime.mentionNames}
+          mentionPubkeysByName={runtime.mentionPubkeysByName}
+          searchQuery={runtime.searchQuery}
+          snapshotSharedBy={runtime.snapshotSharedBy}
+          videoReviewContext={runtime.videoReviewContext}
+          workspaceAgentPubkey={runtime.workspaceAgentPubkey}
+        />
+      </DocumentCard>
+    );
+  };
+
   return {
     spoiler: ({
       children,
@@ -1513,7 +1558,9 @@ export function createMarkdownComponents(
         }
       });
       return (
-        <MarkdownCodeBlock language={language}>{children}</MarkdownCodeBlock>
+        <MarkdownCodeBlock collapseLong={messageFences} language={language}>
+          {children}
+        </MarkdownCodeBlock>
       );
     },
     strong: ({ children }) => (
@@ -1593,15 +1640,16 @@ export function createMarkdownComponents(
         />
       );
     },
+    ...(messageFences ? { "message-document-card": messageDocumentCard } : {}),
   } as Components;
 }
 
 /**
- * The component map only varies by the four boolean render flags, so at most
- * sixteen instances ever exist. Module-stable maps mean cached markdown
+ * The component map only varies by the five boolean render flags, so at most
+ * thirty-two instances ever exist. Module-stable maps mean cached markdown
  * element trees (see ./markdown/nodeCache.ts) never embed per-mount closures.
  */
-const MARKDOWN_COMPONENT_SCHEMA_VERSION = "8";
+const MARKDOWN_COMPONENT_SCHEMA_VERSION = "9";
 const markdownComponentsByVariant = new Map<string, MarkdownComponentSet>();
 
 type MarkdownComponentSet = { components: Components; variant: string };
@@ -1618,12 +1666,18 @@ function getMarkdownComponents(
   leadingInlineContent: boolean,
   mediaInset: boolean,
   blockCode: boolean,
+  messageFences: boolean,
 ): MarkdownComponentSet {
-  const variant = `${MARKDOWN_COMPONENT_SCHEMA_VERSION}:${interactive ? "i" : ""}${leadingInlineContent ? "l" : ""}${mediaInset ? "m" : ""}${blockCode ? "c" : ""}`;
+  const variant = `${MARKDOWN_COMPONENT_SCHEMA_VERSION}:${interactive ? "i" : ""}${leadingInlineContent ? "l" : ""}${mediaInset ? "m" : ""}${blockCode ? "c" : ""}${messageFences ? "f" : ""}`;
   let entry = markdownComponentsByVariant.get(variant);
   if (!entry) {
     entry = {
-      components: createMarkdownComponents(interactive, mediaInset, blockCode),
+      components: createMarkdownComponents(
+        interactive,
+        mediaInset,
+        blockCode,
+        messageFences,
+      ),
       variant,
     };
     markdownComponentsByVariant.set(variant, entry);
@@ -1642,6 +1696,7 @@ function MarkdownInner({
   imetaByUrl,
   interactive = true,
   blockCode = false,
+  messageFences = false,
   agentMentionPubkeysByName,
   leadingInlineContent,
   mediaInset = false,
@@ -1694,13 +1749,24 @@ function MarkdownInner({
       workspaceAgentPubkey,
       agentMentionPubkeysByName,
       channels,
+      blockCode,
+      channelNames,
+      customEmoji,
+      hardLineBreaks,
       imetaByUrl,
+      interactive,
       leadingInlineContent,
+      mediaInset,
+      messageFences,
+      messageId,
+      mentionNames,
       mentionPubkeysByName,
       onOpenChannel,
       onOpenEntityLink,
       onOpenMessageLink,
       relayOrigin,
+      searchQuery,
+      videoReviewContext,
       resolveChannelReferences: true,
       snapshotSharedBy,
       onImportSnapshotFromUrl: (
@@ -1716,13 +1782,24 @@ function MarkdownInner({
       workspaceAgentPubkey,
       agentMentionPubkeysByName,
       channels,
+      blockCode,
+      channelNames,
+      customEmoji,
+      hardLineBreaks,
       imetaByUrl,
+      interactive,
       leadingInlineContent,
+      mediaInset,
+      messageFences,
+      messageId,
+      mentionNames,
       mentionPubkeysByName,
       onOpenChannel,
       onOpenEntityLink,
       onOpenMessageLink,
       relayOrigin,
+      searchQuery,
+      videoReviewContext,
       snapshotSharedBy,
       goAgents,
     ],
@@ -1751,6 +1828,7 @@ function MarkdownInner({
     hasLeadingInlineContent,
     mediaInset,
     blockCode,
+    messageFences,
   );
   const markdownNode =
     configNudge === null
@@ -1761,6 +1839,7 @@ function MarkdownInner({
           customEmoji,
           hardLineBreaks,
           leadingInlineContent: hasLeadingInlineContent,
+          messageFences,
           mentionNames,
           searchQuery,
           variant: componentSet.variant,
@@ -1781,6 +1860,7 @@ function MarkdownInner({
           "[&>h1+h2]:mt-1.5! [&>h2+h3]:mt-1.5! [&>h3+h4]:mt-1.5! [&>h4+h5]:mt-1.5! [&>h5+h6]:mt-1.5!",
           "[&>*+blockquote]:mt-3.5 [&>blockquote+*]:mt-3.5",
           "[&>*+[data-code-block]]:mt-3.5 [&>[data-code-block]+*]:mt-3.5",
+          "[&>*+[data-document-card]]:mt-3.5 [&>[data-document-card]+*]:mt-3.5",
           "[&>*+[data-table-block]]:mt-3.5 [&>[data-table-block]+*]:mt-3.5",
           "[&>*+hr]:mt-4 [&>hr+*]:mt-4",
           "[&>p+ul]:mt-1.5 [&>p+ol]:mt-1.5 [&>div+ul]:mt-1.5 [&>div+ol]:mt-1.5",

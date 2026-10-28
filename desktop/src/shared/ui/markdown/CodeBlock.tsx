@@ -67,14 +67,21 @@ function getCodeBlockText(children: React.ReactNode) {
 
 export function MarkdownCodeBlock({
   children,
+  collapseLong = false,
   language,
 }: {
   children?: React.ReactNode;
+  collapseLong?: boolean;
   language?: string;
 }) {
   const [isCopying, setIsCopying] = React.useState(false);
+  const [expandedCode, setExpandedCode] = React.useState<string | null>(null);
   const codeBlockRef = React.useRef<HTMLPreElement | null>(null);
+  const codeId = React.useId();
   const code = React.useMemo(() => getCodeBlockText(children), [children]);
+  const shouldCollapse = collapseLong && code.split("\n").length > 12;
+  const isExpanded = expandedCode === code;
+  const isCollapsed = shouldCollapse && !isExpanded;
   useSmoothCorners(codeBlockRef);
 
   const handleCopy = React.useCallback(
@@ -97,10 +104,22 @@ export function MarkdownCodeBlock({
   );
 
   return (
-    <div className="group relative" data-code-block="">
+    <div
+      className="group relative"
+      data-code-block=""
+      data-code-collapsed={isCollapsed ? "" : undefined}
+    >
       <pre
         ref={codeBlockRef}
-        className="max-h-[400px] overflow-x-auto overflow-y-auto rounded-2xl border border-border/70 bg-muted/60 px-3 py-1.5 pr-12 shadow-xs"
+        className={cn(
+          "rounded-2xl border border-border/70 bg-muted/60 px-3 py-1.5 pr-12 shadow-xs",
+          isCollapsed
+            ? "max-h-[17rem] overflow-x-auto overflow-y-hidden"
+            : shouldCollapse
+              ? "max-h-none overflow-x-auto overflow-y-visible"
+              : "max-h-[400px] overflow-x-auto overflow-y-auto",
+        )}
+        id={codeId}
         style={{ borderRadius: "1rem" }}
       >
         {language && (
@@ -114,7 +133,10 @@ export function MarkdownCodeBlock({
         <TooltipTrigger asChild>
           <Button
             aria-label="Copy code block"
-            className="absolute right-2 top-2 h-7 w-7 bg-background/80 text-muted-foreground opacity-0 shadow-xs ring-1 ring-border/60 backdrop-blur-sm transition-opacity hover:bg-background hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-60"
+            className={cn(
+              "absolute right-2 h-7 w-7 bg-background/80 text-muted-foreground opacity-0 shadow-xs ring-1 ring-border/60 backdrop-blur-sm transition-opacity hover:bg-background hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-60",
+              isCollapsed ? "bottom-2 opacity-100" : "top-2",
+            )}
             disabled={isCopying}
             onClick={handleCopy}
             size="icon"
@@ -122,11 +144,28 @@ export function MarkdownCodeBlock({
             variant="ghost"
           >
             <Copy className="h-4 w-4" />
-            <span className="sr-only">Copy code block</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>Copy code</TooltipContent>
       </Tooltip>
+      {shouldCollapse ? (
+        <div className="mt-1 flex justify-center">
+          <Button
+            aria-controls={codeId}
+            aria-expanded={isExpanded}
+            className="min-w-24"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpandedCode((current) => (current === code ? null : code));
+            }}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            {isExpanded ? "Show less" : "Show all"}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
