@@ -6,7 +6,7 @@ use axum::{
 use base64::Engine;
 use nostr::{EventBuilder, Keys, Kind, Tag};
 use sqlx::PgPool;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tower::ServiceExt;
 
 struct Fixture {
@@ -23,6 +23,8 @@ struct Fixture {
     /// Statuses the provider answers with, in order, before it starts answering
     /// normally. Fill it after building the fixture.
     script: Arc<std::sync::Mutex<std::collections::VecDeque<StatusCode>>>,
+    /// Milliseconds the provider thinks before it answers.
+    delay_ms: Arc<AtomicU64>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -60,6 +62,8 @@ async fn fixture_in(
         StatusCode,
     >::new()));
     let scripted = script.clone();
+    let delay_ms = Arc::new(AtomicU64::new(0));
+    let thinking = delay_ms.clone();
     let completion = response.clone();
     let upstream = Router::new()
         .route(
@@ -68,6 +72,7 @@ async fn fixture_in(
                 let counter = counter.clone();
                 let captured = captured.clone();
                 let scripted = scripted.clone();
+                let thinking = thinking.clone();
                 let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
@@ -86,6 +91,10 @@ async fn fixture_in(
                     }
                     captured.lock().unwrap().push(body);
                     let index = counter.fetch_add(1, Ordering::SeqCst);
+                    let delay = thinking.load(Ordering::SeqCst);
+                    if delay > 0 {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
                     let refusal = scripted.lock().unwrap().pop_front();
                     if let Some(status) = refusal {
                         return (status, Json(json!({"error":{"message":"scripted"}})));
@@ -232,6 +241,7 @@ async fn fixture_in(
         calls,
         sent,
         script,
+        delay_ms,
         server,
     }
 }
@@ -704,6 +714,66 @@ async fn a_rate_limited_provider_is_retried_and_the_customer_is_charged_once() {
         StatusCode::CONFLICT
     );
     assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_client_that_disconnects_mid_request_still_has_its_usage_settled() {
+    // GATE-309-R2: a harness killed while its request was with the provider
+    // dropped the handler, the hold stayed pending and, 15 minutes later, settled
+    // provisionally at the reserved maximum.
+    let f = fixture(upstream_response()).await;
+    f.delay_ms.store(300, Ordering::SeqCst);
+    let request = Uuid::new_v4();
+    let payload = body(&f, request);
+    // The client leaves once the request has reached the provider.
+    let mut pending = Box::pin(routes(f.gateway.clone()).oneshot(signed(&f, &payload, "gone")));
+    tokio::select! {
+        _ = &mut pending => panic!("answered before the client left"),
+        _ = async {
+            while f.calls.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        } => {}
+    }
+    drop(pending);
+    let mut status = String::new();
+    for _ in 0..50 {
+        status = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+        if status != "pending" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Settled at the provider's own cost, without the recovery worker.
+    assert_eq!(status, "settled");
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 12_000_000);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        988_000_000
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    // The app's own retry of that request is refused: it was charged once.
+    assert_eq!(
+        call(&f, &payload, "gone-retry").await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
