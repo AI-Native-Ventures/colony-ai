@@ -94,6 +94,8 @@ export type MarkdownProps = {
    * lines scroll inside the block instead of stretching the layout.
    */
   blockCode?: boolean;
+  /** Enables document cards and long-fence disclosure in message bodies. */
+  messageFences?: boolean;
   agentMentionPubkeysByName?: Record<string, string>;
   mentionNames?: string[];
   mentionPubkeysByName?: Record<string, string>;

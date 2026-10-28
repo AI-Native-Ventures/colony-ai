@@ -112,6 +112,7 @@ export function markdownPropsAreEqual(
     prev.hardLineBreaks === next.hardLineBreaks &&
     prev.interactive === next.interactive &&
     prev.blockCode === next.blockCode &&
+    prev.messageFences === next.messageFences &&
     prev.mediaInset === next.mediaInset &&
     shallowRecordEqual(
       prev.agentMentionPubkeysByName,

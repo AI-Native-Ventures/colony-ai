@@ -156,6 +156,7 @@ export default defineConfig({
         "**/owned-agent-discovery.spec.ts",
         "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
+        "**/doc-card-collapse.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
         "**/sidebar-full-app.spec.ts",
         "**/sidebar-reference-fixture.spec.ts",
@@ -343,6 +344,7 @@ export default defineConfig({
       testMatch: [
         "**/day-divider-overlap.spec.ts",
         "**/link-preview-bare-domain.spec.ts",
+        "**/doc-card-collapse.spec.ts",
         "**/colony3-dark-mode.spec.ts",
         "**/judge-ready-ai.spec.ts",
         "**/agent-working-indicator.spec.ts",
