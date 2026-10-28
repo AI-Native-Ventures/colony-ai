@@ -147,7 +147,8 @@ mod tests {
                 streamed: true,
             });
         });
-        String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned()
+        let bytes = logs.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&bytes).into_owned()
     }
 
     /// A field is quoted or not depending on the formatter.
