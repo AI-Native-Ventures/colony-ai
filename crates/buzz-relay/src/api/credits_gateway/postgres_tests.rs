@@ -20,6 +20,9 @@ struct Fixture {
     session: Uuid,
     calls: Arc<AtomicUsize>,
     sent: Arc<std::sync::Mutex<Vec<Value>>>,
+    /// Statuses the provider answers with, in order, before it starts answering
+    /// normally. Fill it after building the fixture.
+    script: Arc<std::sync::Mutex<std::collections::VecDeque<StatusCode>>>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -53,6 +56,10 @@ async fn fixture_in(
     let counter = calls.clone();
     let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured = sent.clone();
+    let script = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::<
+        StatusCode,
+    >::new()));
+    let scripted = script.clone();
     let completion = response.clone();
     let upstream = Router::new()
         .route(
@@ -60,6 +67,7 @@ async fn fixture_in(
             post(move |headers: HeaderMap, Json(body): Json<Value>| {
                 let counter = counter.clone();
                 let captured = captured.clone();
+                let scripted = scripted.clone();
                 let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
@@ -78,6 +86,10 @@ async fn fixture_in(
                     }
                     captured.lock().unwrap().push(body);
                     let index = counter.fetch_add(1, Ordering::SeqCst);
+                    let refusal = scripted.lock().unwrap().pop_front();
+                    if let Some(status) = refusal {
+                        return (status, Json(json!({"error":{"message":"scripted"}})));
+                    }
                     if index > 0 {
                         if let Some(id) = completion["id"].as_str().map(str::to_owned) {
                             completion["id"] = json!(format!("{id}-{index}"));
@@ -219,6 +231,7 @@ async fn fixture_in(
         session,
         calls,
         sent,
+        script,
         server,
     }
 }
@@ -648,6 +661,82 @@ async fn definite_upstream_rejection_releases_hold_without_billing_customer() {
             .unwrap();
     assert_eq!(charged, 0);
     assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+/// A free model is rate limited upstream about as often as it answers, and the
+/// managed client makes one attempt, so the relay rides out a 429 itself. The
+/// provider declines a 429 before generating: nothing is billed for it.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_rate_limited_provider_is_retried_and_the_customer_is_charged_once() {
+    let f = fixture(upstream_response()).await;
+    f.script
+        .lock()
+        .unwrap()
+        .extend([StatusCode::TOO_MANY_REQUESTS, StatusCode::TOO_MANY_REQUESTS]);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "limited-then-ok").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["chargedNanousd"], "12000000");
+    // Two refusals and the answer: three trips, one charge.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        988_000_000
+    );
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 12_000_000);
+    // The client's own retry of a settled request is still refused: no second charge.
+    assert_eq!(
+        call(&f, &body(&f, request), "limited-then-ok-again")
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_provider_that_stays_rate_limited_is_refused_and_nothing_is_billed() {
+    let f = fixture_status(
+        json!({"error":{"message":"synthetic rate limit"}}),
+        StatusCode::TOO_MANY_REQUESTS,
+    )
+    .await;
+    let request = Uuid::new_v4();
+    assert_eq!(
+        call(&f, &body(&f, request), "limited-forever").await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    // The first try and three retries, then the refusal the app always saw.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 0);
 }
 
 #[tokio::test]
