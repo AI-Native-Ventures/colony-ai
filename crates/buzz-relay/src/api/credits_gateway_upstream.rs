@@ -582,7 +582,7 @@ impl Upstream {
                 }
             }
             live.retain(|index| !gone.contains(index));
-            let exhausted = if unclear && false {
+            let exhausted = if unclear {
                 CompletionFailure::Ambiguous
             } else {
                 CompletionFailure::Rejected
