@@ -256,6 +256,14 @@ impl Upstream {
             .send()
             .await
             .map_err(|_| CompletionFailure::Ambiguous)?;
+        if !response.status().is_success() {
+            // The provider's status only, never its body: enough to tell a
+            // refused key, model or price ceiling from a problem with the prompt.
+            tracing::warn!(
+                upstream_status = response.status().as_u16(),
+                "Colony gateway upstream did not accept a request"
+            );
+        }
         if matches!(
             response.status().as_u16(),
             400 | 401 | 402 | 403 | 404 | 413 | 422 | 429
