@@ -90,6 +90,32 @@ test("every built-in role talks like a person in chat", () => {
       entry.displayName,
     );
     assert.match(entry.systemPrompt, /at most one question/, entry.displayName);
+    assert.match(
+      entry.systemPrompt,
+      /one short message per request/,
+      entry.displayName,
+    );
+    assert.match(
+      entry.systemPrompt,
+      /never a progress update/,
+      entry.displayName,
+    );
+    assert.match(entry.systemPrompt, /at most 50 words/, entry.displayName);
+    assert.match(
+      entry.systemPrompt,
+      /a doc fence for prose/,
+      entry.displayName,
+    );
+    assert.doesNotMatch(
+      entry.systemPrompt,
+      /under 40 words/,
+      entry.displayName,
+    );
+    assert.equal(
+      entry.systemPrompt.includes("\u2014"),
+      false,
+      entry.displayName,
+    );
   }
 });
 

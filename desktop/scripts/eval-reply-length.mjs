@@ -46,12 +46,21 @@ export const OWNER_MESSAGES = [
   "help me find customers",
   "what should I do today?",
   "write a short Instagram post about our launch",
+  "find five guest houses in Bryanston and tell me which one to contact first",
+  "write me a blog post about our launch",
+  "draft the WhatsApp message for the best one",
   "thanks",
 ];
 
-/** Messages whose task legitimately needs a longer reply. */
-export const LONG_OK_MESSAGES = new Set([
+/**
+ * Messages that ask for something to read or use. The deliverable belongs in a
+ * fenced block, so these are held to the same chat-word limit as every other
+ * message and are also checked for the fence.
+ */
+export const DELIVERABLE_MESSAGES = new Set([
   "write a short Instagram post about our launch",
+  "write me a blog post about our launch",
+  "draft the WhatsApp message for the best one",
 ]);
 
 export const BUSINESS_PROFILE = {
@@ -73,7 +82,8 @@ Open items: packaging supplier quote (waiting on reply), box pricing (draft in O
 Team: Sam, Lindiwe (roasting), Pieter (deliveries), Aisha (cafe accounts).
 Workspace: RESEARCH/ has two cafe market notes, PLANS/ has a launch plan draft, OUTBOX/ has the pricing draft.`;
 
-export const TARGET = { medianWords: 40, maxWords: 120 };
+/** Chat words are the words outside fenced blocks. The CLI refuses over 60. */
+export const TARGET = { medianWords: 40, maxWords: 60 };
 
 const SOURCES = {
   basePrompt: "crates/buzz-acp/src/base_prompt.md",
@@ -86,17 +96,30 @@ const HEADING = /^\s{0,3}#{1,6}\s+\S/m;
 const BOLD = /\*\*[^*\n]+\*\*|__[^_\n]+__/;
 const BULLET = /^\s*(?:[-*•]|\d+[.)])\s+\S/m;
 
+/** A closed fenced block: its opening fence line through its closing fence. */
+const FENCE = /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g;
+const DOC_FENCE =
+  /(^|\n)[ \t]*(```|~~~)doc\b[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/;
+
 export function countWords(text) {
   const trimmed = text.trim();
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
+/** The chat text of a reply: everything outside closed fenced blocks. */
+export function chatTextOf(text) {
+  return text.replace(FENCE, "$1");
+}
+
 export function analyzeReply(text) {
-  const heading = HEADING.test(text);
-  const bold = BOLD.test(text);
-  const bullets = BULLET.test(text);
+  const chat = chatTextOf(text);
+  const heading = HEADING.test(chat);
+  const bold = BOLD.test(chat);
+  const bullets = BULLET.test(chat);
   return {
-    words: countWords(text),
+    words: countWords(chat),
+    fenced: chat !== text,
+    docFence: DOC_FENCE.test(text),
     heading,
     bold,
     bullets,
@@ -115,15 +138,18 @@ export function median(values) {
 
 export function summarize(replies) {
   const words = replies.map((reply) => reply.words);
-  const overLimit = replies.filter(
-    (reply) =>
-      reply.words > TARGET.maxWords && !LONG_OK_MESSAGES.has(reply.message),
+  const overLimit = replies.filter((reply) => reply.words > TARGET.maxWords);
+  const deliverables = replies.filter(
+    (reply) => DELIVERABLE_MESSAGES.has(reply.message) && !reply.silent,
   );
   return {
     replies: replies.length,
     medianWords: median(words),
     maxWords: Math.max(0, ...words),
     overLimit: overLimit.length,
+    deliverables: deliverables.length,
+    deliverablesInDocFence: deliverables.filter((reply) => reply.docFence)
+      .length,
     formatted: replies.filter((reply) => reply.formatted).length,
     silent: replies.filter((reply) => reply.silent).length,
   };
@@ -392,12 +418,14 @@ export function renderTable(oldRun, newRun) {
   }
   lines.push(
     "",
-    "| Instructions | Median words | Longest reply | Replies over 120 words (Instagram post excluded) | Replies with headings, bold or bullets | No reply at all |",
+    `| Instructions | Median chat words | Longest chat text | Replies over ${TARGET.maxWords} chat words | Replies with headings, bold or bullets | No reply at all |`,
     "|---|---|---|---|---|---|",
     row("Before", oldRun.summary),
     row("After", newRun.summary),
     "",
-    `Target: median under ${TARGET.medianWords} words, none over ${TARGET.maxWords} unless the task needs it.`,
+    `Chat words are the words outside fenced blocks. Deliverables (blog post, drafts) in a doc fence: before ${oldRun.summary.deliverablesInDocFence ?? 0} of ${oldRun.summary.deliverables ?? 0}, after ${newRun.summary.deliverablesInDocFence ?? 0} of ${newRun.summary.deliverables ?? 0}.`,
+    "",
+    `Target: median under ${TARGET.medianWords} chat words, none over ${TARGET.maxWords}, every deliverable in a doc fence.`,
   );
   return lines.join("\n");
 }

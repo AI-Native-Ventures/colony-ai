@@ -569,6 +569,12 @@ impl BuzzClient {
         &self.relay_url
     }
 
+    /// Whether this client speaks for an AI employee. A managed agent carries
+    /// its owner's NIP-OA attestation; a person using the CLI does not.
+    pub fn is_agent(&self) -> bool {
+        self.auth_tag.is_some()
+    }
+
     /// Return the owner pubkey carried by the NIP-OA auth tag, if any.
     ///
     /// The auth tag is `["auth", owner_pubkey, conditions, sig]`; the

@@ -629,3 +629,54 @@ async fn turn_started_by_another_agent_stays_silent() {
         run.replies()
     );
 }
+
+// ── the chat limit ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_long_final_answer_is_posted_short_and_whole() {
+    let long: String = (1..=14)
+        .map(|n| format!("Guest house number {n} was checked and ruled out."))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let run = run_turn(Turn::mention(
+        Place::ChannelTopLevel,
+        AgentTurn {
+            updates: vec![chunk(&long)],
+            stop_reason: "end_turn",
+            posts_itself: false,
+        },
+    ))
+    .await;
+
+    let replies = run.replies();
+    assert_eq!(replies.len(), 1, "exactly one reply, got {replies:?}");
+    let content = replies[0]["content"].as_str().unwrap();
+    assert!(
+        content.split_whitespace().count() <= 60,
+        "no wall of text reaches the person: {content}"
+    );
+    assert!(content.starts_with("Guest house number 1 was checked and ruled out."));
+    assert!(content.ends_with("Want the rest?"), "{content}");
+    assert!(!content.contains("number 14 "), "{content}");
+}
+
+#[tokio::test]
+async fn a_fenced_deliverable_in_the_final_answer_is_posted_whole() {
+    let post = format!(
+        "Here's the blog post.\n```doc\n# Karoo launch\n{}\n```",
+        vec!["word"; 700].join(" ")
+    );
+    let run = run_turn(Turn::mention(
+        Place::ChannelTopLevel,
+        AgentTurn {
+            updates: vec![chunk(&post)],
+            stop_reason: "end_turn",
+            posts_itself: false,
+        },
+    ))
+    .await;
+
+    let replies = run.replies();
+    assert_eq!(replies.len(), 1, "exactly one reply, got {replies:?}");
+    assert_eq!(replies[0]["content"], post);
+}
