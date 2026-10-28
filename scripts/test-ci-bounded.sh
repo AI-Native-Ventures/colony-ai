@@ -55,4 +55,20 @@ healthy='echo run >> "$1"; if [ "$(wc -l < "$1" | tr -d " ")" -eq 1 ]; then slee
 check "recovery exits 0" "$?" "0"
 check "recovery ran twice" "$(wc -l < "$work/recover" | tr -d ' ')" "2"
 
+# 6. With a progress directory, a slow command that keeps writing is left alone.
+mkdir "$work/slow"
+CI_BOUNDED_PROGRESS_DIR="$work/slow" CI_BOUNDED_IDLE_SECONDS=4 "$bounded" 60 2 \
+  sh -c 'echo run >> "$1"; for i in 1 2 3 4 5 6 7 8; do head -c 20000 /dev/zero >> "$2/data"; sleep 1; done' sh "$work/slowruns" "$work/slow" >/dev/null 2>&1
+check "slow writer exits 0" "$?" "0"
+check "slow writer ran once" "$(wc -l < "$work/slowruns" | tr -d ' ')" "1"
+
+# 7. With a progress directory, a command that goes idle is killed long before the time limit.
+mkdir "$work/idle"
+started=$SECONDS
+CI_BOUNDED_PROGRESS_DIR="$work/idle" CI_BOUNDED_IDLE_SECONDS=3 "$bounded" 100 2 \
+  sh -c 'echo run >> "$1"; head -c 20000 /dev/zero >> "$2/data"; sleep 120' sh "$work/idleruns" "$work/idle" >/dev/null 2>&1
+check "idle command exits 124" "$?" "124"
+check "idle command was retried" "$(wc -l < "$work/idleruns" | tr -d ' ')" "2"
+check "idle command was killed early" "$([ $((SECONDS - started)) -lt 40 ] && echo yes || echo no)" "yes"
+
 exit "$fail"

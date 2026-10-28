@@ -45,15 +45,25 @@ Not proven: why nodejs.org connections go idle on 28 Oct. It is not a runner ima
 
 - `scripts/ci-hermit-ready.sh` runs right after `activate-hermit` in the CI jobs. It
   installs the Hermit packages the job uses at the exact version `bin/` pins, in a
-  step of its own under `scripts/ci-bounded.sh` (60 s per attempt, 5 attempts), then
-  re-activates Hermit so the link farm gives each installed tool a direct path.
-  After it, `pnpm install` makes no stub call (an `strace -e execve` shows zero
-  `bin/` execs) and cannot download anything.
+  step of its own under `scripts/ci-bounded.sh`, then re-activates Hermit so the link
+  farm gives each installed tool a direct path. After it, `pnpm install` makes no
+  stub call (an `strace -e execve` shows zero `bin/` execs) and cannot download
+  anything. The install attempt is killed, with its whole process group, when the
+  Hermit download cache stops growing for 30 seconds (or after 240 seconds), and
+  retried up to 5 times. A slow download that keeps moving is left alone: one CI job
+  took 54 seconds for a healthy but slow Node download.
 - `scripts/ci-bounded.sh <seconds> <attempts> <command>` runs each attempt in its own
-  process group, kills the whole group when the limit passes and retries. Every
-  dependency install step also runs through it (240 s, 3 attempts), so any stall now
-  costs minutes, not 25. `scripts/test-ci-bounded.sh` is its contract and runs in the
-  Workflow contracts job.
+  process group, kills the whole group when the limit passes (or, with
+  `CI_BOUNDED_PROGRESS_DIR` and `CI_BOUNDED_IDLE_SECONDS`, when that directory stops
+  changing) and retries. Every dependency install step also runs through it (240 s,
+  3 attempts), so any stall now costs minutes, not 25.
+  `scripts/test-ci-bounded.sh` is its contract and runs in the Workflow contracts job.
+
+Proof the fix recovers from the stall: throwaway probe jobs (PR #418) ran a local
+proxy that leaves the first nodejs.org connection established and idle after 200 KB.
+Today's flow (`just desktop-install-ci` with the stub downloading Node) hung until
+the 130 s guard in 3 of 3 jobs. With the fix the first install attempt was killed and
+the second finished, 74 to 76 seconds in total, in 3 of 3 jobs.
 
 Windows jobs do not use Hermit (setup-node and pnpm/action-setup), so they are not
 changed. Tools a job still starts through a stub (cmake, pgschema, cargo-deny,
