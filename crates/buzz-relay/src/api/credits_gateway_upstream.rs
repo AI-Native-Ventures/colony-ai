@@ -1,5 +1,6 @@
 //! Bounded server-configured transport and exact provider cost accounting.
 
+use std::borrow::Cow;
 use std::time::Duration;
 
 use super::credits_gateway_metering::TokenPrices;
@@ -40,6 +41,12 @@ const MAX_RESPONSE: usize = 1024 * 1024;
 const MAX_OUTPUT: i64 = 4096;
 /// Times a request is retried after the provider answers 429.
 const RATE_LIMIT_RETRIES: usize = 3;
+/// Most models one request can walk: the primary and its fallbacks.
+const MAX_CHAIN: usize = 8;
+/// Most of a provider's error body read to classify it, and the longest wait
+/// for it. The body is never kept or logged, only sorted into a fixed code.
+const ERROR_PEEK: usize = 4096;
+const ERROR_PEEK_TIME: Duration = Duration::from_secs(2);
 
 /// How `Upstream::complete` rides out a provider rate limit.
 ///
@@ -107,9 +114,30 @@ impl RetryPolicy {
 
 /// One request to the provider that did not return a body.
 enum Attempt {
-    /// 429, with the provider's `Retry-After` when it sent whole seconds.
-    RateLimited(Option<Duration>),
+    /// 429, with the provider's `Retry-After` when it sent whole seconds and a
+    /// fixed code for why (see `rate_limit_reason`).
+    RateLimited {
+        retry_after: Option<Duration>,
+        reason: &'static str,
+    },
+    /// This model cannot serve the request but another may: it is gone or
+    /// expired (`Rejected`, the provider clearly refused), or it failed with a
+    /// 5xx (`Ambiguous`, it may have generated).
+    Unavailable(CompletionFailure),
     Failed(CompletionFailure),
+}
+
+/// A model that backs up the primary, with its own prices.
+struct ChainModel {
+    name: String,
+    prices: Option<TokenPrices>,
+}
+
+/// A provider's reply and which model of the chain gave it, so the usage, the
+/// price table and the stored metering all name the model that really answered.
+pub(super) struct Answer {
+    pub(super) bytes: Vec<u8>,
+    model: usize,
 }
 
 /// Never derive Debug: the bearer must never enter logs.
@@ -117,10 +145,15 @@ pub(super) struct Upstream {
     client: Client,
     key: Zeroizing<String>,
     origin: String,
+    /// The first model of the chain. The fingerprint names only this one, so
+    /// adding fallbacks never fences the recovery of requests in flight.
     pub(super) model: String,
     pub(super) fingerprint: String,
     openrouter: bool,
     prices: Option<TokenPrices>,
+    /// Models tried in order when the one before them cannot answer. Empty
+    /// means the single-model behaviour, byte for byte.
+    fallbacks: Vec<ChainModel>,
     policy: Policy,
     context_tokens: i64,
     /// Longest one attempt may take.
@@ -128,7 +161,7 @@ pub(super) struct Upstream {
     retry: RetryPolicy,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CompletionFailure {
     Rejected,
     Ambiguous,
@@ -136,8 +169,15 @@ pub(super) enum CompletionFailure {
 
 impl Upstream {
     pub(super) fn from_env() -> Option<Self> {
-        let origin = std::env::var("COLONY_CREDITS_UPSTREAM_BASE_URL")
-            .unwrap_or_else(|_| "https://openrouter.ai/api/v1".into());
+        Self::from_vars(|name| std::env::var(name).ok())
+    }
+
+    /// The configuration read through `var`, so tests can supply it without
+    /// touching the process environment. Anything wrong anywhere is `None`: the
+    /// gateway stays off rather than run on a half-read setting.
+    fn from_vars(var: impl Fn(&str) -> Option<String>) -> Option<Self> {
+        let origin = var("COLONY_CREDITS_UPSTREAM_BASE_URL")
+            .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
         let url = url::Url::parse(&origin).ok()?;
         if url.scheme() != "https"
             || !url.username().is_empty()
@@ -148,44 +188,59 @@ impl Upstream {
             return None;
         }
         let openrouter = url.host_str() == Some("openrouter.ai");
-        let key = std::env::var("COLONY_CREDITS_UPSTREAM_KEY")
-            .ok()
-            .or_else(|| {
-                openrouter
-                    .then(|| std::env::var("OPENROUTER_MASTER_KEY").ok())
-                    .flatten()
-            })?;
+        let key = var("COLONY_CREDITS_UPSTREAM_KEY")
+            .or_else(|| openrouter.then(|| var("OPENROUTER_MASTER_KEY")).flatten())?;
         if key.trim().is_empty() {
             return None;
         }
-        let model = std::env::var("COLONY_CREDITS_UPSTREAM_MODEL")
-            .ok()
+        let model = var("COLONY_CREDITS_UPSTREAM_MODEL")
             .or_else(|| openrouter.then(|| MODEL.to_owned()))?;
-        let prices = match std::env::var("COLONY_CREDITS_MODEL_PRICES") {
-            Ok(table) => {
-                let table: std::collections::HashMap<String, TokenPrices> =
-                    serde_json::from_str(&table).ok()?;
-                Some(table.get(&model)?.clone())
-            }
-            Err(_) if openrouter => None,
-            Err(_) => return None,
+        let table: Option<std::collections::HashMap<String, TokenPrices>> =
+            match var("COLONY_CREDITS_MODEL_PRICES") {
+                Some(table) => Some(serde_json::from_str(&table).ok()?),
+                None if openrouter => None,
+                None => return None,
+            };
+        let prices = match &table {
+            Some(table) => Some(table.get(&model)?.clone()),
+            None => None,
         };
-        let allowed: Vec<String> = match std::env::var("COLONY_CREDITS_ALLOWED_MODELS") {
-            Ok(list) => serde_json::from_str(&list).ok()?,
-            Err(_) => vec![MODEL.into()],
+        let allowed: Vec<String> = match var("COLONY_CREDITS_ALLOWED_MODELS") {
+            Some(list) => serde_json::from_str(&list).ok()?,
+            None => vec![MODEL.into()],
         };
         let tracking = if openrouter {
-            Some(std::env::var("COLONY_CREDITS_USER_HASH_KEY").ok()?)
+            Some(var("COLONY_CREDITS_USER_HASH_KEY")?)
         } else {
             None
         };
         let policy = Policy::new(&model, allowed, openrouter, tracking).ok()?;
         // The model's context window, in tokens. No prompt can be longer, so it
         // bounds what a request can cost and what the relay holds for it. Set it
-        // when the server model's window is smaller than the default.
-        let context_tokens = match std::env::var("COLONY_CREDITS_MODEL_CONTEXT_TOKENS") {
-            Ok(raw) => raw.trim().parse::<i64>().ok()?,
-            Err(_) => DEFAULT_CONTEXT_TOKENS,
+        // when the server model's window is smaller than the default. It covers
+        // the whole chain, so it must fit the smallest window in it.
+        let context_tokens = match var("COLONY_CREDITS_MODEL_CONTEXT_TOKENS") {
+            Some(raw) => raw.trim().parse::<i64>().ok()?,
+            None => DEFAULT_CONTEXT_TOKENS,
+        };
+        // Models that back up the primary, as a JSON array. Unset or blank is no
+        // fallback at all. Each one is held to what the primary is held to: the
+        // allowed list and, where there is a price table, a price in it.
+        let fallbacks = match var("COLONY_CREDITS_UPSTREAM_FALLBACK_MODELS") {
+            Some(raw) if !raw.trim().is_empty() => {
+                let names: Vec<String> = serde_json::from_str(&raw).ok()?;
+                names
+                    .into_iter()
+                    .map(|name| {
+                        let prices = match &table {
+                            Some(table) => Some(table.get(&name)?.clone()),
+                            None => None,
+                        };
+                        Some(ChainModel { name, prices })
+                    })
+                    .collect::<Option<Vec<_>>>()?
+            }
+            _ => Vec::new(),
         };
         Self::new(
             key,
@@ -197,7 +252,45 @@ impl Upstream {
             policy,
             context_tokens,
         )
+        .ok()?
+        .with_fallbacks(fallbacks)
         .ok()
+    }
+
+    /// Sets the models that back up the primary. A fallback is refused, and the
+    /// gateway with it, unless it passes every check the primary passed: on the
+    /// allowed list, a valid price, a sane name, and not already in the chain.
+    fn with_fallbacks(mut self, fallbacks: Vec<ChainModel>) -> Result<Self, ()> {
+        if fallbacks.len() >= MAX_CHAIN {
+            return Err(());
+        }
+        for (index, fallback) in fallbacks.iter().enumerate() {
+            self.policy.check_model(&fallback.name)?;
+            if fallback.name.is_empty()
+                || fallback.name.len() > 200
+                || fallback.name == self.model
+                || fallbacks[..index].iter().any(|o| o.name == fallback.name)
+            {
+                return Err(());
+            }
+            if let Some(prices) = &fallback.prices {
+                prices.validate()?;
+            }
+            if !self.openrouter && fallback.prices.is_none() {
+                return Err(());
+            }
+        }
+        self.fallbacks = fallbacks;
+        Ok(self)
+    }
+
+    /// Every model of the chain, primary first, with its prices.
+    fn chain(&self) -> impl Iterator<Item = (&str, Option<&TokenPrices>)> {
+        std::iter::once((self.model.as_str(), self.prices.as_ref())).chain(
+            self.fallbacks
+                .iter()
+                .map(|fallback| (fallback.name.as_str(), fallback.prices.as_ref())),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -248,6 +341,7 @@ impl Upstream {
             fingerprint,
             openrouter,
             prices,
+            fallbacks: Vec::new(),
             policy,
             context_tokens,
             timeout,
@@ -301,16 +395,74 @@ impl Upstream {
         upstream
     }
 
+    /// A chain of fake models, the first being the primary. A direct provider
+    /// needs a price for every model; OpenRouter may have none.
+    #[cfg(test)]
+    pub(super) fn fake_chain(
+        origin: String,
+        openrouter: bool,
+        models: &[(&str, Option<TokenPrices>)],
+    ) -> Self {
+        let names: Vec<String> = models.iter().map(|(name, _)| (*name).into()).collect();
+        let first = names[0].clone();
+        let policy = Policy::new(
+            &first,
+            names,
+            openrouter,
+            openrouter.then(|| "synthetic-customer-hmac-key-at-least-32-bytes".into()),
+        )
+        .unwrap();
+        let fallbacks = models[1..]
+            .iter()
+            .map(|(name, prices)| ChainModel {
+                name: (*name).into(),
+                prices: prices.clone(),
+            })
+            .collect();
+        let mut upstream = Self::new(
+            "synthetic-test-key".into(),
+            origin,
+            Duration::from_secs(1),
+            first,
+            openrouter,
+            models[0].1.clone(),
+            policy,
+            DEFAULT_CONTEXT_TOKENS,
+        )
+        .unwrap()
+        .with_fallbacks(fallbacks)
+        .unwrap();
+        upstream.retry = RetryPolicy::FAST;
+        upstream
+    }
+
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), Refusal> {
-        self.policy
-            .check_model(&self.model)
-            .map_err(|_| "model_not_allowed")?;
-        request.upstream_body(
+        for (model, _) in self.chain() {
+            self.policy
+                .check_model(model)
+                .map_err(|_| "model_not_allowed")?;
+        }
+        let (body, mut reserve) = request.upstream_body(
             &self.model,
             self.openrouter,
             self.prices.as_ref(),
             self.context_tokens,
-        )
+        )?;
+        // OpenRouter holds at the price ceiling for every model. A direct
+        // provider holds at the model's own price table, so the hold must cover
+        // the dearest model that could answer, or its charge could pass the hold.
+        if !self.openrouter {
+            for fallback in &self.fallbacks {
+                let (_, other) = request.upstream_body(
+                    &fallback.name,
+                    false,
+                    fallback.prices.as_ref(),
+                    self.context_tokens,
+                )?;
+                reserve = reserve.max(other);
+            }
+        }
+        Ok((body, reserve))
     }
 
     pub(super) fn attribute_customer(
@@ -324,44 +476,132 @@ impl Upstream {
         Ok(())
     }
 
-    pub(super) fn observe(&self, bytes: &[u8]) -> Result<ObservedResponse, ()> {
-        observe(bytes, &self.model, self.prices.as_ref())
+    /// The answer read as billing evidence, under the model that gave it.
+    pub(super) fn observe(&self, answer: &Answer) -> Result<ObservedResponse, ()> {
+        let (model, prices) = self.chain().nth(answer.model).ok_or(())?;
+        observe(&answer.bytes, model, prices)
     }
 
-    /// One completion, riding out provider rate limits (see `RetryPolicy`). Only
-    /// a 429 is retried; every other refusal, and any attempt that ends without
-    /// a clear answer, is final exactly as before.
-    pub(super) async fn complete(&self, body: &Value) -> Result<Vec<u8>, CompletionFailure> {
-        let started = tokio::time::Instant::now();
-        let mut retries = 0;
-        loop {
-            let left = self.retry.budget.saturating_sub(started.elapsed());
-            let retry_after = match self.attempt(body, left).await {
-                Ok(bytes) => return Ok(bytes),
-                Err(Attempt::Failed(failure)) => return Err(failure),
-                Err(Attempt::RateLimited(retry_after)) => retry_after,
-            };
-            // The status and the count only, never the provider's body.
-            tracing::warn!(
-                attempt = retries + 1,
-                upstream_status = 429,
-                "Colony gateway upstream rate limited a request"
-            );
-            if retries == RATE_LIMIT_RETRIES {
-                return Err(CompletionFailure::Rejected);
+    /// The request body for chain model `index`. The primary's body is sent as
+    /// it is. A fallback gets its own `model`, and the OpenAI-only route that
+    /// `upstream_body` pins `MODEL` to goes with `MODEL` alone, so a model is
+    /// never sent a provider pin that was written for another.
+    fn body_for<'a>(&self, body: &'a Value, index: usize) -> Cow<'a, Value> {
+        if index == 0 {
+            return Cow::Borrowed(body);
+        }
+        let model = &self.fallbacks[index - 1].name;
+        let mut body = body.clone();
+        body["model"] = json!(model);
+        if self.openrouter {
+            if let Some(provider) = body.get_mut("provider").and_then(Value::as_object_mut) {
+                if model == MODEL {
+                    provider.insert("only".into(), json!(["openai"]));
+                    provider.insert("allow_fallbacks".into(), json!(false));
+                } else {
+                    provider.remove("only");
+                    provider.remove("allow_fallbacks");
+                }
             }
-            let wait = self.retry.wait(retries, retry_after);
+        }
+        Cow::Owned(body)
+    }
+
+    /// One completion, riding out provider rate limits (see `RetryPolicy`) and,
+    /// when fallback models are set, moving down the chain.
+    ///
+    /// The chain is walked in order, once, with no wait between models: a 429 or
+    /// an unavailable model sends the request to the next one at once, because
+    /// another model is a different provider's capacity and waiting is for when
+    /// every model is limited. A model that is gone (404, or a 400 naming an
+    /// invalid model) or that failed with a 5xx is dropped for the rest of the
+    /// request. When models were only rate limited, the same backoff as before
+    /// waits and the walk repeats over those. Any other refusal (a bad key, a
+    /// price ceiling, a request the provider will not take) is final, because it
+    /// would fail on every model, and so is an attempt that ends without a clear
+    /// answer. Attempts are bounded at `RATE_LIMIT_RETRIES` plus one per model,
+    /// so a limit shared by all the free models costs a handful of calls and not
+    /// one per model per retry. With no fallback this is the single-model
+    /// retry loop it has always been.
+    pub(super) async fn complete(&self, body: &Value) -> Result<Answer, CompletionFailure> {
+        let started = tokio::time::Instant::now();
+        let mut live: Vec<usize> = (0..=self.fallbacks.len()).collect();
+        let max_attempts = RATE_LIMIT_RETRIES + live.len();
+        let mut attempts = 0;
+        let mut waits = 0;
+        // A 5xx: that model may have generated, so the end of the chain is not a
+        // clear refusal and the hold is left to the durable worker.
+        let mut unclear = false;
+        loop {
+            let mut retry_after: Option<Duration> = None;
+            let mut gone = Vec::new();
+            for &index in &live {
+                let left = self.retry.budget.saturating_sub(started.elapsed());
+                if attempts > 0 && (attempts >= max_attempts || left < self.retry.min_attempt) {
+                    break;
+                }
+                attempts += 1;
+                let (model, _) = self.chain().nth(index).ok_or(CompletionFailure::Rejected)?;
+                match self.attempt(model, &self.body_for(body, index), left).await {
+                    Ok(bytes) => {
+                        if index > 0 {
+                            tracing::info!(
+                                model,
+                                attempt = attempts,
+                                "Colony gateway answered from a fallback model"
+                            );
+                        }
+                        return Ok(Answer {
+                            bytes,
+                            model: index,
+                        });
+                    }
+                    Err(Attempt::Failed(failure)) => return Err(failure),
+                    Err(Attempt::RateLimited {
+                        retry_after: after,
+                        reason,
+                    }) => {
+                        // The model, the count and a fixed reason code only,
+                        // never the provider's body.
+                        tracing::warn!(
+                            model,
+                            attempt = attempts,
+                            upstream_status = 429,
+                            reason,
+                            "Colony gateway upstream rate limited a request"
+                        );
+                        retry_after = match (retry_after, after) {
+                            (Some(a), Some(b)) => Some(a.min(b)),
+                            (a, b) => a.or(b),
+                        };
+                    }
+                    Err(Attempt::Unavailable(failure)) => {
+                        unclear |= failure == CompletionFailure::Ambiguous;
+                        gone.push(index);
+                    }
+                }
+            }
+            live.retain(|index| !gone.contains(index));
+            let exhausted = if unclear {
+                CompletionFailure::Ambiguous
+            } else {
+                CompletionFailure::Rejected
+            };
+            if live.is_empty() || waits == RATE_LIMIT_RETRIES || attempts >= max_attempts {
+                return Err(exhausted);
+            }
+            let wait = self.retry.wait(waits, retry_after);
             let left = self.retry.budget.saturating_sub(started.elapsed());
             if wait.saturating_add(self.retry.min_attempt) > left {
-                return Err(CompletionFailure::Rejected);
+                return Err(exhausted);
             }
-            retries += 1;
+            waits += 1;
             tokio::time::sleep(wait).await;
         }
     }
 
-    async fn attempt(&self, body: &Value, left: Duration) -> Result<Vec<u8>, Attempt> {
-        let response = self
+    async fn attempt(&self, model: &str, body: &Value, left: Duration) -> Result<Vec<u8>, Attempt> {
+        let mut response = self
             .client
             .post(format!("{}/chat/completions", self.origin))
             .bearer_auth(self.key.as_str())
@@ -379,18 +619,33 @@ impl Upstream {
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.trim().parse::<u64>().ok())
                 .map(Duration::from_secs);
-            return Err(Attempt::RateLimited(retry_after));
+            let platform_headers = response.headers().contains_key("x-ratelimit-limit");
+            let peek = peek_error(&mut response).await;
+            return Err(Attempt::RateLimited {
+                retry_after,
+                reason: rate_limit_reason(platform_headers, &peek),
+            });
         }
         if !response.status().is_success() {
             // The provider's status only, never its body: enough to tell a
             // refused key, model or price ceiling from a problem with the prompt.
             tracing::warn!(
+                model,
                 upstream_status = status,
                 "Colony gateway upstream did not accept a request"
             );
         }
-        if matches!(status, 400 | 401 | 402 | 403 | 404 | 413 | 422) {
+        if status == 404 {
+            return Err(Attempt::Unavailable(CompletionFailure::Rejected));
+        }
+        if status == 400 && names_invalid_model(&peek_error(&mut response).await) {
+            return Err(Attempt::Unavailable(CompletionFailure::Rejected));
+        }
+        if matches!(status, 400 | 401 | 402 | 403 | 413 | 422) {
             return Err(Attempt::Failed(CompletionFailure::Rejected));
+        }
+        if status >= 500 {
+            return Err(Attempt::Unavailable(CompletionFailure::Ambiguous));
         }
         bounded_response(response)
             .await
@@ -440,6 +695,63 @@ async fn bounded_response(mut response: reqwest::Response) -> Result<Vec<u8>, ()
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+/// The start of a provider's error body, for sorting into a fixed code and then
+/// dropping. Bounded in size and time; whatever cannot be read is empty.
+async fn peek_error(response: &mut reqwest::Response) -> Vec<u8> {
+    let read = async {
+        let mut bytes = Vec::new();
+        while bytes.len() < ERROR_PEEK {
+            match response.chunk().await {
+                Ok(Some(chunk)) => bytes.extend_from_slice(&chunk),
+                _ => break,
+            }
+        }
+        bytes.truncate(ERROR_PEEK);
+        bytes
+    };
+    tokio::time::timeout(ERROR_PEEK_TIME, read)
+        .await
+        .unwrap_or_default()
+}
+
+/// Why a 429 happened, as one of a few fixed words, so the relay log can tell
+/// OpenRouter's account-wide limit on free models (shared by every `:free`
+/// model, so a fallback model cannot help) from one provider being busy (which a
+/// fallback model does help). Read from the error body and headers, never logged
+/// from them. The wording is OpenRouter's; a 429 that matches none of it is
+/// `unknown`, and is treated like any other limit.
+fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
+    let text = String::from_utf8_lossy(body).to_lowercase();
+    let provider_named = serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value["error"]["metadata"]["provider_name"]
+                .as_str()
+                .map(|name| !name.is_empty())
+        })
+        .unwrap_or(false);
+    if text.contains("free-models-per-day") {
+        "free_models_per_day"
+    } else if text.contains("free-models-per-min") {
+        "free_models_per_minute"
+    } else if provider_named || text.contains("rate-limited upstream") {
+        "provider_rate_limited"
+    } else if platform_headers || text.contains("rate_limit_exceeded") {
+        "account_rate_limited"
+    } else {
+        "unknown"
+    }
+}
+
+/// A 400 that says the model id is not one the provider serves: about the model,
+/// not the request, so another model may take it. Any other 400 is about the
+/// request and would fail on every model.
+fn names_invalid_model(body: &[u8]) -> bool {
+    String::from_utf8_lossy(body)
+        .to_lowercase()
+        .contains("not a valid model")
 }
 
 /// Private managed workflow, deliberately not an OpenAI request passthrough.
@@ -1163,9 +1475,9 @@ mod tests {
         use std::sync::atomic::Ordering;
         let (origin, task, hits) = scripted_provider(vec![(429, None), (429, None)], 200).await;
         let upstream = Upstream::fake(origin, Duration::from_secs(1));
-        let bytes = upstream.complete(&json!({})).await.unwrap();
+        let answer = upstream.complete(&json!({})).await.unwrap();
         assert_eq!(
-            serde_json::from_slice::<Value>(&bytes).unwrap()["id"],
+            serde_json::from_slice::<Value>(&answer.bytes).unwrap()["id"],
             "gen-ok"
         );
         // Two refusals and one answer.
@@ -1179,8 +1491,8 @@ mod tests {
         let (origin, task, hits) = scripted_provider(vec![], 429).await;
         let upstream = Upstream::fake(origin, Duration::from_secs(1));
         assert_eq!(
-            upstream.complete(&json!({})).await,
-            Err(CompletionFailure::Rejected)
+            upstream.complete(&json!({})).await.err(),
+            Some(CompletionFailure::Rejected)
         );
         assert_eq!(hits.load(Ordering::SeqCst), 1 + RATE_LIMIT_RETRIES);
         task.abort();
@@ -1203,8 +1515,8 @@ mod tests {
             let (origin, task, hits) = scripted_provider(vec![], status).await;
             let upstream = Upstream::fake(origin, Duration::from_secs(1));
             assert_eq!(
-                upstream.complete(&json!({})).await,
-                Err(failure),
+                upstream.complete(&json!({})).await.err(),
+                Some(failure),
                 "{status}"
             );
             assert_eq!(
@@ -1256,8 +1568,8 @@ mod tests {
             ..RetryPolicy::FAST
         };
         assert_eq!(
-            upstream.complete(&json!({})).await,
-            Err(CompletionFailure::Rejected)
+            upstream.complete(&json!({})).await.err(),
+            Some(CompletionFailure::Rejected)
         );
         assert_eq!(hits.load(Ordering::SeqCst), 1);
         task.abort();
@@ -1420,5 +1732,668 @@ mod tests {
             "messages":[{"role":"user","content":"x".repeat(1_000_000)}]});
         let (_, reserve) = widest.request(&managed(value)).unwrap();
         assert_eq!(reserve, 398_976_000);
+    }
+
+    // ---- Fallback model chain -------------------------------------------------
+
+    /// What a fake provider answers for one model.
+    #[derive(Clone, Copy)]
+    enum Reply {
+        /// 200 with a million prompt and a million completion tokens, and
+        /// `cost` as OpenRouter's returned cost when given.
+        Ok(Option<&'static str>),
+        Status(u16),
+        Body(u16, &'static str),
+    }
+
+    type Calls = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+    /// A provider that answers by the `model` of each request (404 for a model it
+    /// was not told about) and keeps every body it was sent, in order.
+    async fn model_provider(
+        replies: Vec<(&'static str, Reply)>,
+    ) -> (String, tokio::task::JoinHandle<()>, Calls) {
+        use axum::{
+            http::{HeaderMap, StatusCode},
+            routing::post,
+            Json, Router,
+        };
+        use std::sync::{Arc, Mutex};
+        let calls: Calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let replies = Arc::new(replies);
+        let router = Router::new().route(
+            "/chat/completions",
+            post(move |Json(body): Json<Value>| {
+                let seen = seen.clone();
+                let replies = replies.clone();
+                async move {
+                    let model = body["model"].as_str().unwrap_or_default().to_owned();
+                    seen.lock().unwrap().push(body);
+                    let reply = replies
+                        .iter()
+                        .find(|(name, _)| *name == model)
+                        .map(|(_, reply)| *reply)
+                        .unwrap_or(Reply::Status(404));
+                    let text = match reply {
+                        Reply::Ok(cost) => format!(
+                            r#"{{"id":"gen-{model}","choices":[],"usage":{{{}"prompt_tokens":1000000,"completion_tokens":1000000}}}}"#,
+                            cost.map(|c| format!(r#""cost":{c},"#)).unwrap_or_default()
+                        ),
+                        Reply::Status(_) => r#"{"error":{"message":"scripted"}}"#.into(),
+                        Reply::Body(_, text) => text.into(),
+                    };
+                    let status = match reply {
+                        Reply::Ok(_) => 200,
+                        Reply::Status(status) | Reply::Body(status, _) => status,
+                    };
+                    (StatusCode::from_u16(status).unwrap(), HeaderMap::new(), text)
+                }
+            }),
+        );
+        let (origin, task) = fake_server(router).await;
+        (origin, task, calls)
+    }
+
+    fn models_called(calls: &Calls) -> Vec<String> {
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|body| body["model"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    /// The body `request` builds for the primary: it names the primary model.
+    fn primary_body(upstream: &Upstream) -> Value {
+        json!({"model": upstream.model})
+    }
+
+    fn free_chain(origin: String, names: &[&str]) -> Upstream {
+        let models: Vec<(&str, Option<TokenPrices>)> =
+            names.iter().map(|name| (*name, None)).collect();
+        Upstream::fake_chain(origin, true, &models)
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_model_hands_the_request_to_the_next_at_once() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            ("free/b", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b", "free/c"]);
+        let answer = upstream.complete(&primary_body(&upstream)).await.unwrap();
+        // One try on the limited model, no wait and no retry of it, then the next.
+        assert_eq!(models_called(&calls), ["free/a", "free/b"]);
+        assert_eq!(answer.model, 1);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_gone_expired_or_failing_model_hands_the_request_to_the_next() {
+        let invalid_model = r#"{"error":{"message":"free/a is not a valid model ID","code":400}}"#;
+        for reply in [
+            Reply::Status(404),
+            Reply::Body(400, invalid_model),
+            Reply::Status(500),
+            Reply::Status(502),
+            Reply::Status(503),
+        ] {
+            let (origin, task, calls) =
+                model_provider(vec![("free/a", reply), ("free/b", Reply::Ok(Some("0")))]).await;
+            let upstream = free_chain(origin, &["free/a", "free/b"]);
+            let answer = upstream.complete(&primary_body(&upstream)).await.unwrap();
+            assert_eq!(models_called(&calls), ["free/a", "free/b"]);
+            assert_eq!(answer.model, 1);
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_chain_skips_each_failed_model_down_to_the_one_that_answers() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a", Reply::Status(404)),
+            ("free/b", Reply::Status(429)),
+            ("free/c", Reply::Status(503)),
+            ("free/d", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b", "free/c", "free/d"]);
+        let answer = upstream.complete(&primary_body(&upstream)).await.unwrap();
+        assert_eq!(
+            models_called(&calls),
+            ["free/a", "free/b", "free/c", "free/d"]
+        );
+        assert_eq!(answer.model, 3);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_chain_that_is_all_gone_ends_in_todays_refusal_after_one_call_each() {
+        let (origin, task, calls) = model_provider(vec![]).await;
+        let upstream = free_chain(origin, &["free/a", "free/b", "free/c"]);
+        assert_eq!(
+            upstream.complete(&primary_body(&upstream)).await.err(),
+            Some(CompletionFailure::Rejected)
+        );
+        assert_eq!(models_called(&calls), ["free/a", "free/b", "free/c"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_chain_that_is_all_rate_limited_ends_in_todays_refusal() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            ("free/b", Reply::Status(429)),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b"]);
+        assert_eq!(
+            upstream.complete(&primary_body(&upstream)).await.err(),
+            Some(CompletionFailure::Rejected)
+        );
+        // Every model is asked before any wait.
+        assert_eq!(&models_called(&calls)[..2], ["free/a", "free/b"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_server_error_anywhere_in_the_chain_leaves_the_end_unclear() {
+        // A 5xx may have generated, so the end of the chain is not a clear
+        // refusal: the hold stays for the durable worker, as a single model's 5xx
+        // has always left it.
+        let (origin, task, _) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            ("free/b", Reply::Status(503)),
+            ("free/c", Reply::Status(404)),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b", "free/c"]);
+        assert_eq!(
+            upstream.complete(&primary_body(&upstream)).await.err(),
+            Some(CompletionFailure::Ambiguous)
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn an_error_about_the_request_is_final_and_the_next_model_is_never_asked() {
+        for status in [400, 401, 402, 403, 413, 422] {
+            let (origin, task, calls) = model_provider(vec![
+                ("free/a", Reply::Status(status)),
+                ("free/b", Reply::Ok(Some("0"))),
+            ])
+            .await;
+            let upstream = free_chain(origin, &["free/a", "free/b"]);
+            assert_eq!(
+                upstream.complete(&primary_body(&upstream)).await.err(),
+                Some(CompletionFailure::Rejected),
+                "{status}"
+            );
+            assert_eq!(models_called(&calls), ["free/a"], "{status}");
+            task.abort();
+        }
+        // A 400 that is not about the model id is about the request.
+        let (origin, task, calls) = model_provider(vec![
+            (
+                "free/a",
+                Reply::Body(400, r#"{"error":{"message":"tools are malformed"}}"#),
+            ),
+            ("free/b", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b"]);
+        assert!(upstream.complete(&primary_body(&upstream)).await.is_err());
+        assert_eq!(models_called(&calls), ["free/a"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_limit_shared_by_every_model_costs_a_few_calls_not_one_per_model_per_retry() {
+        let names = ["free/a", "free/b", "free/c", "free/d", "free/e"];
+        let (origin, task, calls) =
+            model_provider(names.iter().map(|n| (*n, Reply::Status(429))).collect()).await;
+        let upstream = free_chain(origin, &names);
+        assert_eq!(
+            upstream.complete(&primary_body(&upstream)).await.err(),
+            Some(CompletionFailure::Rejected)
+        );
+        // The retries a single model gets, plus one try for each extra model.
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            RATE_LIMIT_RETRIES + names.len()
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn the_budget_still_stops_a_walk_that_cannot_afford_a_wait() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            ("free/b", Reply::Status(429)),
+        ])
+        .await;
+        let mut upstream = free_chain(origin, &["free/a", "free/b"]);
+        upstream.retry = RetryPolicy {
+            budget: Duration::from_millis(50),
+            backoff: [Duration::from_millis(100); RATE_LIMIT_RETRIES],
+            ..RetryPolicy::FAST
+        };
+        assert_eq!(
+            upstream.complete(&primary_body(&upstream)).await.err(),
+            Some(CompletionFailure::Rejected)
+        );
+        assert_eq!(models_called(&calls), ["free/a", "free/b"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_model_that_was_only_limited_is_asked_again_after_the_backoff() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        // free/a answers 429 once and then answers; free/b is gone. The walk
+        // drops b, waits, and asks a again.
+        let hits = Arc::new(AtomicUsize::new(0));
+        let seen = hits.clone();
+        let router = axum::Router::new().route(
+            "/chat/completions",
+            axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+                let seen = seen.clone();
+                async move {
+                    let model = body["model"].as_str().unwrap_or_default().to_owned();
+                    if model == "free/b" {
+                        return (axum::http::StatusCode::NOT_FOUND, String::new());
+                    }
+                    if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return (axum::http::StatusCode::TOO_MANY_REQUESTS, String::new());
+                    }
+                    (
+                        axum::http::StatusCode::OK,
+                        r#"{"id":"gen-a","choices":[],"usage":{"cost":0}}"#.into(),
+                    )
+                }
+            }),
+        );
+        let (origin, task) = fake_server(router).await;
+        let upstream = free_chain(origin, &["free/a", "free/b"]);
+        let answer = upstream.complete(&primary_body(&upstream)).await.unwrap();
+        assert_eq!(answer.model, 0);
+        assert_eq!(hits.load(Ordering::SeqCst), 2);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn with_no_fallback_the_request_goes_out_exactly_as_it_was_built() {
+        let (origin, task, calls) = model_provider(vec![(MODEL, Reply::Ok(None))]).await;
+        let upstream = Upstream::fake(origin, Duration::from_secs(1));
+        assert!(upstream.fallbacks.is_empty());
+        let body = json!({"model":MODEL,"messages":[{"role":"user","content":"hi"}],
+            "provider":{"max_price":{"prompt":1},"only":["openai"],"allow_fallbacks":false}});
+        let answer = upstream.complete(&body).await.unwrap();
+        assert_eq!(answer.model, 0);
+        assert_eq!(calls.lock().unwrap()[0], body);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn each_model_is_sent_its_own_name_and_only_the_openai_model_is_pinned() {
+        let request = || {
+            managed(
+                json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+                "messages":[{"role":"user","content":"hi"}]}),
+            )
+        };
+        // The pinned model first, a free one behind it.
+        let (origin, task, calls) = model_provider(vec![
+            (MODEL, Reply::Status(429)),
+            ("free/b", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &[MODEL, "free/b"]);
+        let (body, _) = upstream.request(&request()).unwrap();
+        upstream.complete(&body).await.unwrap();
+        let sent = calls.lock().unwrap().clone();
+        assert_eq!(sent[0]["model"], MODEL);
+        assert_eq!(sent[0]["provider"]["only"], json!(["openai"]));
+        assert_eq!(sent[0]["provider"]["allow_fallbacks"], false);
+        assert_eq!(sent[1]["model"], "free/b");
+        assert!(sent[1]["provider"].get("only").is_none());
+        assert!(sent[1]["provider"].get("allow_fallbacks").is_none());
+        assert_eq!(
+            sent[1]["provider"]["max_price"],
+            sent[0]["provider"]["max_price"]
+        );
+        assert_eq!(sent[1]["messages"], sent[0]["messages"]);
+        task.abort();
+        // A free model first, the pinned one behind it.
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            (MODEL, Reply::Ok(Some("0.01"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", MODEL]);
+        let (body, _) = upstream.request(&request()).unwrap();
+        upstream.complete(&body).await.unwrap();
+        let sent = calls.lock().unwrap().clone();
+        assert_eq!(sent[0]["model"], "free/a");
+        assert!(sent[0]["provider"].get("only").is_none());
+        assert_eq!(sent[1]["model"], MODEL);
+        assert_eq!(sent[1]["provider"]["only"], json!(["openai"]));
+        assert_eq!(sent[1]["provider"]["allow_fallbacks"], false);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn the_charge_and_the_stored_usage_name_the_model_that_answered() {
+        let price = |input: &str, output: &str| TokenPrices {
+            input_nanousd_per_million: input.into(),
+            output_nanousd_per_million: output.into(),
+        };
+        let dear = price("1000000000", "2000000000");
+        let free = price("0", "0");
+        // Returned cost: a free model that answers is charged nothing.
+        let (origin, task, _) = model_provider(vec![
+            ("free/a", Reply::Status(429)),
+            ("free/b", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b"]);
+        let observed = upstream
+            .observe(&upstream.complete(&primary_body(&upstream)).await.unwrap())
+            .unwrap();
+        assert_eq!(observed.charged, Some(0));
+        assert_eq!(observed.usage["model"], "free/b");
+        assert_eq!(observed.response["model"], "free/b");
+        assert_eq!(observed.generation, "gen-free/b");
+        task.abort();
+        // Token table: the answering model's own prices decide the charge.
+        let models = [("direct/a", Some(dear.clone())), ("direct/b", Some(free))];
+        let (origin, task, _) = model_provider(vec![
+            ("direct/a", Reply::Status(404)),
+            ("direct/b", Reply::Ok(None)),
+        ])
+        .await;
+        let upstream = Upstream::fake_chain(origin, false, &models);
+        let observed = upstream
+            .observe(&upstream.complete(&primary_body(&upstream)).await.unwrap())
+            .unwrap();
+        assert_eq!(observed.charged, Some(0), "the free fallback costs nothing");
+        assert_eq!(observed.usage["model"], "direct/b");
+        assert_eq!(observed.usage["inputPriceNanousdPerMillion"], "0");
+        task.abort();
+        let (origin, task, _) = model_provider(vec![
+            ("direct/a", Reply::Ok(None)),
+            ("direct/b", Reply::Ok(None)),
+        ])
+        .await;
+        let upstream = Upstream::fake_chain(origin, false, &models);
+        let observed = upstream
+            .observe(&upstream.complete(&primary_body(&upstream)).await.unwrap())
+            .unwrap();
+        assert_eq!(observed.usage["model"], "direct/a");
+        assert_eq!(observed.charged, dear.charge(1_000_000, 1_000_000).ok());
+        assert!(observed.charged.is_some_and(|charged| charged > 0));
+        task.abort();
+    }
+
+    #[test]
+    fn a_direct_providers_hold_covers_the_dearest_model_that_could_answer() {
+        let price = |input: &str, output: &str| TokenPrices {
+            input_nanousd_per_million: input.into(),
+            output_nanousd_per_million: output.into(),
+        };
+        let cheap = price("1000", "2000");
+        let dear = price("1000000000", "2000000000");
+        let request = managed(
+            json!({"session_id":uuid::Uuid::new_v4(),"request_id":uuid::Uuid::new_v4(),
+            "messages":[{"role":"user","content":"hi"}]}),
+        );
+        let hold = |models: &[(&str, Option<TokenPrices>)]| {
+            Upstream::fake_chain("https://upstream.invalid".into(), false, models)
+                .request(&request)
+                .unwrap()
+                .1
+        };
+        let alone = hold(&[("direct/a", Some(cheap.clone()))]);
+        let behind_dear = hold(&[("direct/a", Some(cheap.clone())), ("direct/b", Some(dear))]);
+        let behind_free = hold(&[
+            ("direct/a", Some(cheap)),
+            ("direct/b", Some(price("0", "0"))),
+        ]);
+        assert!(behind_dear > alone * 1000, "{behind_dear} vs {alone}");
+        assert_eq!(behind_free, alone);
+    }
+
+    #[test]
+    fn every_chain_model_must_pass_the_allowed_list_or_the_gateway_stays_off() {
+        let base = [
+            ("COLONY_CREDITS_UPSTREAM_KEY", "synthetic-test-key"),
+            ("COLONY_CREDITS_UPSTREAM_MODEL", "free/a"),
+            (
+                "COLONY_CREDITS_ALLOWED_MODELS",
+                r#"["free/a","free/b","free/c"]"#,
+            ),
+            (
+                "COLONY_CREDITS_USER_HASH_KEY",
+                "synthetic-customer-hmac-key-at-least-32-bytes",
+            ),
+        ];
+        let build = |extra: &[(&str, &str)]| {
+            let vars: std::collections::HashMap<String, String> = base
+                .iter()
+                .chain(extra)
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect();
+            Upstream::from_vars(move |name| vars.get(name).cloned())
+        };
+        let fallback = |value: &'static str| [("COLONY_CREDITS_UPSTREAM_FALLBACK_MODELS", value)];
+        let names = |upstream: &Upstream| -> Vec<String> {
+            upstream.chain().map(|(name, _)| name.to_owned()).collect()
+        };
+        // Unset, blank or empty: the single model of today, nothing else.
+        for extra in [
+            &[][..],
+            &fallback("")[..],
+            &fallback("  ")[..],
+            &fallback("[]")[..],
+        ] {
+            let upstream = build(extra).unwrap();
+            assert!(upstream.fallbacks.is_empty());
+            assert_eq!(names(&upstream), ["free/a"]);
+        }
+        assert_eq!(
+            names(&build(&fallback(r#"["free/b","free/c"]"#)).unwrap()),
+            ["free/a", "free/b", "free/c"]
+        );
+        // The chain does not change what recovery is keyed on.
+        assert_eq!(
+            build(&fallback(r#"["free/b"]"#)).unwrap().fingerprint,
+            build(&[]).unwrap().fingerprint
+        );
+        // One bad entry, or a bad value, and the gateway is off.
+        for bad in [
+            r#"["free/z"]"#,
+            r#"["free/b","free/z"]"#,
+            r#"["free/b","free/b"]"#,
+            r#"["free/a"]"#,
+            r#"[""]"#,
+            r#""free/b""#,
+            r#"{"free/b":1}"#,
+            r#"[1]"#,
+            "free/b",
+        ] {
+            assert!(build(&fallback(bad)).is_none(), "{bad}");
+        }
+        // The chain is bounded: seven fallbacks fit, eight do not.
+        let many = |count: usize| {
+            let ids: Vec<String> = (0..count).map(|i| format!("free/f{i}")).collect();
+            let allowed = serde_json::to_string(&ids).unwrap();
+            let allowed = allowed.replacen('[', r#"["free/a","#, 1);
+            let vars: std::collections::HashMap<String, String> = [
+                (
+                    "COLONY_CREDITS_UPSTREAM_KEY",
+                    "synthetic-test-key".to_owned(),
+                ),
+                ("COLONY_CREDITS_UPSTREAM_MODEL", "free/a".to_owned()),
+                ("COLONY_CREDITS_ALLOWED_MODELS", allowed),
+                (
+                    "COLONY_CREDITS_USER_HASH_KEY",
+                    "synthetic-customer-hmac-key-at-least-32-bytes".to_owned(),
+                ),
+                (
+                    "COLONY_CREDITS_UPSTREAM_FALLBACK_MODELS",
+                    serde_json::to_string(&ids).unwrap(),
+                ),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v))
+            .collect();
+            Upstream::from_vars(move |name| vars.get(name).cloned())
+        };
+        assert!(many(MAX_CHAIN - 1).is_some());
+        assert!(many(MAX_CHAIN).is_none());
+    }
+
+    #[test]
+    fn every_chain_model_needs_a_valid_price_wherever_the_primary_does() {
+        let build = |url: Option<&str>, prices: &str, fallbacks: &str| {
+            let mut vars: std::collections::HashMap<String, String> = [
+                ("COLONY_CREDITS_UPSTREAM_KEY", "synthetic-test-key"),
+                ("COLONY_CREDITS_UPSTREAM_MODEL", "free/a"),
+                ("COLONY_CREDITS_ALLOWED_MODELS", r#"["free/a","free/b"]"#),
+                (
+                    "COLONY_CREDITS_USER_HASH_KEY",
+                    "synthetic-customer-hmac-key-at-least-32-bytes",
+                ),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+            if let Some(url) = url {
+                vars.insert("COLONY_CREDITS_UPSTREAM_BASE_URL".into(), url.into());
+            }
+            if !prices.is_empty() {
+                vars.insert("COLONY_CREDITS_MODEL_PRICES".into(), prices.into());
+            }
+            vars.insert(
+                "COLONY_CREDITS_UPSTREAM_FALLBACK_MODELS".into(),
+                fallbacks.into(),
+            );
+            Upstream::from_vars(move |name| vars.get(name).cloned())
+        };
+        let zero = r#"{"input_nanousd_per_million":"0","output_nanousd_per_million":"0"}"#;
+        let both = format!(r#"{{"free/a":{zero},"free/b":{zero}}}"#);
+        let only_a = format!(r#"{{"free/a":{zero}}}"#);
+        let bad = r#"{"free/a":{"input_nanousd_per_million":"0","output_nanousd_per_million":"0"},"free/b":{"input_nanousd_per_million":"x","output_nanousd_per_million":"0"}}"#;
+        // OpenRouter without a table needs none; with one, every model is in it.
+        assert!(build(None, "", r#"["free/b"]"#).is_some());
+        assert!(build(None, &both, r#"["free/b"]"#).is_some());
+        assert!(build(None, &only_a, r#"["free/b"]"#).is_none());
+        assert!(build(None, bad, r#"["free/b"]"#).is_none());
+        // A direct provider has no returned cost, so it always needs the table.
+        let direct = Some("https://direct.example/v1");
+        assert!(build(direct, &both, r#"["free/b"]"#).is_some());
+        assert!(build(direct, &only_a, r#"["free/b"]"#).is_none());
+        let upstream = build(direct, &both, r#"["free/b"]"#).unwrap();
+        assert!(upstream.chain().all(|(_, prices)| prices.is_some()));
+    }
+
+    #[tokio::test]
+    async fn a_429_is_sorted_into_a_fixed_reason_from_the_provider_body() {
+        let day = r#"{"error":{"code":429,"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day","metadata":{"headers":{"X-RateLimit-Limit":"50"}}}}"#;
+        let minute =
+            r#"{"error":{"code":429,"message":"Rate limit exceeded: free-models-per-min"}}"#;
+        let busy = r#"{"error":{"message":"poolside/laguna-s-2.1:free is temporarily rate-limited upstream. Please retry shortly","code":429,"metadata":{"provider_name":"Poolside","is_byok":false}}}"#;
+        let platform = r#"{"error":{"code":429,"message":"Rate limit exceeded","metadata":{"error_type":"rate_limit_exceeded"}}}"#;
+        for (body, reason) in [
+            (day, "free_models_per_day"),
+            (minute, "free_models_per_minute"),
+            (busy, "provider_rate_limited"),
+            (platform, "account_rate_limited"),
+            (r#"{"error":"slow down"}"#, "unknown"),
+            ("", "unknown"),
+            ("not json at all", "unknown"),
+        ] {
+            let (origin, task, _) = model_provider(vec![("free/a", Reply::Body(429, body))]).await;
+            let upstream = free_chain(origin, &["free/a"]);
+            let attempt = upstream
+                .attempt("free/a", &json!({"model":"free/a"}), Duration::from_secs(1))
+                .await;
+            match attempt {
+                Err(Attempt::RateLimited { reason: got, .. }) => assert_eq!(got, reason, "{body}"),
+                _ => panic!("a 429 must be a rate limit: {body}"),
+            }
+            task.abort();
+        }
+        // OpenRouter marks a platform limit with these headers on the 429.
+        assert_eq!(rate_limit_reason(true, b""), "account_rate_limited");
+        assert_eq!(rate_limit_reason(false, b""), "unknown");
+        // A named provider wins over the platform marker: it is that provider.
+        assert_eq!(
+            rate_limit_reason(true, busy.as_bytes()),
+            "provider_rate_limited"
+        );
+    }
+
+    #[derive(Clone, Default)]
+    struct LogBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogBuffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn the_429_log_names_the_model_attempt_and_reason_and_nothing_from_the_body() {
+        let logs = LogBuffer::default();
+        let sink = logs.clone();
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || sink.clone())
+                .with_ansi(false)
+                .finish(),
+        );
+        let busy = r#"{"error":{"message":"SECRET-PROMPT-ECHO is temporarily rate-limited upstream","code":429,"metadata":{"provider_name":"Poolside"}}}"#;
+        let (origin, task, _) = model_provider(vec![
+            ("free/a", Reply::Body(429, busy)),
+            ("free/b", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a", "free/b"]);
+        upstream
+            .complete(
+                &json!({"model":"free/a","messages":[{"role":"user","content":"SECRET-PROMPT"}]}),
+            )
+            .await
+            .unwrap();
+        task.abort();
+        let text = String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned();
+        let limited = text
+            .lines()
+            .find(|line| line.contains("upstream rate limited a request"))
+            .unwrap_or_else(|| panic!("no 429 line in {text}"));
+        // A text field is quoted or not depending on the formatter.
+        let has = |field: &str, value: &str| {
+            limited.contains(&format!("{field}=\"{value}\""))
+                || limited.contains(&format!("{field}={value}"))
+        };
+        assert!(has("model", "free/a"), "{limited}");
+        assert!(has("attempt", "1"), "{limited}");
+        assert!(has("upstream_status", "429"), "{limited}");
+        assert!(has("reason", "provider_rate_limited"), "{limited}");
+        assert!(
+            text.contains("answered from a fallback model") && text.contains("free/b"),
+            "{text}"
+        );
+        for secret in ["SECRET", "Poolside", "synthetic-test-key", "retry shortly"] {
+            assert!(!text.contains(secret), "{secret} leaked into {text}");
+        }
     }
 }
