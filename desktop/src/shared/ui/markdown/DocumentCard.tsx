@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 
 export type DocumentCardProps = {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   markdown: string;
   title: string;
   wordCount: number;

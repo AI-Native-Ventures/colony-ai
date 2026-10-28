@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,8 @@ import remarkCustomEmoji, {
 import remarkMentions from "@/shared/lib/remarkMentions";
 import remarkSpoilers from "@/shared/lib/remarkSpoilers";
 import remarkMessageFences from "./messageFences";
+import { MarkdownCodeBlock, extractLanguage } from "./CodeBlock";
+import { DocumentCard } from "./DocumentCard";
 
 import { buzzDeepLinkUrlTransform } from "./utils";
 
@@ -92,6 +94,66 @@ function listSegment(values: readonly string[] | undefined): string {
 
 function buildMarkdownElement(input: MarkdownParseInputs): React.ReactElement {
   markdownParseCount += 1;
+  let messageComponents: Components | undefined;
+  if (input.messageFences) {
+    messageComponents = {
+      ...input.components,
+      ...(input.components.pre
+        ? {
+            pre: ({ children }) => {
+              let language = "";
+              React.Children.forEach(children, (child) => {
+                if (
+                  React.isValidElement<Record<string, unknown>>(child) &&
+                  typeof child.props?.className === "string"
+                ) {
+                  language = extractLanguage(child.props.className);
+                }
+              });
+              return React.createElement(
+                MarkdownCodeBlock,
+                { collapseLong: true, language },
+                children,
+              );
+            },
+          }
+        : {}),
+      ...(Object.hasOwn(input.components, "message-document-card")
+        ? {}
+        : {
+            "message-document-card": ({
+              body,
+              markdown,
+              title,
+              wordCount,
+            }: {
+              body?: string;
+              markdown?: string;
+              title?: string;
+              wordCount?: number;
+            }) => {
+              const cardBody = body ?? "";
+              const cardContent = renderCachedMarkdown({
+                ...input,
+                components: messageComponents ?? input.components,
+                content: cardBody,
+                leadingInlineContent: false,
+                messageFences: false,
+                variant: `${input.variant}:document-body`,
+              });
+              return React.createElement(
+                DocumentCard,
+                {
+                  markdown: markdown ?? cardBody,
+                  title: title ?? "Draft",
+                  wordCount: wordCount ?? 0,
+                },
+                cardContent,
+              );
+            },
+          }),
+    } as Components;
+  }
   // biome-ignore lint/suspicious/noExplicitAny: PluggableList type not directly importable
   const rehypePlugins: any[] = [rehypeImageGallery];
   if (input.leadingInlineContent) {
@@ -106,7 +168,7 @@ function buildMarkdownElement(input: MarkdownParseInputs): React.ReactElement {
   // directly, which is what lets it live in a module-level cache.
   return ReactMarkdown({
     children: input.content,
-    components: input.components,
+    components: messageComponents ?? input.components,
     remarkPlugins: [
       remarkGfm,
       ...(input.hardLineBreaks === false ? [] : [remarkBreaks]),

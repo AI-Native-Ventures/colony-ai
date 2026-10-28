@@ -40,19 +40,10 @@ export type MarkdownRuntime = {
   /** Authenticated local agent author, used only for workspace file references. */
   workspaceAgentPubkey?: string | null;
   agentMentionPubkeysByName?: Record<string, string>;
-  blockCode?: boolean;
   channels: Channel[];
-  channelNames?: string[];
-  customEmoji?: CustomEmoji[];
-  hardLineBreaks?: boolean;
   imetaByUrl?: ImetaLookup;
-  interactive?: boolean;
   /** Inline content supplied to the first prose-capable Markdown block. */
   leadingInlineContent?: React.ReactNode;
-  mediaInset?: boolean;
-  messageFences?: boolean;
-  messageId?: string;
-  mentionNames?: string[];
   mentionPubkeysByName?: Record<string, string>;
   onOpenChannel: (channelId: string) => void;
   /** Navigate to a Buzz git entity (`buzz://pr|issue|repo` deep link). */
@@ -65,10 +56,8 @@ export type MarkdownRuntime = {
    */
   relayOrigin: string | null;
   resolveChannelReferences?: boolean;
-  searchQuery?: string;
   /** Display name of the message author sharing an agent snapshot. */
   snapshotSharedBy?: string;
-  videoReviewContext?: VideoReviewContext;
   /**
    * Called by AgentSnapshotCard after a successful verified in-memory fetch.
    * The implementation should navigate to /agents and trigger the existing
