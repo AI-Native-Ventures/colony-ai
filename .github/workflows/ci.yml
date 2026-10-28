@@ -107,8 +107,12 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: CI plan tests
         run: node --test scripts/ci-plan.test.mjs
+      - name: CI retry wrapper contract
+        run: scripts/test-ci-bounded.sh
       - name: Release workflow source contract
         run: scripts/test-release-ref-contract.sh
       - name: Relay image eligibility contract
@@ -129,6 +133,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -139,7 +145,7 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Lint and format
         run: just desktop-check
       - name: Type check
@@ -176,6 +182,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       # rust-cache cannot save the root workspace's target here (the cache came
       # back 1 KB), so compiled crates are cached with sccache instead. Pushes
       # to main and develop write; pull requests only read.
@@ -209,6 +217,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       # rust-cache cannot save the root workspace's target here (the cache came
       # back 1 KB), so compiled crates are cached with sccache instead. Pushes
@@ -240,6 +250,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm rustup
       - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
@@ -271,7 +283,7 @@ jobs:
             patchelf \
             wget
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Build the front end the host embeds
         run: just desktop-build
       - name: Format check
@@ -298,6 +310,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -308,7 +322,7 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Get Playwright version
         id: pw-version
         run: echo "version=$(cd desktop && node -e "console.log(require('@playwright/test/package.json').version)")" >> "$GITHUB_OUTPUT"
@@ -400,6 +414,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       # rust-cache cannot save the root workspace's target here (the cache came
       # back 1 KB), so compiled crates are cached with sccache instead. Pushes
@@ -456,6 +472,8 @@ jobs:
         with:
           fetch-depth: 2
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -466,7 +484,7 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: scripts/ci-bounded.sh 240 3 pnpm install --frozen-lockfile
       - name: Web lint and format
         run: just web-check
       - name: Web unit tests

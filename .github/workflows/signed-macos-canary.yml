@@ -46,7 +46,7 @@ jobs:
           restore-keys: pnpm-${{ runner.os }}-
 
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
 
       - name: Derive canary version
         id: version

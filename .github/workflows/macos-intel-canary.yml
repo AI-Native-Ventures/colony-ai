@@ -37,7 +37,7 @@ jobs:
         run: rustup target add "$TARGET"
 
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
 
       - name: Derive and patch canary version
         run: |
