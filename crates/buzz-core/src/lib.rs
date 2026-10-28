@@ -11,6 +11,8 @@ pub mod agent_turn_metric;
 pub mod business_records;
 /// Channel and membership enums shared across crates.
 pub mod channel;
+/// How long an agent's chat message may be, for the CLI guard and the harness net.
+pub mod chat_limits;
 /// Typed employee duties and schedule validation.
 pub mod company_duties;
 /// Typed content and validation for employee configuration history.

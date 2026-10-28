@@ -498,7 +498,7 @@ pub enum MessagesCmd {
         /// Channel UUID (from 'colony channels list')
         #[arg(long)]
         channel: String,
-        /// Message text — supports @mentions and markdown. Use '-' to read from stdin.
+        /// Message text, supports @mentions and markdown. Use '-' to read from stdin. Agents: chat text over 60 words is refused; put an article or draft in a doc fence and code in a fence with its language.
         #[arg(long)]
         content: String,
         /// Nostr event kind (default: channel default)

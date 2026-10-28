@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DELIVERABLE_MESSAGES,
   OWNER_MESSAGES,
+  TARGET,
   analyzeReply,
   buildPrompt,
+  chatTextOf,
   median,
   replyFromChatCompletion,
   replyFromEvents,
@@ -14,6 +17,8 @@ import {
 test("analyzeReply counts words and spots report formatting", () => {
   assert.deepEqual(analyzeReply("Yes, I'm here."), {
     words: 3,
+    fenced: false,
+    docFence: false,
     heading: false,
     bold: false,
     bullets: false,
@@ -33,18 +38,64 @@ test("median handles odd, even and empty lists", () => {
   assert.equal(median([4, 1, 3, 2]), 2.5);
 });
 
-test("summarize ignores the long-form task when counting replies over the limit", () => {
-  const instagram = OWNER_MESSAGES.find((message) =>
-    message.includes("Instagram"),
+test("words inside a fenced block are not chat words", () => {
+  const body = Array(300).fill("word").join(" ");
+  const post = `Here's the blog post.\n\`\`\`doc\n# Our launch\n${body}\n\`\`\``;
+  const analyzed = analyzeReply(post);
+  assert.equal(analyzed.words, 4);
+  assert.equal(analyzed.fenced, true);
+  assert.equal(analyzed.docFence, true);
+  assert.equal(chatTextOf(post).trim(), "Here's the blog post.");
+
+  const code = `Here is the script.\n\`\`\`python\n${body}\n\`\`\``;
+  assert.equal(analyzeReply(code).words, 4);
+  assert.equal(analyzeReply(code).docFence, false);
+
+  // A fence that is never closed hides nothing, as in the CLI.
+  const open = `Here it is.\n\`\`\`doc\n# T\n${body}`;
+  assert.equal(analyzeReply(open).fenced, false);
+  assert.ok(analyzeReply(open).words > 300);
+
+  // Bullets inside a fence are the deliverable's formatting, not the chat's.
+  assert.equal(
+    analyzeReply("Done.\n```doc\n- one\n- two\n```").formatted,
+    false,
   );
+});
+
+test("summarize holds every reply to the chat limit and checks deliverables for a fence", () => {
+  const [blog] = [...DELIVERABLE_MESSAGES];
   const summary = summarize([
     { message: "thanks", words: 2, formatted: false, silent: false },
-    { message: instagram, words: 130, formatted: false, silent: false },
+    {
+      message: blog,
+      words: 4,
+      docFence: true,
+      formatted: false,
+      silent: false,
+    },
+    {
+      message: "write a short Instagram post about our launch",
+      words: 130,
+      docFence: false,
+      formatted: false,
+      silent: false,
+    },
     { message: "help me find customers", words: 125, formatted: true },
   ]);
+  assert.equal(TARGET.maxWords, 60);
   assert.equal(summary.maxWords, 130);
-  assert.equal(summary.overLimit, 1);
+  assert.equal(summary.overLimit, 2, "the Instagram post is no longer excused");
   assert.equal(summary.formatted, 1);
+  assert.equal(summary.deliverables, 2);
+  assert.equal(summary.deliverablesInDocFence, 1);
+});
+
+test("the eval asks for a lead search, a blog post and a draft", () => {
+  for (const message of DELIVERABLE_MESSAGES) {
+    assert.ok(OWNER_MESSAGES.includes(message), message);
+  }
+  assert.ok(OWNER_MESSAGES.some((message) => message.includes("guest houses")));
 });
 
 test("replyFromEvents joins text parts from the JSON event stream", () => {

@@ -156,6 +156,7 @@ export default defineConfig({
         "**/owned-agent-discovery.spec.ts",
         "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
+        "**/doc-card-collapse.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
         "**/sidebar-full-app.spec.ts",
         "**/sidebar-reference-fixture.spec.ts",
@@ -174,6 +175,7 @@ export default defineConfig({
         "**/navigation.spec.ts",
         "**/relay-request-budget.spec.ts",
         "**/channels.spec.ts",
+        "**/day-divider-overlap.spec.ts",
         "**/channel-shared-header-backdrop.spec.ts",
         "**/auxiliary-pane-close-visibility.spec.ts",
         "**/channel-composer-overflow.spec.ts",
@@ -340,7 +342,9 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/day-divider-overlap.spec.ts",
         "**/link-preview-bare-domain.spec.ts",
+        "**/doc-card-collapse.spec.ts",
         "**/colony3-dark-mode.spec.ts",
         "**/judge-ready-ai.spec.ts",
         "**/agent-working-indicator.spec.ts",

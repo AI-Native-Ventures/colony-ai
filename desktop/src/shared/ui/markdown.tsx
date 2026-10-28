@@ -1642,6 +1642,7 @@ function MarkdownInner({
   imetaByUrl,
   interactive = true,
   blockCode = false,
+  messageFences = false,
   agentMentionPubkeysByName,
   leadingInlineContent,
   mediaInset = false,
@@ -1696,6 +1697,7 @@ function MarkdownInner({
       channels,
       imetaByUrl,
       leadingInlineContent,
+      messageId,
       mentionPubkeysByName,
       onOpenChannel,
       onOpenEntityLink,
@@ -1718,6 +1720,7 @@ function MarkdownInner({
       channels,
       imetaByUrl,
       leadingInlineContent,
+      messageId,
       mentionPubkeysByName,
       onOpenChannel,
       onOpenEntityLink,
@@ -1730,10 +1733,7 @@ function MarkdownInner({
 
   let processedContent = stripPreview(content, previews, relayOrigin);
 
-  // Note: stripping the sentinel here is intentionally omitted. When
-  // configNudge !== null, selectProseOrNudge() returns null — suppressing
-  // the prose node entirely — so processedContent is never rendered and
-  // stripConfigNudgeSentinel would be dead work on that path.
+  // The config nudge suppresses prose, so sentinel stripping would be dead work.
 
   if (/^(?:\s{2}\n)+/.test(processedContent)) {
     processedContent = `\u200B${processedContent}`;
@@ -1743,8 +1743,7 @@ function MarkdownInner({
     processedContent = `${processedContent}\u200B`;
   }
 
-  // When a config-nudge suppresses the prose (selectProseOrNudge returns
-  // null), skip the parse entirely — it would be thrown away unrendered.
+  // Skip parsing when a config nudge hides the prose.
   const hasLeadingInlineContent = leadingInlineContent != null;
   const componentSet = getMarkdownComponents(
     interactive,
@@ -1761,6 +1760,7 @@ function MarkdownInner({
           customEmoji,
           hardLineBreaks,
           leadingInlineContent: hasLeadingInlineContent,
+          messageFences,
           mentionNames,
           searchQuery,
           variant: componentSet.variant,
