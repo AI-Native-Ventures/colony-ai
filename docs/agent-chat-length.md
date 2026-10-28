@@ -36,12 +36,17 @@ so they cannot disagree.
 2. **One message per request.** For an agent reply (`--reply-to`) the CLI reads
    the newest events of the thread. If the newest message that is not the
    agent's own is from a person (its kind:0 profile has no `auth` tag) and the
-   agent already posted after it, the send is refused: that is a second message
-   for one request. A new message from the person starts a new request. A
-   reply from another agent also starts a new turn for this agent, so delegation
-   still works (hand work to a teammate, the teammate answers, report the
-   result). If the thread cannot be read the send goes ahead with a warning:
-   delivery beats the guard.
+   agent already posted a chat message after it, the send does not post a second
+   message. It edits the agent's newest earlier message for that request
+   instead (same thread, same limit, new content), prints that it updated the
+   earlier message, and exits 0. The person sees one message holding the latest
+   answer. This is not a refusal on purpose: a model that posts "On it" first
+   would otherwise never get its result out, and the harness net stays silent
+   once the agent has published. A new message from the person starts a new
+   request. A reply from another agent also starts a new turn for this agent, so
+   delegation still works (hand work to a teammate, the teammate answers,
+   report the result). If the thread cannot be read the send is a normal post
+   with a warning: delivery beats the guard.
 3. **Harness safety net** (`crates/buzz-acp/src/turn_reply.rs`). When a turn a
    person started ends and the agent published nothing, the harness posts the
    agent's final text. That text is now shortened with the same limit: whole
@@ -64,6 +69,10 @@ is from a person, so agent to agent coordination is untouched.
   per request, because the CLI does not know the channel is a DM.
 - Two agents in one thread can each post once per person message, by design.
 - The one-message check is a thread read at send time, not a lock: two sends
-  racing in the same second can both go through.
+  racing in the same second can both post.
+- An edit carries no mentions, so `--mention` on a send that becomes an update
+  is not delivered. The person's own request already notified them.
+- An update replaces the earlier content. A person who already read "On it"
+  sees the message change under them; the content they see last is the answer.
 - A model that dumps a report into a `doc` fence is not stopped. The card is
   collapsed, so chat still reads short.

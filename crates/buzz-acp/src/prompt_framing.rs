@@ -321,6 +321,7 @@ mod tests {
             "Step-by-step progress stays out of chat.",
             "Chat text is at most 50 words",
             "`colony messages send` refuses chat text over 60 words",
+            "a new send updates your earlier message instead of posting another",
         ] {
             assert!(
                 DEFAULT_BASE_PROMPT.contains(current),

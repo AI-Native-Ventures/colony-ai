@@ -606,9 +606,6 @@ const THREAD_MESSAGE_KINDS: [u16; 5] = [9, 40002, 40003, 40008, 45003];
 /// and the agent's answer to it sit at the newest end of a thread.
 const ANSWER_CHECK_LIMIT: u32 = 30;
 
-/// What an agent reads when it tries to answer one request twice.
-const SECOND_ANSWER_REFUSAL: &str = "You already answered this request. One message per request: the result, or one question. Do not post progress or repeat yourself. Wait for the person's reply. If your message was wrong, fix it with `colony messages edit`.";
-
 /// Whether a message of this kind is chat, the agent talking, as opposed to a
 /// forum post or comment, which is long-form by design.
 fn is_chat_kind(kind: Option<u16>) -> bool {
@@ -645,22 +642,26 @@ async fn pubkey_is_agent(client: &BuzzClient, pubkey: &str) -> Option<bool> {
     Some(profiles.first().is_some_and(profile_has_auth_tag))
 }
 
-/// Refuse a second chat message for one request.
+/// The agent's own earlier chat message for the request it is answering now.
 ///
-/// A person's message is one request, and an agent answers it once: the result
-/// or one question, never progress and never a repeat. The check reads the
-/// thread: when the newest message that is not the agent's own is from a
-/// person and the agent has already posted after it, this send would be a
-/// second post for that request. Agent to agent threads are untouched, so
-/// delegation still works: another agent's reply starts a new turn for this one.
+/// A person's message is one request, and the person should see one message
+/// for it, holding the latest answer. The check reads the thread: when the
+/// newest message that is not the agent's own is from a person and the agent
+/// already posted after it, this send is a second post for that request, and
+/// the id of the agent's newest chat message after it is returned so the send
+/// can update that message instead of adding another. Refusing would lose the
+/// answer: a model that posts "On it" first would never get its result out.
 ///
-/// A thread that cannot be read does not block delivery. A rare second post is
-/// better than a person left without an answer.
-async fn ensure_first_answer(
+/// Agent to agent threads are untouched, so delegation still works: another
+/// agent's reply starts a new turn for this one.
+///
+/// A thread that cannot be read does not block delivery: the send is a normal
+/// post. A rare second message is better than a person left without an answer.
+async fn earlier_answer_to_request(
     client: &BuzzClient,
     channel_id: &str,
     thread: &ThreadRef,
-) -> Result<(), CliError> {
+) -> Option<String> {
     let root = thread.root_event_id.to_hex();
     let me = client.keys().public_key().to_hex();
     let filters = [
@@ -679,9 +680,9 @@ async fn ensure_first_answer(
         .and_then(|raw| serde_json::from_str::<Vec<serde_json::Value>>(&raw).ok());
     let Some(mut events) = events else {
         eprintln!(
-            "warning: could not read the thread to check for an earlier answer; sending anyway"
+            "warning: could not read the thread to check for an earlier answer; sending a new message"
         );
-        return Ok(());
+        return None;
     };
 
     // Oldest first; at the same second the agent's own message sorts last, so a
@@ -695,23 +696,66 @@ async fn ensure_first_answer(
             event_pubkey(event) == me,
         )
     });
-    let Some(request) = events.iter().rposition(|event| event_pubkey(event) != me) else {
-        return Ok(());
-    };
-    if request + 1 == events.len() {
-        return Ok(());
-    }
+    let request = events.iter().rposition(|event| event_pubkey(event) != me)?;
+    let earlier = events[request + 1..]
+        .iter()
+        .rev()
+        .find(|event| is_chat_event_kind(event))?;
+    let earlier_id = earlier.get("id").and_then(|id| id.as_str())?.to_owned();
 
     match pubkey_is_agent(client, event_pubkey(&events[request])).await {
-        Some(true) => Ok(()),
-        Some(false) => Err(CliError::Usage(SECOND_ANSWER_REFUSAL.into())),
+        Some(false) => Some(earlier_id),
+        Some(true) => None,
         None => {
             eprintln!(
-                "warning: could not read who asked, so the one-answer check was skipped; sending anyway"
+                "warning: could not read who asked, so the one-message check was skipped; sending a new message"
             );
-            Ok(())
+            None
         }
     }
+}
+
+/// Whether a thread event is a chat message (not an edit, a diff or a comment).
+fn is_chat_event_kind(event: &serde_json::Value) -> bool {
+    event
+        .get("kind")
+        .and_then(|kind| kind.as_u64())
+        .is_some_and(|kind| {
+            kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE)
+                || kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE_V2)
+        })
+}
+
+/// Replace the content of the agent's earlier message for this request and say
+/// so, instead of posting a second message. The reply keeps its thread because
+/// the edited message does. Edit events carry no mentions, so a `--mention` on
+/// the send is not delivered; the person's own request already notified them.
+async fn update_earlier_answer(
+    client: &BuzzClient,
+    channel_uuid: Uuid,
+    earlier_id: &str,
+    content: &str,
+) -> Result<(), CliError> {
+    let builder = buzz_sdk::build_edit(channel_uuid, parse_event_id(earlier_id)?, content)
+        .map_err(|e| CliError::Other(format!("build_edit failed: {e}")))?;
+    let event = client.sign_event(builder)?;
+    let resp = client.submit_event(event).await?;
+    let mut output: serde_json::Value = serde_json::from_str(&normalize_write_response(&resp))
+        .unwrap_or_else(|_| serde_json::json!({ "response": resp }));
+    if let Some(object) = output.as_object_mut() {
+        object.insert(
+            "updated_earlier_message".into(),
+            serde_json::json!(earlier_id),
+        );
+        object.insert(
+            "note".into(),
+            serde_json::json!(
+                "You had already answered this request, so this updated your earlier message instead of posting a new one. The person sees one message holding your latest answer."
+            ),
+        );
+    }
+    println!("{output}");
+    Ok(())
 }
 
 pub struct SendMessageParams {
@@ -801,8 +845,12 @@ pub async fn cmd_send_message(
     } else {
         None
     };
-    if let (true, Some(thread)) = (agent_chat, &thread_ref) {
-        ensure_first_answer(client, &p.channel_id, thread).await?;
+    let earlier_answer = match (agent_chat, &thread_ref) {
+        (true, Some(thread)) => earlier_answer_to_request(client, &p.channel_id, thread).await,
+        _ => None,
+    };
+    if let Some(earlier_id) = earlier_answer {
+        return update_earlier_answer(client, channel_uuid, &earlier_id, &final_content).await;
     }
 
     let mention_refs: Vec<&str> = mention_pubkeys.iter().map(String::as_str).collect();
@@ -2029,17 +2077,34 @@ mod tests {
         );
     }
 
-    // ── chat length and one answer per request ────────────────────────────
+    // ── chat length and one message per request ───────────────────────────
     //
     // These drive `cmd_send_message` and `cmd_edit_message` against an
     // in-memory relay that answers `/query` filters (event by id, thread by
-    // `#e`, profile by author) from a fixed event list and counts `/events`
-    // submissions. Removing the cap call or `ensure_first_answer` from the send
-    // path, or the cap call from the edit path, makes the matching tests fail.
+    // `#e`, profile by author) from its event list. Every `/events`
+    // submission is recorded and added to that list, so a second send sees the
+    // first one in the thread, as it would on a real relay. Removing the cap
+    // call or `earlier_answer_to_request` from the send path, or the cap call
+    // from the edit path, makes the matching tests fail.
 
     struct GuardRelay {
         url: String,
-        submitted: StdArc<AtomicU32>,
+        submitted: StdArc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl GuardRelay {
+        /// Events the client submitted, oldest first.
+        fn submitted(&self) -> Vec<serde_json::Value> {
+            self.submitted.lock().unwrap().clone()
+        }
+
+        /// Kinds of the submitted events, oldest first.
+        fn submitted_kinds(&self) -> Vec<u64> {
+            self.submitted()
+                .iter()
+                .map(|event| event["kind"].as_u64().unwrap())
+                .collect()
+        }
     }
 
     fn guard_filter_matches(filter: &serde_json::Value, event: &serde_json::Value) -> bool {
@@ -2066,9 +2131,13 @@ mod tests {
     }
 
     async fn guard_relay(events: Vec<serde_json::Value>) -> GuardRelay {
-        let submitted = StdArc::new(AtomicU32::new(0));
-        type S = (StdArc<Vec<serde_json::Value>>, StdArc<AtomicU32>);
-        let state: S = (StdArc::new(events), submitted.clone());
+        let submitted = StdArc::new(std::sync::Mutex::new(Vec::new()));
+        type Events = StdArc<std::sync::Mutex<Vec<serde_json::Value>>>;
+        type S = (Events, Events);
+        let state: S = (
+            StdArc::new(std::sync::Mutex::new(events)),
+            submitted.clone(),
+        );
         let app = AxumRouter::new()
             .route(
                 "/query",
@@ -2076,6 +2145,7 @@ mod tests {
                     |AxumState((events, _)): AxumState<S>, body: AxumBytes| async move {
                         let filters: Vec<serde_json::Value> =
                             serde_json::from_slice(&body).unwrap_or_default();
+                        let events = events.lock().unwrap().clone();
                         let mut out: Vec<serde_json::Value> = Vec::new();
                         for filter in &filters {
                             for event in events.iter() {
@@ -2095,8 +2165,11 @@ mod tests {
             .route(
                 "/events",
                 axum_post(
-                    |AxumState((_, submitted)): AxumState<S>, _body: AxumBytes| async move {
-                        submitted.fetch_add(1, Ordering::Relaxed);
+                    |AxumState((events, submitted)): AxumState<S>, body: AxumBytes| async move {
+                        let event: serde_json::Value =
+                            serde_json::from_slice(&body).unwrap_or_default();
+                        submitted.lock().unwrap().push(event.clone());
+                        events.lock().unwrap().push(event);
                         (
                             AxumStatusCode::OK,
                             [("content-type", "application/json")],
@@ -2201,7 +2274,7 @@ mod tests {
         assert!(text.starts_with("Too long for chat: 61 words."), "{text}");
         assert!(text.contains("Rewrite in under 50 words"), "{text}");
         assert!(text.contains("```doc fence"), "{text}");
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 0);
+        assert_eq!(relay.submitted().len(), 0);
     }
 
     #[tokio::test]
@@ -2211,7 +2284,7 @@ mod tests {
         cmd_send_message(&client, send_params(&words(60)))
             .await
             .unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(relay.submitted().len(), 1);
     }
 
     #[tokio::test]
@@ -2225,7 +2298,7 @@ mod tests {
         cmd_send_message(&client, send_params(&post)).await.unwrap();
         let code = format!("Here is the script.\n```python\n{}\n```", words(500));
         cmd_send_message(&client, send_params(&code)).await.unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 2);
+        assert_eq!(relay.submitted().len(), 2);
     }
 
     #[tokio::test]
@@ -2239,7 +2312,7 @@ mod tests {
         assert!(error
             .to_string()
             .starts_with("Too long for chat: 80 words."));
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 0);
+        assert_eq!(relay.submitted().len(), 0);
     }
 
     #[tokio::test]
@@ -2252,7 +2325,7 @@ mod tests {
         let mut forum = send_params(&words(300));
         forum.kind = Some(45001);
         cmd_send_message(&agent, forum).await.unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 2);
+        assert_eq!(relay.submitted().len(), 2);
     }
 
     #[tokio::test]
@@ -2262,11 +2335,15 @@ mod tests {
         cmd_send_message(&client, reply_params("Best lead: Pecan Tree."))
             .await
             .unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9],
+            "a new message, not an edit"
+        );
     }
 
     #[tokio::test]
-    async fn a_second_message_for_the_same_request_is_refused() {
+    async fn a_second_message_for_the_same_request_updates_the_first() {
         let keys = Keys::generate();
         let me = keys.public_key().to_hex();
         let mut events = request_events();
@@ -2274,18 +2351,84 @@ mod tests {
         let relay = guard_relay(events).await;
         let client = agent_client(&relay.url, keys);
 
-        let error = cmd_send_message(&client, reply_params("Checking the next one now."))
+        cmd_send_message(&client, reply_params("Best lead is Pecan Tree."))
+            .await
+            .expect("the send succeeds, as an update of the earlier message");
+
+        let submitted = relay.submitted();
+        assert_eq!(submitted.len(), 1, "no new message, got {submitted:?}");
+        assert_eq!(submitted[0]["kind"], 40003, "an edit, not a new message");
+        assert_eq!(submitted[0]["content"], "Best lead is Pecan Tree.");
+        assert!(
+            submitted[0]["tags"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tag| tag[0] == "e" && tag[1] == ID_B),
+            "the edit targets the agent's earlier message: {submitted:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pickup_message_then_the_result_is_one_message_holding_the_result() {
+        let relay = guard_relay(request_events()).await;
+        let client = agent_client(&relay.url, Keys::generate());
+
+        cmd_send_message(&client, reply_params("On it, checking now."))
+            .await
+            .unwrap();
+        cmd_send_message(&client, reply_params("Best lead is Pecan Tree Guesthouse."))
+            .await
+            .unwrap();
+        cmd_send_message(&client, reply_params("Draft is ready when you are."))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9, 40003, 40003],
+            "one message, then two updates of it, never a second message"
+        );
+        let submitted = relay.submitted();
+        let first_id = submitted[0]["id"].as_str().unwrap();
+        for update in &submitted[1..] {
+            assert!(
+                update["tags"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|tag| tag[0] == "e" && tag[1] == first_id),
+                "every update targets the first message: {update}"
+            );
+        }
+        assert_eq!(
+            submitted[1]["content"],
+            "Best lead is Pecan Tree Guesthouse."
+        );
+        assert_eq!(submitted[2]["content"], "Draft is ready when you are.");
+    }
+
+    #[tokio::test]
+    async fn an_over_long_second_message_is_refused_and_edits_nothing() {
+        let keys = Keys::generate();
+        let me = keys.public_key().to_hex();
+        let mut events = request_events();
+        events.push(event_json(ID_B, &me, 9, 110, in_thread()));
+        let relay = guard_relay(events).await;
+        let client = agent_client(&relay.url, keys);
+
+        let error = cmd_send_message(&client, reply_params(&words(61)))
             .await
             .unwrap_err();
 
-        assert!(matches!(error, CliError::Usage(_)), "{error:?}");
-        assert_eq!(crate::error::exit_code(&error), 1);
-        assert!(
-            error.to_string().contains("already answered this request"),
-            "{error}"
+        assert!(error
+            .to_string()
+            .starts_with("Too long for chat: 61 words."));
+        assert_eq!(
+            relay.submitted().len(),
+            0,
+            "the cap holds for an update too"
         );
-        assert!(error.to_string().contains("colony messages edit"));
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]
@@ -2302,7 +2445,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9],
+            "a new message, not an edit"
+        );
     }
 
     #[tokio::test]
@@ -2322,7 +2469,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9],
+            "a new message, not an edit"
+        );
     }
 
     #[tokio::test]
@@ -2341,7 +2492,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9],
+            "a new message, not an edit"
+        );
     }
 
     #[tokio::test]
@@ -2357,7 +2512,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            relay.submitted_kinds(),
+            vec![9],
+            "a new message, not an edit"
+        );
     }
 
     #[tokio::test]
@@ -2380,12 +2539,12 @@ mod tests {
         assert!(error
             .to_string()
             .starts_with("Too long for chat: 200 words."));
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 0);
+        assert_eq!(relay.submitted().len(), 0);
 
         super::cmd_edit_message(&client, ID_B, "Short and fixed.")
             .await
             .unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(relay.submitted().len(), 1);
     }
 
     #[tokio::test]
@@ -2405,6 +2564,6 @@ mod tests {
         super::cmd_edit_message(&client, ID_B, &words(200))
             .await
             .unwrap();
-        assert_eq!(relay.submitted.load(Ordering::Relaxed), 1);
+        assert_eq!(relay.submitted().len(), 1);
     }
 }
