@@ -347,7 +347,7 @@ impl Upstream {
                 upstream_status = 429,
                 "Colony gateway upstream rate limited a request"
             );
-            if retries == RATE_LIMIT_RETRIES {
+            if retries == 0 {
                 return Err(CompletionFailure::Rejected);
             }
             let wait = self.retry.wait(retries, retry_after);
