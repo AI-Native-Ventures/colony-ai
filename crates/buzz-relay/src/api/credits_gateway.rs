@@ -468,7 +468,6 @@ fn billing_usage(usage: &Value) -> Value {
     }
     for key in [
         "costUsd",
-        "model",
         "costSource",
         "inputPriceNanousdPerMillion",
         "outputPriceNanousdPerMillion",
