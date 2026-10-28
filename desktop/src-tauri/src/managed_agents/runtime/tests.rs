@@ -10,6 +10,108 @@ fn appimage_binary_matches_truncated_linux_comm_name() {
     assert!(super::is_desktop_binary("buzz-desktop.bi"));
 }
 
+// ── a second desktop must not treat an Electron desktop as dead ─────────
+
+/// What the Electron native host carries: the profile id, never the full
+/// `xyz.block.buzz.app.electron.<profile>` identifier it builds from it.
+fn electron_host_args(profile: &str) -> Vec<u8> {
+    let mut buf = b"/Applications/Colony.app/Contents/Resources/colony-native-host".to_vec();
+    buf.push(0);
+    for entry in [
+        "PATH=/usr/bin:/bin".to_owned(),
+        "COLONY_ELECTRON_HOST=1".to_owned(),
+        format!("COLONY_ELECTRON_PROFILE_ID={profile}"),
+        "COLONY_ELECTRON_PACKAGED=1".to_owned(),
+    ] {
+        buf.extend_from_slice(entry.as_bytes());
+        buf.push(0);
+    }
+    buf
+}
+
+const ELECTRON_INSTANCE: &str = "xyz.block.buzz.app.electron.dfd1a6cdc8c8c71e";
+
+#[test]
+fn electron_native_host_keeps_its_own_instance_alive() {
+    // GATE-309-R2: the sweep of a second Colony reaped Scout every minute
+    // because no process carried the full identifier.
+    assert!(super::desktop_process_keeps_instance_alive(
+        "colony-native-host",
+        &electron_host_args("dfd1a6cdc8c8c71e"),
+        ELECTRON_INSTANCE,
+    ));
+}
+
+#[test]
+fn electron_native_host_name_survives_the_os_truncating_it() {
+    // macOS p_comm keeps 16 bytes, Linux comm 15.
+    for name in ["colony-native-ho", "colony-native-h"] {
+        assert!(super::desktop_process_keeps_instance_alive(
+            name,
+            &electron_host_args("dfd1a6cdc8c8c71e"),
+            ELECTRON_INSTANCE,
+        ));
+    }
+    assert!(!super::is_desktop_binary("colony-native"));
+}
+
+#[test]
+fn electron_native_host_of_another_profile_does_not_keep_an_instance_alive() {
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "colony-native-host",
+        &electron_host_args("0000000000000000"),
+        ELECTRON_INSTANCE,
+    ));
+    // A longer value that merely starts with the profile is another profile.
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "colony-native-host",
+        &electron_host_args("dfd1a6cdc8c8c71e0"),
+        ELECTRON_INSTANCE,
+    ));
+}
+
+#[test]
+fn only_a_desktop_process_keeps_an_instance_alive() {
+    // Any process can carry the variable; only the desktop's own count.
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "bash",
+        &electron_host_args("dfd1a6cdc8c8c71e"),
+        ELECTRON_INSTANCE,
+    ));
+}
+
+#[test]
+fn a_profile_id_only_stands_for_an_electron_identifier() {
+    // `xyz.block.buzz.app` is the Tauri desktop: matched by its own args only.
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "colony-native-host",
+        &electron_host_args("dfd1a6cdc8c8c71e"),
+        "xyz.block.buzz.app",
+    ));
+    // A malformed profile never matches anything.
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "colony-native-host",
+        &electron_host_args("short"),
+        "xyz.block.buzz.app.electron.short",
+    ));
+}
+
+#[test]
+fn a_tauri_desktop_still_matches_by_its_identifier() {
+    let mut buf = br#"--config {"identifier":"xyz.block.buzz.app.dev"}"#.to_vec();
+    buf.push(0);
+    assert!(super::desktop_process_keeps_instance_alive(
+        "buzz-desktop",
+        &buf,
+        "xyz.block.buzz.app.dev",
+    ));
+    assert!(!super::desktop_process_keeps_instance_alive(
+        "buzz-desktop",
+        &buf,
+        "xyz.block.buzz.app",
+    ));
+}
+
 // ── buffer_contains_identifier tests ────────────────────────────────────
 
 #[test]
