@@ -51,7 +51,7 @@ import { useStableSendToChannel } from "./useStableSendToChannel";
 import { useAnchoredScroll } from "./useAnchoredScroll";
 import { selectDeferredListRenderState } from "@/features/messages/lib/timelineSnapshot";
 import { selectThreadRowHighlight } from "@/features/messages/lib/threadReplyHighlight";
-import { getThreadReplySpacingClass } from "@/features/messages/lib/messageThreadPanelLayout";
+import { getThreadReplySpacingPx } from "@/features/messages/lib/messageGroupSpacing";
 
 type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   channel: Channel | null;
@@ -456,7 +456,6 @@ export function MessageThreadPanel({
       const startsUnreadSection =
         index > 0 && entry.message.id === firstUnreadReplyId;
       const isContinuation =
-        !workspaceChrome &&
         !startsUnreadSection &&
         entry.summary === null &&
         hasSameMessageAuthor(previousGroupMessage, entry.message) &&
@@ -485,7 +484,6 @@ export function MessageThreadPanel({
     firstUnreadReplyId,
     hoveredCollapseBranchId,
     threadHead,
-    workspaceChrome,
   ]);
 
   const {
@@ -697,17 +695,15 @@ export function MessageThreadPanel({
                       <div
                         className={cn(
                           "flex flex-col gap-0",
-                          getThreadReplySpacingClass({
-                            depth: entry.message.depth,
-                            index,
-                            isContinuation,
-                          }),
                           entry.summary &&
                             "group/message rounded-2xl px-0 py-0.5 transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
                         )}
                         data-testid="message-thread-reply-row"
                         data-thread-reply-id={entry.message.id}
                         key={entry.message.renderKey ?? entry.message.id}
+                        style={{
+                          marginTop: getThreadReplySpacingPx(isContinuation),
+                        }}
                       >
                         {showUnreadDivider ? <UnreadDivider /> : null}
                         <MessageThreadRow
@@ -833,29 +829,29 @@ export function MessageThreadPanel({
 
   const threadFooter = (
     <>
-      {!isAtBottom ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-36 z-50 flex justify-center px-4">
-          <Button
-            className="pointer-events-auto h-7 min-h-7 gap-1.5 rounded-full border-border/50 bg-background/85 px-2.5 text-2xs font-medium text-muted-foreground shadow-xs backdrop-blur-sm hover:bg-muted/70 hover:text-foreground [&_svg]:size-4"
-            data-testid="thread-scroll-to-latest"
-            onClick={() => scrollToBottom("smooth")}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <ArrowDown aria-hidden />
-            {newMessageCount > 0
-              ? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`
-              : "Jump to latest"}
-          </Button>
-        </div>
-      ) : null}
-
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-40 isolate before:absolute before:inset-x-0 before:bottom-0 before:-z-10 before:h-24 before:bg-gradient-to-b before:from-transparent before:to-background before:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:-z-10 after:h-12 after:bg-background after:content-['']"
         data-testid="thread-composer-overlay"
         ref={threadComposerWrapperRef}
       >
+        {!isAtBottom ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-full z-50 flex justify-center px-4 pb-3">
+            <Button
+              className="pointer-events-auto h-7 min-h-7 gap-1.5 rounded-full border-border/50 bg-background/85 px-2.5 text-2xs font-medium text-muted-foreground shadow-xs backdrop-blur-sm hover:bg-muted/70 hover:text-foreground [&_svg]:size-4"
+              data-testid="thread-scroll-to-latest"
+              onClick={() => scrollToBottom("smooth")}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <ArrowDown aria-hidden />
+              {newMessageCount > 0
+                ? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`
+                : "Jump to latest"}
+            </Button>
+          </div>
+        ) : null}
+
         <div
           className={cn(hasConstrainedColumn && THREAD_PANEL_COLUMN_CLASS)}
           style={
@@ -898,17 +894,22 @@ export function MessageThreadPanel({
               placeholder="Reply in thread…"
               footerContent={
                 workspaceChrome ? (
-                  <label className="colony-thread-crosspost">
-                    <input
-                      checked={alsoSendToChannel}
-                      data-testid="thread-broadcast-reply"
-                      onChange={(event) =>
-                        handleBroadcastControlChange(event.target.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span>Also send to #{channelName}</span>
-                  </label>
+                  <div
+                    className="colony-thread-crosspost-backdrop"
+                    data-testid="thread-broadcast-reply-backdrop"
+                  >
+                    <label className="colony-thread-crosspost">
+                      <input
+                        checked={alsoSendToChannel}
+                        data-testid="thread-broadcast-reply"
+                        onChange={(event) =>
+                          handleBroadcastControlChange(event.target.checked)
+                        }
+                        type="checkbox"
+                      />
+                      <span>Also send to #{channelName}</span>
+                    </label>
+                  </div>
                 ) : undefined
               }
               profiles={profiles}

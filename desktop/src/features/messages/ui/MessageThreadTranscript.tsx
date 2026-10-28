@@ -4,10 +4,8 @@ import {
   hasSameMessageAuthor,
   isWithinGroupingWindow,
 } from "@/features/messages/lib/messageGrouping";
-import {
-  getThreadReplySpacingClass,
-  THREAD_PANEL_MESSAGE_GUTTER_CLASS,
-} from "@/features/messages/lib/messageThreadPanelLayout";
+import { THREAD_PANEL_MESSAGE_GUTTER_CLASS } from "@/features/messages/lib/messageThreadPanelLayout";
+import { getThreadReplySpacingPx } from "@/features/messages/lib/messageGroupSpacing";
 import type { TimelineMessage } from "@/features/messages/types";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { cn } from "@/shared/lib/cn";
@@ -67,17 +65,13 @@ export function MessageThreadTranscript({
       )}
       data-testid={testId}
     >
-      {renderItems.map(({ index, isContinuation, message }) => (
+      {renderItems.map(({ isContinuation, message }) => (
         <div
-          className={cn(
-            "flex flex-col gap-0",
-            getThreadReplySpacingClass({
-              depth: message.depth,
-              index,
-              isContinuation,
-            }),
-          )}
+          className="flex flex-col gap-0"
           key={message.renderKey ?? message.id}
+          style={{
+            marginTop: getThreadReplySpacingPx(isContinuation),
+          }}
         >
           <MessageThreadRow
             channelId={channelId}
