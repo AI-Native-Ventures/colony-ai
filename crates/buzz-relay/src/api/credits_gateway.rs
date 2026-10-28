@@ -382,8 +382,10 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     upstream
         .attribute_customer(&mut upstream_body, account_id)
         .map_err(|_| unavailable())?;
-    // No inference retry. Cancellation and every error leave the committed hold
-    // to the durable worker, including cancellation before the send starts.
+    // The only retry is a provider 429 inside `complete`: the provider declines
+    // before it generates, so it costs nothing and cannot bill twice. Cancellation
+    // and every other error leave the committed hold to the durable worker,
+    // including cancellation before the send starts.
     let bytes = match upstream.complete(&upstream_body).await {
         Ok(bytes) => bytes,
         Err(CompletionFailure::Rejected) => {

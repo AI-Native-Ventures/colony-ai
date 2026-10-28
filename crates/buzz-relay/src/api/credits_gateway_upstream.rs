@@ -38,6 +38,79 @@ const DEFAULT_CONTEXT_TOKENS: i64 = 262_144;
 const MAX_CONTEXT_TOKENS: i64 = 312_000;
 const MAX_RESPONSE: usize = 1024 * 1024;
 const MAX_OUTPUT: i64 = 4096;
+/// Times a request is retried after the provider answers 429.
+const RATE_LIMIT_RETRIES: usize = 3;
+
+/// How `Upstream::complete` rides out a provider rate limit.
+///
+/// A free model is limited upstream often (a 429 on roughly half the calls in a
+/// trial), and the managed client makes exactly one attempt, so without this
+/// about half of all requests, the first hello included, would be refused. A 429
+/// is the provider declining before it generates anything: it costs nothing and
+/// the hold stays as it is, so retrying cannot bill twice. Any other status is
+/// never retried.
+#[derive(Clone, Copy, Debug)]
+struct RetryPolicy {
+    /// Wait before retry 1, 2 and 3, before jitter.
+    backoff: [Duration; RATE_LIMIT_RETRIES],
+    /// A provider `Retry-After` longer than this is ignored.
+    retry_after_cap: Duration,
+    /// Wall-clock budget for every attempt and wait of one `complete`. The
+    /// managed client gives up on a request after 100 s (`CreditsGateway::new`),
+    /// so this stays 10 s inside that, which is also the longest a single
+    /// attempt has always been allowed to take.
+    budget: Duration,
+    /// Shortest attempt worth starting: no retry begins unless this much budget
+    /// is left after its wait.
+    min_attempt: Duration,
+}
+
+impl RetryPolicy {
+    const PRODUCTION: Self = Self {
+        backoff: [
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(4),
+        ],
+        retry_after_cap: Duration::from_secs(5),
+        budget: Duration::from_secs(90),
+        min_attempt: Duration::from_secs(5),
+    };
+
+    /// The same rules with waits short enough for tests to run through.
+    #[cfg(test)]
+    const FAST: Self = Self {
+        backoff: [
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+            Duration::from_millis(40),
+        ],
+        retry_after_cap: Duration::from_secs(5),
+        budget: Duration::from_secs(30),
+        min_attempt: Duration::from_millis(10),
+    };
+
+    /// The wait before retry number `retry` (0 for the first): the backoff plus
+    /// up to a quarter more of jitter, so relays limited together do not come
+    /// back together, or the provider's `Retry-After` when that is longer and no
+    /// more than the cap. A longer `Retry-After` is not trusted with our budget.
+    fn wait(&self, retry: usize, retry_after: Option<Duration>) -> Duration {
+        let base = self.backoff[retry];
+        let jitter_ms = (uuid::Uuid::new_v4().as_u128() % (base.as_millis() / 4 + 1)) as u64;
+        let wait = base + Duration::from_millis(jitter_ms);
+        match retry_after {
+            Some(after) if after <= self.retry_after_cap => wait.max(after),
+            _ => wait,
+        }
+    }
+}
+
+/// One request to the provider that did not return a body.
+enum Attempt {
+    /// 429, with the provider's `Retry-After` when it sent whole seconds.
+    RateLimited(Option<Duration>),
+    Failed(CompletionFailure),
+}
 
 /// Never derive Debug: the bearer must never enter logs.
 pub(super) struct Upstream {
@@ -50,6 +123,9 @@ pub(super) struct Upstream {
     prices: Option<TokenPrices>,
     policy: Policy,
     context_tokens: i64,
+    /// Longest one attempt may take.
+    timeout: Duration,
+    retry: RetryPolicy,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -174,12 +250,14 @@ impl Upstream {
             prices,
             policy,
             context_tokens,
+            timeout,
+            retry: RetryPolicy::PRODUCTION,
         })
     }
 
     #[cfg(test)]
     pub(super) fn fake(origin: String, timeout: Duration) -> Self {
-        Self::new(
+        let mut upstream = Self::new(
             "synthetic-test-key".into(),
             origin,
             timeout,
@@ -195,12 +273,14 @@ impl Upstream {
             .unwrap(),
             DEFAULT_CONTEXT_TOKENS,
         )
-        .unwrap()
+        .unwrap();
+        upstream.retry = RetryPolicy::FAST;
+        upstream
     }
 
     #[cfg(test)]
     pub(super) fn fake_direct(origin: String, prices: TokenPrices) -> Self {
-        Self::new(
+        let mut upstream = Self::new(
             "synthetic-test-key".into(),
             origin,
             Duration::from_secs(1),
@@ -216,7 +296,9 @@ impl Upstream {
             .unwrap(),
             DEFAULT_CONTEXT_TOKENS,
         )
-        .unwrap()
+        .unwrap();
+        upstream.retry = RetryPolicy::FAST;
+        upstream
     }
 
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), Refusal> {
@@ -246,33 +328,73 @@ impl Upstream {
         observe(bytes, &self.model, self.prices.as_ref())
     }
 
+    /// One completion, riding out provider rate limits (see `RetryPolicy`). Only
+    /// a 429 is retried; every other refusal, and any attempt that ends without
+    /// a clear answer, is final exactly as before.
     pub(super) async fn complete(&self, body: &Value) -> Result<Vec<u8>, CompletionFailure> {
+        let started = tokio::time::Instant::now();
+        let mut retries = 0;
+        loop {
+            let left = self.retry.budget.saturating_sub(started.elapsed());
+            let retry_after = match self.attempt(body, left).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(Attempt::Failed(failure)) => return Err(failure),
+                Err(Attempt::RateLimited(retry_after)) => retry_after,
+            };
+            // The status and the count only, never the provider's body.
+            tracing::warn!(
+                attempt = retries + 1,
+                upstream_status = 429,
+                "Colony gateway upstream rate limited a request"
+            );
+            if retries == RATE_LIMIT_RETRIES {
+                return Err(CompletionFailure::Rejected);
+            }
+            let wait = self.retry.wait(retries, retry_after);
+            let left = self.retry.budget.saturating_sub(started.elapsed());
+            if wait.saturating_add(self.retry.min_attempt) > left {
+                return Err(CompletionFailure::Rejected);
+            }
+            retries += 1;
+            tokio::time::sleep(wait).await;
+        }
+    }
+
+    async fn attempt(&self, body: &Value, left: Duration) -> Result<Vec<u8>, Attempt> {
         let response = self
             .client
             .post(format!("{}/chat/completions", self.origin))
             .bearer_auth(self.key.as_str())
             .header("X-OpenRouter-Title", "Colony Agent")
+            .timeout(self.timeout.min(left))
             .json(body)
             .send()
             .await
-            .map_err(|_| CompletionFailure::Ambiguous)?;
+            .map_err(|_| Attempt::Failed(CompletionFailure::Ambiguous))?;
+        let status = response.status().as_u16();
+        if status == 429 {
+            let retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs);
+            return Err(Attempt::RateLimited(retry_after));
+        }
         if !response.status().is_success() {
             // The provider's status only, never its body: enough to tell a
             // refused key, model or price ceiling from a problem with the prompt.
             tracing::warn!(
-                upstream_status = response.status().as_u16(),
+                upstream_status = status,
                 "Colony gateway upstream did not accept a request"
             );
         }
-        if matches!(
-            response.status().as_u16(),
-            400 | 401 | 402 | 403 | 404 | 413 | 422 | 429
-        ) {
-            return Err(CompletionFailure::Rejected);
+        if matches!(status, 400 | 401 | 402 | 403 | 404 | 413 | 422) {
+            return Err(Attempt::Failed(CompletionFailure::Rejected));
         }
         bounded_response(response)
             .await
-            .map_err(|_| CompletionFailure::Ambiguous)
+            .map_err(|_| Attempt::Failed(CompletionFailure::Ambiguous))
     }
 
     pub(super) async fn generation_cost(&self, generation: &str) -> Result<i64, ()> {
@@ -985,6 +1107,209 @@ mod tests {
         };
         assert!(admit(request(129)).is_ok());
         assert!(admit(request(161)).is_err());
+    }
+
+    /// A provider that answers the scripted `(status, Retry-After)` pairs in
+    /// order and then `after` for ever. Returns the origin, the server task and
+    /// how many requests it has seen.
+    async fn scripted_provider(
+        script: Vec<(u16, Option<&'static str>)>,
+        after: u16,
+    ) -> (
+        String,
+        tokio::task::JoinHandle<()>,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use axum::{
+            http::{HeaderMap, HeaderValue, StatusCode},
+            routing::post,
+            Router,
+        };
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        let hits = Arc::new(AtomicUsize::new(0));
+        let seen = hits.clone();
+        let script = Arc::new(Mutex::new(std::collections::VecDeque::from(script)));
+        let router = Router::new().route(
+            "/chat/completions",
+            post(move || {
+                let seen = seen.clone();
+                let script = script.clone();
+                async move {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    let (status, retry_after) =
+                        script.lock().unwrap().pop_front().unwrap_or((after, None));
+                    let mut headers = HeaderMap::new();
+                    if let Some(value) = retry_after {
+                        headers.insert("retry-after", HeaderValue::from_static(value));
+                    }
+                    let body = if status == 200 {
+                        r#"{"id":"gen-ok","choices":[],"usage":{"cost":0.01}}"#
+                    } else {
+                        r#"{"error":{"message":"scripted"}}"#
+                    };
+                    (StatusCode::from_u16(status).unwrap(), headers, body)
+                }
+            }),
+        );
+        let (origin, task) = fake_server(router).await;
+        (origin, task, hits)
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_request_is_retried_until_the_provider_answers() {
+        use std::sync::atomic::Ordering;
+        let (origin, task, hits) = scripted_provider(vec![(429, None), (429, None)], 200).await;
+        let upstream = Upstream::fake(origin, Duration::from_secs(1));
+        let bytes = upstream.complete(&json!({})).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&bytes).unwrap()["id"],
+            "gen-ok"
+        );
+        // Two refusals and one answer.
+        assert_eq!(hits.load(Ordering::SeqCst), 3);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_provider_that_never_stops_limiting_gets_bounded_attempts_then_todays_refusal() {
+        use std::sync::atomic::Ordering;
+        let (origin, task, hits) = scripted_provider(vec![], 429).await;
+        let upstream = Upstream::fake(origin, Duration::from_secs(1));
+        assert_eq!(
+            upstream.complete(&json!({})).await,
+            Err(CompletionFailure::Rejected)
+        );
+        assert_eq!(hits.load(Ordering::SeqCst), 1 + RATE_LIMIT_RETRIES);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn only_a_rate_limit_is_ever_retried() {
+        use std::sync::atomic::Ordering;
+        for (status, failure) in [
+            (400, CompletionFailure::Rejected),
+            (401, CompletionFailure::Rejected),
+            (402, CompletionFailure::Rejected),
+            (403, CompletionFailure::Rejected),
+            (404, CompletionFailure::Rejected),
+            (413, CompletionFailure::Rejected),
+            (422, CompletionFailure::Rejected),
+            (500, CompletionFailure::Ambiguous),
+            (503, CompletionFailure::Ambiguous),
+        ] {
+            let (origin, task, hits) = scripted_provider(vec![], status).await;
+            let upstream = Upstream::fake(origin, Duration::from_secs(1));
+            assert_eq!(
+                upstream.complete(&json!({})).await,
+                Err(failure),
+                "{status}"
+            );
+            assert_eq!(
+                hits.load(Ordering::SeqCst),
+                1,
+                "{status} must not be retried"
+            );
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_huge_or_unreadable_retry_after_is_not_waited_for() {
+        use std::sync::atomic::Ordering;
+        for retry_after in ["3600", "6", "soon", "Wed, 21 Oct 2026 07:28:00 GMT"] {
+            let (origin, task, hits) = scripted_provider(vec![(429, Some(retry_after))], 200).await;
+            let upstream = Upstream::fake(origin, Duration::from_secs(1));
+            let started = std::time::Instant::now();
+            upstream.complete(&json!({})).await.unwrap();
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "{retry_after}: waited {:?}",
+                started.elapsed()
+            );
+            assert_eq!(hits.load(Ordering::SeqCst), 2);
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_short_retry_after_is_honoured() {
+        let (origin, task, _) = scripted_provider(vec![(429, Some("1"))], 200).await;
+        let upstream = Upstream::fake(origin, Duration::from_secs(5));
+        let started = std::time::Instant::now();
+        upstream.complete(&json!({})).await.unwrap();
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        assert!(started.elapsed() < Duration::from_secs(4));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn no_retry_starts_when_the_budget_cannot_hold_its_wait_and_an_attempt() {
+        use std::sync::atomic::Ordering;
+        let (origin, task, hits) = scripted_provider(vec![], 429).await;
+        let mut upstream = Upstream::fake(origin, Duration::from_secs(1));
+        upstream.retry = RetryPolicy {
+            budget: Duration::from_millis(50),
+            backoff: [Duration::from_millis(100); RATE_LIMIT_RETRIES],
+            ..RetryPolicy::FAST
+        };
+        assert_eq!(
+            upstream.complete(&json!({})).await,
+            Err(CompletionFailure::Rejected)
+        );
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        task.abort();
+    }
+
+    #[test]
+    fn the_production_schedule_backs_off_one_two_four_seconds_with_jitter_and_a_capped_retry_after()
+    {
+        let policy = RetryPolicy::PRODUCTION;
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..200 {
+            for (retry, base) in [1u64, 2, 4].into_iter().enumerate() {
+                let wait = policy.wait(retry, None);
+                assert!(
+                    wait >= Duration::from_secs(base) && wait <= Duration::from_millis(base * 1250),
+                    "retry {retry}: {wait:?}"
+                );
+                seen.insert(wait.as_millis());
+            }
+        }
+        assert!(seen.len() > 10, "the waits carry jitter");
+        // A Retry-After of five seconds or less is honoured when it is longer.
+        assert_eq!(
+            policy.wait(0, Some(Duration::from_secs(3))),
+            Duration::from_secs(3)
+        );
+        assert_eq!(
+            policy.wait(0, Some(Duration::from_secs(5))),
+            Duration::from_secs(5)
+        );
+        // A longer one is ignored, however large.
+        for secs in [6, 60, 3600, u64::MAX / 2] {
+            assert!(policy.wait(0, Some(Duration::from_secs(secs))) <= Duration::from_millis(1250));
+        }
+        // It never shortens the backoff.
+        assert!(policy.wait(2, Some(Duration::from_secs(1))) >= Duration::from_secs(4));
+    }
+
+    #[test]
+    fn the_retry_budget_leaves_the_managed_client_room_to_receive_the_answer() {
+        // `CreditsGateway::new` gives the client 100 s for a whole request.
+        const CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(100);
+        let policy = RetryPolicy::PRODUCTION;
+        assert!(policy.budget + Duration::from_secs(10) <= CLIENT_REQUEST_TIMEOUT);
+        // The longest waits (each the backoff plus full jitter, or the capped
+        // Retry-After) still leave the last attempt its minimum.
+        let worst: Duration = policy
+            .backoff
+            .iter()
+            .map(|base| (*base + *base / 4).max(policy.retry_after_cap))
+            .sum();
+        assert!(worst + policy.min_attempt <= policy.budget);
     }
 
     #[test]
