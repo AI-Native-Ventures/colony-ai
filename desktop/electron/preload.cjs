@@ -119,6 +119,8 @@ if (browserTabEnabled)
     stop: (tabId) => browserRequest("stop", { tabId }),
     setControlOwner: (tabId, controlOwner) =>
       browserRequest("control-owner", { tabId, controlOwner }),
+    setAgentCursorLabels: (tabId, labels) =>
+      browserRequest("cursor-labels", { tabId, labels }),
     setPrivate: (tabId, value) =>
       browserRequest("set-private", { tabId, private: value }),
     focus: (tabId) => browserRequest("focus", { tabId }),

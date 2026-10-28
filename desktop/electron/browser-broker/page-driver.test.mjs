@@ -170,6 +170,8 @@ function createRig({ url = "https://shop.example/cart" } = {}) {
   };
   const contents = { debugger: debuggerFake };
   const adapterCalls = [];
+  const cursorCalls = [];
+  let cursorHandler = async () => true;
   const hooks = {};
   let blocked = null;
   const adapter = {
@@ -213,6 +215,10 @@ function createRig({ url = "https://shop.example/cart" } = {}) {
     setNavigationGate: (gate) => {
       hooks.gate = gate;
     },
+    showAgentCursor: (id, action) => {
+      cursorCalls.push({ id, action });
+      return cursorHandler(id, action);
+    },
   };
   const driver = createPageDriver({
     adapter,
@@ -227,6 +233,10 @@ function createRig({ url = "https://shop.example/cart" } = {}) {
     driver,
     adapter,
     adapterCalls,
+    cursorCalls,
+    setCursorHandler(handler) {
+      cursorHandler = handler;
+    },
     hooks,
     tab,
     debuggerFake,
@@ -388,6 +398,128 @@ test("click is a real mouse sequence at the element centre", async () => {
     order.indexOf("DOM.getBoxModel") <
       order.indexOf("Input.dispatchMouseEvent"),
   );
+});
+
+test("cursor event carries the exact click point and the click waits for its pulse", async () => {
+  const rig = createRig();
+  let finishGlide;
+  rig.setCursorHandler(
+    () =>
+      new Promise((resolve) => {
+        finishGlide = resolve;
+      }),
+  );
+  const click = rig.driver.click("tab-1", 11, { agentId: "a".repeat(64) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(rig.cursorCalls, [
+    {
+      id: "tab-1",
+      action: { agentId: "a".repeat(64), action: "click", x: 140, y: 215 },
+    },
+  ]);
+  assert.equal(rig.methods().includes("Input.dispatchMouseEvent"), false);
+  // Mutation proof: removing the await on showAgentCursor dispatches mouseMoved before this resolves.
+  finishGlide(true);
+  await click;
+  assert.deepEqual(
+    rig.calls
+      .filter((call) => call.method === "Input.dispatchMouseEvent")
+      .map((call) => call.params.type),
+    ["mouseMoved", "mousePressed", "mouseReleased"],
+  );
+});
+
+test("takeover during cursor motion fences the real click", async () => {
+  const rig = createRig();
+  let takenOver = false;
+  let finishGlide;
+  rig.setCursorHandler(
+    () =>
+      new Promise((resolve) => {
+        finishGlide = resolve;
+      }),
+  );
+  const check = () => {
+    if (takenOver) throw new Error("taken over");
+  };
+  const click = rig.driver.click("tab-1", 11, {
+    agentId: "b".repeat(64),
+    check,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  takenOver = true;
+  finishGlide(true);
+  // Mutation proof: removing the post-glide check lets the CDP click through.
+  await assert.rejects(click, /taken over/u);
+  assert.equal(rig.methods().includes("Input.dispatchMouseEvent"), false);
+});
+
+test("typing outlines the field and waits for the cursor beside it", async () => {
+  const rig = createRig();
+  let finishGlide;
+  rig.setCursorHandler(
+    () =>
+      new Promise((resolve) => {
+        finishGlide = resolve;
+      }),
+  );
+  const typing = rig.driver.type("tab-1", 11, "hello", {
+    agentId: "c".repeat(64),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(rig.cursorCalls[0], {
+    id: "tab-1",
+    action: {
+      agentId: "c".repeat(64),
+      action: "type",
+      x: 188,
+      y: 215,
+      focus: { x: 100, y: 200, width: 80, height: 30 },
+    },
+  });
+  assert.equal(rig.methods().includes("Input.insertText"), false);
+  finishGlide(true);
+  await typing;
+  assert.equal(rig.methods().includes("Input.insertText"), true);
+});
+
+test("scroll moves the cursor before the page scrolls", async () => {
+  const rig = createRig();
+  let finishGlide;
+  rig.setCursorHandler(
+    () =>
+      new Promise((resolve) => {
+        finishGlide = resolve;
+      }),
+  );
+  const scrolling = rig.driver.scroll("tab-1", {
+    direction: "down",
+    amount: 100,
+    agentId: "d".repeat(64),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(rig.cursorCalls, [
+    {
+      id: "tab-1",
+      action: {
+        agentId: "d".repeat(64),
+        action: "scroll",
+        x: 1280 * 0.72,
+        y: 800 * 0.58,
+      },
+    },
+  ]);
+  const hasPageScroll = () =>
+    rig.calls.some(
+      (call) =>
+        call.method === "Runtime.callFunctionOn" &&
+        NAME_OF.get(call.params.functionDeclaration) === "scrollBy",
+    );
+  assert.equal(hasPageScroll(), false);
+  // Mutation proof: removing the await on showAgentCursor scrolls immediately.
+  finishGlide(true);
+  await scrolling;
+  assert.equal(hasPageScroll(), true);
 });
 
 test("a covered element is not clicked", async () => {

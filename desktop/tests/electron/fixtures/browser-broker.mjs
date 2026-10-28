@@ -20,8 +20,8 @@ app.commandLine.appendSwitch("disable-quic");
 async function boot() {
   await app.whenReady();
   const window = new BrowserWindow({
-    width: 960,
-    height: 720,
+    width: Number(process.env.COLONY_BROWSER_FIXTURE_WINDOW_WIDTH) || 960,
+    height: Number(process.env.COLONY_BROWSER_FIXTURE_WINDOW_HEIGHT) || 720,
     show: false,
     webPreferences: {
       preload: fileURLToPath(
