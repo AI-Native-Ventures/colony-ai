@@ -1,0 +1,33 @@
+name: Hang probe 3 (throwaway)
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/hang-probe3.yml"
+      - "scripts/hang-probe3.sh"
+permissions:
+  contents: read
+jobs:
+  probe3:
+    name: probe3 ${{ matrix.pkgs }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pkgs: ["node pnpm just", "node pnpm just rustup"]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Restore pnpm store cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Probe 3
+        env:
+          PROBE_PKGS: ${{ matrix.pkgs }}
+        run: scripts/hang-probe3.sh
