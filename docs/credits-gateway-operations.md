@@ -59,3 +59,25 @@ A free model is often rate limited by its provider, or gone (OpenRouter free mod
 - Only `openai/gpt-4.1-mini` is pinned to the OpenAI provider. A fallback is sent its own `model`, and the pin follows that model alone.
 - 429 reason code. `Colony gateway upstream rate limited a request` carries `model`, `attempt` (the request's upstream call count, from 1), `upstream_status` and `reason`, one of: `free_models_per_day`, `free_models_per_minute`, `account_rate_limited` (OpenRouter's limit on the whole account), `provider_rate_limited` (one provider is busy), `unknown`. The code is read from the error body and the `X-RateLimit-Limit` header and never logs either. `Colony gateway answered from a fallback model` (info) shows when a fallback answered.
 - All `:free` models share one OpenRouter account limit (20 requests per minute, and 50 per day, or 1000 per day with at least 10 credits bought). The chain fixes a busy provider, not that account cap: when the log shows `free_models_per_day`, `free_models_per_minute` or `account_rate_limited`, a different model will not help. Buy credits on the OpenRouter account or wait for the reset.
+
+## Slow requests and the outcome log (C3-JUDGE-AI-9)
+
+**Why.** GATE-311-R2: the first hello of the judge account ended in "Connect your AI" 74 s after the business was picked, with the app's message "Usage is being recovered automatically. This turn was stopped; do not resend it automatically." and no gateway line in the relay log. That text is the managed client's only word for a transport failure (a send or read error, or a 409) as well as for a 409 recovering answer. A free model can take a minute or more to answer, and Fly's proxy closes a connection that carries no bytes for 60 seconds (Fly staff, community.fly.io "Request timeouts on fly.io"; `fly.prod.toml` sets no `idle_timeout`), so a request that waits on a slow model was cut at 60 s while the relay carried on to settle it unseen. Reproduced with the packaged 3.0.11 `buzz-acp connection-test` behind a proxy that cuts after 60 s idle: a silent 70 s answer ends in exactly that message at 60.3 s; the same 70 s answer with one space every 15 s succeeds.
+
+**Keep-alive.** A managed-inference request that finishes within 15 s answers exactly as before, with its own status. One still running at 15 s gets `200` and headers at once, then one space every 15 s, then its JSON. A space is JSON whitespace, so the shipped client (which reads the body of a `200` with `serde_json::from_slice` and looks for `choices`) parses it unchanged. The charge, the hold and the settlement are untouched: the provider call and its settlement still run on their own task, so a client that goes away does not stop them. Because `200` is committed at 15 s, a failure after that point reaches the client as a `200` whose body is the error JSON; the client finds no `choices` and shows its recovering message. The log line below still names the real status.
+
+**Outcome log.** Every managed-inference request that ends at the gateway after the request body is accepted writes one line, `Colony gateway request finished` (info when `outcome` is `ok`, warn otherwise), with `outcome`, `status` (what the client was given, or would have been given when the stream had already answered `200`), `request_id`, `primary_model`, `answered_by`, `elapsed_ms` and `streamed`. It never carries a prompt, a reply, a key or a provider body. `outcome` is one of:
+
+- `ok`: answered and settled.
+- `admission_busy` (429), `admission_insufficient` (402), `admission_daily_limit` (503), `admission_pending` (409, the same request id still in flight), `admission_completed` (409, already charged).
+- `upstream_rejected` (503): every model refused it clearly; nothing generated, hold released.
+- `upstream_unclear` (409): a transport failure, a timeout or a 5xx on the last model; the hold is left to the recovery worker.
+- `answer_unreadable` (409): the provider answered with something that is not a completion (for example no `id`).
+- `cost_unusable` (409): no usable cost on the answer, or one above the hold.
+- `reply_refused` (409): the answer's choices were refused by the response policy.
+- `database_error`: a database failure; the status is whatever that error maps to.
+
+So a 409 that used to leave nothing in the log now names which of `admission_pending`, `upstream_unclear`, `answer_unreadable`, `cost_unusable` and `reply_refused` it was, and `elapsed_ms` says how long it waited. If `elapsed_ms` is near 60000 with `streamed=false` on an old relay, it was the proxy.
+
+**A slow model is still a slow model.** The fallback chain moves on only when a model errors, so a free model that answers in 70 s makes the first hello take 70 s. This change makes that request survive, not faster.
+
