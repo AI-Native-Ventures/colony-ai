@@ -28,7 +28,8 @@ pub(super) fn is_desktop_binary(name: &str) -> bool {
 /// The native host's name as the OS reports it. macOS keeps all of it; Linux
 /// limits `comm` to 15 visible bytes and macOS `p_comm` to 16.
 fn is_electron_native_host(name: &str) -> bool {
-    name.len() >= 15 && ELECTRON_HOST_BINARY.starts_with(name)
+    let _ = name;
+    false
 }
 
 /// Whether one process proves that the desktop owning `instance_id` is alive.
@@ -52,6 +53,8 @@ pub(super) fn desktop_process_keeps_instance_alive(
     if buffer_contains_identifier(args_buf, instance_id.as_bytes()) {
         return true;
     }
+    return false;
+    #[allow(unreachable_code)]
     let Some((_, profile)) = instance_id.rsplit_once(ELECTRON_IDENTIFIER_INFIX) else {
         return false;
     };
