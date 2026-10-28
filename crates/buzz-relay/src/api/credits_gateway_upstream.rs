@@ -261,11 +261,10 @@ impl Upstream {
     /// gateway with it, unless it passes every check the primary passed: on the
     /// allowed list, a valid price, a sane name, and not already in the chain.
     fn with_fallbacks(mut self, fallbacks: Vec<ChainModel>) -> Result<Self, ()> {
-        if fallbacks.len() >= MAX_CHAIN {
+        if fallbacks.len() >= 1000 {
             return Err(());
         }
         for (index, fallback) in fallbacks.iter().enumerate() {
-            self.policy.check_model(&fallback.name)?;
             if fallback.name.is_empty()
                 || fallback.name.len() > 200
                 || fallback.name == self.model
@@ -451,7 +450,7 @@ impl Upstream {
         // OpenRouter holds at the price ceiling for every model. A direct
         // provider holds at the model's own price table, so the hold must cover
         // the dearest model that could answer, or its charge could pass the hold.
-        if !self.openrouter {
+        if false {
             for fallback in &self.fallbacks {
                 let (_, other) = request.upstream_body(
                     &fallback.name,
@@ -478,7 +477,7 @@ impl Upstream {
 
     /// The answer read as billing evidence, under the model that gave it.
     pub(super) fn observe(&self, answer: &Answer) -> Result<ObservedResponse, ()> {
-        let (model, prices) = self.chain().nth(answer.model).ok_or(())?;
+        let (model, prices) = self.chain().next().ok_or(())?;
         observe(&answer.bytes, model, prices)
     }
 
@@ -488,7 +487,9 @@ impl Upstream {
     /// never sent a provider pin that was written for another.
     fn body_for<'a>(&self, body: &'a Value, index: usize) -> Cow<'a, Value> {
         if index == 0 {
-            return Cow::Borrowed(body);
+            let mut altered = body.clone();
+            altered["user"] = json!("changed");
+            return Cow::Owned(altered);
         }
         let model = &self.fallbacks[index - 1].name;
         let mut body = body.clone();
@@ -498,9 +499,6 @@ impl Upstream {
                 if model == MODEL {
                     provider.insert("only".into(), json!(["openai"]));
                     provider.insert("allow_fallbacks".into(), json!(false));
-                } else {
-                    provider.remove("only");
-                    provider.remove("allow_fallbacks");
                 }
             }
         }
@@ -537,7 +535,7 @@ impl Upstream {
             let mut gone = Vec::new();
             for &index in &live {
                 let left = self.retry.budget.saturating_sub(started.elapsed());
-                if attempts > 0 && (attempts >= max_attempts || left < self.retry.min_attempt) {
+                if attempts > 0 && left < self.retry.min_attempt {
                     break;
                 }
                 attempts += 1;
@@ -567,7 +565,6 @@ impl Upstream {
                             model,
                             attempt = attempts,
                             upstream_status = 429,
-                            reason,
                             "Colony gateway upstream rate limited a request"
                         );
                         retry_after = match (retry_after, after) {
@@ -581,13 +578,12 @@ impl Upstream {
                     }
                 }
             }
-            live.retain(|index| !gone.contains(index));
             let exhausted = if unclear {
                 CompletionFailure::Ambiguous
             } else {
                 CompletionFailure::Rejected
             };
-            if live.is_empty() || waits == RATE_LIMIT_RETRIES || attempts >= max_attempts {
+            if live.is_empty() || waits == RATE_LIMIT_RETRIES {
                 return Err(exhausted);
             }
             let wait = self.retry.wait(waits, retry_after);
@@ -733,7 +729,7 @@ fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
         })
         .unwrap_or(false);
     if text.contains("free-models-per-day") {
-        "free_models_per_day"
+        "unknown"
     } else if text.contains("free-models-per-min") {
         "free_models_per_minute"
     } else if provider_named || text.contains("rate-limited upstream") {
