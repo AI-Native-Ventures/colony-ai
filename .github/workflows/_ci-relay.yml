@@ -45,6 +45,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       # Reuse the relay binaries and backend test archive when none of their
       # inputs changed (desktop-only PRs hit this every time). The key covers
       # everything they embed, including migrations via sqlx migrate!.
@@ -174,6 +176,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       - name: Tune disposable PostgreSQL
         env:
           PGPASSWORD: ${{ env.BUZZ_TEST_POSTGRES_PASSWORD }}
@@ -221,6 +225,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: Restore cached service images
         uses: ./.github/actions/cached-service-images
       - name: Start integration services
@@ -246,7 +252,7 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Get Playwright version
         id: pw-version
         run: echo "version=$(cd desktop && node -e "console.log(require('@playwright/test/package.json').version)")" >> "$GITHUB_OUTPUT"
@@ -418,6 +424,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       - name: Install cargo-nextest
         uses: taiki-e/install-action@0fd46367812ee04360509b4169d9f659d6892bb2 # v2.79.15
         with:
@@ -592,6 +600,8 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just rustup
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           save-if: ${{ github.event_name != 'pull_request' }}

@@ -36,7 +36,7 @@ jobs:
           workspaces: desktop/src-tauri
           save-if: ${{ github.event_name != 'pull_request' }}
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Create sidecar placeholders
         run: |
           TARGET=$(rustc -vV | sed -n 's|host: ||p')

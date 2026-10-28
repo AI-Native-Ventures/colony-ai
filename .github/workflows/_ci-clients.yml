@@ -35,6 +35,8 @@ jobs:
         with:
           fetch-depth: 2
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install Hermit tools
+        run: scripts/ci-hermit-ready.sh just node pnpm
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -45,7 +47,7 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: scripts/ci-bounded.sh 240 3 pnpm install --frozen-lockfile
       - name: Web lint and format
         run: just web-check
       - name: Web unit tests
