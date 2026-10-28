@@ -6,7 +6,7 @@ use axum::{
 use base64::Engine;
 use nostr::{EventBuilder, Keys, Kind, Tag};
 use sqlx::PgPool;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tower::ServiceExt;
 
 struct Fixture {
@@ -20,6 +20,11 @@ struct Fixture {
     session: Uuid,
     calls: Arc<AtomicUsize>,
     sent: Arc<std::sync::Mutex<Vec<Value>>>,
+    /// Statuses the provider answers with, in order, before it starts answering
+    /// normally. Fill it after building the fixture.
+    script: Arc<std::sync::Mutex<std::collections::VecDeque<StatusCode>>>,
+    /// Milliseconds the provider thinks before it answers.
+    delay_ms: Arc<AtomicU64>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -53,6 +58,12 @@ async fn fixture_in(
     let counter = calls.clone();
     let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured = sent.clone();
+    let script = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::<
+        StatusCode,
+    >::new()));
+    let scripted = script.clone();
+    let delay_ms = Arc::new(AtomicU64::new(0));
+    let thinking = delay_ms.clone();
     let completion = response.clone();
     let upstream = Router::new()
         .route(
@@ -60,6 +71,8 @@ async fn fixture_in(
             post(move |headers: HeaderMap, Json(body): Json<Value>| {
                 let counter = counter.clone();
                 let captured = captured.clone();
+                let scripted = scripted.clone();
+                let thinking = thinking.clone();
                 let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
@@ -78,6 +91,14 @@ async fn fixture_in(
                     }
                     captured.lock().unwrap().push(body);
                     let index = counter.fetch_add(1, Ordering::SeqCst);
+                    let delay = thinking.load(Ordering::SeqCst);
+                    if delay > 0 {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
+                    let refusal = scripted.lock().unwrap().pop_front();
+                    if let Some(status) = refusal {
+                        return (status, Json(json!({"error":{"message":"scripted"}})));
+                    }
                     if index > 0 {
                         if let Some(id) = completion["id"].as_str().map(str::to_owned) {
                             completion["id"] = json!(format!("{id}-{index}"));
@@ -219,6 +240,8 @@ async fn fixture_in(
         session,
         calls,
         sent,
+        script,
+        delay_ms,
         server,
     }
 }
@@ -324,6 +347,39 @@ async fn real_route_admits_a_full_scout_session_and_charges_returned_cost() {
     let sent = f.sent.lock().unwrap();
     assert_eq!(sent[0]["messages"].as_array().unwrap().len(), 203);
     assert_eq!(sent[0]["tools"].as_array().unwrap().len(), 20);
+}
+
+/// The bytes the shipped 3.0.9 client really posts, through the real route. Its
+/// messages carry `"tool_calls": null`, which hand-built bodies never did, so the
+/// relay refused every request the app ever made.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn real_route_admits_what_the_packaged_client_really_posts() {
+    use super::super::credits_gateway_upstream::scout_session::{
+        PACKAGED_FIRST_HELLO, PACKAGED_TOOL_ROUND,
+    };
+    for (name, packaged, messages) in [
+        ("first-hello", PACKAGED_FIRST_HELLO, 2),
+        ("tool-round", PACKAGED_TOOL_ROUND, 4),
+    ] {
+        let f = fixture(upstream_response()).await;
+        let mut value: Value = serde_json::from_str(packaged).unwrap();
+        value["session_id"] = json!(f.session);
+        value["request_id"] = json!(Uuid::new_v4());
+        let (status, reply) = call(&f, &value.to_string(), name).await;
+        assert_eq!(status, StatusCode::OK, "{name}: {reply}");
+        assert_eq!(f.calls.load(Ordering::SeqCst), 1, "{name}");
+        let sent = f.sent.lock().unwrap();
+        let forwarded = sent[0]["messages"].as_array().unwrap();
+        assert_eq!(forwarded.len(), messages, "{name}");
+        // A null optional field is dropped before the provider sees it.
+        for message in forwarded {
+            assert!(
+                message.as_object().unwrap().values().all(|v| !v.is_null()),
+                "{name}: {message}"
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -615,6 +671,142 @@ async fn definite_upstream_rejection_releases_hold_without_billing_customer() {
             .unwrap();
     assert_eq!(charged, 0);
     assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+/// A free model is rate limited upstream about as often as it answers, and the
+/// managed client makes one attempt, so the relay rides out a 429 itself. The
+/// provider declines a 429 before generating: nothing is billed for it.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_rate_limited_provider_is_retried_and_the_customer_is_charged_once() {
+    let f = fixture(upstream_response()).await;
+    f.script
+        .lock()
+        .unwrap()
+        .extend([StatusCode::TOO_MANY_REQUESTS, StatusCode::TOO_MANY_REQUESTS]);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "limited-then-ok").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["chargedNanousd"], "12000000");
+    // Two refusals and the answer: three trips, one charge.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        988_000_000
+    );
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 12_000_000);
+    // The client's own retry of a settled request is still refused: no second charge.
+    assert_eq!(
+        call(&f, &body(&f, request), "limited-then-ok-again")
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_client_that_disconnects_mid_request_still_has_its_usage_settled() {
+    // GATE-309-R2: a harness killed while its request was with the provider
+    // dropped the handler, the hold stayed pending and, 15 minutes later, settled
+    // provisionally at the reserved maximum.
+    let f = fixture(upstream_response()).await;
+    f.delay_ms.store(300, Ordering::SeqCst);
+    let request = Uuid::new_v4();
+    let payload = body(&f, request);
+    // The client leaves once the request has reached the provider.
+    let mut pending = Box::pin(routes(f.gateway.clone()).oneshot(signed(&f, &payload, "gone")));
+    tokio::select! {
+        _ = &mut pending => panic!("answered before the client left"),
+        _ = async {
+            while f.calls.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        } => {}
+    }
+    drop(pending);
+    let mut status = String::new();
+    for _ in 0..50 {
+        status = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+        if status != "pending" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Settled at the provider's own cost, without the recovery worker.
+    assert_eq!(status, "settled");
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 12_000_000);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        988_000_000
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    // The app's own retry of that request is refused: it was charged once.
+    assert_eq!(
+        call(&f, &payload, "gone-retry").await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_provider_that_stays_rate_limited_is_refused_and_nothing_is_billed() {
+    let f = fixture_status(
+        json!({"error":{"message":"synthetic rate limit"}}),
+        StatusCode::TOO_MANY_REQUESTS,
+    )
+    .await;
+    let request = Uuid::new_v4();
+    assert_eq!(
+        call(&f, &body(&f, request), "limited-forever").await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    // The first try and three retries, then the refusal the app always saw.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 0);
 }
 
 #[tokio::test]

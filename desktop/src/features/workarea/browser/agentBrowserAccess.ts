@@ -151,6 +151,10 @@ function forgetEndedGrant(event: BrowserBrokerEvent) {
   if (!key || [...taskByGrant.values()].includes(key)) return;
   taskChannels.delete(key);
   dockWasOpenByTask.delete(key);
+  // A channel's conversation is one task for as long as the agent lives, so a
+  // dock the person closed once must not silence every later request: the next
+  // request is a new run of the task.
+  dismissedTasks.delete(key);
 }
 
 function publish(next: readonly AgentAccessRequest[]) {
@@ -247,6 +251,7 @@ function maybeShowAgentBrowserPage(
   agentTaskKey: string,
   pageKey: string,
   sequence: number | null,
+  asking = false,
 ) {
   if (sequence === null || latestRequestByChannel.get(channelId) !== sequence) {
     return;
@@ -257,7 +262,9 @@ function maybeShowAgentBrowserPage(
     windowVisible: isColonyWindowVisible(),
     dockOpen: state.open,
     personActive: isPersonActiveInWorkArea(channelId, state.activeTabId),
-    dismissedForTask: dismissedTasks.has(agentTaskKey),
+    // A closed dock mutes a run that was going on, not a question the agent
+    // cannot go on without: the Allow card lives in the dock.
+    dismissedForTask: !asking && dismissedTasks.has(agentTaskKey),
   });
   if (decision === "show")
     openWorkArea(channelId, "browser", browserTabId(pageKey));
@@ -286,6 +293,18 @@ async function open(
       channelId,
       hostId: page.hostId,
     });
+    // The card is inside the browser panel: when the person is watching this
+    // conversation the panel opens on it, so the question is seen, not only
+    // marked. The agent's wait for it ends in 30 s, but the person's Allow still
+    // brings the browser back for the next message.
+    maybeShowAgentBrowserPage(
+      channelId,
+      request.taskId,
+      taskKey(request),
+      page.key,
+      sequence,
+      true,
+    );
     return;
   }
   try {
@@ -354,14 +373,12 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
   if (serving.has(key)) return;
   const normalizedChannelId = channelId.toLowerCase();
   trackTask(key, normalizedChannelId);
-  const sequence = event.resume ? null : ++requestSequence;
-  if (sequence !== null) {
-    latestRequestByChannel.set(normalizedChannelId, sequence);
-    while (latestRequestByChannel.size > MAX_TRACKED_TASKS) {
-      const oldest = latestRequestByChannel.keys().next().value;
-      if (oldest === undefined) break;
-      latestRequestByChannel.delete(oldest);
-    }
+  const sequence = ++requestSequence;
+  latestRequestByChannel.set(normalizedChannelId, sequence);
+  while (latestRequestByChannel.size > MAX_TRACKED_TASKS) {
+    const oldest = latestRequestByChannel.keys().next().value;
+    if (oldest === undefined) break;
+    latestRequestByChannel.delete(oldest);
   }
   const job = open(
     current,

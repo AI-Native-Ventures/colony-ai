@@ -1,0 +1,18 @@
+{
+  "name": "ffmpeg",
+  "version": "8.1",
+  "license": "LGPL-2.1-or-later",
+  "source": {
+    "url": "https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz",
+    "sha256": "b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a",
+    "signatureUrl": "https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz.asc",
+    "signingKeyFingerprint": "FCF986EA15E6E293A5644F10B4322F04D67658D8"
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "executable": "ffmpeg",
+      "h264Encoder": "h264_videotoolbox"
+    },
+    "win32-x64": { "executable": "ffmpeg.exe", "h264Encoder": "h264_mf" }
+  }
+}

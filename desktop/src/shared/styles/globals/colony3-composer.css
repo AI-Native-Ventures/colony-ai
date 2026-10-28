@@ -656,6 +656,13 @@
   margin-top: 0.625rem;
 }
 
+.colony-thread-crosspost-backdrop {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  background: hsl(var(--background));
+}
+
 .colony-thread-crosspost {
   display: flex;
   align-items: center;

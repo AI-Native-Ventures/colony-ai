@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import type { MainTimelineEntry } from "@/features/messages/lib/threadPanel";
+import { MESSAGE_GROUP_SPACING_PX } from "@/features/messages/lib/messageGroupSpacing";
 import { THREAD_REPLY_ROW_MARGIN_INLINE_REM } from "@/features/messages/lib/threadTreeLayout";
 import type { buildVideoReviewContextForMessage } from "@/features/messages/lib/videoReviewContext";
 import { canManageMessageForCurrentUser } from "@/features/messages/lib/canManageMessage";
@@ -45,7 +46,10 @@ export function SystemRow({
   if (!firstEntry) return null;
 
   return (
-    <div className="flex flex-col gap-1 pb-6">
+    <div
+      className="flex flex-col gap-1"
+      style={{ paddingBottom: MESSAGE_GROUP_SPACING_PX }}
+    >
       <SystemMessageRow
         groupedMessages={groupedMessages}
         message={firstEntry.message}
@@ -135,7 +139,7 @@ export function MessageRowItem({
   if (summary && onOpenThread) {
     const isHighlighted = message.id === highlightedMessageId;
     return (
-      <div className="pb-6">
+      <div style={{ paddingBottom: MESSAGE_GROUP_SPACING_PX }}>
         <div
           className={cn(
             "group/message c3c-row relative flex flex-col gap-0 transition-colors",
@@ -197,11 +201,11 @@ export function MessageRowItem({
 
   return (
     <div
-      className={cn(
-        "flex flex-col gap-1",
-        isFollowedByContinuation ? "pb-0" : "pb-6",
-      )}
+      className="flex flex-col gap-1"
       data-active-thread-root={isActiveThreadRoot ? "true" : undefined}
+      style={{
+        paddingBottom: isFollowedByContinuation ? 0 : MESSAGE_GROUP_SPACING_PX,
+      }}
     >
       <MessageRow
         channelId={channelId}

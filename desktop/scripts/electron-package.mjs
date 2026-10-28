@@ -3,6 +3,7 @@ import { extractFile } from "@electron/asar";
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import {
+  chmod,
   copyFile,
   cp,
   mkdir,
@@ -20,8 +21,12 @@ import { promisify } from "node:util";
 import {
   APP_ICON_BASENAME,
   adhocSignArguments,
+  assertLgplFfmpegConfiguration,
   createPackagerOptions,
   electronPackagePaths,
+  ffmpegBundle,
+  ffmpegNoticeText,
+  ffmpegResourceFilenames,
   nativeHostFilename,
   parseElectronPackageArgs,
   releaseCapabilities as createReleaseCapabilities,
@@ -34,9 +39,8 @@ import { deepLinkSchemesFromConfig } from "../electron/deep-links.mjs";
 const exec = promisify(execFile);
 const desktop = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repo = path.dirname(desktop);
-const { platform, arch, host, sidecarDir } = parseElectronPackageArgs(
-  process.argv.slice(2),
-);
+const { platform, arch, host, sidecarDir, ffmpegDir } =
+  parseElectronPackageArgs(process.argv.slice(2));
 const hostFilename = nativeHostFilename(platform);
 const defaultReleaseDir = host ? undefined : await cargoReleaseDir();
 const hostPath = path.resolve(
@@ -202,6 +206,44 @@ if (platform !== "win32") {
   }
 }
 
+// Packages for these platforms carry their own ffmpeg, so voice notes, video and
+// HEIC photos work on a machine that has none. A missing or non-LGPL binary
+// stops the build instead of shipping an app that cannot prepare uploads.
+const ffmpeg = ffmpegBundle(platform, arch);
+let ffmpegSourceDir = null;
+let ffmpegConfiguration = null;
+if (ffmpeg) {
+  const requestedDir = ffmpegDir ?? process.env.COLONY_FFMPEG_BUNDLE_DIR;
+  if (!requestedDir)
+    throw new Error(
+      `${ffmpeg.platformKey} packages include ffmpeg: pass --ffmpeg-dir (or set COLONY_FFMPEG_BUNDLE_DIR) to the folder desktop/ffmpeg-bundle/build.sh wrote.`,
+    );
+  ffmpegSourceDir = path.resolve(requestedDir);
+  const ffmpegStat = await requireFile(
+    path.join(ffmpegSourceDir, ffmpeg.executable),
+    "Bundled ffmpeg",
+  );
+  if (platform !== "win32" && !(ffmpegStat.mode & 0o111))
+    throw new Error(
+      `Bundled ffmpeg is not executable: ${path.join(ffmpegSourceDir, ffmpeg.executable)}`,
+    );
+  await requireFile(
+    path.join(ffmpegSourceDir, "COPYING.LGPLv2.1"),
+    "ffmpeg licence text",
+  );
+  if (process.platform === platform && process.arch === arch) {
+    const { stdout } = await exec(
+      path.join(ffmpegSourceDir, ffmpeg.executable),
+      ["-hide_banner", "-version"],
+      { windowsHide: true },
+    );
+    ffmpegConfiguration = assertLgplFfmpegConfiguration(stdout);
+  } else {
+    ffmpegConfiguration =
+      "Not recorded: this package was assembled on a different platform. Run `ffmpeg -version` on the bundled file.";
+  }
+}
+
 const desktopPackage = JSON.parse(await readFile(packageJsonPath, "utf8"));
 const tauriConfig = sourceTauriConfig;
 if (!tauriConfig.productName)
@@ -327,6 +369,27 @@ try {
       ),
     ),
   );
+  const stagedFfmpegPaths = [];
+  if (ffmpeg) {
+    const stagedBinary = path.join(stageRoot, ffmpeg.executable);
+    await copyFile(
+      path.join(ffmpegSourceDir, ffmpeg.executable),
+      stagedBinary,
+      fsConstants.COPYFILE_FICLONE,
+    );
+    if (platform !== "win32") await chmod(stagedBinary, 0o755);
+    const stagedNotice = path.join(stageRoot, ffmpeg.noticeFilename);
+    await writeFile(
+      stagedNotice,
+      ffmpegNoticeText({ bundle: ffmpeg, configuration: ffmpegConfiguration }),
+    );
+    const stagedLicense = path.join(stageRoot, ffmpeg.licenseFilename);
+    await copyFile(
+      path.join(ffmpegSourceDir, "COPYING.LGPLv2.1"),
+      stagedLicense,
+    );
+    stagedFfmpegPaths.push(stagedBinary, stagedNotice, stagedLicense);
+  }
 
   const stagedPackageJson = {
     ...desktopPackage,
@@ -345,7 +408,12 @@ try {
     electronVersion,
     platform,
     arch,
-    extraResource: [stagedHostPath, ...stagedSidecarPaths, ...releaseResources],
+    extraResource: [
+      stagedHostPath,
+      ...stagedSidecarPaths,
+      ...stagedFfmpegPaths,
+      ...releaseResources,
+    ],
     icon: path.join(iconsDir, APP_ICON_BASENAME),
     osxSign,
     osxNotarize,
@@ -419,6 +487,22 @@ try {
           `Packaged runtime binary is not executable: ${packagedRuntimePaths[index]}`,
         );
     }
+  }
+
+  for (const filename of ffmpegResourceFilenames(platform, arch)) {
+    const packagedFfmpegPath = path.join(appResourcesPath, filename);
+    const packagedFfmpegStat = await requireFile(
+      packagedFfmpegPath,
+      "Packaged ffmpeg file",
+    );
+    if (
+      filename === ffmpeg.executable &&
+      platform !== "win32" &&
+      !(packagedFfmpegStat.mode & 0o111)
+    )
+      throw new Error(
+        `Packaged ffmpeg is not executable: ${packagedFfmpegPath}`,
+      );
   }
 
   if (platform === "darwin") {
