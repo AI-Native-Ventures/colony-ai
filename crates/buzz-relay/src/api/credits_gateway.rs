@@ -382,40 +382,17 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     upstream
         .attribute_customer(&mut upstream_body, account_id)
         .map_err(|_| unavailable())?;
-    // The hold is committed. Everything from here to the settlement runs on its
-    // own task, so a client that goes away (an app quit or killed mid-request)
-    // cannot drop the work halfway and strand the hold: it would otherwise sit
-    // pending for the 15 minute recovery window and then settle at the reserved
-    // maximum. The handler only waits for the task to answer.
-    let job = tokio::spawn(complete_and_settle(
-        gateway.clone(),
-        upstream.clone(),
-        request.request_id,
-        upstream_body,
-        reserve,
-    ));
-    job.await.unwrap_or_else(|_| Err(recovering()))
-}
-
-/// One admitted request, from the provider call to the settlement. The only
-/// retry is a provider 429 inside `complete`: the provider declines before it
-/// generates, so it costs nothing and cannot bill twice. A failure that is not
-/// a clear refusal leaves the committed hold to the durable worker, which also
-/// covers the relay itself going away mid-request.
-async fn complete_and_settle(
-    gateway: Gateway,
-    upstream: Arc<Upstream>,
-    request_id: Uuid,
-    upstream_body: Value,
-    reserve: i64,
-) -> ApiResult {
+    // The only retry is a provider 429 inside `complete`: the provider declines
+    // before it generates, so it costs nothing and cannot bill twice. Cancellation
+    // and every other error leave the committed hold to the durable worker,
+    // including cancellation before the send starts.
     let bytes = match upstream.complete(&upstream_body).await {
         Ok(bytes) => bytes,
         Err(CompletionFailure::Rejected) => {
             gateway
                 .relay
                 .db
-                .reject_credit_ai_request(request_id)
+                .reject_credit_ai_request(request.request_id)
                 .await
                 .map_err(database_error)?;
             return Err(unavailable());
@@ -428,7 +405,7 @@ async fn complete_and_settle(
         .relay
         .db
         .observe_credit_ai_usage(
-            request_id,
+            request.request_id,
             &observed.generation,
             observed.charged,
             &billing_usage(&observed.usage),
@@ -442,14 +419,14 @@ async fn complete_and_settle(
     gateway
         .relay
         .db
-        .settle_credit_ai_request(request_id, charged, false)
+        .settle_credit_ai_request(request.request_id, charged, false)
         .await
         .map_err(database_error)?;
     if !observed.response["choices"].is_array() || observed.response.get("error").is_some() {
         return Err(recovering());
     }
     let mut response = observed.response;
-    response["id"] = json!(format!("colony-{request_id}"));
+    response["id"] = json!(format!("colony-{}", request.request_id));
     response["choices"] =
         super::credits_gateway_policy::choices(&response["choices"]).map_err(|_| recovering())?;
     response["usage"] = billing_usage(&response["usage"]);
