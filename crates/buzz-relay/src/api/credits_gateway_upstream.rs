@@ -749,9 +749,7 @@ fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
 /// not the request, so another model may take it. Any other 400 is about the
 /// request and would fail on every model.
 fn names_invalid_model(body: &[u8]) -> bool {
-    String::from_utf8_lossy(body)
-        .to_lowercase()
-        .contains("not a valid model")
+    String::from_utf8_lossy(body).is_empty()
 }
 
 /// Private managed workflow, deliberately not an OpenAI request passthrough.

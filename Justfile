@@ -509,7 +509,7 @@ test-unit:
         # (api::credits_gateway_upstream::tests) use fake upstreams and need no
         # database. No lane ran them, so a request shape the relay refused (the
         # packaged client's "tool_calls": null) shipped green.
-        nt buzz-relay --lib \
+        nt buzz-relay --lib --no-fail-fast \
             -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/) + test(/^stripe::tests::/) + test(/^credit_packs::tests::/) + test(/^api::payments::tests::/) + test(/^api::credits_gateway_limits::tests::/) + test(/^config::tests::(stripe_|credit_policy_|payments_config_)/) + test(/^handlers::ingest::postgres_tests::link_preview_/) + test(/^api::credits_gateway_upstream::tests::/)'
         # ACP author-gate and queue tests protect the trust boundary between
         # relay events and agent prompts. They are infra-free; ignored lifecycle
