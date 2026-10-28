@@ -11,9 +11,55 @@ const DESKTOP_BINARY_NAMES: &[&str] = &[
     "buzz-desktop.bi",
 ];
 
+/// The Electron app's native host. The Electron shell hands it only the
+/// sixteen hex characters of its profile (`COLONY_ELECTRON_PROFILE_ID`); the
+/// host builds the full `xyz.block.buzz.app.electron.<profile>` identifier
+/// itself, so that string is in no process's args or environment.
+const ELECTRON_HOST_BINARY: &str = "colony-native-host";
+/// Environment entry the Electron shell sets on its native host.
+const ELECTRON_PROFILE_ENV: &str = "COLONY_ELECTRON_PROFILE_ID";
+const ELECTRON_IDENTIFIER_INFIX: &str = ".electron.";
+
 /// Check if a process name matches a known Buzz desktop binary.
 pub(super) fn is_desktop_binary(name: &str) -> bool {
-    DESKTOP_BINARY_NAMES.contains(&name)
+    DESKTOP_BINARY_NAMES.contains(&name) || is_electron_native_host(name)
+}
+
+/// The native host's name as the OS reports it. macOS keeps all of it; Linux
+/// limits `comm` to 15 visible bytes and macOS `p_comm` to 16.
+fn is_electron_native_host(name: &str) -> bool {
+    name.len() >= 15 && ELECTRON_HOST_BINARY.starts_with(name)
+}
+
+/// Whether one process proves that the desktop owning `instance_id` is alive.
+///
+/// `args_buf` is the process's argv and environment as null-delimited strings.
+/// A Tauri desktop carries its identifier in its own arguments. An Electron
+/// profile's identifier is `<base>.electron.<profile>`, and only the profile
+/// (`COLONY_ELECTRON_PROFILE_ID`) reaches a process, the native host's, so that
+/// is what is matched. Without it every Electron desktop looked dead to the
+/// periodic sweep of any other Colony on the machine, which then terminated its
+/// agents once a minute (GATE-309-R2, 28 Oct: Scout's harness got SIGTERM and
+/// SIGKILL at :20 past the minute from the owner's own running Colony).
+pub(super) fn desktop_process_keeps_instance_alive(
+    name: &str,
+    args_buf: &[u8],
+    instance_id: &str,
+) -> bool {
+    if !is_desktop_binary(name) {
+        return false;
+    }
+    if buffer_contains_identifier(args_buf, instance_id.as_bytes()) {
+        return true;
+    }
+    let Some((_, profile)) = instance_id.rsplit_once(ELECTRON_IDENTIFIER_INFIX) else {
+        return false;
+    };
+    if profile.len() != 16 || !profile.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return false;
+    }
+    let entry = format!("{ELECTRON_PROFILE_ENV}={profile}");
+    buffer_contains_identifier(args_buf, entry.as_bytes())
 }
 
 /// Check whether `buf` contains `id` as a complete identifier — not as a
@@ -117,7 +163,6 @@ fn desktop_is_alive_for_instance(instance_id: &str) -> bool {
     }
 
     let my_uid = unsafe { libc::getuid() };
-    let identifier_bytes = instance_id.as_bytes();
 
     let pids = sweep::collect_all_pids();
     if pids.is_empty() {
@@ -169,8 +214,9 @@ fn desktop_is_alive_for_instance(instance_id: &str) -> bool {
         };
         // Boundary-anchored search: the identifier in the config JSON is
         // followed by a non-identifier char (typically `"`). A raw substring
-        // match would let `...app` match inside `...app.dev`.
-        if buffer_contains_identifier(&args_buf, identifier_bytes) {
+        // match would let `...app` match inside `...app.dev`. An Electron
+        // profile is matched by the profile id its native host carries.
+        if desktop_process_keeps_instance_alive(&name, &args_buf, instance_id) {
             return true;
         }
     }
@@ -206,11 +252,16 @@ fn desktop_is_alive_for_instance(instance_id: &str) -> bool {
         if !is_desktop_binary(comm.trim()) {
             continue;
         }
-        // Check cmdline for the identifier with boundary anchoring.
-        let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+        // Check cmdline, and the environment an Electron native host carries
+        // its profile id in, with boundary anchoring.
+        let Ok(mut args_buf) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
             continue;
         };
-        if buffer_contains_identifier(&cmdline, instance_id.as_bytes()) {
+        if let Ok(environ) = std::fs::read(format!("/proc/{pid}/environ")) {
+            args_buf.push(0);
+            args_buf.extend_from_slice(&environ);
+        }
+        if desktop_process_keeps_instance_alive(comm.trim(), &args_buf, instance_id) {
             return true;
         }
     }

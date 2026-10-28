@@ -66,7 +66,9 @@ use process::resolve_pgids_and_kill;
 mod instance_reaper;
 pub(crate) use instance_reaper::reap_dead_instance_agents;
 #[cfg(test)]
-use instance_reaper::{buffer_contains_identifier, is_desktop_binary};
+use instance_reaper::{
+    buffer_contains_identifier, desktop_process_keeps_instance_alive, is_desktop_binary,
+};
 
 // Exact-path harness sweep lives in runtime/sweep.rs (re-exported above).
 
