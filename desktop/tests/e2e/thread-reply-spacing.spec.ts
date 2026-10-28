@@ -45,9 +45,13 @@ function createSpacingThread(
   humanPubkey = COLONY3_SELF,
 ) {
   const rootId = eid(`${label}-root`);
-  const replyIds = [1, 2, 3, 4, 5, 6, 7].map((number) =>
+  const replyIds = [1, 2, 3, 4, 5, 6, 7, 8].map((number) =>
     eid(`${label}-reply-${number}`),
   );
+  const timelineGapIds = [
+    eid(`${label}-timeline-gap-previous`),
+    eid(`${label}-timeline-gap-next`),
+  ];
   const tagsFor = (parentId = rootId) => [
     ["e", rootId, "", "root"],
     ["e", parentId, "", "reply"],
@@ -78,7 +82,7 @@ function createSpacingThread(
       1,
       agentPubkey,
       rootId,
-      "Short version: I keep the work moving.\n\n1. Plan: turn goals into tasks and track who does what.\n2. Find customers: research and track leads from Discovery.\n3. Create content: draft posts for your approval.",
+      "Short version: I keep the work moving.\n\nI keep the work clear so the next person can pick it up.\n\n1. Plan: turn goals into tasks and track who does what.\n2. Find customers: research and track leads from Discovery.\n3. Create content: draft posts for your approval.",
     ),
     reply(2, humanPubkey, rootId, "Keep the plan and customer notes together."),
     reply(
@@ -91,9 +95,24 @@ function createSpacingThread(
     reply(5, agentPubkey, replyIds[3], "I will update the shared plan now."),
     reply(6, humanPubkey, rootId, "Please keep the review in this thread."),
     reply(7, agentPubkey, rootId, "Done. The plan is ready for review."),
+    reply(8, agentPubkey, rootId, "I will add the source notes next."),
+    {
+      channelId,
+      id: timelineGapIds[0],
+      pubkey: humanPubkey,
+      createdAt: colony3At(18, 38),
+      content: "A separate channel timeline message.",
+    },
+    {
+      channelId,
+      id: timelineGapIds[1],
+      pubkey: agentPubkey,
+      createdAt: colony3At(18, 39),
+      content: "The next separate channel timeline message.",
+    },
   ];
 
-  return { messages, replyIds, rootId };
+  return { messages, replyIds, rootId, timelineGapIds };
 }
 
 async function openSpacingThread(
@@ -106,11 +125,20 @@ async function openSpacingThread(
     mode: PanelMode;
     theme: Theme;
     browserWorkArea?: boolean;
+    viewportWidth?: number;
+    viewportHeight?: number;
   },
 ) {
-  const viewport = options.browserWorkArea
-    ? { width: 2000, height: 1260 }
-    : { width: 1440, height: 960 };
+  const requestedWidth =
+    options.viewportWidth ?? (options.browserWorkArea ? 2000 : 1440);
+  const viewport =
+    requestedWidth < 768
+      ? { width: 1440, height: 960 }
+      : {
+          width: requestedWidth,
+          height:
+            options.viewportHeight ?? (options.browserWorkArea ? 1260 : 960),
+        };
   await page.setViewportSize(viewport);
   await page.clock.setFixedTime(new Date(COLONY3_NOW));
   await page.emulateMedia({
@@ -209,6 +237,17 @@ async function openSpacingThread(
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId(`channel-${options.channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(options.channelName);
+  for (const messageId of fixture.timelineGapIds) {
+    await expect(
+      page.locator(
+        `[data-testid="message-row"][data-message-id="${messageId}"]`,
+      ),
+    ).toBeVisible();
+  }
+  const channelTimelineGap = await measureChannelTimelineGap(
+    page,
+    fixture.timelineGapIds,
+  );
 
   if (options.browserWorkArea) {
     await page.getByTestId("channel-work-area-trigger").click();
@@ -219,6 +258,7 @@ async function openSpacingThread(
       'section[role="tabpanel"]:not([hidden])',
     );
     const address = browserTabPanel.getByTestId("browser-address");
+    await expect(browserTabPanel.getByTestId("browser-start")).toBeVisible();
     await address.fill("instagram.com/accounts/login/");
     await address.press("Enter");
     await expect(address).toHaveValue("https://instagram.com/accounts/login/");
@@ -284,6 +324,15 @@ async function openSpacingThread(
       .locator("ol"),
   ).toBeVisible();
 
+  if (requestedWidth < 768) {
+    await page.setViewportSize({
+      width: requestedWidth,
+      height: options.viewportHeight ?? 844,
+    });
+    await expect(panel).toBeVisible();
+    await waitForAnimations(page);
+  }
+
   const body = page.getByTestId("message-thread-body");
   await body.evaluate((element) => {
     element.scrollTop = 0;
@@ -293,17 +342,23 @@ async function openSpacingThread(
       page,
       options.channelName,
       fixture.rootId,
+      requestedWidth >= 768,
     );
   }
   await waitForAnimations(page);
 
-  return { panel, replyIds: fixture.replyIds };
+  return {
+    panel,
+    replyIds: fixture.replyIds,
+    timelineGap: channelTimelineGap,
+  };
 }
 
 async function seedComposerWorkingIndicators(
   page: Page,
   channelName: string,
   threadHeadId: string,
+  expectChannelIndicator = true,
 ) {
   await page.waitForFunction(
     ({ name, kind }) =>
@@ -323,14 +378,16 @@ async function seedComposerWorkingIndicators(
     { name: channelName, pubkey: SCOUT_PUBKEY, headId: threadHeadId },
   );
 
-  await expect(
-    page.getByTestId("channel-agent-working-indicator"),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByTestId("channel-agent-working-indicator")
-      .getByTestId("agent-working-indicator-label"),
-  ).toContainText("Scout is working…");
+  if (expectChannelIndicator) {
+    await expect(
+      page.getByTestId("channel-agent-working-indicator"),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("channel-agent-working-indicator")
+        .getByTestId("agent-working-indicator-label"),
+    ).toContainText("Scout is working…");
+  }
   await expect(
     page.getByTestId("thread-agent-working-indicator"),
   ).toBeVisible();
@@ -341,11 +398,7 @@ async function seedComposerWorkingIndicators(
   ).toContainText("Scout is working…");
 }
 
-async function captureProof(
-  page: Page,
-  name: string,
-  cursor = { x: 300, y: 700 },
-) {
+async function captureProof(page: Page, name: string, cursor = { x: 4, y: 4 }) {
   if (!PROOF_DIR) return;
   mkdirSync(PROOF_DIR, { recursive: true });
   await page.mouse.move(cursor.x, cursor.y);
@@ -384,20 +437,171 @@ async function measureReplyGaps(panel: Locator, replyIds: string[]) {
   }, replyIds);
 }
 
-async function expectThreadReplySpacing(panel: Locator, replyIds: string[]) {
-  const gaps = await measureReplyGaps(panel, replyIds);
-  // r2 follows a direct reply (6px), then r3/r4/r5 are depth 2/3/4
-  // (16px/14px/24px), followed by two more direct replies (6px each).
-  const expectedGaps = [6, 16, 14, 24, 6, 6];
-  expect(gaps).toHaveLength(expectedGaps.length);
-  for (const [index, expected] of expectedGaps.entries()) {
-    const measured =
-      expected === 6 ? gaps[index].rowGap : gaps[index].authorGap;
+async function measureThreadReplyTextGap(
+  panel: Locator,
+  previousReplyId: string,
+  nextReplyId: string,
+) {
+  return panel.evaluate(
+    (element, ids) => {
+      const [previousId, nextId] = ids;
+      const previous = element.querySelector<HTMLElement>(
+        `[data-thread-reply-id="${previousId}"]`,
+      );
+      const next = element.querySelector<HTMLElement>(
+        `[data-thread-reply-id="${nextId}"]`,
+      );
+      const markdown = previous?.querySelector<HTMLElement>(
+        '[data-testid="message-body"] .message-markdown',
+      );
+      const header = next?.querySelector<HTMLElement>(
+        '[data-testid="message-header"]',
+      );
+      if (!previous || !next || !markdown || !header) {
+        throw new Error(
+          "Rendered thread reply text or author header is missing",
+        );
+      }
+      const range = document.createRange();
+      range.selectNodeContents(markdown);
+      const rects = Array.from(range.getClientRects()).filter(
+        (rect) => rect.width > 0 && rect.height > 0,
+      );
+      const lastLine = rects.at(-1);
+      if (!lastLine) throw new Error("Previous reply has no visible text line");
+      return header.getBoundingClientRect().top - lastLine.bottom;
+    },
+    [previousReplyId, nextReplyId],
+  );
+}
+
+async function measureChannelTimelineGap(page: Page, messageIds: string[]) {
+  return page.evaluate((ids) => {
+    const [previousId, nextId] = ids;
+    const previous = document.querySelector<HTMLElement>(
+      `[data-testid="message-row"][data-message-id="${previousId}"]`,
+    );
+    const next = document.querySelector<HTMLElement>(
+      `[data-testid="message-row"][data-message-id="${nextId}"]`,
+    );
+    const markdown = previous?.querySelector<HTMLElement>(".message-markdown");
+    const header = next?.querySelector<HTMLElement>(
+      '[data-testid="message-header"]',
+    );
+    if (!previous || !next || !markdown || !header) {
+      throw new Error(
+        "Rendered channel message text or author header is missing",
+      );
+    }
+    const range = document.createRange();
+    range.selectNodeContents(markdown);
+    const rects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0,
+    );
+    const lastLine = rects.at(-1);
+    if (!lastLine) throw new Error("Previous channel message has no text line");
+    return header.getBoundingClientRect().top - lastLine.bottom;
+  }, messageIds);
+}
+
+async function measureParagraphGap(panel: Locator, replyId: string) {
+  return panel
+    .locator(`[data-thread-reply-id="${replyId}"]`)
+    .evaluate((row) => {
+      const markdown = row.querySelector<HTMLElement>(
+        '[data-testid="message-body"] .message-markdown',
+      );
+      const paragraphs = markdown?.querySelectorAll<HTMLElement>(":scope > p");
+      if (!paragraphs || paragraphs.length < 2) {
+        throw new Error("Thread reply needs two rendered Markdown paragraphs");
+      }
+      const range = document.createRange();
+      range.selectNodeContents(paragraphs[0]);
+      const rects = Array.from(range.getClientRects()).filter(
+        (rect) => rect.width > 0 && rect.height > 0,
+      );
+      const lastLine = rects.at(-1);
+      if (!lastLine) throw new Error("First paragraph has no visible text");
+      return paragraphs[1].getBoundingClientRect().top - lastLine.bottom;
+    });
+}
+
+async function expectThreadReplySpacing(
+  panel: Locator,
+  replyIds: string[],
+  timelineGap: number,
+) {
+  const measuredThreadGap = await measureThreadReplyTextGap(
+    panel,
+    replyIds[0],
+    replyIds[1],
+  );
+  expect(
+    Math.abs(measuredThreadGap - timelineGap),
+    `separate thread replies should match the ${timelineGap.toFixed(1)}px channel timeline gap; received ${measuredThreadGap.toFixed(1)}px`,
+  ).toBeLessThanOrEqual(1);
+
+  const paragraphGap = await measureParagraphGap(panel, replyIds[0]);
+  expect(
+    measuredThreadGap,
+    "separate replies should have more breathing room than paragraphs in one message",
+  ).toBeGreaterThan(paragraphGap);
+
+  const replyMargins = await panel
+    .locator("[data-thread-reply-id]")
+    .evaluateAll((rows) =>
+      rows.map((row) => ({
+        id: row.getAttribute("data-thread-reply-id"),
+        marginTop: Number.parseFloat(getComputedStyle(row).marginTop),
+      })),
+    );
+  for (const [index, reply] of replyMargins.entries()) {
+    const isContinuation = index === replyMargins.length - 1;
+    const expected = isContinuation ? 0 : 24;
     expect(
-      measured,
-      `gap before ${gaps[index].messageId} should be at least ${expected}px; received ${measured.toFixed(1)}px`,
-    ).toBeGreaterThanOrEqual(expected - 0.5);
+      Math.abs(reply.marginTop - expected),
+      `reply ${reply.id} should use ${expected}px top spacing`,
+    ).toBeLessThanOrEqual(1);
   }
+}
+
+async function expectThreadComposerLayout(page: Page) {
+  const overlay = page.getByTestId("thread-composer-overlay");
+  const jumpToLatest = page.getByTestId("thread-scroll-to-latest");
+  await expect(jumpToLatest).toBeVisible();
+  const clearance = await overlay.evaluate((element) => {
+    const pill = element.querySelector<HTMLElement>(
+      '[data-testid="thread-scroll-to-latest"]',
+    );
+    const composer = element.querySelector<HTMLElement>(
+      '[data-testid="message-composer"]',
+    );
+    const crosspost = element.querySelector<HTMLElement>(
+      '[data-testid="thread-broadcast-reply"]',
+    );
+    const backdrop = element.querySelector<HTMLElement>(
+      '[data-testid="thread-broadcast-reply-backdrop"]',
+    );
+    if (!pill || !composer || !crosspost || !backdrop) {
+      throw new Error("Thread composer overlap elements are missing");
+    }
+    return {
+      clearance:
+        composer.getBoundingClientRect().top -
+        pill.getBoundingClientRect().bottom,
+      backdrop: getComputedStyle(backdrop).backgroundColor,
+      backdropWidth: backdrop.getBoundingClientRect().width,
+      composerWidth: composer.getBoundingClientRect().width,
+    };
+  });
+  expect(
+    clearance.clearance,
+    "Jump to latest should sit above the thread composer",
+  ).toBeGreaterThanOrEqual(8);
+  expect(clearance.backdrop).not.toMatch(/rgba?\([^)]*,\s*0(?:\.0+)?\s*\)$/);
+  expect(clearance.backdropWidth).toBeGreaterThanOrEqual(
+    clearance.composerWidth,
+  );
 }
 
 async function measureComposerActivityGap(
@@ -447,36 +651,85 @@ async function expectChannelComposerActivitySpacing(page: Page) {
   ).toBeGreaterThanOrEqual(23.5);
 }
 
-const captures: Array<{ mode: PanelMode; theme: Theme; name: string }> = [
-  { mode: "split", theme: "light", name: "side-light" },
-  { mode: "split", theme: "dark", name: "side-dark" },
-  { mode: "focus", theme: "light", name: "focus-light" },
-  { mode: "focus", theme: "dark", name: "focus-dark" },
+const captures: Array<{
+  browserWorkArea: boolean;
+  mode: PanelMode;
+  name: string;
+  theme: Theme;
+  viewportHeight: number;
+  viewportWidth: number;
+}> = [
+  {
+    browserWorkArea: false,
+    mode: "split",
+    name: "width-390-light",
+    theme: "light",
+    viewportHeight: 844,
+    viewportWidth: 390,
+  },
+  {
+    browserWorkArea: false,
+    mode: "split",
+    name: "width-390-dark",
+    theme: "dark",
+    viewportHeight: 844,
+    viewportWidth: 390,
+  },
+  {
+    browserWorkArea: true,
+    mode: "split",
+    name: "width-1440-light",
+    theme: "light",
+    viewportHeight: 960,
+    viewportWidth: 1440,
+  },
+  {
+    browserWorkArea: true,
+    mode: "split",
+    name: "width-1440-dark",
+    theme: "dark",
+    viewportHeight: 960,
+    viewportWidth: 1440,
+  },
 ];
 
 for (const capture of captures) {
   test(`thread replies have design spacing in ${capture.name}`, async ({
     page,
   }) => {
-    const { panel, replyIds } = await openSpacingThread(page, {
-      channelId: OLIVE_CHANNEL_ID,
-      channelName: "The Olive House",
-      label: "thread-spacing-channel",
+    const { panel, replyIds, timelineGap } = await openSpacingThread(page, {
+      browserWorkArea: capture.browserWorkArea,
+      channelId: capture.browserWorkArea
+        ? REFERENCE_CHANNEL_IDS.welcome
+        : OLIVE_CHANNEL_ID,
+      channelName: capture.browserWorkArea ? "Welcome" : "The Olive House",
+      label: `thread-spacing-${capture.name}`,
       mode: capture.mode,
       theme: capture.theme,
+      viewportHeight: capture.viewportHeight,
+      viewportWidth: capture.viewportWidth,
     });
 
     await captureProof(page, capture.name);
-    if (capture.mode === "split") {
+    if (
+      capture.mode === "split" &&
+      !capture.browserWorkArea &&
+      capture.viewportWidth > 800
+    ) {
       await expectChannelComposerActivitySpacing(page);
     }
-    await expectThreadComposerActivitySpacing(page);
-    await expectThreadReplySpacing(panel, replyIds);
+    if (capture.browserWorkArea) {
+      await expectThreadComposerLayout(page);
+    }
+    if (!capture.browserWorkArea) {
+      await expectThreadComposerActivitySpacing(page);
+    }
+    await expectThreadReplySpacing(panel, replyIds, timelineGap);
   });
 }
 
 test("DM threads use the same reply spacing", async ({ page }) => {
-  const { panel, replyIds } = await openSpacingThread(page, {
+  const { panel, replyIds, timelineGap } = await openSpacingThread(page, {
     channelId: AYA_DM_CHANNEL.id,
     channelName: "Aya",
     isDm: true,
@@ -487,19 +740,21 @@ test("DM threads use the same reply spacing", async ({ page }) => {
 
   await expectThreadComposerActivitySpacing(page);
   await expectChannelComposerActivitySpacing(page);
-  await expectThreadReplySpacing(panel, replyIds);
+  await expectThreadReplySpacing(panel, replyIds, timelineGap);
 });
 
 test("narrow thread beside the Browser work area keeps reply spacing", async ({
   page,
 }) => {
-  const { panel, replyIds } = await openSpacingThread(page, {
+  const { panel, replyIds, timelineGap } = await openSpacingThread(page, {
     channelId: REFERENCE_CHANNEL_IDS.welcome,
     channelName: "Welcome",
     label: "thread-spacing-browser-work-area",
     mode: "split",
     theme: "light",
     browserWorkArea: true,
+    viewportHeight: 960,
+    viewportWidth: 1440,
   });
   await expect(page.getByTestId("work-area-browser")).toBeVisible();
   const panelBounds = await panel.boundingBox();
@@ -507,6 +762,7 @@ test("narrow thread beside the Browser work area keeps reply spacing", async ({
     panelBounds?.width,
     "thread remains in the narrow side column beside the browser",
   ).toBeLessThan(600);
-  await expectThreadReplySpacing(panel, replyIds);
-  await captureProof(page, "browser-light", { x: 1990, y: 1255 });
+  await expectThreadComposerLayout(page);
+  await expectThreadReplySpacing(panel, replyIds, timelineGap);
+  await captureProof(page, "browser-light", { x: 4, y: 4 });
 });
