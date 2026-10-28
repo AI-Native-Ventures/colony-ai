@@ -61,7 +61,7 @@ fn finish(done: Result<ApiResult, JoinError>) -> ApiResult {
 pub(super) async fn respond(mut job: JoinHandle<ApiResult>, keepalive: Keepalive) -> Response {
     match tokio::time::timeout(keepalive.after, &mut job).await {
         Ok(done) => finish(done).into_response(),
-        Err(_) => streamed(job, keepalive.every),
+        Err(_) => finish(job.await).into_response(),
     }
 }
 
