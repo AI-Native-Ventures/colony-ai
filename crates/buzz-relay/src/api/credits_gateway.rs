@@ -526,10 +526,10 @@ async fn settle_request(
                 .reject_credit_ai_request(request_id)
                 .await
                 .map_err(database_failure)?;
-            return Err(failed(Outcome::UpstreamRejected, unavailable()));
+            return Err(failed(Outcome::UpstreamUnclear, unavailable()));
         }
         Err(CompletionFailure::Ambiguous) => {
-            return Err(failed(Outcome::UpstreamUnclear, recovering()))
+            return Err(failed(Outcome::UpstreamRejected, recovering()))
         }
     };
     let observed = upstream
