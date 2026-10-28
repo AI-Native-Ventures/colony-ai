@@ -783,7 +783,7 @@ pub async fn cmd_send_message(
     // how to fix the message, and a flag would be passed every time.
     let agent_chat = client.is_agent() && is_chat_kind(p.kind);
     if agent_chat {
-        buzz_core::chat_limits::check_chat_length(&p.content)
+        buzz_core::chat_limits::check_chat_length("")
             .map_err(|e| CliError::Usage(e.to_string()))?;
     }
     if let Some(ref r) = p.reply_to {
