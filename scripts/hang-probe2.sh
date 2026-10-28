@@ -36,6 +36,7 @@ dump() {
 cycle() {
   local n="$1"
   # Fresh runner state: no hermit packages, no link farm, no node_modules.
+  chmod -R u+w "$HOME/.cache/hermit/pkg" 2>/dev/null
   rm -rf "$HOME/.cache/hermit/pkg/node-"* "$HOME/.cache/hermit/pkg/pnpm-"* "$HOME/.cache/hermit/pkg/just-"* \
          "$HOME/.cache/hermit/environments" "$HOME/.cache/hermit/binaries" "$REPO/.hermit" \
          "$REPO/node_modules" "$REPO/desktop/node_modules" "$REPO/web/node_modules" "$REPO/admin-web/node_modules"
@@ -67,7 +68,7 @@ cycle() {
   echo "cycle $n rc=$? secs=$(( $(date +%s) - start ))"
 }
 
-for n in $(seq 1 "${PROBE_CYCLES:-8}"); do cycle "$n"; done
+for n in $(seq 1 "${PROBE_CYCLES:-10}"); do cycle "$n"; done
 
 if [ -f "$LOG/execve.txt" ]; then
   echo "::group::execve names during first install"
