@@ -184,19 +184,31 @@ mod tests {
 
     #[test]
     fn a_finished_request_logs_its_path_status_model_and_time() {
-        let text = logged(Outcome::UpstreamUnclear, 409, None);
-        let line = text.lines().next().unwrap_or_default();
-        assert!(line.contains("WARN"), "a failure is a warning: {line}");
-        assert!(line.contains("Colony gateway request finished"), "{line}");
-        assert!(has(line, "outcome", "upstream_unclear"), "{line}");
-        assert!(has(line, "status", "409"), "{line}");
-        assert!(has(line, "primary_model", "free/a"), "{line}");
-        assert!(has(line, "elapsed_ms", "61234"), "{line}");
-        assert!(has(line, "streamed", "true"), "{line}");
-        let text = logged(Outcome::Ok, 200, Some("free/b"));
-        let line = text.lines().next().unwrap_or_default();
-        assert!(line.contains("INFO"), "a success is info: {line}");
-        assert!(has(line, "outcome", "ok"), "{line}");
-        assert!(has(line, "answered_by", "free/b"), "{line}");
+        // The same fields on the failure line and on the success line.
+        for (outcome, status, answered_by, level, word) in [
+            (
+                Outcome::UpstreamUnclear,
+                409,
+                None,
+                "WARN",
+                "upstream_unclear",
+            ),
+            (Outcome::Ok, 200, Some("free/b"), "INFO", "ok"),
+        ] {
+            let text = logged(outcome, status, answered_by);
+            let line = text.lines().next().unwrap_or_default();
+            assert!(line.contains(level), "{word}: {line}");
+            assert!(line.contains("Colony gateway request finished"), "{line}");
+            assert!(has(line, "outcome", word), "{line}");
+            assert!(has(line, "status", &status.to_string()), "{line}");
+            assert!(has(line, "primary_model", "free/a"), "{line}");
+            assert!(
+                has(line, "answered_by", answered_by.unwrap_or("none")),
+                "{line}"
+            );
+            assert!(has(line, "elapsed_ms", "61234"), "{line}");
+            assert!(has(line, "streamed", "true"), "{line}");
+            assert!(has(line, "request_id", &Uuid::nil().to_string()), "{line}");
+        }
     }
 }
