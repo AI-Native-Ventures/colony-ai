@@ -418,6 +418,71 @@ test("after the person stopped the agent there is one Allow card and no grant, a
   assert.deepEqual(getBrowserActivityForChannel(CHANNEL), []);
 });
 
+const watching = () => {
+  globalThis.document = {
+    visibilityState: "visible",
+    hasFocus: () => true,
+  };
+  setAgentBrowserConversationView(VIEW_OWNER, {
+    channelId: CHANNEL,
+    channelType: "stream",
+  });
+};
+
+test("the Allow card opens the dock when the person is watching, so the question is seen", async () => {
+  // GATE-309-R2: after the person stopped Scout, its next browser call waited
+  // 30 s and told the person to "tap Allow in the Colony browser panel", which
+  // was closed. Only a small marker showed.
+  watching();
+  broker.emit(ask({ resume: true }));
+  await settle();
+  const state = getWorkAreaState(CHANNEL);
+  assert.equal(state.open, true);
+  assert.equal(state.activeTabId, browserTabId("page-1"));
+  assert.equal(getWaitingAgentAccess().length, 1);
+  assert.deepEqual(broker.grants, [], "still never granted without the person");
+});
+
+test("a dock the person closed earlier does not hide the Allow card from them", async () => {
+  watching();
+  broker.emit(ask());
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  closeWorkArea(CHANNEL);
+
+  broker.emit(ask({ resume: true }));
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  assert.equal(getWaitingAgentAccess().length, 1);
+});
+
+test("a dock the person closed during one run does not mute the next run of the same task", async () => {
+  // A channel's conversation is one task for as long as the agent lives.
+  watching();
+  broker.emit(ask());
+  await settle();
+  closeWorkArea(CHANNEL);
+  broker.emit({
+    type: "grant-changed",
+    grantId: "grant-1",
+    state: "revoked",
+    reason: "agent ended",
+  });
+  broker.emit(ask());
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).open, true);
+});
+
+test("a dock the person closed mutes the rest of the same run", async () => {
+  watching();
+  broker.emit(ask());
+  await settle();
+  closeWorkArea(CHANNEL);
+  broker.emit(ask());
+  await settle();
+  assert.equal(getWorkAreaState(CHANNEL).open, false);
+});
+
 test("Not now clears the card and grants nothing", async () => {
   broker.emit(ask({ resume: true }));
   await settle();
