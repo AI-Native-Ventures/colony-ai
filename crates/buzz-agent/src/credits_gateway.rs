@@ -308,7 +308,10 @@ fn text_messages(value: &Value) -> Result<Vec<Value>, CreditRefusal> {
                 }
             }
             // Provider-specific reasoning signatures are not part of the Colony contract.
-            if let Some(calls) = result["tool_calls"].as_array_mut() {
+            // `get_mut`, not `result["tool_calls"]`: indexing a missing key for
+            // writing inserts `null`, which put `"tool_calls": null` on every
+            // system and user message and got the whole request refused.
+            if let Some(calls) = result.get_mut("tool_calls").and_then(Value::as_array_mut) {
                 for call in calls {
                     *call =
                         json!({"id": call["id"], "type": "function", "function": call["function"]});
