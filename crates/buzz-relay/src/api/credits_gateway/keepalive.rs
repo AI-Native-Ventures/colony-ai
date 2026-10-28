@@ -75,7 +75,7 @@ fn streamed(job: JoinHandle<ApiResult>, every: Duration) -> Response {
             Ok(done) => {
                 let value: Value = match finish(done) {
                     Ok(Json(value)) => value,
-                    Err((_, Json(value))) => value,
+                    Err((_, Json(_))) => Value::Null,
                 };
                 let bytes = serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec());
                 Some((Ok(Bytes::from(bytes)), None))

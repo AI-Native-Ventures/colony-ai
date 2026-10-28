@@ -93,7 +93,6 @@ pub(super) fn log(finished: Finished<'_>) {
             %request_id,
             primary_model,
             answered_by,
-            elapsed_ms,
             streamed,
             "Colony gateway request finished"
         );
