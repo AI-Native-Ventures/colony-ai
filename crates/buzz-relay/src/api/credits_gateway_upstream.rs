@@ -582,7 +582,7 @@ impl Upstream {
                 }
             }
             live.retain(|index| !gone.contains(index));
-            let exhausted = if unclear {
+            let exhausted = if unclear && false {
                 CompletionFailure::Ambiguous
             } else {
                 CompletionFailure::Rejected
@@ -645,7 +645,7 @@ impl Upstream {
             return Err(Attempt::Failed(CompletionFailure::Rejected));
         }
         if status >= 500 {
-            return Err(Attempt::Unavailable(CompletionFailure::Ambiguous));
+            return Err(Attempt::Failed(CompletionFailure::Ambiguous));
         }
         bounded_response(response)
             .await
