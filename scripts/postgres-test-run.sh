@@ -79,4 +79,5 @@ fi
 cargo nextest run \
   --profile postgres-ci \
   --run-ignored ignored-only \
+  --no-fail-fast \
   "${nextest_args[@]}"

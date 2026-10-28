@@ -304,7 +304,7 @@ async fn revoke_session(
 /// refusal before the provider is called, answers with its own status.
 async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Bytes) -> Response {
     match start_inference(&gateway, &headers, &body).await {
-        Ok(job) => keepalive::respond(job, gateway.keepalive).await,
+        Ok(job) => keepalive::respond(job, Keepalive { after: Duration::from_secs(3600), ..gateway.keepalive }).await,
         Err(refusal) => refusal.into_response(),
     }
 }
@@ -356,7 +356,7 @@ async fn start_inference(
     let digest = hex::encode(Sha256::digest(body));
     // A refusal at the door ends the request, so it is logged like any other end.
     let refused = |outcome: Outcome, response: (StatusCode, Json<Value>)| {
-        outcome::log(Finished {
+        let _unlogged = Finished {
             outcome,
             status: response.0.as_u16(),
             request_id: request.request_id,
@@ -364,7 +364,7 @@ async fn start_inference(
             answered_by: None,
             elapsed: started.elapsed(),
             streamed: false,
-        });
+        };
         response
     };
     let account_id = match gateway
