@@ -565,6 +565,57 @@ async function expectThreadReplySpacing(
   }
 }
 
+async function expectThreadRepliesDividerGutter(
+  panel: Locator,
+  firstReplyId: string,
+) {
+  await expect(
+    panel.locator('[data-testid="message-thread-head-divider"] .c3c-eyebrow'),
+  ).toBeVisible();
+  await expect(
+    panel.locator(
+      `[data-thread-reply-id="${firstReplyId}"] [data-testid="message-avatar"]`,
+    ),
+  ).toBeVisible();
+
+  const geometry = await panel.evaluate((element, replyId) => {
+    const divider = element.querySelector<HTMLElement>(
+      '[data-testid="message-thread-head-divider"]',
+    );
+    const label = divider?.querySelector<HTMLElement>(".c3c-eyebrow");
+    const rule = divider?.querySelector<HTMLElement>(
+      'span[aria-hidden="true"]',
+    );
+    const avatar = element
+      .querySelector<HTMLElement>(`[data-thread-reply-id="${replyId}"]`)
+      ?.querySelector<HTMLElement>('[data-testid="message-avatar"]');
+    if (!label || !rule || !avatar) {
+      throw new Error(
+        "Thread replies divider or first reply avatar is missing",
+      );
+    }
+    return {
+      labelLeft: label.getBoundingClientRect().left,
+      avatarLeft: avatar.getBoundingClientRect().left,
+      ruleWidth: rule.getBoundingClientRect().width,
+      ruleHeight: rule.getBoundingClientRect().height,
+    };
+  }, firstReplyId);
+
+  expect(
+    Math.abs(geometry.labelLeft - geometry.avatarLeft),
+    "the replies divider label should align with the message avatar gutter",
+  ).toBeLessThanOrEqual(1);
+  expect(
+    geometry.ruleWidth,
+    "the replies divider rule should remain visible",
+  ).toBeGreaterThan(0);
+  expect(
+    geometry.ruleHeight,
+    "the replies divider rule should remain visible",
+  ).toBeGreaterThan(0);
+}
+
 async function expectThreadComposerLayout(page: Page) {
   const overlay = page.getByTestId("thread-composer-overlay");
   const jumpToLatest = page.getByTestId("thread-scroll-to-latest");
@@ -710,6 +761,12 @@ for (const capture of captures) {
       viewportWidth: capture.viewportWidth,
     });
 
+    await expectThreadRepliesDividerGutter(panel, replyIds[0]);
+    if (capture.viewportWidth < 768) {
+      await panel
+        .locator('[data-testid="message-thread-head-divider"]')
+        .scrollIntoViewIfNeeded();
+    }
     await captureProof(page, capture.name);
     if (
       capture.mode === "split" &&
@@ -738,9 +795,26 @@ test("DM threads use the same reply spacing", async ({ page }) => {
     theme: "light",
   });
 
+  await expectThreadRepliesDividerGutter(panel, replyIds[0]);
   await expectThreadComposerActivitySpacing(page);
   await expectChannelComposerActivitySpacing(page);
   await expectThreadReplySpacing(panel, replyIds, timelineGap);
+});
+
+test("focus thread drawer aligns the replies divider with avatars", async ({
+  page,
+}) => {
+  const { panel, replyIds } = await openSpacingThread(page, {
+    channelId: OLIVE_CHANNEL_ID,
+    channelName: "The Olive House",
+    label: "thread-replies-divider-focus",
+    mode: "focus",
+    theme: "light",
+    viewportHeight: 960,
+    viewportWidth: 1440,
+  });
+
+  await expectThreadRepliesDividerGutter(panel, replyIds[0]);
 });
 
 test("narrow thread beside the Browser work area keeps reply spacing", async ({
@@ -756,6 +830,7 @@ test("narrow thread beside the Browser work area keeps reply spacing", async ({
     viewportHeight: 960,
     viewportWidth: 1440,
   });
+  await expectThreadRepliesDividerGutter(panel, replyIds[0]);
   await expect(page.getByTestId("work-area-browser")).toBeVisible();
   const panelBounds = await panel.boundingBox();
   expect(
