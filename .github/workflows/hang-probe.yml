@@ -4,6 +4,7 @@ on:
     paths:
       - ".github/workflows/hang-probe.yml"
       - "scripts/hang-probe.sh"
+      - "scripts/hang-probe2.sh"
 permissions:
   contents: read
 jobs:
@@ -15,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         variant: [A, B]
-        n: [1, 2, 3, 4, 5, 6, 7, 8]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
       CARGO_TERM_COLOR: always
       BUZZ_TEST_POSTGRES_PASSWORD: buzz_dev
@@ -47,4 +48,5 @@ jobs:
       - name: Probe
         env:
           PROBE_VARIANT: ${{ matrix.variant }}
-        run: scripts/hang-probe.sh
+          PROBE_TRACE_EXEC: ${{ matrix.n == 1 && '1' || '0' }}
+        run: scripts/hang-probe2.sh
