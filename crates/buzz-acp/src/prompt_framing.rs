@@ -9,10 +9,10 @@
 /// skill and the managed section of `AGENTS.md`).
 pub const WEB_TASK_RULES: &str = include_str!("web_tasks.md");
 
-/// How every employee talks in a conversation: usually 1 to 3 short sentences
-/// with the result first, no report formatting, long work in a document or a
-/// decision card, one question at a time, one pickup line followed only by
-/// results or blockers, and plain words for people who are not technical.
+/// How every employee talks in a conversation: one short message per request
+/// (at most 50 words of chat text, the result, a blocker or one question), no
+/// progress narration, long deliverables in a fenced `doc` or code block, one
+/// question at a time, and plain words for people who are not technical.
 ///
 /// `voice.md` is the one copy. The base prompt below carries it between
 /// `base_prompt.md` and [`WEB_TASK_RULES`], and the host writes the same text
@@ -226,18 +226,39 @@ mod tests {
     #[test]
     fn voice_rules_state_the_owner_decision() {
         for phrase in [
-            "usually 1 to 3 short sentences, result first, written like a teammate in chat",
+            "One request, one message. Post only the result, a blocker, or the one question you need answered.",
+            "Never narrate progress",
+            "never post a pickup or status line, and never repeat what you already posted",
+            "Chat text is at most 50 words, written like a teammate in chat, result first.",
             "Match the length of the person's message",
-            "It may be longer when the task truly needs it, such as a draft they asked for, which should be rare.",
-            "This is a default, not a forced cap.",
-            "No headings, bold, tables or bullet lists in chat, unless the person asks for a list or it is a short set of steps.",
-            "Long things (plans, research, drafts) go into a document or a decision card. The chat gets one line plus a link.",
+            "Colony refuses chat text over 60 words.",
+            "Long things go in a fenced block, after one short line of chat.",
+            "a fence with the info string `doc`, markdown inside, and a first line `# Title`",
+            "Code goes in a fence with its language tag. Fenced blocks have no word limit.",
+            "No headings, bold, tables or bullet lists in chat text, unless the person asks for a list or it is a short set of steps.",
             "One question at a time, and at most one per reply. A decision becomes a decision card with a one-sentence summary.",
             "Say the result, not an inventory of what you looked at.",
-            "One pickup line, then only results or blockers. Step-by-step work stays out of chat.",
             "The people you work for are not technical",
+            "Best lead: Pecan Tree Guesthouse. 2013 website, 2 posts this year, has WhatsApp. 8 others ruled out. Draft a WhatsApp to them?",
+            "write me a blog post about our launch",
+            "Here's the blog post.",
         ] {
             assert!(VOICE_RULES.contains(phrase), "missing voice rule: {phrase}");
+        }
+    }
+
+    #[test]
+    fn voice_rules_no_longer_ask_for_a_pickup_line_or_a_soft_cap() {
+        for retired in [
+            "One pickup line, then only results or blockers.",
+            "This is a default, not a forced cap.",
+            "It may be longer when the task truly needs it",
+            "Most replies are under 40 words",
+        ] {
+            assert!(
+                !VOICE_RULES.contains(retired),
+                "voice rules still say: {retired}"
+            );
         }
     }
 
@@ -279,16 +300,28 @@ mod tests {
 
     #[test]
     fn base_prompt_formatting_and_progress_lines_follow_the_voice_rules() {
-        for retired in ["Use GitHub-flavored Markdown", "narrate as you go"] {
+        for retired in [
+            "Use GitHub-flavored Markdown",
+            "narrate as you go",
+            "post one pickup line",
+            "After publishing a pickup message",
+            "milestones teammates must act on: picked up",
+            "keep most replies under 40 words",
+        ] {
             assert!(
                 !DEFAULT_BASE_PROMPT.contains(retired),
                 "base prompt still says: {retired}"
             );
         }
         for current in [
-            "- Use Markdown only for links, and for code blocks when you share code.",
-            "so post one pickup line, then only results or blockers, and never go dark between \"picked up\" and \"done.\"",
+            "- Use Markdown in chat text only for links.",
+            "Do not post a pickup or progress message in a conversation with a person.",
+            "Never post \"picked up\" or progress.",
+            "but do not fill the gap with chat.",
             "Step-by-step progress stays out of chat.",
+            "Chat text is at most 50 words",
+            "`colony messages send` refuses chat text over 60 words",
+            "a new send updates your earlier message instead of posting another",
         ] {
             assert!(
                 DEFAULT_BASE_PROMPT.contains(current),

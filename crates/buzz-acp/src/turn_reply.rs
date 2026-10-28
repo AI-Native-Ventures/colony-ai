@@ -8,6 +8,11 @@
 //! the harness posts the agent's final assistant message itself, threaded the
 //! way `--reply-to` would thread it.
 //!
+//! What the net posts obeys the same chat limit as `colony messages send`
+//! (`buzz_core::chat_limits`): a long final message is cut back to whole
+//! sentences and the rest is offered, never posted as a wall of text. A fenced
+//! block the person asked for is a deliverable and is posted whole.
+//!
 //! The net never speaks when it could be wrong to:
 //!   - agent to agent turns and messages that do not mention the agent stay
 //!     silent, because silence is a valid ending there;
@@ -27,8 +32,10 @@ use crate::relay::RestClient;
 /// What the harness says when a turn ended without an answer worth posting.
 pub(crate) const FALLBACK_LINE: &str = "I couldn't finish that. Try asking again.";
 
-/// Most bytes of the final assistant message kept for posting. The relay
-/// accepts 64 KiB of content; this stays well inside it.
+/// Most bytes of the final assistant message captured. The relay accepts 64 KiB
+/// of content; this stays well inside it. What is posted is shortened to the
+/// chat limit on top of this bound, so a fenced deliverable is the only part of
+/// a post that can approach it.
 const MAX_FINAL_TEXT_BYTES: usize = 32 * 1024;
 
 /// Kinds that count as the agent having answered in a conversation: chat
@@ -117,13 +124,14 @@ impl FinalTextCapture {
 /// The text to post for a turn that ended with `stop_reason`.
 ///
 /// Only a turn the model finished (or refused, whose explanation is the answer)
-/// may speak with its own words. A turn that ran out of tokens or steps, or was
-/// cancelled, has at best a cut-off answer, so it gets the plain fallback.
+/// may speak with its own words, and those words are held to the chat limit. A
+/// turn that ran out of tokens or steps, or was cancelled, has at best a cut-off
+/// answer, so it gets the plain fallback.
 pub(crate) fn reply_content(stop_reason: &StopReason, final_text: &str) -> String {
     let text = final_text.trim();
     let finished = matches!(stop_reason, StopReason::EndTurn | StopReason::Refusal);
     if finished && !text.is_empty() {
-        text.to_owned()
+        buzz_core::chat_limits::shorten_for_chat(text)
     } else {
         FALLBACK_LINE.to_owned()
     }
@@ -490,6 +498,55 @@ mod tests {
         }
         assert_eq!(reply_content(&StopReason::EndTurn, " \n "), FALLBACK_LINE);
         assert_eq!(reply_content(&StopReason::Refusal, ""), FALLBACK_LINE);
+    }
+
+    fn long_answer() -> String {
+        (1..=14)
+            .map(|n| format!("Guest house number {n} was checked and ruled out."))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn reply_content_holds_the_model_words_to_the_chat_limit() {
+        let long = long_answer();
+        assert!(buzz_core::chat_limits::check_chat_length(&long).is_err());
+
+        let reply = reply_content(&StopReason::EndTurn, &long);
+
+        assert!(
+            buzz_core::chat_limits::check_chat_length(&reply).is_ok(),
+            "{reply}"
+        );
+        assert!(reply.starts_with("Guest house number 1 was checked and ruled out."));
+        assert!(
+            reply.ends_with(buzz_core::chat_limits::SHORTENED_OFFER),
+            "{reply}"
+        );
+        assert!(
+            !reply.contains("number 14 "),
+            "the tail is offered, not posted: {reply}"
+        );
+        // A refusal is shortened the same way.
+        assert_eq!(reply_content(&StopReason::Refusal, &long), reply);
+    }
+
+    #[test]
+    fn reply_content_does_not_cut_a_sentence_in_half() {
+        let one_long_sentence = format!("{} and that is all.", vec!["word"; 120].join(" "));
+        assert_eq!(
+            reply_content(&StopReason::EndTurn, &one_long_sentence),
+            buzz_core::chat_limits::TOO_LONG_LINE
+        );
+    }
+
+    #[test]
+    fn reply_content_keeps_a_fenced_deliverable_whole() {
+        let post = format!(
+            "Here's the blog post.\n```doc\n# Karoo launch\n{}\n```",
+            vec!["word"; 700].join(" ")
+        );
+        assert_eq!(reply_content(&StopReason::EndTurn, &post), post);
     }
 
     /// The prompt is the first line of defence; the harness reply is the net.

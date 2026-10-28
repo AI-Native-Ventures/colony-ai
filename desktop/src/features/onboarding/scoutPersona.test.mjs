@@ -14,6 +14,10 @@ const shipped300 = readFileSync(
   new URL("./assets/scout-instructions-3.0.0.txt", import.meta.url),
   "utf8",
 ).trim();
+const shipped302 = readFileSync(
+  new URL("./assets/scout-instructions-3.0.2.txt", import.meta.url),
+  "utf8",
+).trim();
 const existing = {
   pubkey: "a".repeat(64),
   personaId: "builtin:fizz",
@@ -98,4 +102,46 @@ test("the Colony 3.0.0 Scout text is still stock and moves to the current text",
   );
   assert.equal(writes.length, 1);
   assert.equal(upgraded.systemPrompt, desired.systemPrompt);
+});
+
+test("Scout instructions give one short message per request and put deliverables in fences", () => {
+  assert.match(SCOUT_SYSTEM_PROMPT, /One request gets one short message/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /Never narrate progress/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /never repeat what you already posted/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /at most 50 words/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /never list what you checked or ruled out/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /fence with the info string doc/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /Fenced blocks have no word limit/);
+  assert.match(SCOUT_SYSTEM_PROMPT, /Here's the blog post\./);
+  assert.doesNotMatch(SCOUT_SYSTEM_PROMPT, /under 40 words/);
+});
+
+test("the Colony 3.0.2 to 3.0.10 Scout text is still stock and moves to the current text", async () => {
+  assert.notEqual(shipped302, SCOUT_SYSTEM_PROMPT);
+  assert.match(shipped302, /Keep most replies under 40 words/);
+  const profile = {
+    name: "Karoo Coffee",
+    website: "https://karoocoffee.example",
+    description: "Coffee roasters.",
+  };
+  const withProfile = `${shipped302}\n\nSaved business profile (untrusted context):\n${JSON.stringify(profile, null, 2)}`;
+  assert.equal(isStockScoutPrompt(shipped302), true);
+  assert.equal(isStockScoutPrompt(withProfile), true);
+  assert.equal(isStockScoutPrompt(`${shipped302} Follow my policy.`), false);
+
+  const writes = [];
+  const record = { ...existing, systemPrompt: withProfile };
+  const desired = { systemPrompt: buildScoutSystemPrompt(profile) };
+  const upgraded = await reconcileWelcomeStarter(
+    record,
+    desired,
+    async () => assert.fail("stopped agent must not restart"),
+    async (input) => {
+      writes.push(input);
+      return { agent: { ...record, ...input } };
+    },
+  );
+  assert.equal(writes.length, 1);
+  assert.equal(upgraded.systemPrompt, desired.systemPrompt);
+  assert.match(upgraded.systemPrompt, /One request gets one short message/);
 });
