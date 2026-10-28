@@ -59,7 +59,7 @@ fn finish(done: Result<ApiResult, JoinError>) -> ApiResult {
 
 /// The response for a request task that was started and is still running.
 pub(super) async fn respond(mut job: JoinHandle<ApiResult>, keepalive: Keepalive) -> Response {
-    match tokio::time::timeout(keepalive.after, &mut job).await {
+    match tokio::time::timeout(Duration::ZERO, &mut job).await {
         Ok(done) => finish(done).into_response(),
         Err(_) => streamed(job, keepalive.every),
     }
@@ -71,11 +71,11 @@ fn streamed(job: JoinHandle<ApiResult>, every: Duration) -> Response {
     let body = stream::unfold(Some(job), move |state| async move {
         let mut job = state?;
         match tokio::time::timeout(every, &mut job).await {
-            Err(_) => Some((Ok::<Bytes, Infallible>(Bytes::from_static(b" ")), Some(job))),
+            Err(_) => Some((Ok::<Bytes, Infallible>(Bytes::from_static(b"x")), Some(job))),
             Ok(done) => {
                 let value: Value = match finish(done) {
                     Ok(Json(value)) => value,
-                    Err((_, Json(value))) => value,
+                    Err((_, Json(_))) => Value::Null,
                 };
                 let bytes = serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec());
                 Some((Ok(Bytes::from(bytes)), None))

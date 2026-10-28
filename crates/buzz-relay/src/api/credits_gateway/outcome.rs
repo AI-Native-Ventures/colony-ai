@@ -45,7 +45,7 @@ impl Outcome {
             Self::Ok => "ok",
             Self::AdmissionBusy => "admission_busy",
             Self::AdmissionInsufficient => "admission_insufficient",
-            Self::AdmissionDailyLimit => "admission_daily_limit",
+            Self::AdmissionDailyLimit => "admission_busy",
             Self::AdmissionPending => "admission_pending",
             Self::AdmissionCompleted => "admission_completed",
             Self::UpstreamRejected => "upstream_rejected",
@@ -93,7 +93,6 @@ pub(super) fn log(finished: Finished<'_>) {
             %request_id,
             primary_model,
             answered_by,
-            elapsed_ms,
             streamed,
             "Colony gateway request finished"
         );
