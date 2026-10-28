@@ -54,6 +54,22 @@ async fn fixture_in(
     direct: bool,
     closed_relay: bool,
 ) -> Fixture {
+    fixture_with(response, upstream_status, direct, closed_relay, false).await
+}
+
+/// The gateway with a chain of two free models, `free/a` then `free/b`, which
+/// OpenRouter does not pin to one provider like the default model.
+async fn fixture_chain(response: Value) -> Fixture {
+    fixture_with(response, StatusCode::OK, false, false, true).await
+}
+
+async fn fixture_with(
+    response: Value,
+    upstream_status: StatusCode,
+    direct: bool,
+    closed_relay: bool,
+    chain: bool,
+) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -77,7 +93,14 @@ async fn fixture_in(
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
-                    if direct {
+                    if chain {
+                        assert!(["free/a", "free/b"].contains(&body["model"].as_str().unwrap()));
+                        assert_eq!(body["provider"]["max_price"]["request"], 0);
+                        assert!(body["provider"].get("only").is_none());
+                        assert!(body["user"]
+                            .as_str()
+                            .is_some_and(|user| user.starts_with("colony_") && user.len() == 71));
+                    } else if direct {
                         assert!(body.get("provider").is_none());
                         assert!(body.get("user").is_none());
                         assert_eq!(body["model"], "direct-test-model");
@@ -215,7 +238,9 @@ async fn fixture_in(
     );
     let gateway = Gateway {
         relay: Arc::new(state),
-        upstream: Some(Arc::new(if direct {
+        upstream: Some(Arc::new(if chain {
+            Upstream::fake_chain(origin, true, &[("free/a", None), ("free/b", None)])
+        } else if direct {
             Upstream::fake_direct(
                 origin,
                 super::super::credits_gateway_metering::TokenPrices {
@@ -1289,4 +1314,47 @@ async fn closed_relay_still_refuses_spending_from_a_host_the_owner_has_not_joine
     // Inside the owner's own business the same spending works.
     let (status, value) = call(&f, &payload, "member-spend").await;
     assert_eq!(status, StatusCode::OK, "{value}");
+}
+
+/// GATE-311: the free model was rate limited and the judge's account fell back
+/// to "Connect your AI". With a chain the next free model answers in the same
+/// request, and the stored usage and the charge name the model that answered.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_rate_limited_free_model_hands_over_and_the_metering_names_the_model_that_answered() {
+    let free_reply = json!({"id":format!("gen-{}",Uuid::new_v4()),"choices":[{"message":{"role":"assistant","content":"Hello"},"finish_reason":"stop"}],"usage":{"cost":0,"total_tokens":10}});
+    let f = fixture_chain(free_reply).await;
+    f.script
+        .lock()
+        .unwrap()
+        .push_back(StatusCode::TOO_MANY_REQUESTS);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "free-handover").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/b");
+    assert_eq!(value["chargedNanousd"], "0");
+    // The limited model once, with no wait and no retry of it, then the next.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 2);
+    let sent = f.sent.lock().unwrap().clone();
+    assert_eq!(sent[0]["model"], "free/a");
+    assert_eq!(sent[1]["model"], "free/b");
+    let (model, charged): (String, i64) = sqlx::query_as(
+        "SELECT usage->>'model', charged_nanousd FROM account_ai_requests WHERE id=$1",
+    )
+    .bind(request)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(model, "free/b");
+    assert_eq!(charged, 0);
+    // A free model costs the customer nothing.
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
 }

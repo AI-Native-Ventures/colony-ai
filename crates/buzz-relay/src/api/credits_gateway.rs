@@ -398,8 +398,10 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
 }
 
 /// One admitted request, from the provider call to the settlement. The only
-/// retry is a provider 429 inside `complete`: the provider declines before it
-/// generates, so it costs nothing and cannot bill twice. A failure that is not
+/// retries are inside `complete`: a provider 429, which the provider declines
+/// before it generates so it costs nothing and cannot bill twice, and a move to
+/// the next model of the chain when one is gone or limited. The charge and the
+/// stored usage name the model that answered. A failure that is not
 /// a clear refusal leaves the committed hold to the durable worker, which also
 /// covers the relay itself going away mid-request.
 async fn complete_and_settle(
@@ -409,8 +411,8 @@ async fn complete_and_settle(
     upstream_body: Value,
     reserve: i64,
 ) -> ApiResult {
-    let bytes = match upstream.complete(&upstream_body).await {
-        Ok(bytes) => bytes,
+    let answer = match upstream.complete(&upstream_body).await {
+        Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
             gateway
                 .relay
@@ -422,7 +424,7 @@ async fn complete_and_settle(
         }
         Err(CompletionFailure::Ambiguous) => return Err(recovering()),
     };
-    let observed = upstream.observe(&bytes).map_err(|_| recovering())?;
+    let observed = upstream.observe(&answer).map_err(|_| recovering())?;
     // Store only billing evidence, never prompts or completion content.
     gateway
         .relay
