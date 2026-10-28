@@ -37,3 +37,4 @@ rc=$?
 echo "RESULT variant=$VARIANT rc=$rc secs=$(( $(date +%s) - start )) proxy=$(tr '\n' ';' < "$LOG/proxy.log") hung_attempts=$(cat "$LOG/ready.log" "$LOG/install.log" 2>/dev/null | grep -c 'hung for')"
 kill "$proxy" 2>/dev/null
 tail -4 "$LOG/install.log"
+# rerun with idle detection
