@@ -198,7 +198,7 @@ test.describe("Real discovery run", () => {
       country: "South Africa",
       limit: 20,
     });
-    expect(String(calls[0]?.query)).toMatch(/decor/i);
+    expect(String(calls[0]?.query)).toMatch(/home furnishings/i);
 
     // Pick up where you left off: the run is on the Discovery page.
     await goTo(page, "/discovery");
