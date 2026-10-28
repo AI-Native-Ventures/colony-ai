@@ -7,6 +7,7 @@ import {
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { firstName, RunnerAvatar, useRunnerProfile } from "./DiscoveryRunner";
+import { BusinessLogoMark } from "./BusinessLogoMark";
 import {
   fitLabel,
   prospectStatus,
@@ -219,10 +220,16 @@ export function CampaignTable({
                   />
                 </td>
                 <td {...CELL_ROLE}>
-                  <a className="c3d-prospect" href={href}>
-                    <span aria-hidden="true" className="c3d-prospect-mark">
-                      {prospect.party.displayName.slice(0, 1)}
-                    </span>
+                  <a
+                    aria-label={`${prospect.party.displayName}, ${prospect.vertical}`}
+                    className="c3d-prospect"
+                    href={href}
+                  >
+                    <BusinessLogoMark
+                      className="c3d-prospect-mark"
+                      name={prospect.party.displayName}
+                      website={prospect.website}
+                    />
                     <span className="c3d-prospect-copy">
                       <strong>{prospect.party.displayName}</strong>
                       <span>{prospect.vertical}</span>

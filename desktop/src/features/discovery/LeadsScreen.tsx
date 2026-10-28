@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { formatZar } from "./BusinessCommon";
+import { BusinessLogoMark } from "./BusinessLogoMark";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { AddLeadDialog } from "./LeadDialogs";
 import { LeadPill, PlusGlyph, RunnerMark, SearchGlyph } from "./LeadParts";
@@ -136,12 +137,21 @@ export function LeadsScreen(context: LeadContext) {
                     <tr className="c3l-row" key={eventId}>
                       <td className="c3l-cell-business">
                         <a
+                          aria-label={
+                            prospect.party.displayName +
+                            ", " +
+                            prospect.vertical +
+                            ", " +
+                            (prospect.location ?? "Location not set")
+                          }
                           className="c3l-business-link"
                           href={`#/sales/lead/${record.prospectId}`}
                         >
-                          <span aria-hidden="true" className="c3l-mark">
-                            {leadInitial(prospect.party.displayName)}
-                          </span>
+                          <BusinessLogoMark
+                            className="c3l-mark"
+                            name={prospect.party.displayName}
+                            website={prospect.website}
+                          />
                           <span className="c3l-business-text">
                             <strong>{prospect.party.displayName}</strong>
                             <small>
