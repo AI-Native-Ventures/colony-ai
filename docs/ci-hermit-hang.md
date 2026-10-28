@@ -23,15 +23,16 @@ the `hermit exec bin/node -- --version` process waits forever.
 
 Evidence from throwaway probe jobs (PR #418) that wiped Node and repeated a fresh
 job start 240 times on 24 runners: 22 starts hung (8 runners; one runner hung 5
-starts in a row, then recovered). In all 22 dumps the stuck process is
-`hermit --level=fatal exec .../bin/node -- --version`, every thread is in futex or
-epoll wait, fd 7 is an open
-`cache/../*-node-v24.15.0-linux-x64.tar.gz.*.hermit.tmp.download` file, and `ss` shows
-an ESTABLISHED socket owned by that process to nodejs.org (104.16.212.131 or
-104.16.213.131, port 443). A healthy `hermit exec` of an installed package makes no
-network call at all (`strace -e connect`), and `just` and `pnpm` stubs, whose packages
-come from GitHub, did not hang. In another probe one runner hung on 31 of 31 `node`
-stub calls over 13 minutes (each call restarts the download), then recovered.
+starts in a row, then recovered). In 20 of the 22 dumps a live `hermit` process was
+still there, and all 20 have every thread in futex or epoll wait, an open
+`cache/../*-node-v24.15.0-linux-x64.tar.gz.*.hermit.tmp.download` file, and an
+ESTABLISHED socket to nodejs.org (104.16.212.131 or 104.16.213.131, port 443) owned
+by that process. The 13 whose command line was captured are all
+`hermit --level=fatal exec .../bin/node -- --version`. A healthy `hermit exec` of an
+installed package makes no network call at all (`strace -e connect`), and `just` and
+`pnpm` stubs, whose packages come from GitHub, did not hang. In another probe one
+runner hung on 31 of 31 `node` stub calls over 13 minutes (each call restarts the
+download), then recovered.
 
 The same pattern explains the other stalls: the first `node` call of the contracts
 job (`node --test`) and the first `cargo` call of a Rust job are lazy downloads too.
@@ -62,8 +63,9 @@ Not proven: why nodejs.org connections go idle on 28 Oct. It is not a runner ima
 Proof the fix recovers from the stall: throwaway probe jobs (PR #418) ran a local
 proxy that leaves the first nodejs.org connection established and idle after 200 KB.
 Today's flow (`just desktop-install-ci` with the stub downloading Node) hung until
-the 130 s guard in 3 of 3 jobs. With the fix the first install attempt was killed and
-the second finished, 74 to 76 seconds in total, in 3 of 3 jobs.
+the 130 s guard in 3 of 3 jobs. With the fix the first install attempt was killed
+after 30 seconds without progress and the second finished, 45 to 48 seconds in total,
+in 3 of 3 jobs.
 
 Windows jobs do not use Hermit (setup-node and pnpm/action-setup), so they are not
 changed. Tools a job still starts through a stub (cmake, pgschema, cargo-deny,
