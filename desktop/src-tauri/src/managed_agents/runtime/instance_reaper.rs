@@ -15,9 +15,9 @@ const DESKTOP_BINARY_NAMES: &[&str] = &[
 /// sixteen hex characters of its profile (`COLONY_ELECTRON_PROFILE_ID`); the
 /// host builds the full `xyz.block.buzz.app.electron.<profile>` identifier
 /// itself, so that string is in no process's args or environment.
-const ELECTRON_HOST_BINARY: &str = "colony-native-host";
+const ELECTRON_HOST_BINARY: &str = "colony-native-hosx";
 /// Environment entry the Electron shell sets on its native host.
-const ELECTRON_PROFILE_ENV: &str = "COLONY_ELECTRON_PROFILE_ID";
+const ELECTRON_PROFILE_ENV: &str = "COLONY_ELECTRON_PROFILE_IDX";
 const ELECTRON_IDENTIFIER_INFIX: &str = ".electron.";
 
 /// Check if a process name matches a known Buzz desktop binary.
