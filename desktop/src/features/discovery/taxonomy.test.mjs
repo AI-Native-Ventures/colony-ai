@@ -4,7 +4,9 @@ import test from "node:test";
 
 import {
   countVerticals,
+  findVertical,
   industryTaxonomy,
+  verticalTypes,
   resolveVerticalId,
   searchCatalogue,
 } from "./taxonomy.ts";
@@ -120,6 +122,54 @@ test("old vertical ids saved in campaigns and leads still resolve", () => {
     "guesthouses-and-inns",
   );
   assert.equal(resolveVerticalId("no-such-vertical"), undefined);
+});
+
+test("every industry carries what the v4 screens read: description and sectors", () => {
+  for (const industry of industryTaxonomy) {
+    assert.ok(industry.description?.length > 10, industry.id);
+    assert.ok(industry.sectors.length > 0, industry.id);
+    const sectorIds = new Set(industry.sectors.map((sector) => sector.id));
+    assert.ok(industry.verticals.length > 0, industry.id);
+    for (const vertical of industry.verticals) {
+      assert.ok(
+        sectorIds.has(vertical.sectorId),
+        `${industry.id}/${vertical.id}`,
+      );
+    }
+  }
+});
+
+test("every type carries canonical id, definition, aliases, industries, sectors and ISIC codes", () => {
+  assert.equal(verticalTypes.length, 869);
+  const industryIds = new Set(industryTaxonomy.map((industry) => industry.id));
+  for (const type of verticalTypes) {
+    assert.ok(type.label && type.definition, type.id);
+    assert.ok(type.industries.length > 0, type.id);
+    for (const hub of type.industries) {
+      assert.ok(industryIds.has(hub), `${type.id} in unknown ${hub}`);
+      assert.ok(type.sectors[hub], `${type.id} has no sector in ${hub}`);
+    }
+    assert.ok(Array.isArray(type.isic));
+  }
+  const inn = findVertical("guesthouses-and-inns");
+  assert.deepEqual(inn.industries, [
+    "hospitality-accommodation",
+    "travel-tourism",
+  ]);
+  assert.deepEqual(inn.isic, ["5520"]);
+  assert.ok(inn.aliases.includes("guest houses"));
+  assert.equal(inn.description, inn.definition);
+});
+
+test("an old vertical's market note is kept; a retired id finds its type", () => {
+  const stores = findVertical("department-stores");
+  assert.ok(stores.note, "department stores keeps its old note");
+  assert.equal(stores.description, stores.note);
+  assert.equal(
+    findVertical("pest-control-services").id,
+    "pest-control-companies",
+  );
+  assert.equal(findVertical("no-such-vertical"), undefined);
 });
 
 test("people roles search is unchanged", () => {

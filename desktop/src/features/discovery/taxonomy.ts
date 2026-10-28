@@ -1,18 +1,35 @@
 import industryData from "./data/industry-taxonomy.json";
 import peopleData from "./data/people-taxonomy.json";
 
+export type TaxonomySector = { id: string; label: string };
+
+/** One business type. `id` is the canonical id the cover-picture map uses. */
 export type TaxonomyVertical = {
   id: string;
   label: string;
+  /** What the screens show: the old market note where one carried over, else the definition. */
   description?: string;
+  /** The v4 definition. */
+  definition?: string;
+  /** The South Africa market note of the old vertical this type replaces. */
+  note?: string;
   /** Other names people type for this business type. */
   aliases?: string[];
+  /** Every industry the type is listed in, its own first. */
+  industries?: string[];
+  /** The sector id the type sits in, per industry id. */
+  sectors?: Record<string, string>;
+  /** ISIC Rev.5 codes. */
+  isic?: string[];
+  /** Under an industry: the sector this type sits in there. */
+  sectorId?: string;
 };
 
 export type IndustryCategory = {
   id: string;
   label: string;
   description?: string;
+  sectors?: TaxonomySector[];
   verticals: TaxonomyVertical[];
 };
 
@@ -32,25 +49,46 @@ export type CatalogueRow = {
 };
 
 /** The Discovery v4 catalogue as `build_industry_taxonomy.py` writes it. */
+export type CatalogueType = TaxonomyVertical & {
+  definition: string;
+  industries: string[];
+  sectors: Record<string, string>;
+  isic: string[];
+};
+
 type CatalogueData = {
-  industries: { id: string; label: string; description?: string }[];
-  types: (TaxonomyVertical & { industries: string[] })[];
+  industries: {
+    id: string;
+    label: string;
+    description: string;
+    sectors: TaxonomySector[];
+  }[];
+  types: CatalogueType[];
   redirects: Record<string, string>;
   /** Every id the 34 industry list used, and the type it became (if any). */
   legacy: Record<string, string | null>;
 };
 
-const catalogue = industryData as CatalogueData;
+const catalogue = industryData as unknown as CatalogueData;
 const typeIds = new Set(catalogue.types.map((type) => type.id));
+
+function withDescription(type: CatalogueType): CatalogueType {
+  return { ...type, description: type.note ?? type.definition };
+}
+
+/** Every business type once, however many industries list it. */
+export const verticalTypes: CatalogueType[] =
+  catalogue.types.map(withDescription);
+const verticalById = new Map(verticalTypes.map((type) => [type.id, type]));
 
 /** A type sits in every industry it lists and is shown under each one. */
 export const industryTaxonomy: IndustryCategory[] = catalogue.industries.map(
   (industry) => ({
     ...industry,
-    verticals: catalogue.types
+    verticals: verticalTypes
       .filter((type) => type.industries.includes(industry.id))
       .sort((a, b) => a.label.localeCompare(b.label))
-      .map(({ industries: _industries, ...vertical }) => vertical),
+      .map((type) => ({ ...type, sectorId: type.sectors[industry.id] })),
   }),
 );
 export const peopleTaxonomy = peopleData as PeopleField[];
@@ -58,6 +96,12 @@ export const peopleTaxonomy = peopleData as PeopleField[];
 /** Business types, each counted once however many industries list it. */
 export function countVerticals(): number {
   return catalogue.types.length;
+}
+
+/** A business type by current or saved id (see `resolveVerticalId`). */
+export function findVertical(id: string): CatalogueType | undefined {
+  const current = resolveVerticalId(id);
+  return current ? verticalById.get(current) : undefined;
 }
 
 /**
@@ -147,13 +191,13 @@ function buildSearchIndex(): SearchEntry[] {
   const industryLabels = new Map(
     catalogue.industries.map((industry) => [industry.id, industry.label]),
   );
-  return catalogue.types.map((type) => {
+  return verticalTypes.map((type) => {
     const label = field(type.label);
     const aliases = (type.aliases ?? []).map(field);
     const industryNames = type.industries.map((id) =>
       field(industryLabels.get(id) ?? ""),
     );
-    const note = field(type.description ?? "");
+    const note = field(`${type.definition} ${type.note ?? ""}`);
     const parentId = type.industries[0] ?? "";
     return {
       row: {
