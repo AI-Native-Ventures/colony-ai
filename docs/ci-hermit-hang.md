@@ -9,40 +9,53 @@ orphan cleanup listed `just` > `sh` > `node` (pnpm) > `hermit`, or `just` > `sh`
 `node` > `sh` > `hermit`. A rerun usually passed. The same stall showed in
 `node --test scripts/ci-plan.test.mjs` and once in `just test-unit`.
 
-## What is proven
+## Cause (proven)
 
-- Hermit stubs are the `bin/node`, `bin/pnpm`, `bin/just`, `bin/cargo` scripts. Each
-  one ends in `exec hermit exec ...`, so a stub call is a Hermit process that starts,
-  loads the environment and then execs the real tool.
-- `pnpm install` makes two stub calls on its own: `node --version` right after the
-  lockfile check, and `node install.js` for the esbuild postinstall (an `strace -e
-  execve` of a CI install shows both going through `bin/node`). The hung process in
-  both logs is that `hermit`, a child of pnpm or of its `sh`.
-- Hermit only had the empty link farm at activation (`HERMIT_LINK_FARM` ends in
-  `e3b0c44298fc1c14`, the hash of nothing), so nothing resolved directly and every tool
-  call went through a stub.
-- Installing the packages first makes Hermit's link farm hold a direct link per tool,
-  and an `strace` of `pnpm install` then shows no `bin/` stub call at all.
-- The stall is not tied to a runner image (slow installs on both 20261012 and
-  20261025), to a repo change (nothing under `bin/`, `.github/` or the lockfile
-  changed before the first stall) or to the Hermit version (v0.54.1 since 21 Oct).
+`bin/node`, `bin/pnpm`, `bin/just` and the other `bin/` entries are Hermit stubs. A
+stub downloads its package the first time it is used. pnpm 11 is a single binary, so
+the first `node` call of a job is pnpm's own `node --version`, right after the
+lockfile check; the Node tarball is therefore downloaded from nodejs.org inside
+`pnpm install`.
 
-## What is not proven
+On some runners that download goes idle: the TCP connection to nodejs.org stays
+established and no more data arrives. Hermit v0.54.1 has no read or idle timeout, so
+the `hermit exec bin/node -- --version` process waits forever.
 
-Why one stub call sometimes never returns. 400+ stub calls and about 250 fresh
-installs in throwaway probe jobs did not reproduce it after the first stalls at
-05:36Z, 09:11Z and 10:43Z, so no stack of the stuck Hermit process was captured.
+Evidence from throwaway probe jobs (PR #418) that wiped Node and repeated a fresh
+job start 240 times on 24 runners: 22 starts hung (8 runners; one runner hung 5
+starts in a row, then recovered). In all 22 dumps the stuck process is
+`hermit --level=fatal exec .../bin/node -- --version`, every thread is in futex or
+epoll wait, fd 7 is an open
+`cache/../*-node-v24.15.0-linux-x64.tar.gz.*.hermit.tmp.download` file, and `ss` shows
+an ESTABLISHED socket owned by that process to nodejs.org (104.16.212.131 or
+104.16.213.131, port 443). A healthy `hermit exec` of an installed package makes no
+network call at all (`strace -e connect`), and `just` and `pnpm` stubs, whose packages
+come from GitHub, did not hang. In another probe one runner hung on 31 of 31 `node`
+stub calls over 13 minutes (each call restarts the download), then recovered.
+
+The same pattern explains the other stalls: the first `node` call of the contracts
+job (`node --test`) and the first `cargo` call of a Rust job are lazy downloads too.
+
+Not proven: why nodejs.org connections go idle on 28 Oct. It is not a runner image
+(slow installs on both 20261012 and 20261025), a repo change (nothing under `bin/`,
+`.github/` or the lockfile changed before the first stall) or a new Hermit release
+(v0.54.1 since 21 Oct).
 
 ## Fix
 
-- `scripts/ci-hermit-ready.sh` installs the Hermit packages a job uses at the exact
-  version `bin/` pins, re-activates, and checks the tools now run directly. Every
-  job in the CI workflows calls it right after `activate-hermit`.
+- `scripts/ci-hermit-ready.sh` runs right after `activate-hermit` in the CI jobs. It
+  installs the Hermit packages the job uses at the exact version `bin/` pins, in a
+  step of its own under `scripts/ci-bounded.sh` (60 s per attempt, 5 attempts), then
+  re-activates Hermit so the link farm gives each installed tool a direct path.
+  After it, `pnpm install` makes no stub call (an `strace -e execve` shows zero
+  `bin/` execs) and cannot download anything.
 - `scripts/ci-bounded.sh <seconds> <attempts> <command>` runs each attempt in its own
-  process group, kills the whole group when an attempt exceeds the time limit and
-  retries. The package install, the farm creation and every dependency install step
-  use it, so a stall costs minutes instead of 25. `scripts/test-ci-bounded.sh` is its
-  contract and runs in the Workflow contracts job.
+  process group, kills the whole group when the limit passes and retries. Every
+  dependency install step also runs through it (240 s, 3 attempts), so any stall now
+  costs minutes, not 25. `scripts/test-ci-bounded.sh` is its contract and runs in the
+  Workflow contracts job.
 
 Windows jobs do not use Hermit (setup-node and pnpm/action-setup), so they are not
-changed.
+changed. Tools a job still starts through a stub (cmake, pgschema, cargo-deny,
+flutter, the Rust toolchain that cargo fetches on first use) keep the lazy-download
+exposure; none of them hung in the evidence above.

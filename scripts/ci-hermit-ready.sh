@@ -3,14 +3,17 @@
 #
 # usage: scripts/ci-hermit-ready.sh <package>...      e.g. node pnpm just
 #
-# Every call to a bin/ stub re-enters Hermit. A stub call that never returns stalled
-# `pnpm install` (pnpm's own `node --version` and esbuild's `node install.js` go through
-# the `node` stub) and other steps until the job timeout; see docs/ci-hermit-hang.md.
-# Once a package is installed, Hermit keeps a directory of direct links to its binaries
-# (the link farm) and puts it on PATH ahead of bin/, so the tool runs without a stub.
+# A Hermit stub downloads its package the first time it runs. pnpm's own
+# `node --version` is the first `node` call of a job, so the Node download happened
+# deep inside `pnpm install`, over a connection to nodejs.org that sometimes goes idle
+# and that Hermit never times out; the step then sat until the job timeout. See
+# docs/ci-hermit-hang.md.
 #
-# Packages are installed at the exact version bin/ pins (never "latest"), the install
-# is bounded and retried, and the new PATH is exported to the later steps of the job.
+# This script moves the download to a step of its own: packages are installed at the
+# exact version bin/ pins (never "latest") under a short per-attempt limit that kills
+# the whole process group and retries, then the new PATH is exported to the later steps
+# of the job. With the packages installed, Hermit's link farm (a directory of direct
+# links, on PATH ahead of bin/) lets the tools run without a stub at all.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -43,7 +46,8 @@ for name in "$@"; do
   refs+=("$ref")
 done
 
-scripts/ci-bounded.sh 240 3 ./bin/hermit install "${refs[@]}"
+# A healthy download takes a few seconds; an idle connection never recovers.
+scripts/ci-bounded.sh 60 5 ./bin/hermit install "${refs[@]}"
 
 # Installing must never move a pin.
 if ! git diff --quiet -- bin; then
