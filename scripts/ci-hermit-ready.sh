@@ -10,8 +10,8 @@
 # docs/ci-hermit-hang.md.
 #
 # This script moves the download to a step of its own: packages are installed at the
-# exact version bin/ pins (never "latest") under a short per-attempt limit that kills
-# the whole process group and retries, then the new PATH is exported to the later steps
+# exact version bin/ pins (never "latest") with an attempt killed (whole process group)
+# and retried when the download stops making progress, then the new PATH is exported to the later steps
 # of the job. With the packages installed, Hermit's link farm (a directory of direct
 # links, on PATH ahead of bin/) lets the tools run without a stub at all.
 set -euo pipefail
@@ -46,8 +46,15 @@ for name in "$@"; do
   refs+=("$ref")
 done
 
-# A healthy download takes a few seconds; an idle connection never recovers.
-scripts/ci-bounded.sh 60 5 ./bin/hermit install "${refs[@]}"
+# A healthy download takes seconds and a slow one keeps growing the download cache; an
+# idle connection never recovers, so an attempt that stops growing it is killed.
+case "$(uname -s)" in
+  Darwin) state_dir="${HERMIT_STATE_DIR:-$HOME/Library/Caches/hermit}" ;;
+  *) state_dir="${HERMIT_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hermit}" ;;
+esac
+mkdir -p "$state_dir/cache"
+CI_BOUNDED_PROGRESS_DIR="$state_dir/cache" CI_BOUNDED_IDLE_SECONDS=30 \
+  scripts/ci-bounded.sh 240 5 ./bin/hermit install "${refs[@]}"
 
 # Installing must never move a pin.
 if ! git diff --quiet -- bin; then
