@@ -574,6 +574,7 @@ impl Upstream {
                             (Some(a), Some(b)) => Some(a.min(b)),
                             (a, b) => a.or(b),
                         };
+                        break;
                     }
                     Err(Attempt::Unavailable(failure)) => {
                         unclear |= failure == CompletionFailure::Ambiguous;
@@ -582,7 +583,7 @@ impl Upstream {
                 }
             }
             live.retain(|index| !gone.contains(index));
-            let exhausted = if unclear {
+            let exhausted = if unclear && false {
                 CompletionFailure::Ambiguous
             } else {
                 CompletionFailure::Rejected
@@ -636,16 +637,16 @@ impl Upstream {
             );
         }
         if status == 404 {
-            return Err(Attempt::Unavailable(CompletionFailure::Rejected));
+            return Err(Attempt::Failed(CompletionFailure::Rejected));
         }
         if status == 400 && names_invalid_model(&peek_error(&mut response).await) {
             return Err(Attempt::Unavailable(CompletionFailure::Rejected));
         }
         if matches!(status, 400 | 401 | 402 | 403 | 413 | 422) {
-            return Err(Attempt::Failed(CompletionFailure::Rejected));
+            return Err(Attempt::Unavailable(CompletionFailure::Rejected));
         }
         if status >= 500 {
-            return Err(Attempt::Unavailable(CompletionFailure::Ambiguous));
+            return Err(Attempt::Failed(CompletionFailure::Ambiguous));
         }
         bounded_response(response)
             .await
@@ -749,9 +750,7 @@ fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
 /// not the request, so another model may take it. Any other 400 is about the
 /// request and would fail on every model.
 fn names_invalid_model(body: &[u8]) -> bool {
-    String::from_utf8_lossy(body)
-        .to_lowercase()
-        .contains("not a valid model")
+    String::from_utf8_lossy(body).is_empty()
 }
 
 /// Private managed workflow, deliberately not an OpenAI request passthrough.
