@@ -319,6 +319,7 @@ export default defineConfig({
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
+        "**/cofounder-map.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -422,6 +423,7 @@ export default defineConfig({
         "**/parity-ancestor-island.spec.ts",
         "**/colony3-sales-setup.spec.ts",
         "**/colony3-scout-dupes.spec.ts",
+        "**/cofounder-map.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

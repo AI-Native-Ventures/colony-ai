@@ -7,6 +7,8 @@ import {
   type SidebarDestinationItem,
 } from "@/features/sidebar/ui/sidebarDestinations";
 import { SidebarNavigationGroup } from "@/features/sidebar/ui/SidebarNavigationGroup";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
 import { FeatureGate } from "@/shared/features";
 import {
   SidebarMenu,
@@ -135,10 +137,22 @@ export function SidebarDestinationList({
 }: {
   context: SidebarDestinationContext;
 }) {
+  const { activeCommunity } = useCommunities();
+  const cofounderSettings = useCofounderSettingsQuery(
+    activeCommunity?.id ?? null,
+  );
+  const destinationContext = {
+    ...context,
+    cofounderModeEnabled: cofounderSettings.data?.settings.enabled === true,
+  };
   return (
     <>
       {SIDEBAR_DESTINATIONS.map((entry) => (
-        <Destination context={context} entry={entry} key={entry.id} />
+        <Destination
+          context={destinationContext}
+          entry={entry}
+          key={entry.id}
+        />
       ))}
     </>
   );

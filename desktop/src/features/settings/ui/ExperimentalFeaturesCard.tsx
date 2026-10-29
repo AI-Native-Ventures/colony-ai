@@ -1,6 +1,7 @@
 import { setAgentManagedProfiles } from "@/shared/api/tauriWorkspace";
 import { desktopFeatures, useFeatureToggle } from "@/shared/features";
 import type { FeatureDefinition } from "@/shared/features";
+import { CofounderSettingRow } from "@/features/cofounder/ui/CofounderSettingRow";
 import { SettingsSwitchRow } from "./SettingsKit";
 
 /** Preview features that are not in the lean app have no switch here. */
@@ -53,6 +54,7 @@ export function ExperimentalFeaturesCard() {
           Preview features. Turning one on adds it to your sidebar.
         </span>
       </div>
+      <CofounderSettingRow />
       {previewFeatures.map((f) => (
         <FeatureRow feature={f} key={f.id} />
       ))}
