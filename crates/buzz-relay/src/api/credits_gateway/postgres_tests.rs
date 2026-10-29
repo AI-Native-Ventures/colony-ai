@@ -25,6 +25,10 @@ struct Fixture {
     script: Arc<std::sync::Mutex<std::collections::VecDeque<StatusCode>>>,
     /// Milliseconds the provider thinks before it answers.
     delay_ms: Arc<AtomicU64>,
+    /// How many of the next calls hang for `hang_ms` before the provider
+    /// answers, so a request can time out and later ones are answered at once.
+    hang_calls: Arc<AtomicUsize>,
+    hang_ms: Arc<AtomicU64>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -57,8 +61,8 @@ async fn fixture_in(
     fixture_with(response, upstream_status, direct, closed_relay, false).await
 }
 
-/// The gateway with a chain of three free models, `free/a`, `free/b` then
-/// `free/c`, which OpenRouter does not pin to one provider like the default
+/// The gateway with a chain of three free models, `free/a:free`, `free/b:free` then
+/// `free/c:free`, which OpenRouter does not pin to one provider like the default
 /// model.
 async fn fixture_chain(response: Value) -> Fixture {
     fixture_with(response, StatusCode::OK, false, false, true).await
@@ -81,6 +85,9 @@ async fn fixture_with(
     let scripted = script.clone();
     let delay_ms = Arc::new(AtomicU64::new(0));
     let thinking = delay_ms.clone();
+    let hang_calls = Arc::new(AtomicUsize::new(0));
+    let hang_ms = Arc::new(AtomicU64::new(0));
+    let (hanging_calls, hanging_ms) = (hang_calls.clone(), hang_ms.clone());
     let completion = response.clone();
     let upstream = Router::new()
         .route(
@@ -90,12 +97,14 @@ async fn fixture_with(
                 let captured = captured.clone();
                 let scripted = scripted.clone();
                 let thinking = thinking.clone();
+                let hanging_calls = hanging_calls.clone();
+                let hanging_ms = hanging_ms.clone();
                 let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
                     if chain {
-                        assert!(["free/a", "free/b", "free/c"]
+                        assert!(["free/a:free", "free/b:free", "free/c:free"]
                             .contains(&body["model"].as_str().unwrap()));
                         assert_eq!(body["provider"]["max_price"]["request"], 0);
                         assert!(body["provider"].get("only").is_none());
@@ -116,6 +125,11 @@ async fn fixture_with(
                     }
                     captured.lock().unwrap().push(body);
                     let index = counter.fetch_add(1, Ordering::SeqCst);
+                    if hanging_calls.load(Ordering::SeqCst) > 0 {
+                        hanging_calls.fetch_sub(1, Ordering::SeqCst);
+                        let hang = hanging_ms.load(Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(hang)).await;
+                    }
                     let delay = thinking.load(Ordering::SeqCst);
                     if delay > 0 {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
@@ -244,7 +258,11 @@ async fn fixture_with(
             Upstream::fake_chain(
                 origin,
                 true,
-                &[("free/a", None), ("free/b", None), ("free/c", None)],
+                &[
+                    ("free/a:free", None),
+                    ("free/b:free", None),
+                    ("free/c:free", None),
+                ],
             )
         } else if direct {
             Upstream::fake_direct(
@@ -274,6 +292,8 @@ async fn fixture_with(
         sent,
         script,
         delay_ms,
+        hang_calls,
+        hang_ms,
         server,
     }
 }
@@ -1338,13 +1358,13 @@ async fn a_rate_limited_free_model_hands_over_and_the_metering_names_the_model_t
     let request = Uuid::new_v4();
     let (status, value) = call(&f, &body(&f, request), "free-handover").await;
     assert_eq!(status, StatusCode::OK, "{value}");
-    assert_eq!(value["model"], "free/b");
+    assert_eq!(value["model"], "free/b:free");
     assert_eq!(value["chargedNanousd"], "0");
     // The limited model once, with no wait and no retry of it, then the next.
     assert_eq!(f.calls.load(Ordering::SeqCst), 2);
     let sent = f.sent.lock().unwrap().clone();
-    assert_eq!(sent[0]["model"], "free/a");
-    assert_eq!(sent[1]["model"], "free/b");
+    assert_eq!(sent[0]["model"], "free/a:free");
+    assert_eq!(sent[1]["model"], "free/b:free");
     let (model, charged): (String, i64) = sqlx::query_as(
         "SELECT usage->>'model', charged_nanousd FROM account_ai_requests WHERE id=$1",
     )
@@ -1352,7 +1372,7 @@ async fn a_rate_limited_free_model_hands_over_and_the_metering_names_the_model_t
     .fetch_one(&f.pool)
     .await
     .unwrap();
-    assert_eq!(model, "free/b");
+    assert_eq!(model, "free/b:free");
     assert_eq!(charged, 0);
     // A free model costs the customer nothing.
     assert_eq!(
@@ -1655,7 +1675,7 @@ async fn a_model_that_refuses_access_is_skipped_and_the_third_answers_with_every
     let request = Uuid::new_v4();
     let (status, value) = call(&f, &body(&f, request), "refused-then-third").await;
     assert_eq!(status, StatusCode::OK, "{value}");
-    assert_eq!(value["model"], "free/c");
+    assert_eq!(value["model"], "free/c:free");
     assert_eq!(value["chargedNanousd"], "0");
     assert_eq!(f.calls.load(Ordering::SeqCst), 3);
     let models: Vec<String> = f
@@ -1665,7 +1685,7 @@ async fn a_model_that_refuses_access_is_skipped_and_the_third_answers_with_every
         .iter()
         .map(|sent| sent["model"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(models, ["free/a", "free/b", "free/c"]);
+    assert_eq!(models, ["free/a:free", "free/b:free", "free/c:free"]);
     let (model, charged): (String, i64) = sqlx::query_as(
         "SELECT usage->>'model', charged_nanousd FROM account_ai_requests WHERE id=$1",
     )
@@ -1673,17 +1693,17 @@ async fn a_model_that_refuses_access_is_skipped_and_the_third_answers_with_every
     .fetch_one(&f.pool)
     .await
     .unwrap();
-    assert_eq!((model.as_str(), charged), ("free/c", 0));
+    assert_eq!((model.as_str(), charged), ("free/c:free", 0));
     assert_eq!(balance(&f).await, 1_000_000_000);
     let lines = finished_lines(&logs);
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(has(&lines[0], "outcome", "ok"), "{}", lines[0]);
-    assert!(has(&lines[0], "answered_by", "free/c"), "{}", lines[0]);
+    assert!(has(&lines[0], "answered_by", "free/c:free"), "{}", lines[0]);
     assert!(
         has(
             &lines[0],
             "models_tried",
-            "free/a(429),free/b(403),free/c(200)"
+            "free/a:free(429),free/b:free(403),free/c:free(200)"
         ),
         "{}",
         lines[0]
@@ -1694,7 +1714,7 @@ async fn a_model_that_refuses_access_is_skipped_and_the_third_answers_with_every
         .lines()
         .find(|line| line.contains("upstream did not accept a request"))
         .unwrap_or_else(|| panic!("no refusal line in {all}"));
-    assert!(has(refusal, "model", "free/b"), "{refusal}");
+    assert!(has(refusal, "model", "free/b:free"), "{refusal}");
     assert!(has(refusal, "upstream_status", "403"), "{refusal}");
     assert!(has(refusal, "upstream_message", "scripted"), "{refusal}");
 }
@@ -1730,7 +1750,7 @@ async fn every_model_refusing_is_todays_503_after_one_call_each_and_the_hold_is_
         has(
             &lines[0],
             "models_tried",
-            "free/a(403),free/b(402),free/c(404)"
+            "free/a:free(403),free/b:free(402),free/c:free(404)"
         ),
         "{}",
         lines[0]
@@ -1757,8 +1777,148 @@ async fn a_refused_key_ends_the_request_at_once_with_the_remaining_models_unaske
     let lines = finished_lines(&logs);
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(
-        has(&lines[0], "models_tried", "free/a(429),free/b(401)"),
+        has(
+            &lines[0],
+            "models_tried",
+            "free/a:free(429),free/b:free(401)"
+        ),
         "{}",
         lines[0]
     );
+}
+
+/// GATE-312 R2 (29 Oct): a free model took 90 s to answer nothing, the one call
+/// used the whole budget and the request ended unclear. A free model that gives
+/// no answer in time is handed over like a refusal: the next one answers, the
+/// customer pays nothing and the log says what happened to the first.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_free_model_that_hangs_hands_over_to_the_next_and_nothing_is_charged() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    f.hang_ms.store(2000, Ordering::SeqCst);
+    f.hang_calls.store(1, Ordering::SeqCst);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "hang-then-next").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/b:free");
+    assert_eq!(value["chargedNanousd"], "0");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(row(&f, request).await, ("settled".to_owned(), 0));
+    assert_eq!(balance(&f).await, 1_000_000_000);
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(has(&lines[0], "outcome", "ok"), "{}", lines[0]);
+    assert!(
+        has(
+            &lines[0],
+            "models_tried",
+            "free/a:free(timeout),free/b:free(200)"
+        ),
+        "{}",
+        lines[0]
+    );
+    let all = String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned();
+    let refusal = all
+        .lines()
+        .find(|line| line.contains("upstream did not accept a request"))
+        .unwrap_or_else(|| panic!("no refusal line in {all}"));
+    assert!(has(refusal, "model", "free/a:free"), "{refusal}");
+    assert!(has(refusal, "upstream_status", "0"), "{refusal}");
+}
+
+/// The same GATE-312 R2 turn when every free model hangs: the request ends in
+/// today's clear 503, and, because nothing free can have been charged, its row
+/// is settled at zero at once. Left pending it kept the session "busy" for the
+/// next fifteen minutes (admission refuses a second request of a session while
+/// one is pending): the thread said "Usage is being recovered" and the next
+/// mention "Your Colony Agents are busy".
+async fn hung_free_chain_then_the_next_request(f: Fixture) {
+    let (logs, _guard) = capture_logs();
+    f.hang_ms.store(2500, Ordering::SeqCst);
+    f.hang_calls.store(3, Ordering::SeqCst);
+    let first = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, first), "all-hang").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+    assert_eq!(row(&f, first).await, ("settled".to_owned(), 0));
+    // The next mention of the same agent runs: not refused as busy.
+    let next = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, next), "after-hang").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/a:free");
+    assert_eq!(row(&f, next).await, ("settled".to_owned(), 0));
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        has(&lines[0], "outcome", "upstream_rejected"),
+        "{}",
+        lines[0]
+    );
+    assert!(
+        has(
+            &lines[0],
+            "models_tried",
+            "free/a:free(timeout),free/b:free(timeout),free/c:free(timeout)"
+        ),
+        "{}",
+        lines[0]
+    );
+    assert!(has(&lines[1], "outcome", "ok"), "{}", lines[1]);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn every_free_model_hanging_releases_the_hold_and_the_next_request_runs() {
+    let f = fixture_chain(free_reply()).await;
+    hung_free_chain_then_the_next_request(f).await;
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn every_free_model_hanging_releases_a_free_ai_account_too() {
+    // The judge's account: journal only, no balance, no ledger rows.
+    let mut f = fixture_chain(free_reply()).await;
+    sqlx::query("DELETE FROM account_credit_ledger WHERE account_id = $1")
+        .bind(f.account)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.gateway.policy = Arc::new(GatewayPolicy {
+        free_ai_accounts: vec![account_email(&f).await],
+        ..GatewayPolicy::default()
+    });
+    let pool = f.pool.clone();
+    let account = f.account;
+    hung_free_chain_then_the_next_request(f).await;
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM account_credit_ledger WHERE account_id = $1")
+            .bind(account)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows, 0);
+}
+
+/// Paid usage keeps its recovery: a paid model that gives no answer may have
+/// charged, so the hold stays for the durable worker and, until it settles, the
+/// session is busy. This is the behaviour a free model must not have.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_paid_model_that_hangs_keeps_its_hold_and_the_session_stays_busy() {
+    let f = fixture(upstream_response()).await;
+    // The fixture's upstream gives up after 1 s.
+    f.delay_ms.store(1500, Ordering::SeqCst);
+    let first = Uuid::new_v4();
+    let (status, _) = call(&f, &body(&f, first), "paid-hang").await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let state: String = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+        .bind(first)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "pending");
+    f.delay_ms.store(0, Ordering::SeqCst);
+    let (status, value) = call(&f, &body(&f, Uuid::new_v4()), "paid-next").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{value}");
 }
