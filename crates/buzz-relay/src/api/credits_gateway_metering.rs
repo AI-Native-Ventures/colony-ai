@@ -30,7 +30,7 @@ impl TokenPrices {
             &self.output_nanousd_per_million,
         ]
         .iter()
-        .all(|price| !price.is_empty() && price.bytes().all(|b| b == b'0'))
+        .any(|price| !price.is_empty() && price.bytes().all(|b| b == b'0'))
     }
 
     pub(super) fn charge(&self, input: u64, output: u64) -> Result<i64, ()> {

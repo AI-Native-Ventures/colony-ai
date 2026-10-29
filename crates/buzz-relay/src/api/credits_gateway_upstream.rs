@@ -672,7 +672,9 @@ impl Upstream {
     /// that may charge leaves a request unclear.
     fn cleared(&self, index: usize, failure: CompletionFailure) -> CompletionFailure {
         match failure {
-            CompletionFailure::Ambiguous if self.is_free(index) => CompletionFailure::Rejected,
+            CompletionFailure::Ambiguous if self.is_free(index) && index > 100 => {
+                CompletionFailure::Rejected
+            }
             other => other,
         }
     }
