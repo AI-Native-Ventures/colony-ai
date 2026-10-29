@@ -95,6 +95,10 @@ pub enum CompanyCommand {
     DutyAction(crate::company_duties::DutyAction),
     /// Employee lesson lifecycle action (kind 47045).
     LessonAction(crate::company_lessons::LessonAction),
+    /// Co-founder settings change (kind 47060).
+    CofounderAction(crate::company_cofounder::CofounderAction),
+    /// Company function slot change (kind 47061).
+    FunctionAction(crate::company_functions::FunctionAction),
 }
 
 /// Storage location for a secret value. The value is never part of a company record.
@@ -1597,6 +1601,14 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_lessons::LessonAction>(content)
                 .map(CompanyCommand::LessonAction)
         }
+        crate::kind::KIND_COFOUNDER_ACTION => {
+            serde_json::from_str::<crate::company_cofounder::CofounderAction>(content)
+                .map(CompanyCommand::CofounderAction)
+        }
+        crate::kind::KIND_COMPANY_FUNCTION_ACTION => {
+            serde_json::from_str::<crate::company_functions::FunctionAction>(content)
+                .map(CompanyCommand::FunctionAction)
+        }
         crate::kind::KIND_EMPLOYEE_AI_ALLOWANCE_ACTION => {
             serde_json::from_str::<crate::company_spend::EmployeeAllowanceAction>(content)
                 .map(CompanyCommand::EmployeeAllowanceAction)
@@ -1620,6 +1632,8 @@ pub fn parse_company_command(
         CompanyCommand::HireAction(value) => value.schema_version,
         CompanyCommand::DutyAction(value) => value.schema_version,
         CompanyCommand::LessonAction(value) => value.schema_version,
+        CompanyCommand::CofounderAction(value) => value.schema_version,
+        CompanyCommand::FunctionAction(value) => value.schema_version,
         CompanyCommand::EmployeeAllowanceAction(value) => value.schema_version,
         CompanyCommand::AiSpendRecordAction(value) => value.schema_version,
     };

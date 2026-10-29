@@ -69,11 +69,12 @@ pub(super) async fn handle(
         CompanyCommand::HireAction(_) => Err(IngestError::Rejected(
             "restricted: hire commands are handled by the company hire broker".into(),
         )),
-        CompanyCommand::DutyAction(_) | CompanyCommand::LessonAction(_) => {
-            Err(IngestError::Rejected(
-                "restricted: this action is handled by its company record broker".into(),
-            ))
-        }
+        CompanyCommand::DutyAction(_)
+        | CompanyCommand::LessonAction(_)
+        | CompanyCommand::CofounderAction(_)
+        | CompanyCommand::FunctionAction(_) => Err(IngestError::Rejected(
+            "restricted: this action is handled by its company record broker".into(),
+        )),
         CompanyCommand::EmployeeAllowanceAction(_) => Err(IngestError::Rejected(
             "restricted: employee allowance commands are handled by the employee spend broker"
                 .into(),

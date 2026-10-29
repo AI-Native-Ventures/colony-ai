@@ -794,6 +794,14 @@ pub const KIND_FACTORY_RUN_ACTION: u32 = 47038;
 pub const KIND_DUTY_ACTION: u32 = 47044;
 /// Member lesson mutation, brokered and community-wide.
 pub const KIND_LESSON_ACTION: u32 = 47045;
+/// Relay-authored per-company co-founder settings head (community-wide).
+pub const KIND_COFOUNDER_HEAD: u32 = 30670;
+/// Relay-authored company function slot head (community-wide, one per function).
+pub const KIND_COMPANY_FUNCTION_HEAD: u32 = 30671;
+/// Member co-founder settings mutation, brokered and community-wide.
+pub const KIND_COFOUNDER_ACTION: u32 = 47060;
+/// Member function slot mutation, brokered and community-wide.
+pub const KIND_COMPANY_FUNCTION_ACTION: u32 = 47061;
 
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
@@ -803,6 +811,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_HIRE_HEAD,
     KIND_DUTY_HEAD,
     KIND_LESSON_HEAD,
+    KIND_COFOUNDER_HEAD,
+    KIND_COMPANY_FUNCTION_HEAD,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
     KIND_GOAL_ACTION,
@@ -820,6 +830,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_COFOUNDER_ACTION,
+    KIND_COMPANY_FUNCTION_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
     KIND_AI_SPEND_RECORD_ACTION,
 ];
@@ -839,6 +851,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_ACTION
             | KIND_DUTY_ACTION
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
     )
@@ -865,7 +879,11 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_DUTY_HEAD
             | KIND_DUTY_ACTION
             | KIND_LESSON_HEAD
+            | KIND_COFOUNDER_HEAD
+            | KIND_COMPANY_FUNCTION_HEAD
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_HEAD
@@ -1164,6 +1182,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_FACTORY_RUN_HEAD,
     KIND_DUTY_HEAD,
     KIND_LESSON_HEAD,
+    KIND_COFOUNDER_HEAD,
+    KIND_COMPANY_FUNCTION_HEAD,
     KIND_FACTORY_RUN_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
@@ -1180,6 +1200,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_COFOUNDER_ACTION,
+    KIND_COMPANY_FUNCTION_ACTION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1265,6 +1287,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_ACTION
             | KIND_DUTY_ACTION
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
     )
@@ -1307,6 +1331,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_HEAD
             | KIND_DUTY_HEAD
             | KIND_LESSON_HEAD
+            | KIND_COFOUNDER_HEAD
+            | KIND_COMPANY_FUNCTION_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
     )
@@ -1352,6 +1378,8 @@ const _: () = assert!(is_parameterized_replaceable(
 )); // 30653 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); // 30654 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_HEAD)); // 30670 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_FUNCTION_HEAD)); // 30671 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 
@@ -1436,6 +1464,8 @@ mod tests {
         for (head, action) in [
             (KIND_DUTY_HEAD, KIND_DUTY_ACTION),
             (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
+            (KIND_COFOUNDER_HEAD, KIND_COFOUNDER_ACTION),
+            (KIND_COMPANY_FUNCTION_HEAD, KIND_COMPANY_FUNCTION_ACTION),
         ] {
             assert!(COMPANY_RECORD_KINDS.contains(&head));
             assert!(COMPANY_RECORD_KINDS.contains(&action));
