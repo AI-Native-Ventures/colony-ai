@@ -772,7 +772,7 @@ impl Upstream {
                 // hand it over. A free model cannot have charged, and `walk` ends
                 // the request clear; a paid one may have, and stays unclear.
                 if let Some(last) = tried.last_mut() {
-                    *last = format!("{model}({status}/timeout)");
+                    *last = format!("{model}({status})");
                 }
                 let waited = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
                 let note = format!("answer not finished within {waited} ms");
