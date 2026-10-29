@@ -781,9 +781,9 @@ impl Upstream {
                     upstream_status = status,
                     upstream_message = note.as_str(),
                     free,
-                    "Colony gateway upstream did not finish an answer"
+                    "Colony gateway upstream went quiet"
                 );
-                Err(Attempt::Failed(CompletionFailure::Ambiguous))
+                Err(Attempt::Failed(CompletionFailure::Rejected))
             }
             Err(ReadFailure::Other) => Err(Attempt::Failed(CompletionFailure::Ambiguous)),
         }
