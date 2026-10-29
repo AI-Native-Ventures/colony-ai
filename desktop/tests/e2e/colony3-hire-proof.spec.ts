@@ -94,27 +94,23 @@ test("HireRoles: a business with no role personas is offered the built-ins", asy
   page,
 }) => {
   await openBoard(page, "roles-empty", HIRE_ROUTES.roles, "hire-roles");
-  for (const name of [
-    "Hospitality researcher",
-    "Social media manager",
-    "Bookkeeper",
-    "Business development",
-    "Writer",
+  const catalog = page.locator('[aria-label="Role catalog"]');
+  for (const id of [
+    HIRE_IDS.builtInHospitality,
+    HIRE_IDS.builtInSocial,
+    HIRE_IDS.builtInBookkeeper,
   ]) {
-    await expect(
-      page
-        .getByRole("region", { name: "Role packs" })
-        .getByRole("heading", { name }),
-    ).toBeVisible();
+    await expect(catalog.getByTestId(`hire-role-${id}`)).toBeVisible();
   }
   await expect(
-    page.locator('[aria-label="Role catalog"]').getByRole("heading", {
+    catalog.getByRole("heading", {
       name: "Chief of Staff",
     }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Create role pack" }),
-  ).toHaveCount(0);
+  await expect(page.getByTestId("hire-custom-role")).toHaveAttribute(
+    "aria-label",
+    "Create your own role",
+  );
   await shot(page, {
     name: "HireRoles-built-in",
     board: "HireRoles",

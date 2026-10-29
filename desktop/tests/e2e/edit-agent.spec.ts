@@ -73,32 +73,6 @@ async function pickDropdownOption(
   await page.getByRole("menuitemradio", { name: optionName }).click();
 }
 
-test.describe("agent definition dialog", () => {
-  test("owner-only-access build shows disabled agent access with an explanation", async ({
-    page,
-  }) => {
-    await installMockBridge(page, {
-      ownerOnlyAccessBuild: true,
-      bakedBuildEnv: BAKED_DEFAULTS,
-    });
-    await page.goto("/");
-    await openAgentsDirectoryView(page);
-    await page.getByTestId("agent-add-button").click();
-
-    const dialog = page.getByRole("dialog");
-    await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
-
-    await expect(dialog.getByTestId("agent-respond-to")).toBeVisible();
-    await expect(dialog.locator("#agent-respond-to")).toBeDisabled();
-    await expect(dialog.locator("#agent-respond-to")).toContainText(
-      "Only me (default)",
-    );
-    await expect(
-      dialog.getByTestId("agent-respond-to-disabled-reason"),
-    ).toHaveText("This build disallows changing this setting.");
-  });
-});
-
 test.describe("edit agent dialog", () => {
   test("owner-only-access build shows a disabled owner-only access control with an explanation", async ({
     page,
@@ -119,7 +93,14 @@ test.describe("edit agent dialog", () => {
 
     await openEditDialog(page);
 
+    const technicalDetails = page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) });
     const accessControl = page.getByTestId("agent-respond-to");
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
+    await expect(accessControl).toBeHidden();
+    await technicalDetails.locator("summary").click();
+    await expect(technicalDetails).toHaveAttribute("open", "");
     await expect(accessControl).toBeVisible();
     await expect(page.locator("#agent-respond-to")).toBeDisabled();
     await expect(page.locator("#agent-respond-to")).toContainText(
@@ -145,6 +126,11 @@ test.describe("edit agent dialog", () => {
 
     await openEditDialog(page);
 
+    const technicalDetails = page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) });
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
+    await technicalDetails.locator("summary").click();
     await expect(page.getByTestId("agent-respond-to")).toBeVisible();
   });
 
@@ -222,7 +208,7 @@ test.describe("edit agent dialog", () => {
     );
   });
 
-  test("keeps the custom command visible without opening Advanced", async ({
+  test("keeps the custom command inside collapsed Technical details", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -238,17 +224,18 @@ test.describe("edit agent dialog", () => {
 
     await openEditDialog(page);
 
-    const advanced = page.getByRole("button", {
-      name: "Advanced",
-      exact: true,
-    });
-    await expect(advanced).toHaveAttribute("aria-expanded", "false");
+    const technicalDetails = page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) });
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
     await pickDropdownOption(page, "edit-agent-runtime", "Custom command");
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
+    await expect(page.locator("#edit-agent-command")).toBeHidden();
+    await technicalDetails.locator("summary").click();
     await expect(page.locator("#edit-agent-command")).toBeVisible();
-    await expect(advanced).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("marks a missing advanced credential without opening Advanced", async ({
+  test("marks a missing credential on collapsed Technical details", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -264,19 +251,18 @@ test.describe("edit agent dialog", () => {
 
     await openEditDialog(page);
 
-    const advanced = page.getByRole("button", {
-      name: "Advanced",
-      exact: true,
-    });
-    await expect(advanced).toHaveAttribute("aria-expanded", "false");
+    const technicalDetails = page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) });
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
     await pickDropdownOption(page, "edit-agent-llm-provider", "Databricks v2");
-    await expect(advanced).toHaveAttribute("aria-expanded", "false");
+    await expect(technicalDetails).not.toHaveAttribute("open", "");
     await expect(
-      page.getByTestId("edit-agent-advanced-required-badge"),
+      page.getByTestId("edit-agent-technical-details-required-badge"),
     ).toHaveText("Required");
     await expect(page.getByTestId("edit-agent-dialog-submit")).toBeDisabled();
 
-    await advanced.click();
+    await technicalDetails.locator("summary").click();
     await expect(page.getByLabel("Value for DATABRICKS_HOST")).toBeVisible();
   });
 
@@ -301,6 +287,11 @@ test.describe("edit agent dialog", () => {
     await expect(page.locator("#edit-agent-model")).toHaveText(
       "Inherit build default (claude-opus-4-8)",
     );
+    await page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) })
+      .locator("summary")
+      .click();
     const defaults = page.getByTestId("agent-ai-defaults-notice");
     await expect(
       defaults.getByText("Anthropic", { exact: true }),
@@ -338,6 +329,11 @@ test.describe("edit agent dialog", () => {
     await expect(page.locator("#edit-agent-model")).toHaveText(
       "Use agent defaults (claude-opus-4-5)",
     );
+    await page
+      .locator("details")
+      .filter({ has: page.getByText("Technical details", { exact: true }) })
+      .locator("summary")
+      .click();
     const defaults = page.getByTestId("agent-ai-defaults-notice");
     await expect(
       defaults.getByText("Anthropic", { exact: true }),

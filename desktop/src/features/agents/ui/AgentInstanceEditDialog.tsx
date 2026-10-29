@@ -1123,8 +1123,16 @@ export function AgentInstanceEditDialog({
             />
 
             <details className="rounded-xl border border-border px-3 py-2">
-              <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                Technical details
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span>Technical details</span>
+                {advancedRequiredEnvKeys.length > 0 ? (
+                  <span
+                    className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive"
+                    data-testid="edit-agent-technical-details-required-badge"
+                  >
+                    Required
+                  </span>
+                ) : null}
               </summary>
               <div className="mt-3 space-y-4">
                 <OwnerOnlyAccessField
