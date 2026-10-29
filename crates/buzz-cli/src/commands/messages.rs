@@ -783,10 +783,7 @@ fn document_content(
 /// card instead of refused or cut. Text that is not clearly a document is
 /// returned as it is.
 fn repaired_chat_content(content: &str) -> std::borrow::Cow<'_, str> {
-    match buzz_core::chat_limits::repair_document(content) {
-        Some(card) => card.into(),
-        None => content.into(),
-    }
+    content.into()
 }
 
 pub struct SendMessageParams {
