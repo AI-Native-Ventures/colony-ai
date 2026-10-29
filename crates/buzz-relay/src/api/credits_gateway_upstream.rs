@@ -2582,14 +2582,15 @@ mod tests {
             .unwrap_or_else(|| panic!("no unfinished-answer line in {text}"));
         assert!(has(line, "model", "free/b:free"), "{line}");
         assert!(has(line, "upstream_status", "200"), "{line}");
-        assert!(
-            has(
-                line,
-                "upstream_message",
-                "answer not finished within 500 ms"
-            ),
-            "{line}"
-        );
+        // `a` was cut at 400 ms of the 900 ms budget, so `b` was left what
+        // remained of it: a little under 500 ms.
+        let waited: u64 = line
+            .split("answer not finished within ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|ms| ms.parse().ok())
+            .unwrap_or_else(|| panic!("no wait in {line}"));
+        assert!((400..=500).contains(&waited), "{line}");
         assert!(has(line, "free", "true"), "{line}");
     }
 
