@@ -390,7 +390,7 @@ fn valid_uuid_or_new(value: Option<&str>, field: &str) -> Result<Uuid, CliError>
     }
 }
 
-/// The `47046` command content.
+/// The `47048` command content.
 pub(crate) fn batch_content(
     template: &str,
     language: &str,
@@ -428,7 +428,7 @@ pub(crate) fn batch_content(
     }))
 }
 
-/// The `47047` command content.
+/// The `47049` command content.
 pub(crate) fn decision_content(
     batch: &str,
     decision: &str,
@@ -446,7 +446,7 @@ pub(crate) fn decision_content(
     }))
 }
 
-/// The `47047` content that decides one agent draft.
+/// The `47049` content that decides one agent draft.
 pub(crate) fn draft_decision_content(
     draft: &str,
     decision: &str,
@@ -473,7 +473,7 @@ pub(crate) fn draft_decision_content(
     Ok(content)
 }
 
-/// The `47048` command content. Exactly one recipient and one body.
+/// The `47050` command content. Exactly one recipient and one body.
 pub(crate) fn send_content(
     contact: Option<&str>,
     thread: Option<&str>,
@@ -547,7 +547,7 @@ pub(crate) fn render_templates(raw: &str) -> Result<String, CliError> {
     Ok(format!("[{}]", items.join(",")))
 }
 
-/// The `47049` content that renames a template or proposes a title.
+/// The `47051` content that renames a template or proposes a title.
 pub(crate) fn template_title_content(
     template: &str,
     language: &str,

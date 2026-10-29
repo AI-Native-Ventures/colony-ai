@@ -117,7 +117,7 @@ pub struct TemplateRef {
     pub params: Vec<String>,
 }
 
-/// A validated `47048` command.
+/// A validated `47050` command.
 #[derive(Debug, Clone)]
 pub struct SendCommand {
     /// Idempotency key chosen by the sender.

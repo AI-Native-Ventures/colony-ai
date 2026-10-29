@@ -136,6 +136,12 @@ for an outbound message is immutable.
 
 ## Events (member signed commands, handled by the relay)
 
+**Kind block.** This feature owns actions `47048` to `47055` (four used: `47048` to `47051`) and,
+if relay-signed heads are ever needed, `30660` to `30667` (none used today). `47046` and `47047` are
+reserved for the business profile and team computer actions. Co-founder mode owns
+`30670` to `30679` and `47060` to `47069`. A compile-time assert in `kind.rs` keeps the
+WhatsApp kinds inside `47048..=47055`.
+
 The commands are requests, not stored events: the relay validates them and records the
 result in its own tables (batch, message and contact rows), and posts a short notice in the
 Outreach channel (`batch_pending`, `batch_approved`, ...). They carry no `h` tag (the CLI sends
@@ -143,7 +149,7 @@ none). The ingest result `message` carries the plain refusal reason when an even
 rejected (`restricted: ...` or `invalid: ...`); a repeat of an idempotent command is
 accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
 
-### `47046` `KIND_WHATSAPP_BATCH` (owner/admin or Outreach member)
+### `47048` `KIND_WHATSAPP_BATCH` (owner/admin or Outreach member)
 
 ```json
 {
@@ -164,7 +170,7 @@ re-renders every preview itself and stores the batch as `pending`. A pending bat
 Opted-out or paused numbers are refused at create time with a clear reason per row.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
-### `47047` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
+### `47049` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
 
 ```json
 {
@@ -179,7 +185,7 @@ Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 Edits and drops apply to a pending batch only, before the decision. Approve makes the
 remaining rows `ready`. Reject is final.
 
-To decide one agent draft (see `47048`) send `draftId` instead of `batchId`:
+To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 
 ```json
 { "v": 1, "draftId": "<message id>", "decision": "approve" | "reject",
@@ -191,7 +197,7 @@ moment (opted out, paused, quality stop, 24 hour window for free text, one messa
 refused approval leaves the draft pending with the plain reason. A draft can be decided once: a
 repeat is answered `duplicate: this draft was already decided`.
 
-### `47048` `KIND_WHATSAPP_SEND_REQUEST` (owner/admin or Outreach member)
+### `47050` `KIND_WHATSAPP_SEND_REQUEST` (owner/admin or Outreach member)
 
 ```json
 { "v": 1, "requestId": "uuid", "to": "+27821234567", "text": "..." }
@@ -212,14 +218,14 @@ of each row. EVERY later outbound message from an agent (reply inside the window
 template, files, links) is a DRAFT: the request is stored with state `draft`, mirrored into the
 contact's thread with tags `wa-draft` and `wa-msg` (the message id), and the answer is
 `draft pending approval: <id>`. A draft never reaches Graph; the sender only reads `queued` and
-`ready` rows. An owner or admin approves, edits or rejects it with `47047`. A message the owner or an
+`ready` rows. An owner or admin approves, edits or rejects it with `47049`. A message the owner or an
 admin sends themselves is the approval: it is `queued` and sent at once. One draft at a time per
 contact (a pending draft counts toward rule 4). Free text still only inside the 24 hour window.
 
 The request is stored durably and sent by the relay worker. `requestId` is the idempotency
 key: one request is at most one Graph send.
 
-### `47049` `KIND_WHATSAPP_SETTINGS` (owner/admin; agents may only propose a title)
+### `47051` `KIND_WHATSAPP_SETTINGS` (owner/admin; agents may only propose a title)
 
 ```json
 { "v": 1, "dailyNewChatCap": 30 }

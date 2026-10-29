@@ -799,14 +799,17 @@ pub const KIND_LESSON_ACTION: u32 = 47045;
 // `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
 // of the Graph send API. Events are stored in the company's private Outreach
 // channel whatever `h` tag they carry. Contract: docs/whatsapp-outreach.md.
+// Reserved block: actions 47048 to 47055, relay-signed heads 30660 to 30667.
+// 47046 and 47047 belong to the business profile and team computer actions;
+// co-founder mode owns 30670 to 30679 and 47060 to 47069.
 /// Agent-prepared batch of template sends. Pending until an owner or admin decides.
-pub const KIND_WHATSAPP_BATCH: u32 = 47046;
+pub const KIND_WHATSAPP_BATCH: u32 = 47048;
 /// Owner or admin decision on one pending batch (approve, reject, edit or drop rows).
-pub const KIND_WHATSAPP_BATCH_DECISION: u32 = 47047;
+pub const KIND_WHATSAPP_BATCH_DECISION: u32 = 47049;
 /// One send to one contact: free text inside the 24 hour window, otherwise a template.
-pub const KIND_WHATSAPP_SEND_REQUEST: u32 = 47048;
+pub const KIND_WHATSAPP_SEND_REQUEST: u32 = 47050;
 /// Owner or admin outreach settings (daily cap on new chats, template sync).
-pub const KIND_WHATSAPP_SETTINGS: u32 = 47049;
+pub const KIND_WHATSAPP_SETTINGS: u32 = 47051;
 
 /// Every WhatsApp outreach command kind.
 pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
@@ -1394,6 +1397,18 @@ const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); 
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
+
+// Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
+const _: () = assert!(
+    KIND_WHATSAPP_BATCH >= 47048
+        && KIND_WHATSAPP_BATCH_DECISION >= 47048
+        && KIND_WHATSAPP_SEND_REQUEST >= 47048
+        && KIND_WHATSAPP_SETTINGS >= 47048
+        && KIND_WHATSAPP_BATCH <= 47055
+        && KIND_WHATSAPP_BATCH_DECISION <= 47055
+        && KIND_WHATSAPP_SEND_REQUEST <= 47055
+        && KIND_WHATSAPP_SETTINGS <= 47055
+);
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
