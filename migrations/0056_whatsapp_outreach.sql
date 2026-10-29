@@ -3,7 +3,7 @@
 -- A company's settings (cap, Outreach channel, visible issues) survive a disconnect;
 -- the connection row, and with it the sealed secrets, does not.
 CREATE TABLE whatsapp_settings (
-    community_id UUID PRIMARY KEY REFERENCES communities(id),
+    community_id UUID NOT NULL PRIMARY KEY REFERENCES communities(id),
     daily_new_chat_cap INTEGER NOT NULL DEFAULT 30
         CHECK (daily_new_chat_cap BETWEEN 0 AND 1000),
     outreach_channel_id UUID,
@@ -18,7 +18,7 @@ CREATE TABLE whatsapp_settings (
 );
 
 CREATE TABLE whatsapp_connections (
-    community_id UUID PRIMARY KEY REFERENCES communities(id),
+    community_id UUID NOT NULL PRIMARY KEY REFERENCES communities(id),
     id UUID NOT NULL,
     phone_number_id TEXT NOT NULL CHECK (length(phone_number_id) BETWEEN 1 AND 64),
     waba_id TEXT NOT NULL CHECK (length(waba_id) BETWEEN 1 AND 64),
