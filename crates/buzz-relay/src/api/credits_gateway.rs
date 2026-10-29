@@ -364,7 +364,7 @@ async fn start_inference(
             answered_by: None,
             elapsed: started.elapsed(),
             streamed: false,
-            models_tried: "",
+            models_tried: "x",
         });
         response
     };
@@ -531,7 +531,7 @@ async fn settle_request(
     tried: &mut String,
 ) -> Result<(Json<Value>, String), Failure> {
     let completion = upstream.complete(&upstream_body).await;
-    *tried = completion.tried.join(",");
+    *tried = completion.tried.last().cloned().unwrap_or_default();
     let answer = match completion.result {
         Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
