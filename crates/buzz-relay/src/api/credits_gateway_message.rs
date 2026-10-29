@@ -70,7 +70,7 @@ fn clean(message: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     // Remove before cutting, so a key cannot be left half shown at the cut.
-    cut(&remove_secrets(&one_line))
+    remove_secrets(&cut(&one_line))
 }
 
 /// A character that can be part of a key, a token or a model id.
