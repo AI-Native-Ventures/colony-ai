@@ -27,6 +27,7 @@ import {
 import {
   countPeopleRoles,
   industryTaxonomy,
+  loadVerticalTags,
   peopleTaxonomy,
   searchCatalogue,
 } from "./taxonomy";
@@ -97,6 +98,17 @@ export function DiscoveryScreen() {
   const [campaignList, setCampaignList] = React.useState<DiscoveryCampaign[]>(
     [],
   );
+  // The tag layer loads once when Discovery opens; the open search re-runs when it lands.
+  const [, setTagsLoaded] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    void loadVerticalTags().then((loaded) => {
+      if (live && loaded) setTagsLoaded(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const categories: readonly Category[] =
     mode === "businesses" ? industryTaxonomy : peopleTaxonomy;
   const selectedCategory = industryId
