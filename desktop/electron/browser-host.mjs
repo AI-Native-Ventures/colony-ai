@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createBrowserSessionStore } from "./browser-session.mjs";
 import {
+  createAgentCursorOverlayManager,
+  validateAgentCursorLabels,
+} from "./browser-broker/agent-cursor-overlay.mjs";
+import {
   MAX_BROWSER_ERROR_LENGTH,
   MAX_BROWSER_TITLE_LENGTH,
   MAX_BROWSER_TABS,
@@ -71,6 +75,10 @@ export function createBrowserHost({
   const privateListeners = new Set();
   const blockedNavigations = new Map();
   let stageTurn = Promise.resolve();
+  const agentCursorOverlay = createAgentCursorOverlayManager({
+    BrowserWindow,
+    getTab: (id) => tabs.get(id),
+  });
 
   function gate(tab, url, isMainFrame = true) {
     const verdict = navigationGate(tab.id, url, isMainFrame);
@@ -379,6 +387,7 @@ export function createBrowserHost({
       if (!tabs.has(tab.id) || tab.agentInputs > 0) return;
       if (!HUMAN_INPUT_TYPES.has(input.type)) return;
       tab.humanInputAt = Date.now();
+      void agentCursorOverlay.hide(tab.id);
       sendTabEvent(tab, "person-input");
       for (const listener of humanInputListeners) listener(tab.id);
     });
@@ -476,6 +485,7 @@ export function createBrowserHost({
         activeNavigationUrl: null,
         activeNavigationGeneration: null,
         controlOwner: "human",
+        agentCursorLabels: new Map(),
         ownerWindow,
         appWebContents,
         view,
@@ -556,6 +566,7 @@ export function createBrowserHost({
         if (other.id === tab.id || other.ownerWindow !== tab.ownerWindow)
           continue;
         if (other.attached && other.visible) {
+          agentCursorOverlay.detach(other.id);
           if (other.webContents.isFocused()) focusAppWindow(other);
           other.view.setVisible(false);
           other.visible = false;
@@ -566,11 +577,13 @@ export function createBrowserHost({
     tab.view.setBounds(bounds);
     tab.view.setVisible(visible);
     tab.visible = visible;
+    agentCursorOverlay.attach(tab);
     sendState(tab);
     return snapshot(tab);
   }
 
   function detachTab(tab) {
+    agentCursorOverlay.detach(tab.id);
     if (tab.webContents.isFocused()) focusAppWindow(tab);
     if (tab.attached && !tab.ownerWindow.isDestroyed())
       tab.ownerWindow.contentView.removeChildView(tab.view);
@@ -583,6 +596,7 @@ export function createBrowserHost({
 
   function closeRecord(tab) {
     if (!tabs.has(tab.id)) return;
+    agentCursorOverlay.close(tab.id);
     for (const listener of closeListeners) listener(tab.id);
     blockedNavigations.delete(tab.id);
     if (tab.attached && !tab.ownerWindow.isDestroyed())
@@ -716,6 +730,13 @@ export function createBrowserHost({
     }
 
     const tab = findOwnedTab(payload.tabId, sender.id);
+    if (action === "cursor-labels") {
+      const labels = validateAgentCursorLabels(payload.labels);
+      tab.agentCursorLabels = new Map(
+        labels.map((entry) => [entry.agentId, entry]),
+      );
+      return { updated: true };
+    }
     // A page on the capture stage returns to the window first, so a show or
     // hide from the app is applied to a page that is back where it belongs.
     if (["attach", "detach"].includes(action)) await tab.staging;
@@ -901,6 +922,7 @@ export function createBrowserHost({
     },
     stop(id) {
       const tab = tabs.get(id);
+      void agentCursorOverlay.hide(id);
       if (tab && !tab.webContents.isDestroyed()) tab.webContents.stop();
     },
     setControlOwner(id, owner) {
@@ -909,8 +931,11 @@ export function createBrowserHost({
       if (!["human", "agent", "agent-awaiting-confirmation"].includes(owner))
         throw new Error("Invalid controller");
       tab.controlOwner = owner;
+      if (owner !== "agent") void agentCursorOverlay.hide(id);
       sendState(tab);
     },
+    showAgentCursor: (id, action) => agentCursorOverlay.move(id, action),
+    hideAgentCursors: (id) => agentCursorOverlay.hide(id),
     setNavigationGate(callback) {
       navigationGate = callback;
     },
