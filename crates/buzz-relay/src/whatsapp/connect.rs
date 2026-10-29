@@ -88,7 +88,9 @@ impl ConnectError {
 fn digits_only(value: &str, field: &str) -> Result<String, ConnectError> {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.len() > 32 || !trimmed.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(ConnectError::Invalid(format!("{field} must be digits only")));
+        return Err(ConnectError::Invalid(format!(
+            "{field} must be digits only"
+        )));
     }
     Ok(trimmed.to_string())
 }
@@ -103,10 +105,14 @@ pub fn validate_input(
     let token = access_token.trim();
     let secret = app_secret.trim();
     if token.is_empty() || token.len() > 1024 || token.chars().any(char::is_whitespace) {
-        return Err(ConnectError::Invalid("accessToken is missing or malformed".into()));
+        return Err(ConnectError::Invalid(
+            "accessToken is missing or malformed".into(),
+        ));
     }
     if secret.is_empty() || secret.len() > 256 || secret.chars().any(char::is_whitespace) {
-        return Err(ConnectError::Invalid("appSecret is missing or malformed".into()));
+        return Err(ConnectError::Invalid(
+            "appSecret is missing or malformed".into(),
+        ));
     }
     Ok(ConnectInput {
         access_token: Zeroizing::new(token.to_string()),
@@ -123,7 +129,10 @@ pub fn webhook_url(state: &AppState, tenant: &TenantContext, connection_id: Uuid
     } else {
         "http"
     };
-    format!("{scheme}://{}/hooks/whatsapp/{connection_id}", tenant.host())
+    format!(
+        "{scheme}://{}/hooks/whatsapp/{connection_id}",
+        tenant.host()
+    )
 }
 
 /// Open both sealed secrets of a connection.
@@ -266,13 +275,22 @@ pub async fn connect(
         tracing::error!("whatsapp outreach channel setup failed: {error}");
         return Err(ConnectError::Internal(error));
     }
-    for code in ["token_expired", "number_disconnected", "quality_red", "quality_yellow"] {
+    for code in [
+        "token_expired",
+        "number_disconnected",
+        "quality_red",
+        "quality_yellow",
+    ] {
         if let Err(error) = state.db.whatsapp_clear_issue(community, code).await {
             tracing::warn!("whatsapp issue clear failed: {error}");
         }
     }
     // A fresh connection starts unpaused; the quality reading below can stop it again.
-    if let Err(error) = state.db.whatsapp_set_send_paused(community, false, None).await {
+    if let Err(error) = state
+        .db
+        .whatsapp_set_send_paused(community, false, None)
+        .await
+    {
         tracing::warn!("whatsapp unpause after connect failed: {error}");
     }
     apply_phone_info(state, tenant, &info).await;
@@ -312,7 +330,9 @@ pub async fn disconnect(
                         tracing::warn!("whatsapp webhook override removal failed: {error}");
                     }
                 }
-                Err(error) => tracing::warn!("whatsapp disconnect could not open the token: {error}"),
+                Err(error) => {
+                    tracing::warn!("whatsapp disconnect could not open the token: {error}")
+                }
             }
         }
         state
@@ -320,7 +340,13 @@ pub async fn disconnect(
             .whatsapp_delete_connection(community)
             .await
             .map_err(|error| ConnectError::Internal(error.to_string()))?;
-        channel::post_notice(state, tenant, "disconnected", "WhatsApp number disconnected.").await;
+        channel::post_notice(
+            state,
+            tenant,
+            "disconnected",
+            "WhatsApp number disconnected.",
+        )
+        .await;
     }
     status_view(state, tenant)
         .await
@@ -328,7 +354,10 @@ pub async fn disconnect(
 }
 
 /// Fetch approved templates from Meta and store them. Returns how many.
-pub async fn sync_templates(state: &Arc<AppState>, tenant: &TenantContext) -> Result<usize, String> {
+pub async fn sync_templates(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+) -> Result<usize, String> {
     let community = tenant.community();
     let kek = state
         .config
@@ -368,12 +397,18 @@ pub async fn sync_templates(state: &Arc<AppState>, tenant: &TenantContext) -> Re
         .whatsapp_replace_templates(community, &templates, Utc::now())
         .await
         .map_err(|error| error.to_string())?;
-    let _ = state.db.whatsapp_clear_issue(community, "template_sync").await;
+    let _ = state
+        .db
+        .whatsapp_clear_issue(community, "template_sync")
+        .await;
     Ok(count)
 }
 
 /// Ask Meta about the number and apply quality and connection state.
-pub async fn refresh_phone_info(state: &Arc<AppState>, tenant: &TenantContext) -> Result<(), String> {
+pub async fn refresh_phone_info(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+) -> Result<(), String> {
     let community = tenant.community();
     let Some(kek) = state.config.accounts.account_kek() else {
         return Ok(());
@@ -393,7 +428,10 @@ pub async fn refresh_phone_info(state: &Arc<AppState>, tenant: &TenantContext) -
         .await
     {
         Ok(info) => {
-            let _ = state.db.whatsapp_clear_issue(community, "token_expired").await;
+            let _ = state
+                .db
+                .whatsapp_clear_issue(community, "token_expired")
+                .await;
             apply_phone_info(state, tenant, &info).await;
             Ok(())
         }
@@ -470,7 +508,8 @@ pub fn plan_quality(
             actions.pause = Some(true);
         }
         "YELLOW" => {
-            let message = "Quality rating is YELLOW. Send fewer messages and watch replies.".to_string();
+            let message =
+                "Quality rating is YELLOW. Send fewer messages and watch replies.".to_string();
             if new("quality_yellow") {
                 actions.notify.push(("quality_yellow", message.clone()));
             }
@@ -494,7 +533,9 @@ pub fn plan_quality(
     if disconnected {
         let message = "Meta reports the number is not connected.".to_string();
         if new("number_disconnected") {
-            actions.notify.push(("number_disconnected", message.clone()));
+            actions
+                .notify
+                .push(("number_disconnected", message.clone()));
         }
         actions.set_issues.push(("number_disconnected", message));
     } else {
@@ -506,7 +547,10 @@ pub fn plan_quality(
 /// Store Meta's reading of the number and apply the quality plan.
 pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, info: &PhoneInfo) {
     let community = tenant.community();
-    let quality = info.quality_rating.clone().unwrap_or_else(|| "UNKNOWN".to_string());
+    let quality = info
+        .quality_rating
+        .clone()
+        .unwrap_or_else(|| "UNKNOWN".to_string());
     if let Err(error) = state
         .db
         .whatsapp_update_phone_info(
@@ -558,7 +602,10 @@ pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, inf
                 .await;
         }
         Some(false) => {
-            let _ = state.db.whatsapp_set_send_paused(community, false, None).await;
+            let _ = state
+                .db
+                .whatsapp_set_send_paused(community, false, None)
+                .await;
         }
         None => {}
     }
@@ -625,29 +672,53 @@ mod tests {
     fn red_quality_stops_sending_and_tells_the_owner_once() {
         let first = plan_quality("RED", Some("CONNECTED"), None, &[]);
         assert_eq!(first.pause, Some(true));
-        assert!(first.set_issues.iter().any(|(code, _)| *code == "quality_red"));
+        assert!(first
+            .set_issues
+            .iter()
+            .any(|(code, _)| *code == "quality_red"));
         assert_eq!(first.notify.len(), 1);
-        let repeat = plan_quality("RED", Some("CONNECTED"), Some(QUALITY_PAUSE_REASON), &["quality_red"]);
+        let repeat = plan_quality(
+            "RED",
+            Some("CONNECTED"),
+            Some(QUALITY_PAUSE_REASON),
+            &["quality_red"],
+        );
         assert_eq!(repeat.pause, Some(true));
         assert!(repeat.notify.is_empty());
     }
 
     #[test]
     fn better_quality_resumes_only_a_pause_quality_caused() {
-        let resumed = plan_quality("GREEN", Some("CONNECTED"), Some(QUALITY_PAUSE_REASON), &["quality_red"]);
+        let resumed = plan_quality(
+            "GREEN",
+            Some("CONNECTED"),
+            Some(QUALITY_PAUSE_REASON),
+            &["quality_red"],
+        );
         assert_eq!(resumed.pause, Some(false));
         assert!(resumed.clear_issues.contains(&"quality_red"));
-        let manual = plan_quality("GREEN", Some("CONNECTED"), Some("The WhatsApp access token expired"), &[]);
+        let manual = plan_quality(
+            "GREEN",
+            Some("CONNECTED"),
+            Some("The WhatsApp access token expired"),
+            &[],
+        );
         assert_eq!(manual.pause, None);
         let yellow = plan_quality("YELLOW", None, None, &[]);
         assert_eq!(yellow.pause, None);
-        assert!(yellow.set_issues.iter().any(|(code, _)| *code == "quality_yellow"));
+        assert!(yellow
+            .set_issues
+            .iter()
+            .any(|(code, _)| *code == "quality_yellow"));
     }
 
     #[test]
     fn a_disconnected_number_is_an_issue() {
         let plan = plan_quality("GREEN", Some("DISCONNECTED"), None, &[]);
-        assert!(plan.set_issues.iter().any(|(code, _)| *code == "number_disconnected"));
+        assert!(plan
+            .set_issues
+            .iter()
+            .any(|(code, _)| *code == "number_disconnected"));
         assert_eq!(plan.notify.len(), 1);
         let ok = plan_quality("GREEN", Some("connected"), None, &["number_disconnected"]);
         assert!(ok.clear_issues.contains(&"number_disconnected"));
@@ -663,8 +734,17 @@ mod tests {
 
     #[test]
     fn connect_errors_have_stable_codes() {
-        assert_eq!(ConnectError::NotConfigured.code(), "whatsapp_not_configured");
-        assert_eq!(ConnectError::TokenRejected.code(), "whatsapp_token_rejected");
-        assert_eq!(ConnectError::AlreadyConnected.code(), "whatsapp_already_connected");
+        assert_eq!(
+            ConnectError::NotConfigured.code(),
+            "whatsapp_not_configured"
+        );
+        assert_eq!(
+            ConnectError::TokenRejected.code(),
+            "whatsapp_token_rejected"
+        );
+        assert_eq!(
+            ConnectError::AlreadyConnected.code(),
+            "whatsapp_already_connected"
+        );
     }
 }

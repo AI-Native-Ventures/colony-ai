@@ -167,9 +167,12 @@ pub async fn enqueue_send(
         return Err("no WhatsApp number is connected".into());
     }
     let wa_id = match (&command.to, &command.thread_root) {
-        (Some(to), _) => normalize_wa_id(to).ok_or_else(|| "that is not a phone number".to_string())?,
+        (Some(to), _) => {
+            normalize_wa_id(to).ok_or_else(|| "that is not a phone number".to_string())?
+        }
         (None, Some(root)) => {
-            let root_bytes = hex::decode(root).map_err(|_| "threadRoot must be a hex event id".to_string())?;
+            let root_bytes =
+                hex::decode(root).map_err(|_| "threadRoot must be a hex event id".to_string())?;
             state
                 .db
                 .whatsapp_get_contact_by_thread(community, &root_bytes)
@@ -205,32 +208,40 @@ pub async fn enqueue_send(
         is_template: command.template.is_some(),
     })?;
 
-    let (kind, body, template_name, template_language, params) = match (&command.text, &command.template) {
-        (Some(text), None) => {
-            let text = text.trim();
-            if text.is_empty() || text.chars().count() > MAX_TEXT_CHARS {
-                return Err(format!("text must be 1 through {MAX_TEXT_CHARS} characters"));
+    let (kind, body, template_name, template_language, params) =
+        match (&command.text, &command.template) {
+            (Some(text), None) => {
+                let text = text.trim();
+                if text.is_empty() || text.chars().count() > MAX_TEXT_CHARS {
+                    return Err(format!(
+                        "text must be 1 through {MAX_TEXT_CHARS} characters"
+                    ));
+                }
+                ("text", text.to_string(), None, None, serde_json::json!([]))
             }
-            ("text", text.to_string(), None, None, serde_json::json!([]))
-        }
-        (None, Some(template)) => {
-            let stored = state
-                .db
-                .whatsapp_get_template(community, &template.name, &template.language)
-                .await
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| format!("template {} ({}) is not approved", template.name, template.language))?;
-            let body = render_template(&stored.body, &template.params)?;
-            (
-                "template",
-                body,
-                Some(template.name.clone()),
-                Some(template.language.clone()),
-                serde_json::json!(template.params),
-            )
-        }
-        _ => return Err("send exactly one of text or template".into()),
-    };
+            (None, Some(template)) => {
+                let stored = state
+                    .db
+                    .whatsapp_get_template(community, &template.name, &template.language)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| {
+                        format!(
+                            "template {} ({}) is not approved",
+                            template.name, template.language
+                        )
+                    })?;
+                let body = render_template(&stored.body, &template.params)?;
+                (
+                    "template",
+                    body,
+                    Some(template.name.clone()),
+                    Some(template.language.clone()),
+                    serde_json::json!(template.params),
+                )
+            }
+            _ => return Err("send exactly one of text or template".into()),
+        };
 
     state
         .db
@@ -309,7 +320,14 @@ pub async fn run(state: Arc<AppState>) {
     let mut last_template_sync: HashMap<CommunityId, DateTime<Utc>> = HashMap::new();
     tracing::info!("WhatsApp sender started");
     loop {
-        if let Err(error) = tick(&state, Utc::now(), &mut last_phone_refresh, &mut last_template_sync).await {
+        if let Err(error) = tick(
+            &state,
+            Utc::now(),
+            &mut last_phone_refresh,
+            &mut last_template_sync,
+        )
+        .await
+        {
             tracing::error!("whatsapp sender tick failed: {error}");
         }
         tokio::time::sleep(TICK).await;
@@ -413,7 +431,13 @@ pub async fn process_community(
         .await
         .map_err(|error| error.to_string())?
     {
-        channel::post_notice(state, &tenant, "batch_completed", &format!("Batch {batch_id} is finished.")).await;
+        channel::post_notice(
+            state,
+            &tenant,
+            "batch_completed",
+            &format!("Batch {batch_id} is finished."),
+        )
+        .await;
     }
     if settings.send_paused {
         return Ok(());
@@ -439,7 +463,13 @@ pub async fn process_community(
             continue;
         };
         if let Some(at) = contact.opted_out_at {
-            skip(state, community, &message, &format!("contact opted out on {}", at.format("%Y-%m-%d"))).await;
+            skip(
+                state,
+                community,
+                &message,
+                &format!("contact opted out on {}", at.format("%Y-%m-%d")),
+            )
+            .await;
             continue;
         }
         if contact.paused_at.is_some() {
@@ -460,7 +490,13 @@ pub async fn process_community(
                 .whatsapp_last_new_chat_at(community)
                 .await
                 .map_err(|error| error.to_string())?;
-            match decide_new_chat(now, last, sent_today, settings.daily_new_chat_cap, row_gap(&message.id)) {
+            match decide_new_chat(
+                now,
+                last,
+                sent_today,
+                settings.daily_new_chat_cap,
+                row_gap(&message.id),
+            ) {
                 NewChatDecision::SendNow => {}
                 NewChatDecision::WaitUntil(_) | NewChatDecision::CapReached { .. } => {
                     new_chat_blocked = true;
@@ -468,7 +504,13 @@ pub async fn process_community(
                 }
             }
         } else if message.kind == "text" && !window_open(contact.last_inbound_at, now) {
-            skip(state, community, &message, "the 24 hour window closed before the message was sent").await;
+            skip(
+                state,
+                community,
+                &message,
+                "the 24 hour window closed before the message was sent",
+            )
+            .await;
             continue;
         }
 
@@ -482,7 +524,13 @@ pub async fn process_community(
         let lease = Uuid::new_v4();
         let claimed = state
             .db
-            .whatsapp_claim_message(community, message.id, lease, now + Duration::seconds(LEASE_SECS), now)
+            .whatsapp_claim_message(
+                community,
+                message.id,
+                lease,
+                now + Duration::seconds(LEASE_SECS),
+                now,
+            )
             .await
             .map_err(|error| error.to_string())?;
         if !claimed {
@@ -500,15 +548,23 @@ pub async fn process_community(
                     .await
                 {
                     Ok(true) => {}
-                    Ok(false) => tracing::error!(%community, message = %message.id, "whatsapp send record lost its lease"),
+                    Ok(false) => {
+                        tracing::error!(%community, message = %message.id, "whatsapp send record lost its lease")
+                    }
                     // The lease stays; it expires into `unconfirmed` and is never resent.
-                    Err(error) => tracing::error!(%community, message = %message.id, "whatsapp send record failed: {error}"),
+                    Err(error) => {
+                        tracing::error!(%community, message = %message.id, "whatsapp send record failed: {error}")
+                    }
                 }
                 if message.new_chat {
                     new_chat_blocked = true;
                 }
             }
-            Err(GraphError::Rejected { code, message: text, .. }) => {
+            Err(GraphError::Rejected {
+                code,
+                message: text,
+                ..
+            }) => {
                 let code_text = code.map(|c| c.to_string()).unwrap_or_default();
                 if let Err(error) = state
                     .db
@@ -518,7 +574,10 @@ pub async fn process_community(
                     tracing::error!(%community, "whatsapp failure record failed: {error}");
                 }
                 handle_failure(state, &tenant, &message, code, &text).await;
-                if matches!(code.map(classify_failure_code), Some(FailureKind::TokenExpired)) {
+                if matches!(
+                    code.map(classify_failure_code),
+                    Some(FailureKind::TokenExpired)
+                ) {
                     break;
                 }
             }
@@ -532,8 +591,17 @@ pub async fn process_community(
     Ok(())
 }
 
-async fn skip(state: &Arc<AppState>, community: CommunityId, message: &WhatsappMessage, reason: &str) {
-    if let Err(error) = state.db.whatsapp_skip_message(community, message.id, reason).await {
+async fn skip(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    message: &WhatsappMessage,
+    reason: &str,
+) {
+    if let Err(error) = state
+        .db
+        .whatsapp_skip_message(community, message.id, reason)
+        .await
+    {
         tracing::warn!(%community, "whatsapp skip record failed: {error}");
     }
 }
@@ -547,13 +615,20 @@ pub async fn handle_failure(
     text: &str,
 ) {
     let community = tenant.community();
-    let kind = code.map(classify_failure_code).unwrap_or(FailureKind::Other);
+    let kind = code
+        .map(classify_failure_code)
+        .unwrap_or(FailureKind::Other);
     match kind {
         FailureKind::TokenExpired => note_token_expired(state, tenant).await,
         FailureKind::ContactBlocked => {
             let newly = state
                 .db
-                .whatsapp_pause_contact(community, &message.wa_id, &format!("Meta error {}", code.unwrap_or_default()), Utc::now())
+                .whatsapp_pause_contact(
+                    community,
+                    &message.wa_id,
+                    &format!("Meta error {}", code.unwrap_or_default()),
+                    Utc::now(),
+                )
                 .await
                 .unwrap_or(false);
             if newly {
@@ -574,23 +649,49 @@ pub async fn handle_failure(
             let name = message.template_name.clone().unwrap_or_default();
             let _ = state
                 .db
-                .whatsapp_set_issue(community, "template_paused", &format!("Template {name} is paused or disabled."), Utc::now())
+                .whatsapp_set_issue(
+                    community,
+                    "template_paused",
+                    &format!("Template {name} is paused or disabled."),
+                    Utc::now(),
+                )
                 .await;
-            channel::post_notice(state, tenant, "template_paused", &format!("Template {name} is paused or disabled by Meta.")).await;
+            channel::post_notice(
+                state,
+                tenant,
+                "template_paused",
+                &format!("Template {name} is paused or disabled by Meta."),
+            )
+            .await;
         }
         FailureKind::NumberDisconnected => {
             let _ = state
                 .db
-                .whatsapp_set_issue(community, "number_disconnected", "Meta reports the number is not connected.", Utc::now())
+                .whatsapp_set_issue(
+                    community,
+                    "number_disconnected",
+                    "Meta reports the number is not connected.",
+                    Utc::now(),
+                )
                 .await;
-            channel::post_notice(state, tenant, "number_disconnected", "Meta reports the number is not connected.").await;
+            channel::post_notice(
+                state,
+                tenant,
+                "number_disconnected",
+                "Meta reports the number is not connected.",
+            )
+            .await;
         }
         FailureKind::Other => {
             channel::post_notice(
                 state,
                 tenant,
                 "send_failed",
-                &format!("A send to {} failed: {}", e164(&message.wa_id), text.chars().take(200).collect::<String>()),
+                &format!(
+                    "A send to {} failed: {}",
+                    e164(&message.wa_id),
+                    text.chars().take(200).collect::<String>()
+                ),
             )
             .await;
         }
@@ -598,12 +699,20 @@ pub async fn handle_failure(
 }
 
 /// Retry the Colony posts that failed after the message was stored or sent.
-pub async fn repair_unposted(state: &Arc<AppState>, tenant: &TenantContext, channel_id: Option<Uuid>) {
+pub async fn repair_unposted(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    channel_id: Option<Uuid>,
+) {
     let Some(channel_id) = channel_id else {
         return;
     };
     let community = tenant.community();
-    let pending = match state.db.whatsapp_list_unposted(community, UNPOSTED_PER_TICK).await {
+    let pending = match state
+        .db
+        .whatsapp_list_unposted(community, UNPOSTED_PER_TICK)
+        .await
+    {
         Ok(pending) => pending,
         Err(error) => {
             tracing::warn!(%community, "whatsapp unposted lookup failed: {error}");
@@ -611,10 +720,16 @@ pub async fn repair_unposted(state: &Arc<AppState>, tenant: &TenantContext, chan
         }
     };
     for message in pending {
-        let Ok(Some(contact)) = state.db.whatsapp_get_contact(community, &message.wa_id).await else {
+        let Ok(Some(contact)) = state
+            .db
+            .whatsapp_get_contact(community, &message.wa_id)
+            .await
+        else {
             continue;
         };
-        if let Err(error) = channel::post_for_message(state, tenant, channel_id, &contact, &message).await {
+        if let Err(error) =
+            channel::post_for_message(state, tenant, channel_id, &contact, &message).await
+        {
             tracing::warn!(%community, message = %message.id, "whatsapp post retry failed: {error}");
         }
     }
@@ -626,7 +741,9 @@ mod tests {
     use chrono::TimeZone;
 
     fn now() -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 10, 29, 10, 0, 0).single().expect("time")
+        Utc.with_ymd_and_hms(2026, 10, 29, 10, 0, 0)
+            .single()
+            .expect("time")
     }
 
     fn contact() -> WhatsappContact {
@@ -647,7 +764,11 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(contact: Option<&'a WhatsappContact>, is_template: bool, is_owner_admin: bool) -> SendContext<'a> {
+    fn ctx<'a>(
+        contact: Option<&'a WhatsappContact>,
+        is_template: bool,
+        is_owner_admin: bool,
+    ) -> SendContext<'a> {
         SendContext {
             contact,
             send_paused: false,
@@ -662,12 +783,17 @@ mod tests {
     #[test]
     fn free_text_needs_an_open_window() {
         let mut c = contact();
-        assert!(check_send(&ctx(Some(&c), false, true)).unwrap_err().contains("24 hour window"));
+        assert!(check_send(&ctx(Some(&c), false, true))
+            .unwrap_err()
+            .contains("24 hour window"));
         assert!(check_send(&ctx(None, false, true)).is_err());
         c.last_inbound_at = Some(now() - Duration::hours(23));
         assert_eq!(
             check_send(&ctx(Some(&c), false, false)),
-            Ok(SendPlan { kind: "text", new_chat: false })
+            Ok(SendPlan {
+                kind: "text",
+                new_chat: false
+            })
         );
         c.last_inbound_at = Some(now() - Duration::hours(25));
         assert!(check_send(&ctx(Some(&c), false, true)).is_err());
@@ -682,13 +808,19 @@ mod tests {
         );
         assert_eq!(
             check_send(&ctx(Some(&c), true, true)),
-            Ok(SendPlan { kind: "template", new_chat: true })
+            Ok(SendPlan {
+                kind: "template",
+                new_chat: true
+            })
         );
         let mut open = contact();
         open.last_inbound_at = Some(now() - Duration::hours(1));
         assert_eq!(
             check_send(&ctx(Some(&open), true, false)),
-            Ok(SendPlan { kind: "template", new_chat: false })
+            Ok(SendPlan {
+                kind: "template",
+                new_chat: false
+            })
         );
     }
 
@@ -697,11 +829,16 @@ mod tests {
         let mut c = contact();
         c.opted_out_at = Some(now() - Duration::days(1));
         let refusal = check_send(&ctx(Some(&c), true, true)).unwrap_err();
-        assert!(refusal.starts_with("contact opted out on 2026-10-28"), "{refusal}");
+        assert!(
+            refusal.starts_with("contact opted out on 2026-10-28"),
+            "{refusal}"
+        );
         let mut paused = contact();
         paused.paused_at = Some(now());
         paused.pause_reason = Some("Meta error 131049".into());
-        assert!(check_send(&ctx(Some(&paused), true, true)).unwrap_err().contains("131049"));
+        assert!(check_send(&ctx(Some(&paused), true, true))
+            .unwrap_err()
+            .contains("131049"));
     }
 
     #[test]
@@ -709,11 +846,15 @@ mod tests {
         let mut c = contact();
         c.last_inbound_at = Some(now() - Duration::hours(1));
         c.outbound_since_inbound = 1;
-        assert!(check_send(&ctx(Some(&c), false, true)).unwrap_err().contains("one message at a time"));
+        assert!(check_send(&ctx(Some(&c), false, true))
+            .unwrap_err()
+            .contains("one message at a time"));
         c.outbound_since_inbound = 0;
         let mut queued = ctx(Some(&c), false, true);
         queued.pending_outbound = 1;
-        assert!(check_send(&queued).unwrap_err().contains("one message at a time"));
+        assert!(check_send(&queued)
+            .unwrap_err()
+            .contains("one message at a time"));
     }
 
     #[test]
@@ -722,7 +863,9 @@ mod tests {
         let mut paused = ctx(Some(&c), true, true);
         paused.send_paused = true;
         paused.pause_reason = Some("Quality rating is RED. Sending stopped.");
-        assert!(check_send(&paused).unwrap_err().contains("Quality rating is RED"));
+        assert!(check_send(&paused)
+            .unwrap_err()
+            .contains("Quality rating is RED"));
     }
 
     #[test]

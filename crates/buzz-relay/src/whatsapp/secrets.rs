@@ -60,11 +60,7 @@ pub fn kek_id(kek: &[u8; 32]) -> String {
 }
 
 fn aad(community: Uuid, connection_id: Uuid, field: SecretField) -> Vec<u8> {
-    format!(
-        "{AAD_PREFIX}:{community}:{connection_id}:{}",
-        field.label()
-    )
-    .into_bytes()
+    format!("{AAD_PREFIX}:{community}:{connection_id}:{}", field.label()).into_bytes()
 }
 
 /// Seal one secret for one company and connection.
@@ -134,8 +130,14 @@ mod tests {
     fn sealed_secret_round_trips_and_is_not_plaintext() {
         let community = Uuid::new_v4();
         let connection = Uuid::new_v4();
-        let sealed = seal(&KEK, community, connection, SecretField::AccessToken, "EAAB-test-token")
-            .expect("seal");
+        let sealed = seal(
+            &KEK,
+            community,
+            connection,
+            SecretField::AccessToken,
+            "EAAB-test-token",
+        )
+        .expect("seal");
         assert!(!sealed
             .ciphertext
             .windows(b"EAAB-test-token".len())
@@ -157,7 +159,8 @@ mod tests {
     fn a_sealed_secret_cannot_be_moved_or_reread_with_the_wrong_key() {
         let community = Uuid::new_v4();
         let connection = Uuid::new_v4();
-        let sealed = seal(&KEK, community, connection, SecretField::AppSecret, "shh").expect("seal");
+        let sealed =
+            seal(&KEK, community, connection, SecretField::AppSecret, "shh").expect("seal");
         let try_open = |kek: &[u8; 32], community, connection, field| {
             open(
                 kek,

@@ -58,7 +58,10 @@ pub async fn ensure_outreach_channel(
                     .db
                     .create_channel(
                         community,
-                        &format!("{CHANNEL_NAME} {}", &Uuid::new_v4().simple().to_string()[..6]),
+                        &format!(
+                            "{CHANNEL_NAME} {}",
+                            &Uuid::new_v4().simple().to_string()[..6]
+                        ),
                         ChannelType::Stream,
                         ChannelVisibility::Private,
                         Some(CHANNEL_DESCRIPTION),
@@ -102,7 +105,13 @@ pub async fn ensure_outreach_channel(
         }
         state
             .db
-            .add_member(community, channel_id, &pubkey, MemberRole::Member, Some(actor))
+            .add_member(
+                community,
+                channel_id,
+                &pubkey,
+                MemberRole::Member,
+                Some(actor),
+            )
             .await
             .map_err(|error| format!("could not add an admin to Outreach: {error}"))?;
         state.invalidate_membership(tenant, channel_id, &pubkey);
@@ -205,7 +214,8 @@ pub async fn post_message(
         .sign_with_keys(&state.relay_keypair)
         .map_err(|error| format!("could not sign the message: {error}"))?;
 
-    let event_created_at = DateTime::<Utc>::from_timestamp(timestamp as i64, 0).unwrap_or(created_at);
+    let event_created_at =
+        DateTime::<Utc>::from_timestamp(timestamp as i64, 0).unwrap_or(created_at);
     let owned_meta = match ancestry {
         Some(ancestry) => {
             ancestry.into_thread_meta(event.id.as_bytes().to_vec(), event_created_at, channel_id)
@@ -255,7 +265,11 @@ pub async fn post_message(
             None,
         )
         .await;
-        if let Some(root) = owned_meta.root_event_id.as_ref().filter(|_| thread_root_hex.is_some()) {
+        if let Some(root) = owned_meta
+            .root_event_id
+            .as_ref()
+            .filter(|_| thread_root_hex.is_some())
+        {
             crate::handlers::side_effects::emit_live_thread_summary(
                 tenant,
                 state,
@@ -280,7 +294,11 @@ pub fn message_tags(
     } else {
         contact.display_name.clone()
     };
-    let direction = if message.direction == "out" { "out" } else { "in" };
+    let direction = if message.direction == "out" {
+        "out"
+    } else {
+        "in"
+    };
     let mut tags = vec![
         vec!["wa".to_string(), contact.wa_id.clone()],
         vec!["wa-name".to_string(), name],
@@ -341,12 +359,7 @@ pub async fn post_for_message(
 
 /// Post an operator notice (token expired, quality change, contact paused, batch waiting).
 /// Failure is logged, never fatal: a notice must not undo the work it reports.
-pub async fn post_notice(
-    state: &Arc<AppState>,
-    tenant: &TenantContext,
-    code: &str,
-    text: &str,
-) {
+pub async fn post_notice(state: &Arc<AppState>, tenant: &TenantContext, code: &str, text: &str) {
     let settings = match state.db.whatsapp_ensure_settings(tenant.community()).await {
         Ok(settings) => settings,
         Err(error) => {

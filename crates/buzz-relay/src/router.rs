@@ -156,7 +156,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(api::bridge::moderation_restricted),
         )
         // WhatsApp outreach: secret intake and role filtered reads (NIP-98 auth).
-        .route(api::whatsapp::CONNECT_PATH, post(api::whatsapp::connect_number))
+        .route(
+            api::whatsapp::CONNECT_PATH,
+            post(api::whatsapp::connect_number),
+        )
         .route(
             api::whatsapp::DISCONNECT_PATH,
             post(api::whatsapp::disconnect_number),

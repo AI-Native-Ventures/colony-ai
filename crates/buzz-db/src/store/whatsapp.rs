@@ -390,7 +390,10 @@ impl Db {
     // ── settings ───────────────────────────────────────────────────────────────
 
     /// Read the company's settings, creating the default row on first use.
-    pub async fn whatsapp_ensure_settings(&self, community: CommunityId) -> Result<WhatsappSettings> {
+    pub async fn whatsapp_ensure_settings(
+        &self,
+        community: CommunityId,
+    ) -> Result<WhatsappSettings> {
         sqlx::query(
             "INSERT INTO whatsapp_settings (community_id) VALUES ($1) \
              ON CONFLICT (community_id) DO NOTHING",
@@ -601,9 +604,10 @@ impl Db {
 
     /// Every connected company, for the sender loop.
     pub async fn whatsapp_list_connected_communities(&self) -> Result<Vec<CommunityId>> {
-        let rows = sqlx::query("SELECT community_id FROM whatsapp_connections ORDER BY community_id")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows =
+            sqlx::query("SELECT community_id FROM whatsapp_connections ORDER BY community_id")
+                .fetch_all(&self.pool)
+                .await?;
         rows.iter()
             .map(|row| Ok(CommunityId::from_uuid(row.try_get("community_id")?)))
             .collect()
@@ -1608,6 +1612,9 @@ mod tests {
         let shown = format!("{connection:?}");
         assert!(shown.contains("REDACTED"));
         assert!(!shown.contains("super-secret"));
-        assert!(!shown.contains("115, 117"), "no byte dump of the sealed token");
+        assert!(
+            !shown.contains("115, 117"),
+            "no byte dump of the sealed token"
+        );
     }
 }

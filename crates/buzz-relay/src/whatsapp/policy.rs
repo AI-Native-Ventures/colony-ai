@@ -211,7 +211,8 @@ fn slots(body: &str) -> Vec<usize> {
             while end < bytes.len() && bytes[end].is_ascii_digit() {
                 end += 1;
             }
-            if end > start && end + 1 < bytes.len() && bytes[end] == b'}' && bytes[end + 1] == b'}' {
+            if end > start && end + 1 < bytes.len() && bytes[end] == b'}' && bytes[end + 1] == b'}'
+            {
                 if let Ok(n) = body[start..end].parse::<usize>() {
                     found.push(n);
                 }
@@ -244,7 +245,8 @@ pub fn render_template(body: &str, params: &[String]) -> Result<String, String> 
             while end < bytes.len() && bytes[end].is_ascii_digit() {
                 end += 1;
             }
-            if end > start && end + 1 < bytes.len() && bytes[end] == b'}' && bytes[end + 1] == b'}' {
+            if end > start && end + 1 < bytes.len() && bytes[end] == b'}' && bytes[end + 1] == b'}'
+            {
                 let n = body[start..end]
                     .parse::<usize>()
                     .map_err(|_| "template slot is not a number".to_string())?;
@@ -329,17 +331,44 @@ mod tests {
 
     #[test]
     fn phone_numbers_normalise_to_wa_id() {
-        assert_eq!(normalize_wa_id("+27 82 123 4567").as_deref(), Some("27821234567"));
-        assert_eq!(normalize_wa_id("0027821234567").as_deref(), Some("27821234567"));
-        assert_eq!(normalize_wa_id("27821234567").as_deref(), Some("27821234567"));
-        assert_eq!(normalize_wa_id("082 123 4567").as_deref(), Some("27821234567"));
-        assert_eq!(normalize_wa_id("(082) 123-4567").as_deref(), Some("27821234567"));
-        assert_eq!(normalize_wa_id("+1 415 555 2671").as_deref(), Some("14155552671"));
+        assert_eq!(
+            normalize_wa_id("+27 82 123 4567").as_deref(),
+            Some("27821234567")
+        );
+        assert_eq!(
+            normalize_wa_id("0027821234567").as_deref(),
+            Some("27821234567")
+        );
+        assert_eq!(
+            normalize_wa_id("27821234567").as_deref(),
+            Some("27821234567")
+        );
+        assert_eq!(
+            normalize_wa_id("082 123 4567").as_deref(),
+            Some("27821234567")
+        );
+        assert_eq!(
+            normalize_wa_id("(082) 123-4567").as_deref(),
+            Some("27821234567")
+        );
+        assert_eq!(
+            normalize_wa_id("+1 415 555 2671").as_deref(),
+            Some("14155552671")
+        );
     }
 
     #[test]
     fn bad_phone_numbers_are_refused() {
-        for bad in ["", "   ", "abc", "+", "123", "+0821234567", "27 82 x23 4567", "1234567890123456"] {
+        for bad in [
+            "",
+            "   ",
+            "abc",
+            "+",
+            "123",
+            "+0821234567",
+            "27 82 x23 4567",
+            "1234567890123456",
+        ] {
             assert_eq!(normalize_wa_id(bad), None, "{bad:?}");
         }
         assert_eq!(e164("27821234567"), "+27821234567");
@@ -347,17 +376,38 @@ mod tests {
 
     #[test]
     fn stop_words_match_whole_messages_only() {
-        for yes in ["stop", "STOP", " Stop. ", "Unsubscribe!", "no thanks", "No  thanks.", "not interested", "Opt out"] {
+        for yes in [
+            "stop",
+            "STOP",
+            " Stop. ",
+            "Unsubscribe!",
+            "no thanks",
+            "No  thanks.",
+            "not interested",
+            "Opt out",
+        ] {
             assert!(is_stop_message(yes), "{yes:?}");
         }
-        for no in ["stop by tomorrow", "please don't stop", "thanks", "interested", "", "no"] {
+        for no in [
+            "stop by tomorrow",
+            "please don't stop",
+            "thanks",
+            "interested",
+            "",
+            "no",
+        ] {
             assert!(!is_stop_message(no), "{no:?}");
         }
     }
 
     #[test]
     fn opt_out_buttons_are_recognised() {
-        for yes in ["Stop promotions", "Unsubscribe", "Opt out", "Not interested"] {
+        for yes in [
+            "Stop promotions",
+            "Unsubscribe",
+            "Opt out",
+            "Not interested",
+        ] {
             assert!(is_opt_out_button(yes), "{yes:?}");
         }
         for no in ["Yes please", "Call me", "Tell me more", ""] {
@@ -371,7 +421,10 @@ mod tests {
         assert!(window_open(Some(last), last + Duration::hours(23)));
         assert!(!window_open(Some(last), last + Duration::hours(24)));
         assert!(!window_open(None, last));
-        assert_eq!(window_closes_at(Some(last)), Some(last + Duration::hours(24)));
+        assert_eq!(
+            window_closes_at(Some(last)),
+            Some(last + Duration::hours(24))
+        );
         assert_eq!(window_closes_at(None), None);
     }
 
@@ -387,9 +440,17 @@ mod tests {
     fn next_window_start_rolls_to_the_next_morning() {
         assert_eq!(next_window_start(at(3, 0, 0)), at(6, 0, 0));
         assert_eq!(next_window_start(at(10, 0, 0)), at(10, 0, 0));
-        let tomorrow = Utc.with_ymd_and_hms(2026, 10, 30, 6, 0, 0).single().expect("time");
+        let tomorrow = Utc
+            .with_ymd_and_hms(2026, 10, 30, 6, 0, 0)
+            .single()
+            .expect("time");
         assert_eq!(next_window_start(at(16, 0, 0)), tomorrow);
-        assert_eq!(sast_day_start(at(10, 0, 0)), Utc.with_ymd_and_hms(2026, 10, 28, 22, 0, 0).single().expect("time"));
+        assert_eq!(
+            sast_day_start(at(10, 0, 0)),
+            Utc.with_ymd_and_hms(2026, 10, 28, 22, 0, 0)
+                .single()
+                .expect("time")
+        );
     }
 
     #[test]
@@ -397,7 +458,9 @@ mod tests {
         for _ in 0..50 {
             let id = Uuid::new_v4();
             let gap = row_gap(&id);
-            assert!(gap >= Duration::seconds(MIN_GAP_SECS) && gap <= Duration::seconds(MAX_GAP_SECS));
+            assert!(
+                gap >= Duration::seconds(MIN_GAP_SECS) && gap <= Duration::seconds(MAX_GAP_SECS)
+            );
             assert_eq!(gap, row_gap(&id));
         }
     }
@@ -405,12 +468,18 @@ mod tests {
     #[test]
     fn pacing_waits_for_the_window_and_the_gap() {
         let gap = Duration::seconds(240);
-        assert_eq!(decide_new_chat(at(10, 0, 0), None, 0, 30, gap), NewChatDecision::SendNow);
+        assert_eq!(
+            decide_new_chat(at(10, 0, 0), None, 0, 30, gap),
+            NewChatDecision::SendNow
+        );
         assert_eq!(
             decide_new_chat(at(10, 1, 0), Some(at(10, 0, 0)), 1, 30, gap),
             NewChatDecision::WaitUntil(at(10, 4, 0))
         );
-        assert_eq!(decide_new_chat(at(10, 4, 0), Some(at(10, 0, 0)), 1, 30, gap), NewChatDecision::SendNow);
+        assert_eq!(
+            decide_new_chat(at(10, 4, 0), Some(at(10, 0, 0)), 1, 30, gap),
+            NewChatDecision::SendNow
+        );
         assert_eq!(
             decide_new_chat(at(3, 0, 0), None, 0, 30, gap),
             NewChatDecision::WaitUntil(at(6, 0, 0))
@@ -420,16 +489,30 @@ mod tests {
     #[test]
     fn cap_stops_sending_and_rolls_to_tomorrow() {
         let gap = Duration::seconds(240);
-        let tomorrow = Utc.with_ymd_and_hms(2026, 10, 30, 6, 0, 0).single().expect("time");
+        let tomorrow = Utc
+            .with_ymd_and_hms(2026, 10, 30, 6, 0, 0)
+            .single()
+            .expect("time");
         assert_eq!(
             decide_new_chat(at(10, 0, 0), None, 30, 30, gap),
-            NewChatDecision::CapReached { resume_at: tomorrow }
+            NewChatDecision::CapReached {
+                resume_at: tomorrow
+            }
         );
-        assert_eq!(decide_new_chat(at(10, 0, 0), None, 29, 30, gap), NewChatDecision::SendNow);
+        assert_eq!(
+            decide_new_chat(at(10, 0, 0), None, 29, 30, gap),
+            NewChatDecision::SendNow
+        );
         // The owner raising the cap takes effect on the next decision.
-        assert_eq!(decide_new_chat(at(10, 0, 0), None, 30, 50, gap), NewChatDecision::SendNow);
+        assert_eq!(
+            decide_new_chat(at(10, 0, 0), None, 30, 50, gap),
+            NewChatDecision::SendNow
+        );
         // A cap of zero stops everything.
-        assert!(matches!(decide_new_chat(at(10, 0, 0), None, 0, 0, gap), NewChatDecision::CapReached { .. }));
+        assert!(matches!(
+            decide_new_chat(at(10, 0, 0), None, 0, 0, gap),
+            NewChatDecision::CapReached { .. }
+        ));
     }
 
     #[test]
@@ -442,7 +525,10 @@ mod tests {
             Ok("Hi Thabo, it is Sam from Horizon. Thabo, got a minute?")
         );
         assert!(render_template(body, &params[..1]).is_err());
-        assert_eq!(render_template("No slots here", &[]).as_deref(), Ok("No slots here"));
+        assert_eq!(
+            render_template("No slots here", &[]).as_deref(),
+            Ok("No slots here")
+        );
         assert_eq!(template_slot_count("{{ 1 }} and {{x}} and {1}"), 0);
     }
 
@@ -458,7 +544,11 @@ mod tests {
         assert!(!verify_signature(b"other-secret", body, Some(&good)));
         assert!(!verify_signature(secret, body, None));
         assert!(!verify_signature(secret, body, Some("sha256=zz")));
-        assert!(!verify_signature(secret, body, Some(&good.replace("sha256=", ""))));
+        assert!(!verify_signature(
+            secret,
+            body,
+            Some(&good.replace("sha256=", ""))
+        ));
     }
 
     #[test]
@@ -473,8 +563,14 @@ mod tests {
     fn meta_codes_are_classified() {
         assert_eq!(classify_failure_code(190), FailureKind::TokenExpired);
         assert_eq!(classify_failure_code(131_049), FailureKind::ContactBlocked);
-        assert_eq!(classify_failure_code(132_015), FailureKind::TemplateUnavailable);
-        assert_eq!(classify_failure_code(131_031), FailureKind::NumberDisconnected);
+        assert_eq!(
+            classify_failure_code(132_015),
+            FailureKind::TemplateUnavailable
+        );
+        assert_eq!(
+            classify_failure_code(131_031),
+            FailureKind::NumberDisconnected
+        );
         assert_eq!(classify_failure_code(131_026), FailureKind::Other);
     }
 }

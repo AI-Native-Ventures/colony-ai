@@ -187,7 +187,11 @@ fn message_view(message: &WhatsappMessage) -> Value {
 }
 
 fn row_counts(rows: &[WhatsappMessage]) -> Value {
-    let count = |states: &[&str]| rows.iter().filter(|row| states.contains(&row.state.as_str())).count();
+    let count = |states: &[&str]| {
+        rows.iter()
+            .filter(|row| states.contains(&row.state.as_str()))
+            .count()
+    };
     json!({
         "total": rows.len(),
         "ready": count(&["held", "ready", "queued", "sending"]),
@@ -252,14 +256,29 @@ pub async fn query(
         "templates" => {
             if request.refresh {
                 if !access.is_owner_admin() {
-                    return Err(api_error(StatusCode::FORBIDDEN, "only the owner or an admin can refresh templates"));
+                    return Err(api_error(
+                        StatusCode::FORBIDDEN,
+                        "only the owner or an admin can refresh templates",
+                    ));
                 }
                 connect::sync_templates(&state, &tenant)
                     .await
-                    .map_err(|reason| api_error_with_code(StatusCode::BAD_GATEWAY, &reason, "whatsapp_template_sync"))?;
+                    .map_err(|reason| {
+                        api_error_with_code(
+                            StatusCode::BAD_GATEWAY,
+                            &reason,
+                            "whatsapp_template_sync",
+                        )
+                    })?;
             }
-            let templates = state.db.whatsapp_list_templates(community).await.map_err(db_error)?;
-            Ok(Json(json!({ "templates": templates.iter().map(template_view).collect::<Vec<_>>() })))
+            let templates = state
+                .db
+                .whatsapp_list_templates(community)
+                .await
+                .map_err(db_error)?;
+            Ok(Json(
+                json!({ "templates": templates.iter().map(template_view).collect::<Vec<_>>() }),
+            ))
         }
         "batches" => {
             private(access)?;
@@ -270,7 +289,11 @@ pub async fn query(
                 .map_err(db_error)?;
             let mut out = Vec::with_capacity(batches.len());
             for batch in &batches {
-                let rows = state.db.whatsapp_list_batch_rows(community, batch.id).await.map_err(db_error)?;
+                let rows = state
+                    .db
+                    .whatsapp_list_batch_rows(community, batch.id)
+                    .await
+                    .map_err(db_error)?;
                 out.push(batch_view(batch, &rows));
             }
             Ok(Json(json!({ "batches": out })))
@@ -288,7 +311,11 @@ pub async fn query(
                 .await
                 .map_err(db_error)?
                 .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "no such batch"))?;
-            let rows = state.db.whatsapp_list_batch_rows(community, batch_id).await.map_err(db_error)?;
+            let rows = state
+                .db
+                .whatsapp_list_batch_rows(community, batch_id)
+                .await
+                .map_err(db_error)?;
             let mut detail = batch_view(&batch, &rows);
             let mut row_views = Vec::with_capacity(rows.len());
             for row in &rows {
@@ -314,13 +341,25 @@ pub async fn query(
         }
         "contacts" => {
             private(access)?;
-            let contacts = state.db.whatsapp_list_contacts(community, limit_of(&request)).await.map_err(db_error)?;
-            Ok(Json(json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() })))
+            let contacts = state
+                .db
+                .whatsapp_list_contacts(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(
+                json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() }),
+            ))
         }
         "inbox" => {
             private(access)?;
-            let contacts = state.db.whatsapp_list_inbox(community, limit_of(&request)).await.map_err(db_error)?;
-            Ok(Json(json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() })))
+            let contacts = state
+                .db
+                .whatsapp_list_inbox(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(
+                json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() }),
+            ))
         }
         "thread" => {
             private(access)?;
@@ -335,14 +374,21 @@ pub async fn query(
                 .await
                 .map_err(db_error)?
                 .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "no such contact"))?;
-            let mut messages = state.db.whatsapp_list_thread(community, &wa_id, limit_of(&request)).await.map_err(db_error)?;
+            let mut messages = state
+                .db
+                .whatsapp_list_thread(community, &wa_id, limit_of(&request))
+                .await
+                .map_err(db_error)?;
             messages.reverse();
             Ok(Json(json!({
                 "contact": contact_view(&contact, now),
                 "messages": messages.iter().map(message_view).collect::<Vec<_>>(),
             })))
         }
-        _ => Err(api_error(StatusCode::BAD_REQUEST, "unknown query: use status, templates, batches, batch, contacts, inbox or thread")),
+        _ => Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "unknown query: use status, templates, batches, batch, contacts, inbox or thread",
+        )),
     }
 }
 
@@ -364,7 +410,13 @@ async fn bind_connection(
     state: &Arc<AppState>,
     headers: &HeaderMap,
     id_str: &str,
-) -> Result<(buzz_core::TenantContext, buzz_db::whatsapp::WhatsappConnection), (StatusCode, Json<Value>)> {
+) -> Result<
+    (
+        buzz_core::TenantContext,
+        buzz_db::whatsapp::WhatsappConnection,
+    ),
+    (StatusCode, Json<Value>),
+> {
     let connection_id = Uuid::parse_str(id_str).map_err(|_| not_found())?;
     let raw_host = headers
         .get(header::HOST)
@@ -415,17 +467,27 @@ pub async fn webhook_receive(
 ) -> ApiResult {
     let (tenant, connection) = bind_connection(&state, &headers, &id_str).await?;
     if body.len() > MAX_WEBHOOK_BODY_BYTES {
-        return Err(api_error(StatusCode::PAYLOAD_TOO_LARGE, "webhook body too large"));
+        return Err(api_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "webhook body too large",
+        ));
     }
     let Some(kek) = state.config.accounts.account_kek() else {
-        return Err(api_error(StatusCode::SERVICE_UNAVAILABLE, "whatsapp is not configured"));
+        return Err(api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "whatsapp is not configured",
+        ));
     };
-    let (_token, app_secret) = connect::open_secrets(kek, tenant.community().as_uuid(), &connection)
-        .map_err(|reason| {
-            tracing::error!("whatsapp webhook could not open the app secret: {reason}");
-            api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
-        })?;
-    let signature = headers.get(SIGNATURE_HEADER).and_then(|value| value.to_str().ok());
+    let (_token, app_secret) =
+        connect::open_secrets(kek, tenant.community().as_uuid(), &connection).map_err(
+            |reason| {
+                tracing::error!("whatsapp webhook could not open the app secret: {reason}");
+                api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+            },
+        )?;
+    let signature = headers
+        .get(SIGNATURE_HEADER)
+        .and_then(|value| value.to_str().ok());
     if !verify_signature(app_secret.as_bytes(), &body, signature) {
         tracing::warn!(community = %tenant.community(), "whatsapp webhook signature rejected");
         return Err(api_error(StatusCode::UNAUTHORIZED, "authentication failed"));
@@ -437,7 +499,10 @@ pub async fn webhook_receive(
         Err(reason) => {
             // 500 makes Meta redeliver; deduplication by message id keeps that safe.
             tracing::error!(community = %tenant.community(), "whatsapp webhook processing failed: {reason}");
-            Err(api_error(StatusCode::INTERNAL_SERVER_ERROR, "processing failed, will be retried"))
+            Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "processing failed, will be retried",
+            ))
         }
     }
 }

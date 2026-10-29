@@ -94,7 +94,10 @@ impl std::fmt::Display for GraphError {
                 http_status,
                 code,
                 message,
-            } => write!(f, "graph rejected ({http_status}, code {code:?}): {message}"),
+            } => write!(
+                f,
+                "graph rejected ({http_status}, code {code:?}): {message}"
+            ),
             Self::Unavailable(reason) => write!(f, "graph unavailable: {reason}"),
         }
     }
@@ -106,8 +109,11 @@ impl std::error::Error for GraphError {}
 #[async_trait]
 pub trait GraphApi: Send + Sync {
     /// `GET /{phone-number-id}`: also proves the token works.
-    async fn get_phone_info(&self, token: &str, phone_number_id: &str)
-        -> Result<PhoneInfo, GraphError>;
+    async fn get_phone_info(
+        &self,
+        token: &str,
+        phone_number_id: &str,
+    ) -> Result<PhoneInfo, GraphError>;
     /// Point the number's webhook at `callback_uri` with a verify token.
     async fn set_webhook_override(
         &self,
@@ -306,7 +312,12 @@ impl ReqwestGraph {
     }
 
     fn url(&self, path: &str) -> String {
-        format!("{}/{}/{}", self.base, GRAPH_API_VERSION, path.trim_start_matches('/'))
+        format!(
+            "{}/{}/{}",
+            self.base,
+            GRAPH_API_VERSION,
+            path.trim_start_matches('/')
+        )
     }
 
     /// URL with query pairs. reqwest's own `query` helper is not enabled in this build.
@@ -364,7 +375,8 @@ async fn read_bounded(response: reqwest::Response) -> Result<Vec<u8>, GraphError
     let mut stream = response.bytes_stream();
     let mut out = Vec::new();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| GraphError::Unavailable(describe_transport_error(&error)))?;
+        let chunk =
+            chunk.map_err(|error| GraphError::Unavailable(describe_transport_error(&error)))?;
         if out.len() + chunk.len() > MAX_RESPONSE_BYTES {
             return Err(GraphError::Unavailable("response too large".to_owned()));
         }
@@ -517,7 +529,8 @@ mod tests {
 
     #[test]
     fn graph_errors_are_read_and_clipped() {
-        let body = json!({"error": {"message": "x".repeat(1000), "code": 190, "type": "OAuthException"}});
+        let body =
+            json!({"error": {"message": "x".repeat(1000), "code": 190, "type": "OAuthException"}});
         match parse_error(401, &body) {
             Some(GraphError::Rejected {
                 http_status,

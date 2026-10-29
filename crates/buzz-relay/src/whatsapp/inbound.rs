@@ -14,10 +14,10 @@ use buzz_core::TenantContext;
 use buzz_db::whatsapp::WhatsappConnection;
 use buzz_db::EventQuery;
 
+use super::channel;
 use super::connect::{refresh_phone_info, sync_templates};
 use super::policy::{e164, is_opt_out_button, is_stop_message, normalize_wa_id};
 use super::sender::handle_failure;
-use super::channel;
 use crate::state::AppState;
 
 const MAX_LEADS_SCANNED: i64 = 2000;
@@ -69,7 +69,11 @@ pub struct ParsedPayload {
 
 fn timestamp(value: Option<&Value>) -> DateTime<Utc> {
     value
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64()))
+        .and_then(|v| {
+            v.as_str()
+                .and_then(|s| s.parse::<i64>().ok())
+                .or_else(|| v.as_i64())
+        })
         .and_then(|secs| DateTime::from_timestamp(secs, 0))
         .unwrap_or_else(Utc::now)
 }
@@ -78,7 +82,10 @@ fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
 }
 
-fn parse_message(message: &Value, names: &std::collections::HashMap<String, String>) -> Option<InboundMessage> {
+fn parse_message(
+    message: &Value,
+    names: &std::collections::HashMap<String, String>,
+) -> Option<InboundMessage> {
     let from = message.get("from")?.as_str()?;
     let wa_id: String = from.chars().filter(char::is_ascii_digit).collect();
     if !(6..=15).contains(&wa_id.len()) {
@@ -89,7 +96,12 @@ fn parse_message(message: &Value, names: &std::collections::HashMap<String, Stri
         return None;
     }
     let at = timestamp(message.get("timestamp"));
-    let text_at = |path: &str| message.pointer(path).and_then(Value::as_str).map(str::to_owned);
+    let text_at = |path: &str| {
+        message
+            .pointer(path)
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
     let (kind, text, is_button) = match message.get("type").and_then(Value::as_str).unwrap_or("") {
         "text" => ("text", text_at("/text/body").unwrap_or_default(), false),
         "button" => ("button", text_at("/button/text").unwrap_or_default(), true),
@@ -99,8 +111,16 @@ fn parse_message(message: &Value, names: &std::collections::HashMap<String, Stri
                 .unwrap_or_default();
             ("button", title, true)
         }
-        "image" => ("media", text_at("/image/caption").unwrap_or_else(|| "[image]".into()), false),
-        "video" => ("media", text_at("/video/caption").unwrap_or_else(|| "[video]".into()), false),
+        "image" => (
+            "media",
+            text_at("/image/caption").unwrap_or_else(|| "[image]".into()),
+            false,
+        ),
+        "video" => (
+            "media",
+            text_at("/video/caption").unwrap_or_else(|| "[video]".into()),
+            false,
+        ),
         "document" => (
             "media",
             text_at("/document/caption").unwrap_or_else(|| "[document]".into()),
@@ -138,12 +158,19 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
             };
             match field {
                 "messages" => {
-                    let phone_id = value.pointer("/metadata/phone_number_id").and_then(Value::as_str);
+                    let phone_id = value
+                        .pointer("/metadata/phone_number_id")
+                        .and_then(Value::as_str);
                     if phone_id.is_some_and(|id| id != expected_phone_number_id) {
                         continue;
                     }
                     let mut names = std::collections::HashMap::new();
-                    for contact in value.get("contacts").and_then(Value::as_array).into_iter().flatten() {
+                    for contact in value
+                        .get("contacts")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
                         if let (Some(id), Some(name)) = (
                             contact.get("wa_id").and_then(Value::as_str),
                             contact.pointer("/profile/name").and_then(Value::as_str),
@@ -151,12 +178,22 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
                             names.insert(id.to_string(), clip(name, 200));
                         }
                     }
-                    for message in value.get("messages").and_then(Value::as_array).into_iter().flatten() {
+                    for message in value
+                        .get("messages")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
                         if let Some(message) = parse_message(message, &names) {
                             parsed.messages.push(message);
                         }
                     }
-                    for status in value.get("statuses").and_then(Value::as_array).into_iter().flatten() {
+                    for status in value
+                        .get("statuses")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
                         let Some(wamid) = status.get("id").and_then(Value::as_str) else {
                             continue;
                         };
@@ -190,7 +227,9 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
                         value.get("message_template_name").and_then(Value::as_str),
                         value.get("event").and_then(Value::as_str),
                     ) {
-                        parsed.template_events.push((clip(name, 200), clip(event, 40)));
+                        parsed
+                            .template_events
+                            .push((clip(name, 200), clip(event, 40)));
                     }
                 }
                 _ => {}
@@ -311,7 +350,8 @@ async fn handle_message(
     };
 
     let opted_out_now = if stored_id.is_some()
-        && (is_stop_message(&message.text) || (message.is_button && is_opt_out_button(&message.text)))
+        && (is_stop_message(&message.text)
+            || (message.is_button && is_opt_out_button(&message.text)))
     {
         state
             .db
@@ -396,12 +436,23 @@ async fn handle_status(
     Ok(())
 }
 
-async fn handle_template_event(state: &Arc<AppState>, tenant: &TenantContext, name: &str, event: &str) {
+async fn handle_template_event(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    name: &str,
+    event: &str,
+) {
     let community = tenant.community();
     let upper = event.to_ascii_uppercase();
     if upper == "APPROVED" {
-        let _ = state.db.whatsapp_clear_issue(community, "template_paused").await;
-    } else if matches!(upper.as_str(), "PAUSED" | "DISABLED" | "REJECTED" | "FLAGGED") {
+        let _ = state
+            .db
+            .whatsapp_clear_issue(community, "template_paused")
+            .await;
+    } else if matches!(
+        upper.as_str(),
+        "PAUSED" | "DISABLED" | "REJECTED" | "FLAGGED"
+    ) {
         let message = format!("Template {name} is {}.", upper.to_ascii_lowercase());
         let _ = state
             .db
@@ -421,19 +472,22 @@ mod tests {
 
     fn text_payload(phone_id: &str, from: &str, id: &str, body: &str) -> Value {
         json!({"object": "whatsapp_business_account", "entry": [{"id": "W", "changes": [{
-            "field": "messages",
-            "value": {
-                "messaging_product": "whatsapp",
-                "metadata": {"display_phone_number": "1", "phone_number_id": phone_id},
-                "contacts": [{"profile": {"name": "Thabo"}, "wa_id": from}],
-                "messages": [{"from": from, "id": id, "timestamp": "1800000000",
-                              "type": "text", "text": {"body": body}}]
-            }}]}]})
+        "field": "messages",
+        "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {"display_phone_number": "1", "phone_number_id": phone_id},
+            "contacts": [{"profile": {"name": "Thabo"}, "wa_id": from}],
+            "messages": [{"from": from, "id": id, "timestamp": "1800000000",
+                          "type": "text", "text": {"body": body}}]
+        }}]}]})
     }
 
     #[test]
     fn text_message_is_parsed_with_the_profile_name() {
-        let parsed = parse_payload(&text_payload("111", "27821234567", "wamid.A", "Hello"), "111");
+        let parsed = parse_payload(
+            &text_payload("111", "27821234567", "wamid.A", "Hello"),
+            "111",
+        );
         assert_eq!(parsed.messages.len(), 1);
         let message = &parsed.messages[0];
         assert_eq!(message.wa_id, "27821234567");
@@ -445,26 +499,32 @@ mod tests {
 
     #[test]
     fn a_payload_for_another_number_is_ignored() {
-        let parsed = parse_payload(&text_payload("999", "27821234567", "wamid.A", "Hello"), "111");
+        let parsed = parse_payload(
+            &text_payload("999", "27821234567", "wamid.A", "Hello"),
+            "111",
+        );
         assert!(parsed.messages.is_empty());
     }
 
     #[test]
     fn captions_buttons_and_placeholders_become_text() {
         let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
-            "metadata": {"phone_number_id": "111"},
-            "messages": [
-                {"from": "27821234567", "id": "a", "timestamp": "1", "type": "image", "image": {"caption": "my shop"}},
-                {"from": "27821234567", "id": "b", "timestamp": "1", "type": "button", "button": {"text": "Stop promotions", "payload": "x"}},
-                {"from": "27821234567", "id": "c", "timestamp": "1", "type": "interactive",
-                 "interactive": {"type": "button_reply", "button_reply": {"id": "1", "title": "Tell me more"}}},
-                {"from": "27821234567", "id": "d", "timestamp": "1", "type": "audio", "audio": {"id": "m"}},
-                {"from": "27821234567", "id": "e", "timestamp": "1", "type": "reaction", "reaction": {"emoji": "x"}},
-                {"from": "12", "id": "f", "timestamp": "1", "type": "text", "text": {"body": "short number"}}
-            ]}}]}]});
+        "metadata": {"phone_number_id": "111"},
+        "messages": [
+            {"from": "27821234567", "id": "a", "timestamp": "1", "type": "image", "image": {"caption": "my shop"}},
+            {"from": "27821234567", "id": "b", "timestamp": "1", "type": "button", "button": {"text": "Stop promotions", "payload": "x"}},
+            {"from": "27821234567", "id": "c", "timestamp": "1", "type": "interactive",
+             "interactive": {"type": "button_reply", "button_reply": {"id": "1", "title": "Tell me more"}}},
+            {"from": "27821234567", "id": "d", "timestamp": "1", "type": "audio", "audio": {"id": "m"}},
+            {"from": "27821234567", "id": "e", "timestamp": "1", "type": "reaction", "reaction": {"emoji": "x"}},
+            {"from": "12", "id": "f", "timestamp": "1", "type": "text", "text": {"body": "short number"}}
+        ]}}]}]});
         let parsed = parse_payload(&payload, "111");
         let texts: Vec<_> = parsed.messages.iter().map(|m| m.text.as_str()).collect();
-        assert_eq!(texts, ["my shop", "Stop promotions", "Tell me more", "[voice note]"]);
+        assert_eq!(
+            texts,
+            ["my shop", "Stop promotions", "Tell me more", "[voice note]"]
+        );
         assert!(parsed.messages[1].is_button && parsed.messages[2].is_button);
         assert!(is_opt_out_button(&parsed.messages[1].text));
         assert!(!is_opt_out_button(&parsed.messages[2].text));
@@ -473,19 +533,22 @@ mod tests {
     #[test]
     fn statuses_carry_the_meta_error_code() {
         let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
-            "metadata": {"phone_number_id": "111"},
-            "statuses": [
-                {"id": "wamid.1", "status": "delivered", "timestamp": "1", "recipient_id": "27821234567"},
-                {"id": "wamid.2", "status": "failed", "timestamp": "1",
-                 "errors": [{"code": 131049, "title": "Healthy ecosystem", "message": "Not delivered"}]},
-                {"id": "wamid.3", "status": "deleted"}
-            ]}}]}]});
+        "metadata": {"phone_number_id": "111"},
+        "statuses": [
+            {"id": "wamid.1", "status": "delivered", "timestamp": "1", "recipient_id": "27821234567"},
+            {"id": "wamid.2", "status": "failed", "timestamp": "1",
+             "errors": [{"code": 131049, "title": "Healthy ecosystem", "message": "Not delivered"}]},
+            {"id": "wamid.3", "status": "deleted"}
+        ]}}]}]});
         let parsed = parse_payload(&payload, "111");
         assert_eq!(parsed.statuses.len(), 2);
         assert_eq!(parsed.statuses[0].state, "delivered");
         assert_eq!(parsed.statuses[1].state, "failed");
         assert_eq!(parsed.statuses[1].code, Some(131_049));
-        assert_eq!(parsed.statuses[1].error_text.as_deref(), Some("Not delivered"));
+        assert_eq!(
+            parsed.statuses[1].error_text.as_deref(),
+            Some("Not delivered")
+        );
     }
 
     #[test]
@@ -497,12 +560,20 @@ mod tests {
         ]}]});
         let parsed = parse_payload(&payload, "111");
         assert!(parsed.phone_changed);
-        assert_eq!(parsed.template_events, vec![("intro".to_string(), "PAUSED".to_string())]);
+        assert_eq!(
+            parsed.template_events,
+            vec![("intro".to_string(), "PAUSED".to_string())]
+        );
     }
 
     #[test]
     fn garbage_payloads_parse_to_nothing() {
-        for payload in [json!(null), json!({}), json!({"entry": "x"}), json!({"entry": [{"changes": [{"field": "messages"}]}]})] {
+        for payload in [
+            json!(null),
+            json!({}),
+            json!({"entry": "x"}),
+            json!({"entry": [{"changes": [{"field": "messages"}]}]}),
+        ] {
             assert_eq!(parse_payload(&payload, "111"), ParsedPayload::default());
         }
     }

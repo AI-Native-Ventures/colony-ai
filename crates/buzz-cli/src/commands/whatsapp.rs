@@ -106,7 +106,14 @@ async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Re
             campaign,
             batch_id,
         } => {
-            let rows = batch_rows(client, &lead, stage.as_deref(), params_file.as_deref(), &param).await?;
+            let rows = batch_rows(
+                client,
+                &lead,
+                stage.as_deref(),
+                params_file.as_deref(),
+                &param,
+            )
+            .await?;
             let content = batch_content(
                 &template,
                 &language,
@@ -124,7 +131,11 @@ async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Re
         WhatsappBatchCmd::Show { batch } => {
             query(client, json!({ "what": "batch", "batchId": batch })).await
         }
-        WhatsappBatchCmd::Approve { batch, drop, edit_file } => {
+        WhatsappBatchCmd::Approve {
+            batch,
+            drop,
+            edit_file,
+        } => {
             let edits = match edit_file {
                 Some(path) => read_edits(&path)?,
                 None => Vec::new(),
@@ -234,9 +245,8 @@ async fn batch_rows(
         Some(path) => read_json_file(path)?,
         None => Vec::new(),
     };
-    let needs_leads = !leads.is_empty()
-        || stage.is_some()
-        || file_rows.iter().any(|row| row.lead.is_some());
+    let needs_leads =
+        !leads.is_empty() || stage.is_some() || file_rows.iter().any(|row| row.lead.is_some());
     let lead_phones = if needs_leads {
         let wanted_stage = stage.map(str::trim);
         let mut phones = std::collections::HashMap::new();
@@ -253,10 +263,7 @@ async fn batch_rows(
                     continue;
                 }
             }
-            phones.insert(
-                lead.head.prospect_id,
-                lead.head.prospect.phone.clone(),
-            );
+            phones.insert(lead.head.prospect_id, lead.head.prospect.phone.clone());
         }
         phones
     } else {
@@ -267,28 +274,29 @@ async fn batch_rows(
     let mut problems: Vec<String> = Vec::new();
     let mut seen_leads: HashSet<Uuid> = HashSet::new();
 
-    let mut add_lead = |lead_ref: &str, params: Vec<String>, rows: &mut Vec<Row>, problems: &mut Vec<String>| {
-        let lead_id = match parse_lead_reference(lead_ref) {
-            Ok(id) => id,
-            Err(_) => {
-                problems.push(format!("{lead_ref}: not a lead id or link"));
+    let mut add_lead =
+        |lead_ref: &str, params: Vec<String>, rows: &mut Vec<Row>, problems: &mut Vec<String>| {
+            let lead_id = match parse_lead_reference(lead_ref) {
+                Ok(id) => id,
+                Err(_) => {
+                    problems.push(format!("{lead_ref}: not a lead id or link"));
+                    return;
+                }
+            };
+            if !seen_leads.insert(lead_id) {
+                problems.push(format!("{lead_id}: listed twice"));
                 return;
             }
+            match lead_phones.get(&lead_id) {
+                Some(Some(phone)) if !phone.trim().is_empty() => rows.push(Row {
+                    to: phone.trim().to_string(),
+                    lead_id: Some(lead_id.to_string()),
+                    params,
+                }),
+                Some(_) => problems.push(format!("{lead_id}: the lead has no phone number")),
+                None => problems.push(format!("{lead_id}: lead not found (or not at that stage)")),
+            }
         };
-        if !seen_leads.insert(lead_id) {
-            problems.push(format!("{lead_id}: listed twice"));
-            return;
-        }
-        match lead_phones.get(&lead_id) {
-            Some(Some(phone)) if !phone.trim().is_empty() => rows.push(Row {
-                to: phone.trim().to_string(),
-                lead_id: Some(lead_id.to_string()),
-                params,
-            }),
-            Some(_) => problems.push(format!("{lead_id}: the lead has no phone number")),
-            None => problems.push(format!("{lead_id}: lead not found (or not at that stage)")),
-        }
-    };
 
     for row in &file_rows {
         match (&row.lead, &row.to) {
@@ -310,13 +318,23 @@ async fn batch_rows(
                 let mut ids: Vec<Uuid> = lead_phones.keys().copied().collect();
                 ids.sort();
                 for id in ids {
-                    add_lead(&id.to_string(), shared_params.to_vec(), &mut rows, &mut problems);
+                    add_lead(
+                        &id.to_string(),
+                        shared_params.to_vec(),
+                        &mut rows,
+                        &mut problems,
+                    );
                 }
             }
         }
     }
     if !problems.is_empty() {
-        let shown = problems.iter().take(8).cloned().collect::<Vec<_>>().join("; ");
+        let shown = problems
+            .iter()
+            .take(8)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; ");
         return Err(CliError::Usage(format!("batch rows not usable: {shown}")));
     }
     if rows.is_empty() {
@@ -325,7 +343,9 @@ async fn batch_rows(
         ));
     }
     if rows.len() > MAX_BATCH_ROWS {
-        return Err(CliError::Usage(format!("a batch has at most {MAX_BATCH_ROWS} rows")));
+        return Err(CliError::Usage(format!(
+            "a batch has at most {MAX_BATCH_ROWS} rows"
+        )));
     }
     Ok(rows)
 }
@@ -352,7 +372,10 @@ pub(crate) fn batch_content(
         return Err(CliError::Usage("--template is required".into()));
     }
     let batch_id = valid_uuid_or_new(batch_id, "--batch-id")?;
-    let note = match (note.map(str::trim).filter(|n| !n.is_empty()), campaign.map(str::trim).filter(|c| !c.is_empty())) {
+    let note = match (
+        note.map(str::trim).filter(|n| !n.is_empty()),
+        campaign.map(str::trim).filter(|c| !c.is_empty()),
+    ) {
         (Some(note), Some(campaign)) => format!("Campaign {campaign}. {note}"),
         (Some(note), None) => note.to_string(),
         (None, Some(campaign)) => format!("Campaign {campaign}."),
@@ -402,10 +425,14 @@ pub(crate) fn send_content(
     request_id: Option<&str>,
 ) -> Result<Value, CliError> {
     if contact.is_some() == thread.is_some() {
-        return Err(CliError::Usage("give exactly one of --contact or --thread".into()));
+        return Err(CliError::Usage(
+            "give exactly one of --contact or --thread".into(),
+        ));
     }
     if text.is_some() == template.is_some() {
-        return Err(CliError::Usage("give exactly one of --text or --template".into()));
+        return Err(CliError::Usage(
+            "give exactly one of --text or --template".into(),
+        ));
     }
     let request_id = valid_uuid_or_new(request_id, "--request-id")?;
     let mut content = json!({ "v": 1, "requestId": request_id.to_string() });
@@ -440,20 +467,65 @@ mod tests {
         assert!(send_content(None, None, Some("hi"), None, "en", &[], None).is_err());
         assert!(send_content(Some("+27"), Some("ab"), Some("hi"), None, "en", &[], None).is_err());
         assert!(send_content(Some("+27821234567"), None, None, None, "en", &[], None).is_err());
-        assert!(send_content(Some("+27821234567"), None, Some("hi"), Some("t"), "en", &[], None).is_err());
-        assert!(send_content(Some("+27821234567"), None, Some("  "), None, "en", &[], None).is_err());
-        assert!(send_content(Some("+27821234567"), None, Some("hi"), None, "en", &[], Some("nope")).is_err());
+        assert!(send_content(
+            Some("+27821234567"),
+            None,
+            Some("hi"),
+            Some("t"),
+            "en",
+            &[],
+            None
+        )
+        .is_err());
+        assert!(send_content(
+            Some("+27821234567"),
+            None,
+            Some("  "),
+            None,
+            "en",
+            &[],
+            None
+        )
+        .is_err());
+        assert!(send_content(
+            Some("+27821234567"),
+            None,
+            Some("hi"),
+            None,
+            "en",
+            &[],
+            Some("nope")
+        )
+        .is_err());
     }
 
     #[test]
     fn send_content_matches_the_contract() {
         let id = Uuid::new_v4().to_string();
-        let text = send_content(Some(" +27821234567 "), None, Some("hello"), None, "en", &[], Some(&id)).expect("text");
+        let text = send_content(
+            Some(" +27821234567 "),
+            None,
+            Some("hello"),
+            None,
+            "en",
+            &[],
+            Some(&id),
+        )
+        .expect("text");
         assert_eq!(text["v"], 1);
         assert_eq!(text["requestId"], id.as_str());
         assert_eq!(text["to"], "+27821234567");
         assert_eq!(text["text"], "hello");
-        let template = send_content(None, Some("abcd"), None, Some("intro"), "en", &["Thabo".to_string()], None).expect("template");
+        let template = send_content(
+            None,
+            Some("abcd"),
+            None,
+            Some("intro"),
+            "en",
+            &["Thabo".to_string()],
+            None,
+        )
+        .expect("template");
         assert_eq!(template["threadRoot"], "abcd");
         assert_eq!(template["template"]["name"], "intro");
         assert_eq!(template["template"]["params"][0], "Thabo");
@@ -467,7 +539,16 @@ mod tests {
             lead_id: Some("lead-1".into()),
             params: vec!["Thabo".into()],
         }];
-        let content = batch_content("intro", "en", rows, &["https://x.example/a.pdf".to_string()], Some("Warm leads"), Some("Oct push"), None).expect("batch");
+        let content = batch_content(
+            "intro",
+            "en",
+            rows,
+            &["https://x.example/a.pdf".to_string()],
+            Some("Warm leads"),
+            Some("Oct push"),
+            None,
+        )
+        .expect("batch");
         assert_eq!(content["v"], 1);
         assert_eq!(content["template"], "intro");
         assert_eq!(content["rows"][0]["leadId"], "lead-1");
@@ -481,7 +562,13 @@ mod tests {
     #[test]
     fn decision_content_matches_the_contract() {
         let id = Uuid::new_v4().to_string();
-        let content = decision_content(&id, "approve", &[3, 7], vec![json!({"idx": 2, "params": ["N"]})]).expect("decision");
+        let content = decision_content(
+            &id,
+            "approve",
+            &[3, 7],
+            vec![json!({"idx": 2, "params": ["N"]})],
+        )
+        .expect("decision");
         assert_eq!(content["decision"], "approve");
         assert_eq!(content["dropRows"], json!([3, 7]));
         assert_eq!(content["editRows"][0]["idx"], 2);

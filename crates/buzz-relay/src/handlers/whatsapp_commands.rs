@@ -134,7 +134,8 @@ fn internal(reason: impl std::fmt::Display) -> IngestError {
 }
 
 fn parse<'a, T: Deserialize<'a>>(event: &'a Event) -> Result<T, IngestError> {
-    serde_json::from_str(&event.content).map_err(|error| invalid(format!("command content: {error}")))
+    serde_json::from_str(&event.content)
+        .map_err(|error| invalid(format!("command content: {error}")))
 }
 
 fn ok(event: &Event, message: impl Into<String>) -> IngestResult {
@@ -160,7 +161,9 @@ pub async fn handle(
     event: Event,
     auth: IngestAuth,
 ) -> Result<IngestResult, IngestError> {
-    let access = access_for(state, tenant, auth.pubkey()).await.map_err(internal)?;
+    let access = access_for(state, tenant, auth.pubkey())
+        .await
+        .map_err(internal)?;
     let kind = u32::from(event.kind.as_u16());
     match kind {
         KIND_WHATSAPP_BATCH => handle_batch(tenant, state, &event, access).await,
@@ -172,9 +175,7 @@ pub async fn handle(
 }
 
 /// Refusal text for one batch row, or `None` when the row can be sent.
-pub fn row_refusal(
-    contact: Option<&buzz_db::whatsapp::WhatsappContact>,
-) -> Option<String> {
+pub fn row_refusal(contact: Option<&buzz_db::whatsapp::WhatsappContact>) -> Option<String> {
     let contact = contact?;
     if let Some(at) = contact.opted_out_at {
         return Some(format!("contact opted out on {}", at.format("%Y-%m-%d")));
@@ -204,14 +205,18 @@ async fn handle_batch(
     access: Access,
 ) -> Result<IngestResult, IngestError> {
     if !access.can_send() {
-        return Err(restricted("only the owner, admins and Outreach members can prepare batches"));
+        return Err(restricted(
+            "only the owner, admins and Outreach members can prepare batches",
+        ));
     }
     let command: BatchCommand = parse(event)?;
     check_version(command.v)?;
     let community = tenant.community();
     let batch_id = parse_uuid(&command.batch_id, "batchId").map_err(invalid)?;
     if command.rows.is_empty() || command.rows.len() > MAX_BATCH_ROWS {
-        return Err(invalid(format!("a batch has 1 through {MAX_BATCH_ROWS} rows")));
+        return Err(invalid(format!(
+            "a batch has 1 through {MAX_BATCH_ROWS} rows"
+        )));
     }
     if command.material_links.len() > MAX_MATERIAL_LINKS
         || command.material_links.iter().any(|link| !valid_link(link))
@@ -221,7 +226,9 @@ async fn handle_batch(
         )));
     }
     if command.note.chars().count() > MAX_NOTE_CHARS {
-        return Err(invalid(format!("note is longer than {MAX_NOTE_CHARS} characters")));
+        return Err(invalid(format!(
+            "note is longer than {MAX_NOTE_CHARS} characters"
+        )));
     }
     if state
         .db
@@ -315,7 +322,11 @@ async fn handle_batch(
         return Err(invalid(format!(
             "{} row(s) refused, nothing was saved: {shown}{}",
             refusals.len(),
-            if more > 0 { format!("; and {more} more") } else { String::new() }
+            if more > 0 {
+                format!("; and {more} more")
+            } else {
+                String::new()
+            }
         )));
     }
 
@@ -370,7 +381,10 @@ async fn handle_batch(
         ),
     )
     .await;
-    Ok(ok(event, format!("pending approval: {} row(s)", rows.len())))
+    Ok(ok(
+        event,
+        format!("pending approval: {} row(s)", rows.len()),
+    ))
 }
 
 async fn handle_decision(
@@ -434,9 +448,9 @@ async fn handle_decision(
         BatchDecisionOutcome::NotPending => Err(IngestError::Rejected(
             "duplicate: this batch was already decided".into(),
         )),
-        BatchDecisionOutcome::UnknownRow(idx) => {
-            Err(invalid(format!("row {idx} is not a pending row of this batch")))
-        }
+        BatchDecisionOutcome::UnknownRow(idx) => Err(invalid(format!(
+            "row {idx} is not a pending row of this batch"
+        ))),
         BatchDecisionOutcome::Approved(ready) => {
             channel::post_notice(
                 state,
@@ -450,7 +464,13 @@ async fn handle_decision(
             Ok(ok(event, format!("approved: {ready} row(s) ready")))
         }
         BatchDecisionOutcome::Rejected => {
-            channel::post_notice(state, tenant, "batch_rejected", &format!("Batch {short} was rejected. Nothing was sent.")).await;
+            channel::post_notice(
+                state,
+                tenant,
+                "batch_rejected",
+                &format!("Batch {short} was rejected. Nothing was sent."),
+            )
+            .await;
             Ok(ok(event, "rejected"))
         }
     }
@@ -463,7 +483,9 @@ async fn handle_send(
     access: Access,
 ) -> Result<IngestResult, IngestError> {
     if !access.can_send() {
-        return Err(restricted("only the owner, admins and Outreach members can send"));
+        return Err(restricted(
+            "only the owner, admins and Outreach members can send",
+        ));
     }
     let command: SendRequestCommand = parse(event)?;
     check_version(command.v)?;
@@ -495,18 +517,24 @@ async fn handle_settings(
     access: Access,
 ) -> Result<IngestResult, IngestError> {
     if !access.is_owner_admin() {
-        return Err(restricted("only the owner or an admin can change WhatsApp settings"));
+        return Err(restricted(
+            "only the owner or an admin can change WhatsApp settings",
+        ));
     }
     let command: SettingsCommand = parse(event)?;
     check_version(command.v)?;
     let community = tenant.community();
     if command.daily_new_chat_cap.is_none() && command.sync_templates != Some(true) {
-        return Err(invalid("nothing to change: set dailyNewChatCap or syncTemplates"));
+        return Err(invalid(
+            "nothing to change: set dailyNewChatCap or syncTemplates",
+        ));
     }
     let mut changes = Vec::new();
     if let Some(cap) = command.daily_new_chat_cap {
         if !(0..=MAX_DAILY_NEW_CHAT_CAP).contains(&cap) {
-            return Err(invalid(format!("dailyNewChatCap must be 0 through {MAX_DAILY_NEW_CHAT_CAP}")));
+            return Err(invalid(format!(
+                "dailyNewChatCap must be 0 through {MAX_DAILY_NEW_CHAT_CAP}"
+            )));
         }
         state
             .db
@@ -550,7 +578,10 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
-            created_at: Utc.with_ymd_and_hms(2026, 10, 1, 8, 0, 0).single().expect("time"),
+            created_at: Utc
+                .with_ymd_and_hms(2026, 10, 1, 8, 0, 0)
+                .single()
+                .expect("time"),
         }
     }
 
@@ -559,14 +590,26 @@ mod tests {
         assert_eq!(row_refusal(None), None);
         assert_eq!(row_refusal(Some(&contact())), None);
         let mut opted = contact();
-        opted.opted_out_at = Some(Utc.with_ymd_and_hms(2026, 10, 20, 8, 0, 0).single().expect("time"));
-        assert_eq!(row_refusal(Some(&opted)).as_deref(), Some("contact opted out on 2026-10-20"));
+        opted.opted_out_at = Some(
+            Utc.with_ymd_and_hms(2026, 10, 20, 8, 0, 0)
+                .single()
+                .expect("time"),
+        );
+        assert_eq!(
+            row_refusal(Some(&opted)).as_deref(),
+            Some("contact opted out on 2026-10-20")
+        );
         let mut paused = contact();
         paused.paused_at = Some(Utc::now());
-        assert!(row_refusal(Some(&paused)).expect("refusal").starts_with("contact is paused"));
+        assert!(row_refusal(Some(&paused))
+            .expect("refusal")
+            .starts_with("contact is paused"));
         let mut waiting = contact();
         waiting.outbound_since_inbound = 1;
-        assert_eq!(row_refusal(Some(&waiting)).as_deref(), Some("already messaged with no reply yet"));
+        assert_eq!(
+            row_refusal(Some(&waiting)).as_deref(),
+            Some("already messaged with no reply yet")
+        );
     }
 
     #[test]
@@ -576,7 +619,10 @@ mod tests {
         assert!(!valid_link("javascript:alert(1)"));
         assert!(!valid_link("ftp://example.com/a"));
         assert!(!valid_link("not a url"));
-        assert!(!valid_link(&format!("https://example.com/{}", "a".repeat(3000))));
+        assert!(!valid_link(&format!(
+            "https://example.com/{}",
+            "a".repeat(3000)
+        )));
     }
 
     #[test]
@@ -598,7 +644,8 @@ mod tests {
         )
         .expect("send");
         assert_eq!(send.thread_root.as_deref(), Some("ab"));
-        let settings: SettingsCommand = serde_json::from_str(r#"{"v":1,"dailyNewChatCap":45}"#).expect("settings");
+        let settings: SettingsCommand =
+            serde_json::from_str(r#"{"v":1,"dailyNewChatCap":45}"#).expect("settings");
         assert_eq!(settings.daily_new_chat_cap, Some(45));
         assert_eq!(e164("27821234567"), "+27821234567");
     }
