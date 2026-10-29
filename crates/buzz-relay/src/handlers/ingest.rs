@@ -764,6 +764,9 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | KIND_DUTY_ACTION
             | KIND_LESSON_HEAD
             | KIND_LESSON_ACTION
+            // Worker run records are community-wide company records.
+            | buzz_core::kind::KIND_WORKER_RUN_HEAD
+            | buzz_core::kind::KIND_WORKER_RUN_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT
@@ -3967,6 +3970,26 @@ mod postgres_tests {
             KIND_DUTY_ACTION,
             KIND_LESSON_HEAD,
             KIND_LESSON_ACTION,
+        ] {
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "kind {kind} should require MessagesWrite scope"
+            );
+            assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
+            assert!(
+                !requires_h_channel_scope(kind),
+                "kind {kind} must not require an h tag"
+            );
+        }
+    }
+
+    #[test]
+    fn worker_run_record_kinds_are_global_only_message_writes() {
+        let event = make_dummy_event();
+        for kind in [
+            buzz_core::kind::KIND_WORKER_RUN_HEAD,
+            buzz_core::kind::KIND_WORKER_RUN_ACTION,
         ] {
             assert_eq!(
                 required_scope_for_kind(kind, &event),

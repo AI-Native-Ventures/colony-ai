@@ -46,6 +46,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30654 | AI spend record head | Relay signed, replaceable | AI spend |
 | 30655 | Employee duty head | Relay signed, replaceable | Company duties |
 | 30656 | Employee lesson head | Relay signed, replaceable | Employee lessons |
+| 30672 | Worker run head | Relay signed, replaceable | Worker runs |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -61,6 +62,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47043 | AI spend record action | Brokered | AI spend |
 | 47044 | Employee duty action | Brokered | Company duties |
 | 47045 | Employee lesson action | Brokered | Employee lessons |
+| 47062 | Worker run action | Brokered | Worker runs |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1031,6 +1033,34 @@ unavailable until the confidence input has a frozen design.
 Agent memory kind 30174 and the existing buzz memory CLI remain a separate
 Memory section within Lessons. Memory entries are not lesson records and are
 not changed by lesson create, edit, approval, deprecation, or restore actions.
+
+## Worker runs
+
+A worker run is a one-shot, tool-less model call an employee starts for
+research, drafts or variations. It is a company record, not a team member: it
+has no pubkey, position or managed agent and never appears in the team list.
+Records are community-wide (no `h` tag), d-tag `company:worker:<worker-uuid>`,
+one `p` tag naming the employee that started the run. Action kind 47062 carries
+`schemaVersion`, the full `run` and `expectedHeadEventId`; the relay-signed head
+(kind 30672) carries the run, `updatedByPubkey`, `updatedAt` and
+`sourceActionEventId`.
+
+- **Lifecycle.** The employee writes one `running` record with no expected head,
+  then one ending record (`done`, `failed` or `cancelled`) naming the exact head.
+  An ended run never changes. Identity, label, model, start and deadline are
+  fixed once the run starts.
+- **Authority.** The signer must be the employee named in `parentPubkey`, or an
+  owner or admin. A worker write creates no member, position, user row or
+  managed agent.
+- **Budgets.** The deadline is at most 900 seconds after the start. Output is at
+  most 16384 bytes; longer output is cut by the launcher and ends with
+  `[output cut, full text in <path>]`. A `done` record must finish no later than
+  30 seconds after its deadline.
+- **Readers.** A `running` record past `deadlineAt` reads as failed
+  (`worker_effective_status`), so a crashed launcher never leaves a run alive.
+- **Not in `CompanyCommand`.** The record carries a floating point cost, which
+  `CompanyCommand` (an `Eq` type) cannot hold, so the relay decodes
+  `WorkerRunAction` directly.
 
 ## Proof boundaries
 

@@ -219,6 +219,8 @@ export const KIND_DUTY_HEAD = 30655;
 export const KIND_DUTY_ACTION = 47044;
 export const KIND_LESSON_HEAD = 30656;
 export const KIND_LESSON_ACTION = 47045;
+export const KIND_WORKER_RUN_HEAD = 30672;
+export const KIND_WORKER_RUN_ACTION = 47062;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,
@@ -246,6 +248,8 @@ export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_LESSON_ACTION,
   KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
   KIND_AI_SPEND_RECORD_ACTION,
+  KIND_WORKER_RUN_HEAD,
+  KIND_WORKER_RUN_ACTION,
 ] as const;
 
 // Human-visible "new content" message kinds. Used as the unread trigger set

@@ -794,6 +794,10 @@ pub const KIND_FACTORY_RUN_ACTION: u32 = 47038;
 pub const KIND_DUTY_ACTION: u32 = 47044;
 /// Member lesson mutation, brokered and community-wide.
 pub const KIND_LESSON_ACTION: u32 = 47045;
+/// Relay-authored canonical employee worker run head (co-founder block, community-wide).
+pub const KIND_WORKER_RUN_HEAD: u32 = 30672;
+/// Employee or admin worker run write, brokered and community-wide (co-founder block).
+pub const KIND_WORKER_RUN_ACTION: u32 = 47062;
 
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
@@ -822,6 +826,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_LESSON_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
     KIND_AI_SPEND_RECORD_ACTION,
+    KIND_WORKER_RUN_HEAD,
+    KIND_WORKER_RUN_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -841,6 +847,7 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_ACTION
     )
 }
 
@@ -870,6 +877,8 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_HEAD
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_HEAD
+            | KIND_WORKER_RUN_ACTION
     )
 }
 
@@ -1180,6 +1189,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_WORKER_RUN_HEAD,
+    KIND_WORKER_RUN_ACTION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1267,6 +1278,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_ACTION
     )
 }
 
@@ -1309,6 +1321,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_LESSON_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
+            | KIND_WORKER_RUN_HEAD
     )
 }
 
@@ -1354,6 +1367,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); 
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
@@ -1446,6 +1460,19 @@ mod tests {
             assert!(is_command_kind(action));
             assert!(!is_relay_only_kind(action));
         }
+    }
+
+    #[test]
+    fn worker_run_kinds_have_expected_write_authority() {
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_WORKER_RUN_HEAD));
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_WORKER_RUN_ACTION));
+        assert!(is_company_global_kind(KIND_WORKER_RUN_HEAD));
+        assert!(is_company_global_kind(KIND_WORKER_RUN_ACTION));
+        assert!(is_relay_only_kind(KIND_WORKER_RUN_HEAD));
+        assert!(is_company_command_kind(KIND_WORKER_RUN_ACTION));
+        assert!(is_command_kind(KIND_WORKER_RUN_ACTION));
+        assert!(!is_relay_only_kind(KIND_WORKER_RUN_ACTION));
+        assert!(!is_company_command_kind(KIND_WORKER_RUN_HEAD));
     }
 
     #[test]

@@ -34,6 +34,8 @@ pub mod company_spend;
 pub mod company_work_tracking;
 /// Durable company work watchdog check-in scheduler and delivery worker.
 pub mod company_work_watchdog_worker;
+/// Nostr-first broker for budgeted employee worker run records.
+pub mod company_workers;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.
