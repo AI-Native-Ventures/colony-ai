@@ -3,8 +3,8 @@
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
 and member positions), PERM-1 standing tool permissions, secret bindings,
 FACTORY-1 Factory run preview and pull request records, HIRE-1 employee hiring,
-WORK-2 company work tracking APIs, DUTY-1 employee duties, and LESSON-1
-employee lessons.
+WORK-2 company work tracking APIs, DUTY-1 employee duties, LESSON-1
+employee lessons, and co-founder mode settings and function slots.
 Schema version: `1`. Goals, asks, work, permissions, and member positions
 follow design baseline
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
@@ -46,6 +46,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30654 | AI spend record head | Relay signed, replaceable | AI spend |
 | 30655 | Employee duty head | Relay signed, replaceable | Company duties |
 | 30656 | Employee lesson head | Relay signed, replaceable | Employee lessons |
+| 30670 | Co-founder settings head | Relay signed, replaceable | Co-founder mode |
+| 30671 | Function slot head | Relay signed, replaceable | Co-founder mode |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -61,6 +63,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47043 | AI spend record action | Brokered | AI spend |
 | 47044 | Employee duty action | Brokered | Company duties |
 | 47045 | Employee lesson action | Brokered | Employee lessons |
+| 47060 | Co-founder settings action | Brokered | Co-founder mode |
+| 47061 | Function slot action | Brokered | Co-founder mode |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1031,6 +1035,59 @@ unavailable until the confidence input has a frozen design.
 Agent memory kind 30174 and the existing buzz memory CLI remain a separate
 Memory section within Lessons. Memory entries are not lesson records and are
 not changed by lesson create, edit, approval, deprecation, or restore actions.
+
+## Co-founder settings
+
+One community-wide record per company, with no h tag, the fixed d-tag
+`company:cofounder`, and a relay-signed kind 30670 head. A member-signed kind
+47060 action carries `schemaVersion`, the full `settings` and
+`expectedHeadEventId` (omitted only while no head exists). Every change
+replaces the whole record.
+
+`settings` holds `enabled` (boolean), `moneyPreference` (`cheapest_first` or
+`best_option`) and `approvalSwitches` (`approveEveryHire`,
+`approvePlaybookChanges`, `approveEveryDiscoveryCampaign`, all booleans). A
+company with no head reads as the defaults: disabled, `cheapest_first`, all
+switches off. Co-founder mode is off until an owner or admin turns it on.
+
+Only a community owner or admin can write the record. A member or a managed
+agent is refused with `only the owner or an admin can change co-founder mode`.
+A stale `expectedHeadEventId` is a write conflict (CLI exit code 5). The head
+adds `updatedByPubkey` and `updatedAt`. `updatedAt` is Unix seconds, not an RFC
+3339 string, because the record is read as a number by the desktop map.
+
+CLI: `colony cofounder get` prints the head, or the defaults with
+`"exists": false`; `colony cofounder set --enabled true|false` reads the
+current head and writes the change against it.
+
+## Function slots
+
+Each company has five functions, in this fixed order: `sales`, `operations`,
+`customer_success`, `finance`, `brand` (shown as Sales, Operations, Customer
+Success, Finance, Brand). Every function has one community-wide record with no
+h tag, d-tag `company:function:<id>` and a relay-signed kind 30671 head. A
+function with no head reads as an empty slot.
+
+A member-signed kind 47061 action carries `schemaVersion`, `function`, `kind`,
+`leadPubkey` and `expectedHeadEventId`. `kind` is one of:
+
+| `kind` | `leadPubkey` | Head state after |
+| --- | --- | --- |
+| `assign_lead` | required, 64 hex | `filled` with that lead |
+| `cover_by_scout` | not allowed | `covered_by_scout`, no lead |
+| `clear` | not allowed | `empty`, no lead |
+
+A lead must be a member or a managed agent of this company; otherwise the relay
+refuses with `the lead must be a member or an agent of this company`. Only an
+owner or admin can write function slots. The head adds `updatedByPubkey` and
+`updatedAt` (Unix seconds).
+
+A slot whose lead later leaves the team still holds the old pubkey. Readers must
+treat a lead who is no longer on the team as an empty slot instead of showing a
+broken avatar.
+
+CLI: `colony functions list`, `get <function>`, `assign <function> --lead
+<pubkey>`, `cover <function>` and `clear <function>`.
 
 ## Proof boundaries
 
