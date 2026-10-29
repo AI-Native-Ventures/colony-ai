@@ -701,7 +701,7 @@ impl Upstream {
                 // No response bytes at all within the deadline. Logged like any
                 // other refusal, with status 0 for "no status". A free model
                 // cannot have charged: hand over. A paid one may have.
-                tried.push(format!("{model}(timeout)"));
+                tried.push(format!("{model}(net)"));
                 let waited = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
                 let note = format!("no response within {waited} ms");
                 tracing::warn!(
@@ -709,7 +709,7 @@ impl Upstream {
                     upstream_status = 0,
                     upstream_message = note.as_str(),
                     free,
-                    "Colony gateway upstream did not accept a request"
+                    "Colony gateway upstream went quiet"
                 );
                 return Err(if free {
                     Attempt::Unavailable(CompletionFailure::Rejected)
