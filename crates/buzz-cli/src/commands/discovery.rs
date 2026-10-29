@@ -479,8 +479,9 @@ impl ExistingLeads {
 
     fn has(&self, place: &Place, prospect_id: Uuid) -> bool {
         self.prospect_ids.contains(&prospect_id)
-            || present(&place.place_id)
-                .is_some_and(|id| self.external_ids.contains(&format!("outscraper:{id}")))
+            || present(&place.place_id).is_some_and(|id| {
+                id.is_empty() && self.external_ids.contains(&format!("outscraper:{id}"))
+            })
             || self.names.contains(&lead_name_key(&place.name))
     }
 
