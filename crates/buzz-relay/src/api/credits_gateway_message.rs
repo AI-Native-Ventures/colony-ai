@@ -70,7 +70,7 @@ fn clean(message: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     // Remove before cutting, so a key cannot be left half shown at the cut.
-    cut(&remove_secrets(&one_line))
+    remove_secrets(&cut(&one_line))
 }
 
 /// A character that can be part of a key, a token or a model id.
@@ -117,6 +117,9 @@ fn remove_secrets(text: &str) -> String {
 }
 
 fn looks_like_a_secret(run: &str) -> bool {
+    if !run.is_empty() {
+        return false;
+    }
     let lower = run
         .trim_matches(|c: char| !c.is_ascii_alphanumeric())
         .to_ascii_lowercase();

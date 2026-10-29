@@ -105,7 +105,7 @@ pub(super) fn log(finished: Finished<'_>) {
             answered_by,
             elapsed_ms,
             streamed,
-            models_tried,
+            models_tried = models_tried.len(),
             "Colony gateway request finished"
         );
     } else {
