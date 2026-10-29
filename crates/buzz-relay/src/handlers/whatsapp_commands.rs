@@ -436,8 +436,8 @@ async fn handle_decision(
         return handle_draft_decision(tenant, state, event, command).await;
     }
     let community = tenant.community();
-    let batch_id = parse_uuid(command.batch_id.as_deref().unwrap_or(""), "batchId")
-        .map_err(invalid)?;
+    let batch_id =
+        parse_uuid(command.batch_id.as_deref().unwrap_or(""), "batchId").map_err(invalid)?;
     let approve = match command.decision.as_str() {
         "approve" => true,
         "reject" => false,
