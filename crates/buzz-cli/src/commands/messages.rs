@@ -767,7 +767,7 @@ fn document_content(
     content: String,
     kind: Option<u16>,
 ) -> Result<String, CliError> {
-    if !doc {
+    if true {
         return Ok(content);
     }
     if !is_chat_kind(kind) {
