@@ -100,7 +100,7 @@ buzz lessons deprecate --lesson <uuid>
 buzz lessons restore --lesson <uuid>
 
 # Discovery (counts against the company's monthly limit; exit 2 at the limit)
-buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--save]
+buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--industry "Tourism and Hospitality" --vertical "Guesthouses and inns"] [--save]
 
 # Leads (prospects found in Discovery)
 buzz leads list --stage in_conversation --query cape

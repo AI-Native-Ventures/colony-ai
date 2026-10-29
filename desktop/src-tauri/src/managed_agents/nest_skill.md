@@ -49,6 +49,8 @@ Manage your repository's enforced branch and tag rules with `repos protect list|
 
 Use `colony discovery search --query <what> --location <where> [--country <name|code>] [--limit 1..50] [--pages 1..5] [--save]` when you need new local businesses to contact, for example `--query guesthouses --location "Melville, Johannesburg" --limit 10 --save`. Search only when the person asked for leads or your work needs them; do not search to browse.
 
+Pass `--industry` and `--vertical` with `--save` so each lead is filed under what you searched: the Discovery industry and the business type, for example `colony discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 --industry "Tourism and Hospitality" --vertical "Guesthouses and inns" --save`. If you leave them out, the industry is `Local businesses` and the vertical is your query, which makes poor filing, so always give both when you know them.
+
 Without `--save` it prints the places as JSON and saves nothing. With `--save` it creates one lead per place in the company's private Sales channel, skips places that are already leads (so a repeat never duplicates), and prints `{saved, skipped_existing, leads}`; each lead carries a `reference` link, so include it verbatim when you announce the leads. Searches are covered by the company's Discovery subscription and capped per month for the whole company. At the cap the command exits with code 2 and says `Discovery limit reached for this month, resets <date>`: stop searching, tell the person the date, and do not retry before it. Places fetched before the cap are still saved.
 
 ## Output Contracts

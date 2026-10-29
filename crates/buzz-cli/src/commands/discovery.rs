@@ -74,9 +74,12 @@ pub async fn dispatch(cmd: crate::DiscoveryCmd, client: &BuzzClient) -> Result<(
             country,
             limit,
             pages,
+            industry,
+            vertical,
             save,
         } => {
-            let options = SearchOptions::new(&query, &location, country.as_deref(), limit, pages)?;
+            let options = SearchOptions::new(&query, &location, country.as_deref(), limit, pages)?
+                .with_labels(industry.as_deref(), vertical.as_deref());
             cmd_search(client, &options, save).await
         }
     }
@@ -90,9 +93,35 @@ struct SearchOptions {
     country: Option<String>,
     limit: u32,
     pages: u32,
+    /// Industry label saved leads carry; `None` means [`AGENT_INDUSTRY`].
+    industry: Option<String>,
+    /// Business-type label saved leads carry; `None` means the query.
+    vertical: Option<String>,
 }
 
 impl SearchOptions {
+    /// Set the labels saved leads carry. A blank label counts as not given.
+    fn with_labels(mut self, industry: Option<&str>, vertical: Option<&str>) -> Self {
+        let label = |value: Option<&str>| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        };
+        self.industry = label(industry);
+        self.vertical = label(vertical);
+        self
+    }
+
+    /// The industry and vertical saved leads carry: the labels given with
+    /// `--industry` and `--vertical`, else "Local businesses" and the query.
+    fn labels(&self) -> (&str, &str) {
+        (
+            self.industry.as_deref().unwrap_or(AGENT_INDUSTRY),
+            self.vertical.as_deref().unwrap_or(&self.query),
+        )
+    }
+
     fn new(
         query: &str,
         location: &str,
@@ -125,6 +154,8 @@ impl SearchOptions {
                 .map(str::to_owned),
             limit,
             pages,
+            industry: None,
+            vertical: None,
         })
     }
 }
@@ -392,11 +423,12 @@ fn map_place_to_prospect(
     place: &Place,
     prospect_id: Uuid,
     campaign_id: &str,
+    industry: &str,
     vertical: &str,
     now_seconds: i64,
 ) -> Option<ProspectAction> {
     let display_name = clamp_bytes(&place.name, MAX_NAME_BYTES);
-    let industry = clamp_bytes(AGENT_INDUSTRY, MAX_TAXONOMY_BYTES);
+    let industry = clamp_bytes(industry, MAX_TAXONOMY_BYTES);
     let vertical = clamp_bytes(vertical, MAX_TAXONOMY_BYTES);
     if display_name.is_empty() || industry.is_empty() || vertical.is_empty() {
         return None;
@@ -720,12 +752,14 @@ async fn save_places(
     ])
     .to_string();
     let now_seconds = chrono::Utc::now().timestamp();
+    let (industry, vertical) = options.labels();
     for (prospect_id, place) in fresh {
         let Some(action) = map_place_to_prospect(
             place,
             prospect_id,
             &campaign_id,
-            &options.query,
+            industry,
+            vertical,
             now_seconds,
         ) else {
             continue;
@@ -869,6 +903,64 @@ mod tests {
     }
 
     #[test]
+    fn save_uses_given_industry_and_vertical() {
+        let given = options("Melville", None).with_labels(
+            Some(" Tourism and Hospitality "),
+            Some("Guesthouses and inns"),
+        );
+        let (industry, vertical) = given.labels();
+        assert_eq!(
+            (industry, vertical),
+            ("Tourism and Hospitality", "Guesthouses and inns")
+        );
+        let lodge = place(Some("ChIJ-1"), "Lodge");
+        let action = map_place_to_prospect(
+            &lodge,
+            place_prospect_id(&lodge),
+            "c",
+            industry,
+            vertical,
+            1,
+        )
+        .expect("maps");
+        assert_eq!(action.prospect.industry, "Tourism and Hospitality");
+        assert_eq!(action.prospect.vertical, "Guesthouses and inns");
+
+        // Not given (or blank): industry "Local businesses", vertical = the query.
+        for unset in [
+            options("Melville", None),
+            options("Melville", None).with_labels(Some("  "), Some("")),
+        ] {
+            assert_eq!(unset.labels(), ("Local businesses", "guesthouses"));
+        }
+        // Each label is independent.
+        assert_eq!(
+            options("Melville", None)
+                .with_labels(None, Some("Inns"))
+                .labels(),
+            ("Local businesses", "Inns")
+        );
+
+        // The flags parse on the real command.
+        use clap::Parser;
+        let parsed = crate::Cli::try_parse_from([
+            "buzz",
+            "discovery",
+            "search",
+            "--query",
+            "q",
+            "--location",
+            "l",
+            "--industry",
+            "Tourism and Hospitality",
+            "--vertical",
+            "Inns",
+            "--save",
+        ]);
+        assert!(parsed.is_ok(), "{:?}", parsed.err());
+    }
+
+    #[test]
     fn search_options_bound_limit_and_pages() {
         for limit in [0, 51] {
             assert!(SearchOptions::new("a", "b", None, Some(limit), None).is_err());
@@ -957,8 +1049,15 @@ mod tests {
         full.category = Some("Home goods store".into());
         full.maps_url = Some("https://www.google.com/maps/place/?q=place_id:ChIJ-test".into());
         let id = place_prospect_id(&full);
-        let action =
-            map_place_to_prospect(&full, id, "camp-1", "guesthouses", 1_800_000_000).expect("maps");
+        let action = map_place_to_prospect(
+            &full,
+            id,
+            "camp-1",
+            "Local businesses",
+            "guesthouses",
+            1_800_000_000,
+        )
+        .expect("maps");
         let prospect = &action.prospect;
         assert_eq!(action.action, RecordAction::Create);
         assert_eq!(action.expected_head_event_id, None);
@@ -990,12 +1089,14 @@ mod tests {
         // A place with only a name is still a valid record.
         let bare = place(None, "Bare Lodge");
         let action =
-            map_place_to_prospect(&bare, place_prospect_id(&bare), "c", "v", 1).expect("maps");
+            map_place_to_prospect(&bare, place_prospect_id(&bare), "c", "i", "v", 1).expect("maps");
         assert_eq!(action.prospect.fit_score, Some(30));
         assert!(action.prospect.evidence.is_empty());
         assert!(action.prospect.party.external_ids == vec!["campaign:c".to_string()]);
         // No usable name, no record.
-        assert!(map_place_to_prospect(&place(None, "  "), Uuid::new_v4(), "c", "v", 1).is_none());
+        assert!(
+            map_place_to_prospect(&place(None, "  "), Uuid::new_v4(), "c", "i", "v", 1).is_none()
+        );
     }
 
     #[test]

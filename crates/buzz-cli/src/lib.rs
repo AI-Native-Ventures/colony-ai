@@ -1295,6 +1295,14 @@ pub enum DiscoveryCmd {
         /// Pages to fetch, 1 through 5 (default 1)
         #[arg(long)]
         pages: Option<u32>,
+        /// Industry label saved leads carry, for example "Tourism and Hospitality"
+        /// (default "Local businesses"); only used with --save
+        #[arg(long)]
+        industry: Option<String>,
+        /// Business type saved leads carry, for example "Guesthouses and inns"
+        /// (default: the query); only used with --save
+        #[arg(long)]
+        vertical: Option<String>,
         /// Save every place that is not already a lead into the Sales channel
         /// and print {saved, skipped_existing, leads}
         #[arg(long)]
