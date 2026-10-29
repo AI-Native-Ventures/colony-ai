@@ -7287,6 +7287,17 @@ async fn run_models(args: ModelsArgs) -> Result<()> {
     Ok(())
 }
 
+/// Provider selectors forwarded to the shell tool so `colony workers spawn`
+/// reaches the provider this employee already runs on. They name a provider,
+/// model or Colony credits session; API keys are never forwarded.
+const WORKER_PROVIDER_ENV: &[&str] = &[
+    "BUZZ_AGENT_PROVIDER",
+    "BUZZ_AGENT_MODEL",
+    "COLONY_CREDITS_GATEWAY",
+    "COLONY_CREDITS_SESSION_ID",
+    "COLONY_CREDITS_MODEL",
+];
+
 fn build_mcp_servers(config: &Config) -> Vec<McpServer> {
     if config.mcp_command.is_empty() {
         return vec![];
@@ -7337,6 +7348,16 @@ fn build_mcp_servers(config: &Config) -> Vec<McpServer> {
                         name: "BUZZ_ACP_DISPLAY_NAME".into(),
                         value: display_name,
                     });
+                }
+            }
+            for name in WORKER_PROVIDER_ENV {
+                if let Ok(value) = std::env::var(name) {
+                    if !value.is_empty() {
+                        env.push(EnvVar {
+                            name: (*name).into(),
+                            value,
+                        });
+                    }
                 }
             }
             env
@@ -10702,6 +10723,52 @@ mod build_mcp_servers_tests {
                 .any(|e| e.name == "BUZZ_ACP_DISPLAY_NAME"),
             "empty display name should not be forwarded"
         );
+    }
+
+    #[test]
+    fn worker_provider_selectors_reach_the_mcp_server_but_api_keys_do_not() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("BUZZ_AGENT_PROVIDER", "colony_credits");
+        std::env::set_var("COLONY_CREDITS_GATEWAY", "1");
+        std::env::set_var(
+            "COLONY_CREDITS_SESSION_ID",
+            "5d7b1b1e-0000-4000-8000-000000000001",
+        );
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-should-not-travel");
+        std::env::set_var("OPENAI_COMPAT_API_KEY", "sk-should-not-travel");
+        std::env::set_var("BUZZ_AGENT_MODEL", "");
+        let config = test_config();
+        let servers = build_mcp_servers(&config);
+        for name in [
+            "BUZZ_AGENT_PROVIDER",
+            "COLONY_CREDITS_GATEWAY",
+            "COLONY_CREDITS_SESSION_ID",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_COMPAT_API_KEY",
+            "BUZZ_AGENT_MODEL",
+        ] {
+            std::env::remove_var(name);
+        }
+
+        let env = &servers[0].env;
+        let value_of = |name: &str| {
+            env.iter()
+                .find(|e| e.name == name)
+                .map(|e| e.value.as_str())
+        };
+        assert_eq!(value_of("BUZZ_AGENT_PROVIDER"), Some("colony_credits"));
+        assert_eq!(value_of("COLONY_CREDITS_GATEWAY"), Some("1"));
+        assert_eq!(
+            value_of("COLONY_CREDITS_SESSION_ID"),
+            Some("5d7b1b1e-0000-4000-8000-000000000001")
+        );
+        assert_eq!(
+            value_of("BUZZ_AGENT_MODEL"),
+            None,
+            "empty values are skipped"
+        );
+        assert_eq!(value_of("ANTHROPIC_API_KEY"), None);
+        assert_eq!(value_of("OPENAI_COMPAT_API_KEY"), None);
     }
 
     #[test]

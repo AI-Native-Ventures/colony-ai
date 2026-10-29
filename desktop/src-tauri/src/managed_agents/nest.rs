@@ -71,7 +71,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 9 rewrote web task rule 3: agents open the browser themselves.
 /// Version 10 added web task rule 6: agents find and use the person's own tabs.
 /// Version 11 added the co-founder mode and function slot section.
-const NEST_SKILL_VERSION: u32 = 11;
+/// Version 12 added the Workers section (`colony workers`).
+const NEST_SKILL_VERSION: u32 = 12;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
