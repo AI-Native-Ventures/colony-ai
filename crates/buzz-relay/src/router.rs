@@ -155,6 +155,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/moderation/restricted",
             get(api::bridge::moderation_restricted),
         )
+        // WhatsApp outreach: secret intake and role filtered reads (NIP-98 auth).
+        .route(
+            api::whatsapp::CONNECT_PATH,
+            post(api::whatsapp::connect_number),
+        )
+        .route(
+            api::whatsapp::DISCONNECT_PATH,
+            post(api::whatsapp::disconnect_number),
+        )
+        .route(api::whatsapp::QUERY_PATH, post(api::whatsapp::query))
+        // Meta webhook for one company's number (verify challenge + HMAC signature).
+        .route(
+            "/hooks/whatsapp/{id}",
+            get(api::whatsapp::webhook_verify).post(api::whatsapp::webhook_receive),
+        )
         // Webhook trigger (secret-authenticated, no NIP-98)
         .route("/hooks/{id}", post(api::bridge::workflow_webhook))
         // Mesh demo echo probe — testbed-only; 404 unless BUZZ_MESH=on and

@@ -66,5 +66,7 @@ pub mod thread;
 pub mod usage;
 /// User profile persistence.
 pub mod user;
+/// Per-company WhatsApp outreach connection, contacts, messages and batches.
+pub mod whatsapp;
 /// Workflow, run, and approval persistence.
 pub mod workflow;

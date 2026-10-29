@@ -119,6 +119,19 @@ buzz leads stage --lead <uuid> --stage lost --reason "Budget"
 buzz leads qualify --lead <uuid> --qualification qualified
 buzz leads save --lead <uuid> [--unsave]
 
+# WhatsApp outreach (official Cloud API; the relay is the only sender)
+buzz whatsapp status
+buzz whatsapp templates [--refresh]
+buzz whatsapp batch create --template intro_offer --params-file rows.json [--material <url>] [--note "..."]
+buzz whatsapp batch list [--state pending]
+buzz whatsapp batch show --batch <uuid>
+buzz whatsapp batch approve --batch <uuid> [--drop 3] [--edit-file edits.json]   # owner or admin
+buzz whatsapp batch reject --batch <uuid>                                          # owner or admin
+buzz whatsapp send --contact +27821234567 --text "Thanks, here is the quote"      # inside the 24 hour window
+buzz whatsapp send --contact +27821234567 --template intro_offer --param Thabo
+buzz whatsapp inbox | contacts | thread --contact +27821234567
+buzz whatsapp cap [45]                                                              # show or set (owner or admin)
+
 # Forum
 buzz messages vote --event <event-id> --direction up
 

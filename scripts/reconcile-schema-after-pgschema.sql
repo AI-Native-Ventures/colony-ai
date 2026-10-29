@@ -217,6 +217,13 @@ BEGIN
     END IF;
 END $$;
 
+SELECT attach_community_write_fence('whatsapp_settings');
+SELECT attach_community_write_fence('whatsapp_connections');
+SELECT attach_community_write_fence('whatsapp_templates');
+SELECT attach_community_write_fence('whatsapp_contacts');
+SELECT attach_community_write_fence('whatsapp_batches');
+SELECT attach_community_write_fence('whatsapp_messages');
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -228,6 +235,23 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'company_work_watchdog_deliveries must have its community write fence after pgschema apply';
     END IF;
+END $$;
+
+DO $$
+DECLARE
+    fenced TEXT;
+BEGIN
+    FOREACH fenced IN ARRAY ARRAY['whatsapp_settings', 'whatsapp_connections', 'whatsapp_templates', 'whatsapp_contacts', 'whatsapp_batches', 'whatsapp_messages'] LOOP
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_trigger
+            WHERE tgrelid = fenced::regclass
+              AND tgname = 'community_write_fence_' || fenced
+              AND NOT tgisinternal
+        ) THEN
+            RAISE EXCEPTION '% must have its community write fence after pgschema apply', fenced;
+        END IF;
+    END LOOP;
 END $$;
 
 DO $$

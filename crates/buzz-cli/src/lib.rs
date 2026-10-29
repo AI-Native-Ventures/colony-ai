@@ -280,6 +280,12 @@ enum Cmd {
     /// Read leads found in Discovery, add notes and update their stage
     #[command(subcommand)]
     Leads(LeadsCmd),
+    /// WhatsApp outreach: approved templates, batches the owner approves, replies and status
+    #[command(
+        subcommand,
+        long_about = "WhatsApp outreach through the company's official WhatsApp Business number.\n\nRules:\n- Templates first: a new chat can only start with an approved template, and only through a batch the owner or an admin approves. Nothing in a pending batch is sent.\n- Free text only inside the 24 hour window after the contact last wrote to us.\n- Keep replies short and human. Never send more than one message in a row without a reply.\n- If a contact says stop, unsubscribe, no thanks or not interested they are opted out and every later send is refused. Never work around it.\n- A daily cap limits new chats; the owner can change it any time.\n\nStart with `colony whatsapp status` and `colony whatsapp templates`."
+    )]
+    Whatsapp(WhatsappCmd),
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
@@ -1380,6 +1386,185 @@ pub enum LeadsCmd {
         /// Remove the lead from the saved leads instead of saving it
         #[arg(long)]
         unsave: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappCmd {
+    /// Show the connected number, quality, daily cap, sends today and any issue
+    Status,
+    /// List approved templates: Colony title first, Meta name second, slots and buttons
+    Templates {
+        /// Ask WhatsApp for the current list first (owner or admin)
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Rename a template (owner or admin) or propose a better title (agents, with --propose)
+    TemplateTitle {
+        /// Template title or Meta name
+        #[arg(long)]
+        template: String,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// The Colony display title, for example "Voice note offer"
+        #[arg(long)]
+        title: String,
+        /// Only propose the title; the owner or an admin accepts it by renaming
+        #[arg(long)]
+        propose: bool,
+    },
+    /// Prepare, review and decide batches of template messages
+    #[command(subcommand)]
+    Batch(WhatsappBatchCmd),
+    /// Send one message: free text inside the 24 hour window, otherwise a template.
+    /// An agent's message is a draft until an owner or admin approves it; their own send at once
+    Send {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        contact: Option<String>,
+        /// Or the contact's thread root (hex event id)
+        #[arg(long)]
+        thread: Option<String>,
+        /// Free text (only inside the 24 hour window)
+        #[arg(long)]
+        text: Option<String>,
+        /// Or an approved template title or Meta name
+        #[arg(long)]
+        template: Option<String>,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// Template parameter in slot order; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+        /// Reuse a request id (UUID) to retry safely: one id is at most one send
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// List the agent drafts waiting for an owner or admin to approve
+    Drafts {
+        /// Maximum drafts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Approve, edit or reject one agent draft (owner or admin)
+    #[command(subcommand)]
+    Draft(WhatsappDraftCmd),
+    /// List contacts, most recently active first
+    Contacts {
+        /// Maximum contacts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// List contacts whose latest message has no reply yet
+    Inbox {
+        /// Maximum contacts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show one contact's messages with delivery state
+    Thread {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        contact: String,
+        /// Maximum messages, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show the daily cap on new chats, or set it (owner or admin)
+    Cap {
+        /// New cap, 0 through 1000; leave out to show the current cap
+        value: Option<i32>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappDraftCmd {
+    /// Approve a draft so the relay sends it; optionally edit the text or template parameters
+    Approve {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
+        /// Edited text for a text draft
+        #[arg(long)]
+        text: Option<String>,
+        /// Edited template parameter in slot order; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+    },
+    /// Reject a draft; it is never sent
+    Reject {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappBatchCmd {
+    /// Prepare a batch of template messages; it stays pending until the owner approves it
+    Create {
+        /// Approved template title or Meta name
+        #[arg(long)]
+        template: String,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// Lead UUID or link to message; repeat for several leads
+        #[arg(long)]
+        lead: Vec<String>,
+        /// Every active lead at this stage: qualified, in_conversation, proposal or lost
+        #[arg(long)]
+        stage: Option<String>,
+        /// JSON file: [{"lead": "<uuid>", "params": ["Thabo"]}, {"to": "+27...", "params": [...]}]
+        #[arg(long)]
+        params_file: Option<String>,
+        /// Shared template parameter for --lead/--stage rows; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+        /// Material link the owner should see with the batch; repeat for several
+        #[arg(long)]
+        material: Vec<String>,
+        /// Note for the approver
+        #[arg(long)]
+        note: Option<String>,
+        /// Campaign name, added to the note
+        #[arg(long)]
+        campaign: Option<String>,
+        /// Reuse a batch id (UUID) to retry safely: one id is at most one batch
+        #[arg(long)]
+        batch_id: Option<String>,
+    },
+    /// List batches, newest first
+    List {
+        /// Only batches in this state: pending, approved, rejected or completed
+        #[arg(long)]
+        state: Option<String>,
+    },
+    /// Show one batch with every row, preview text and state
+    Show {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
+    },
+    /// Approve a pending batch (owner or admin); rows then send paced inside the daily cap
+    Approve {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
+        /// Row index to drop before approving; repeat for several
+        #[arg(long)]
+        drop: Vec<i32>,
+        /// JSON file of row edits: [{"idx": 2, "params": ["Naledi"]}]
+        #[arg(long)]
+        edit_file: Option<String>,
+    },
+    /// Reject a pending batch (owner or admin); nothing is sent
+    Reject {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
     },
 }
 
@@ -3354,6 +3539,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Discovery(sub) => commands::discovery::dispatch(sub, &client).await,
         Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
+        Cmd::Whatsapp(sub) => commands::whatsapp::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
@@ -3566,6 +3752,7 @@ mod tests {
             "team",
             "upload",
             "users",
+            "whatsapp",
             "work",
             "workers",
             "workflows",
@@ -3886,6 +4073,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
+            ("whatsapp", 11),
             ("work", 16),
             ("workflows", 8),
         ];

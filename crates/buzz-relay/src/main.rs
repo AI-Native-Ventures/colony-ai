@@ -838,6 +838,13 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         info!("Company work watchdog worker started");
     }
 
+    // WhatsApp outreach sender: paced batch sends, queued replies, quality and template refresh.
+    {
+        let whatsapp_state = Arc::clone(&state);
+        tokio::spawn(async move { buzz_relay::whatsapp::sender::run(whatsapp_state).await });
+        info!("WhatsApp outreach sender started");
+    }
+
     if state.config.accounts.has_mail_delivery() {
         let account_outbox_state = Arc::clone(&state);
         tokio::spawn(async move {
