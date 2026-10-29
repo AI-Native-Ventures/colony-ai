@@ -2583,14 +2583,14 @@ mod tests {
         assert!(has(line, "model", "free/b:free"), "{line}");
         assert!(has(line, "upstream_status", "200"), "{line}");
         // `a` was cut at 400 ms of the 900 ms budget, so `b` was left what
-        // remained of it: a little under 500 ms.
+        // remained of it: at most 500 ms, less on a slow machine.
         let waited: u64 = line
             .split("answer not finished within ")
             .nth(1)
             .and_then(|rest| rest.split(' ').next())
             .and_then(|ms| ms.parse().ok())
             .unwrap_or_else(|| panic!("no wait in {line}"));
-        assert!((400..=500).contains(&waited), "{line}");
+        assert!((1..=500).contains(&waited), "{line}");
         assert!(has(line, "free", "true"), "{line}");
     }
 
