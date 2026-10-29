@@ -364,7 +364,7 @@ test.describe("W10 discovery and sales", () => {
       "Form & Field",
     );
     await expect(
-      detail.getByRole("link", { name: "Discuss in Sales" }),
+      detail.getByRole("button", { name: "Go to #Outreach" }),
     ).toBeVisible();
   });
 
