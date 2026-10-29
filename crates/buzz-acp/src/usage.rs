@@ -242,6 +242,9 @@ pub struct TurnUsage {
     /// `None` when the publisher omitted it (unrecognised endpoint, mixed
     /// identities, old harness). Per-turn only — not session-cumulative.
     pub pricing_identity: Option<buzz_core::agent_turn_metric::PricingIdentity>,
+    /// Actual plan windows last reported by this session's subscription
+    /// harness. Absent for API-key providers and adapters without this data.
+    pub subscription_usage: Option<buzz_core::agent_turn_metric::SubscriptionUsage>,
 }
 
 /// Per-turn usage carried by a standard ACP `session/prompt` response.
@@ -268,6 +271,7 @@ struct StandardSessionState {
     published_seq: u64,
     last_cost: Option<f64>,
     cost_poisoned: bool,
+    subscription_usage: Option<buzz_core::agent_turn_metric::SubscriptionUsage>,
 }
 
 #[derive(Debug, Default)]
@@ -286,6 +290,7 @@ impl StandardUsageTracker {
                 published_seq: 0,
                 last_cost: Some(0.0),
                 cost_poisoned: false,
+                subscription_usage: None,
             });
     }
 
@@ -301,6 +306,17 @@ impl StandardUsageTracker {
         {
             self.pending_cost = Some((session_id.to_string(), cost));
         }
+    }
+
+    pub(crate) fn record_subscription_usage(
+        &mut self,
+        session_id: &str,
+        usage: buzz_core::agent_turn_metric::SubscriptionUsage,
+    ) {
+        self.sessions
+            .entry(session_id.to_string())
+            .or_default()
+            .subscription_usage = Some(usage);
     }
 
     pub(crate) fn record_prompt_usage(
@@ -392,6 +408,7 @@ impl StandardUsageTracker {
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: state.subscription_usage.clone(),
         })
     }
 }
@@ -749,6 +766,7 @@ impl UsageTracker {
                 // The folded identity is written in take() — use a placeholder
                 // here and replace it before returning the record.
                 pricing_identity: None,
+                subscription_usage: None,
             });
         } else if self.in_flight_session.is_none() {
             // Not in-flight at all: advance the committed baseline so the next
@@ -1989,6 +2007,7 @@ mod tests {
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
 
         let (turn_counts, cumulative_counts) = build_turn_metric_counts(&usage);
@@ -2030,6 +2049,7 @@ mod tests {
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
 
         let (turn_counts, cumulative_counts) = build_turn_metric_counts(&usage);

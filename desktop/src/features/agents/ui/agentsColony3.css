@@ -349,7 +349,7 @@
 
 .agents-c3-table {
   display: block;
-  min-width: 900px;
+  min-width: 800px;
   border-collapse: collapse;
 }
 
@@ -361,8 +361,8 @@
 .agents-c3-table tr {
   display: grid;
   grid-template-columns:
-    minmax(0, 2fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.1fr)
-    minmax(0, 1.15fr) 96px;
+    minmax(0, 2fr) minmax(0, 1.15fr) minmax(0, 1.8fr) minmax(0, 1.1fr)
+    96px;
   align-items: center;
   gap: 14px;
   padding: 0 20px;
@@ -434,6 +434,51 @@
   gap: 8px;
   font-size: calc(15 * var(--colony-px));
   font-weight: 700;
+}
+
+.agents-c3-technical-details {
+  overflow: hidden;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 18px;
+  background: var(--colony-pop);
+  box-shadow: var(--a3-card-shadow);
+}
+
+.agents-c3-technical-details summary {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.agents-c3-technical-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.agents-c3-technical-details summary > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.agents-c3-technical-details summary strong {
+  font-weight: 800;
+}
+
+.agents-c3-technical-details summary span span {
+  color: hsl(var(--colony-muted));
+}
+
+.agents-c3-technical-chevron {
+  color: hsl(var(--colony-muted));
+  transition: transform 150ms ease;
+}
+
+.agents-c3-technical-details[open] .agents-c3-technical-chevron {
+  transform: rotate(90deg);
 }
 
 .agents-c3-ident {
@@ -689,6 +734,46 @@
 
 .agents-c3-card[data-gap="10"] {
   gap: 10px;
+}
+
+.agents-c3-subscription-usage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 12px;
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 14px;
+}
+
+.agents-c3-subscription-window {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.agents-c3-usage-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: hsl(var(--colony-accent-soft));
+}
+
+.agents-c3-usage-progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: hsl(var(--colony-accent-soft));
+}
+
+.agents-c3-usage-progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: hsl(var(--colony-accent));
+}
+
+.agents-c3-usage-progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: hsl(var(--colony-accent));
 }
 
 .agents-c3-eyebrow {

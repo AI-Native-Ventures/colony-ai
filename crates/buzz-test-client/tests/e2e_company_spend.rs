@@ -334,6 +334,7 @@ async fn company_spend_records_require_authority_and_verified_employee_turn_evid
         delta_reliable: true,
         stop_reason: Some(StopReason::EndTurn),
         pricing_identity: None,
+        subscription_usage: None,
     };
     let ciphertext = buzz_core::agent_turn_metric::encrypt_agent_turn_metric(
         &employee,

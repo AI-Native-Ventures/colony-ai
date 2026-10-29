@@ -72,6 +72,7 @@ fn non_blank(v: Option<&str>) -> Option<&str> {
 }
 
 fn resolve_linked(
+    record: &ManagedAgentRecord,
     definition: &AgentDefinition,
     global: &GlobalAgentConfig,
 ) -> EffectiveAgentConfig {
@@ -102,11 +103,27 @@ fn resolve_linked(
         source: ConfigSource::Definition,
     };
 
-    EffectiveAgentConfig {
+    let mut config = EffectiveAgentConfig {
         model,
         provider,
         system_prompt,
+    };
+
+    // Linked agents normally use definition → global configuration. Colony
+    // free AI is selected per managed agent, so honor only that explicit
+    // instance provider and its corresponding model snapshot.
+    if record.provider.as_deref().map(str::trim) == Some("colony-credits") {
+        config.provider = ResolvedField {
+            value: Some("colony-credits".to_string()),
+            source: ConfigSource::InstanceLegacy,
+        };
+        config.model = ResolvedField {
+            value: non_blank(record.model.as_deref()).map(str::to_owned),
+            source: ConfigSource::InstanceLegacy,
+        };
     }
+
+    config
 }
 
 /// The API key value the relay-mesh preset wrote before the Jun-11 rename
@@ -251,7 +268,7 @@ pub fn resolve_effective_config(
 ) -> EffectiveConfigResult {
     match &record.persona_id {
         Some(pid) => match definitions.iter().find(|d| d.id == *pid) {
-            Some(def) => EffectiveConfigResult::Resolved(resolve_linked(def, global)),
+            Some(def) => EffectiveConfigResult::Resolved(resolve_linked(record, def, global)),
             None => EffectiveConfigResult::OrphanedInstance {
                 record_pubkey: record.pubkey.clone(),
                 missing_persona_id: pid.clone(),
@@ -274,10 +291,10 @@ pub fn resolve_effective_model_provider_pair(
 
 /// The relay-mesh preflight decision for `record`, resolved the same way
 /// spawn resolves its mesh env: through `resolve_effective_config` (which
-/// folds in the definition → global fallback). A linked instance's own
-/// `provider`/`model`/`relay_mesh` bytes never contribute; a definition-less
-/// legacy record may fall back to them via `legacy_record_mesh_model_id`,
-/// which is confined to `resolve_definition_less`.
+/// folds in definition → global plus the explicit per-agent Colony credits
+/// selection). Other linked-instance `provider`/`model`/`relay_mesh` bytes do
+/// not contribute; a definition-less legacy record may fall back to them via
+/// `legacy_record_mesh_model_id`, which is confined to `resolve_definition_less`.
 ///
 /// `None` covers both "not a mesh agent" and "orphaned instance" — an orphan
 /// never spawns (see `require_resolved`), so it never needs a mesh preflight

@@ -12,7 +12,7 @@ const managedAgents = Array.from({ length: 21 }, (_, index) => ({
 test.describe("W07 agent workspace smoke", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("directory page sizes, search, and profile tabs use seeded agents", async ({
+  test("directory page sizes, search, and simple profile use seeded agents", async ({
     page,
   }) => {
     await installMockBridge(page, { managedAgents });
@@ -49,11 +49,12 @@ test.describe("W07 agent workspace smoke", () => {
       .click();
     const profile = page.getByTestId("agent-profile");
     await expect(profile).toBeVisible();
-    // One page: the model and the instructions sit under the overview, and
-    // the runtime, access, activity, advanced and memory tabs are gone.
+    // The AI summary is part of the profile itself, and its technical support
+    // details stay collapsed behind one disclosure.
+    await expect(profile.getByRole("heading", { name: "AI" })).toBeVisible();
     await expect(
-      profile.getByRole("heading", { name: "Model & runtime" }),
-    ).toBeVisible();
+      page.getByTestId("agent-technical-details"),
+    ).not.toHaveAttribute("open", "");
     await expect(
       profile.getByRole("heading", { name: "System instructions" }),
     ).toBeVisible();
@@ -203,7 +204,7 @@ test.describe("W07 agent workspace smoke", () => {
     expect(state.minaPrompt).toBe("Mina's own instructions.");
   });
 
-  test("overview resolves profile role and seeded channel membership names", async ({
+  test("overview shows current work and instruction access", async ({
     page,
   }) => {
     const agentPubkey =
@@ -259,8 +260,17 @@ test.describe("W07 agent workspace smoke", () => {
     await expect(
       page.getByTestId("agent-profile").locator("header"),
     ).toContainText("Social media manager");
+    await expect(
+      overview.getByRole("heading", { name: "Who can give instructions" }),
+    ).toBeVisible();
+    await expect(
+      overview.getByText("You and admins", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      overview.getByText("Nothing in progress right now.", { exact: true }),
+    ).toBeVisible();
     for (const name of channelNames) {
-      await expect(overview.getByText(name, { exact: true })).toBeVisible();
+      await expect(overview.getByText(name, { exact: true })).toHaveCount(0);
     }
   });
 });

@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 
 /**
@@ -39,14 +40,16 @@ export function EmployeeAvatar({
   avatarUrl,
   className,
   label,
+  role,
 }: {
   avatarUrl: string | null | undefined;
   className?: string;
   label: string;
+  role?: string | null;
 }) {
   return (
     <ProfileAvatar
-      avatarUrl={avatarUrl ?? null}
+      avatarUrl={avatarUrl ?? agentAntAvatarDataUrl(role)}
       className={className}
       label={label}
       shape="squircle"

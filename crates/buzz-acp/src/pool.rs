@@ -5322,27 +5322,16 @@ pub(crate) fn build_turn_metric_counts(
 ///
 /// Does nothing when `usage` is `None` (goose emitted no usage notification
 /// for this turn) or when `owner_pubkey` is unconfigured (no NIP-AO identity).
-/// Errors are logged at WARN and never surface to the caller — metric
-/// publishing must never fail a turn.
-async fn publish_agent_turn_metric(
+fn build_agent_turn_metric_payload(
     ctx: &PromptContext,
-    usage: Option<crate::usage::TurnUsage>,
+    usage: &crate::usage::TurnUsage,
     channel_id: Option<uuid::Uuid>,
-    session_id: &str,
     turn_id: &str,
     stop_reason: Option<buzz_core::agent_turn_metric::StopReason>,
-) {
-    use buzz_core::agent_turn_metric::AgentTurnMetricPayload;
-    use nostr::{EventBuilder, Kind, Tag};
-
-    let (usage, owner_pk) = match (usage, ctx.agent_owner_pubkey.as_ref()) {
-        (Some(u), Some(pk)) => (u, pk),
-        _ => return,
-    };
-
-    let (turn_counts, cumulative_counts) = build_turn_metric_counts(&usage);
+) -> buzz_core::agent_turn_metric::AgentTurnMetricPayload {
+    let (turn_counts, cumulative_counts) = build_turn_metric_counts(usage);
     let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let payload = AgentTurnMetricPayload {
+    buzz_core::agent_turn_metric::AgentTurnMetricPayload {
         harness: ctx.harness_name.clone(),
         model: usage.model.clone(),
         channel_id: channel_id.map(|id| id.to_string()),
@@ -5355,7 +5344,28 @@ async fn publish_agent_turn_metric(
         delta_reliable: usage.delta_reliable,
         stop_reason,
         pricing_identity: usage.pricing_identity.clone(),
+        subscription_usage: usage.subscription_usage.clone(),
+    }
+}
+
+/// Errors are logged at WARN and never surface to the caller — metric
+/// publishing must never fail a turn.
+async fn publish_agent_turn_metric(
+    ctx: &PromptContext,
+    usage: Option<crate::usage::TurnUsage>,
+    channel_id: Option<uuid::Uuid>,
+    session_id: &str,
+    turn_id: &str,
+    stop_reason: Option<buzz_core::agent_turn_metric::StopReason>,
+) {
+    use nostr::{EventBuilder, Kind, Tag};
+
+    let (usage, owner_pk) = match (usage, ctx.agent_owner_pubkey.as_ref()) {
+        (Some(u), Some(pk)) => (u, pk),
+        _ => return,
     };
+
+    let payload = build_agent_turn_metric_payload(ctx, &usage, channel_id, turn_id, stop_reason);
     let ciphertext = match buzz_core::agent_turn_metric::encrypt_agent_turn_metric(
         &ctx.agent_keys,
         owner_pk,
@@ -9841,6 +9851,51 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         assert_eq!(acp_stop_to_core(&StopReason::Refusal), CoreStop::Unknown);
     }
 
+    #[test]
+    fn subscription_windows_flow_into_the_owner_encrypted_metric_payload() {
+        use buzz_core::agent_turn_metric::{SubscriptionUsage, SubscriptionUsageWindow};
+
+        let ctx = make_prompt_context_no_owner();
+        let usage = crate::usage::TurnUsage {
+            session_id: "subscription-session".to_string(),
+            turn_seq: 1,
+            delta_reliable: true,
+            turn_input_tokens: Some(100),
+            turn_output_tokens: Some(25),
+            turn_total_tokens: None,
+            turn_cost_usd: None,
+            turn_cache_read_tokens: None,
+            turn_cache_write_tokens: None,
+            cumulative_input_tokens: None,
+            cumulative_output_tokens: None,
+            cumulative_total_tokens: None,
+            cumulative_cost_usd: None,
+            cumulative_cache_read_tokens: None,
+            cumulative_cache_write_tokens: None,
+            model: None,
+            pricing_identity: None,
+            subscription_usage: Some(SubscriptionUsage {
+                session: SubscriptionUsageWindow {
+                    used_fraction: 0.24,
+                    resets_at: 1_788_465_600,
+                },
+                weekly: None,
+            }),
+        };
+
+        let payload = build_agent_turn_metric_payload(
+            &ctx,
+            &usage,
+            None,
+            "turn-1",
+            Some(buzz_core::agent_turn_metric::StopReason::EndTurn),
+        );
+        assert_eq!(payload.subscription_usage, usage.subscription_usage);
+        let wire = serde_json::to_value(payload).expect("serialize metric payload");
+        assert_eq!(wire["subscriptionUsage"]["session"]["usedFraction"], 0.24);
+        assert!(wire["subscriptionUsage"].get("weekly").is_none());
+    }
+
     /// `publish_agent_turn_metric` is a no-op when `usage` is `None`.
     #[tokio::test]
     async fn test_publish_agent_turn_metric_noop_on_no_usage() {
@@ -9879,6 +9934,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
         // owner_pubkey = None → early return, no panic.
         publish_agent_turn_metric(
@@ -9918,6 +9974,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
         // Will try to publish and fail (no real relay) but must not panic.
         publish_agent_turn_metric(
@@ -9958,6 +10015,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
         // Must not panic; HTTP submit will fail (no real relay) — that's fine.
         publish_agent_turn_metric(
@@ -9998,6 +10056,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
         // Will try to publish (encrypt succeeds) and fail HTTP (no relay) — must not panic.
         publish_agent_turn_metric(
@@ -10035,6 +10094,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
 
         let (turn, cumulative) = crate::pool::build_turn_metric_counts(&usage);
@@ -10087,6 +10147,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             cumulative_cache_write_tokens: None,
             model: None,
             pricing_identity: None,
+            subscription_usage: None,
         };
 
         let (turn, cumulative) = crate::pool::build_turn_metric_counts(&usage);

@@ -336,6 +336,10 @@ test("persona-backed edit warns before saving open access", async ({
 
   const dialog = page.getByTestId("edit-agent-dialog");
   await expect(dialog).toBeVisible();
+  await dialog
+    .locator("summary")
+    .filter({ hasText: "Technical details" })
+    .click();
   await expect(page.locator("#agent-respond-to")).toHaveText(
     "Only me (default)",
   );

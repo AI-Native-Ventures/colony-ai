@@ -1,7 +1,7 @@
 /**
  * Playwright regression tests for the numeric tuning fields (max output tokens,
  * context limit, max rounds) on both the global Agent Defaults surface and the
- * per-agent Advanced section.
+ * per-agent Technical details section.
  *
  * Covers:
  *   1. Global defaults Advanced shows numeric inputs for buzz-agent.
@@ -49,6 +49,14 @@ async function openEditAgentDialog(
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible({
     timeout: 10_000,
   });
+}
+
+async function openTechnicalDetails(page: import("@playwright/test").Page) {
+  await page
+    .getByTestId("edit-agent-dialog")
+    .locator("summary")
+    .filter({ hasText: "Technical details" })
+    .click();
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -206,8 +214,8 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
     timeout: 10_000,
   });
 
-  // Open the Advanced section.
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  // Support-only tuning stays inside the collapsed Technical details row.
+  await openTechnicalDetails(page);
   await expect(page.getByTestId("numeric-max-output-tokens-input")).toBeVisible(
     { timeout: 5_000 },
   );
@@ -244,8 +252,8 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
         auth_status: { status: "not_applicable" },
       },
     ],
-    // 5-second delay: generous enough that the dialog opens and Advanced is
-    // expanded while the catalog query is still in-flight (navigation takes
+    // 5-second delay: generous enough that the dialog opens and Technical
+    // details expands while the catalog query is still in-flight (navigation takes
     // ~1-2 s), but short enough to keep the test under 30 s.
     acpRuntimesDelayMs: 5000,
     globalAgentConfig: {
@@ -271,9 +279,9 @@ test("delayed_catalog_per_agent_saved_tuning_values_visible_then_structured_cont
 
   await openEditAgentDialog(page, TEST_IDENTITIES.tyler.pubkey);
 
-  // Open Advanced before the catalog has settled (the dialog opens quickly;
-  // the catalog query fires when the dialog opens and takes ~5 seconds).
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  // Open the support row before the catalog has settled (the dialog opens
+  // quickly; the catalog query fires when the dialog opens and takes ~5 seconds).
+  await openTechnicalDetails(page);
 
   // While loading, structured numeric controls must not be visible yet.
   // the catalog-settling gate withholds them.
@@ -337,9 +345,9 @@ test("failed_catalog_per_agent_saved_tuning_values_remain_visible_as_generic_row
 
   await openEditAgentDialog(page, TEST_IDENTITIES.tyler.pubkey);
 
-  // Open Advanced after a brief wait (query has had time to fail).
+  // Open the support row after a brief wait (query has had time to fail).
   await page.waitForTimeout(500);
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  await openTechnicalDetails(page);
 
   // Structured numeric controls must NOT render (catalog errored  -  no runtime).
   await expect(page.getByTestId("numeric-max-output-tokens-input")).toHaveCount(

@@ -31,7 +31,7 @@ pub use archive_db::ArchiveDb;
 use pipeline::{commit_archive, plan_archive, query_buckets};
 
 use nostr::Event;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -823,6 +823,62 @@ pub async fn get_agent_usage_series(
     state
         .archive_db
         .with_conn(move |conn| agent_usage_series(conn, &identity_pk, &relay_url, &request))
+        .await
+}
+
+fn latest_agent_subscription_usage(
+    conn: &Connection,
+    identity_pk: &str,
+    relay_url: &str,
+    agent_pubkey: &str,
+) -> Result<Option<buzz_core_pkg::agent_turn_metric::SubscriptionUsage>, String> {
+    let agent_pubkey = agent_pubkey.trim().to_ascii_lowercase();
+    if agent_pubkey.len() != 64 || !agent_pubkey.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("agent_pubkey must be a 64-character hex pubkey".to_string());
+    }
+
+    let raw_json = conn
+        .query_row(
+            "SELECT raw_json
+             FROM archived_events
+             WHERE identity_pubkey = ?1
+               AND relay_url = ?2
+               AND kind = 44200
+               AND pubkey = ?3
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            rusqlite::params![identity_pk, relay_url, agent_pubkey],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("failed to read latest agent subscription usage: {error}"))?;
+
+    let Some(raw_json) = raw_json else {
+        return Ok(None);
+    };
+    let payload: buzz_core_pkg::agent_turn_metric::AgentTurnMetricPayload =
+        serde_json::from_str(&raw_json)
+            .map_err(|error| format!("invalid archived agent metric payload: {error}"))?;
+    payload
+        .validate()
+        .map_err(|error| format!("invalid archived agent metric payload: {error}"))?;
+    Ok(payload.subscription_usage)
+}
+
+/// Read the latest provider-reported subscription windows for one agent from
+/// the active identity's local owner-encrypted metric archive.
+#[tauri::command]
+pub async fn get_agent_subscription_usage(
+    state: State<'_, AppState>,
+    agent_pubkey: String,
+) -> Result<Option<buzz_core_pkg::agent_turn_metric::SubscriptionUsage>, String> {
+    let identity_pk = identity_pubkey(&state)?;
+    let relay_url = relay_ws_url_with_override(&state);
+    state
+        .archive_db
+        .with_conn(move |conn| {
+            latest_agent_subscription_usage(conn, &identity_pk, &relay_url, &agent_pubkey)
+        })
         .await
 }
 

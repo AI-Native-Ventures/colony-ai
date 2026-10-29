@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   colonyCreditsCandidate,
+  readConfiguredFreeAiModels,
   readCreditsGateway,
 } from "./creditsGateway.ts";
 import { runOnboardingConnectionTest } from "../onboarding/ui/onboardingConnectionTest.ts";
@@ -61,6 +62,37 @@ test("default-off native gate makes no HTTP or account request", async () => {
   const { calls, deps } = fixture({ flag: false });
   assert.deepEqual(await readCreditsGateway(deps), { configured: false });
   assert.deepEqual(calls, []);
+});
+test("free model choices come only from the relay configured free route", async () => {
+  const models = await readConfiguredFreeAiModels({
+    enabled: async () => true,
+    relay: async () => "https://relay.example/",
+    fetch: async (url, init) => {
+      assert.equal(
+        url,
+        "https://relay.example/api/credits-gateway/capabilities",
+      );
+      assert.equal(init.redirect, "error");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          enabled: true,
+          runtime: "colony",
+          freeModels: [
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "google/gemma-4-31b-it:free",
+            "google/gemma-4-31b-it:free",
+            "paid/model",
+          ],
+        }),
+      };
+    },
+  });
+  assert.deepEqual(models, [
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "google/gemma-4-31b-it:free",
+  ]);
 });
 test("relay gateway and Stripe are independent required gates before account reads", async () => {
   for (const options of [

@@ -691,6 +691,9 @@ type E2eConfig = {
     /** Channel records used only to reproduce frozen visual reference data. */
     visualChannels?: VisualChannelSeed[];
     agentUsageSeries?: import("@/shared/api/tauriArchive").AgentUsageSeries;
+    agentSubscriptionUsage?:
+      | import("@/shared/api/tauriArchive").AgentSubscriptionUsage
+      | null;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -3213,6 +3216,29 @@ function buildMockConfigSurface(pubkey: string): {
     "abc1230000000000000000000000000000000000000000000000000000000def";
   const PUBKEY_BUZZ_AGENT =
     "b0220000000000000000000000000000000000000000000000000000000000a9";
+
+  const seededColonyFreeAgent = mockManagedAgents.find(
+    (agent) =>
+      agent.pubkey.toLowerCase() === pubkey.toLowerCase() &&
+      agent.agent_command === "buzz-agent" &&
+      agent.provider === "colony-credits",
+  );
+  if (seededColonyFreeAgent) {
+    return {
+      ...buzzAgentSurface,
+      normalized: {
+        ...buzzAgentSurface.normalized,
+        model: {
+          ...buzzAgentSurface.normalized.model,
+          value: seededColonyFreeAgent.model,
+        },
+        provider: {
+          ...buzzAgentSurface.normalized.provider,
+          value: seededColonyFreeAgent.provider,
+        },
+      },
+    };
+  }
 
   switch (pubkey) {
     case ALICE_PUBKEY:
@@ -17059,6 +17085,7 @@ async function handleUpdateManagedAgent(args: {
     pubkey: string;
     personaId?: string;
     name?: string;
+    avatarUrl?: string | null;
     model?: string | null;
     systemPrompt?: string | null;
     envVars?: Record<string, string>;
@@ -17072,6 +17099,11 @@ async function handleUpdateManagedAgent(args: {
   }
   if (args.input.name !== undefined) {
     agent.name = args.input.name;
+  }
+  if (args.input.avatarUrl !== undefined) {
+    agent.avatar_url = args.input.avatarUrl;
+    const profile = mockProfiles.get(agent.pubkey.toLowerCase());
+    if (profile) profile.avatar_url = args.input.avatarUrl;
   }
   if (args.input.model !== undefined) {
     agent.model = args.input.model;
@@ -23669,6 +23701,13 @@ export function maybeInstallE2eTauriMocks() {
               hasUnknownUsage: false,
             },
             hasArchivedEvidence: null,
+          }
+        );
+      case "get_agent_subscription_usage":
+        return (
+          config?.mock?.agentSubscriptionUsage ?? {
+            session: { usedFraction: 0.24, resetsAt: 1792758600 },
+            weekly: { usedFraction: 0.13, resetsAt: 1793017800 },
           }
         );
       case "agent_metric_archive_default_enabled":

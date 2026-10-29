@@ -2031,6 +2031,32 @@ impl AcpClient {
             Some(session_id) => session_id,
             None => return,
         };
+
+        let parse_window = |value: &serde_json::Value| {
+            let used_fraction = value.get("utilization")?.as_f64()?;
+            let resets_at = value.get("resetsAt")?.as_i64()?;
+            (used_fraction.is_finite() && (0.0..=1.0).contains(&used_fraction) && resets_at > 0)
+                .then_some(buzz_core::agent_turn_metric::SubscriptionUsageWindow {
+                    used_fraction,
+                    resets_at,
+                })
+        };
+        let subscription_usage = msg
+            .get("params")
+            .and_then(|params| params.get("update"))
+            .and_then(|update| update.get("_meta"))
+            .and_then(|meta| meta.get("_claude/rateLimit"))
+            .and_then(|rate_limit| rate_limit.get("unifiedWindows"))
+            .and_then(|windows| {
+                let session = parse_window(windows.get("five_hour")?)?;
+                let weekly = windows.get("seven_day").and_then(parse_window);
+                Some(buzz_core::agent_turn_metric::SubscriptionUsage { session, weekly })
+            });
+        if let Some(usage) = subscription_usage {
+            self.standard_usage
+                .record_subscription_usage(session_id, usage);
+        }
+
         let cost = match msg
             .pointer("/params/update/cost/amount")
             .and_then(serde_json::Value::as_f64)
@@ -4775,6 +4801,52 @@ mod tests {
                 }
             }
         })
+    }
+
+    fn claude_rate_limit_update(session_id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "update": {
+                    "sessionUpdate": "usage_update",
+                    "_meta": {
+                        "_claude/rateLimit": {
+                            "unifiedWindows": {
+                                "five_hour": {"utilization": 0.24, "resetsAt": 1788465600},
+                                "seven_day": {"utilization": 0.13, "resetsAt": 1789005600}
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn claude_subscription_usage_update_is_preserved_with_prompt_metrics() {
+        let mut client = spawn_inert_client().await;
+        client.standard_adapter = Some(StandardAdapterKind::Claude);
+        client.notify_session_spawned("subscription-session");
+        client.standard_usage.begin_turn("subscription-session");
+        client.handle_session_update(&claude_rate_limit_update("subscription-session"));
+        client
+            .parse_prompt_response(
+                "subscription-session",
+                &prompt_response_usage(100, 20, 120, None, None),
+            )
+            .unwrap();
+
+        let usage = client.take_turn_usage().expect("prompt usage");
+        let subscription = usage
+            .subscription_usage
+            .expect("Claude plan windows are present");
+        assert_eq!(subscription.session.used_fraction, 0.24);
+        assert_eq!(subscription.session.resets_at, 1788465600);
+        let weekly = subscription.weekly.expect("weekly plan window");
+        assert_eq!(weekly.used_fraction, 0.13);
+        assert_eq!(weekly.resets_at, 1789005600);
     }
 
     #[tokio::test]

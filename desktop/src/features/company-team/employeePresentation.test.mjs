@@ -6,6 +6,7 @@ import {
   employeeModelFields,
   employeeRuntimeStatus,
 } from "./employeePresentation.ts";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 
 const member = {
   managedAgent: { status: "running" },
@@ -70,14 +71,14 @@ test("runtime evidence wins over a missing company position and stale active tur
     "Needs attention",
   );
 });
-test("employee art uses the profile and instance before the definition, with a Scout fallback", () => {
+test("employee art uses profile and instance before the definition, then a role ant", () => {
   const input = {
     name: "Scout",
     personaId: "builtin:fizz",
     scoutArt: "scout.svg",
     definition: "old-definition.svg",
   };
-  assert.equal(employeeAvatarSource(input), "scout.svg");
+  assert.equal(employeeAvatarSource(input), "old-definition.svg");
   assert.equal(
     employeeAvatarSource({ ...input, instance: "instance.png" }),
     "instance.png",
@@ -99,8 +100,8 @@ test("employee art uses the profile and instance before the definition, with a S
     "mina.png",
   );
   assert.equal(
-    employeeAvatarSource({ name: "Mina", scoutArt: "scout.svg" }),
-    null,
+    employeeAvatarSource({ name: "Mina", role: "Sales lead" }),
+    agentAntAvatarDataUrl("Sales lead"),
   );
 });
 test("model projection discards personal configuration keys and paths", () => {

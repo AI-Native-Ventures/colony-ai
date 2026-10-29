@@ -37,6 +37,30 @@ pub(super) fn apply_model_provider_prompt_update(
         if let Some(prompt_update) = system_prompt {
             record.system_prompt = prompt_update;
         }
+    } else {
+        // Linked agents inherit their persona's general model and provider.
+        // Colony free AI is selected per managed agent, so save only that
+        // explicit provider/model pair here. Leaving it clears both values so
+        // an old model cannot leak into the next harness selection.
+        let was_colony_credits =
+            record.provider.as_deref().map(str::trim) == Some("colony-credits");
+        let requested_provider = provider.as_ref().and_then(Option::as_deref).map(str::trim);
+        if requested_provider == Some("colony-credits") {
+            if !was_colony_credits {
+                record.model = None;
+            }
+            record.provider = Some("colony-credits".to_string());
+            if let Some(model_update) = model {
+                record.model = model_update;
+            }
+        } else if was_colony_credits && provider.is_some() {
+            record.provider = None;
+            record.model = None;
+        } else if was_colony_credits {
+            if let Some(model_update) = model {
+                record.model = model_update;
+            }
+        }
     }
 
     validate_definition_fields(

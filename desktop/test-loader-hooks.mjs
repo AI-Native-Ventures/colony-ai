@@ -73,6 +73,17 @@ const ASSET_SPECIFIER = /\.(?:png|jpe?g|gif|svg|webp|avif|ico)(?:\?[^/]*)?$/;
 const ASSET_URL_PREFIX = "buzz-test-asset:";
 
 export function resolve(specifier, context, nextResolve) {
+  if (specifier.endsWith(".svg?raw")) {
+    const sourceSpecifier = specifier.slice(0, -4);
+    const assetPath = sourceSpecifier.startsWith("@/")
+      ? path.join(srcRoot, sourceSpecifier.slice(2))
+      : fileURLToPath(new URL(sourceSpecifier, context.parentURL));
+    const source = fs.readFileSync(assetPath, "utf8");
+    return {
+      shortCircuit: true,
+      url: `data:text/javascript,${encodeURIComponent(`export default ${JSON.stringify(source)};`)}`,
+    };
+  }
   if (specifier.endsWith(".txt?raw")) {
     const assetUrl = new URL(specifier.slice(0, -4), context.parentURL);
     const source = fs.readFileSync(assetUrl, "utf8");

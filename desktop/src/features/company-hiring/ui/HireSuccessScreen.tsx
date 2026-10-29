@@ -55,6 +55,7 @@ export function HireSuccessScreen({ hireId }: { hireId: string }) {
           definition={persona?.avatarUrl}
           name={name}
           personaId={persona?.id}
+          role={proposal.title}
         />
         <h1>{name} joined the team.</h1>
         <span>
@@ -71,6 +72,7 @@ export function HireSuccessScreen({ hireId }: { hireId: string }) {
             definition={persona?.avatarUrl}
             name={name}
             personaId={persona?.id}
+            role={proposal.title}
           />
           <div>
             <div className="colony-hire-intro-meta">

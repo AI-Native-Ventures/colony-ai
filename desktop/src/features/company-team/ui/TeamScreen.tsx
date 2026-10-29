@@ -168,6 +168,7 @@ function TeamMemberRow({
             name={name}
             personaId={member.managedAgent?.personaId}
             profile={avatarUrl}
+            role={jobTitle}
             testId={`team-avatar-${member.pubkey}`}
           />
         ) : (
@@ -278,11 +279,12 @@ export function TeamScreen() {
         {canHire ? (
           <button
             className="team-hire-button"
+            data-testid="team-hire-button"
             onClick={() => void goHireRoles()}
             type="button"
           >
             <PlusIcon aria-hidden="true" size={17} strokeWidth={2.4} />
-            Hire employee
+            Hire an agent
           </button>
         ) : null}
       </div>

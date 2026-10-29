@@ -410,6 +410,9 @@ type MockBridgeOptions = {
   /** Channel records used only to reproduce frozen visual reference data. */
   visualChannels?: Array<{ id: string; name: string }>;
   agentUsageSeries?: import("../../src/shared/api/tauriArchive").AgentUsageSeries;
+  agentSubscriptionUsage?:
+    | import("../../src/shared/api/tauriArchive").AgentSubscriptionUsage
+    | null;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;

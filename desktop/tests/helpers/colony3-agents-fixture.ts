@@ -183,6 +183,21 @@ const ACP_CATALOG = [
   },
 ];
 
+const COLONY_AGENT_RUNTIME = {
+  ...HARNESS_ENTRY,
+  id: "buzz-agent",
+  label: "Colony Agent",
+  command: "buzz-agent",
+  binary_path: "/usr/local/bin/buzz-agent",
+  mcp_command: "buzz-dev-mcp",
+  install_hint: "Ships with the Colony desktop app.",
+  install_instructions_url: "https://github.com/block/buzz",
+  can_auto_install: false,
+  requires_external_cli: false,
+  auth_status: { status: "not_applicable" },
+  source: "builtin",
+};
+
 export type Colony3AgentsOptions = {
   /** Aya's first start, so Last activity reads "Today, 13:20". */
   ayaLastStartedAt?: string;
@@ -192,6 +207,8 @@ export type Colony3AgentsOptions = {
   ayaRespondTo?: "owner-only" | "allowlist" | "anyone";
   /** Persona the instance is linked to, for read-only and editable states. */
   ayaPersona?: "linked" | "none";
+  /** Seeds Aya on the keyless Colony free AI connection for picker coverage. */
+  ayaFreeAi?: boolean;
 };
 
 /**
@@ -208,6 +225,7 @@ export async function installColony3Agents(
     localStorage.setItem("buzz:e2e-identity-override.v1", JSON.stringify(id));
   }, TEST_IDENTITIES.tyler);
   const linked = (options.ayaPersona ?? "linked") === "linked";
+  const ayaFreeAi = options.ayaFreeAi === true;
   const lastStarted =
     options.ayaLastStartedAt ??
     new Date((NOW_SECONDS - 35 * 60) * 1000).toISOString();
@@ -265,18 +283,25 @@ export async function installColony3Agents(
         description:
           "Finds independent businesses that need reliable social content, qualifies them, and prepares proposals for Lerato to review.",
         systemPrompt: AYA_INSTRUCTIONS,
-        runtime: "codex",
-        provider: "openai",
-        model: "[MODEL]",
+        runtime: ayaFreeAi ? "buzz-agent" : "codex",
+        provider: ayaFreeAi ? "colony-credits" : "openai",
+        model: ayaFreeAi ? "nvidia/nemotron-3-ultra-550b-a55b:free" : "gpt-4o",
+        envVars: ayaFreeAi ? { BUZZ_AGENT_PROVIDER: "colony-credits" } : {},
       },
     ],
     managedAgents: COLONY3_AGENTS.map((agent) => ({
       pubkey: PUBKEYS[agent.key],
       name: agent.name,
       about: agent.title,
-      runtime: agent.runtime,
-      provider: agent.provider,
-      model: "[MODEL]",
+      runtime: agent.key === "aya" && ayaFreeAi ? "buzz-agent" : agent.runtime,
+      provider:
+        agent.key === "aya" && ayaFreeAi ? "colony-credits" : agent.provider,
+      model:
+        agent.key === "aya" && ayaFreeAi
+          ? "nvidia/nemotron-3-ultra-550b-a55b:free"
+          : agent.key === "aya"
+            ? "gpt-4o"
+            : "[MODEL]",
       modelSource: "definition" as const,
       status: agent.status,
       backend: agent.backend,
@@ -295,7 +320,10 @@ export async function installColony3Agents(
       respondToAllowlist:
         agent.key === "aya" ? [PUBKEYS.owner, PUBKEYS.noluthando] : [],
     })),
-    acpRuntimesCatalog: ACP_CATALOG,
+    acpRuntimesCatalog: ayaFreeAi
+      ? [...ACP_CATALOG, COLONY_AGENT_RUNTIME]
+      : ACP_CATALOG,
+    colonyCreditsGatewayEnabled: ayaFreeAi,
     globalAgentConfig: {
       env_vars: {},
       provider: "anthropic",

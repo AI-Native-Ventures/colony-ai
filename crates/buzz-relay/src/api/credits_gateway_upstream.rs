@@ -325,6 +325,53 @@ impl Upstream {
         )
     }
 
+    /// Models customers may choose in the Colony free-AI picker. The answer is
+    /// derived from the configured, allowlisted route and includes only models
+    /// that the billing layer independently recognizes as free.
+    pub(super) fn selectable_free_models(&self) -> Vec<String> {
+        self.chain()
+            .enumerate()
+            .filter(|(index, _)| self.is_free(*index))
+            .map(|(_, (name, _))| name.to_owned())
+            .collect()
+    }
+
+    /// Order the configured route around the requested model. Explicit user
+    /// selections are restricted to allowlisted free models, then try the
+    /// remaining free models in configured order. Legacy requests without a
+    /// selection keep the full configured chain.
+    fn ordered_chain(
+        &self,
+        selected: Option<&str>,
+        require_free: bool,
+    ) -> Result<Vec<usize>, Refusal> {
+        let all: Vec<usize> = (0..=self.fallbacks.len()).collect();
+        let Some(selected) = selected else {
+            return Ok(all);
+        };
+        self.policy
+            .check_model(selected)
+            .map_err(|_| "model_not_allowed")?;
+        let start = all
+            .iter()
+            .copied()
+            .find(|index| {
+                self.chain()
+                    .nth(*index)
+                    .is_some_and(|(name, _)| name == selected)
+            })
+            .ok_or("model_not_configured")?;
+        if require_free && !self.is_free(start) {
+            return Err("model_not_free");
+        }
+        let mut ordered = vec![start];
+        ordered.extend(
+            all.into_iter()
+                .filter(|index| *index != start && (!require_free || self.is_free(*index))),
+        );
+        Ok(ordered)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn new(
         key: String,
@@ -474,23 +521,22 @@ impl Upstream {
                 .check_model(model)
                 .map_err(|_| "model_not_allowed")?;
         }
-        let (body, mut reserve) = request.upstream_body(
-            &self.model,
-            self.openrouter,
-            self.prices.as_ref(),
-            self.context_tokens,
-        )?;
+        let ordered = self.ordered_chain(request.model.as_deref(), true)?;
+        let (primary, prices) = self.chain().nth(ordered[0]).ok_or("model_not_configured")?;
+        let (body, mut reserve) =
+            request.upstream_body(primary, self.openrouter, prices, self.context_tokens)?;
+        let mut body = body;
+        if request.model.is_some() {
+            body["_colony_free_model_selection"] = json!(true);
+        }
         // OpenRouter holds at the price ceiling for every model. A direct
         // provider holds at the model's own price table, so the hold must cover
         // the dearest model that could answer, or its charge could pass the hold.
         if !self.openrouter {
-            for fallback in &self.fallbacks {
-                let (_, other) = request.upstream_body(
-                    &fallback.name,
-                    false,
-                    fallback.prices.as_ref(),
-                    self.context_tokens,
-                )?;
+            for index in ordered.iter().skip(1) {
+                let (fallback, prices) = self.chain().nth(*index).ok_or("model_not_configured")?;
+                let (_, other) =
+                    request.upstream_body(fallback, false, prices, self.context_tokens)?;
                 reserve = reserve.max(other);
             }
         }
@@ -519,10 +565,12 @@ impl Upstream {
     /// `upstream_body` pins `MODEL` to goes with `MODEL` alone, so a model is
     /// never sent a provider pin that was written for another.
     fn body_for<'a>(&self, body: &'a Value, index: usize) -> Cow<'a, Value> {
-        if index == 0 {
+        let Some((model, _)) = self.chain().nth(index) else {
+            return Cow::Borrowed(body);
+        };
+        if body["model"].as_str() == Some(model) {
             return Cow::Borrowed(body);
         }
-        let model = &self.fallbacks[index - 1].name;
         let mut body = body.clone();
         body["model"] = json!(model);
         if self.openrouter {
@@ -568,17 +616,26 @@ impl Upstream {
     /// that times out stays unclear.
     pub(super) async fn complete(&self, body: &Value) -> Completion {
         let mut tried = Vec::new();
-        let result = self.walk(body, &mut tried).await;
+        let free_selection = body["_colony_free_model_selection"] == true;
+        let mut upstream_body = body.clone();
+        if let Some(fields) = upstream_body.as_object_mut() {
+            fields.remove("_colony_free_model_selection");
+        }
+        let result = self.walk(&upstream_body, free_selection, &mut tried).await;
         Completion { tried, result }
     }
 
     async fn walk(
         &self,
         body: &Value,
+        free_selection: bool,
         tried: &mut Vec<String>,
     ) -> Result<Answer, CompletionFailure> {
         let started = tokio::time::Instant::now();
-        let mut live: Vec<usize> = (0..=self.fallbacks.len()).collect();
+        let selected = body.get("model").and_then(Value::as_str);
+        let mut live = self
+            .ordered_chain(selected, free_selection)
+            .map_err(|_| CompletionFailure::Rejected)?;
         let max_attempts = RATE_LIMIT_RETRIES + live.len();
         let mut attempts = 0;
         let mut waits = 0;
@@ -971,6 +1028,8 @@ fn names_unusable_model(body: &[u8]) -> bool {
 pub(super) struct ManagedRequest {
     pub session_id: uuid::Uuid,
     pub request_id: uuid::Uuid,
+    #[serde(default)]
+    pub model: Option<String>,
     pub messages: Vec<Value>,
     #[serde(default)]
     pub tools: Vec<Value>,
@@ -1306,8 +1365,11 @@ mod tests {
         assert_eq!(body["provider"]["max_price"]["prompt"], 1);
         assert!((1..400_000_000).contains(&reserve));
         value["model"] = json!("expensive-model");
+        assert!(serde_json::from_value::<ManagedRequest>(value.clone()).is_ok());
+        value["provider"] = json!({"only":["openai"]});
         assert!(serde_json::from_value::<ManagedRequest>(value.clone()).is_err());
         value.as_object_mut().unwrap().remove("model");
+        value.as_object_mut().unwrap().remove("provider");
         value["messages"][0]["content"] =
             json!([{"type":"image_url","image_url":{"url":"https://outside.invalid"}}]);
         assert!(serde_json::from_value::<ManagedRequest>(value)
@@ -2080,6 +2142,61 @@ mod tests {
         let models: Vec<(&str, Option<TokenPrices>)> =
             names.iter().map(|name| (*name, None)).collect();
         Upstream::fake_chain(origin, true, &models)
+    }
+
+    #[test]
+    fn free_model_choices_are_configured_free_routes_and_order_from_the_selection() {
+        let models = [
+            ("paid/model", None),
+            ("nvidia/first:free", None),
+            ("poolside/selected:free", None),
+        ];
+        let upstream = Upstream::fake_chain("http://127.0.0.1".into(), true, &models);
+
+        assert_eq!(
+            upstream.selectable_free_models(),
+            ["nvidia/first:free", "poolside/selected:free"]
+        );
+        assert_eq!(
+            upstream.ordered_chain(Some("poolside/selected:free"), true),
+            Ok(vec![2, 1])
+        );
+        assert_eq!(
+            upstream.ordered_chain(Some("paid/model"), true),
+            Err("model_not_free")
+        );
+    }
+
+    #[tokio::test]
+    async fn selected_free_model_retries_only_the_remaining_free_chain() {
+        let (origin, task, calls) = model_provider(vec![
+            ("poolside/selected:free", Reply::Status(429)),
+            ("nvidia/fallback:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let models = [
+            ("paid/model", None),
+            ("nvidia/fallback:free", None),
+            ("poolside/selected:free", None),
+        ];
+        let upstream = Upstream::fake_chain(origin, true, &models);
+        let request = managed(json!({
+            "session_id": uuid::Uuid::new_v4(),
+            "request_id": uuid::Uuid::new_v4(),
+            "model": "poolside/selected:free",
+            "messages": [{"role":"user", "content":"hello"}]
+        }));
+        let (body, _) = upstream.request(&request).expect("free choice is admitted");
+
+        assert_eq!(body["model"], "poolside/selected:free");
+        assert_eq!(body["_colony_free_model_selection"], true);
+        let completion = upstream.complete(&body).await;
+        assert!(completion.result.is_ok());
+        assert_eq!(
+            models_called(&calls),
+            ["poolside/selected:free", "nvidia/fallback:free"]
+        );
+        task.abort();
     }
 
     #[tokio::test]

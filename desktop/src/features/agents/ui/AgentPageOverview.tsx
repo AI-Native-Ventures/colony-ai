@@ -4,11 +4,7 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel, ManagedAgent } from "@/shared/api/types";
 import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 import { AgentStatusChip } from "./AgentStatusChip";
-import {
-  formatLastActivity,
-  formatStartedAt,
-  personInitials,
-} from "./agentPageModel";
+import { formatStartedAt, personInitials } from "./agentPageModel";
 
 export type AgentChannelOption = {
   id: string;
@@ -19,7 +15,7 @@ export type AgentChannelOption = {
 function accessLabel(mode: ManagedAgent["respondTo"]) {
   switch (mode) {
     case "owner-only":
-      return "Only me";
+      return "You and admins";
     case "allowlist":
       return "Selected people";
     case "anyone":
@@ -57,116 +53,78 @@ function PeopleChips({ pubkeys }: { pubkeys: readonly string[] }) {
   );
 }
 
-/** The overview cards of the single agent page (`AgentProfile.dc.html`). */
+/** Simple work, access and support information for the agent profile. */
 export function AgentPageOverview({
   activeTurns,
   agent,
   channelError,
   channelOptions,
   channelsLoading,
-  description,
-  harnessLabel,
   onOpenChannel,
-  providerLabel,
 }: {
   activeTurns: readonly ActiveTurnSummary[];
   agent: ManagedAgent;
   channelError: Error | null;
   channelOptions: readonly AgentChannelOption[];
   channelsLoading: boolean;
-  description: string | null;
-  harnessLabel: string;
   onOpenChannel: (channelId: string) => void;
-  providerLabel: string;
 }) {
   const lastError = friendlyAgentLastError(
     agent.lastError,
     agent.lastErrorCode,
   );
-  const tiles: Array<[string, string, boolean]> = [
-    ["Harness", harnessLabel, harnessLabel === "Not reported"],
-    ["Provider", providerLabel, providerLabel === "Not reported"],
-    ["Model", agent.model ?? "Not reported", !agent.model],
-    [
-      "Runs on",
-      agent.backend.type === "local"
-        ? "This Mac"
-        : agent.backend.id || "Remote host",
-      false,
-    ],
-    [
-      "Last activity",
-      formatLastActivity(agent.lastStartedAt),
-      !agent.lastStartedAt,
-    ],
-  ];
+  const isScout = agent.personaId === "builtin:fizz";
 
   return (
     <div className="agents-c3-stack" data-testid="agent-overview">
-      {description ? (
-        <section aria-labelledby="about" className="agents-c3-card">
-          <h2 className="agents-c3-eyebrow" id="about">
-            About
-          </h2>
-          <p className="agents-c3-body">{description}</p>
-        </section>
-      ) : null}
-
-      <section
-        aria-labelledby="config"
-        className="agents-c3-card"
-        data-gap="12"
-      >
-        <div className="agents-c3-card-head">
-          <h2 className="agents-c3-eyebrow" id="config">
-            Configuration
-          </h2>
-        </div>
-        <dl className="agents-c3-tiles">
-          {tiles.map(([label, value, muted]) => (
-            <div className="agents-c3-tile" key={label}>
-              <dt>{label}</dt>
-              <dd data-muted={muted ? "true" : undefined}>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
       <div className="agents-c3-grid2">
         <section
-          aria-labelledby="where"
+          aria-labelledby="current-work"
           className="agents-c3-card"
           data-gap="10"
         >
-          <h2 className="agents-c3-eyebrow" id="where">
-            Where this agent works
+          <h2 className="agents-c3-eyebrow" id="current-work">
+            Working on
           </h2>
-          {channelsLoading ? (
-            <p className="agents-c3-quiet">Loading channel membership…</p>
-          ) : channelError ? (
+          {channelsLoading && activeTurns.length === 0 ? (
+            <p className="agents-c3-quiet" role="status">
+              Loading current work…
+            </p>
+          ) : channelError && activeTurns.length > 0 ? (
             <p className="agents-c3-err" role="alert">
-              Channel membership could not be loaded: {channelError.message}
+              Current work could not be loaded: {channelError.message}
             </p>
-          ) : channelOptions.length === 0 ? (
-            <p className="agents-c3-quiet">
-              No channel memberships are reported.
-            </p>
+          ) : activeTurns.length === 0 ? (
+            <p className="agents-c3-quiet">Nothing in progress right now.</p>
           ) : (
-            channelOptions.map((channel) => (
-              <button
-                className="agents-c3-channel"
-                key={channel.id}
-                onClick={() => onOpenChannel(channel.id)}
-                type="button"
-              >
-                {channel.visibility === "private" ? (
-                  <PrivateChannelIcon size={17} />
-                ) : (
-                  <HashIcon size={17} />
-                )}
-                {channel.name}
-              </button>
-            ))
+            activeTurns.map((turn) => {
+              const channel = channelOptions.find(
+                (candidate) => candidate.id === turn.channelId,
+              );
+              return (
+                <button
+                  className="agents-c3-work"
+                  key={turn.channelId}
+                  onClick={() => onOpenChannel(turn.channelId)}
+                  type="button"
+                >
+                  <span className="agents-c3-work-text">
+                    <span className="agents-c3-work-title">
+                      {channel?.visibility === "private" ? (
+                        <PrivateChannelIcon size={16} />
+                      ) : (
+                        <HashIcon size={16} />
+                      )}
+                      {channel?.name ?? turn.channelId.slice(0, 8)}
+                    </span>
+                    <span className="agents-c3-work-meta">
+                      Started {formatStartedAt(turn.anchorAt)}
+                    </span>
+                  </span>
+                  <AgentStatusChip label="Working" />
+                </button>
+              );
+            })
           )}
         </section>
 
@@ -176,9 +134,6 @@ export function AgentPageOverview({
           </h2>
           <span className="agents-c3-strong">
             {accessLabel(agent.respondTo)}
-            {agent.respondTo === "allowlist"
-              ? ` · ${agent.respondToAllowlist.length}`
-              : ""}
           </span>
           {agent.respondTo === "allowlist" &&
           agent.respondToAllowlist.length > 0 ? (
@@ -187,74 +142,37 @@ export function AgentPageOverview({
         </section>
       </div>
 
-      <section
-        aria-labelledby="current-work"
-        className="agents-c3-card"
-        data-gap="10"
-      >
-        <h2 className="agents-c3-eyebrow" id="current-work">
-          Current work
-        </h2>
-        {activeTurns.length === 0 ? (
-          <p className="agents-c3-quiet">
-            No work is currently assigned to this agent.
-          </p>
-        ) : (
-          activeTurns.map((turn) => {
-            const channel = channelOptions.find(
-              (candidate) => candidate.id === turn.channelId,
-            );
-            return (
-              <button
-                className="agents-c3-work"
-                key={turn.channelId}
-                onClick={() => onOpenChannel(turn.channelId)}
-                type="button"
-              >
-                <span className="agents-c3-work-text">
-                  <span className="agents-c3-work-title">
-                    #{channel?.name ?? turn.channelId.slice(0, 8)}
-                  </span>
-                  <span className="agents-c3-work-meta">
-                    started {formatStartedAt(turn.anchorAt)}
-                  </span>
-                </span>
-                <AgentStatusChip label="Working" />
-              </button>
-            );
-          })
-        )}
-      </section>
+      <div className="agents-c3-grid2">
+        <section
+          aria-labelledby="last-error"
+          className="agents-c3-card"
+          data-testid="agent-last-error"
+        >
+          <h2 className="agents-c3-eyebrow" id="last-error">
+            Last problem
+          </h2>
+          {lastError?.copy ? (
+            <p className="agents-c3-err">{lastError.copy}</p>
+          ) : (
+            <p className="agents-c3-quiet">No problem reported.</p>
+          )}
+        </section>
 
-      <section
-        aria-labelledby="last-error"
-        className="agents-c3-card"
-        data-testid="agent-last-error"
-      >
-        <h2 className="agents-c3-eyebrow" id="last-error">
-          Last error
-        </h2>
-        {lastError?.copy ? (
-          <p className="agents-c3-err">{lastError.copy}</p>
-        ) : (
-          <span className="agents-c3-ok">
-            <svg
-              aria-hidden="true"
-              fill="none"
-              height="16"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="3"
-              viewBox="0 0 24 24"
-              width="16"
-            >
-              <path d="m5 12 5 5 9-10" />
-            </svg>
-            No errors reported
-          </span>
-        )}
-      </section>
+        {isScout ? (
+          <section
+            aria-labelledby="scout-team"
+            className="agents-c3-card"
+            data-gap="10"
+          >
+            <h2 className="agents-c3-eyebrow" id="scout-team">
+              Always on your team
+            </h2>
+            <p className="agents-c3-body">
+              Scout is your Chief of Staff. Scout can be paused but not removed.
+            </p>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

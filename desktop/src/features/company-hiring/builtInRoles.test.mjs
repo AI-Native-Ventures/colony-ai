@@ -75,11 +75,11 @@ test("built-in roles are valid, distinct role packs in plain words", () => {
   assert.deepEqual(BUILT_IN_ROLES.map((entry) => entry.displayName).sort(), [
     "Bookkeeper",
     "Business development",
-    "Chief of Staff",
     "Hospitality researcher",
     "Social media manager",
     "Writer",
   ]);
+  assert.equal(isBuiltInRoleId("built-in-role-chief-of-staff"), false);
 });
 
 test("every built-in role talks like a person in chat", () => {

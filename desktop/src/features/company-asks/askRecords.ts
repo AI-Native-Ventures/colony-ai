@@ -8,6 +8,7 @@ import { KIND_ASK_HEAD } from "@/shared/constants/kinds";
 import { MAX_EXPLICIT_CHANNEL_VALUES } from "@/shared/api/relayClientShared";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
+import type { RespondToMode } from "@/shared/api/types";
 
 export type AskType =
   | "approval"
@@ -58,9 +59,14 @@ export type HireProposal = {
   title: string;
   managerPubkey?: string;
   introductionChannelId: string;
+  /** Additional channels the approved employee should join at creation. */
+  channelIds?: string[];
+  /** Omitted older proposals use the owner-only default. */
+  respondTo?: RespondToMode;
   runtimeId: string;
   providerId?: string;
   modelId?: string;
+  effortLevel?: string;
   weeklyAllowance?: string;
 };
 
@@ -228,9 +234,12 @@ function parseHireProposal(value: unknown): HireProposal | null {
     "title",
     "managerPubkey",
     "introductionChannelId",
+    "channelIds",
+    "respondTo",
     "runtimeId",
     "providerId",
     "modelId",
+    "effortLevel",
     "weeklyAllowance",
   ]);
   const knownRoleKeys = new Set([
@@ -277,12 +286,27 @@ function parseHireProposal(value: unknown): HireProposal | null {
     !proposal.title.trim() ||
     !validManagerPubkey ||
     typeof proposal.introductionChannelId !== "string" ||
+    (proposal.channelIds !== undefined &&
+      (!validStringArray(proposal.channelIds, 32) ||
+        !proposal.channelIds.every((id) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            id,
+          ),
+        ) ||
+        new Set(proposal.channelIds).size !== proposal.channelIds.length ||
+        !proposal.channelIds.includes(proposal.introductionChannelId))) ||
+    (proposal.respondTo !== undefined &&
+      !["owner-only", "allowlist", "anyone"].includes(proposal.respondTo)) ||
     typeof proposal.runtimeId !== "string" ||
     !rolePack.workerMenu.includes(proposal.runtimeId) ||
     (proposal.providerId !== undefined &&
       (typeof proposal.providerId !== "string" ||
         !proposal.providerId.trim())) ||
     (proposal.modelId !== undefined && typeof proposal.modelId !== "string") ||
+    (proposal.effortLevel !== undefined &&
+      (typeof proposal.effortLevel !== "string" ||
+        !proposal.effortLevel.trim() ||
+        proposal.effortLevel.length > 64)) ||
     !allowanceValid(rolePack.defaultAllowance) ||
     !allowanceValid(proposal.weeklyAllowance)
   ) {
