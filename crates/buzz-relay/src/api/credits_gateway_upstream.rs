@@ -608,7 +608,9 @@ impl Upstream {
                     }
                     Err(Attempt::Unavailable(failure)) => {
                         unclear |= failure == CompletionFailure::Ambiguous;
-                        gone.push(index);
+                        if failure == CompletionFailure::Ambiguous {
+                            gone.push(index);
+                        }
                     }
                 }
             }
