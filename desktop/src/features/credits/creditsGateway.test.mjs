@@ -68,7 +68,10 @@ test("free model choices come only from the relay configured free route", async 
     enabled: async () => true,
     relay: async () => "https://relay.example/",
     fetch: async (url, init) => {
-      assert.equal(url, "https://relay.example/api/credits-gateway/capabilities");
+      assert.equal(
+        url,
+        "https://relay.example/api/credits-gateway/capabilities",
+      );
       assert.equal(init.redirect, "error");
       return {
         ok: true,

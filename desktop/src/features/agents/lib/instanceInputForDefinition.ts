@@ -115,7 +115,8 @@ export async function buildInstanceInputForDefinition(
   backendIntent?: BackendIntent,
 ): Promise<CreateManagedAgentInput> {
   const avatarUrl = await resolveManagedAgentAvatarUrl(
-    persona.avatarUrl ?? agentAntAvatarDataUrl(persona.companyRole?.job ?? persona.displayName),
+    persona.avatarUrl ??
+      agentAntAvatarDataUrl(persona.companyRole?.job ?? persona.displayName),
     upload,
   );
 

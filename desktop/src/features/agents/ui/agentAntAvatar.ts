@@ -20,7 +20,10 @@ export type AgentAntColor =
   | "peach"
   | "sky";
 
-const PALETTE: Record<AgentAntColor, readonly [string, string, string, string]> = {
+const PALETTE: Record<
+  AgentAntColor,
+  readonly [string, string, string, string]
+> = {
   green: ["#a5bd8d", "#719763", "#3d694c", "#F0F4EC"],
   coral: ["#F7BCA8", "#E0826B", "#A64B3A", "#FBE6DD"],
   blue: ["#AFCBF6", "#6E97DE", "#2F5DA8", "#E3ECFA"],
@@ -33,13 +36,18 @@ const PALETTE: Record<AgentAntColor, readonly [string, string, string, string]> 
   sky: ["#B4E0F2", "#62AACB", "#2C6A87", "#E2F2F9"],
 };
 
-export const AGENT_ANT_PRESETS = Object.entries(PALETTE).map(([id, colors]) => ({
-  id: id as AgentAntColor,
-  label: id === "green" ? "Leaf" : id[0].toUpperCase() + id.slice(1),
-  color: colors[1],
-}));
+export const AGENT_ANT_PRESETS = Object.entries(PALETTE).map(
+  ([id, colors]) => ({
+    id: id as AgentAntColor,
+    label: id === "green" ? "Leaf" : id[0].toUpperCase() + id.slice(1),
+    color: colors[1],
+  }),
+);
 
-const FUNCTION_STYLE: Record<AgentFunction, { color: AgentAntColor; prop: string | null }> = {
+const FUNCTION_STYLE: Record<
+  AgentFunction,
+  { color: AgentAntColor; prop: string | null }
+> = {
   Sales: { color: "coral", prop: "sales" },
   Operations: { color: "blue", prop: "operations" },
   "Customer Success": { color: "rose", prop: "heart" },
@@ -48,33 +56,57 @@ const FUNCTION_STYLE: Record<AgentFunction, { color: AgentAntColor; prop: string
   Other: { color: "slate", prop: null },
 };
 
-export function agentFunctionFromRole(role: string | null | undefined): AgentFunction {
+export function agentFunctionFromRole(
+  role: string | null | undefined,
+): AgentFunction {
   const value = role?.trim().toLocaleLowerCase() ?? "";
-  if (/\bsales\b|\baccount executive\b|\bbusiness development\b/.test(value)) return "Sales";
-  if (/\boperations\b|\bops\b|\bproject manager\b/.test(value)) return "Operations";
-  if (/\bcustomer success\b|\bsupport\b|\bservice\b/.test(value)) return "Customer Success";
+  if (/\bsales\b|\baccount executive\b|\bbusiness development\b/.test(value))
+    return "Sales";
+  if (/\boperations\b|\bops\b|\bproject manager\b/.test(value))
+    return "Operations";
+  if (/\bcustomer success\b|\bsupport\b|\bservice\b/.test(value))
+    return "Customer Success";
   if (/\bfinance\b|\bbookkeep|\baccountant\b/.test(value)) return "Finance";
-  if (/\bbrand\b|\bdesign\b|\bwriter\b|\bmarketing\b/.test(value)) return "Brand";
+  if (/\bbrand\b|\bdesign\b|\bwriter\b|\bmarketing\b/.test(value))
+    return "Brand";
   return "Other";
 }
 
 function mix(hex: string, target: string, amount: number): string {
-  const from = hex.slice(1).match(/.{2}/g)?.map((part) => Number.parseInt(part, 16));
-  const to = target.slice(1).match(/.{2}/g)?.map((part) => Number.parseInt(part, 16));
+  const from = hex
+    .slice(1)
+    .match(/.{2}/g)
+    ?.map((part) => Number.parseInt(part, 16));
+  const to = target
+    .slice(1)
+    .match(/.{2}/g)
+    ?.map((part) => Number.parseInt(part, 16));
   if (!from || !to) return hex;
-  return `#${from.map((channel, index) => Math.round(channel * (1 - amount) + to[index] * amount).toString(16).padStart(2, "0")).join("")}`;
+  return `#${from
+    .map((channel, index) =>
+      Math.round(channel * (1 - amount) + to[index] * amount)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 function colorsFor(color: AgentAntColor | string) {
   if (color in PALETTE) return PALETTE[color as AgentAntColor];
   if (!/^#[0-9a-f]{6}$/i.test(color)) return PALETTE.green;
   const base = color.toUpperCase();
-  return [mix(base, "#FFFFFF", 0.48), base, mix(base, "#000000", 0.38), mix(base, "#FFFFFF", 0.88)] as const;
+  return [
+    mix(base, "#FFFFFF", 0.48),
+    base,
+    mix(base, "#000000", 0.38),
+    mix(base, "#FFFFFF", 0.88),
+  ] as const;
 }
 
 function stableId(input: string) {
   let hash = 2166136261;
-  for (const char of input) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  for (const char of input)
+    hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
   return `agent-${(hash >>> 0).toString(16)}`;
 }
 
@@ -82,9 +114,16 @@ function gearPath() {
   const points: string[] = [];
   for (let tooth = 0; tooth < 8; tooth += 1) {
     const angle = tooth * 45;
-    for (const [radius, delta] of [[7, -15], [9.7, -9], [9.7, 9], [7, 15]]) {
+    for (const [radius, delta] of [
+      [7, -15],
+      [9.7, -9],
+      [9.7, 9],
+      [7, 15],
+    ]) {
       const radians = ((angle + delta) * Math.PI) / 180;
-      points.push(`${(12 + radius * Math.cos(radians)).toFixed(2)} ${(12 + radius * Math.sin(radians)).toFixed(2)}`);
+      points.push(
+        `${(12 + radius * Math.cos(radians)).toFixed(2)} ${(12 + radius * Math.sin(radians)).toFixed(2)}`,
+      );
     }
   }
   return `M${points.join("L")}Z`;
@@ -113,14 +152,16 @@ export function agentAntAvatarDataUrl(
   role: string | AgentFunction | null | undefined,
   color?: AgentAntColor | string,
 ): string {
-  const functionName = role && role in FUNCTION_STYLE
-    ? role as AgentFunction
-    : agentFunctionFromRole(role);
+  const functionName =
+    role && role in FUNCTION_STYLE
+      ? (role as AgentFunction)
+      : agentFunctionFromRole(role);
   const style = FUNCTION_STYLE[functionName];
   const selectedColor = color ?? style.color;
   const [top, base, deep] = colorsFor(selectedColor);
   const idPrefix = stableId(`${functionName}:${selectedColor}`);
-  const svgRoot = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-120 -145 240 235" role="img" aria-label="Scout, eyeless ant agent">';
+  const svgRoot =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-120 -145 240 235" role="img" aria-label="Scout, eyeless ant agent">';
   let svg = scoutSvg.trim();
   if (!svg.startsWith(svgRoot)) {
     throw new Error("The shipped Scout ant artwork changed shape.");
@@ -130,9 +171,16 @@ export function agentAntAvatarDataUrl(
     .replaceAll("#719763", base)
     .replaceAll("#3d694c", deep)
     .replace(/ant-1-/g, `${idPrefix}-`)
-    .replace(svgRoot, '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="-120 -145 240 235" aria-hidden="true">');
+    .replace(
+      svgRoot,
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="-120 -145 240 235" aria-hidden="true">',
+    );
   const prop = propSvg(style.prop, deep, base);
-  if (prop) svg = svg.replace("</svg>", `<g transform="translate(19 5) scale(3.4)">${prop}</g></svg>`);
+  if (prop)
+    svg = svg.replace(
+      "</svg>",
+      `<g transform="translate(19 5) scale(3.4)">${prop}</g></svg>`,
+    );
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 

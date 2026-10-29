@@ -36,7 +36,11 @@ function PeopleChips({ pubkeys }: { pubkeys: readonly string[] }) {
           <span className="agents-c3-person" key={pubkey}>
             <span aria-hidden="true" className="agents-c3-person-avatar">
               {profile?.avatarUrl ? (
-                <img alt="" referrerPolicy="no-referrer" src={profile.avatarUrl} />
+                <img
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  src={profile.avatarUrl}
+                />
               ) : (
                 personInitials(name)
               )}
@@ -65,7 +69,10 @@ export function AgentPageOverview({
   channelsLoading: boolean;
   onOpenChannel: (channelId: string) => void;
 }) {
-  const lastError = friendlyAgentLastError(agent.lastError, agent.lastErrorCode);
+  const lastError = friendlyAgentLastError(
+    agent.lastError,
+    agent.lastErrorCode,
+  );
   const isScout = agent.personaId === "builtin:fizz";
 
   return (
@@ -80,7 +87,9 @@ export function AgentPageOverview({
             Working on
           </h2>
           {channelsLoading && activeTurns.length === 0 ? (
-            <p className="agents-c3-quiet" role="status">Loading current work…</p>
+            <p className="agents-c3-quiet" role="status">
+              Loading current work…
+            </p>
           ) : channelError && activeTurns.length > 0 ? (
             <p className="agents-c3-err" role="alert">
               Current work could not be loaded: {channelError.message}
@@ -123,8 +132,11 @@ export function AgentPageOverview({
           <h2 className="agents-c3-eyebrow" id="who">
             Who can give instructions
           </h2>
-          <span className="agents-c3-strong">{accessLabel(agent.respondTo)}</span>
-          {agent.respondTo === "allowlist" && agent.respondToAllowlist.length > 0 ? (
+          <span className="agents-c3-strong">
+            {accessLabel(agent.respondTo)}
+          </span>
+          {agent.respondTo === "allowlist" &&
+          agent.respondToAllowlist.length > 0 ? (
             <PeopleChips pubkeys={agent.respondToAllowlist} />
           ) : null}
         </section>

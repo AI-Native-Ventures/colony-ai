@@ -43,7 +43,9 @@ export async function readConfiguredFreeAiModels(
   if (!Array.isArray(gateway.freeModels)) return [];
   const models = (gateway.freeModels as unknown[]).filter(
     (model: unknown): model is string =>
-      typeof model === "string" && model.endsWith(":free") && model.length <= 200,
+      typeof model === "string" &&
+      model.endsWith(":free") &&
+      model.length <= 200,
   );
   return [...new Set<string>(models)];
 }

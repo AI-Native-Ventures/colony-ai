@@ -13,7 +13,11 @@ export type HireDraft = {
 };
 
 function isAvatarDraftValue(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.length > 250_000) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 250_000
+  ) {
     return false;
   }
   if (value.startsWith("data:image/")) return true;

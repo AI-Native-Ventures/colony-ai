@@ -314,7 +314,10 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
     RELAY_PUBKEY,
   );
   assert.equal(decoded?.head.ask.hireProposal?.managerPubkey, "f".repeat(64));
-  assert.deepEqual(decoded?.head.ask.hireProposal?.channelIds, proposal.channelIds);
+  assert.deepEqual(
+    decoded?.head.ask.hireProposal?.channelIds,
+    proposal.channelIds,
+  );
   assert.equal(decoded?.head.ask.hireProposal?.respondTo, "anyone");
   assert.equal(decoded?.head.ask.hireProposal?.effortLevel, "medium");
 

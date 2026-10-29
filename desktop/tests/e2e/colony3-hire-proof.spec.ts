@@ -76,7 +76,9 @@ test("HireRoles: a role opens the simple Configure screen", async ({
   await openBoard(page, "roles", HIRE_ROUTES.roles, "hire-roles");
   await expect(page.getByTestId("hire-custom-role")).toBeVisible();
   const catalog = page.locator('[aria-label="Role catalog"]');
-  await expect(catalog.getByRole("heading", { name: "Chief of Staff" })).toHaveCount(0);
+  await expect(
+    catalog.getByRole("heading", { name: "Chief of Staff" }),
+  ).toHaveCount(0);
   await page.getByTestId(`hire-configure-${HIRE_IDS.bookkeeper}`).click();
   await expect(page.getByTestId("hire-configure")).toBeVisible();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();

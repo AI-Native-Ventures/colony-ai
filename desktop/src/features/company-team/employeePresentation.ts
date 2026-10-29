@@ -61,7 +61,10 @@ export function employeeAvatarSource(input: {
     input.profile?.trim() ||
     input.instance?.trim() ||
     input.definition?.trim() ||
-    agentAntAvatarDataUrl(scout ? "Other" : input.role, scout ? "green" : undefined)
+    agentAntAvatarDataUrl(
+      scout ? "Other" : input.role,
+      scout ? "green" : undefined,
+    )
   );
 }
 

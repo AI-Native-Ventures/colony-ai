@@ -8,13 +8,21 @@ import {
 } from "./agentAntAvatar.ts";
 
 function svg(dataUrl) {
-  return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64").toString("utf8");
+  return Buffer.from(
+    dataUrl.slice(dataUrl.indexOf(",") + 1),
+    "base64",
+  ).toString("utf8");
 }
 
 test("role names deterministically select the approved ant colour and prop", () => {
   const expected = [
     ["Sales lead", "#E0826B", "translate(19 5) scale(3.4)", "M20.5 11.5"],
-    ["Operations helper", "#6E97DE", "translate(19 5) scale(3.4)", "M18.76 10.19"],
+    [
+      "Operations helper",
+      "#6E97DE",
+      "translate(19 5) scale(3.4)",
+      "M18.76 10.19",
+    ],
     ["Customer Success", "#D6739B", "translate(19 5) scale(3.4)", "M12 20.2"],
     ["Finance", "#D9A83F", "translate(19 5) scale(3.4)", "<rect"],
     ["Brand designer", "#9179DA", "translate(19 5) scale(3.4)", "M12 3.4"],
@@ -24,10 +32,28 @@ test("role names deterministically select the approved ant colour and prop", () 
     const second = agentAntAvatarDataUrl(role);
     const artwork = svg(first);
     assert.equal(first, second, `${role} output is stable`);
-    assert.equal(agentFunctionFromRole(role), role === "Sales lead" ? "Sales" : role === "Operations helper" ? "Operations" : role === "Customer Success" ? "Customer Success" : role === "Finance" ? "Finance" : "Brand");
-    assert.match(artwork, new RegExp(color, "i"), `${role} uses its role colour`);
+    assert.equal(
+      agentFunctionFromRole(role),
+      role === "Sales lead"
+        ? "Sales"
+        : role === "Operations helper"
+          ? "Operations"
+          : role === "Customer Success"
+            ? "Customer Success"
+            : role === "Finance"
+              ? "Finance"
+              : "Brand",
+    );
+    assert.match(
+      artwork,
+      new RegExp(color, "i"),
+      `${role} uses its role colour`,
+    );
     assert.ok(artwork.includes(prop), `${role} adds a function prop`);
-    assert.ok(artwork.includes(shape), `${role} uses the expected prop geometry`);
+    assert.ok(
+      artwork.includes(shape),
+      `${role} uses the expected prop geometry`,
+    );
     assert.match(artwork, /viewBox="-120 -145 240 235"/);
   }
 });
