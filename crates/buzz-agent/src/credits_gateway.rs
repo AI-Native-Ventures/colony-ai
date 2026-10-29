@@ -113,6 +113,7 @@ impl CreditsGateway {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn new(
         relay: &str,
         session: &str,

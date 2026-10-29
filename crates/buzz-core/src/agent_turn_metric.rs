@@ -112,7 +112,9 @@ pub struct PricingIdentity {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionUsageWindow {
+    /// Fraction of the plan window that has been consumed, from 0 through 1.
     pub used_fraction: f64,
+    /// Unix timestamp in seconds when the plan window resets.
     pub resets_at: i64,
 }
 
@@ -123,7 +125,9 @@ pub struct SubscriptionUsageWindow {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionUsage {
+    /// The required five-hour session window.
     pub session: SubscriptionUsageWindow,
+    /// The weekly window, omitted when the plan does not expose one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekly: Option<SubscriptionUsageWindow>,
 }

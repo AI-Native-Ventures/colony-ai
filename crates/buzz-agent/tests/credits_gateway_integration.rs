@@ -107,7 +107,7 @@ async fn real_acp_child_uses_keyless_gateway_and_stops_on_credit_refusal() {
             let requests = captured.lock().unwrap();
             assert_eq!(requests.len(), 1, "status {status} replayed");
             assert_eq!(requests[0]["session_id"], session.to_string());
-            assert!(requests[0].get("model").is_none());
+            assert_eq!(requests[0]["model"], "server-model");
         }
         child.start_kill().unwrap();
         child.wait().await.unwrap();

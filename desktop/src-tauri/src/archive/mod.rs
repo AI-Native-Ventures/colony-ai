@@ -31,7 +31,7 @@ pub use archive_db::ArchiveDb;
 use pipeline::{commit_archive, plan_archive, query_buckets};
 
 use nostr::Event;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
