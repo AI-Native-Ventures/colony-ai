@@ -447,6 +447,13 @@ mod tests {
             add_member(&fixture, &owner, "owner").await;
             let agent = nostr::Keys::generate();
             let agent_bytes = agent.public_key().to_bytes();
+            // The owner needs a users row before an agent can point at it.
+            fixture
+                .state
+                .db
+                .ensure_user(fixture.tenant.community(), &owner.public_key().to_bytes())
+                .await
+                .expect("ensure owner user");
             fixture
                 .state
                 .db
