@@ -23,6 +23,16 @@ impl TokenPrices {
         self.charge(1, 1).map(|_| ())
     }
 
+    /// Both prices are zero: the model cannot cost anything.
+    pub(super) fn is_zero(&self) -> bool {
+        [
+            &self.input_nanousd_per_million,
+            &self.output_nanousd_per_million,
+        ]
+        .iter()
+        .all(|price| !price.is_empty() && price.bytes().all(|b| b == b'0'))
+    }
+
     pub(super) fn charge(&self, input: u64, output: u64) -> Result<i64, ()> {
         fn price(raw: &str) -> Result<i128, ()> {
             if raw.is_empty() || raw.len() > 20 || !raw.bytes().all(|b| b.is_ascii_digit()) {

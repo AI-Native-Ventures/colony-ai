@@ -26,10 +26,12 @@ pub(super) enum Outcome {
     AdmissionPending,
     /// The same request id was already charged.
     AdmissionCompleted,
-    /// Every model refused it clearly; nothing was generated and the hold is released.
+    /// Every model refused it clearly, or only free models failed; nothing can
+    /// have been charged and the hold is released.
     UpstreamRejected,
-    /// A transport failure, a timeout or a 5xx: the provider may have generated,
-    /// so the hold is left to the recovery worker.
+    /// A transport failure, a timeout or a 5xx of a model that may charge: the
+    /// provider may have generated, so the hold is left to the recovery worker.
+    /// A free model cannot charge, so its failures are `UpstreamRejected`.
     UpstreamUnclear,
     /// The provider answered with something that is not a completion.
     AnswerUnreadable,

@@ -71,6 +71,12 @@ struct RetryPolicy {
     /// Shortest attempt worth starting: no retry begins unless this much budget
     /// is left after its wait.
     min_attempt: Duration,
+    /// Longest a free model gets to answer while another model could still
+    /// follow it. One call may otherwise run for the whole budget, and a model
+    /// that hangs then leaves the chain no time to move on. The last model left
+    /// keeps everything that remains. A paid model always keeps the full time:
+    /// it may have charged, so it is never given up on early.
+    free_attempt: Duration,
 }
 
 impl RetryPolicy {
@@ -83,6 +89,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(90),
         min_attempt: Duration::from_secs(5),
+        free_attempt: Duration::from_secs(45),
     };
 
     /// The same rules with waits short enough for tests to run through.
@@ -96,6 +103,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(30),
         min_attempt: Duration::from_millis(10),
+        free_attempt: Duration::from_millis(400),
     };
 
     /// The wait before retry number `retry` (0 for the first): the backoff plus
@@ -124,9 +132,10 @@ enum Attempt {
         message: String,
     },
     /// This model cannot serve the request but another may: it is gone or
-    /// expired, or refuses the caller's access to it or its policy
-    /// (`Rejected`, the provider clearly refused), or it failed with a 5xx
-    /// (`Ambiguous`, it may have generated).
+    /// expired, or refuses the caller's access to it or its policy, or a free
+    /// model gave no answer in time (`Rejected`, nothing was generated that
+    /// could cost anything), or it failed with a 5xx (`Ambiguous`, it may have
+    /// generated).
     Unavailable(CompletionFailure),
     /// The request would fail on every model, or ended without a clear answer.
     Failed(CompletionFailure),
@@ -148,9 +157,9 @@ pub(super) struct Answer {
 /// How one request fared down the chain: what it was sent to, and how it ended.
 pub(super) struct Completion {
     /// Every call made to a provider, in order, as `model(status)`: the HTTP
-    /// status the provider answered, or `net` when there was none (a transport
-    /// failure or a timeout). A model that was limited and asked again appears
-    /// once per call.
+    /// status the provider answered, or `timeout` when it gave no answer in
+    /// time, or `net` for any other transport failure. A model that was limited
+    /// and asked again appears once per call.
     pub(super) tried: Vec<String>,
     pub(super) result: Result<Answer, CompletionFailure>,
 }
@@ -539,6 +548,13 @@ impl Upstream {
     /// at `RATE_LIMIT_RETRIES` plus one per model, so a limit shared by all the
     /// free models costs a handful of calls and not one per model per retry.
     /// With no fallback this is the single-model retry loop it has always been.
+    ///
+    /// A request is left unclear (`Ambiguous`, the hold kept for the durable
+    /// worker) only when a model that may charge may have generated. A free
+    /// model cannot cost anything, so whatever happens to it the request ends
+    /// as a clear refusal and the hold is released at once, and one that gives
+    /// no answer within `free_attempt` while another model could still follow
+    /// is handed over like a refusal. A paid model that times out stays unclear.
     pub(super) async fn complete(&self, body: &Value) -> Completion {
         let mut tried = Vec::new();
         let result = self.walk(body, &mut tried).await;
@@ -555,21 +571,31 @@ impl Upstream {
         let max_attempts = RATE_LIMIT_RETRIES + live.len();
         let mut attempts = 0;
         let mut waits = 0;
-        // A 5xx: that model may have generated, so the end of the chain is not a
-        // clear refusal and the hold is left to the durable worker.
+        // A 5xx from a model that may charge: it may have generated, so the end
+        // of the chain is not a clear refusal and the hold is left to the
+        // durable worker.
         let mut unclear = false;
         loop {
             let mut retry_after: Option<Duration> = None;
             let mut gone = Vec::new();
-            for &index in &live {
+            for (position, &index) in live.iter().enumerate() {
                 let left = self.retry.budget.saturating_sub(started.elapsed());
                 if attempts > 0 && (attempts >= max_attempts || left < self.retry.min_attempt) {
                     break;
                 }
                 attempts += 1;
                 let (model, _) = self.chain().nth(index).ok_or(CompletionFailure::Rejected)?;
+                let free = self.is_free(index);
+                // A free model with another to follow gets `free_attempt`, so a
+                // hang leaves the next one time to answer. The last one left
+                // keeps all that remains.
+                let allowed = if free && position + 1 < live.len() {
+                    left.min(self.retry.free_attempt)
+                } else {
+                    left
+                };
                 match self
-                    .attempt(model, &self.body_for(body, index), left, tried)
+                    .attempt(model, &self.body_for(body, index), allowed, free, tried)
                     .await
                 {
                     Ok(bytes) => {
@@ -585,7 +611,7 @@ impl Upstream {
                             model: index,
                         });
                     }
-                    Err(Attempt::Failed(failure)) => return Err(failure),
+                    Err(Attempt::Failed(failure)) => return Err(self.cleared(index, failure)),
                     Err(Attempt::RateLimited {
                         retry_after: after,
                         reason,
@@ -607,7 +633,7 @@ impl Upstream {
                         };
                     }
                     Err(Attempt::Unavailable(failure)) => {
-                        unclear |= failure == CompletionFailure::Ambiguous;
+                        unclear |= self.cleared(index, failure) == CompletionFailure::Ambiguous;
                         gone.push(index);
                     }
                 }
@@ -631,24 +657,66 @@ impl Upstream {
         }
     }
 
+    /// Whether chain model `index` cannot cost anything: priced at zero or, with
+    /// no price table (OpenRouter), an id that says `:free`.
+    fn is_free(&self, index: usize) -> bool {
+        self.chain()
+            .nth(index)
+            .is_some_and(|(name, prices)| match prices {
+                Some(prices) => prices.is_zero(),
+                None => name.ends_with(":free"),
+            })
+    }
+
+    /// A failure that cannot have cost anything is a clear refusal. Only a model
+    /// that may charge leaves a request unclear.
+    fn cleared(&self, index: usize, failure: CompletionFailure) -> CompletionFailure {
+        match failure {
+            CompletionFailure::Ambiguous if self.is_free(index) => CompletionFailure::Rejected,
+            other => other,
+        }
+    }
+
     async fn attempt(
         &self,
         model: &str,
         body: &Value,
         left: Duration,
+        free: bool,
         tried: &mut Vec<String>,
     ) -> Result<Vec<u8>, Attempt> {
+        let deadline = self.timeout.min(left);
         let sent = self
             .client
             .post(format!("{}/chat/completions", self.origin))
             .bearer_auth(self.key.as_str())
             .header("X-OpenRouter-Title", "Colony Agent")
-            .timeout(self.timeout.min(left))
+            .timeout(deadline)
             .json(body)
             .send()
             .await;
         let mut response = match sent {
             Ok(response) => response,
+            Err(error) if error.is_timeout() => {
+                // No response bytes at all within the deadline. Logged like any
+                // other refusal, with status 0 for "no status". A free model
+                // cannot have charged: hand over. A paid one may have.
+                tried.push(format!("{model}(timeout)"));
+                let waited = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
+                let note = format!("no response within {waited} ms");
+                tracing::warn!(
+                    model,
+                    upstream_status = 0,
+                    upstream_message = note.as_str(),
+                    free,
+                    "Colony gateway upstream did not accept a request"
+                );
+                return Err(if free {
+                    Attempt::Unavailable(CompletionFailure::Rejected)
+                } else {
+                    Attempt::Failed(CompletionFailure::Ambiguous)
+                });
+            }
             Err(_) => {
                 tried.push(format!("{model}(net)"));
                 return Err(Attempt::Failed(CompletionFailure::Ambiguous));
@@ -1683,6 +1751,15 @@ mod tests {
     }
 
     #[test]
+    fn a_free_model_is_given_up_on_early_enough_for_the_next_one_to_answer() {
+        let policy = RetryPolicy::PRODUCTION;
+        // A hung first call must leave the next model time to start and answer.
+        assert!(policy.free_attempt + policy.min_attempt <= policy.budget);
+        // Free models answered in 2 to 37 s on 29 Oct: do not cut a slow one that works.
+        assert!(policy.free_attempt > Duration::from_secs(37));
+    }
+
+    #[test]
     fn the_retry_budget_leaves_the_managed_client_room_to_receive_the_answer() {
         // `CreditsGateway::new` gives the client 100 s for a whole request.
         const CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(100);
@@ -1818,9 +1895,19 @@ mod tests {
         Ok(Option<&'static str>),
         Status(u16),
         Body(u16, &'static str),
+        /// Thinks for this many milliseconds, then 200 at zero cost.
+        Slow(u64),
     }
 
     type Calls = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+    /// A 200 with a million prompt and a million completion tokens.
+    fn ok_text(model: &str, cost: Option<&str>) -> String {
+        format!(
+            r#"{{"id":"gen-{model}","choices":[],"usage":{{{}"prompt_tokens":1000000,"completion_tokens":1000000}}}}"#,
+            cost.map(|c| format!(r#""cost":{c},"#)).unwrap_or_default()
+        )
+    }
 
     /// A provider that answers by the `model` of each request (404 for a model it
     /// was not told about) and keeps every body it was sent, in order.
@@ -1849,19 +1936,24 @@ mod tests {
                         .find(|(name, _)| *name == model)
                         .map(|(_, reply)| *reply)
                         .unwrap_or(Reply::Status(404));
+                    if let Reply::Slow(ms) = reply {
+                        tokio::time::sleep(Duration::from_millis(ms)).await;
+                    }
                     let text = match reply {
-                        Reply::Ok(cost) => format!(
-                            r#"{{"id":"gen-{model}","choices":[],"usage":{{{}"prompt_tokens":1000000,"completion_tokens":1000000}}}}"#,
-                            cost.map(|c| format!(r#""cost":{c},"#)).unwrap_or_default()
-                        ),
+                        Reply::Ok(cost) => ok_text(&model, cost),
+                        Reply::Slow(_) => ok_text(&model, Some("0")),
                         Reply::Status(_) => r#"{"error":{"message":"scripted"}}"#.into(),
                         Reply::Body(_, text) => text.into(),
                     };
                     let status = match reply {
-                        Reply::Ok(_) => 200,
+                        Reply::Ok(_) | Reply::Slow(_) => 200,
                         Reply::Status(status) | Reply::Body(status, _) => status,
                     };
-                    (StatusCode::from_u16(status).unwrap(), HeaderMap::new(), text)
+                    (
+                        StatusCode::from_u16(status).unwrap(),
+                        HeaderMap::new(),
+                        text,
+                    )
                 }
             }),
         );
@@ -2244,6 +2336,168 @@ mod tests {
         let completion = upstream.complete(&primary_body(&upstream)).await;
         assert_eq!(completion.result.err(), Some(CompletionFailure::Ambiguous));
         assert_eq!(completion.tried, [format!("{MODEL}(net)")]);
+    }
+
+    /// GATE-312 R2 (29 Oct): a free model took 90 s to answer nothing, the one
+    /// call used the whole budget, and the request ended unclear.
+    #[tokio::test]
+    async fn a_free_model_that_gives_no_answer_in_time_hands_the_request_to_the_next() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a:free", Reply::Slow(3000)),
+            ("free/b:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free"]);
+        let started = std::time::Instant::now();
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(models_called(&calls), ["free/a:free", "free/b:free"]);
+        assert_eq!(
+            completion.tried,
+            ["free/a:free(timeout)", "free/b:free(200)"]
+        );
+        assert_eq!(completion.result.unwrap().model, 1);
+        // The first model was given up on at `free_attempt`, not at the full timeout.
+        assert!(
+            started.elapsed() < Duration::from_millis(900),
+            "{:?}",
+            started.elapsed()
+        );
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_paid_model_that_gives_no_answer_stays_unclear_and_the_next_is_not_asked() {
+        // On its own.
+        let (origin, task, _) = model_provider(vec![(MODEL, Reply::Slow(3000))]).await;
+        let upstream = Upstream::fake(origin, Duration::from_millis(300));
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.tried, [format!("{MODEL}(timeout)")]);
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Ambiguous));
+        task.abort();
+        // At the head of a chain: it may have charged, so nothing else is sent.
+        let (origin, task, calls) = model_provider(vec![
+            ("paid/a", Reply::Slow(3000)),
+            ("free/b:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = Upstream::fake_chain(
+            origin,
+            true,
+            &[
+                ("paid/a", Some(TokenPrices::openrouter_ceiling())),
+                ("free/b:free", None),
+            ],
+        );
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Ambiguous));
+        assert_eq!(models_called(&calls), ["paid/a"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn the_last_free_model_left_keeps_the_rest_of_the_time() {
+        // 700 ms is past `free_attempt` (400 ms) but inside the call's timeout.
+        let (origin, task, _) = model_provider(vec![("free/a:free", Reply::Slow(700))]).await;
+        let upstream = free_chain(origin, &["free/a:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.tried, ["free/a:free(200)"]);
+        assert!(completion.result.is_ok());
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn free_models_that_all_give_no_answer_end_in_a_clear_refusal_not_an_unclear_one() {
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a:free", Reply::Slow(3000)),
+            ("free/b:free", Reply::Slow(3000)),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(models_called(&calls), ["free/a:free", "free/b:free"]);
+        assert_eq!(
+            completion.tried,
+            ["free/a:free(timeout)", "free/b:free(timeout)"]
+        );
+        // Nothing free can have been charged: the hold is released, not left.
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Rejected));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_free_model_cannot_leave_a_request_unclear_by_failing() {
+        // A 5xx anywhere in an all-free chain.
+        let (origin, task, _) = model_provider(vec![
+            ("free/a:free", Reply::Status(503)),
+            ("free/b:free", Reply::Status(502)),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Rejected));
+        task.abort();
+        // A transport failure on a free model.
+        let upstream = free_chain("http://127.0.0.1:1".into(), &["free/a:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.tried, ["free/a:free(net)"]);
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Rejected));
+    }
+
+    #[test]
+    fn a_model_is_free_when_priced_at_zero_or_when_unpriced_and_named_free() {
+        let zero = TokenPrices {
+            input_nanousd_per_million: "0".into(),
+            output_nanousd_per_million: "0".into(),
+        };
+        let one_sided = TokenPrices {
+            input_nanousd_per_million: "0".into(),
+            output_nanousd_per_million: "1".into(),
+        };
+        let upstream = Upstream::fake_chain(
+            "http://127.0.0.1:1".into(),
+            true,
+            &[
+                ("zero/a", Some(zero)),
+                ("any/b:free", None),
+                ("paid/c", None),
+                ("ceiling/d", Some(TokenPrices::openrouter_ceiling())),
+                ("half/e", Some(one_sided)),
+                // A price table beats the name.
+                ("tricky/f:free", Some(TokenPrices::openrouter_ceiling())),
+            ],
+        );
+        let free: Vec<bool> = (0..6).map(|index| upstream.is_free(index)).collect();
+        assert_eq!(free, [true, true, false, false, false, false]);
+    }
+
+    #[tokio::test]
+    async fn a_timeout_is_logged_as_a_refusal_line_with_the_model_and_the_wait() {
+        let (logs, _guard) = captured();
+        let (origin, task, _) = model_provider(vec![
+            ("free/a:free", Reply::Slow(3000)),
+            ("free/b:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free"]);
+        upstream
+            .complete(&primary_body(&upstream))
+            .await
+            .result
+            .unwrap();
+        task.abort();
+        let text = text_of(&logs);
+        let line = text
+            .lines()
+            .find(|line| line.contains("upstream did not accept a request"))
+            .unwrap_or_else(|| panic!("no refusal line in {text}"));
+        assert!(has(line, "model", "free/a:free"), "{line}");
+        assert!(has(line, "upstream_status", "0"), "{line}");
+        assert!(
+            has(line, "upstream_message", "no response within 400 ms"),
+            "{line}"
+        );
+        assert!(has(line, "free", "true"), "{line}");
+        assert!(!text.contains("synthetic-test-key"), "{text}");
     }
 
     #[tokio::test]
@@ -2649,6 +2903,7 @@ mod tests {
                     "free/a",
                     &json!({"model":"free/a"}),
                     Duration::from_secs(1),
+                    false,
                     &mut Vec::new(),
                 )
                 .await;
