@@ -113,7 +113,7 @@ async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
     let free_models = gateway
         .upstream
         .as_ref()
-        .map(Upstream::selectable_free_models)
+        .map(|upstream| upstream.selectable_free_models())
         .unwrap_or_default();
     Json(json!({
         "enabled": gateway.enabled,
