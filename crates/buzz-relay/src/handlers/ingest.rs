@@ -764,11 +764,6 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | KIND_DUTY_ACTION
             | KIND_LESSON_HEAD
             | KIND_LESSON_ACTION
-            // Co-founder settings and function slots are community-wide company records.
-            | buzz_core::kind::KIND_COFOUNDER_HEAD
-            | buzz_core::kind::KIND_COFOUNDER_ACTION
-            | buzz_core::kind::KIND_COMPANY_FUNCTION_HEAD
-            | buzz_core::kind::KIND_COMPANY_FUNCTION_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT
