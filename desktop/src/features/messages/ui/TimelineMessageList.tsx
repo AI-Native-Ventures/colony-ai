@@ -834,7 +834,7 @@ function VirtualizedTimelineRows({
           <DayDivider label={pinnedDay.label ?? ""} sticky={false} testId="" />
         </div>
         <div
-          className="absolute inset-x-0 top-0 flex flex-col"
+          className="c3c-timeline-column absolute inset-x-0 top-0 flex flex-col"
           data-testid="message-timeline-sticky-day-divider-content"
           ref={pinnedDayLabelRef}
         >
