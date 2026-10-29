@@ -24,6 +24,7 @@ function campaign(id, overrides = {}) {
     industryName: "Home & Living",
     verticalId: "home-decor",
     verticalName: "Home Decor & Gift Shops",
+    pickedTags: [],
     location: "South Africa",
     target: 50,
     count: 3,
@@ -39,6 +40,8 @@ function campaign(id, overrides = {}) {
     createdAt: 1_000,
     skippedDuplicates: 0,
     skip: 20,
+    tagCursors: [],
+    pendingTagCursors: null,
     pagesFetched: 1,
     exhausted: false,
     pendingPost: false,
@@ -67,6 +70,20 @@ test("a saved list round-trips", () => {
   assert.equal(restored.currentId, "one");
   assert.equal(restored.ownerPubkey, "owner");
   assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
+});
+
+test("picked tags and their independent cursors survive a restart", () => {
+  const state = withCampaigns(
+    campaign("tagged", {
+      pickedTags: ["wedding guest", "bridal suite"],
+      tagCursors: [10, null],
+      pendingTagCursors: [20, null],
+    }),
+  );
+  const restored = parseStoredState(serializeState(state)).campaigns[0];
+  assert.deepEqual(restored.pickedTags, ["wedding guest", "bridal suite"]);
+  assert.deepEqual(restored.tagCursors, [10, null]);
+  assert.deepEqual(restored.pendingTagCursors, [20, null]);
 });
 
 test("a saved vertical id is read under today's catalogue; its name and an unknown id stay as saved", () => {

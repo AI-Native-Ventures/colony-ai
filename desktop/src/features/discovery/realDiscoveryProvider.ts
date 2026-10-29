@@ -26,14 +26,17 @@ import {
   type StoredState,
 } from "./discoveryCampaignStore";
 import { fitScore, leadNameKey, mapPlaceToProspect } from "./discoveryMapping";
+import { matchDiscoveryTags } from "./discoveryTags";
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
 } from "./discoveryProvider";
 import {
-  buildSearchRequest,
+  buildDiscoverySearchPlan,
   isTransientSearchError,
+  mergeDiscoverySearchResponses,
+  normalizePickedTags,
   type DiscoveryPlace,
   type DiscoverySearchRequest,
   type DiscoverySearchResponse,
@@ -103,6 +106,59 @@ type ActiveRun = {
   abort: AbortController;
   done: Promise<void>;
 };
+
+type PreparedSearchPage = {
+  response: DiscoverySearchResponse;
+  tagCursors: Array<number | null>;
+};
+
+type CampaignSearchSpec = Pick<
+  StoredCampaign,
+  "verticalName" | "location" | "skip" | "pickedTags" | "tagCursors"
+>;
+
+async function fetchCampaignPage(
+  campaign: CampaignSearchSpec,
+  signal: AbortSignal,
+  search: (
+    request: DiscoverySearchRequest,
+    signal: AbortSignal,
+  ) => Promise<DiscoverySearchResponse>,
+): Promise<PreparedSearchPage> {
+  const plan = buildDiscoverySearchPlan({
+    verticalName: campaign.verticalName,
+    location: campaign.location,
+    skip: campaign.skip,
+    pickedTags: campaign.pickedTags,
+    tagCursors: campaign.tagCursors,
+  });
+  const responses = await Promise.all(
+    plan.requests.map(({ request }) => search(request, signal)),
+  );
+  if (!plan.pickedTags.length) {
+    const response = responses[0];
+    if (response) return { response, tagCursors: [] };
+    return {
+      response: mergeDiscoverySearchResponses([], null),
+      tagCursors: [],
+    };
+  }
+
+  const tagCursors = [...campaign.tagCursors];
+  for (const [index, planned] of plan.requests.entries()) {
+    const response = responses[index];
+    if (planned.tagIndex !== null && response) {
+      tagCursors[planned.tagIndex] = response.nextSkip;
+    }
+  }
+  const nextSkip = tagCursors.some((cursor) => cursor !== null)
+    ? campaign.skip + plan.totalRequestedResults
+    : null;
+  return {
+    response: mergeDiscoverySearchResponses(responses, nextSkip),
+    tagCursors,
+  };
+}
 
 export const FIRST_START_ERROR =
   "Add a location and choose 1 to 500 prospects.";
@@ -325,12 +381,18 @@ export function createDiscoveryController(
       const chunk = queue.slice(index, index + PUBLISH_CONCURRENCY);
       const settled = await Promise.allSettled(
         chunk.map(async ({ id, place }) => {
+          const discoveryTags = matchDiscoveryTags(
+            campaign.verticalId,
+            campaign.pickedTags ?? [],
+            place,
+          );
           const changes = mapPlaceToProspect(
             place,
             {
               campaignId: campaign.id,
               industry: campaign.industryName,
               vertical: campaign.verticalName,
+              discoveryTags,
               nowSeconds,
             },
             id,
@@ -377,18 +439,19 @@ export function createDiscoveryController(
    * it is saved (the run is over), but it is kept so Resume saves it instead
    * of searching again.
    */
-  function keepLatePage(run: ActiveRun, response: DiscoverySearchResponse) {
+  function keepLatePage(run: ActiveRun, page: PreparedSearchPage) {
     if (disposed) return;
     patch(run.campaignId, (existing) => ({
       ...existing,
-      pendingPage: existing.pendingPage ?? response,
+      pendingPage: existing.pendingPage ?? page.response,
+      pendingTagCursors: existing.pendingTagCursors ?? page.tagCursors,
     }));
   }
 
   async function runLoop(
     run: ActiveRun,
     context: DiscoveryContext,
-    first: DiscoverySearchResponse | null,
+    first: PreparedSearchPage | null,
   ): Promise<void> {
     let pending = first;
     try {
@@ -403,27 +466,24 @@ export function createDiscoveryController(
           await finish(run, context);
           return;
         }
-        const response =
+        const page =
           pending ??
-          (await searchPage(
-            run,
-            buildSearchRequest({
-              query: campaign.verticalName,
-              location: campaign.location,
-              skip: campaign.skip,
-            }),
+          (await fetchCampaignPage(campaign, run.abort.signal, (request) =>
+            searchPage(run, request),
           ));
         pending = null;
         if (!isLive(run)) {
-          keepLatePage(run, response);
+          keepLatePage(run, page);
           return;
         }
+        const response = page.response;
         // The page was paid for: keep it on the campaign until every place on
         // it is saved, so a failed save is retried from here, not re-searched.
         if (campaign.pendingPage !== response) {
           patch(run.campaignId, (existing) => ({
             ...existing,
             pendingPage: response,
+            pendingTagCursors: page.tagCursors,
           }));
         }
         const outcome = await savePage(run, context, response);
@@ -440,6 +500,8 @@ export function createDiscoveryController(
           exhausted: response.nextSkip === null,
           pagesFetched: existing.pagesFetched + 1,
           pendingPage: null,
+          tagCursors: existing.pendingTagCursors ?? page.tagCursors,
+          pendingTagCursors: null,
         }));
       }
     } catch (error) {
@@ -560,7 +622,7 @@ export function createDiscoveryController(
   function beginRun(
     campaignId: string,
     context: DiscoveryContext,
-    first: DiscoverySearchResponse | null,
+    first: PreparedSearchPage | null,
   ): ActiveRun {
     generation += 1;
     const run: ActiveRun = {
@@ -596,7 +658,16 @@ export function createDiscoveryController(
     }));
     // A page that was found but not fully saved is saved first; only then does
     // the run search for the next one.
-    beginRun(fresh.id, context, fresh.pendingPage);
+    beginRun(
+      fresh.id,
+      context,
+      fresh.pendingPage
+        ? {
+            response: fresh.pendingPage,
+            tagCursors: fresh.pendingTagCursors ?? fresh.tagCursors,
+          }
+        : null,
+    );
     void flushPendingPosts();
   }
 
@@ -639,12 +710,18 @@ export function createDiscoveryController(
       // cannot search (not set up, no credits) fails here with its plain
       // words and leaves no campaign behind.
       const probe = new AbortController();
-      const request = buildSearchRequest({
-        query: input.verticalName,
-        location,
-        skip: 0,
-      });
-      const first = await deps.search(request, probe.signal);
+      const pickedTags = normalizePickedTags(input.pickedTags);
+      const first = await fetchCampaignPage(
+        {
+          verticalName: input.verticalName,
+          location,
+          skip: 0,
+          pickedTags,
+          tagCursors: pickedTags.map(() => 0),
+        },
+        probe.signal,
+        deps.search,
+      );
       if (disposed) throw new Error(STOPPED_ERROR);
 
       if (active) stopActive("paused");
@@ -656,6 +733,7 @@ export function createDiscoveryController(
         industryName: input.industryName,
         verticalId: input.verticalId,
         verticalName: input.verticalName,
+        pickedTags,
         location,
         target,
         count: 0,
@@ -671,13 +749,15 @@ export function createDiscoveryController(
         createdAt: deps.nowSeconds(),
         skippedDuplicates: 0,
         skip: 0,
+        tagCursors: pickedTags.map(() => 0),
+        pendingTagCursors: first.tagCursors,
         pagesFetched: 0,
         exhausted: false,
         pendingPost: false,
         postState: "none",
         stopNotePosted: false,
         topFits: [],
-        pendingPage: first,
+        pendingPage: first.response,
       };
       commit(setCurrent(upsertCampaign(state, campaign), campaign.id));
       beginRun(campaign.id, context, first);

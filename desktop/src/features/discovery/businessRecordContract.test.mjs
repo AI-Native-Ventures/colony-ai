@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  discoveryTagsField,
   KIND_PROSPECT_HEAD,
   latestByDTag,
   proposalConversionIds,
@@ -59,6 +60,13 @@ test("proposal conversion ids stay fixed for retries of the same version", async
       /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
   }
+});
+
+test("empty discovery tag extensions are omitted from older-relay writes", () => {
+  assert.deepEqual(discoveryTagsField(undefined), {});
+  assert.deepEqual(discoveryTagsField([]), {});
+  const tags = [{ tag: "wedding guest", kind: "specialty", picked: true }];
+  assert.deepEqual(discoveryTagsField(tags), { discoveryTags: tags });
 });
 
 test("frozen discovery taxonomy counts and filters match the handoff", () => {

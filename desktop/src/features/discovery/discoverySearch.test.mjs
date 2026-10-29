@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDiscoverySearchPlan,
+  buildTagSearchQuery,
   buildSearchRequest,
   countryForLocation,
   DiscoverySearchError,
   isTransientSearchError,
+  mergeDiscoverySearchResponses,
+  normalizePickedTags,
   MEMBERSHIP_MESSAGE,
   parsePlace,
   parseSearchResponse,
@@ -151,4 +155,100 @@ test("the search request pages by 20 with a clean location", () => {
   });
   assert.equal("country" in city, false);
   assert.equal(city.skip, 0);
+});
+
+test("picked tags narrow the query and split the same 20-result page budget", () => {
+  for (const [pickedTags, expectedLimits] of [
+    [["wedding venue"], [20]],
+    [
+      ["wedding venue", "family stays"],
+      [10, 10],
+    ],
+    [
+      ["wedding venue", "family stays", "local tourism"],
+      [7, 7, 6],
+    ],
+  ]) {
+    const plan = buildDiscoverySearchPlan({
+      verticalName: "Guesthouses and inns",
+      location: "Cape Town",
+      skip: 0,
+      pickedTags,
+      tagCursors: pickedTags.map(() => 0),
+    });
+    assert.deepEqual(
+      plan.requests.map(({ request }) => request.limit),
+      expectedLimits,
+    );
+    assert.equal(plan.totalRequestedResults, 20);
+    assert.deepEqual(
+      plan.requests.map(({ request }) => request.query),
+      pickedTags.map((tag) => `${tag} Guesthouses and inns`),
+    );
+    assert.ok(
+      plan.requests.every(({ request }) => request.location === "Cape Town"),
+    );
+  }
+  assert.equal(
+    buildTagSearchQuery(" wedding venue ", " Guesthouses and inns "),
+    "wedding venue Guesthouses and inns",
+  );
+  assert.deepEqual(
+    normalizePickedTags(["wedding venue", "wedding venue", " "]),
+    ["wedding venue"],
+  );
+});
+
+test("picked-tag pages keep independent cursors and stop exhausted searches", () => {
+  const plan = buildDiscoverySearchPlan({
+    verticalName: "Guesthouses and inns",
+    location: "Cape Town",
+    skip: 20,
+    pickedTags: ["wedding venue", "family stays", "local tourism"],
+    tagCursors: [7, null, 6],
+  });
+  assert.deepEqual(
+    plan.requests.map(({ tagIndex, request }) => [
+      tagIndex,
+      request.limit,
+      request.skip,
+    ]),
+    [
+      [0, 10, 7],
+      [2, 10, 6],
+    ],
+  );
+  assert.equal(plan.totalRequestedResults, 20);
+});
+
+test("merged tag results deduplicate by place id and add request costs", () => {
+  const merged = mergeDiscoverySearchResponses(
+    [
+      {
+        provider: "outscraper",
+        places: [
+          parsePlace({ name: "A", placeId: "p1" }),
+          parsePlace({ name: "No id" }),
+        ],
+        estimatedCostUsd: 0.35,
+        nextSkip: 10,
+      },
+      {
+        provider: "outscraper",
+        places: [
+          parsePlace({ name: "Duplicate A", placeId: "p1" }),
+          parsePlace({ name: "No id" }),
+        ],
+        estimatedCostUsd: 0.35,
+        nextSkip: 10,
+      },
+    ],
+    20,
+  );
+  assert.deepEqual(
+    merged.places.map((place) => place.name),
+    ["A", "No id", "No id"],
+  );
+  assert.equal(merged.estimatedCostUsd, 0.7);
+  assert.equal(merged.nextSkip, 20);
 });
