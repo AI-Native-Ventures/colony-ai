@@ -29,7 +29,10 @@ import os from "node:os";
 import path from "node:path";
 import { BrowserWindow, WebContentsView, app, session } from "electron";
 
-import { createBrowserHost } from "../../electron/browser-host.mjs";
+import {
+  BROWSER_TAB_USER_AGENT,
+  createBrowserHost,
+} from "../../electron/browser-host.mjs";
 import { startFixtureSite } from "./browser-fixture-site.mjs";
 
 const root = mkdtempSync(path.join(os.tmpdir(), "colony-browser-smoke-"));
@@ -77,6 +80,7 @@ async function waitFor(read, label, timeoutMs = 25_000) {
 }
 
 async function main() {
+  app.userAgentFallback = BROWSER_TAB_USER_AGENT;
   await app.whenReady();
   const { server, base } = await startFixtureSite();
   const window = new BrowserWindow({
@@ -97,6 +101,7 @@ async function main() {
   const revealed = [];
   const host = createBrowserHost({
     WebContentsView,
+    BrowserWindow,
     session,
     userDataPath: userData,
     downloadsPath: downloads,
@@ -281,45 +286,91 @@ async function main() {
   );
 
   await check(
-    "a window opened by a page joins the same profile; file: and ftp: windows never open",
+    "a native popup keeps its opener and profile, then closes; unsafe windows stay blocked",
     async () => {
       const parent = await request("create", {
         businessId: "smoke-business-a",
         url: `${base}/popup`,
       });
-      const opened = await waitFor(
-        () =>
-          events.find(
+      const parentTabCount = (await request("list")).length;
+      const parentContents = host.agentAdapter.webContents(parent.id);
+      assert(parentContents, "popup parent tab is unavailable");
+      await parentContents.executeJavaScript(
+        'document.getElementById("open-popup").click()',
+        true,
+      );
+      let result;
+      try {
+        result = await waitFor(async () => {
+          const [current] = (await request("list")).filter(
+            (entry) => entry.id === parent.id,
+          );
+          if (!current?.title || current.title === "popup-parent-ready")
+            return null;
+          try {
+            return JSON.parse(current.title);
+          } catch {
+            return null;
+          }
+        }, "popup postMessage result");
+      } catch (error) {
+        const popupState = await parentContents.executeJavaScript(`({
+          title: document.title,
+          popupReturned: document.documentElement.dataset.popupReturned || "unset"
+        })`);
+        const childWindows = BrowserWindow.getAllWindows()
+          .filter((candidate) => candidate !== window)
+          .map((candidate) => ({
+            destroyed: candidate.isDestroyed(),
+            visible: !candidate.isDestroyed() && candidate.isVisible(),
+            url: candidate.isDestroyed()
+              ? "destroyed"
+              : candidate.webContents.getURL(),
+            parented:
+              !candidate.isDestroyed() &&
+              candidate.getParentWindow() === window,
+          }));
+        const blocked = events
+          .filter(
             (event) =>
-              event.type === "new-tab" && event.openedFrom === parent.id,
-          ),
-        "new-tab event",
-      );
-      assert(
-        opened.tab.businessId === "smoke-business-a",
-        `business ${opened.tab.businessId}`,
-      );
-      const popped = await waitFor(async () => {
-        const [current] = (await request("list")).filter(
-          (entry) => entry.id === opened.tab.id,
+              event.type === "navigation-blocked" && event.tabId === parent.id,
+          )
+          .map((event) => event.reason);
+        throw new Error(
+          `popup postMessage proof failed: ${JSON.stringify({ popupState, childWindows, blocked })}`,
+          { cause: error },
         );
-        if (!current?.title || current.title === "pending") return null;
-        try {
-          return JSON.parse(current.title);
-        } catch {
-          return null;
-        }
-      }, "popup probe result");
+      }
+      assert(result.opener === true, "popup did not retain window.opener");
       assert(
-        popped.cookie.includes("scope=A"),
-        `popup cookie ${popped.cookie}`,
+        result.sameProfile === true,
+        "popup did not share the browser profile",
       );
-      // The page opened its windows on load, before the probe finished. Let
-      // anything late arrive, then require that only web tabs exist. Chromium
-      // itself refuses a file: window from a web page, so the app's handler may
-      // never be asked; either way nothing but http(s) may be open.
+      const popupWindow = await waitFor(
+        () =>
+          BrowserWindow.getAllWindows().find(
+            (candidate) =>
+              candidate !== window &&
+              !candidate.isDestroyed() &&
+              candidate.getParentWindow() === window &&
+              candidate.webContents.getURL().includes("/popup-provider"),
+          ),
+        "visible OAuth popup window",
+      );
+      assert(popupWindow.isVisible(), "popup window is not visible");
+      const popupBounds = popupWindow.getBounds();
+      assert(popupBounds.width >= 420, "popup width is too small");
+      assert(popupBounds.height >= 540, "popup height is too small");
+      await waitFor(() => popupWindow.isDestroyed(), "site closes its popup");
+
+      // The popup is a native child window, not another browser tab. Chromium
+      // may refuse file: before the host sees it; ftp: reaches the host policy.
       await sleep(1500);
       const tabs = await request("list");
+      assert(
+        tabs.length === parentTabCount,
+        `window.open created a browser tab (expected ${parentTabCount}, got ${tabs.length})`,
+      );
       const nonWeb = tabs.filter(
         (entry) => entry.url !== "about:blank" && !/^https?:/u.test(entry.url),
       );

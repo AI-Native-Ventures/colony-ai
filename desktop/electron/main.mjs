@@ -19,7 +19,7 @@ import {
 } from "electron";
 import { installAppMenu } from "./app-menu.mjs";
 import { APP_NAME, applyAppBranding, keepWindowTitle } from "./branding.mjs";
-import { createBrowserHost } from "./browser-host.mjs";
+import { BROWSER_TAB_USER_AGENT, createBrowserHost } from "./browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
   createBrowserBrokerIpcHandler,
@@ -45,6 +45,10 @@ import {
   userDataPath,
 } from "./runtime-paths.mjs";
 import { createChatGptRuntime } from "./chatgpt/runtime.mjs";
+// Native child windows created by window.open use Chromium's fallback UA for
+// their renderer. Set it before Electron becomes ready; app windows pin their
+// original Electron UA in createAppWindow.
+app.userAgentFallback = BROWSER_TAB_USER_AGENT;
 const updaterRuntimeModule = await import(
   app.isPackaged
     ? "./electron-updater-runtime.cjs"
