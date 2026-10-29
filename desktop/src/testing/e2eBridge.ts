@@ -11,6 +11,12 @@ import {
   handleSaveCustomHarness,
   handleDeleteCustomHarness,
 } from "./e2eBridgeCustomHarnesses.ts";
+import {
+  KIND_COFOUNDER_ACTION,
+  KIND_COFOUNDER_HEAD,
+  KIND_COMPANY_FUNCTION_HEAD,
+  KIND_WORKER_RUN_HEAD,
+} from "@/features/cofounder/cofounderRecords";
 
 import type {
   ObservedUnreadProjection,
@@ -332,6 +338,38 @@ type MockHuddleSeed = {
   transcriptionEnabled?: boolean;
   ttsEnabled?: boolean;
   isCreator?: boolean;
+};
+
+export type MockCofounderSettings = {
+  enabled: boolean;
+  moneyPreference: "cheapest_first" | "best_option";
+  approvalSwitches: {
+    approveEveryHire: boolean;
+    approvePlaybookChanges: boolean;
+    approveEveryDiscoveryCampaign: boolean;
+  };
+};
+
+export type MockCompanyFunctionHead = {
+  function: "sales" | "operations" | "customer_success" | "finance" | "brand";
+  state: "empty" | "covered_by_scout" | "filled";
+  leadPubkey?: string | null;
+};
+
+export type MockWorkerRun = {
+  workerId: string;
+  parentPubkey: string;
+  label: string;
+  model: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+  outputText?: string;
+  failureReason?: string;
 };
 
 /** Exact records used only by the visual comparison mock bridge. */
@@ -942,6 +980,10 @@ type E2eConfig = {
       pubkey: string;
       role: "owner" | "admin" | "member";
     }>;
+    /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
+    cofounderSettings?: MockCofounderSettings;
+    companyFunctionHeads?: MockCompanyFunctionHead[];
+    companyWorkerRuns?: MockWorkerRun[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -6651,6 +6693,152 @@ function filterMockCompanyHireHeads(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 50);
 }
 
+function mockCompanyRecordSigner(): {
+  pubkey: string;
+  secret: Uint8Array;
+} {
+  const mock = getConfig()?.mock;
+  const secretHex = mock?.companyMemberRelayPrivateKeyHex;
+  if (!secretHex || !/^[0-9a-f]{64}$/i.test(secretHex)) {
+    throw new Error(
+      "The mock relay signer is not configured for co-founder records.",
+    );
+  }
+  const secret = hexToBytes(secretHex);
+  const pubkey = getPublicKey(secret);
+  if (pubkey.toLowerCase() !== mock.relaySelf?.toLowerCase()) {
+    throw new Error("The mock co-founder signer does not match relay self.");
+  }
+  return { pubkey, secret };
+}
+
+function createSignedMockCompanyHead(
+  kind: number,
+  content: Record<string, unknown>,
+  dTag: string,
+  createdAt = Math.floor(Date.now() / 1000),
+  extraTags: string[][] = [],
+): RelayEvent {
+  const { secret } = mockCompanyRecordSigner();
+  return finalizeEvent(
+    {
+      kind,
+      content: JSON.stringify(content),
+      tags: [["d", dTag], ...extraTags],
+      created_at: createdAt,
+    },
+    secret,
+  );
+}
+
+function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
+  const settings = getConfig()?.mock?.cofounderSettings;
+  if (!settings) return [];
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  const head = createSignedMockCompanyHead(
+    KIND_COFOUNDER_HEAD,
+    {
+      schemaVersion: 1,
+      settings,
+      updatedByPubkey: relayPubkey,
+      updatedAt: Math.floor(Date.now() / 1000),
+    },
+    "company:cofounder",
+  );
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return [head]
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .slice(0, filter.limit ?? 20);
+}
+
+function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
+  const seeds = getConfig()?.mock?.companyFunctionHeads ?? [];
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return seeds
+    .map((seed) => {
+      const updatedAt = Math.floor(Date.now() / 1000);
+      return createSignedMockCompanyHead(
+        KIND_COMPANY_FUNCTION_HEAD,
+        {
+          schemaVersion: 1,
+          function: seed.function,
+          state: seed.state,
+          ...(seed.state === "filled" && seed.leadPubkey
+            ? { leadPubkey: seed.leadPubkey }
+            : {}),
+          updatedByPubkey: relayPubkey,
+          updatedAt,
+        },
+        `company:function:${seed.function}`,
+        updatedAt,
+      );
+    })
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 200);
+}
+
+function filterMockCompanyWorkerRuns(filter: MockFilter): RelayEvent[] {
+  const runs = getConfig()?.mock?.companyWorkerRuns ?? [];
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const parentPubkeys = filter["#p"]?.map((pubkey) => pubkey.toLowerCase());
+  return runs
+    .map((run) =>
+      createSignedMockCompanyHead(
+        KIND_WORKER_RUN_HEAD,
+        {
+          schemaVersion: 1,
+          run,
+          updatedByPubkey: relayPubkey,
+          updatedAt: Math.floor(Date.now() / 1000),
+          sourceActionEventId: "a".repeat(64),
+        },
+        `company:worker:${run.workerId}`,
+        run.startedAt,
+        [["p", run.parentPubkey]],
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .filter(
+      (event) =>
+        !parentPubkeys ||
+        event.tags.some(
+          (tag) =>
+            tag[0] === "p" && parentPubkeys.includes(tag[1].toLowerCase()),
+        ),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
 function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const dTags = filter["#d"];
@@ -7601,6 +7789,61 @@ function acceptMockMemberPositionAction(
     JSON.stringify(mockCompanyMemberPositionActions),
   );
   emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockCofounderAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (
+    config?.mock?.relayRole &&
+    !["owner", "admin"].includes(config.mock.relayRole)
+  ) {
+    reject(
+      "restricted: only the owner or an admin can change co-founder mode.",
+    );
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (
+    dTags.length !== 1 ||
+    event.tags.length !== 1 ||
+    dTags[0]?.[1] !== "company:cofounder"
+  ) {
+    reject("invalid: co-founder action needs the company:cofounder d tag.");
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    settings?: MockCofounderSettings;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: co-founder action is not JSON.");
+    return;
+  }
+  const settings = action.settings;
+  if (
+    action.schemaVersion !== 1 ||
+    !settings ||
+    typeof settings.enabled !== "boolean" ||
+    (settings.moneyPreference !== "cheapest_first" &&
+      settings.moneyPreference !== "best_option") ||
+    typeof settings.approvalSwitches?.approveEveryHire !== "boolean" ||
+    typeof settings.approvalSwitches?.approvePlaybookChanges !== "boolean" ||
+    typeof settings.approvalSwitches?.approveEveryDiscoveryCampaign !==
+      "boolean"
+  ) {
+    reject("invalid: co-founder settings have an unsupported shape.");
+    return;
+  }
+  if (config?.mock) config.mock.cofounderSettings = settings;
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
@@ -18052,6 +18295,30 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COFOUNDER_HEAD)) {
+      for (const event of filterMockCofounderHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_COMPANY_FUNCTION_HEAD)) {
+      for (const event of filterMockCompanyFunctionHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_WORKER_RUN_HEAD)) {
+      for (const event of filterMockCompanyWorkerRuns(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
       for (const event of filterMockCompanyMemberPositionActions(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -18308,6 +18575,10 @@ function sendToMockSocket(args: {
 
     if (event.kind === KIND_MEMBER_POSITION_ACTION) {
       acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COFOUNDER_ACTION) {
+      acceptMockCofounderAction(socket, event, getConfig());
       return;
     }
     if (

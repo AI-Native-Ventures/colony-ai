@@ -3,9 +3,12 @@ import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
 import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
 import type {
   Colony3Extras,
+  MockCofounderSettings,
+  MockCompanyFunctionHead,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
+  MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
@@ -622,6 +625,10 @@ type MockBridgeOptions = {
     pubkey: string;
     role: "owner" | "admin" | "member";
   }>;
+  /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
+  cofounderSettings?: MockCofounderSettings;
+  companyFunctionHeads?: MockCompanyFunctionHead[];
+  companyWorkerRuns?: MockWorkerRun[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
