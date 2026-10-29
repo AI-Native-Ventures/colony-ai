@@ -493,6 +493,60 @@ async fn a_stop_word_opts_the_contact_out_and_later_sends_are_refused() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn a_redelivered_stop_still_opts_out_after_a_half_finished_first_delivery() {
+    let fx = fixture().await;
+    // The first delivery died right after the message row was stored: no window, no
+    // opt-out, no Colony post.
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), "27821230004", Some("Thabo"))
+        .await
+        .expect("contact");
+    fx.state
+        .db
+        .whatsapp_insert_inbound(
+            fx.community(),
+            "27821230004",
+            "text",
+            "stop",
+            "wamid.IN4",
+            Utc::now(),
+        )
+        .await
+        .expect("half stored message");
+
+    // GUARD: the stop-word check in `inbound::handle_message` runs on every delivery, not only
+    // the first. If it only ran for a newly stored message the opt-out would be lost for good.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230004", "wamid.IN4", "stop"))
+            .await,
+        StatusCode::OK
+    );
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), "27821230004")
+        .await
+        .expect("contact")
+        .expect("exists");
+    assert!(
+        contact.opted_out_at.is_some(),
+        "the redelivered stop opts the contact out"
+    );
+    assert!(
+        contact.last_inbound_at.is_some(),
+        "the redelivery opens the window"
+    );
+    let stored = fx.thread("27821230004").await;
+    assert_eq!(stored.len(), 1);
+    assert!(
+        stored[0].event_id.is_some(),
+        "the redelivery finishes the Colony post"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn free_text_needs_the_window_and_never_two_messages_in_a_row() {
     let fx = fixture().await;
     let text = |to: &str, body: &str| json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": to, "text": body});

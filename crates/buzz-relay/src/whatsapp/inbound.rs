@@ -326,19 +326,19 @@ async fn handle_message(
         )
         .await
         .map_err(|error| error.to_string())?;
+    // Every step below is safe to repeat, so a webhook that died half way is finished by
+    // Meta's redelivery instead of leaving the window, the opt-out or the post undone.
+    state
+        .db
+        .whatsapp_touch_inbound(community, &message.wa_id, message.at)
+        .await
+        .map_err(|error| error.to_string())?;
     let stored = match stored_id {
-        Some(id) => {
-            state
-                .db
-                .whatsapp_touch_inbound(community, &message.wa_id, message.at)
-                .await
-                .map_err(|error| error.to_string())?;
-            state
-                .db
-                .whatsapp_get_message(community, id)
-                .await
-                .map_err(|error| error.to_string())?
-        }
+        Some(id) => state
+            .db
+            .whatsapp_get_message(community, id)
+            .await
+            .map_err(|error| error.to_string())?,
         None => state
             .db
             .whatsapp_get_message_by_wamid(community, &message.wamid)
@@ -349,9 +349,8 @@ async fn handle_message(
         return Err("stored message vanished".into());
     };
 
-    let opted_out_now = if stored_id.is_some()
-        && (is_stop_message(&message.text)
-            || (message.is_button && is_opt_out_button(&message.text)))
+    let opted_out_now = if is_stop_message(&message.text)
+        || (message.is_button && is_opt_out_button(&message.text))
     {
         state
             .db

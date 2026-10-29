@@ -783,7 +783,8 @@ impl Db {
         row.as_ref().map(row_to_contact).transpose()
     }
 
-    /// Record an inbound message time and reset the one-message-in-a-row counter.
+    /// Record an inbound message time and reset the one-message-in-a-row counter. Only a
+    /// message newer than the last one counts, so a redelivered old message changes nothing.
     pub async fn whatsapp_touch_inbound(
         &self,
         community: CommunityId,
@@ -791,10 +792,10 @@ impl Db {
         at: DateTime<Utc>,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE whatsapp_contacts SET \
-                 last_inbound_at = GREATEST(COALESCE(last_inbound_at, $3), $3), \
+            "UPDATE whatsapp_contacts SET last_inbound_at = $3, \
                  outbound_since_inbound = 0, updated_at = now() \
-             WHERE community_id = $1 AND wa_id = $2",
+             WHERE community_id = $1 AND wa_id = $2 \
+               AND (last_inbound_at IS NULL OR last_inbound_at < $3)",
         )
         .bind(community.as_uuid())
         .bind(wa_id)
