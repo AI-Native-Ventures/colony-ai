@@ -1,6 +1,6 @@
 # Co-founder mode: Colony as a company operating system
 
-Date: 29 Oct 2026. Owner: Basheer. Status: design for approval.
+Date: 29 Oct 2026. Owner: Basheer. Status: APPROVED by the owner 29 Oct 2026 (design and screens).
 
 ## 1. Intent and why
 
@@ -59,7 +59,8 @@ Starts from what Colony already knows; never a blank form.
 - **Functions, in this order:** Sales, Operations, Customer Success, Finance, Brand. Each has sub-functions, e.g. Sales: lead finding, outreach, follow-ups, calls, quotes, closing; Customer Success: client chats, change requests, renewals, upsell, reviews; Finance: quotes, invoices, deposits, recurring plans, chasing payments, costs; Brand: the company's own website, portfolio, offer and prices, voice, marketing.
 - **Slots.** Each function is a slot filled by ONE lead agent (a hired, named employee in the team list) who is responsible for it. Scout fills slots one at a time with the owner, starting where the business needs it (for a young agency: Sales, then Operations). Until a slot is filled, Scout covers it or leaves it empty and visible.
 - **Scout maps any business onto the same five functions.** What sits inside changes per business; the five never change.
-- **Visible.** A company map in the Company section shows every slot: lead agent and status, or empty with "fill this"; sub-functions; the function's scorecard numbers; the Operations playbook as a flow. Design follows the shipped Colony 3.0 app (feedback rule: real app screenshots win over the 23 Oct canvas) and is designed in Claude Design before building.
+- **Visible.** A company map in the Company section. **Owner decision (approved design):** a radial diagram with no information on it: the company logo in the centre, Scout (Chief of Staff) joined to it, five branches out to five circles named Sales, Operations, Customer Success, Finance, Brand. A filled slot's circle is filled entirely by the lead agent's avatar (status dot on the edge); a slot covered by Scout shows Scout's avatar with a half ring and "Covered by Scout"; an empty slot is a dashed circle with a soft +. Filled branches solid accent, empty ones dashed. Clicking a circle opens that function's page, where all detail lives (lead agent, scorecard, goals, sub-functions, workers, or for an empty slot Scout's suggested hire and "Fill this slot").
+- **Approved screens (design authority):** Claude Design canvas "Colony 3.0" https://claude.ai/artifact/RnYdZoidiBCf13htG27KE8, page "Co-founder mode": CFExperimentalFeatures(On), CFOnboarding, CFCompanyMapRadial (the map; "Company map (old)" is superseded), CFFunctionSales, CFFunctionFinance (empty slot), CFPlaybook, CFCustomerRecord, CFAccessList, CFPlanCard, CFNeedsYou, CFWeeklyReview, CFMobileNeedsYou, CFMobilePlanCard. Built with the "Colony 3.0" design system https://claude.ai/artifact/TX32mvMvgCARPS3wh2mqFU. Open design notes: Experimental features currently lives under App & devices (per computer) in the shipped app while this switch is per company (the screens label it "Horizon Labs only"; builder places it under the business settings if that fits better); "Needs you" sits inside Today; Customer Success and Brand function pages follow the Sales/Finance patterns.
 
 ## 8. Operations and playbooks
 
