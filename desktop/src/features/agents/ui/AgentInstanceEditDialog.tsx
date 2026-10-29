@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -25,7 +25,6 @@ import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { setManagedAgentAutoRestart } from "@/shared/api/tauriManagedAgents";
-import { readConfiguredFreeAiModels } from "@/features/credits/creditsGateway";
 import { EffortPickerField } from "./EffortPickerField";
 import { EditAgentAdvancedFields } from "./EditAgentAdvancedFields";
 import {
@@ -35,6 +34,7 @@ import {
   formatRuntimeOptionLabel,
   getDefaultLlmModelLabel,
   getDefaultPersonaRuntime,
+  getProviderApiKeyEnvVar,
   getPersonaProviderOptions,
   isMissingRequiredDropdownField,
   NO_RUNTIME_DROPDOWN_VALUE,
@@ -64,10 +64,14 @@ import {
   selectionOnRuntimeChange,
   type RuntimeModelProviderSelection,
 } from "./runtimeModelProviderSelection";
-import { AgentAntPicturePicker } from "./AgentAntPicturePicker";
+import { AgentAntPictureControl } from "./AgentAntPicturePicker";
 import { agentAntAvatarDataUrl, agentFunctionFromRole } from "./agentAntAvatar";
 import { resolveManagedAgentAvatarUrl } from "./managedAgentAvatar";
 import { simpleModelLabel } from "./simpleAgentAi";
+import {
+  providerOptionsWithFreeAi,
+  useAgentFreeAiModels,
+} from "./useAgentFreeAiOptions";
 import { OwnerOnlyAccessField } from "./OwnerOnlyAccessField";
 import type { EnvVarsValue } from "./EnvVarsEditor";
 import { useRequiredCredentialState } from "./useRequiredCredentialState";
@@ -82,7 +86,6 @@ import {
   getBakedModelInheritLabel,
   getBakedProviderInheritLabel,
 } from "./bakedEnvHelpers";
-import { getProviderApiKeyEnvVar } from "./agentConfigOptions";
 import { useAgentDialogDefaults } from "./useAgentDialogDefaults";
 import { AgentAiDefaultsNotice } from "./AgentAiDefaults";
 import { AgentDefaultsDialog } from "./AgentDefaultsDialog";
@@ -151,11 +154,8 @@ export function AgentInstanceEditDialog({
   const [envVars, setEnvVars] = React.useState<EnvVarsValue>(agent.envVars);
   const [autoRestartOnConfigChange, setAutoRestartOnConfigChange] =
     React.useState(agent.autoRestartOnConfigChange);
-  // Effort picker is Save-gated: hold the pending selection in dialog state and
-  // embed it in the locked update payload on Save alone (see
-  // resolveEffortSubmission / handleSubmit — PR #4625), never on selection.
-  // `effortTouched` distinguishes "user picked a value" from "showing the
-  // config-surface effective value", so an untouched Save writes nothing.
+  // Effort is Save-gated; only touched selections are written to the locked
+  // update payload.
   const [effortLevel, setEffortLevel] = React.useState<string | null>(null);
   const effortTouched = React.useRef(false);
   const personasQuery = usePersonasQuery();
@@ -181,8 +181,7 @@ export function AgentInstanceEditDialog({
     React.useState(false);
   const [isAddHarnessOpen, setIsAddHarnessOpen] = React.useState(false);
 
-  // Runtime selector: defaults to "custom" until the dialog opens and the
-  // catalog loads. The open-effect re-derives the correct id from the catalog.
+  // Seed the runtime selector from the catalog when the dialog opens.
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState("custom");
 
   // Tracks whether the user has made an in-dialog runtime selection.
@@ -327,9 +326,7 @@ export function AgentInstanceEditDialog({
       ? ("error" as const)
       : ("ready" as const);
 
-  // One-shot focus: when the dialog opens from a card deep-link, scroll and
-  // focus the relevant field. The effect re-runs when `llmProviderFieldVisible`
-  // changes so a provider-field focus request fires once the field materializes.
+  // Deep-link focus waits for the provider field to materialize.
   const normalizedFieldFocusFiredRef = React.useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — reset guard on these three; llmProviderFieldVisible drives the focus attempt below
   React.useEffect(() => {
@@ -426,24 +423,14 @@ export function AgentInstanceEditDialog({
   const effectiveProvider =
     (inheritedSubmission.provider ?? "").trim() ||
     inheritedProviderDefault.value;
-  const isColonyFreeAi = effectiveProvider.trim() === "colony-credits";
-  const freeModelsQuery = useQuery({
-    queryKey: ["credits-gateway-free-models", agent.pubkey],
-    queryFn: () => readConfiguredFreeAiModels(),
-    enabled: open && prospectiveRuntimeId === "buzz-agent",
-    retry: false,
-    staleTime: 30_000,
+  const { freeModels, freeModelsQuery, isColonyFreeAi } = useAgentFreeAiModels({
+    agentPubkey: agent.pubkey,
+    open,
+    runtimeId: prospectiveRuntimeId,
+    provider: effectiveProvider,
+    model,
+    setModel,
   });
-  const freeModels = freeModelsQuery.data ?? [];
-  React.useEffect(() => {
-    if (
-      isColonyFreeAi &&
-      freeModels.length > 0 &&
-      !freeModels.includes(model.trim())
-    ) {
-      setModel(freeModels[0]);
-    }
-  }, [freeModels, isColonyFreeAi, model]);
   const providerForDiscovery = llmProviderFieldVisible ? effectiveProvider : "";
 
   const {
@@ -908,17 +895,11 @@ export function AgentInstanceEditDialog({
       : "",
     hideProviderIds,
   );
-  const providerOptions =
-    prospectiveRuntimeId === "buzz-agent" && freeModels.length > 0
-      ? [
-          ...baseProviderOptions,
-          ...(baseProviderOptions.some(
-            (option) => option.id === "colony-credits",
-          )
-            ? []
-            : [{ id: "colony-credits", label: "Colony free AI" }]),
-        ]
-      : baseProviderOptions;
+  const providerOptions = providerOptionsWithFreeAi(
+    baseProviderOptions,
+    prospectiveRuntimeId,
+    freeModels,
+  );
   const providerSelectValue = isCustomProviderEditing
     ? CUSTOM_PROVIDER_DROPDOWN_VALUE
     : trimmedProvider || AUTO_PROVIDER_DROPDOWN_VALUE;
@@ -976,22 +957,14 @@ export function AgentInstanceEditDialog({
         }
       >
         <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="flex flex-col items-center gap-2">
-            <span className="grid h-28 w-28 place-items-center overflow-hidden rounded-2xl bg-muted">
-              <img
-                alt={`${previewLabel} ant`}
-                className="h-full w-full object-contain"
-                src={previewAvatarUrl}
-              />
-            </span>
-            <AgentAntPicturePicker
-              avatarUrl={previewAvatarUrl}
-              disabled={isSaving}
-              functionName={agentFunction}
-              onUploadPendingChange={setIsAvatarUploadPending}
-              onSelect={setAvatarUrl}
-            />
-          </div>
+          <AgentAntPictureControl
+            avatarUrl={previewAvatarUrl}
+            disabled={isSaving}
+            functionName={agentFunction}
+            label={previewLabel}
+            onUploadPendingChange={setIsAvatarUploadPending}
+            onSelect={setAvatarUrl}
+          />
           <div className="space-y-5">
             <div className="space-y-1.5">
               <label

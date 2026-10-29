@@ -9,11 +9,7 @@ import {
 } from "@/features/profile/ui/ProfileAvatarEditor.utils";
 import { useAvatarUpload } from "@/features/profile/useAvatarUpload";
 import { Button } from "@/shared/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/shared/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import {
   AGENT_ANT_PRESETS,
   agentAntAvatarDataUrl,
@@ -21,6 +17,41 @@ import {
   type AgentAntColor,
   type AgentFunction,
 } from "./agentAntAvatar";
+
+export function AgentAntPictureControl({
+  avatarUrl,
+  disabled,
+  functionName,
+  label,
+  onUploadPendingChange,
+  onSelect,
+}: {
+  avatarUrl: string;
+  disabled?: boolean;
+  functionName: AgentFunction;
+  label: string;
+  onUploadPendingChange?: (pending: boolean) => void;
+  onSelect: (url: string) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="grid h-28 w-28 place-items-center overflow-hidden rounded-2xl bg-muted">
+        <img
+          alt={`${label} ant`}
+          className="h-full w-full object-contain"
+          src={avatarUrl}
+        />
+      </span>
+      <AgentAntPicturePicker
+        avatarUrl={avatarUrl}
+        disabled={disabled}
+        functionName={functionName}
+        onUploadPendingChange={onUploadPendingChange}
+        onSelect={onSelect}
+      />
+    </div>
+  );
+}
 
 export function AgentAntPicturePicker({
   avatarUrl,
@@ -37,7 +68,9 @@ export function AgentAntPicturePicker({
 }) {
   const defaultColor =
     AGENT_ANT_PRESETS.find((preset) => preset.id === "green")?.id ?? "green";
-  const [selectedColor, setSelectedColor] = React.useState<AgentAntColor | string>(defaultColor);
+  const [selectedColor, setSelectedColor] = React.useState<
+    AgentAntColor | string
+  >(defaultColor);
   const [customHex, setCustomHex] = React.useState("#7C5CFF");
   const [customColorOpen, setCustomColorOpen] = React.useState(false);
   const customHsv = hexToHsv(customHex);
@@ -65,18 +98,30 @@ export function AgentAntPicturePicker({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button disabled={disabled || upload.isUploading} type="button" variant="outline">
+        <Button
+          disabled={disabled || upload.isUploading}
+          type="button"
+          variant="outline"
+        >
           Change picture
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[min(34rem,calc(100vw-2rem))] p-4" data-testid="agent-picture-picker">
+      <PopoverContent
+        align="start"
+        className="w-[min(34rem,calc(100vw-2rem))] p-4"
+        data-testid="agent-picture-picker"
+      >
         <div className="grid gap-4">
           <div className="flex items-center gap-3">
             <span
               className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl"
               style={{ backgroundColor: agentAntBackground(selectedColor) }}
             >
-              <img alt="" className="h-full w-full object-contain" src={avatarUrl} />
+              <img
+                alt=""
+                className="h-full w-full object-contain"
+                src={avatarUrl}
+              />
             </span>
             <div className="grid gap-1">
               <strong className="text-sm">Choose a picture</strong>
@@ -98,8 +143,15 @@ export function AgentAntPicturePicker({
                   onClick={() => selectPreset(preset.id)}
                   type="button"
                 >
-                  <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-lg" style={{ backgroundColor: agentAntBackground(preset.id) }}>
-                    <img alt="" className="h-full w-full object-contain" src={agentAntAvatarDataUrl(functionName, preset.id)} />
+                  <span
+                    className="grid h-9 w-9 place-items-center overflow-hidden rounded-lg"
+                    style={{ backgroundColor: agentAntBackground(preset.id) }}
+                  >
+                    <img
+                      alt=""
+                      className="h-full w-full object-contain"
+                      src={agentAntAvatarDataUrl(functionName, preset.id)}
+                    />
                   </span>
                   <span className="text-3xs font-medium">{preset.label}</span>
                 </button>
@@ -107,7 +159,10 @@ export function AgentAntPicturePicker({
             </div>
           </fieldset>
           <div className="grid gap-2 rounded-xl border border-border p-3">
-            <label className="text-sm font-semibold" htmlFor="agent-ant-custom-color">
+            <label
+              className="text-sm font-semibold"
+              htmlFor="agent-ant-custom-color"
+            >
               Custom colour
             </label>
             <div className="grid grid-cols-[3rem_minmax(0,1fr)] gap-3">
@@ -130,7 +185,9 @@ export function AgentAntPicturePicker({
                   min={0}
                   onChange={(event) => {
                     const hue = normalizeHue(Number(event.target.value));
-                    selectCustom(hsvToHex(hue, customHsv.saturation, customHsv.value));
+                    selectCustom(
+                      hsvToHex(hue, customHsv.saturation, customHsv.value),
+                    );
                   }}
                   type="range"
                   value={customHsv.hue}
@@ -151,8 +208,14 @@ export function AgentAntPicturePicker({
                 compact
                 hue={customHsv.hue}
                 onCommit={() => setCustomColorOpen(false)}
-                onHueChange={(hue) => selectCustom(hsvToHex(hue, customHsv.saturation, customHsv.value))}
-                onSaturationValueChange={(saturation, value) => selectCustom(hsvToHex(customHsv.hue, saturation, value))}
+                onHueChange={(hue) =>
+                  selectCustom(
+                    hsvToHex(hue, customHsv.saturation, customHsv.value),
+                  )
+                }
+                onSaturationValueChange={(saturation, value) =>
+                  selectCustom(hsvToHex(customHsv.hue, saturation, value))
+                }
                 saturation={customHsv.saturation}
                 testIdPrefix="agent-ant"
                 value={customHsv.value}
@@ -177,15 +240,30 @@ export function AgentAntPicturePicker({
             </label>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border p-3">
-            <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-lg bg-muted">
+            <span
+              aria-hidden="true"
+              className="grid h-10 w-10 place-items-center rounded-lg bg-muted"
+            >
               <UploadCloud className="h-5 w-5" />
             </span>
             <span className="grid flex-1 gap-1">
               <strong className="text-sm">Use a photo instead</strong>
-              <span className="text-xs text-muted-foreground">PNG or JPG from this Mac.</span>
-              {upload.errorMessage ? <span role="alert" className="text-xs text-destructive">{upload.errorMessage}</span> : null}
+              <span className="text-xs text-muted-foreground">
+                PNG or JPG from this Mac.
+              </span>
+              {upload.errorMessage ? (
+                <span role="alert" className="text-xs text-destructive">
+                  {upload.errorMessage}
+                </span>
+              ) : null}
             </span>
-            <Button disabled={disabled || upload.isUploading} onClick={upload.openPicker} size="sm" type="button" variant="outline">
+            <Button
+              disabled={disabled || upload.isUploading}
+              onClick={upload.openPicker}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
               {upload.isUploading ? "Uploading…" : "Upload"}
             </Button>
           </div>
