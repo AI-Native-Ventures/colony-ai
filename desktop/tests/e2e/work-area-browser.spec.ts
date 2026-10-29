@@ -370,7 +370,7 @@ test.describe("work area Browser tab", () => {
     await expect(trigger(page)).toBeFocused();
   });
 
-  test("a window opened by a page becomes a tab beside it; one the host refuses shows a notice", async ({
+  test("a page popup stays in its native sign-in window; one the host refuses shows a notice", async ({
     page,
   }) => {
     await boot(page);
@@ -379,12 +379,11 @@ test.describe("work area Browser tab", () => {
     await page.evaluate((id) => {
       window.__browserFake?.popup(id, "https://popup.test/opened");
     }, tab.id);
-    await expect(pageTab(page, "popup.test/opened")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await expect(address(page)).toHaveValue("https://popup.test/opened");
-    await expect(pageTabs(page).getByRole("tab")).toHaveCount(2);
+    await expect
+      .poll(() => page.evaluate(() => window.__browserFake?.popups() ?? []))
+      .toEqual([{ fromTabId: tab.id, url: "https://popup.test/opened" }]);
+    await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
+    await expect(address(page)).toHaveValue("https://fixture.test/home");
 
     // window.open("file:///...") and friends: refused, said so, page stays.
     // The notice belongs to the page that asked, so look at that page.
@@ -394,7 +393,7 @@ test.describe("work area Browser tab", () => {
     }, tab.id);
     const notice = panelTid(page, "browser-notice-blocked");
     await expect(notice).toContainText("Colony does not open");
-    await expect(pageTabs(page).getByRole("tab")).toHaveCount(2);
+    await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
     await page.getByRole("button", { name: "Dismiss message" }).click();
     await expect(notice).toHaveCount(0);
   });
