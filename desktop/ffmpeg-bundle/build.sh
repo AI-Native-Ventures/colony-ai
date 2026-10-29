@@ -41,11 +41,12 @@ if [ ! -f "$tarball" ]; then
   while IFS= read -r url; do
     [ -n "$url" ] || continue
     if curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 600 --output "$tarball.part" "$url"; then
-      if [ "$(sha256_of "$tarball.part")" = "$sha256" ]; then
+      got="$(sha256_of "$tarball.part")"
+      if [ "$got" = "$sha256" ]; then
         mv "$tarball.part" "$tarball"
         break
       fi
-      echo "ffmpeg source from $url failed its checksum, trying the next source" >&2
+      echo "ffmpeg source checksum mismatch from $url: expected $sha256, got $got; trying the next source" >&2
     else
       echo "ffmpeg source download from $url failed, trying the next source" >&2
     fi
