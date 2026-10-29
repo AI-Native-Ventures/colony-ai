@@ -124,6 +124,14 @@ The `content` field decrypts to a UTF-8 JSON object:
     "cacheClass": "ephemeral"                    // cache-write class; omit when not applicable
   },
 
+  // Structured subscription allowance snapshots, when reported by the
+  // harness. `session` is the short session window; `weekly` is present only
+  // when the provider reports a weekly window. Reset values are Unix seconds.
+  "subscriptionUsage": {       // OPTIONAL; provider-reported, never inferred
+    "session": { "usedFraction": 0.24, "resetsAt": 1788465600 },
+    "weekly": { "usedFraction": 0.13, "resetsAt": 1789005600 }
+  },
+
   "stopReason": "end_turn"               // optional
 }
 ```
@@ -132,6 +140,14 @@ The `content` field decrypts to a UTF-8 JSON object:
 nullable, except as constrained below: `pricingIdentity` is optional but not
 nullable (omit it entirely rather than set it to null). Consumers MUST ignore
 unknown fields (forward compatibility).
+
+`subscriptionUsage`, when present, is a structured snapshot from the harness,
+not an estimate derived from token counts or API rate-limit headers.
+`session` is required and `weekly` is optional. Each `usedFraction` MUST be a
+finite number from 0 through 1, and each `resetsAt` MUST be a positive Unix
+timestamp in seconds. Consumers MUST hide a window when its reset time has
+passed. This field is inside the owner-encrypted payload and MUST NOT be
+copied into relay-visible tags or indexes.
 
 ### Ordering and delta recomputation
 

@@ -186,6 +186,16 @@ pub async fn update_managed_agent(
                 name_changed = true;
             }
         }
+        let mut avatar_changed = false;
+        if let Some(avatar_update) = input.avatar_url {
+            let normalized = avatar_update
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            if normalized != record.avatar_url {
+                record.avatar_url = normalized;
+                avatar_changed = true;
+            }
+        }
         apply_model_provider_prompt_update(
             record,
             input.model,
@@ -350,10 +360,11 @@ pub async fn update_managed_agent(
         // update that touched only runtime/local fields is a no-op publish.
         super::super::agents::retain_managed_agent_pending(&app, &state, record);
 
-        let sync_params = if name_changed {
+        let profile_changed = name_changed || avatar_changed;
+        let sync_params = if profile_changed {
             let agent_keys = Keys::parse(&record.private_key_nsec)
                 .map_err(|e| format!("failed to parse agent keys: {e}"))?;
-            // Re-publish the renamed profile to the agent's effective relay:
+            // Re-publish the renamed or re-imaged profile to the agent's effective relay:
             // an explicit per-agent relay wins; empty falls back to workspace.
             let relay_url = crate::relay::effective_agent_relay_url(
                 &record.relay_url,
@@ -384,7 +395,7 @@ pub async fn update_managed_agent(
         };
 
         let summary = { super::super::agents::summarize_from_disk(&app, record, &runtimes)? };
-        let rollback = name_changed
+        let rollback = profile_changed
             .then(|| AgentUpdateRollback::new(previous_record, record, access_policy_changed));
         (
             summary,
@@ -421,7 +432,7 @@ pub async fn update_managed_agent(
         );
     }
 
-    // A rename is committed only when profile sync succeeds; otherwise restore
+    // A profile edit is committed only when profile sync succeeds; otherwise restore
     // the complete pre-edit record so Desktop and the relay keep one
     // authoritative name.
     if let Some((agent_keys, relay_url, display_name, avatar_url, about, auth_tag)) = sync_params {

@@ -1,5 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
+import { resolveManagedAgentAvatarUrl } from "@/features/agents/ui/managedAgentAvatar";
 
 import {
   connectAcpRuntime,
@@ -409,9 +411,20 @@ export function useManagedAgentsQuery(options?: { enabled?: boolean }) {
 
 export function useCreateManagedAgentMutation() {
   const queryClient = useQueryClient();
+  const personasQuery = usePersonasQuery();
 
   return useMutation({
-    mutationFn: (input: CreateManagedAgentInput) => createManagedAgent(input),
+    mutationFn: async (input: CreateManagedAgentInput) => {
+      const persona = personasQuery.data?.find(
+        (candidate) => candidate.id === input.personaId,
+      );
+      const avatar = await resolveManagedAgentAvatarUrl(
+        input.avatarUrl ??
+          persona?.avatarUrl ??
+          agentAntAvatarDataUrl(persona?.companyRole?.job ?? input.name),
+      );
+      return createManagedAgent({ ...input, avatarUrl: avatar });
+    },
     onSuccess: (created) => {
       queryClient.setQueryData<ManagedAgent[]>(
         managedAgentsQueryKey,

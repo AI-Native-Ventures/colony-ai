@@ -388,19 +388,16 @@ pub struct ManagedAgentRecord {
     /// Desired LLM model ID. Matches AgentModelInfo.id from discovery.
     /// The harness re-discovers the correct ACP switching metadata at session
     /// creation by matching this ID against the fresh session/new response.
-    /// For a linked instance this is a legacy/display snapshot only — spawn
-    /// and deploy resolve the effective model from the definition, never
-    /// from this field (see `effective_config::resolve_effective_config`).
+    /// For a linked instance this remains a display snapshot except when the
+    /// instance provider is Colony credits, where it is the selected free
+    /// gateway model.
     /// For a definition-less instance this field is authoritative.
     #[serde(default)]
     pub model: Option<String>,
-    /// LLM inference provider. For a linked instance this is a legacy/display
-    /// snapshot only — spawn and deploy resolve the effective provider from
-    /// the definition, never from this field (see
-    /// `effective_config::resolve_effective_config`). For a definition-less
-    /// instance this field is authoritative. `#[serde(default)]` so
-    /// pre-existing records deserialize as `None` and get backfilled on
-    /// first load.
+    /// LLM inference provider. For linked instances this is normally a legacy
+    /// snapshot, with Colony credits as the per-agent override. For a
+    /// definition-less instance this field is authoritative. `#[serde(default)]`
+    /// so pre-existing records deserialize as `None` and get backfilled on first load.
     #[serde(default)]
     pub provider: Option<String>,
     /// Content hash of the persona at the time this agent was created — the
@@ -640,8 +637,9 @@ pub struct ManagedAgentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_source: Option<super::effective_config::ConfigSource>,
     /// LLM inference provider, resolved the same way as `model`/`model_source`
-    /// (definition → global for linked instances; instance → global for
-    /// definition-less instances). `None` for an orphaned instance.
+    /// (definition → global for linked instances unless Colony credits is
+    /// selected per agent; instance → global for definition-less instances).
+    /// `None` for an orphaned instance.
     pub provider: Option<String>,
     /// `true` when the linked persona has been edited since this agent was
     /// created — the running agent uses the older pinned snapshot. The UI

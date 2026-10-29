@@ -185,6 +185,8 @@ pub struct CreateManagedAgentRequest {
     pub avatar_url: Option<String>,
     pub model: Option<String>,
     pub provider: Option<String>,
+    #[serde(default)]
+    pub effort_level: Option<String>,
     /// Environment variables for this agent. Layered on top of persona env.
     #[serde(default)]
     pub env_vars: BTreeMap<String, String>,
@@ -227,6 +229,9 @@ pub struct UpdateManagedAgentRequest {
     /// Absent = don't touch. Present = rename the agent.
     #[serde(default)]
     pub name: Option<String>,
+    /// Absent = keep; null = clear; string = replace the agent avatar.
+    #[serde(default, deserialize_with = "crate::util::double_option")]
+    pub avatar_url: Option<Option<String>>,
     /// Absent = don't touch. null = clear to agent default. "id" = set.
     #[serde(default)]
     pub model: Option<Option<String>>,

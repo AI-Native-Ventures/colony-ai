@@ -8,6 +8,7 @@ import {
 export { findReusableAgent } from "@/features/agents/agentReuse";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveManagedAgentAvatarUrl } from "@/features/agents/ui/managedAgentAvatar";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import {
   addChannelMembers,
   createManagedAgent,
@@ -293,6 +294,9 @@ export async function ensureChannelAgentPresetInChannel(
     };
   }
 
+  const defaultAvatarUrl = await resolveManagedAgentAvatarUrl(
+    agentAntAvatarDataUrl(expectedName),
+  );
   const created = await createManagedAgent({
     name: expectedName,
     acpCommand: "buzz-acp",
@@ -301,6 +305,7 @@ export async function ensureChannelAgentPresetInChannel(
     // for the rationale — empty args let spawn resolve definition args live).
     agentArgs: [],
     mcpCommand: input.runtime.mcpCommand ?? "",
+    avatarUrl: defaultAvatarUrl,
     spawnAfterCreate: false,
   });
   const attached = await attachManagedAgentToChannel(channelId, {
@@ -390,7 +395,9 @@ export async function provisionChannelManagedAgent(
   // serve; percent-encoded emoji SVG data URLs pass through unchanged so the
   // selected emoji survives deployment. Shared with agent creation so both
   // paths handle emoji avatars identically.
-  const resolvedAvatarUrl = await resolveManagedAgentAvatarUrl(input.avatarUrl);
+  const resolvedAvatarUrl = await resolveManagedAgentAvatarUrl(
+    input.avatarUrl ?? agentAntAvatarDataUrl(input.role ?? input.name),
+  );
 
   const isProviderMode = input.backend?.type === "provider";
 

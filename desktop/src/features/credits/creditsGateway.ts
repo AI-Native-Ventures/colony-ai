@@ -15,6 +15,39 @@ const dependencies = {
   credits: readCredits,
 };
 
+const freeModelDependencies = {
+  enabled: dependencies.enabled,
+  relay: dependencies.relay,
+  fetch: dependencies.fetch,
+};
+
+/** Read the relay's currently configured, server-enforced free-model choices. */
+export async function readConfiguredFreeAiModels(
+  deps = freeModelDependencies,
+): Promise<string[]> {
+  if (!(await deps.enabled())) return [];
+  const base = (await deps.relay()).replace(/\/+$/, "");
+  const response = await deps.fetch(
+    `${base}/api/credits-gateway/capabilities`,
+    { signal: AbortSignal.timeout(8_000), redirect: "error" },
+  );
+  if (response.status === 404) return [];
+  if (!response.ok)
+    throw new Error("Colony free AI models could not be checked. Try again.");
+  const gateway = (await response.json()) as {
+    enabled?: unknown;
+    runtime?: unknown;
+    freeModels?: unknown;
+  };
+  if (gateway?.enabled !== true || gateway.runtime !== "colony") return [];
+  if (!Array.isArray(gateway.freeModels)) return [];
+  const models = (gateway.freeModels as unknown[]).filter(
+    (model: unknown): model is string =>
+      typeof model === "string" && model.endsWith(":free") && model.length <= 200,
+  );
+  return [...new Set<string>(models)];
+}
+
 /** The native launch flag alone. Off means credits stay out of onboarding and checkout. */
 export function readColonyCreditsLaunched(
   deps: Pick<typeof dependencies, "enabled"> = dependencies,

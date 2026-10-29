@@ -599,6 +599,55 @@ fn linked_instance_ignores_model_provider_prompt_writes() {
 }
 
 #[test]
+fn linked_instance_can_save_and_clear_colony_free_ai_selection() {
+    let mut record: crate::managed_agents::ManagedAgentRecord = serde_json::from_str(
+        r#"{
+            "pubkey": "linked1",
+            "name": "linked-agent",
+            "persona_id": "p1",
+            "private_key_nsec": "nsec1fake",
+            "relay_url": "wss://localhost:3000",
+            "acp_command": "buzz-acp",
+            "agent_command": "goose",
+            "agent_args": [],
+            "mcp_command": "",
+            "turn_timeout_seconds": 320,
+            "system_prompt": null,
+            "model": null,
+            "provider": null,
+            "env_vars": {},
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "last_started_at": null,
+            "last_stopped_at": null,
+            "last_exit_code": null,
+            "last_error": null
+        }"#,
+    )
+    .expect("linked agent record");
+
+    crate::commands::agent_models::apply_model_provider_prompt_update(
+        &mut record,
+        Some(Some("poolside/laguna-xs-2.1:free".to_string())),
+        Some(Some("colony-credits".to_string())),
+        None,
+    )
+    .expect("linked Colony free AI selection saves");
+    assert_eq!(record.provider.as_deref(), Some("colony-credits"));
+    assert_eq!(record.model.as_deref(), Some("poolside/laguna-xs-2.1:free"));
+
+    crate::commands::agent_models::apply_model_provider_prompt_update(
+        &mut record,
+        None,
+        Some(None),
+        None,
+    )
+    .expect("linked Colony free AI selection clears");
+    assert_eq!(record.provider, None);
+    assert_eq!(record.model, None);
+}
+
+#[test]
 fn definition_less_instance_accepts_model_provider_prompt_writes() {
     let mut record: crate::managed_agents::ManagedAgentRecord = serde_json::from_str(
         r#"{

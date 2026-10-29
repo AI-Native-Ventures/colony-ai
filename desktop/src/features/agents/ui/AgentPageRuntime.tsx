@@ -1,7 +1,12 @@
-import type * as React from "react";
+import * as React from "react";
 
+import { useAgentSubscriptionUsage } from "@/features/agents/useAgentSubscriptionUsage";
 import type { useAgentConfigSurface } from "@/features/agents/hooks";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
+import type {
+  AgentSubscriptionUsage,
+  SubscriptionUsageWindow,
+} from "@/shared/api/tauriArchive";
 import {
   authStatusLabel,
   harnessAvailabilityLabel,
@@ -9,59 +14,72 @@ import {
   providerName,
 } from "./agentPageModel";
 import { AgentHarnessGlyph } from "./AgentHarnessGlyph";
+import {
+  acceptedEffortLabel,
+  isClaudeSubscription,
+  simpleModelLabel,
+  simpleProviderLabel,
+} from "./simpleAgentAi";
 
 type RuntimeConfig = ReturnType<typeof useAgentConfigSurface>["data"];
 
-const CHECK_ICON = (
-  <svg
-    aria-hidden="true"
-    fill="none"
-    height="13"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="3"
-    viewBox="0 0 24 24"
-    width="13"
-  >
-    <path d="m5 12 5 5 9-10" />
-  </svg>
-);
-
-function reportedValue(
-  config: RuntimeConfig,
-  field: "thinkingEffort" | "maxOutputTokens" | "contextLimit",
-  isObserved: boolean,
-  isLoading: boolean,
-): string | null {
-  if (isLoading) return "Loading";
-  if (!isObserved || !config) return null;
-  return config.normalized[field]?.value?.trim() || null;
-}
-
-function Row({
-  align,
-  label,
-  children,
-  muted = false,
-}: {
-  align?: "center";
-  label: string;
-  children: React.ReactNode;
-  muted?: boolean;
-}) {
+function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div data-align={align}>
-      <dt>{label}</dt>
-      <dd data-muted={muted ? "true" : undefined}>{children}</dd>
+    <div className="grid gap-1">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="break-words text-sm text-foreground">{value}</dd>
     </div>
   );
 }
 
-/**
- * The model and runtime part of the single agent page
- * (`AgentRuntime.dc.html`): what the agent asks for, and what actually runs.
- */
+function SubscriptionUsageMeters({ usage }: { usage: AgentSubscriptionUsage }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const windows: Array<{ label: string; value: SubscriptionUsageWindow }> = [
+    { label: "Session", value: usage.session },
+  ];
+  if (usage.weekly) windows.push({ label: "Weekly", value: usage.weekly });
+  const current = windows.filter(({ value }) => value.resetsAt * 1000 > now);
+  if (current.length === 0) return null;
+
+  return (
+    <section
+      aria-label="Subscription usage"
+      className="agents-c3-subscription-usage"
+      data-testid="agent-subscription-usage"
+    >
+      {current.map(({ label, value }) => (
+        <div className="agents-c3-subscription-window" key={label}>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium text-foreground">{label}</span>
+            <span className="text-muted-foreground">
+              {Math.round(value.usedFraction * 100)}% used
+            </span>
+          </div>
+          <progress
+            aria-label={`${label} plan usage`}
+            className="agents-c3-usage-progress"
+            max={1}
+            value={value.usedFraction}
+          />
+          <p className="m-0 text-xs text-muted-foreground">
+            Resets at{" "}
+            {new Intl.DateTimeFormat(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            }).format(new Date(value.resetsAt * 1000))}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** The owner-facing AI summary, with support-only runtime facts kept collapsed. */
 export function AgentPageRuntime({
   agent,
   authStatus,
@@ -70,8 +88,12 @@ export function AgentPageRuntime({
   config,
   configError,
   configLoading,
+  inheritedModel,
+  inheritedProvider,
+  providerEnvVars,
   onEditConfiguration,
   onManageHarnesses,
+  onRetryConfiguration,
   runtime,
 }: {
   agent: ManagedAgent;
@@ -81,185 +103,194 @@ export function AgentPageRuntime({
   config: RuntimeConfig;
   configError: Error | null;
   configLoading: boolean;
+  inheritedModel?: string | null;
+  inheritedProvider?: string | null;
+  providerEnvVars: Readonly<Record<string, string>>;
   onEditConfiguration: () => void;
   onManageHarnesses: () => void;
+  onRetryConfiguration: () => void;
   runtime: AcpRuntimeCatalogEntry | undefined;
 }) {
-  const name = agent.name || "This agent";
   const local = agent.backend.type === "local";
-  const observed = config !== undefined && !config.isPreSpawn;
-  const effectiveModel = observed
-    ? config?.normalized.model?.value?.trim() || null
+  const expectedRuntimeId = runtime?.id ?? agent.runtime?.trim() ?? null;
+  const observed =
+    config !== undefined &&
+    !config.isPreSpawn &&
+    (!expectedRuntimeId || config.runtimeId === expectedRuntimeId);
+  const model =
+    (observed ? config?.normalized.model?.value : null)?.trim() ||
+    agent.model?.trim() ||
+    inheritedModel?.trim() ||
+    null;
+  const provider =
+    (observed ? config?.normalized.provider?.value : null)?.trim() ||
+    agent.provider?.trim() ||
+    inheritedProvider?.trim() ||
+    null;
+  const providerLabel = simpleProviderLabel({
+    runtimeId: runtime?.id,
+    provider,
+    envVars: providerEnvVars,
+  });
+  const subscriptionUsageQuery = useAgentSubscriptionUsage(
+    agent.pubkey,
+    isClaudeSubscription({
+      runtimeId: runtime?.id,
+      provider,
+      envVars: providerEnvVars,
+    }),
+  );
+  const effort = observed
+    ? acceptedEffortLabel(
+        config?.normalized.thinkingEffort?.value,
+        config?.effortOptions,
+      )
     : null;
-  const effectiveProvider = observed
-    ? config?.normalized.provider?.value?.trim() || null
-    : null;
-  const availabilityChip = harnessAvailabilityLabel(availability, local);
-  const auth = authStatusLabel(authStatus);
-  const source = requestedSourceLabel(agent.modelSource);
-  const effort = reportedValue(
-    config,
-    "thinkingEffort",
-    observed,
-    configLoading,
-  );
-  const maxOutput = reportedValue(
-    config,
-    "maxOutputTokens",
-    observed,
-    configLoading,
-  );
-  const contextLimit = reportedValue(
-    config,
-    "contextLimit",
-    observed,
-    configLoading,
-  );
+  const availabilityLabel = harnessAvailabilityLabel(availability, local).label;
+  const authentication = authStatusLabel(authStatus).label;
+  const name = agent.name || "This agent";
+  const maxOutput = config?.normalized.maxOutputTokens?.value?.trim();
+  const contextLimit = config?.normalized.contextLimit?.value?.trim();
 
   return (
-    <>
-      <div className="agents-c3-sectionhead" id="runtime">
-        <h2>Model &amp; runtime</h2>
-        <span>
-          What {name} asks for, and what actually runs
-          {local ? " on this Mac" : " on its host"}.
-        </span>
-      </div>
-
-      <section
-        aria-labelledby="model-selection"
-        className="agents-c3-table-card"
-        data-testid="agent-model-selection"
-      >
-        <h3 id="model-selection">Model selection</h3>
-        <dl className="agents-c3-dl">
-          <Row label="Requested model">{agent.model ?? "Not reported"}</Row>
-          <Row label="Requested value source">
-            {source}
-            {agent.modelSource === "definition" ? (
-              <span className="agents-c3-chip" data-tone="note">
-                Overrides global defaults
-              </span>
-            ) : null}
-          </Row>
-          <Row label="Effective model" muted={!effectiveModel}>
-            {configLoading ? "Loading" : (effectiveModel ?? "Not reported")}
-          </Row>
-          <Row label="Effective provider" muted={!effectiveProvider}>
-            {configLoading
-              ? "Loading"
-              : effectiveProvider
-                ? providerName(effectiveProvider)
-                : "Not reported"}
-          </Row>
-        </dl>
-        {configError ? (
-          <p className="agents-c3-error" role="alert">
-            {configError.message}
-          </p>
-        ) : null}
-        {config?.isPreSpawn ? (
-          <p className="agents-c3-quiet">
-            The agent has not reported an effective model for a running session.
-          </p>
-        ) : null}
-      </section>
-
-      <section
-        aria-labelledby="harness-account"
-        className="agents-c3-table-card"
-        data-testid="agent-harness-account"
-      >
-        <div className="agents-c3-card-head">
-          <h3 id="harness-account">Harness and account</h3>
-          <button
-            className="agents-c3-link"
-            onClick={onManageHarnesses}
-            type="button"
-          >
-            Harnesses &amp; connections →
-          </button>
-        </div>
-        <dl className="agents-c3-dl">
-          <Row align="center" label="Harness">
-            {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
-            {runtime?.label ?? "Not reported"}
-          </Row>
-          <Row align="center" label="Harness availability">
-            <span
-              className="agents-c3-chip"
-              data-tone={availabilityChip.ok ? "ready" : "offline"}
-            >
-              <span aria-hidden="true" className="agents-c3-dot" />
-              {availabilityChip.label}
-            </span>
-          </Row>
-          <Row align="center" label="Harness authentication">
-            <span
-              className="agents-c3-chip"
-              data-tone={
-                auth.tone === "ok"
-                  ? "ready"
-                  : auth.tone === "bad"
-                    ? "needs"
-                    : "offline"
-              }
-            >
-              {auth.tone === "ok" ? CHECK_ICON : null}
-              {auth.label}
-            </span>
-          </Row>
-          <Row label="Provider route" muted={!agent.provider}>
-            {agent.provider ? providerName(agent.provider) : "Not reported"}
-          </Row>
-        </dl>
-      </section>
-
-      <section
-        aria-labelledby="reported-values"
-        className="agents-c3-table-card"
-        data-testid="agent-reported-values"
-      >
-        <h3 id="reported-values">Reported runtime values</h3>
-        <dl className="agents-c3-tiles" data-roomy="true">
-          <div className="agents-c3-tile">
-            <dt>Thinking effort</dt>
-            <dd data-muted={effort ? undefined : "true"}>
-              {effort ?? "Not reported"}
-            </dd>
-          </div>
-          <div className="agents-c3-tile">
-            <dt>Maximum output tokens</dt>
-            <dd data-muted={maxOutput ? undefined : "true"}>
-              {maxOutput ?? "Not reported"}
-            </dd>
-          </div>
-          <div className="agents-c3-tile">
-            <dt>Context limit</dt>
-            <dd data-muted={contextLimit ? undefined : "true"}>
-              {contextLimit ?? "Not reported"}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      {canEdit ? (
-        <div className="agents-c3-note">
-          <span>
-            Change the model, provider or harness from the agent’s
-            configuration. Running work finishes on the current setup.
-          </span>
+    <section
+      aria-labelledby="agent-ai"
+      className="agents-c3-card"
+      data-testid="agent-model-selection"
+    >
+      <div className="agents-c3-card-head">
+        <h2 className="agents-c3-eyebrow" id="agent-ai">
+          AI
+        </h2>
+        {canEdit ? (
           <button
             className="agents-c3-btn"
-            data-size="md"
+            data-size="sm"
             data-testid="agent-edit-configuration"
             onClick={onEditConfiguration}
             type="button"
           >
-            Edit configuration
+            Change
+          </button>
+        ) : null}
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <Detail
+          label="Model"
+          value={
+            configLoading && !model
+              ? "Loading"
+              : simpleModelLabel(model, provider)
+          }
+        />
+        <Detail
+          label="Harness"
+          value={
+            configLoading && !runtime
+              ? "Loading"
+              : (runtime?.label ?? "Not reported")
+          }
+        />
+        {effort ? <Detail label="Effort" value={effort} /> : null}
+        {providerLabel ? (
+          <Detail label="Provider" value={providerLabel} />
+        ) : null}
+      </dl>
+
+      {subscriptionUsageQuery.data ? (
+        <SubscriptionUsageMeters usage={subscriptionUsageQuery.data} />
+      ) : null}
+
+      {configError ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="alert">
+          <span className="agents-c3-error">
+            AI settings could not be loaded.
+          </span>
+          <button
+            className="agents-c3-link"
+            onClick={onRetryConfiguration}
+            type="button"
+          >
+            Try again
           </button>
         </div>
       ) : null}
-    </>
+      {config?.isPreSpawn ? (
+        <p className="agents-c3-quiet mt-3">
+          {name} has not reported a running model yet.
+        </p>
+      ) : null}
+
+      <details
+        className="agents-c3-technical-details"
+        data-testid="agent-technical-details"
+      >
+        <summary>
+          <span>
+            <strong>Technical details</strong>
+            <span>For support. You never need these to use {name}.</span>
+          </span>
+          <span
+            aria-hidden="true"
+            className="agents-c3-technical-chevron text-2xl"
+          >
+            ›
+          </span>
+        </summary>
+        <dl className="grid gap-3 border-t border-border px-4 py-3 sm:grid-cols-2">
+          <Detail
+            label="Requested model"
+            value={agent.model ?? "Not reported"}
+          />
+          <Detail
+            label="Requested value source"
+            value={requestedSourceLabel(agent.modelSource)}
+          />
+          <Detail
+            label="Effective provider"
+            value={provider ? providerName(provider) : "Not reported"}
+          />
+          <Detail
+            label="Provider route"
+            value={
+              agent.provider ? providerName(agent.provider) : "Not reported"
+            }
+          />
+          <Detail label="Harness availability" value={availabilityLabel} />
+          <Detail label="Harness authentication" value={authentication} />
+          <Detail
+            label="Maximum output tokens"
+            value={maxOutput || "Not reported"}
+          />
+          <Detail
+            label="Context limit"
+            value={contextLimit || "Not reported"}
+          />
+          <Detail
+            label="Runtime command"
+            value={agent.agentCommand || "Not reported"}
+          />
+        </dl>
+        {configError ? (
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            {configError.message}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+          {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
+          {runtime?.label ?? "Harness not reported"}
+          {canEdit ? (
+            <button
+              className="agents-c3-link ml-auto"
+              onClick={onManageHarnesses}
+              type="button"
+            >
+              Harness settings
+            </button>
+          ) : null}
+        </div>
+      </details>
+    </section>
   );
 }

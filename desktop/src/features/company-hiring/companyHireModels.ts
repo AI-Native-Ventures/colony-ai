@@ -93,9 +93,12 @@ function parseProposal(value: unknown): HireProposal | null {
       "title",
       "managerPubkey",
       "introductionChannelId",
+      "channelIds",
+      "respondTo",
       "runtimeId",
       "providerId",
       "modelId",
+      "effortLevel",
       "weeklyAllowance",
     ]) ||
     !hasOnlyKeys(rolePack, [
@@ -118,12 +121,30 @@ function parseProposal(value: unknown): HireProposal | null {
         !HEX64_RE.test(value.managerPubkey))) ||
     typeof value.introductionChannelId !== "string" ||
     !UUID_RE.test(value.introductionChannelId) ||
+    (value.channelIds !== undefined &&
+      (!Array.isArray(value.channelIds) ||
+        value.channelIds.length === 0 ||
+        value.channelIds.length > 32 ||
+        !value.channelIds.every(
+          (channelId) =>
+            typeof channelId === "string" && UUID_RE.test(channelId),
+        ) ||
+        new Set(value.channelIds).size !== value.channelIds.length ||
+        !value.channelIds.includes(value.introductionChannelId))) ||
+    (value.respondTo !== undefined &&
+      !["owner-only", "allowlist", "anyone"].includes(
+        String(value.respondTo),
+      )) ||
     typeof value.runtimeId !== "string" ||
     !value.runtimeId.trim() ||
     (value.providerId !== undefined &&
       (typeof value.providerId !== "string" || !value.providerId.trim())) ||
     (value.modelId !== undefined &&
       (typeof value.modelId !== "string" || !value.modelId.trim())) ||
+    (value.effortLevel !== undefined &&
+      (typeof value.effortLevel !== "string" ||
+        !value.effortLevel.trim() ||
+        value.effortLevel.length > 64)) ||
     (value.weeklyAllowance !== undefined &&
       (typeof value.weeklyAllowance !== "string" ||
         !/^\d+(?:\.\d{1,2})?$/.test(value.weeklyAllowance) ||

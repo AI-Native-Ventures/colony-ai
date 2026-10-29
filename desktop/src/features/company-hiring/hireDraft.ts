@@ -6,9 +6,24 @@ import type { HireProposal } from "@/features/company-asks/askRecords";
 
 export type HireDraft = {
   proposal: HireProposal;
+  /** Session-local picture selection; never included in the public hire ask. */
+  avatarUrl?: string;
   employeePubkey?: string;
   baseHeadEventId?: string;
 };
+
+function isAvatarDraftValue(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 250_000) {
+    return false;
+  }
+  if (value.startsWith("data:image/")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 function getSessionStorage(): Storage | null {
   try {
@@ -55,7 +70,12 @@ export function readHireDraft(
     return null;
   }
   const record = value as Record<string, unknown>;
-  const knownKeys = new Set(["proposal", "employeePubkey", "baseHeadEventId"]);
+  const knownKeys = new Set([
+    "proposal",
+    "avatarUrl",
+    "employeePubkey",
+    "baseHeadEventId",
+  ]);
   const createAction = parseCompanyHireAction({
     schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
     hireId,
@@ -65,6 +85,7 @@ export function readHireDraft(
   if (
     !createAction ||
     Object.keys(record).some((key) => !knownKeys.has(key)) ||
+    (record.avatarUrl !== undefined && !isAvatarDraftValue(record.avatarUrl)) ||
     (record.employeePubkey !== undefined &&
       (typeof record.employeePubkey !== "string" ||
         !/^[0-9a-f]{64}$/.test(record.employeePubkey))) ||
@@ -81,6 +102,9 @@ export function readHireDraft(
   }
   return {
     proposal: createAction.proposal as HireProposal,
+    ...(typeof record.avatarUrl === "string"
+      ? { avatarUrl: record.avatarUrl }
+      : {}),
     ...(typeof record.employeePubkey === "string"
       ? { employeePubkey: record.employeePubkey }
       : {}),

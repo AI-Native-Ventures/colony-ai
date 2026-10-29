@@ -16,9 +16,14 @@ import {
 import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import { AgentHarnessGlyph } from "./AgentHarnessGlyph";
 import { useUserProfileQuery } from "@/features/profile/hooks";
-import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
+import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import type {
+  AcpRuntimeCatalogEntry,
+  AgentPersona,
+  ManagedAgent,
+} from "@/shared/api/types";
 import { AgentStatusChip } from "./AgentStatusChip";
-import { providerName } from "./agentPageModel";
+import { simpleModelLabel, simpleProviderLabel } from "./simpleAgentAi";
 import "./agentsColony3.css";
 
 const FILTER_OPTIONS: Array<{ value: AgentDirectoryFilter; label: string }> = [
@@ -125,6 +130,8 @@ export function AgentDirectory({
 }) {
   const runtimeQuery = useManagedAgentRuntimesQuery();
   const relayAgentsQuery = useRelayAgentsQuery();
+  const personasQuery = usePersonasQuery();
+  const { globalConfig } = useGlobalAgentConfig();
   const teamQuery = useCompanyTeamQuery();
   const { activeCommunity } = useCommunities();
   const statusInput = React.useMemo(
@@ -302,8 +309,7 @@ export function AgentDirectory({
               <tr>
                 <th>Agent</th>
                 <th>Status</th>
-                <th>Harness</th>
-                <th>Provider / model</th>
+                <th>AI</th>
                 <th>Runs on</th>
                 <th className="agents-c3-sr">Actions</th>
               </tr>
@@ -355,29 +361,20 @@ export function AgentDirectory({
                             Not reported
                           </span>
                         </td>
-                        <td>
-                          <span
-                            className="agents-c3-cell-text"
-                            data-muted="true"
-                          >
-                            Not reported
-                          </span>
-                        </td>
                       </>
                     ) : (
                       <>
                         <td>
-                          <AgentHarnessCell agent={agent} runtimes={runtimes} />
-                        </td>
-                        <td>
-                          <span className="agents-c3-cell-stack">
-                            <span>
-                              {agent.provider
-                                ? providerName(agent.provider)
-                                : "Not reported"}
-                            </span>
-                            <span>{agent.model || "Not reported"}</span>
-                          </span>
+                          <AgentAiCell
+                            agent={agent}
+                            globalEnvVars={globalConfig.env_vars}
+                            globalModel={globalConfig.model}
+                            globalProvider={globalConfig.provider}
+                            persona={personasQuery.data?.find(
+                              (candidate) => candidate.id === agent.personaId,
+                            )}
+                            runtimes={runtimes}
+                          />
                         </td>
                         <td>
                           {agent.backend.type === "local" ? (
@@ -537,6 +534,7 @@ function AgentIdentityButton({
     >
       <EmployeeAvatar
         name={agent.name}
+        role={persona?.companyRole?.job ?? positionTitle}
         profile={profileQuery.data?.avatarUrl}
         instance={agent.avatarUrl}
         definition={persona?.avatarUrl}
@@ -554,18 +552,47 @@ function AgentIdentityButton({
   );
 }
 
-function AgentHarnessCell({
+function AgentAiCell({
   agent,
+  globalEnvVars,
+  globalModel,
+  globalProvider,
+  persona,
   runtimes,
 }: {
   agent: ManagedAgent;
+  globalEnvVars: Readonly<Record<string, string>>;
+  globalModel: string | null;
+  globalProvider: string | null;
+  persona?: AgentPersona;
   runtimes: readonly AcpRuntimeCatalogEntry[];
 }) {
   const runtime = runtimeForAgent(agent, runtimes);
+  const provider = agent.provider ?? persona?.provider ?? globalProvider;
+  const envVars = {
+    ...globalEnvVars,
+    ...(persona?.envVars ?? {}),
+    ...agent.envVars,
+  };
+  const providerLabel = simpleProviderLabel({
+    runtimeId: runtime?.id,
+    provider,
+    envVars,
+  });
+  const model = agent.model ?? persona?.model ?? globalModel;
   return (
-    <span className="agents-c3-harness">
-      {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
-      <span className="truncate">{agentHarnessLabel(agent, runtimes)}</span>
+    <span
+      className="agents-c3-cell-stack"
+      data-testid={`agent-ai-${agent.pubkey}`}
+    >
+      <span>{simpleModelLabel(model, provider)}</span>
+      <span className="agents-c3-harness">
+        {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
+        <span className="truncate">
+          {runtime?.label ?? agentHarnessLabel(agent, runtimes)}
+        </span>
+      </span>
+      {providerLabel ? <span>{providerLabel}</span> : null}
     </span>
   );
 }

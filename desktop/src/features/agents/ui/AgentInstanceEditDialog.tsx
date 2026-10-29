@@ -1,7 +1,5 @@
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -27,10 +25,10 @@ import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { setManagedAgentAutoRestart } from "@/shared/api/tauriManagedAgents";
+import { readConfiguredFreeAiModels } from "@/features/credits/creditsGateway";
 import { EffortPickerField } from "./EffortPickerField";
 import { EditAgentAdvancedFields } from "./EditAgentAdvancedFields";
 import {
-  ADVANCED_FIELDS_MOTION_TRANSITION,
   AUTO_PROVIDER_DROPDOWN_VALUE,
   BLOCK_BUILD_HIDDEN_PROVIDER_IDS,
   CUSTOM_PROVIDER_DROPDOWN_VALUE,
@@ -66,7 +64,10 @@ import {
   selectionOnRuntimeChange,
   type RuntimeModelProviderSelection,
 } from "./runtimeModelProviderSelection";
-import { AgentCreationPreview } from "./AgentCreationPreview";
+import { AgentAntPicturePicker } from "./AgentAntPicturePicker";
+import { agentAntAvatarDataUrl, agentFunctionFromRole } from "./agentAntAvatar";
+import { resolveManagedAgentAvatarUrl } from "./managedAgentAvatar";
+import { simpleModelLabel } from "./simpleAgentAi";
 import { OwnerOnlyAccessField } from "./OwnerOnlyAccessField";
 import type { EnvVarsValue } from "./EnvVarsEditor";
 import { useRequiredCredentialState } from "./useRequiredCredentialState";
@@ -87,7 +88,6 @@ import { AgentAiDefaultsNotice } from "./AgentAiDefaults";
 import { AgentDefaultsDialog } from "./AgentDefaultsDialog";
 import { useProviderApiKeyFieldState } from "./providerApiKeyFieldState";
 import { resolveModelFieldStatusMessage } from "./agentConfigControls";
-import { AdvancedRequiredBadge } from "./AdvancedRequiredBadge";
 import { showAgentProfileSyncWarning } from "./agentProfileSyncWarning";
 import { AddCustomHarnessDialog } from "./AddCustomHarnessDialog";
 import {
@@ -100,7 +100,6 @@ export function AgentInstanceEditDialog({
   agent,
   initialFocus,
   open,
-  onEditLinkedPersona,
   onOpenChange,
   onUpdated,
 }: {
@@ -167,6 +166,9 @@ export function AgentInstanceEditDialog({
         : null,
     [agent.personaId, personasQuery.data],
   );
+  const agentFunction = agentFunctionFromRole(
+    linkedPersona?.companyRole?.job ?? agent.name,
+  );
   const inheritedEnvVars = linkedPersona?.envVars ?? {};
   const [respondTo, setRespondTo] = React.useState<RespondToMode>(
     agent.respondTo,
@@ -174,12 +176,10 @@ export function AgentInstanceEditDialog({
   const [respondToAllowlist, setRespondToAllowlist] = React.useState<string[]>(
     agent.respondToAllowlist,
   );
-  const [showAdvancedFields, setShowAdvancedFields] = React.useState(false);
   const [avatarUrl, setAvatarUrl] = React.useState(agent.avatarUrl ?? "");
   const [isAvatarUploadPending, setIsAvatarUploadPending] =
     React.useState(false);
   const [isAddHarnessOpen, setIsAddHarnessOpen] = React.useState(false);
-  const shouldReduceMotion = useReducedMotion();
 
   // Runtime selector: defaults to "custom" until the dialog opens and the
   // catalog loads. The open-effect re-derives the correct id from the catalog.
@@ -214,7 +214,6 @@ export function AgentInstanceEditDialog({
       setRespondTo(agent.respondTo);
       setRespondToAllowlist(agent.respondToAllowlist);
       setAvatarUrl(agent.avatarUrl ?? "");
-      setShowAdvancedFields(false);
       setIsAvatarUploadPending(false);
       setIsAddHarnessOpen(false);
       runtimeTouched.current = false;
@@ -427,6 +426,24 @@ export function AgentInstanceEditDialog({
   const effectiveProvider =
     (inheritedSubmission.provider ?? "").trim() ||
     inheritedProviderDefault.value;
+  const isColonyFreeAi = effectiveProvider.trim() === "colony-credits";
+  const freeModelsQuery = useQuery({
+    queryKey: ["credits-gateway-free-models", agent.pubkey],
+    queryFn: () => readConfiguredFreeAiModels(),
+    enabled: open && prospectiveRuntimeId === "buzz-agent",
+    retry: false,
+    staleTime: 30_000,
+  });
+  const freeModels = freeModelsQuery.data ?? [];
+  React.useEffect(() => {
+    if (
+      isColonyFreeAi &&
+      freeModels.length > 0 &&
+      !freeModels.includes(model.trim())
+    ) {
+      setModel(freeModels[0]);
+    }
+  }, [freeModels, isColonyFreeAi, model]);
   const providerForDiscovery = llmProviderFieldVisible ? effectiveProvider : "";
 
   const {
@@ -649,6 +666,13 @@ export function AgentInstanceEditDialog({
       // provider-backed inherit-transition carries the persona model (readiness
       // requires one) and a deliberate local model still wins.
       const normalizedModel = inheritedSubmission.model;
+      const selectedAvatar =
+        avatarUrl.trim() || agentAntAvatarDataUrl(agentFunction);
+      const resolvedAvatar = await resolveManagedAgentAvatarUrl(
+        selectedAvatar,
+        undefined,
+        agent.avatarUrl,
+      );
 
       // Harness pin resolution — see resolveAgentCommandUpdate for the full
       // sentinel/pin/no-op contract, including the inherit→pin transition where
@@ -681,6 +705,10 @@ export function AgentInstanceEditDialog({
       const input: UpdateManagedAgentInput = {
         pubkey: agent.pubkey,
         name: name.trim() !== agent.name ? name.trim() : undefined,
+        avatarUrl:
+          (resolvedAvatar ?? null) !== (agent.avatarUrl ?? null)
+            ? (resolvedAvatar ?? null)
+            : undefined,
         // relayUrl deliberately never submitted: the legacy per-record pin is
         // ignored (#2122) and the stored value is preserved as-is.
         acpCommand:
@@ -710,7 +738,7 @@ export function AgentInstanceEditDialog({
               ? systemPrompt.trim() || null
               : undefined,
         model:
-          linkedPersona != null
+          linkedPersona != null && !isColonyFreeAi
             ? undefined
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
@@ -719,17 +747,15 @@ export function AgentInstanceEditDialog({
         // (see the classification comment above for the capable/locked/unknown
         // contract). llmProviderFieldVisible is UX visibility only; not used here.
         provider:
-          linkedPersona != null
-            ? undefined
-            : providerRuntimeCapability === "capable"
-              ? normalizedSubmitProvider !== (agent.provider ?? null)
-                ? normalizedSubmitProvider
+          providerRuntimeCapability === "capable"
+            ? normalizedSubmitProvider !== (agent.provider ?? null)
+              ? normalizedSubmitProvider
+              : undefined
+            : providerRuntimeCapability === "locked"
+              ? (agent.provider ?? null) !== null
+                ? null
                 : undefined
-              : providerRuntimeCapability === "locked"
-                ? (agent.provider ?? null) !== null
-                  ? null
-                  : undefined
-                : undefined, // "unknown" → omit always
+              : undefined, // "unknown" → omit always
         envVars: envVarsEqual(submitEnvVars, agent.envVars)
           ? undefined
           : submitEnvVars,
@@ -874,7 +900,7 @@ export function AgentInstanceEditDialog({
         : new Set<string>(),
     [bakedEnvKeys],
   );
-  const providerOptions = getPersonaProviderOptions(
+  const baseProviderOptions = getPersonaProviderOptions(
     trimmedProvider,
     selectedRuntime?.id ?? "",
     inheritedProviderDefault.source === "global"
@@ -882,6 +908,17 @@ export function AgentInstanceEditDialog({
       : "",
     hideProviderIds,
   );
+  const providerOptions =
+    prospectiveRuntimeId === "buzz-agent" && freeModels.length > 0
+      ? [
+          ...baseProviderOptions,
+          ...(baseProviderOptions.some(
+            (option) => option.id === "colony-credits",
+          )
+            ? []
+            : [{ id: "colony-credits", label: "Colony free AI" }]),
+        ]
+      : baseProviderOptions;
   const providerSelectValue = isCustomProviderEditing
     ? CUSTOM_PROVIDER_DROPDOWN_VALUE
     : trimmedProvider || AUTO_PROVIDER_DROPDOWN_VALUE;
@@ -900,10 +937,8 @@ export function AgentInstanceEditDialog({
   ];
 
   const previewLabel = name.trim() || "Agent name";
-  const previewAvatarUrl = avatarUrl.trim() || null;
-  const advancedFieldsTransition = shouldReduceMotion
-    ? { duration: 0 }
-    : ADVANCED_FIELDS_MOTION_TRANSITION;
+  const previewAvatarUrl =
+    avatarUrl.trim() || agentAntAvatarDataUrl(agentFunction);
   // Displayed inline when either the locked update or a standalone setter fails.
   // setterError takes precedence — the update already committed when it fires.
   const displayError =
@@ -941,36 +976,21 @@ export function AgentInstanceEditDialog({
         }
       >
         <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-          {/* Avatar is definition-level identity. hideEditControl suppresses
-              the internal pencil badge; the CTA below is the only edit path. */}
           <div className="flex flex-col items-center gap-2">
-            <AgentCreationPreview
+            <span className="grid h-28 w-28 place-items-center overflow-hidden rounded-2xl bg-muted">
+              <img
+                alt={`${previewLabel} ant`}
+                className="h-full w-full object-contain"
+                src={previewAvatarUrl}
+              />
+            </span>
+            <AgentAntPicturePicker
               avatarUrl={previewAvatarUrl}
-              hideEditControl
-              label={previewLabel}
-              onClearAvatar={() => setAvatarUrl("")}
+              disabled={isSaving}
+              functionName={agentFunction}
               onUploadPendingChange={setIsAvatarUploadPending}
-              onSelectAvatar={setAvatarUrl}
+              onSelect={setAvatarUrl}
             />
-            {onEditLinkedPersona ? (
-              <Button
-                className="w-full"
-                disabled={isSaving}
-                onClick={() => {
-                  handleOpenChange(false);
-                  onEditLinkedPersona();
-                }}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Edit avatar
-              </Button>
-            ) : (
-              <p className="text-center text-xs text-muted-foreground">
-                Avatar is shared identity
-              </p>
-            )}
           </div>
           <div className="space-y-5">
             <div className="space-y-1.5">
@@ -1000,23 +1020,13 @@ export function AgentInstanceEditDialog({
                 />
               </div>
             </div>
-            <OwnerOnlyAccessField
-              accessLocked={agentAccessOwnerOnly === true}
-              allowlist={respondToAllowlist}
-              disabled={isSaving}
-              mode={respondTo}
-              onAllowlistChange={setRespondToAllowlist}
-              onModeChange={setRespondTo}
-            />
-            <RunOnSummarySection backend={agent.backend} />
-
-            {/* Provider (runtime) */}
+            {/* Harness */}
             <div className="space-y-1.5">
               <label
                 className="text-sm font-medium text-foreground"
                 htmlFor="edit-agent-runtime"
               >
-                Provider
+                Harness
               </label>
               <PersonaDropdownField
                 disabled={isSaving}
@@ -1026,84 +1036,100 @@ export function AgentInstanceEditDialog({
                 placeholder="Choose a provider"
                 value={runtimeDropdownValue}
               />
-              {selectedRuntime ? (
-                <p className="text-xs text-muted-foreground">
-                  Detected at{" "}
-                  <span className="font-medium">
-                    {selectedRuntime.binaryPath ??
-                      selectedRuntime.command ??
-                      selectedRuntime.id}
-                  </span>
-                </p>
-              ) : null}
-              <AddCustomHarnessDialog
-                onOpenChange={setIsAddHarnessOpen}
-                onSaved={selectSavedHarness}
-                open={isAddHarnessOpen}
-              />
             </div>
-            {selectedRuntimeId === "custom" && !inheritHarness ? (
-              <div className="space-y-1.5">
+            {isColonyFreeAi ? (
+              <div className="space-y-2 rounded-xl border border-border p-3">
                 <label
-                  className="text-sm font-medium text-foreground"
-                  htmlFor="edit-agent-command"
+                  className="text-sm font-semibold text-foreground"
+                  htmlFor="agent-free-model-select"
                 >
-                  Agent command
+                  Colony free AI
                 </label>
-                <div
-                  className={cn(
-                    "flex min-h-11 items-center px-3",
-                    PERSONA_FIELD_SHELL_CLASS,
-                  )}
-                >
-                  <Input
-                    autoCorrect="off"
-                    className={cn(
-                      "h-8 px-0 py-0 leading-6",
-                      PERSONA_FIELD_CONTROL_CLASS,
-                    )}
-                    disabled={isSaving}
-                    id="edit-agent-command"
-                    onChange={(event) => setAgentCommand(event.target.value)}
-                    placeholder="Full path or shell command"
-                    value={agentCommand}
-                  />
-                </div>
+                {freeModelsQuery.isPending ? (
+                  <p className="text-xs text-muted-foreground">
+                    Loading available free models…
+                  </p>
+                ) : freeModelsQuery.isError ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-destructive">
+                      Free models could not be loaded.
+                    </p>
+                    <Button
+                      onClick={() => void freeModelsQuery.refetch()}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : freeModels.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No free models are configured on this relay.
+                  </p>
+                ) : (
+                  <>
+                    <PersonaDropdownField
+                      disabled={isSaving}
+                      id="agent-free-model-select"
+                      onValueChange={setModel}
+                      options={freeModels.map((id) => ({
+                        label: simpleModelLabel(id, "colony-credits"),
+                        value: id,
+                      }))}
+                      placeholder="Choose a free model"
+                      value={
+                        freeModels.includes(model.trim())
+                          ? model.trim()
+                          : freeModels[0]
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Colony tries the next free model automatically when this
+                      one is busy.
+                      {freeModels.some((id) =>
+                        id.startsWith("poolside/laguna-"),
+                      )
+                        ? " Laguna models are scheduled to expire 31 Oct."
+                        : ""}
+                    </p>
+                  </>
+                )}
               </div>
-            ) : null}
-            {/* LLM provider + provider API key + model */}
-            <EditAgentProviderModelFields
-              disabled={isSaving}
-              llmProviderFieldVisible={llmProviderFieldVisible}
-              providerRequired={providerRequired}
-              providerDropdownOptions={providerDropdownOptions}
-              providerSelectValue={providerSelectValue}
-              onProviderDropdownChange={handleProviderDropdownChange}
-              isCustomProviderEditing={isCustomProviderEditing}
-              provider={provider}
-              onProviderChange={setProvider}
-              topLevelSecretEnvVar={topLevelSecretEnvVar}
-              apiKeyIsInherited={apiKeyIsInherited}
-              apiKeyInheritedLabel={apiKeyInheritedLabel}
-              apiKeyIsRequired={apiKeyIsRequired}
-              effectiveProvider={effectiveProvider}
-              apiKeyValue={apiKeyValue}
-              onApiKeyChange={(next) => {
-                setEnvVars((prev) => ({
-                  ...prev,
-                  [topLevelSecretEnvVar as string]: next,
-                }));
-              }}
-              modelRequired={modelRequired}
-              modelDiscoveryLoading={modelDiscoveryLoading}
-              modelDropdownOptions={modelDropdownOptions}
-              modelSelectValue={modelSelectValue}
-              onModelDropdownChange={handleModelDropdownChange}
-              showCustomModelInput={showCustomModelInput}
-              model={model}
-              onModelChange={setModel}
-              modelStatusMessage={modelStatusMessage}
-            />
+            ) : (
+              <EditAgentProviderModelFields
+                disabled={isSaving}
+                llmProviderFieldVisible={llmProviderFieldVisible}
+                providerRequired={providerRequired}
+                providerDropdownOptions={providerDropdownOptions}
+                providerSelectValue={providerSelectValue}
+                onProviderDropdownChange={handleProviderDropdownChange}
+                isCustomProviderEditing={isCustomProviderEditing}
+                provider={provider}
+                onProviderChange={setProvider}
+                topLevelSecretEnvVar={topLevelSecretEnvVar}
+                apiKeyIsInherited={apiKeyIsInherited}
+                apiKeyInheritedLabel={apiKeyInheritedLabel}
+                apiKeyIsRequired={apiKeyIsRequired}
+                effectiveProvider={effectiveProvider}
+                apiKeyValue={apiKeyValue}
+                onApiKeyChange={(next) => {
+                  setEnvVars((prev) => ({
+                    ...prev,
+                    [topLevelSecretEnvVar as string]: next,
+                  }));
+                }}
+                modelRequired={modelRequired}
+                modelDiscoveryLoading={modelDiscoveryLoading}
+                modelDropdownOptions={modelDropdownOptions}
+                modelSelectValue={modelSelectValue}
+                onModelDropdownChange={handleModelDropdownChange}
+                showCustomModelInput={showCustomModelInput}
+                model={model}
+                onModelChange={setModel}
+                modelStatusMessage={modelStatusMessage}
+              />
+            )}
 
             <EffortPickerField
               agent={agent}
@@ -1123,93 +1149,94 @@ export function AgentInstanceEditDialog({
               }}
             />
 
-            <AgentAiDefaultsNotice
-              onEditDefaults={() => {
-                if (!isSaving) setAiDefaultsOpen(true);
-              }}
-              triggerRef={aiDefaultsTriggerRef}
-              explicitModel={inheritedSubmission.model ?? ""}
-              explicitProvider={inheritedSubmission.provider ?? ""}
-              inheritedModel={inheritedModelDefault}
-              inheritedProvider={inheritedProviderDefault}
-            />
-
-            <AgentDefaultsDialog
-              onOpenChange={setAiDefaultsOpen}
-              open={aiDefaultsOpen}
-              returnFocusRef={aiDefaultsTriggerRef}
-            />
-
-            {/* Advanced settings */}
-            <div className="space-y-3">
-              <button
-                aria-expanded={showAdvancedFields}
-                className="inline-flex h-9 items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-foreground/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-                disabled={isSaving}
-                onClick={() => setShowAdvancedFields((current) => !current)}
-                type="button"
-              >
-                <span>Advanced</span>
-                <AdvancedRequiredBadge
-                  envVars={inheritedSubmission.envVars}
-                  requiredEnvKeys={advancedRequiredEnvKeys}
-                  testId="edit-agent-advanced-required-badge"
+            <details className="rounded-xl border border-border px-3 py-2">
+              <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Technical details
+              </summary>
+              <div className="mt-3 space-y-4">
+                <OwnerOnlyAccessField
+                  accessLocked={agentAccessOwnerOnly === true}
+                  allowlist={respondToAllowlist}
+                  disabled={isSaving}
+                  mode={respondTo}
+                  onAllowlistChange={setRespondToAllowlist}
+                  onModeChange={setRespondTo}
                 />
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 text-muted-foreground transition-transform duration-150 ease-out",
-                    showAdvancedFields && "rotate-180",
-                  )}
-                />
-              </button>
-              <AnimatePresence initial={false}>
-                {showAdvancedFields ? (
-                  <motion.div
-                    animate={{ height: "auto", opacity: 1, scale: 1 }}
-                    className="origin-top overflow-hidden"
-                    exit={{ height: 0, opacity: 0, scale: 0.98 }}
-                    initial={{ height: 0, opacity: 0, scale: 0.98 }}
-                    key="edit-agent-advanced-fields"
-                    transition={advancedFieldsTransition}
-                  >
-                    <EditAgentAdvancedFields
-                      acpCommand={acpCommand}
-                      agentArgs={agentArgs}
-                      autoRestartOnConfigChange={autoRestartOnConfigChange}
+                <RunOnSummarySection backend={agent.backend} />
+                {selectedRuntimeId === "custom" && !inheritHarness ? (
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-sm font-medium text-foreground"
+                      htmlFor="edit-agent-command"
+                    >
+                      Agent command
+                    </label>
+                    <Input
+                      autoCorrect="off"
                       disabled={isSaving}
-                      envVars={envVars}
-                      fileSatisfiedEnvKeys={fileSatisfiedEnvKeys}
-                      hiddenEnvKeys={
-                        topLevelSecretEnvVar ? [topLevelSecretEnvVar] : []
-                      }
-                      focusKey={
-                        initialFocus?.type === "env_key"
-                          ? initialFocus.key
-                          : undefined
-                      }
-                      inheritedEnvVars={inheritedEnvVarsForAdvanced}
-                      inheritHarness={inheritHarness}
-                      linkedPersona={linkedPersona}
-                      model={inheritedSubmission.model ?? ""}
-                      modelTuningRuntimeId={prospectiveRuntimeId}
-                      parallelism={parallelism}
-                      provider={effectiveProvider}
-                      requiredEnvKeys={advancedRequiredEnvKeys}
-                      catalogStatus={runtimeCatalogStatus}
-                      selectedRuntime={prospectiveRuntime}
-                      systemPrompt={systemPrompt}
-                      onAcpCommandChange={setAcpCommand}
-                      onAgentArgsChange={setAgentArgs}
-                      onAutoRestartChange={setAutoRestartOnConfigChange}
-                      onEnvVarsChange={setEnvVars}
-                      onInheritHarnessChange={setInheritHarness}
-                      onParallelismChange={setParallelism}
-                      onSystemPromptChange={setSystemPrompt}
+                      id="edit-agent-command"
+                      onChange={(event) => setAgentCommand(event.target.value)}
+                      placeholder="Full path or shell command"
+                      value={agentCommand}
                     />
-                  </motion.div>
+                  </div>
                 ) : null}
-              </AnimatePresence>
-            </div>
+                <AddCustomHarnessDialog
+                  onOpenChange={setIsAddHarnessOpen}
+                  onSaved={selectSavedHarness}
+                  open={isAddHarnessOpen}
+                />
+                <EditAgentAdvancedFields
+                  acpCommand={acpCommand}
+                  agentArgs={agentArgs}
+                  autoRestartOnConfigChange={autoRestartOnConfigChange}
+                  disabled={isSaving}
+                  envVars={envVars}
+                  fileSatisfiedEnvKeys={fileSatisfiedEnvKeys}
+                  hiddenEnvKeys={
+                    topLevelSecretEnvVar ? [topLevelSecretEnvVar] : []
+                  }
+                  focusKey={
+                    initialFocus?.type === "env_key"
+                      ? initialFocus.key
+                      : undefined
+                  }
+                  inheritedEnvVars={inheritedEnvVarsForAdvanced}
+                  inheritHarness={inheritHarness}
+                  linkedPersona={linkedPersona}
+                  model={inheritedSubmission.model ?? ""}
+                  modelTuningRuntimeId={prospectiveRuntimeId}
+                  parallelism={parallelism}
+                  provider={effectiveProvider}
+                  requiredEnvKeys={advancedRequiredEnvKeys}
+                  catalogStatus={runtimeCatalogStatus}
+                  selectedRuntime={prospectiveRuntime}
+                  systemPrompt={systemPrompt}
+                  onAcpCommandChange={setAcpCommand}
+                  onAgentArgsChange={setAgentArgs}
+                  onAutoRestartChange={setAutoRestartOnConfigChange}
+                  onEnvVarsChange={setEnvVars}
+                  onInheritHarnessChange={setInheritHarness}
+                  onParallelismChange={setParallelism}
+                  onSystemPromptChange={setSystemPrompt}
+                />
+                <AgentAiDefaultsNotice
+                  onEditDefaults={() => {
+                    if (!isSaving) setAiDefaultsOpen(true);
+                  }}
+                  triggerRef={aiDefaultsTriggerRef}
+                  explicitModel={inheritedSubmission.model ?? ""}
+                  explicitProvider={inheritedSubmission.provider ?? ""}
+                  inheritedModel={inheritedModelDefault}
+                  inheritedProvider={inheritedProviderDefault}
+                />
+                <AgentDefaultsDialog
+                  onOpenChange={setAiDefaultsOpen}
+                  open={aiDefaultsOpen}
+                  returnFocusRef={aiDefaultsTriggerRef}
+                />
+              </div>
+            </details>
 
             {/* Error — covers both the locked update (React Query) and the
                 standalone setters (setterError); setter error takes precedence

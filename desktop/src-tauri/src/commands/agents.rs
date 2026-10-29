@@ -622,7 +622,7 @@ pub async fn create_managed_agent(
             input.parallelism,
             linked_persona.as_ref(),
         )?;
-        let record = ManagedAgentRecord {
+        let mut record = ManagedAgentRecord {
             pubkey: pubkey.clone(),
             name: name.clone(),
             description: None,
@@ -715,6 +715,10 @@ pub async fn create_managed_agent(
             },
             effort_level: None,
         };
+        crate::commands::agent_config::apply_picker_effort_level(
+            &mut record,
+            input.effort_level.clone(),
+        );
 
         records.push(record);
 

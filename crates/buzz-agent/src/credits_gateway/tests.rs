@@ -88,6 +88,28 @@ async fn production_transport_signs_exact_body_and_never_sends_a_provider_key() 
 }
 
 #[tokio::test]
+async fn selected_free_model_is_carried_by_the_signed_production_request() {
+    let (origin, captured, task) = fake(
+        200,
+        json!({"choices":[{"message":{"content":"hello"}}],"chargedNanousd":"0"}),
+    )
+    .await;
+    let gateway = CreditsGateway::new_with_model(
+        &origin,
+        &Uuid::new_v4().to_string(),
+        Keys::generate(),
+        None,
+        Some("google/gemma-4-31b-it:free".into()),
+    )
+    .unwrap();
+    gateway.complete(prompt()).await.unwrap();
+    let calls = captured.lock().unwrap();
+    let sent: Value = serde_json::from_slice(&calls[0].1).unwrap();
+    assert_eq!(sent["model"], "google/gemma-4-31b-it:free");
+    task.abort();
+}
+
+#[tokio::test]
 async fn production_refusals_are_typed_safe_and_never_retried() {
     for (status, body, refusal) in [
         (
@@ -180,7 +202,7 @@ fn trimming_keeps_the_system_message_the_newest_turn_and_whole_tool_rounds() {
             json!({"role":"tool","tool_call_id":format!("c{i}"),"content":"y".repeat(60_000)}),
         );
     }
-    let body = fit_body(&session, messages, json!([])).unwrap();
+    let body = fit_body(&session, messages, json!([]), None).unwrap();
     assert!(body.len() <= MAX_BODY_BYTES);
     let sent: Value = serde_json::from_slice(&body).unwrap();
     let kept = sent["messages"].as_array().unwrap();
@@ -198,10 +220,10 @@ fn a_session_may_carry_a_thousand_messages_and_is_trimmed_past_that() {
         messages.extend((0..count).map(|i| json!({"role":"user","content":format!("m{i}")})));
         messages
     };
-    let full = fit_body(&session, turns(MAX_MESSAGES - 1), json!([])).unwrap();
+    let full = fit_body(&session, turns(MAX_MESSAGES - 1), json!([]), None).unwrap();
     let sent: Value = serde_json::from_slice(&full).unwrap();
     assert_eq!(sent["messages"].as_array().unwrap().len(), MAX_MESSAGES);
-    let over = fit_body(&session, turns(MAX_MESSAGES + 10), json!([])).unwrap();
+    let over = fit_body(&session, turns(MAX_MESSAGES + 10), json!([]), None).unwrap();
     let sent: Value = serde_json::from_slice(&over).unwrap();
     let kept = sent["messages"].as_array().unwrap();
     assert_eq!(kept.len(), MAX_MESSAGES);

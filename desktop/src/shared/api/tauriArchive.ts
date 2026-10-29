@@ -99,6 +99,16 @@ export type AgentUsageSeriesRequest = {
   agentPubkey?: string;
 };
 
+export type SubscriptionUsageWindow = {
+  usedFraction: number;
+  resetsAt: number;
+};
+
+export type AgentSubscriptionUsage = {
+  session: SubscriptionUsageWindow;
+  weekly?: SubscriptionUsageWindow | null;
+};
+
 // ── Wire-shape types (raw Tauri responses) ───────────────────────────────────
 
 /**
@@ -512,6 +522,16 @@ export async function getAgentUsageSeries(
   request: AgentUsageSeriesRequest,
 ): Promise<AgentUsageSeries> {
   return invokeTauri<AgentUsageSeries>("get_agent_usage_series", { request });
+}
+
+/** Read the latest structured subscription snapshot for one archived agent. */
+export async function getAgentSubscriptionUsage(
+  agentPubkey: string,
+): Promise<AgentSubscriptionUsage | null> {
+  return invokeTauri<AgentSubscriptionUsage | null>(
+    "get_agent_subscription_usage",
+    { agentPubkey },
+  );
 }
 
 /**

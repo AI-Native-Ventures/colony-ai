@@ -25,6 +25,9 @@ function proposal() {
     runtimeId: "buzz-agent",
     providerId: "openai",
     modelId: "gpt-5.5",
+    channelIds: ["c1d4ba1a-e078-42ef-b896-00be34a94f11"],
+    respondTo: "owner-only",
+    effortLevel: "high",
     weeklyAllowance: "8.00",
   };
 }
@@ -51,6 +54,7 @@ afterEach(() => {
 test("hire draft keeps configured values and the attached employee across reload reads", () => {
   const draft = {
     proposal: proposal(),
+    avatarUrl: "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22/%3E",
     employeePubkey: EMPLOYEE_PUBKEY,
     baseHeadEventId: HIRE_HEAD_ID,
   };

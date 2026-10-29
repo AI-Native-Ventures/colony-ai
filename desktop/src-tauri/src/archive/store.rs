@@ -125,6 +125,11 @@ CREATE INDEX IF NOT EXISTS idx_archived_events_agent_metric
     ON archived_events (identity_pubkey, relay_url, id)
     WHERE kind = 44200;
 
+-- Latest owner-local plan-window lookup for an agent profile.
+CREATE INDEX IF NOT EXISTS idx_archived_agent_subscription_latest
+    ON archived_events (identity_pubkey, relay_url, pubkey, created_at DESC, id DESC)
+    WHERE kind = 44200;
+
 -- Predecessor/baseline lookup: exact-sequence probes (A11) and duplicate
 -- cardinality checks key on this prefix.
 CREATE INDEX IF NOT EXISTS idx_agent_metric_session

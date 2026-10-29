@@ -110,9 +110,19 @@ async fn log_body_limit(
 }
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
-    Json(
-        json!({"enabled":gateway.enabled,"runtime":"colony","model":gateway.upstream.as_ref().map(|u| &u.model),"marginPercent":20,"freeAiConfigured":!gateway.policy.free_ai_accounts.is_empty()}),
-    )
+    let free_models = gateway
+        .upstream
+        .as_ref()
+        .map(Upstream::selectable_free_models)
+        .unwrap_or_default();
+    Json(json!({
+        "enabled": gateway.enabled,
+        "runtime": "colony",
+        "model": gateway.upstream.as_ref().map(|upstream| &upstream.model),
+        "freeModels": free_models,
+        "marginPercent": 20,
+        "freeAiConfigured": !gateway.policy.free_ai_accounts.is_empty()
+    }))
 }
 
 /// Whether the signed-in owner's account uses the gateway without credits. The
@@ -239,6 +249,8 @@ async fn authenticate_signer(
 #[serde(deny_unknown_fields)]
 struct SessionRequest {
     agent_pubkey: String,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 async fn create_session(
@@ -253,6 +265,23 @@ async fn create_session(
         authenticate(&gateway, &headers, "/api/credits-gateway/sessions", &body).await?;
     let request: SessionRequest = serde_json::from_slice(&body)
         .map_err(|_| refuse("session_body", "Invalid managed session."))?;
+    let upstream = gateway.upstream.as_ref().ok_or_else(unavailable)?;
+    let model = match request.model {
+        Some(model) => {
+            if !upstream
+                .selectable_free_models()
+                .iter()
+                .any(|allowed| allowed == &model)
+            {
+                return Err(refuse(
+                    "model_not_allowed",
+                    "That Colony free model is not available.",
+                ));
+            }
+            model
+        }
+        None => upstream.model.clone(),
+    };
     let agent = nostr::PublicKey::from_hex(&request.agent_pubkey)
         .map_err(|_| refuse("agent_pubkey", "Invalid managed agent."))?;
     let session = gateway
@@ -267,7 +296,7 @@ async fn create_session(
         .await
         .map_err(database_error)?;
     Ok(Json(
-        json!({"sessionId":session,"expiresInSeconds":7200,"model":gateway.upstream.as_ref().map(|u| &u.model)}),
+        json!({"sessionId":session,"expiresInSeconds":7200,"model":model}),
     ))
 }
 

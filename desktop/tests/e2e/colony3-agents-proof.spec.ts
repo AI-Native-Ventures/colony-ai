@@ -123,22 +123,7 @@ test("Agent profile board", async ({ page }) => {
   });
 });
 
-/**
- * The unified page has no section rail, so its cards are wider than the
- * boards'. At 1192 px the page's content column is 832 px, the boards' own
- * column, and each card is captured by itself against the same card cropped
- * out of the board rendered tall (`ref/<Board>-tall.png`, see
- * `render-tall.cjs` in the proof folder). Crops are [x, y, w, h].
- */
 const PART_WIDTH = 1192;
-const PROFILE_PARTS: Array<[string, string, Rect]> = [
-  ["about", "about", [568, 312, 832, 123]],
-  ["config", "config", [568, 451, 832, 221]],
-  ["where", "where", [568, 688, 408, 162]],
-  ["who", "who", [992, 688, 408, 162]],
-  ["current-work", "current-work", [568, 866, 832, 120]],
-  ["last-error", "last-error", [568, 1002, 408, 151]],
-];
 
 test("Agent profile cards", async ({ page }) => {
   await openAgents(page, `/#/agents?agent=${COLONY3_AGENT_PUBKEYS.aya}`, {
@@ -148,7 +133,12 @@ test("Agent profile cards", async ({ page }) => {
     width: PART_WIDTH,
   });
   await expect(page.getByTestId("agent-profile")).toBeVisible();
-  for (const [id, label, refRect] of PROFILE_PARTS) {
+  const overview = page.getByTestId("agent-overview");
+  for (const [id, label] of [
+    ["current-work", "current-work"],
+    ["who", "instructions-access"],
+    ["last-error", "last-problem"],
+  ]) {
     const card = page.locator(`[aria-labelledby="${id}"]`);
     await card.scrollIntoViewIfNeeded();
     await expect(card).toBeVisible();
@@ -156,51 +146,37 @@ test("Agent profile cards", async ({ page }) => {
       page,
       {
         name: `AgentProfile-${label}`,
-        board: "AgentProfile-tall",
-        refRect,
+        board: "AgentPageSimple",
         title: `Agent profile card: ${label}`,
       },
       card,
     );
   }
+  await expect(overview).toBeVisible();
 });
 
-test("Agent model and runtime cards", async ({ page }) => {
+test("Agent AI summary keeps support details collapsed", async ({ page }) => {
   await openAgents(page, `/#/agents?agent=${COLONY3_AGENT_PUBKEYS.aya}`, {
     width: PART_WIDTH,
   });
-  const heading = page.locator("#runtime");
-  await heading.scrollIntoViewIfNeeded();
-  await expect(page.getByTestId("agent-model-selection")).toBeVisible();
+  const ai = page.getByTestId("agent-model-selection");
+  await ai.scrollIntoViewIfNeeded();
+  await expect(ai).toBeVisible();
+  await expect(ai.getByText("GPT-5.5")).toBeVisible();
+  await expect(ai.getByText("Codex")).toBeVisible();
+  await expect(page.getByTestId("agent-technical-details")).not.toHaveAttribute(
+    "open",
+    "",
+  );
   await shot(
     page,
     {
-      name: "AgentRuntime-heading",
-      board: "AgentRuntime-tall",
-      refRect: [568, 312, 832, 30],
-      title: "Model and runtime: heading",
+      name: "AgentRuntime-summary",
+      board: "AgentPageSimple",
+      title: "Agent AI summary with support details collapsed",
     },
-    heading,
+    ai,
   );
-  const parts: Array<[string, string, Rect]> = [
-    ["agent-model-selection", "model-selection", [568, 358, 832, 262]],
-    ["agent-harness-account", "harness-account", [568, 636, 832, 277]],
-    ["agent-reported-values", "reported-values", [568, 929, 832, 153]],
-  ];
-  for (const [testId, label, refRect] of parts) {
-    const card = page.getByTestId(testId);
-    await card.scrollIntoViewIfNeeded();
-    await shot(
-      page,
-      {
-        name: `AgentRuntime-${label}`,
-        board: "AgentRuntime-tall",
-        refRect,
-        title: `Model and runtime card: ${label}`,
-      },
-      card,
-    );
-  }
 });
 
 test("Agent instructions editor", async ({ page }) => {

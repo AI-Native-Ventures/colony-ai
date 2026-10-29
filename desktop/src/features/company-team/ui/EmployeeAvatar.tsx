@@ -1,4 +1,3 @@
-import scoutArt from "@/features/onboarding/assets/scout.svg";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { employeeAvatarSource } from "../employeePresentation";
 
@@ -8,6 +7,7 @@ export function EmployeeAvatar({
   profile,
   instance,
   definition,
+  role,
   personaId,
   className,
   testId,
@@ -16,6 +16,7 @@ export function EmployeeAvatar({
   profile?: string | null;
   instance?: string | null;
   definition?: string | null;
+  role?: string | null;
   personaId?: string | null;
   className?: string;
   testId?: string;
@@ -28,7 +29,7 @@ export function EmployeeAvatar({
         instance,
         definition,
         personaId,
-        scoutArt,
+        role,
       })}
       displayName={name}
       className={className}

@@ -20,6 +20,7 @@ use crate::types::AgentError;
 const MAX_BODY_BYTES: usize = 1024 * 1024 - 4096;
 /// Most messages in one request (the relay's `MAX_MESSAGES`).
 const MAX_MESSAGES: usize = 1024;
+const MODEL_ENV: &str = "COLONY_CREDITS_MODEL";
 /// Stands in for a part the text-only gateway cannot carry, such as a screenshot.
 const OMITTED_PART: &str =
     "[An image was part of this result. Colony credits carry text only, so it is not included.]";
@@ -92,6 +93,7 @@ pub(crate) struct CreditsGateway {
     session: Uuid,
     keys: Keys,
     auth_tag: Option<String>,
+    model: Option<String>,
 }
 
 impl CreditsGateway {
@@ -101,12 +103,13 @@ impl CreditsGateway {
         if std::env::var("COLONY_CREDITS_GATEWAY").ok().as_deref() != Some("1") {
             return Err(AgentError::Credits(CreditRefusal::Unavailable));
         }
-        Self::new(
+        Self::new_with_model(
             &env("BUZZ_RELAY_URL")?,
             &env("COLONY_CREDITS_SESSION_ID")?,
             Keys::parse(&env("BUZZ_PRIVATE_KEY")?)
                 .map_err(|_| AgentError::Credits(CreditRefusal::Unauthorized))?,
             std::env::var("BUZZ_AUTH_TAG").ok(),
+            std::env::var(MODEL_ENV).ok(),
         )
     }
 
@@ -115,6 +118,16 @@ impl CreditsGateway {
         session: &str,
         keys: Keys,
         auth_tag: Option<String>,
+    ) -> Result<Self, AgentError> {
+        Self::new_with_model(relay, session, keys, auth_tag, None)
+    }
+
+    fn new_with_model(
+        relay: &str,
+        session: &str,
+        keys: Keys,
+        auth_tag: Option<String>,
+        model: Option<String>,
     ) -> Result<Self, AgentError> {
         let origin = gateway_origin(relay).map_err(AgentError::Credits)?;
         let http = Client::builder()
@@ -131,13 +144,15 @@ impl CreditsGateway {
                 .map_err(|_| AgentError::Credits(CreditRefusal::Unauthorized))?,
             keys,
             auth_tag,
+            model,
         })
     }
 
     pub(crate) async fn complete(&self, openai: Value) -> Result<Value, AgentError> {
         let messages = text_messages(&openai["messages"]).map_err(AgentError::Credits)?;
         let tools = openai.get("tools").cloned().unwrap_or(json!([]));
-        let body = fit_body(&self.session, messages, tools).map_err(AgentError::Credits)?;
+        let body = fit_body(&self.session, messages, tools, self.model.as_deref())
+            .map_err(AgentError::Credits)?;
         let hash = hex::encode(Sha256::digest(&body));
         let nonce = Uuid::new_v4().to_string();
         let tags = [
@@ -222,13 +237,21 @@ impl CreditsGateway {
 /// refused. The system message stays, history restarts on a user message (a
 /// tool result is never left without the call it answers), and the newest turn
 /// is never cut. Refuses only when that turn alone does not fit.
-fn fit_body(session: &Uuid, messages: Vec<Value>, tools: Value) -> Result<Vec<u8>, CreditRefusal> {
+fn fit_body(
+    session: &Uuid,
+    messages: Vec<Value>,
+    tools: Value,
+    model: Option<&str>,
+) -> Result<Vec<u8>, CreditRefusal> {
     let envelope = |messages: &[Value]| {
-        serde_json::to_vec(&json!({
+        let mut body = json!({
             "session_id": session, "request_id": Uuid::new_v4(),
             "messages": messages, "tools": tools,
-        }))
-        .map_err(|_| CreditRefusal::Unsupported)
+        });
+        if let Some(model) = model {
+            body["model"] = json!(model);
+        }
+        serde_json::to_vec(&body).map_err(|_| CreditRefusal::Unsupported)
     };
     // Sizes once, so a 16 MiB history is not serialized again for every cut.
     let fixed = envelope(&[])?.len();

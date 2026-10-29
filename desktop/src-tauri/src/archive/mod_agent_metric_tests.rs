@@ -8,6 +8,123 @@
 
 use super::*;
 
+fn insert_archived_subscription_metric(
+    conn: &Connection,
+    identity_pk: &str,
+    relay_url: &str,
+    id: &str,
+    agent_pubkey: &str,
+    created_at: i64,
+    subscription_usage: Option<serde_json::Value>,
+) {
+    let mut payload = serde_json::json!({
+        "harness": "claude-code",
+        "timestamp": "2026-10-29T00:00:00Z"
+    });
+    if let Some(subscription_usage) = subscription_usage {
+        payload["subscriptionUsage"] = subscription_usage;
+    }
+    conn.execute(
+        "INSERT INTO archived_events
+            (identity_pubkey, relay_url, id, kind, pubkey, created_at, raw_json, archived_at)
+         VALUES (?1, ?2, ?3, 44200, ?4, ?5, ?6, ?5)",
+        rusqlite::params![
+            identity_pk,
+            relay_url,
+            id,
+            agent_pubkey,
+            created_at,
+            payload.to_string()
+        ],
+    )
+    .unwrap();
+}
+
+fn subscription_usage_json(session_used: f64, session_reset: i64) -> serde_json::Value {
+    serde_json::json!({
+        "session": {"usedFraction": session_used, "resetsAt": session_reset}
+    })
+}
+
+#[test]
+fn latest_agent_subscription_usage_is_identity_relay_and_agent_scoped() {
+    let conn = in_memory();
+    let identity = Keys::generate().public_key().to_hex();
+    let other_identity = Keys::generate().public_key().to_hex();
+    let agent = Keys::generate().public_key().to_hex();
+    let other_agent = Keys::generate().public_key().to_hex();
+    let relay_url = "wss://relay.example";
+
+    insert_archived_subscription_metric(
+        &conn,
+        &identity,
+        relay_url,
+        "a",
+        &agent,
+        10,
+        Some(subscription_usage_json(0.2, 1_800_000_000)),
+    );
+    insert_archived_subscription_metric(
+        &conn,
+        &identity,
+        relay_url,
+        "b",
+        &agent,
+        11,
+        Some(subscription_usage_json(0.4, 1_800_000_100)),
+    );
+    insert_archived_subscription_metric(
+        &conn,
+        &identity,
+        relay_url,
+        "c",
+        &other_agent,
+        12,
+        Some(subscription_usage_json(0.9, 1_800_000_200)),
+    );
+    insert_archived_subscription_metric(
+        &conn,
+        &other_identity,
+        relay_url,
+        "d",
+        &agent,
+        13,
+        Some(subscription_usage_json(0.8, 1_800_000_300)),
+    );
+
+    let latest = latest_agent_subscription_usage(&conn, &identity, relay_url, &agent)
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.session.used_fraction, 0.4);
+    assert_eq!(latest.session.resets_at, 1_800_000_100);
+    assert!(latest.weekly.is_none());
+}
+
+#[test]
+fn latest_metric_without_subscription_usage_clears_the_old_snapshot() {
+    let conn = in_memory();
+    let identity = Keys::generate().public_key().to_hex();
+    let agent = Keys::generate().public_key().to_hex();
+    let relay_url = "wss://relay.example";
+    insert_archived_subscription_metric(
+        &conn,
+        &identity,
+        relay_url,
+        "a",
+        &agent,
+        10,
+        Some(subscription_usage_json(0.2, 1_800_000_000)),
+    );
+    insert_archived_subscription_metric(&conn, &identity, relay_url, "b", &agent, 11, None);
+
+    assert!(
+        latest_agent_subscription_usage(&conn, &identity, relay_url, &agent)
+            .unwrap()
+            .is_none()
+    );
+    assert!(latest_agent_subscription_usage(&conn, &identity, relay_url, "not-a-pubkey").is_err());
+}
+
 // ── Kind-44200 agent-turn-metric archive tests ───────────────────────────
 
 fn make_turn_metric_event(owner_keys: &Keys, agent_keys: &Keys) -> Event {
@@ -35,6 +152,7 @@ fn make_turn_metric_event(owner_keys: &Keys, agent_keys: &Keys) -> Event {
         delta_reliable: true,
         stop_reason: None,
         pricing_identity: None,
+        subscription_usage: None,
     };
     let ciphertext =
         encrypt_agent_turn_metric(agent_keys, &owner_keys.public_key(), &payload).unwrap();

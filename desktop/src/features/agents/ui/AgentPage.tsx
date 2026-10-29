@@ -15,6 +15,7 @@ import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlA
 import { useChannelsQuery, useOpenDmMutation } from "@/features/channels/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useEmployeeRuntime } from "@/features/company-team/useEmployeeRuntime";
+import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import {
   EditRoleReportingDialog,
   ReviewRehireDialog,
@@ -41,7 +42,6 @@ import {
 import { AgentPageRuntime } from "./AgentPageRuntime";
 import { AgentStatusChip } from "./AgentStatusChip";
 import { useManagedAgentActions } from "./useManagedAgentActions";
-import { providerName } from "./agentPageModel";
 import "./agentsColony3.css";
 
 type AgentPageOrigin = "agents" | "team";
@@ -152,6 +152,7 @@ export function AgentPage({
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const configQuery = useAgentConfigSurface(agent ? agent.pubkey : null);
+  const { globalConfig } = useGlobalAgentConfig();
   const channelsQuery = useChannelsQuery({ enabled: true });
   const relayAgentsQuery = useRelayAgentsQuery({ enabled: true });
   const activeTurns = useActiveAgentTurns(key);
@@ -247,7 +248,6 @@ export function AgentPage({
     "";
   const ownerName = ownerProfile.data?.displayName?.trim() || null;
   const managerName = managerProfile.data?.displayName?.trim() || null;
-  const description = persona?.description?.trim() || null;
 
   const openChannel = (channelId: string) => void goChannel(channelId);
   const backToList = () => void (origin === "team" ? goTeam() : goAgents());
@@ -347,6 +347,7 @@ export function AgentPage({
                 <EmployeeAvatar
                   className="agents-c3-hero-avatar"
                   name={name}
+                  role={title}
                   profile={profileQuery.data?.avatarUrl}
                 />
                 <div className="agents-c3-hero-text">
@@ -466,6 +467,7 @@ export function AgentPage({
             instance={agent.avatarUrl}
             name={agent.name}
             personaId={agent.personaId}
+            role={title || persona?.companyRole?.job}
             profile={profileQuery.data?.avatarUrl}
             testId="agent-profile-avatar"
           />
@@ -590,6 +592,28 @@ export function AgentPage({
         ) : null}
 
         <div className="agents-c3-stack" data-testid="agent-profile-content">
+          <AgentPageRuntime
+            agent={agent}
+            authStatus={runtime?.authStatus.status ?? "unknown"}
+            availability={availability}
+            canEdit
+            config={configQuery.data}
+            configError={
+              configQuery.error instanceof Error ? configQuery.error : null
+            }
+            configLoading={configQuery.isLoading}
+            inheritedModel={persona?.model ?? globalConfig.model}
+            inheritedProvider={persona?.provider ?? globalConfig.provider}
+            providerEnvVars={{
+              ...globalConfig.env_vars,
+              ...(persona?.envVars ?? {}),
+              ...agent.envVars,
+            }}
+            onEditConfiguration={() => setConfigOpen(true)}
+            onManageHarnesses={() => appShell.onOpenSettings?.("agents")}
+            onRetryConfiguration={() => void configQuery.refetch()}
+            runtime={runtime}
+          />
           <AgentPageOverview
             activeTurns={activeTurns}
             agent={agent}
@@ -604,26 +628,7 @@ export function AgentPage({
             channelsLoading={
               channelsQuery.isLoading || relayAgentsQuery.isLoading
             }
-            description={description}
-            harnessLabel={runtime?.label ?? "Not reported"}
             onOpenChannel={openChannel}
-            providerLabel={
-              agent.provider ? providerName(agent.provider) : "Not reported"
-            }
-          />
-          <AgentPageRuntime
-            agent={agent}
-            authStatus={runtime?.authStatus.status ?? "unknown"}
-            availability={availability}
-            canEdit
-            config={configQuery.data}
-            configError={
-              configQuery.error instanceof Error ? configQuery.error : null
-            }
-            configLoading={configQuery.isLoading}
-            onEditConfiguration={() => setConfigOpen(true)}
-            onManageHarnesses={() => appShell.onOpenSettings?.("agents")}
-            runtime={runtime}
           />
           <AgentPageInstructions
             agent={agent}

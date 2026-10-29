@@ -6,6 +6,7 @@ import type {
 } from "@/shared/api/types";
 import type { TeamMember } from "./teamModels";
 import type { OpenRouterOutcome } from "@/shared/api/tauriOpenRouter";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import {
   PERSONA_LLM_PROVIDER_OPTIONS,
   requiredCredentialEnvKeys,
@@ -51,7 +52,7 @@ export function employeeAvatarSource(input: {
   definition?: string | null;
   personaId?: string | null;
   name: string;
-  scoutArt: string;
+  role?: string | null;
 }): string | null {
   const scout =
     input.personaId === "builtin:fizz" ||
@@ -59,8 +60,8 @@ export function employeeAvatarSource(input: {
   return (
     input.profile?.trim() ||
     input.instance?.trim() ||
-    (scout ? input.scoutArt : input.definition?.trim()) ||
-    null
+    input.definition?.trim() ||
+    agentAntAvatarDataUrl(scout ? "Other" : input.role, scout ? "green" : undefined)
   );
 }
 
