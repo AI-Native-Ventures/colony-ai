@@ -17,6 +17,8 @@ import {
   LeadPill,
   RunnerMark,
 } from "./LeadParts";
+import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
+import { discoveryTagFitLabel, groupDiscoveryTags } from "./discoveryTags";
 import {
   canEdit,
   displayWebsite,
@@ -84,6 +86,9 @@ export function LeadDetailScreen({
   const name = person.party.displayName;
   const foundBy = campaignFor(provider, campaign, record.prospectId)?.runBy;
   const fit = person.fitScore;
+  const discoveryMatches = person.discoveryTags ?? [];
+  const discoveryFit = discoveryTagFitLabel(discoveryMatches);
+  const discoveryTagGroups = groupDiscoveryTags(discoveryMatches);
 
   async function saveProspect(
     changes: ProspectChanges,
@@ -173,6 +178,7 @@ export function LeadDetailScreen({
                         ? "Fit "
                         : null}
                     {fit !== null && fit !== undefined ? fit : null}
+                    {discoveryFit ? ` · ${discoveryFit}` : null}
                   </span>
                 ) : null}
               </div>
@@ -222,6 +228,21 @@ export function LeadDetailScreen({
                 </dd>
               </dl>
             </section>
+
+            {discoveryTagGroups.length ? (
+              <section
+                aria-labelledby="c3l-matched-tags-title"
+                className="c3l-card c3l-panel c3l-matched-tags"
+              >
+                <h2 id="c3l-matched-tags-title">Matched tags</h2>
+                {discoveryTagGroups.map((group) => (
+                  <div className="c3l-matched-tag-group" key={group.kind}>
+                    <h3>{group.kind}</h3>
+                    <DiscoveryLeadTags tags={group.tags} />
+                  </div>
+                ))}
+              </section>
+            ) : null}
 
             <section
               aria-labelledby="c3l-conversation-title"

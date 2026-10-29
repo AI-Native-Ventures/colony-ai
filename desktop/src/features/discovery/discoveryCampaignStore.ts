@@ -29,6 +29,10 @@ export type TopFit = { id: string; name: string; fit: number };
 export type CampaignInternals = {
   /** Offset of the next search page. Only moves after a page is fully saved. */
   skip: number;
+  /** Per-picked-tag offsets; null means that search stream is exhausted. */
+  tagCursors: Array<number | null>;
+  /** New offsets held with a paid page until every place on it is saved. */
+  pendingTagCursors: Array<number | null> | null;
   pagesFetched: number;
   /** True once the provider has no more results for this search. */
   exhausted: boolean;
@@ -123,6 +127,29 @@ function parseTopFits(value: unknown): TopFit[] {
   return fits.slice(0, MAX_TOP_FITS);
 }
 
+function parseStringList(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, limit);
+}
+
+function parseTagCursors(
+  value: unknown,
+  tagCount: number,
+): Array<number | null> {
+  if (!Array.isArray(value)) return Array.from({ length: tagCount }, () => 0);
+  return Array.from({ length: tagCount }, (_, index) => {
+    const cursor = value[index];
+    return cursor === null ? null : nonNegativeInt(cursor);
+  });
+}
+
 function strOrNull(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
@@ -202,6 +229,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
         (entry): entry is string => typeof entry === "string",
       )
     : [];
+  const pickedTags = parseStringList(value.pickedTags, 3);
   return {
     id,
     name,
@@ -210,6 +238,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     industryName: str(value.industryName) ?? "",
     verticalId: currentVerticalId(str(value.verticalId) ?? ""),
     verticalName: str(value.verticalName) ?? "",
+    pickedTags,
     location,
     target,
     count: nonNegativeInt(value.count),
@@ -228,6 +257,10 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     createdAt: nonNegativeInt(value.createdAt),
     skippedDuplicates: nonNegativeInt(value.skippedDuplicates),
     skip: nonNegativeInt(value.skip),
+    tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
+    pendingTagCursors: Array.isArray(value.pendingTagCursors)
+      ? parseTagCursors(value.pendingTagCursors, pickedTags.length)
+      : null,
     pagesFetched: nonNegativeInt(value.pagesFetched),
     exhausted: value.exhausted === true,
     pendingPost: value.pendingPost === true,
@@ -346,6 +379,7 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     industryName: campaign.industryName,
     verticalId: campaign.verticalId,
     verticalName: campaign.verticalName,
+    pickedTags: [...(campaign.pickedTags ?? [])],
     location: campaign.location,
     target: campaign.target,
     count: campaign.count,

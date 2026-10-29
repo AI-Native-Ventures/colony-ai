@@ -99,7 +99,7 @@ export function DiscoveryScreen() {
     [],
   );
   // The tag layer loads once when Discovery opens; the open search re-runs when it lands.
-  const [, setTagsLoaded] = React.useState(false);
+  const [tagsLoaded, setTagsLoaded] = React.useState(false);
   React.useEffect(() => {
     let live = true;
     void loadVerticalTags().then((loaded) => {
@@ -148,13 +148,17 @@ export function DiscoveryScreen() {
     setCampaignDialogOpen(true);
   }
 
-  function findProspects(row: CatalogueRows[number]) {
+  function findProspects(
+    row: CatalogueRows[number],
+    pickedTags: string[] = [],
+  ) {
     openCampaignForm({
       audience: mode,
       industryId: row.parentId,
       industryName: row.parentName,
       verticalId: row.id,
       verticalName: row.name,
+      pickedTags,
     });
   }
 
@@ -183,7 +187,11 @@ export function DiscoveryScreen() {
 
   return (
     <>
-      <main className="c3d-root" data-testid="w10-discovery-page">
+      <main
+        className="c3d-root"
+        data-testid="w10-discovery-page"
+        data-vertical-tags-loaded={tagsLoaded ? "true" : "false"}
+      >
         {compact && selectedCategory ? (
           <AppTopChromePortal>
             <nav

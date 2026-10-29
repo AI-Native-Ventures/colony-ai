@@ -254,6 +254,7 @@ mod tests {
                 industry: "Home & Living".into(),
                 vertical: "Home Decor & Gift Shops".into(),
                 fit_score: Some(91),
+                discovery_tags: Vec::new(),
                 potential_monthly_value_minor: None,
                 website: None,
                 contact_name: None,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -7,6 +8,7 @@ import {
   upsertCampaign,
 } from "./discoveryCampaignStore.ts";
 import { DiscoverySearchError } from "./discoverySearch.ts";
+import { resetVerticalTagsForTest, setVerticalTags } from "./taxonomy.ts";
 import {
   buildResultsMessage,
   createDiscoveryController,
@@ -17,6 +19,12 @@ import {
 } from "./realDiscoveryProvider.ts";
 
 const OWNER = "a".repeat(64);
+const verticalTags = JSON.parse(
+  fs.readFileSync(
+    new URL("./data/vertical-tags.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 const INPUT = {
   name: "Independent brands",
@@ -199,6 +207,69 @@ test("a run searches, saves each business, posts the best fits in Sales and is s
   assert.equal(saved.campaigns[0].status, "complete");
   assert.equal(saved.campaigns[0].count, 25);
   assert.equal(saved.currentId, "camp-1");
+});
+
+test("picked tags split the provider budget, deduplicate places and persist cursors", async () => {
+  const { controller, log, storageMap } = harness({
+    search: async (request) => {
+      const tagged = request.query.startsWith("wedding guest ");
+      if (tagged) {
+        return {
+          provider: "outscraper",
+          places: [
+            { ...place(1), name: "Wedding Guest House 1" },
+            { ...place(2), name: "Wedding Guest House 2" },
+          ],
+          estimatedCostUsd: 0.02,
+          nextSkip: 10,
+        };
+      }
+      return {
+        provider: "outscraper",
+        places: [
+          { ...place(2), name: "Wedding Guest House duplicate" },
+          { ...place(3), name: "Bridal Suite Guest House" },
+        ],
+        estimatedCostUsd: 0.02,
+        nextSkip: 10,
+      };
+    },
+  });
+
+  setVerticalTags(verticalTags);
+  try {
+    await controller.start({
+      ...INPUT,
+      verticalId: "guesthouses-and-inns",
+      verticalName: "Guesthouses and inns",
+      target: 3,
+      pickedTags: ["wedding guest", "bridal suite"],
+    });
+    await controller.whenIdle();
+  } finally {
+    resetVerticalTagsForTest();
+  }
+
+  assert.deepEqual(
+    log.searches.map(({ query, limit, skip }) => [query, limit, skip]),
+    [
+      ["wedding guest Guesthouses and inns", 10, 0],
+      ["bridal suite Guesthouses and inns", 10, 0],
+    ],
+  );
+  assert.equal(
+    log.searches.reduce((total, request) => total + request.limit, 0),
+    20,
+  );
+  assert.equal(log.publishes.length, 3);
+  assert.deepEqual(log.publishes[0].discoveryTags, [
+    { tag: "wedding guest", kind: "customer", picked: true },
+  ]);
+
+  const current = controller.getCurrent();
+  assert.deepEqual(current.pickedTags, ["wedding guest", "bridal suite"]);
+  const saved = stored(storageMap).campaigns[0];
+  assert.deepEqual(saved.tagCursors, [10, 10]);
 });
 
 test("a server that cannot search fails start with its words and creates nothing", async () => {

@@ -172,10 +172,24 @@ test("search speed over the full tag data", () => {
 test("the built file keeps every type, has no dashes and drops label duplicates", () => {
   const taxonomy = JSON.parse(fs.readFileSync(taxonomyPath, "utf8"));
   assert.equal(Object.keys(tagData).length, taxonomy.types.length);
+  const currentIds = new Set(taxonomy.types.map((type) => type.id));
   const raw = fs.readFileSync(new URL("vertical-tags.json", dataDir), "utf8");
   assert.ok(!raw.includes("—") && !raw.includes("–"));
   for (const type of taxonomy.types) {
     const entry = tagData[type.id];
+    assert.ok(Array.isArray(entry.related), `${type.id} has related types`);
+    assert.ok(
+      entry.related.length <= 6,
+      `${type.id} has at most six related types`,
+    );
+    assert.ok(
+      !entry.related.includes(type.id),
+      `${type.id} is not related to itself`,
+    );
+    assert.ok(
+      entry.related.every((relatedId) => currentIds.has(relatedId)),
+      `${type.id} has no removed related ids`,
+    );
     const own = new Set([
       type.label.toLowerCase(),
       ...(type.aliases ?? []).map((alias) => alias.toLowerCase()),
@@ -233,7 +247,10 @@ const goodA = {
 };
 
 test("build script: lowercases, trims, drops duplicates and own names", () => {
-  const f = fixture({ "a-type": goodA, "b-type": { tags: [] } });
+  const f = fixture({
+    "a-type": goodA,
+    "b-type": { tags: [{ tag: "sofa", kind: "product" }] },
+  });
   const run = runBuild(f.verticals, f.taxonomy, f.out);
   assert.equal(run.status, 0, run.stderr);
   const built = JSON.parse(fs.readFileSync(f.out, "utf8"));
@@ -241,7 +258,47 @@ test("build script: lowercases, trims, drops duplicates and own names", () => {
     tags: [["sofa", "product"]],
     search: ["couch"],
     sa: ["braai"],
+    related: ["b-type"],
   });
+  assert.deepEqual(built["b-type"].related, ["a-type"]);
+});
+
+test("build script: high-value tag kinds weigh more in related similarity", () => {
+  const uniqueTags = (prefix) =>
+    Array.from({ length: 20 }, (_, index) => ({
+      tag: `${prefix} topic ${String(index)}`,
+      kind: "term",
+    }));
+  const high = fixture({
+    "a-type": {
+      tags: [{ tag: "shared concept", kind: "product" }, ...uniqueTags("a")],
+    },
+    "b-type": {
+      tags: [{ tag: "shared concept", kind: "customer" }, ...uniqueTags("b")],
+    },
+  });
+  const highRun = runBuild(high.verticals, high.taxonomy, high.out);
+  assert.equal(highRun.status, 0, highRun.stderr);
+  assert.ok(
+    JSON.parse(fs.readFileSync(high.out, "utf8"))["a-type"].related.includes(
+      "b-type",
+    ),
+  );
+
+  const low = fixture({
+    "a-type": {
+      tags: [{ tag: "shared concept", kind: "term" }, ...uniqueTags("a")],
+    },
+    "b-type": {
+      tags: [{ tag: "shared concept", kind: "term" }, ...uniqueTags("b")],
+    },
+  });
+  const lowRun = runBuild(low.verticals, low.taxonomy, low.out);
+  assert.equal(lowRun.status, 0, lowRun.stderr);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(low.out, "utf8"))["a-type"].related,
+    [],
+  );
 });
 
 test("build script: a missing file fails", () => {

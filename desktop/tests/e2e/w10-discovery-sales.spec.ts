@@ -12,7 +12,10 @@ async function openHomeDecorCampaignForm(page: Page) {
     })
     .fill("home decor");
   await page.getByRole("button", { name: "Find prospects" }).first().click();
-  const dialog = page.getByRole("dialog");
+  const typeDetails = page.getByTestId("discovery-type-details-dialog");
+  await expect(typeDetails).toBeVisible();
+  await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
+  const dialog = page.getByTestId("discovery-campaign-dialog");
   await expect(
     dialog.getByRole("heading", { name: "Find the right fit." }),
   ).toBeVisible();
@@ -167,7 +170,10 @@ test.describe("W10 discovery and sales", () => {
     ).toHaveCount(0);
 
     await find.click();
-    const dialog = page.getByRole("dialog");
+    const typeDetails = page.getByTestId("discovery-type-details-dialog");
+    await expect(typeDetails).toBeVisible();
+    await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
+    const dialog = page.getByTestId("discovery-campaign-dialog");
     await dialog.getByLabel("Location").fill("South Africa");
     await dialog
       .getByRole("checkbox", {

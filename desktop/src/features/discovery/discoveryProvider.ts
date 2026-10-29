@@ -23,6 +23,8 @@ export type DiscoveryCampaign = {
   industryName: string;
   verticalId: string;
   verticalName: string;
+  /** Search refinements chosen from this type's generated tag layer. */
+  pickedTags?: string[];
   location: string;
   target: number;
   count: number;

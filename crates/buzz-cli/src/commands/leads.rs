@@ -505,6 +505,7 @@ mod tests {
                 industry: "Home & Living".into(),
                 vertical: "Home Decor & Gift Shops".into(),
                 fit_score: Some(91),
+                discovery_tags: Vec::new(),
                 potential_monthly_value_minor: Some(650_000),
                 website: Some("https://form-field.example".into()),
                 contact_name: Some("Jules".into()),

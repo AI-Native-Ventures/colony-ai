@@ -72,6 +72,12 @@ export type ProspectEvidence = {
   observedAt: number;
 };
 
+export type ProspectDiscoveryTag = {
+  tag: string;
+  kind: string;
+  picked: boolean;
+};
+
 export type ProspectActivity = {
   activityId: string;
   activityKind: ProspectActivityKind;
@@ -88,6 +94,8 @@ export type ProspectRecord = {
   industry: string;
   vertical: string;
   fitScore?: number | null;
+  /** Tag evidence matched from the provider's returned listing fields. */
+  discoveryTags?: ProspectDiscoveryTag[];
   potentialMonthlyValueMinor?: number | null;
   website: string | null;
   contactName: string | null;
@@ -101,6 +109,13 @@ export type ProspectRecord = {
   stage: ProspectStage;
   lostReason: string | null;
 };
+
+/** Omit an empty extension field so older relays can still accept tagless writes. */
+export function discoveryTagsField(
+  tags: ProspectDiscoveryTag[] | undefined,
+): Partial<Pick<ProspectRecord, "discoveryTags">> {
+  return tags?.length ? { discoveryTags: tags } : {};
+}
 
 export type ProspectHead = {
   schemaVersion: number;

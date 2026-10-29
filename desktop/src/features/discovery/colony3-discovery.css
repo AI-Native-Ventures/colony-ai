@@ -845,6 +845,25 @@ button.c3d-search-chip {
   font-weight: 600;
 }
 
+.c3d-picked-search-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.c3d-picked-search-tags span {
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: var(--c3d-accent-soft);
+  color: var(--c3d-accent-ink);
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 700;
+}
+
 .c3d-tabs {
   display: flex;
   gap: 0.375rem;
@@ -1006,6 +1025,29 @@ button.c3d-search-chip {
 .c3d-run-meta .c3d-text-link {
   margin-left: 0;
   font-size: inherit;
+}
+
+.c3d-related-search {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--c3d-line);
+  border-radius: 1rem;
+  background: var(--c3d-card);
+}
+
+.c3d-related-search h2 {
+  color: var(--c3d-ink);
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-related-search p {
+  margin-top: 0.125rem;
+  color: var(--c3d-muted);
+  font-size: calc(12 * var(--colony-px));
 }
 
 .c3d-toolbar {
@@ -1927,6 +1969,134 @@ button.c3d-search-chip {
   font-weight: 600;
 }
 
+.d4-tag-picker-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.d4-tag-picker-heading p {
+  margin-top: 0.25rem;
+  color: var(--c3d-muted);
+  font-size: calc(12 * var(--colony-px));
+  line-height: 1.45;
+}
+
+.d4-tag-picker-heading > span {
+  flex: none;
+  color: var(--c3d-muted);
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 700;
+}
+
+.d4-tag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.d4-tag-options button {
+  min-height: 2rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--c3d-line);
+  border-radius: 999px;
+  background: var(--c3d-card);
+  color: var(--c3d-ink2);
+  cursor: pointer;
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 650;
+}
+
+.d4-tag-options button[aria-pressed="true"] {
+  border-color: var(--c3d-accent);
+  background: var(--c3d-accent-soft);
+  color: var(--c3d-accent-ink);
+}
+
+.d4-tag-options button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.d4-tag-show-all {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c3d-accent-ink);
+  cursor: pointer;
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 750;
+}
+
+.d4-related-types {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+
+.c3d-related-search .d4-related-types {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.d4-related-type {
+  display: flex;
+  min-width: 0;
+  min-height: 3.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--c3d-line);
+  border-radius: 0.75rem;
+  background: var(--c3d-card);
+  color: var(--c3d-ink2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.d4-related-type:hover {
+  border-color: var(--c3d-accent);
+}
+
+.d4-related-type > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: calc(11.5 * var(--colony-px));
+  font-weight: 750;
+  text-overflow: ellipsis;
+}
+
+.d4-related-type > svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.d4-related-type-image {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 0.5rem;
+  background: var(--c3d-track);
+  color: var(--c3d-muted);
+}
+
+.d4-related-type-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .d4-industry-links {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2056,6 +2226,20 @@ button.c3d-search-chip {
 }
 
 @media (max-width: 42rem) {
+  .c3d-tabs {
+    gap: 0.125rem;
+  }
+
+  .c3d-tab {
+    min-width: 0;
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0 0.25rem;
+    font-size: calc(12.5 * var(--colony-px));
+    white-space: nowrap;
+  }
+
   .d4-industry-grid,
   .d4-type-grid {
     grid-template-columns: minmax(0, 1fr);
