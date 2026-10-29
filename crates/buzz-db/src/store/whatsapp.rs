@@ -166,6 +166,8 @@ pub struct WhatsappContact {
     pub paused_at: Option<DateTime<Utc>>,
     /// Why the contact was paused.
     pub pause_reason: Option<String>,
+    /// When the contact was first seen.
+    pub created_at: DateTime<Utc>,
 }
 
 /// One inbound or outbound message.
@@ -334,6 +336,7 @@ fn row_to_contact(row: &PgRow) -> Result<WhatsappContact> {
         opt_out_reason: row.try_get("opt_out_reason")?,
         paused_at: row.try_get("paused_at")?,
         pause_reason: row.try_get("pause_reason")?,
+        created_at: row.try_get("created_at")?,
     })
 }
 
@@ -747,7 +750,7 @@ impl Db {
         let row = sqlx::query(
             "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
                     last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
-                    opt_out_reason, paused_at, pause_reason \
+                    opt_out_reason, paused_at, pause_reason, created_at \
              FROM whatsapp_contacts WHERE community_id = $1 AND wa_id = $2",
         )
         .bind(community.as_uuid())
@@ -766,7 +769,7 @@ impl Db {
         let row = sqlx::query(
             "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
                     last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
-                    opt_out_reason, paused_at, pause_reason \
+                    opt_out_reason, paused_at, pause_reason, created_at \
              FROM whatsapp_contacts WHERE community_id = $1 AND thread_root_event_id = $2",
         )
         .bind(community.as_uuid())
@@ -905,7 +908,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
                     last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
-                    opt_out_reason, paused_at, pause_reason \
+                    opt_out_reason, paused_at, pause_reason, created_at \
              FROM whatsapp_contacts WHERE community_id = $1 \
              ORDER BY GREATEST(last_inbound_at, last_outbound_at, created_at) DESC \
              LIMIT $2",
@@ -926,7 +929,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
                     last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
-                    opt_out_reason, paused_at, pause_reason \
+                    opt_out_reason, paused_at, pause_reason, created_at \
              FROM whatsapp_contacts \
              WHERE community_id = $1 AND last_inbound_at IS NOT NULL AND opted_out_at IS NULL \
                AND (last_outbound_at IS NULL OR last_outbound_at < last_inbound_at) \
@@ -1304,6 +1307,48 @@ impl Db {
         .fetch_one(&self.pool)
         .await?;
         Ok(at)
+    }
+
+    /// Outbound messages to this contact that are approved or queued but not yet answered
+    /// by Graph (counts toward the one-message-in-a-row rule).
+    pub async fn whatsapp_count_pending_outbound(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+    ) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM whatsapp_messages \
+             WHERE community_id = $1 AND wa_id = $2 AND direction = 'out' \
+               AND state IN ('queued', 'ready', 'sending')",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Messages that Graph accepted (or that arrived) but whose Colony message event is not
+    /// written yet. The sender loop retries these so a failed post is never lost.
+    pub async fn whatsapp_list_unposted(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND event_id IS NULL AND wamid IS NOT NULL \
+               AND state IN ('received', 'sent', 'delivered', 'read') \
+             ORDER BY created_at LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_message).collect()
     }
 
     // ── batches ────────────────────────────────────────────────────────────────

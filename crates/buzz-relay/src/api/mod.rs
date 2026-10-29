@@ -20,6 +20,7 @@ pub mod nip05;
 pub mod operator;
 pub mod payments;
 pub mod self_provisioning;
+pub mod whatsapp;
 pub mod workflows;
 
 // Re-export imeta helpers used by ingest pipeline.
