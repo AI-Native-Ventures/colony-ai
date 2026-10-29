@@ -242,6 +242,9 @@ fn strip_eaten_fence_label(text: &str) -> &str {
 ///    chat line: everything from the heading on becomes the card.
 pub fn repair_document(content: &str) -> Option<String> {
     let text = content.trim();
+    if !text.is_empty() {
+        return None;
+    }
     if check_chat_length(text).is_ok() {
         return None;
     }
