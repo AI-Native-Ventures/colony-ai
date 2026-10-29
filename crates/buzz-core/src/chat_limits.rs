@@ -468,8 +468,7 @@ fn pieces_of(text: &str) -> Vec<Piece<'_>> {
 /// is repaired first ([`repair_document`]), so it is posted as a card and not
 /// cut.
 pub fn shorten_for_chat(content: &str) -> String {
-    let repaired = repair_document(content);
-    let text = repaired.as_deref().unwrap_or(content).trim();
+    let text = content.trim();
     if check_chat_length(text).is_ok() {
         return text.to_owned();
     }
