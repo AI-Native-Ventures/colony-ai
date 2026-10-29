@@ -535,12 +535,6 @@ async fn settle_request(
     let answer = match completion.result {
         Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
-            gateway
-                .relay
-                .db
-                .reject_credit_ai_request(request_id)
-                .await
-                .map_err(database_failure)?;
             return Err(failed(Outcome::UpstreamRejected, unavailable()));
         }
         Err(CompletionFailure::Ambiguous) => {
