@@ -109,7 +109,7 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         <h1>Find a guesthouse for your next quiet weekend</h1>
         <p>Small stays, thoughtful details and a little room to breathe.</p>
         <label class="search">Search guesthouses<input aria-label="Note" id="note" placeholder="Try a cabin near the coast"></label>
-        <div class="section"><div><strong>Recently saved places</strong><small>Collected for your next escape</small></div><button aria-label="Change" type="button" >Save pin</button></div>
+        <div class="section"><div><strong>Recently saved places</strong><small>Collected for your next escape</small></div><button aria-label="Change" type="button" onclick="document.querySelector('#status').textContent = 'Changed'">Save pin</button></div>
         <div class="pins">
           <article class="pin"><div class="photo"></div><div class="pin-copy"><span>Hillside stay</span><h2>The stone house</h2><p>Quiet mornings above the valley</p></div></article>
           <article class="pin"><div class="photo two"></div><div class="pin-copy"><span>Farm cottage</span><h2>Under the old trees</h2><p>Warm wood, garden paths and tea</p></div></article>
@@ -435,6 +435,30 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
           height: viewport.clientHeight,
         };
       }, tab.id);
+    const fixtureStatus = (setTo?: "Ready" | "Changed") =>
+      electronApp.evaluate(
+        async (_electron, { id, setTo }) => {
+          const fixture = (
+            globalThis as typeof globalThis & {
+              colonyBrowserFixture: {
+                browser: {
+                  agentAdapter: {
+                    webContents(id: string): {
+                      executeJavaScript(code: string): Promise<string>;
+                    };
+                  };
+                };
+              };
+            }
+          ).colonyBrowserFixture;
+          const contents = fixture.browser.agentAdapter.webContents(id);
+          const script = setTo
+            ? `document.querySelector('#status').textContent = ${JSON.stringify(setTo)}`
+            : "document.querySelector('#status').textContent";
+          return contents.executeJavaScript(script);
+        },
+        { id: tab.id, setTo },
+      );
     async function saveCursorProof(
       name: string,
       capturedCursor?: Awaited<ReturnType<typeof cursorSnapshot>>,
@@ -705,7 +729,6 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
           "document.querySelector('[aria-label=Change]').focus()",
         );
     }, tab.id);
-    const screenshotBaseline = (await siteScreenshot()).data;
     const pendingChange = call("browser_click", { ref: ref("Change") });
     const clickStage = await expect
       .poll(async () => {
@@ -737,26 +760,7 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       .toBe(true);
     const midGlide = await cursorSnapshot();
     const midGlideProof = saveCursorProof("1440-light-mid-glide", midGlide);
-    expect(
-      await application.evaluate(async (_electron, id) => {
-        const fixture = (
-          globalThis as typeof globalThis & {
-            colonyBrowserFixture: {
-              browser: {
-                agentAdapter: {
-                  webContents(id: string): {
-                    executeJavaScript(code: string): Promise<string>;
-                  };
-                };
-              };
-            };
-          }
-        ).colonyBrowserFixture;
-        return fixture.browser.agentAdapter
-          .webContents(id)
-          .executeJavaScript("document.querySelector('#status').textContent");
-      }, tab.id),
-    ).toBe("Ready");
+    expect(await fixtureStatus()).toBe("Ready");
     await expect
       .poll(async () => {
         const state = await cursorSnapshot(false);
@@ -775,6 +779,11 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     await saveCursorProof("1440-light-click-pulse", clickPulse);
     await midGlideProof;
     expect((await pendingChange).ok).toBe(true);
+    expect(
+      (await call("browser_wait", { text: "Changed", timeoutMs: 2_000 }))
+        .matched,
+    ).toBe(true);
+    const screenshotBaseline = (await siteScreenshot()).data;
     const screenshotAfterCursor = (await siteScreenshot()).data;
     const screenshotDomMutation = await application.evaluate(
       async (_electron, id) => {
@@ -865,9 +874,6 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       nativeOverlayExcluded: true,
       pageDomMutationDetected: true,
     });
-    expect(
-      (await call("browser_wait", { text: "Ready", timeoutMs: 2_000 })).matched,
-    ).toBe(true);
     await saveCursorProof("1440-light-after-click");
     expect(
       (await call("browser_scroll", { direction: "down", amount: 100 })).ok,
@@ -923,6 +929,7 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       desktop: "undefined",
       masked: ["hidden", "hidden", "hidden"],
     });
+    await fixtureStatus("Ready");
     await page.evaluate(() => window.colonyBrowserStoreFixture.setTheme(true));
     const darkChange = call("browser_click", { ref: ref("Change") });
     await expect
@@ -942,7 +949,12 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       .toBe(true);
     const darkMidGlide = await cursorSnapshot();
     await saveCursorProof("1440-dark-mid-glide", darkMidGlide);
+    expect(await fixtureStatus()).toBe("Ready");
     expect((await darkChange).ok).toBe(true);
+    expect(
+      (await call("browser_wait", { text: "Changed", timeoutMs: 2_000 }))
+        .matched,
+    ).toBe(true);
     await saveCursorProof("1440-dark-after-click");
     await setCursorMotion("reduce");
     await expect
