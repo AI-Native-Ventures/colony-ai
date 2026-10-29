@@ -801,9 +801,9 @@ fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
 /// - Any other status ends the request without a clear answer.
 fn refusal(status: u16, body: &[u8]) -> Attempt {
     match status {
-        402..=404 => Attempt::Unavailable(CompletionFailure::Rejected),
+        404 => Attempt::Unavailable(CompletionFailure::Rejected),
         400 if names_unusable_model(body) => Attempt::Unavailable(CompletionFailure::Rejected),
-        400 | 401 | 413 | 422 => Attempt::Failed(CompletionFailure::Rejected),
+        400..=403 | 413 | 422 => Attempt::Failed(CompletionFailure::Rejected),
         500.. => Attempt::Unavailable(CompletionFailure::Ambiguous),
         _ => Attempt::Failed(CompletionFailure::Ambiguous),
     }
