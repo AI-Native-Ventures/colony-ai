@@ -518,6 +518,18 @@ fn advance_query_cursor(
     Ok(())
 }
 
+/// Outcome of [`BuzzClient::post_json_authed_cap_aware`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CappedPost {
+    /// The relay answered with a success body.
+    Body(String),
+    /// The relay refused the request because a monthly cap is used up.
+    MonthlyLimit {
+        /// RFC 3339 time the cap resets, when the relay named one.
+        resets_at: Option<String>,
+    },
+}
+
 pub struct BuzzClient {
     http: reqwest::Client,
     relay_url: String, // base URL, no trailing slash, e.g. "https://relay.buzz.place"
@@ -912,6 +924,64 @@ impl BuzzClient {
                     return Ok(String::new());
                 }
                 self.handle_response(resp).await
+            }
+        })
+        .await
+    }
+
+    /// POST like [`Self::post_json_authed`], except that a 429 naming
+    /// `monthly_limit` comes back to the caller as [`CappedPost::MonthlyLimit`]
+    /// at once. A used-up monthly cap does not clear in seconds, so it is never
+    /// retried, and the caller needs the reset time from the body.
+    pub async fn post_json_authed_cap_aware(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<CappedPost, CliError> {
+        let url = format!("{}{path}", self.relay_url);
+        let body_bytes = bytes::Bytes::from(
+            serde_json::to_vec(body)
+                .map_err(|e| CliError::Other(format!("request serialization failed: {e}")))?,
+        );
+        self.with_retry_body(|| {
+            let body_bytes = body_bytes.clone();
+            let url = url.clone();
+            async move {
+                let auth = sign_nip98(&self.keys, "POST", &url, Some(&body_bytes))?;
+                let resp = self
+                    .with_auth_tag(
+                        self.http
+                            .post(&url)
+                            .header("Authorization", auth)
+                            .header("Content-Type", "application/json")
+                            .body(body_bytes),
+                    )
+                    .send()
+                    .await?;
+                if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    let text = resp.text().await?;
+                    let parsed = serde_json::from_str::<serde_json::Value>(&text).ok();
+                    if parsed
+                        .as_ref()
+                        .and_then(|v| v.get("error"))
+                        .and_then(|v| v.as_str())
+                        == Some("monthly_limit")
+                    {
+                        let resets_at = parsed
+                            .as_ref()
+                            .and_then(|v| v.get("resets_at"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned);
+                        return Ok(CappedPost::MonthlyLimit { resets_at });
+                    }
+                    // Any other 429 is an ordinary rate limit: let the retry
+                    // loop wait and try again.
+                    return Err(CliError::Relay {
+                        status: 429,
+                        body: text,
+                    });
+                }
+                self.handle_response(resp).await.map(CappedPost::Body)
             }
         })
         .await

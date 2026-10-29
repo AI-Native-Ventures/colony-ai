@@ -39,6 +39,11 @@ pub enum CliError {
     #[error("delivery unknown: {0}")]
     DeliveryUnknown(String),
 
+    /// A usage cap is used up until it resets (the Discovery monthly cap).
+    /// Not retryable before the reset, so it is not a plain relay error.
+    #[error("{0}")]
+    LimitReached(String),
+
     /// Catch-all for unexpected failures
     #[error("{0}")]
     Other(String),
@@ -103,6 +108,7 @@ pub fn exit_code(e: &CliError) -> i32 {
         CliError::Conflict(_) => 5,
         CliError::NotFound(_) => 1,
         CliError::DeliveryUnknown(_) => 2,
+        CliError::LimitReached(_) => 2,
         CliError::Other(_) => 4,
     }
 }
@@ -125,6 +131,7 @@ pub fn print_error(e: &CliError) {
         CliError::Conflict(_) => "conflict",
         CliError::NotFound(_) => "not_found",
         CliError::DeliveryUnknown(_) => "delivery_unknown",
+        CliError::LimitReached(_) => "limit_reached",
         CliError::Other(_) => "error",
     };
     let obj = serde_json::json!({
@@ -176,6 +183,13 @@ mod tests {
                 "status {status} should not be retryable"
             );
         }
+    }
+
+    #[test]
+    fn limit_reached_exits_2_and_is_not_retryable() {
+        let error = CliError::LimitReached("Discovery limit reached for this month".into());
+        assert_eq!(exit_code(&error), 2);
+        assert!(!is_retryable_error(&error));
     }
 
     #[test]

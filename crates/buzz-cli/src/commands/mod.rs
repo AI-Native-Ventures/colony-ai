@@ -4,6 +4,7 @@ pub mod channel_templates;
 pub mod channels;
 pub mod company_duties_lessons;
 pub mod credits;
+pub mod discovery;
 pub mod dms;
 pub mod emoji;
 pub mod employee_history;

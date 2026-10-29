@@ -99,6 +99,9 @@ buzz lessons approve --lesson <uuid> --confidence <low|moderate|high>
 buzz lessons deprecate --lesson <uuid>
 buzz lessons restore --lesson <uuid>
 
+# Discovery (counts against the company's monthly limit; exit 2 at the limit)
+buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--save]
+
 # Leads (prospects found in Discovery)
 buzz leads list --stage in_conversation --query cape
 buzz leads get --lead <uuid|buzz://lead/uuid>
