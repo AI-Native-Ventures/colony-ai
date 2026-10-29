@@ -711,11 +711,7 @@ impl Upstream {
                     free,
                     "Colony gateway upstream did not accept a request"
                 );
-                return Err(if free {
-                    Attempt::Unavailable(CompletionFailure::Rejected)
-                } else {
-                    Attempt::Failed(CompletionFailure::Ambiguous)
-                });
+                return Err(Attempt::Failed(CompletionFailure::Ambiguous));
             }
             Err(_) => {
                 tried.push(format!("{model}(net)"));
