@@ -295,6 +295,9 @@ enum Cmd {
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
+    /// Start budgeted worker runs and read their status, output and cost
+    #[command(subcommand)]
+    Workers(WorkersCmd),
     /// Read and update Software Factory run records
     #[command(subcommand)]
     Factory(FactoryCmd),
@@ -1446,6 +1449,62 @@ pub enum DutiesCmd {
         /// Duty UUID
         #[arg(long)]
         duty: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WorkersCmd {
+    /// Start a worker: one model call with no tools that cannot act or spend.
+    /// Use it for research, drafts and variations, then check its output
+    /// before handing it up
+    Spawn {
+        /// Short label shown on the function page
+        #[arg(long)]
+        label: String,
+        /// What the worker should do, as text
+        #[arg(long)]
+        brief: Option<String>,
+        /// Path to a file holding the brief; use - to read stdin
+        #[arg(long)]
+        brief_file: Option<String>,
+        /// Model id; defaults to the one this employee runs on
+        #[arg(long)]
+        model: Option<String>,
+        /// Most tokens the worker may write, 1 to 16000
+        #[arg(long, default_value_t = 4000)]
+        max_output_tokens: u32,
+        /// Most model rounds, 1 to 8
+        #[arg(long, default_value_t = 4)]
+        max_rounds: u32,
+        /// Seconds before the worker is stopped, 30 to 900
+        #[arg(long, default_value_t = 600)]
+        timeout_secs: u32,
+        /// Wait for the worker to finish and print its output
+        #[arg(long)]
+        wait: bool,
+    },
+    /// List workers (status, tokens, cost); a running worker past its deadline shows failed
+    List {
+        /// Only workers this employee started
+        #[arg(long)]
+        mine: bool,
+    },
+    /// Get one worker, including its output
+    Get {
+        /// Worker UUID
+        id: String,
+    },
+    /// Cancel a running worker
+    Cancel {
+        /// Worker UUID
+        id: String,
+    },
+    /// Internal: supervise a started worker in the background
+    #[command(hide = true)]
+    Supervise {
+        /// Path to the worker spec file
+        #[arg(long)]
+        spec: String,
     },
 }
 
@@ -3191,6 +3250,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
+        Cmd::Workers(sub) => commands::workers::dispatch(sub, &client).await,
         Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,

@@ -128,6 +128,16 @@ colony messages send --channel <UUID> \
 7. **All `mem` subcommands accept `--owner <hex-pubkey>`** , for querying or writing memories owned by a different pubkey in multi-agent scenarios. Defaults to this agent's owner.
 8. **`mem rm` cannot delete `core`** , use `mem set core ''` instead.
 
+## Workers
+
+`workers spawn --label "<what>" --brief "<task>"` starts a worker: one model call with no shell, no browser and no tools. It cannot act, send or spend. Use workers for research, drafts and variations that you then check; never hand a worker's output up unchecked. Give it a clear brief (use `--brief-file <path>` for long ones) and a short `--label` the owner will see on the function page.
+
+- Budgets: `--max-output-tokens` (default 4000, at most 16000), `--max-rounds` (default 4, at most 8), `--timeout-secs` (default 600, 30 to 900). At most 5 of your workers run at once.
+- `spawn` returns `{worker_id, status: "running"}` and the worker finishes in the background. Add `--wait` to block until it ends and print its output.
+- `workers get <id>` returns status, output and tokens. `workers list --mine` lists yours. `workers cancel <id>` stops a running one.
+- A worker that crashes, times out or runs past its deadline shows as `failed` with a reason. Output over 16384 bytes is cut and says where the full text is.
+- The owner sees every worker's label, status and cost. Workers are not team members and never appear in the team list.
+
 ## Forum Posts
 
 `messages send --kind` routes to different event builders:

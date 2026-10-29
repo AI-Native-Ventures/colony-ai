@@ -34,6 +34,7 @@ pub mod team;
 pub mod upload;
 pub mod users;
 pub mod work;
+pub mod workers;
 pub mod workflows;
 
 use crate::{client::normalize_write_response, error::CliError};

@@ -387,10 +387,11 @@ fn command_d_tag(event: &Event, run: &WorkerRun) -> Result<String, IngestError> 
         .content()
         .ok_or_else(|| invalid("worker command d tag must have a value"))?;
     if p_tags[0].content() != Some(run.parent_pubkey.as_str()) {
-        return Err(invalid("worker command p tag must name the worker's employee"));
+        return Err(invalid(
+            "worker command p tag must name the worker's employee",
+        ));
     }
-    if worker_d_tag(&run.worker_id)
-        .map_err(|error| invalid(format!("worker d-tag: {error}")))?
+    if worker_d_tag(&run.worker_id).map_err(|error| invalid(format!("worker d-tag: {error}")))?
         != d_tag
     {
         return Err(invalid("worker command d tag does not match its worker id"));
