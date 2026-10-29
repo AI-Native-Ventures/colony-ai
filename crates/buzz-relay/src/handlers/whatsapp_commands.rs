@@ -245,6 +245,18 @@ async fn handle_batch(
     check_version(command.v)?;
     let community = tenant.community();
     let batch_id = parse_uuid(&command.batch_id, "batchId").map_err(invalid)?;
+    // GUARD: a retry of a batch the relay already holds is answered before any row check.
+    // Rows of a batch that has since been sent fail the one-message-in-a-row rule, so
+    // without this early answer a CLI retry would see an error for work that succeeded.
+    if state
+        .db
+        .whatsapp_get_batch(community, batch_id)
+        .await
+        .map_err(internal)?
+        .is_some()
+    {
+        return Ok(ok(event, "duplicate: this batch was already received"));
+    }
     if command.rows.is_empty() || command.rows.len() > MAX_BATCH_ROWS {
         return Err(invalid(format!(
             "a batch has 1 through {MAX_BATCH_ROWS} rows"
