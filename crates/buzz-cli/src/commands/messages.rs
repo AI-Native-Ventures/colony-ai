@@ -758,6 +758,37 @@ async fn update_earlier_answer(
     Ok(())
 }
 
+/// The content to send: `content` as it is, or with `--doc` the same text as a
+/// document card that Colony fences itself, so a model never has to type (or
+/// shell-quote) the backticks.
+fn document_content(
+    doc: bool,
+    title: Option<&str>,
+    content: String,
+    kind: Option<u16>,
+) -> Result<String, CliError> {
+    if !doc {
+        return Ok(content);
+    }
+    if !is_chat_kind(kind) {
+        return Err(CliError::Usage(
+            "--doc is for chat messages. A forum post is already a document.".into(),
+        ));
+    }
+    let body = read_or_stdin(&content)?;
+    buzz_core::chat_limits::document_message(title, &body).map_err(CliError::Usage)
+}
+
+/// Repair a document that did not arrive as a card, so it is posted whole as a
+/// card instead of refused or cut. Text that is not clearly a document is
+/// returned as it is.
+fn repaired_chat_content(content: &str) -> std::borrow::Cow<'_, str> {
+    match buzz_core::chat_limits::repair_document(content) {
+        Some(card) => card.into(),
+        None => content.into(),
+    }
+}
+
 pub struct SendMessageParams {
     pub channel_id: String,
     pub content: String,
@@ -783,6 +814,8 @@ pub async fn cmd_send_message(
     // how to fix the message, and a flag would be passed every time.
     let agent_chat = client.is_agent() && is_chat_kind(p.kind);
     if agent_chat {
+        p.content = repaired_chat_content(&p.content).into_owned();
+        validate_content_size(&p.content)?;
         buzz_core::chat_limits::check_chat_length(&p.content)
             .map_err(|e| CliError::Usage(e.to_string()))?;
     }
@@ -1071,7 +1104,11 @@ pub async fn cmd_edit_message(
             kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE)
                 || kind == u64::from(buzz_core::kind::KIND_STREAM_MESSAGE_V2)
         });
+    let repaired;
+    let mut content = content;
     if client.is_agent() && edits_chat {
+        repaired = repaired_chat_content(content);
+        content = &repaired;
         buzz_core::chat_limits::check_chat_length(content)
             .map_err(|e| CliError::Usage(e.to_string()))?;
     }
@@ -1128,12 +1165,15 @@ pub async fn dispatch(
         MessagesCmd::Send {
             channel,
             content,
+            doc,
+            title,
             kind,
             reply_to,
             broadcast,
             files,
             mentions,
         } => {
+            let content = document_content(doc, title.as_deref(), content, kind)?;
             cmd_send_message(
                 client,
                 SendMessageParams {
@@ -2545,6 +2585,147 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(relay.submitted().len(), 1);
+    }
+
+    /// The post of the GATE-312 P10 failure: a heading, an opening paragraph and
+    /// five bold-numbered signs, about 300 words.
+    fn p10_post() -> String {
+        let mut post = String::from(
+            "# 5 signs your guesthouse needs social media\nYour guesthouse has charm, clean rooms, and a great breakfast. But if the phone isn't ringing and the calendar has gaps, social media might be the missing piece. Here are five signs it's time to show up online.\n",
+        );
+        for n in 1..=5 {
+            post.push_str(&format!("\n**{n}. Sign number {n}.** {}\n", words(50)));
+        }
+        post
+    }
+
+    /// What the relay was sent: one chat message holding the whole post inside a
+    /// closed `doc` fence, not cut and not refused.
+    fn assert_sent_as_card(relay: &GuardRelay, post: &str) {
+        let submitted = relay.submitted();
+        assert_eq!(submitted.len(), 1);
+        let content = submitted[0]["content"].as_str().unwrap();
+        assert!(content.contains(post.trim()), "{content}");
+        assert!(content.contains("```doc\n# 5 signs"), "{content}");
+        assert!(content.trim_end().ends_with("```"), "{content}");
+        assert!(!content.contains("Want the rest?"), "{content}");
+        assert!(buzz_core::chat_limits::check_chat_length(content).is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_doc_fence_the_model_never_closed_is_sent_as_a_card() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let post = p10_post();
+        cmd_send_message(&client, send_params(&format!("```doc\n{post}")))
+            .await
+            .unwrap();
+        assert_sent_as_card(&relay, &post);
+    }
+
+    #[tokio::test]
+    async fn a_fence_the_shell_ate_is_sent_as_a_card() {
+        // `--content "```doc ..."` in bash: the backticks are gone, `doc` stays.
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let post = p10_post();
+        cmd_send_message(&client, send_params(&format!("doc\n{post}")))
+            .await
+            .unwrap();
+        assert_sent_as_card(&relay, &post);
+    }
+
+    #[tokio::test]
+    async fn a_heading_led_post_with_no_fence_is_sent_as_a_card() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let post = p10_post();
+        cmd_send_message(&client, send_params(&post)).await.unwrap();
+        assert_sent_as_card(&relay, &post);
+    }
+
+    #[tokio::test]
+    async fn a_closed_doc_fence_and_a_short_reply_are_sent_exactly_as_written() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let fenced = format!("Here's the post.\n```doc\n{}\n```", p10_post());
+        cmd_send_message(&client, send_params(&fenced))
+            .await
+            .unwrap();
+        cmd_send_message(&client, send_params("Best lead: Pecan Tree."))
+            .await
+            .unwrap();
+        let submitted = relay.submitted();
+        assert_eq!(submitted[0]["content"], fenced.as_str());
+        assert_eq!(submitted[1]["content"], "Best lead: Pecan Tree.");
+    }
+
+    #[tokio::test]
+    async fn plain_prose_over_the_cap_is_still_refused_not_turned_into_a_card() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let error = cmd_send_message(&client, send_params(&words(150)))
+            .await
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .starts_with("Too long for chat: 150 words."));
+        assert_eq!(relay.submitted().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_edit_that_loses_its_fence_is_repaired_into_a_card() {
+        let keys = Keys::generate();
+        let me = keys.public_key().to_hex();
+        let relay = guard_relay(vec![event_json(
+            ID_B,
+            &me,
+            9,
+            110,
+            json!([["h", SEND_TEST_CHANNEL]]),
+        )])
+        .await;
+        let client = agent_client(&relay.url, keys);
+        let post = p10_post();
+        super::cmd_edit_message(&client, ID_B, &format!("```doc\n{post}"))
+            .await
+            .unwrap();
+        assert_sent_as_card(&relay, &post);
+    }
+
+    #[tokio::test]
+    async fn doc_flag_builds_the_card_without_the_model_typing_a_fence() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+        let body = format!(
+            "Your guesthouse has charm.\n\n```bash\nls\n```\n\n{}",
+            words(300)
+        );
+        let content = super::document_content(true, Some("5 signs"), body.clone(), None).unwrap();
+        cmd_send_message(&client, send_params(&content))
+            .await
+            .unwrap();
+        let submitted = relay.submitted();
+        let sent = submitted[0]["content"].as_str().unwrap();
+        assert!(
+            sent.starts_with("````doc\n# 5 signs\n\nYour guesthouse"),
+            "{sent}"
+        );
+        assert!(sent.ends_with("\n````"), "{sent}");
+        assert!(sent.contains(&body), "{sent}");
+    }
+
+    #[test]
+    fn doc_flag_is_off_by_default_and_only_for_chat() {
+        let text = "hello";
+        assert_eq!(
+            super::document_content(false, None, text.into(), None).unwrap(),
+            text
+        );
+        let forum = super::document_content(true, Some("T"), "Body.".into(), Some(45001));
+        assert!(matches!(forum, Err(CliError::Usage(_))), "{forum:?}");
+        let untitled = super::document_content(true, None, "No heading.".into(), None);
+        assert!(matches!(untitled, Err(CliError::Usage(_))), "{untitled:?}");
     }
 
     #[tokio::test]

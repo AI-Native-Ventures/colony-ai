@@ -22,7 +22,8 @@ so they cannot disagree.
     renders it as a collapsed card, so a long one still reads short;
   - code: a fence with its language tag.
 - A fence that is opened and never closed is not a deliverable. Its text counts
-  as chat, so a missing closing fence cannot hide prose.
+  as chat, so a missing closing fence cannot hide prose. A `doc` fence left
+  open is repaired first (see "Documents that lose their fence").
 
 ## Enforcement
 
@@ -52,7 +53,34 @@ so they cannot disagree.
    agent's final text. That text is now shortened with the same limit: whole
    sentences up to 50 words, then "Want the rest?". It never cuts a sentence in
    half; if the first sentence alone is too long it posts a one-line offer of
-   the short version. Fenced blocks are kept whole.
+   the short version. Fenced blocks are kept whole, and a document that lost
+   its fence is repaired into a card first.
+
+## Documents that lose their fence
+
+A model does not reliably type a `doc` fence (GATE-312 P10, 29 Oct: a blog post
+arrived as 48 words of chat ending "Want the rest?", shown as a code block
+labelled "doc", because the fence was never closed and the net cut it). Long
+writing therefore never depends on the model typing the syntax:
+
+- **`colony messages send --doc [--title "Title"] --content -`** builds the fence
+  itself (`buzz_core::chat_limits::document_message`). The text is markdown, on
+  stdin or in `--content`; the title is `--title` or the text's first `# Title`
+  line. The fence is longer than any backtick run in the text. Chat messages
+  only. The voice rules and the CLI skill (`NEST_SKILL_VERSION` 11) tell agents
+  to use it, and the refusal text names it.
+- **Safety net** (`buzz_core::chat_limits::repair_document`), used by both
+  enforcement points before the limit is applied, only on text that is over the
+  limit. It posts the text as a card instead of refusing or cutting it when:
+  1. a `doc` fence was never closed (also an unclosed plain, `md`, `markdown`
+     or `text` fence that opens on a `# Title`): the closing line is added;
+  2. the shell ate the fence, leaving `doc` before the heading (`doc\n# Title`
+     or `doc# Title`): the word is dropped and the card rebuilt;
+  3. the reply is heading-led (`#` to `###`) with at least 40 words from the
+     heading on, no fence around it, and at most 50 words of chat before it:
+     everything from the heading on becomes the card.
+- Plain prose over the limit with no heading is still refused (CLI) or cut to
+  50 words (harness net), and a closed fence is never touched.
 
 ## Agent to agent
 
