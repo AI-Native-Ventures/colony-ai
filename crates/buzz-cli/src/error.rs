@@ -108,7 +108,7 @@ pub fn exit_code(e: &CliError) -> i32 {
         CliError::Conflict(_) => 5,
         CliError::NotFound(_) => 1,
         CliError::DeliveryUnknown(_) => 2,
-        CliError::LimitReached(_) => 2,
+        CliError::LimitReached(_) => 1,
         CliError::Other(_) => 4,
     }
 }

@@ -224,7 +224,7 @@ enum PageOutcome {
 }
 
 async fn fetch_page(client: &BuzzClient, body: &Value) -> Result<PageOutcome, CliError> {
-    match client.post_json_authed_cap_aware(SEARCH_PATH, body).await? {
+    match CappedPost::Body(client.post_json_authed(SEARCH_PATH, body).await?) {
         CappedPost::MonthlyLimit { resets_at } => Ok(PageOutcome::MonthlyLimit(resets_at)),
         CappedPost::Body(text) => {
             serde_json::from_str(&text)
@@ -479,8 +479,9 @@ impl ExistingLeads {
 
     fn has(&self, place: &Place, prospect_id: Uuid) -> bool {
         self.prospect_ids.contains(&prospect_id)
-            || present(&place.place_id)
-                .is_some_and(|id| self.external_ids.contains(&format!("outscraper:{id}")))
+            || present(&place.place_id).is_some_and(|id| {
+                id.is_empty() && self.external_ids.contains(&format!("outscraper:{id}"))
+            })
             || self.names.contains(&lead_name_key(&place.name))
     }
 
