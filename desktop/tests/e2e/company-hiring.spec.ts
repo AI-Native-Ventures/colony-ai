@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
   finalizeEvent,
@@ -210,6 +210,146 @@ test("a member cannot open the role catalog", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Configure this role" }),
   ).toHaveCount(0);
+});
+
+const BUILT_IN_ROLE_NAMES = [
+  "Hospitality researcher",
+  "Social media manager",
+  "Bookkeeper",
+  "Chief of Staff",
+  "Business development",
+  "Writer",
+];
+const CONFIGURE_HIRE_ID = "0b6cbd5e-5c0e-4a3e-9f47-6c2a0a7f2d11";
+
+async function installBlankConfigureMock(
+  page: Page,
+  mock: Record<string, unknown> = {},
+) {
+  const relay = newRelayKey();
+  await installMockBridge(page, {
+    relaySelf: relay.relaySelf,
+    companyHireRelayPrivateKeyHex: relay.privateKeyHex,
+    relayRequiresMembership: true,
+    personas: [],
+    discoverAgentModels: {
+      models: [{ id: "gpt-5.5", name: "GPT-5.5" }],
+      supportsSwitching: true,
+      selectedModel: "gpt-5.5",
+    },
+    ...mock,
+  });
+}
+
+for (const roleName of BUILT_IN_ROLE_NAMES) {
+  test(`Configure this role opens the form for ${roleName}`, async ({
+    page,
+  }) => {
+    await installBlankConfigureMock(page);
+    await page.goto("/#/hire/roles");
+    await page
+      .getByRole("region", { name: "Role packs" })
+      .locator('[data-testid^="hire-role-"]', { hasText: roleName })
+      .getByRole("button", { name: "Configure this role" })
+      .click();
+    await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+    await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
+  });
+}
+
+test("Configure says the role could not be loaded and goes back to roles", async ({
+  page,
+}) => {
+  await installBlankConfigureMock(page);
+  await page.goto(
+    `/#/hire/configure?personaId=gone-role&hireId=${CONFIGURE_HIRE_ID}`,
+  );
+  const state = page.getByTestId("hire-configure-state");
+  await expect(state).toContainText("This role could not be loaded");
+  await expect(page.getByTestId("hire-employee-name")).toHaveCount(0);
+  await state.getByRole("button", { name: "Back to roles" }).click();
+  await expect(page.getByTestId("hire-roles")).toBeVisible();
+});
+
+test("Configure shows a recoverable error when the team read fails", async ({
+  page,
+}) => {
+  await installBlankConfigureMock(page, {
+    personas: [
+      {
+        id: PERSONA_ID,
+        displayName: "Hospitality researcher",
+        systemPrompt: "Research hospitality accounts and report findings.",
+        isActive: true,
+        runtime: "buzz-agent",
+        companyRole: {
+          job: "Hospitality research",
+          skills: ["Market research"],
+          tools: [{ name: "Web search", risk: "low" }],
+          workerMenu: ["buzz-agent"],
+        },
+      },
+    ],
+    commandErrors: { list_relay_agents: "relay returned 500" },
+  });
+  await page.goto(
+    `/#/hire/configure?personaId=${PERSONA_ID}&hireId=${CONFIGURE_HIRE_ID}`,
+  );
+  const state = page.getByTestId("hire-configure-state");
+  await expect(state).toContainText("This information could not load", {
+    timeout: 20_000,
+  });
+  await expect(
+    state.getByRole("button", { name: "Back to roles" }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    const config = (
+      window as Window & {
+        __BUZZ_E2E__?: { mock?: { commandErrors?: Record<string, string> } };
+      }
+    ).__BUZZ_E2E__;
+    if (config?.mock) config.mock.commandErrors = {};
+  });
+  await state.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+});
+
+test("Configure shows a loading state while the team read is pending, then a timeout", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await installBlankConfigureMock(page, {
+    personas: [
+      {
+        id: PERSONA_ID,
+        displayName: "Hospitality researcher",
+        systemPrompt: "Research hospitality accounts and report findings.",
+        isActive: true,
+        runtime: "buzz-agent",
+        companyRole: {
+          job: "Hospitality research",
+          skills: ["Market research"],
+          tools: [{ name: "Web search", risk: "low" }],
+          workerMenu: ["buzz-agent"],
+        },
+      },
+    ],
+    commandDelaysMs: { list_managed_agents: 600_000 },
+  });
+  await page.goto(
+    `/#/hire/configure?personaId=${PERSONA_ID}&hireId=${CONFIGURE_HIRE_ID}`,
+  );
+  const state = page.getByTestId("hire-configure-state");
+  await expect(state).toContainText("Loading the employee form");
+  await expect(page.getByTestId("hire-employee-name")).toHaveCount(0);
+
+  await page.clock.fastForward(16_000);
+  await expect(state).toContainText("This is taking longer than expected");
+  await expect(state.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(
+    state.getByRole("button", { name: "Back to roles" }),
+  ).toBeVisible();
 });
 
 async function seedHireAsk(

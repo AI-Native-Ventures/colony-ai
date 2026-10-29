@@ -563,6 +563,12 @@
   line-height: 1.55;
 }
 
+.colony-hire-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .colony-hire-loading {
   display: grid;
   max-width: 60rem;

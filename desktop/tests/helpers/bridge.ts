@@ -482,6 +482,10 @@ type MockBridgeOptions = {
   /** Reject successive mock `join_channel` calls, then resume. */
   joinChannelErrors?: string[];
   channelsReadDelayMs?: number;
+  /** Hold any mock command for this many ms before it answers, by command name. */
+  commandDelaysMs?: Record<string, number>;
+  /** Reject any mock command with this message, by command name. */
+  commandErrors?: Record<string, string>;
   /** Return not-modified for this many reads before resuming full payloads. */
   channelsNotModifiedResponses?: number;
   /** When true, a matching knownHash returns a not-modified channel payload. */
