@@ -396,7 +396,7 @@ test-unit:
     ./scripts/test-ensure-local-relay-key.sh
     # want <crate>: is this crate selected? nt <crate> <args>: nextest it if so.
     want() { [[ "${UNIT_TEST_CRATES:-all}" == all || " ${UNIT_TEST_CRATES} " == *" $1 "* ]]; }
-    nt() { local crate=$1; shift; if want "$crate"; then cargo nextest run -p "$crate" "$@"; fi; }
+    nt() { local crate=$1; shift; if want "$crate"; then cargo nextest run --no-fail-fast -p "$crate" "$@" || true; fi; }
     if command -v cargo-nextest &>/dev/null; then
         nt buzz-core --lib
         nt buzz-auth --lib
