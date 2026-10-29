@@ -5,7 +5,9 @@
 #
 # platform-key is darwin-arm64 or win32-x64 (win32-x64 runs inside an MSYS2
 # MINGW64 shell). The source tarball is the pinned release in manifest.json,
-# checked against its sha256 before anything is unpacked.
+# checked against its sha256 before anything is unpacked. When ffmpeg.org is
+# unreachable the same tarball is fetched from the mirrors listed there; the
+# sha256 check is what makes a mirror safe to use.
 #
 # The build is LGPL only: the GPL and nonfree switches stay off, and no external
 # libraries are linked (--disable-autodetect), so there is no x264 or x265. H.264 comes
@@ -22,8 +24,9 @@ manifest="$here/manifest.json"
 
 json() { node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(process.argv[2].split(".").reduce((v,k)=>v[k],m))' "$manifest" "$1"; }
 version="$(json version)"
-url="$(json source.url)"
 sha256="$(json source.sha256)"
+# The official URL first, then each mirror, one per line.
+urls="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).source;console.log([s.url,...(s.mirrors||[])].join("\n"))' "$manifest")"
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
@@ -31,12 +34,27 @@ sha256_of() {
 
 mkdir -p "$out_dir" "$work_dir"
 tarball="$work_dir/ffmpeg-$version.tar.xz"
-if [ ! -f "$tarball" ]; then
-  curl --fail --silent --show-error --location --retry 3 --output "$tarball" "$url"
+if [ -f "$tarball" ] && [ "$(sha256_of "$tarball")" != "$sha256" ]; then
+  rm -f "$tarball"
 fi
-actual="$(sha256_of "$tarball")"
-if [ "$actual" != "$sha256" ]; then
-  echo "ffmpeg source checksum mismatch: expected $sha256, got $actual" >&2
+if [ ! -f "$tarball" ]; then
+  while IFS= read -r url; do
+    [ -n "$url" ] || continue
+    if curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 600 --output "$tarball.part" "$url"; then
+      got="$(sha256_of "$tarball.part")"
+      if [ "$got" = "$sha256" ]; then
+        mv "$tarball.part" "$tarball"
+        break
+      fi
+      echo "ffmpeg source checksum mismatch from $url: expected $sha256, got $got; trying the next source" >&2
+    else
+      echo "ffmpeg source download from $url failed, trying the next source" >&2
+    fi
+    rm -f "$tarball.part"
+  done <<< "$urls"
+fi
+if [ ! -f "$tarball" ]; then
+  echo "ffmpeg source: no source gave a tarball matching sha256 $sha256" >&2
   exit 1
 fi
 rm -rf "$work_dir/src"

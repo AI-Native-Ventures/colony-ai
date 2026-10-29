@@ -4,6 +4,9 @@
   "license": "LGPL-2.1-or-later",
   "source": {
     "url": "https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz",
+    "mirrors": [
+      "https://github.com/AI-Native-Ventures/colony-ai/releases/download/vendor-ffmpeg-8.1/ffmpeg-8.1.tar.xz"
+    ],
     "sha256": "b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a",
     "signatureUrl": "https://ffmpeg.org/releases/ffmpeg-8.1.tar.xz.asc",
     "signingKeyFingerprint": "FCF986EA15E6E293A5644F10B4322F04D67658D8"
