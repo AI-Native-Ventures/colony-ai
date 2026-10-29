@@ -711,7 +711,7 @@ impl Upstream {
                     free,
                     "Colony gateway upstream did not accept a request"
                 );
-                return Err(if free {
+                return Err(if free || deadline > Duration::ZERO {
                     Attempt::Unavailable(CompletionFailure::Rejected)
                 } else {
                     Attempt::Failed(CompletionFailure::Ambiguous)
