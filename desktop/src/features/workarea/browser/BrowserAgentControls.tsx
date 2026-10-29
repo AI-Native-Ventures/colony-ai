@@ -11,6 +11,7 @@ import {
 } from "./agentBrowserAccess";
 import { createBrowserControlStore } from "./browserControlStore";
 import { getBrowserBusinessId } from "./browserTabsStore";
+import { browserHost } from "@/shared/api/browserHost";
 import {
   browserApprovalOrigin,
   browserConfirmationTitle,
@@ -117,6 +118,33 @@ export function BrowserAgentControls({
     void store.start();
     return () => store.dispose();
   }, [store]);
+
+  React.useEffect(() => {
+    if (!hostId) return;
+    let current = true;
+    let retryTimer: number | undefined;
+    let attempt = 0;
+    const labels = (agents.data ?? []).map((agent) => ({
+      agentId: agent.pubkey.toLowerCase(),
+      name: agent.name,
+    }));
+    const syncLabels = () => {
+      void browserHost.setAgentCursorLabels(hostId, labels).catch((error) => {
+        if (!current) return;
+        if (attempt < 2) {
+          attempt += 1;
+          retryTimer = window.setTimeout(syncLabels, attempt * 250);
+          return;
+        }
+        window.reportError(error);
+      });
+    };
+    syncLabels();
+    return () => {
+      current = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [agents.data, hostId]);
   const defaultAccess = state.defaultAccess;
   const agentHasIt = Boolean(grant);
   React.useEffect(() => {

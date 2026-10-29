@@ -28,7 +28,7 @@ jobs:
       - name: Production broker and Electron adapter Node tests
         run: node --test --test-timeout=30000 desktop/electron/browser-broker/*.test.mjs desktop/tests/real-run/agent-browser/*.test.mjs
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
       - name: Install Electron system dependencies
         if: runner.os == 'Linux'
         run: pnpm -C desktop exec playwright install-deps chromium

@@ -421,7 +421,11 @@ export function createPageDriver({
     }
   }
 
-  async function clickOnPage(tabId, backendNodeId, { signal, check } = {}) {
+  async function clickOnPage(
+    tabId,
+    backendNodeId,
+    { signal, check, agentId } = {},
+  ) {
     const session = await sessionFor(tabId);
     const objectId = await resolve(session, backendNodeId, signal).catch(() => {
       throw new DriverError("element_not_actionable");
@@ -446,6 +450,16 @@ export function createPageDriver({
         button: "left",
         pointerType: "mouse",
       };
+      if (agentId && adapter.showAgentCursor) {
+        await adapter.showAgentCursor(tabId, {
+          agentId,
+          action: "click",
+          x: box.x,
+          y: box.y,
+        });
+        // A takeover during the glide must fence the real click.
+        check?.();
+      }
       await send(
         session,
         "Input.dispatchMouseEvent",
@@ -477,7 +491,7 @@ export function createPageDriver({
     tabId,
     backendNodeId,
     text,
-    { submit = false, signal, check } = {},
+    { submit = false, signal, check, agentId } = {},
   ) {
     const session = await sessionFor(tabId);
     const objectId = await resolve(session, backendNodeId, signal).catch(() => {
@@ -490,6 +504,22 @@ export function createPageDriver({
       await call(session, objectId, "selectContents", [], signal);
       check?.();
       adapter.consumeBlocked?.(tabId);
+      const box = await boxOf(session, backendNodeId, signal);
+      if (agentId && adapter.showAgentCursor) {
+        await adapter.showAgentCursor(tabId, {
+          agentId,
+          action: "type",
+          x: box.left + box.width + 8,
+          y: box.y,
+          focus: {
+            x: box.left,
+            y: box.top,
+            width: box.width,
+            height: box.height,
+          },
+        });
+        check?.();
+      }
       if (text.length > 0) {
         await send(session, "Input.insertText", { text }, signal);
       } else {
@@ -726,7 +756,7 @@ export function createPageDriver({
 
     async scroll(
       tabId,
-      { backendNodeId, direction, amount = 600, signal } = {},
+      { backendNodeId, direction, amount = 600, signal, check, agentId } = {},
     ) {
       const session = await sessionFor(tabId);
       const edge = direction === "top" || direction === "bottom";
@@ -737,6 +767,30 @@ export function createPageDriver({
               throw new DriverError("element_not_actionable");
             });
       try {
+        check?.();
+        if (agentId && adapter.showAgentCursor) {
+          const metrics = await send(
+            session,
+            "Page.getLayoutMetrics",
+            {},
+            signal,
+          );
+          const viewport = metrics.cssVisualViewport ?? {
+            clientWidth: 1024,
+            clientHeight: 768,
+          };
+          const point = {
+            x: (viewport.clientWidth ?? viewport.width ?? 1024) * 0.72,
+            y: (viewport.clientHeight ?? viewport.height ?? 768) * 0.58,
+          };
+          await adapter.showAgentCursor(tabId, {
+            agentId,
+            action: "scroll",
+            x: point.x,
+            y: point.y,
+          });
+          check?.();
+        }
         if (edge && backendNodeId === undefined) {
           await call(session, objectId, "scrollPageTo", [direction], signal);
           return {};

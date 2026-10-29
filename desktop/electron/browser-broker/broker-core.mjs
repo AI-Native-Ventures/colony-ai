@@ -949,6 +949,7 @@ export function createBroker({
       const result = await driver.click(args.tab, entry.backendNodeId, {
         signal: ctx.signal,
         check: ctx.check,
+        agentId: ctx.grant.agentId,
       });
       blocked(result);
       ctx.check();
@@ -969,6 +970,7 @@ export function createBroker({
           submit: args.submit === true,
           signal: ctx.signal,
           check: ctx.check,
+          agentId: ctx.grant.agentId,
         },
       );
       blocked(result);
@@ -1001,6 +1003,8 @@ export function createBroker({
         direction: args.direction,
         amount: args.amount ?? 600,
         signal: ctx.signal,
+        check: ctx.check,
+        agentId: ctx.grant.agentId,
       });
       ctx.check();
       return { tab: args.tab, scrolled: args.direction };

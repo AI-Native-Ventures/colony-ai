@@ -4,6 +4,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { COLONY3_NOW, seedColony3Activity } from "../helpers/colony3Fixture";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
 /**
  * Colony 3.0 discovery and leads proof. Captures the app at each board's size
@@ -34,6 +35,7 @@ async function openLerato(page: Page, route: string) {
   mkdirSync(OUT, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.clock.setFixedTime(new Date(COLONY3_NOW));
+  await installDiscoveryImageMocks(page);
   await installMockBridge(page, {
     referenceWorkspace: true,
     colony3Sidebar: true,
@@ -139,7 +141,7 @@ test("Discovery board", async ({ page }) => {
 test("Discovery industry board", async ({ page }) => {
   await openLerato(page, "/discovery");
   await page.getByRole("button", { name: /Beauty & Wellness/ }).click();
-  await expect(page.getByText("13 verticals").first()).toBeVisible();
+  await expect(page.getByText("21 business types").first()).toBeVisible();
   await shot(page, {
     name: "DiscoveryCategory",
     board: "DiscoveryCategory",

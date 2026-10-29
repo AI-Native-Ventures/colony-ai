@@ -37,7 +37,7 @@ jobs:
         run: rustup target add "$TARGET"
 
       - name: Install desktop dependencies
-        run: just desktop-install-ci
+        run: scripts/ci-bounded.sh 240 3 just desktop-install-ci
 
       - name: Derive and patch canary version
         run: |
@@ -90,6 +90,7 @@ jobs:
         run: cd desktop && pnpm tauri build --verbose --no-sign --target "$TARGET" --bundles dmg --config src-tauri/tauri.canary.conf.json
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          COLONY_LOGO_DEV_TOKEN: ${{ secrets.COLONY_LOGO_DEV_TOKEN }}
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           MACOSX_DEPLOYMENT_TARGET: "10.15"

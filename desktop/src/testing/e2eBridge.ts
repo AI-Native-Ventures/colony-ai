@@ -519,6 +519,8 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Seed one deliberately long lead name for picker overflow assertions. */
+    referenceWorkspaceLongLeadNames?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
     windowFullscreen?: boolean;
@@ -5671,7 +5673,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
   if (communityId && !withoutSales) {
-    for (const event of referenceSalesRecordEvents(self, communityId)) {
+    for (const event of referenceSalesRecordEvents(self, communityId, {
+      longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
+    })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;
       const store = mockBusinessRecordEvents.get(channelId) ?? [];

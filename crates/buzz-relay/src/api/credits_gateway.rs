@@ -6,6 +6,7 @@ use axum::{
     body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -22,6 +23,11 @@ use super::{
     relay_members,
 };
 use crate::state::AppState;
+use keepalive::Keepalive;
+use outcome::{Finished, Outcome};
+
+mod keepalive;
+mod outcome;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -31,6 +37,7 @@ struct Gateway {
     upstream: Option<Arc<Upstream>>,
     enabled: bool,
     policy: Arc<GatewayPolicy>,
+    keepalive: Keepalive,
 }
 
 /// Mount the private session routes. OFF unless both flag and server key exist.
@@ -45,6 +52,7 @@ pub fn router(relay: Arc<AppState>) -> Router {
         upstream,
         enabled,
         policy: Arc::new(super::credits_gateway_limits::policy_from_env()),
+        keepalive: Keepalive::PRODUCTION,
     };
     let worker = gateway.clone();
     tokio::spawn(async move {
@@ -292,19 +300,36 @@ async fn revoke_session(
     Ok(Json(json!({"revoked":true})))
 }
 
-async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Bytes) -> ApiResult {
+/// A slow request is kept alive by `keepalive::respond`; a quick one, and every
+/// refusal before the provider is called, answers with its own status.
+async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Bytes) -> Response {
+    match start_inference(&gateway, &headers, &body).await {
+        Ok(job) => keepalive::respond(job, gateway.keepalive).await,
+        Err(refusal) => refusal.into_response(),
+    }
+}
+
+/// Everything up to the provider call: sign-in, parsing, the hold. A refusal here
+/// is the answer. Otherwise the provider call and its settlement are started on
+/// their own task and returned.
+async fn start_inference(
+    gateway: &Gateway,
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> Result<tokio::task::JoinHandle<ApiResult>, (StatusCode, Json<Value>)> {
+    let started = tokio::time::Instant::now();
     if !gateway.enabled {
         return Err(unavailable());
     }
     let upstream = gateway.upstream.as_ref().ok_or_else(unavailable)?;
     let (tenant, agent) = authenticate(
-        &gateway,
-        &headers,
+        gateway,
+        headers,
         "/api/credits-gateway/managed-inference",
-        &body,
+        body,
     )
     .await?;
-    let request: ManagedRequest = serde_json::from_slice(&body).map_err(|error| {
+    let request: ManagedRequest = serde_json::from_slice(body).map_err(|error| {
         tracing::warn!(
             check = "request_parse",
             category = ?error.classify(),
@@ -328,7 +353,20 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
             "Unsupported Colony Agent request or context too large.",
         )
     })?;
-    let digest = hex::encode(Sha256::digest(&body));
+    let digest = hex::encode(Sha256::digest(body));
+    // A refusal at the door ends the request, so it is logged like any other end.
+    let refused = |outcome: Outcome, response: (StatusCode, Json<Value>)| {
+        outcome::log(Finished {
+            outcome,
+            status: response.0.as_u16(),
+            request_id: request.request_id,
+            primary_model: &upstream.model,
+            answered_by: None,
+            elapsed: started.elapsed(),
+            streamed: false,
+        });
+        response
+    };
     let account_id = match gateway
         .relay
         .db
@@ -343,38 +381,50 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
             &gateway.policy,
         )
         .await
-        .map_err(database_error)?
+        .map_err(|error| refused(Outcome::DatabaseError, database_error(error)))?
     {
         Admission::New { account_id } => account_id,
         Admission::Insufficient => {
-            return Err(api_error(
-                StatusCode::PAYMENT_REQUIRED,
-                "Out of credits. Top up to keep your Colony Agent working.",
-            ))
-        }
-        Admission::Busy => {
-            return Err(api_error(
-                StatusCode::TOO_MANY_REQUESTS,
-                "Your Colony Agents are busy. Try again shortly.",
-            ))
-        }
-        Admission::DailyLimit => {
-            return Err((
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(
-                    json!({"error":"Colony AI has reached its daily limit. Try again tomorrow.","code":"daily_limit"}),
+            return Err(refused(
+                Outcome::AdmissionInsufficient,
+                api_error(
+                    StatusCode::PAYMENT_REQUIRED,
+                    "Out of credits. Top up to keep your Colony Agent working.",
                 ),
             ))
         }
-        Admission::Pending => return Err(recovering()),
+        Admission::Busy => {
+            return Err(refused(
+                Outcome::AdmissionBusy,
+                api_error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Your Colony Agents are busy. Try again shortly.",
+                ),
+            ))
+        }
+        Admission::DailyLimit => {
+            return Err(refused(
+                Outcome::AdmissionDailyLimit,
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(
+                        json!({"error":"Colony AI has reached its daily limit. Try again tomorrow.","code":"daily_limit"}),
+                    ),
+                ),
+            ))
+        }
+        Admission::Pending => return Err(refused(Outcome::AdmissionPending, recovering())),
         Admission::Completed {
             charged,
             provisional,
         } => {
-            return Err((
-                StatusCode::CONFLICT,
-                Json(
-                    json!({"error":"already_completed","message":"This request was already charged. Start a new conversation turn.","chargedNanousd":charged.to_string(),"provisional":provisional}),
+            return Err(refused(
+                Outcome::AdmissionCompleted,
+                (
+                    StatusCode::CONFLICT,
+                    Json(
+                        json!({"error":"already_completed","message":"This request was already charged. Start a new conversation turn.","chargedNanousd":charged.to_string(),"provisional":provisional}),
+                    ),
                 ),
             ))
         }
@@ -387,42 +437,104 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     // cannot drop the work halfway and strand the hold: it would otherwise sit
     // pending for the 15 minute recovery window and then settle at the reserved
     // maximum. The handler only waits for the task to answer.
-    let job = tokio::spawn(complete_and_settle(
+    Ok(tokio::spawn(complete_and_settle(
         gateway.clone(),
         upstream.clone(),
         request.request_id,
         upstream_body,
         reserve,
-    ));
-    job.await.unwrap_or_else(|_| Err(recovering()))
+        started,
+    )))
 }
 
-/// One admitted request, from the provider call to the settlement. The only
-/// retry is a provider 429 inside `complete`: the provider declines before it
-/// generates, so it costs nothing and cannot bill twice. A failure that is not
-/// a clear refusal leaves the committed hold to the durable worker, which also
-/// covers the relay itself going away mid-request.
+/// Why a request that was admitted did not end in an answer: the path, for the
+/// log, and the response the client is given.
+struct Failure {
+    outcome: Outcome,
+    response: (StatusCode, Json<Value>),
+}
+
+fn failed(outcome: Outcome, response: (StatusCode, Json<Value>)) -> Failure {
+    Failure { outcome, response }
+}
+
+fn database_failure(error: buzz_db::DbError) -> Failure {
+    failed(Outcome::DatabaseError, database_error(error))
+}
+
+/// One admitted request, from the provider call to the settlement, and the one
+/// log line that says how it ended. The only retries are inside `complete`: a
+/// provider 429, which the provider declines before it generates so it costs
+/// nothing and cannot bill twice, and a move to the next model of the chain when
+/// one is gone or limited. The charge and the stored usage name the model that
+/// answered. A failure that is not a clear refusal leaves the committed hold to
+/// the durable worker, which also covers the relay itself going away mid-request.
 async fn complete_and_settle(
     gateway: Gateway,
     upstream: Arc<Upstream>,
     request_id: Uuid,
     upstream_body: Value,
     reserve: i64,
+    started: tokio::time::Instant,
 ) -> ApiResult {
-    let bytes = match upstream.complete(&upstream_body).await {
-        Ok(bytes) => bytes,
+    let result = settle_request(&gateway, &upstream, request_id, upstream_body, reserve).await;
+    let elapsed = started.elapsed();
+    let streamed = elapsed >= gateway.keepalive.after;
+    match result {
+        Ok((response, answered_by)) => {
+            outcome::log(Finished {
+                outcome: Outcome::Ok,
+                status: 200,
+                request_id,
+                primary_model: &upstream.model,
+                answered_by: Some(&answered_by),
+                elapsed,
+                streamed,
+            });
+            Ok(response)
+        }
+        Err(failure) => {
+            outcome::log(Finished {
+                outcome: failure.outcome,
+                status: failure.response.0.as_u16(),
+                request_id,
+                primary_model: &upstream.model,
+                answered_by: None,
+                elapsed,
+                streamed,
+            });
+            Err(failure.response)
+        }
+    }
+}
+
+/// The provider call and the settlement. Returns the response and the model
+/// that answered.
+async fn settle_request(
+    gateway: &Gateway,
+    upstream: &Upstream,
+    request_id: Uuid,
+    upstream_body: Value,
+    reserve: i64,
+) -> Result<(Json<Value>, String), Failure> {
+    let answer = match upstream.complete(&upstream_body).await {
+        Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
             gateway
                 .relay
                 .db
                 .reject_credit_ai_request(request_id)
                 .await
-                .map_err(database_error)?;
-            return Err(unavailable());
+                .map_err(database_failure)?;
+            return Err(failed(Outcome::UpstreamRejected, unavailable()));
         }
-        Err(CompletionFailure::Ambiguous) => return Err(recovering()),
+        Err(CompletionFailure::Ambiguous) => {
+            return Err(failed(Outcome::UpstreamUnclear, recovering()))
+        }
     };
-    let observed = upstream.observe(&bytes).map_err(|_| recovering())?;
+    let observed = upstream
+        .observe(&answer)
+        .map_err(|_| failed(Outcome::AnswerUnreadable, recovering()))?;
     // Store only billing evidence, never prompts or completion content.
     gateway
         .relay
@@ -434,27 +546,31 @@ async fn complete_and_settle(
             &billing_usage(&observed.usage),
         )
         .await
-        .map_err(database_error)?;
+        .map_err(database_failure)?;
     let charged = observed
         .charged
         .filter(|cost| *cost <= reserve)
-        .ok_or_else(recovering)?;
+        .ok_or_else(|| failed(Outcome::CostUnusable, recovering()))?;
     gateway
         .relay
         .db
         .settle_credit_ai_request(request_id, charged, false)
         .await
-        .map_err(database_error)?;
+        .map_err(database_failure)?;
     if !observed.response["choices"].is_array() || observed.response.get("error").is_some() {
-        return Err(recovering());
+        return Err(failed(Outcome::ReplyRefused, recovering()));
     }
+    let answered_by = observed.response["model"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
     let mut response = observed.response;
     response["id"] = json!(format!("colony-{request_id}"));
-    response["choices"] =
-        super::credits_gateway_policy::choices(&response["choices"]).map_err(|_| recovering())?;
+    response["choices"] = super::credits_gateway_policy::choices(&response["choices"])
+        .map_err(|_| failed(Outcome::ReplyRefused, recovering()))?;
     response["usage"] = billing_usage(&response["usage"]);
     response["chargedNanousd"] = json!(charged.to_string());
-    Ok(Json(response))
+    Ok((Json(response), answered_by))
 }
 
 fn billing_usage(usage: &Value) -> Value {

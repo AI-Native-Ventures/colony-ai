@@ -54,6 +54,22 @@ async fn fixture_in(
     direct: bool,
     closed_relay: bool,
 ) -> Fixture {
+    fixture_with(response, upstream_status, direct, closed_relay, false).await
+}
+
+/// The gateway with a chain of two free models, `free/a` then `free/b`, which
+/// OpenRouter does not pin to one provider like the default model.
+async fn fixture_chain(response: Value) -> Fixture {
+    fixture_with(response, StatusCode::OK, false, false, true).await
+}
+
+async fn fixture_with(
+    response: Value,
+    upstream_status: StatusCode,
+    direct: bool,
+    closed_relay: bool,
+    chain: bool,
+) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -77,7 +93,14 @@ async fn fixture_in(
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
-                    if direct {
+                    if chain {
+                        assert!(["free/a", "free/b"].contains(&body["model"].as_str().unwrap()));
+                        assert_eq!(body["provider"]["max_price"]["request"], 0);
+                        assert!(body["provider"].get("only").is_none());
+                        assert!(body["user"]
+                            .as_str()
+                            .is_some_and(|user| user.starts_with("colony_") && user.len() == 71));
+                    } else if direct {
                         assert!(body.get("provider").is_none());
                         assert!(body.get("user").is_none());
                         assert_eq!(body["model"], "direct-test-model");
@@ -215,7 +238,9 @@ async fn fixture_in(
     );
     let gateway = Gateway {
         relay: Arc::new(state),
-        upstream: Some(Arc::new(if direct {
+        upstream: Some(Arc::new(if chain {
+            Upstream::fake_chain(origin, true, &[("free/a", None), ("free/b", None)])
+        } else if direct {
             Upstream::fake_direct(
                 origin,
                 super::super::credits_gateway_metering::TokenPrices {
@@ -228,6 +253,7 @@ async fn fixture_in(
         })),
         enabled: true,
         policy: Arc::new(GatewayPolicy::default()),
+        keepalive: Keepalive::PRODUCTION,
     };
     Fixture {
         gateway,
@@ -1289,4 +1315,270 @@ async fn closed_relay_still_refuses_spending_from_a_host_the_owner_has_not_joine
     // Inside the owner's own business the same spending works.
     let (status, value) = call(&f, &payload, "member-spend").await;
     assert_eq!(status, StatusCode::OK, "{value}");
+}
+
+/// GATE-311: the free model was rate limited and the judge's account fell back
+/// to "Connect your AI". With a chain the next free model answers in the same
+/// request, and the stored usage and the charge name the model that answered.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_rate_limited_free_model_hands_over_and_the_metering_names_the_model_that_answered() {
+    let free_reply = json!({"id":format!("gen-{}",Uuid::new_v4()),"choices":[{"message":{"role":"assistant","content":"Hello"},"finish_reason":"stop"}],"usage":{"cost":0,"total_tokens":10}});
+    let f = fixture_chain(free_reply).await;
+    f.script
+        .lock()
+        .unwrap()
+        .push_back(StatusCode::TOO_MANY_REQUESTS);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "free-handover").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/b");
+    assert_eq!(value["chargedNanousd"], "0");
+    // The limited model once, with no wait and no retry of it, then the next.
+    assert_eq!(f.calls.load(Ordering::SeqCst), 2);
+    let sent = f.sent.lock().unwrap().clone();
+    assert_eq!(sent[0]["model"], "free/a");
+    assert_eq!(sent[1]["model"], "free/b");
+    let (model, charged): (String, i64) = sqlx::query_as(
+        "SELECT usage->>'model', charged_nanousd FROM account_ai_requests WHERE id=$1",
+    )
+    .bind(request)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(model, "free/b");
+    assert_eq!(charged, 0);
+    // A free model costs the customer nothing.
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+}
+
+#[derive(Clone, Default)]
+struct LogBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for LogBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Route logs into a buffer until the guard drops. The runtime of a test is
+/// single threaded, so the request task logs on this thread too.
+fn capture_logs() -> (LogBuffer, tracing::subscriber::DefaultGuard) {
+    let logs = LogBuffer::default();
+    let sink = logs.clone();
+    let guard = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_writer(move || sink.clone())
+            .with_ansi(false)
+            .finish(),
+    );
+    (logs, guard)
+}
+
+fn finished_lines(logs: &LogBuffer) -> Vec<String> {
+    String::from_utf8_lossy(&logs.0.lock().unwrap())
+        .lines()
+        .filter(|line| line.contains("Colony gateway request finished"))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A field is quoted or not depending on the formatter.
+fn has(line: &str, field: &str, value: &str) -> bool {
+    line.contains(&format!("{field}=\"{value}\"")) || line.contains(&format!("{field}={value}"))
+}
+
+/// GATE-311-R2: a first hello on a slow free model sat silent for a minute, the
+/// proxy in front of the relay closed the idle connection, and the managed
+/// client reported "Usage is being recovered automatically" while the request
+/// carried on unseen. The relay now sends bytes while it waits, and the answer
+/// still arrives as the same JSON, charged once.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_slow_provider_gets_bytes_before_an_idle_limit_and_the_customer_is_charged_once() {
+    use futures_util::StreamExt;
+    let mut f = fixture(upstream_response()).await;
+    f.gateway.keepalive = Keepalive {
+        after: Duration::from_millis(100),
+        every: Duration::from_millis(100),
+    };
+    f.delay_ms.store(900, Ordering::SeqCst);
+    let request = Uuid::new_v4();
+    let payload = body(&f, request);
+    let started = std::time::Instant::now();
+    let response = routes(f.gateway.clone())
+        .oneshot(signed(&f, &payload, "slow-provider"))
+        .await
+        .unwrap();
+    // The headers are out at about `after`, long before the provider answers.
+    assert!(
+        started.elapsed() < Duration::from_millis(700),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut frames = response.into_body().into_data_stream();
+    let first = frames.next().await.unwrap().unwrap();
+    assert_eq!(
+        &first[..],
+        b" ",
+        "a byte on the wire while the provider thinks"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(700),
+        "{:?}",
+        started.elapsed()
+    );
+    let mut bytes = first.to_vec();
+    while let Some(frame) = frames.next().await {
+        bytes.extend_from_slice(&frame.unwrap());
+    }
+    // The managed client parses the whole body with `serde_json::from_slice`.
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(value["choices"].is_array(), "{value}");
+    assert_eq!(value["chargedNanousd"], "12000000");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        988_000_000
+    );
+    // The same request is already charged: no second charge.
+    assert_eq!(
+        call(&f, &payload, "slow-provider-again").await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_refusal_after_the_stream_started_still_releases_the_hold_and_logs_the_real_status() {
+    let (logs, _guard) = capture_logs();
+    let mut f = fixture(upstream_response()).await;
+    f.gateway.keepalive = Keepalive {
+        after: Duration::from_millis(100),
+        every: Duration::from_millis(100),
+    };
+    f.delay_ms.store(600, Ordering::SeqCst);
+    f.script.lock().unwrap().push_back(StatusCode::NOT_FOUND);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "slow-refusal").await;
+    // The status was committed when the stream began; the body says what failed.
+    assert_eq!(status, StatusCode::OK);
+    assert!(value["error"].is_string(), "{value}");
+    assert!(value.get("choices").is_none(), "{value}");
+    let (state, charged): (String, i64) =
+        sqlx::query_as("SELECT status, charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!((state.as_str(), charged), ("settled", 0));
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        has(&lines[0], "outcome", "upstream_rejected"),
+        "{}",
+        lines[0]
+    );
+    assert!(has(&lines[0], "status", "503"), "{}", lines[0]);
+    assert!(has(&lines[0], "streamed", "true"), "{}", lines[0]);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn every_request_ends_in_one_log_line_with_its_path_and_no_content() {
+    let (logs, _guard) = capture_logs();
+    let ok = fixture(upstream_response()).await;
+    let payload = body(&ok, Uuid::new_v4());
+    assert_eq!(call(&ok, &payload, "logged-ok").await.0, StatusCode::OK);
+    // The same request again is refused at the door, and that is logged too.
+    assert_eq!(
+        call(&ok, &payload, "logged-again").await.0,
+        StatusCode::CONFLICT
+    );
+    // A provider that refuses is a different path.
+    let refused = fixture(upstream_response()).await;
+    refused
+        .script
+        .lock()
+        .unwrap()
+        .push_back(StatusCode::NOT_FOUND);
+    assert_eq!(
+        call(&refused, &body(&refused, Uuid::new_v4()), "logged-refused")
+            .await
+            .0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    // And one the provider fails without a clear answer.
+    let unclear = fixture(upstream_response()).await;
+    unclear
+        .script
+        .lock()
+        .unwrap()
+        .push_back(StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        call(&unclear, &body(&unclear, Uuid::new_v4()), "logged-unclear")
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 4, "{lines:?}");
+    assert!(has(&lines[0], "outcome", "ok"), "{}", lines[0]);
+    assert!(has(&lines[0], "status", "200"), "{}", lines[0]);
+    assert!(has(&lines[0], "primary_model", "openai/gpt-4.1-mini"));
+    assert!(has(&lines[0], "answered_by", "openai/gpt-4.1-mini"));
+    assert!(has(&lines[0], "streamed", "false"), "{}", lines[0]);
+    assert!(lines[0].contains("elapsed_ms="), "{}", lines[0]);
+    assert!(
+        has(&lines[1], "outcome", "admission_completed"),
+        "{}",
+        lines[1]
+    );
+    assert!(has(&lines[1], "status", "409"), "{}", lines[1]);
+    assert!(
+        has(&lines[2], "outcome", "upstream_rejected"),
+        "{}",
+        lines[2]
+    );
+    assert!(has(&lines[2], "status", "503"), "{}", lines[2]);
+    assert!(
+        has(&lines[3], "outcome", "upstream_unclear"),
+        "{}",
+        lines[3]
+    );
+    assert!(has(&lines[3], "status", "409"), "{}", lines[3]);
+    // Never the prompt, a reply, a key or a bearer.
+    let all = String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned();
+    for secret in ["Hello Colony", "synthetic-test-key", "Bearer", "scripted"] {
+        assert!(!all.contains(secret), "{secret} leaked into the log");
+    }
 }

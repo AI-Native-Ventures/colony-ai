@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { campaignStatusLabel } from "./CampaignHelpers";
+import { DiscoveryBusinessCatalogue } from "./DiscoveryBusinessCatalogue";
 import {
   DiscoveryCampaignDialog,
   DiscoveryCampaignListDialog,
@@ -25,8 +26,8 @@ import {
 } from "./discoveryProvider";
 import {
   countPeopleRoles,
-  countVerticals,
   industryTaxonomy,
+  loadVerticalTags,
   peopleTaxonomy,
   searchCatalogue,
 } from "./taxonomy";
@@ -39,21 +40,6 @@ type Category =
   | (typeof peopleTaxonomy)[number];
 
 /** The twelve industries the board opens with; the rest sit behind "Show all". */
-const FEATURED_INDUSTRY_IDS = [
-  "fashion-apparel",
-  "home-living",
-  "healthcare",
-  "legal",
-  "financial-services",
-  "real-estate",
-  "technology",
-  "construction",
-  "education",
-  "hospitality",
-  "food-beverage",
-  "beauty-wellness",
-] as const;
-
 const FEATURED_FALLBACK_COUNT = 12;
 
 function categoryLabel(category: Category): string {
@@ -112,6 +98,17 @@ export function DiscoveryScreen() {
   const [campaignList, setCampaignList] = React.useState<DiscoveryCampaign[]>(
     [],
   );
+  // The tag layer loads once when Discovery opens; the open search re-runs when it lands.
+  const [, setTagsLoaded] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    void loadVerticalTags().then((loaded) => {
+      if (live && loaded) setTagsLoaded(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const categories: readonly Category[] =
     mode === "businesses" ? industryTaxonomy : peopleTaxonomy;
   const selectedCategory = industryId
@@ -119,15 +116,19 @@ export function DiscoveryScreen() {
     : null;
   const searching = query.trim().length > 0;
   const compact = selectedCategory !== null && !searching;
-  const rows = searchCatalogue(mode, query, searching ? null : industryId);
-  const featured = React.useMemo(() => {
-    if (mode !== "businesses")
-      return categories.slice(0, FEATURED_FALLBACK_COUNT);
-    return FEATURED_INDUSTRY_IDS.flatMap((id) => {
-      const match = categories.find((category) => category.id === id);
-      return match ? [match] : [];
-    });
-  }, [categories, mode]);
+  const rows = searchCatalogue(
+    mode,
+    query,
+    mode === "businesses"
+      ? (selectedCategory?.id ?? null)
+      : searching
+        ? null
+        : industryId,
+  );
+  const featured = React.useMemo(
+    () => categories.slice(0, FEATURED_FALLBACK_COUNT),
+    [categories],
+  );
   const visibleCategories = showAll ? categories : featured;
   const simulatedCosts = standInInstalled();
   const dialogRunner = simulatedCosts
@@ -240,14 +241,21 @@ export function DiscoveryScreen() {
               <input
                 aria-label={
                   mode === "businesses"
-                    ? "Search industries and verticals"
+                    ? selectedCategory
+                      ? "Search business types in " +
+                        categoryLabel(selectedCategory)
+                      : "Search industries and business types"
                     : "Search fields and roles"
                 }
                 autoComplete="off"
                 onChange={(event) => setQuery(event.currentTarget.value)}
                 placeholder={
                   mode === "businesses"
-                    ? "Try home decor, accounting, healthcare…"
+                    ? selectedCategory
+                      ? "Find a business type in " +
+                        categoryLabel(selectedCategory) +
+                        "…"
+                      : "Try home decor, accounting, healthcare…"
                     : "Try designers, sales managers, accountants…"
                 }
                 value={query}
@@ -281,13 +289,24 @@ export function DiscoveryScreen() {
           ) : null}
 
           <section aria-label="Discovery catalogue" className="c3d-section">
-            {searching ? (
+            {mode === "businesses" ? (
+              <DiscoveryBusinessCatalogue
+                canFind={Boolean(provider)}
+                category={
+                  selectedCategory && "verticals" in selectedCategory
+                    ? selectedCategory
+                    : null
+                }
+                onBack={() => setIndustryId(null)}
+                onFind={findProspects}
+                onSelectCategory={setIndustryId}
+                query={query}
+                rows={rows}
+              />
+            ) : searching ? (
               <>
                 <div className="c3d-section-head">
-                  <h2 className="c3d-section-title">
-                    {rows.length}{" "}
-                    {mode === "businesses" ? "verticals" : "roles"}
-                  </h2>
+                  <h2 className="c3d-section-title">{rows.length} roles</h2>
                   <button
                     className="c3d-text-link"
                     onClick={() => setQuery("")}
@@ -316,11 +335,10 @@ export function DiscoveryScreen() {
                     type="button"
                   >
                     <ArrowLeftGlyph />
-                    All {mode === "businesses" ? "industries" : "fields"}
+                    All fields
                   </button>
                   <span className="c3d-section-meta">
-                    {categoryCount(selectedCategory)}{" "}
-                    {mode === "businesses" ? "verticals" : "roles"}
+                    {categoryCount(selectedCategory)} roles
                   </span>
                 </div>
                 <div className="c3d-category-head">
@@ -351,15 +369,10 @@ export function DiscoveryScreen() {
               <>
                 <div className="c3d-section-head">
                   <h2 className="c3d-section-title" id="browse-title">
-                    Browse{" "}
-                    {mode === "businesses"
-                      ? "industries"
-                      : "professional fields"}
+                    Browse professional fields
                   </h2>
                   <span className="c3d-section-meta">
-                    {mode === "businesses"
-                      ? `${industryTaxonomy.length} industries · ${countVerticals()} verticals`
-                      : `${peopleTaxonomy.length} fields · ${countPeopleRoles()} roles`}
+                    {peopleTaxonomy.length} fields · {countPeopleRoles()} roles
                   </span>
                 </div>
                 <div className="c3d-industry-grid">
@@ -378,10 +391,7 @@ export function DiscoveryScreen() {
                       </span>
                       <span className="c3d-industry-copy">
                         <strong>{categoryLabel(category)}</strong>
-                        <span>
-                          {categoryCount(category)}{" "}
-                          {mode === "businesses" ? "verticals" : "roles"}
-                        </span>
+                        <span>{categoryCount(category)} roles</span>
                       </span>
                       <ChevronRightGlyph />
                     </button>
@@ -393,8 +403,7 @@ export function DiscoveryScreen() {
                     onClick={() => setShowAll(true)}
                     type="button"
                   >
-                    Show all {categories.length}{" "}
-                    {mode === "businesses" ? "industries" : "fields"}
+                    Show all {categories.length} fields
                   </button>
                 )}
               </>

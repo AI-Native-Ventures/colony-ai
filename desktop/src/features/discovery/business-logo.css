@@ -1,0 +1,18 @@
+.business-logo-mark {
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+
+.business-logo-mark > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.business-logo-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}

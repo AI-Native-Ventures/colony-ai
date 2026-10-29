@@ -569,11 +569,10 @@ function VirtualizedTimelineRows({
         activeDividerIndex = index;
       }
       const candidateDivider = dayDividerItems[activeDividerIndex];
-      // Retain the previous date while the next in-flow divider is still
-      // above the sticky slot. This avoids changing the label before the
-      // moving chip reaches its handoff point.
+      // Do not show the candidate date in the sticky slot before its in-flow
+      // divider reaches that slot. For the first date there is no previous
+      // label, so leave the sticky slot empty until the source arrives.
       if (
-        activeDividerIndex > 0 &&
         candidateDivider &&
         (renderedDividerPillTop(candidateDivider) ?? -Infinity) > pinnedTop
       ) {

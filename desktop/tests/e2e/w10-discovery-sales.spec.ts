@@ -1,12 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
 const REFERENCE_WORKSPACE = { referenceWorkspace: true };
 
 async function openHomeDecorCampaignForm(page: Page) {
   await page
-    .getByRole("textbox", { name: "Search industries and verticals" })
+    .getByRole("textbox", {
+      name: "Search industries and business types",
+    })
     .fill("home decor");
   await page.getByRole("button", { name: "Find prospects" }).first().click();
   const dialog = page.getByRole("dialog");
@@ -31,6 +34,9 @@ async function startCampaign(page: Page, location: string, target = "50") {
 
 test.describe("W10 discovery and sales", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
+  test.beforeEach(async ({ page }) => {
+    await installDiscoveryImageMocks(page);
+  });
 
   test("discovery search setup validates budget and supports pause, resume, cancel, and empty results", async ({
     page,
@@ -43,7 +49,7 @@ test.describe("W10 discovery and sales", () => {
       discovery.getByRole("heading", { name: "Find your next customer." }),
     ).toBeVisible();
     await expect(
-      discovery.getByText("34 industries · 531 verticals"),
+      discovery.getByText("51 industries · 869 business types"),
     ).toBeVisible();
     await discovery.getByRole("button", { name: "People" }).click();
     await expect(
@@ -95,35 +101,52 @@ test.describe("W10 discovery and sales", () => {
     ).toBeVisible();
   });
 
-  test("industry catalogue opens twelve, expands to all, and an industry lists its verticals", async ({
+  test("industry catalogue shows all covers and an industry lists its business types", async ({
     page,
   }) => {
     await installMockBridge(page, REFERENCE_WORKSPACE);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
 
     const discovery = page.getByTestId("w10-discovery-page");
-    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(12);
-    await discovery
-      .getByRole("button", { name: "Show all 34 industries" })
-      .click();
-    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(34);
+    await expect(discovery.locator(".d4-industry-card")).toHaveCount(51);
+    await expect(
+      discovery.locator(".d4-industry-card-image img").first(),
+    ).toHaveAttribute("loading", "lazy");
 
     await discovery.getByRole("button", { name: /Beauty & Wellness/ }).click();
     await expect(
       discovery.getByRole("heading", { name: "Beauty & Wellness" }),
     ).toBeVisible();
-    await expect(discovery.getByText("13 verticals")).toBeVisible();
+    await expect(
+      discovery.getByText("21 business types").first(),
+    ).toBeVisible();
     await expect(
       page.getByTestId("discovery-category-breadcrumb"),
     ).toContainText("Business/Discovery/Beauty & Wellness");
     await expect(
       discovery.getByRole("button", { name: "Find prospects" }),
-    ).toHaveCount(13);
+    ).toHaveCount(21);
 
     await discovery.getByRole("button", { name: "All industries" }).click();
     await expect(
       discovery.getByRole("heading", { name: "Browse industries" }),
     ).toBeVisible();
+  });
+
+  test("typing guest house finds guesthouses, and B&B finds bed and breakfasts", async ({
+    page,
+  }) => {
+    await installMockBridge(page, REFERENCE_WORKSPACE);
+    await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+
+    const discovery = page.getByTestId("w10-discovery-page");
+    const search = discovery.getByRole("textbox", {
+      name: "Search industries and business types",
+    });
+    await search.fill("guest house");
+    await expect(discovery.getByText("Guesthouses and inns")).toBeVisible();
+    await search.fill("B&B");
+    await expect(discovery.getByText("Bed and breakfasts")).toBeVisible();
   });
 
   test("normal runtime shows no simulated results: a search with no server fails in plain words and creates no campaign", async ({

@@ -15,6 +15,7 @@ import type {
   DiscoveryPlace,
   DiscoverySearchResponse,
 } from "./discoverySearch";
+import { resolveVerticalId } from "./taxonomy";
 
 export const MAX_STORED_CAMPAIGNS = 50;
 const MAX_TOP_FITS = 5;
@@ -90,6 +91,11 @@ const STATUSES: ReadonlySet<string> = new Set<DiscoveryRunStatus>([
   "failed",
   "complete",
 ]);
+
+/** A stored vertical id under today's catalogue; an unknown id stays as saved. */
+function currentVerticalId(id: string): string {
+  return resolveVerticalId(id) ?? id;
+}
 
 function str(value: unknown): string | null {
   return typeof value === "string" ? value : null;
@@ -202,7 +208,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     audience: audience as DiscoveryAudience,
     industryId: str(value.industryId) ?? "",
     industryName: str(value.industryName) ?? "",
-    verticalId: str(value.verticalId) ?? "",
+    verticalId: currentVerticalId(str(value.verticalId) ?? ""),
     verticalName: str(value.verticalName) ?? "",
     location,
     target,

@@ -62,11 +62,11 @@ test("proposal conversion ids stay fixed for retries of the same version", async
 });
 
 test("frozen discovery taxonomy counts and filters match the handoff", () => {
-  assert.equal(countVerticals(), 531);
+  assert.equal(countVerticals(), 869);
   assert.equal(countPeopleRoles(), 96);
   assert.equal(
     searchCatalogue("businesses", "home decor", null).some(
-      (row) => row.id === "home-decor-gift-shops",
+      (row) => row.id === "home-furnishings-retailers",
     ),
     true,
   );

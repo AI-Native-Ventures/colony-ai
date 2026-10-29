@@ -11,6 +11,12 @@ export type BrowserTabBounds = {
   height: number;
 };
 
+/** Display name attached to an agent cursor in the native browser overlay. */
+export type BrowserAgentCursorLabel = {
+  agentId: string;
+  name: string;
+};
+
 export type BrowserTabState = {
   id: string;
   businessId: string;
@@ -122,6 +128,11 @@ export type BrowserHostApi = {
     tabId: string,
     controlOwner: BrowserControlOwner,
   ): Promise<BrowserTabState>;
+  /** Set main-process-owned names for agent cursors on this tab. */
+  setAgentCursorLabels(
+    tabId: string,
+    labels: readonly BrowserAgentCursorLabel[],
+  ): Promise<{ updated: boolean }>;
   /** Keep a tab to the person (true) or share it with AI employees again. */
   setPrivate(tabId: string, value: boolean): Promise<BrowserTabState>;
   /** Move keyboard focus into the page (keyboard route into the native view). */
@@ -184,6 +195,10 @@ export const browserHost = {
   stop: (tabId: string) => requireBrowserHost().stop(tabId),
   setControlOwner: (tabId: string, controlOwner: BrowserControlOwner) =>
     requireBrowserHost().setControlOwner(tabId, controlOwner),
+  setAgentCursorLabels: (
+    tabId: string,
+    labels: readonly BrowserAgentCursorLabel[],
+  ) => requireBrowserHost().setAgentCursorLabels(tabId, labels),
   setPrivate: (tabId: string, value: boolean) =>
     requireBrowserHost().setPrivate(tabId, value),
   focus: (tabId: string) => requireBrowserHost().focus(tabId),

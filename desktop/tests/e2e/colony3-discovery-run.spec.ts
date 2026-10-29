@@ -2,6 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
 import { installMockBridge } from "../helpers/bridge";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+
+test.beforeEach(async ({ page }) => {
+  await installDiscoveryImageMocks(page);
+});
 
 /**
  * The real discovery runner (not the simulated stand-in): Find prospects
@@ -198,7 +203,7 @@ test.describe("Real discovery run", () => {
       country: "South Africa",
       limit: 20,
     });
-    expect(String(calls[0]?.query)).toMatch(/decor/i);
+    expect(String(calls[0]?.query)).toMatch(/home furnishings/i);
 
     // Pick up where you left off: the run is on the Discovery page.
     await goTo(page, "/discovery");

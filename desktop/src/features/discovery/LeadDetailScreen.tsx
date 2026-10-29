@@ -8,6 +8,7 @@ import {
 } from "./businessRecordMutations";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { CloseOpportunityDialog } from "./LeadDialogs";
+import { BusinessLogoMark } from "./BusinessLogoMark";
 import {
   ArrowLeftGlyph,
   campaignFor,
@@ -21,7 +22,6 @@ import {
   displayWebsite,
   isIllustrativeEvidence,
   labelForStage,
-  leadInitial,
   toneForStage,
   type LeadContext,
   type ProspectRow,
@@ -129,9 +129,11 @@ export function LeadDetailScreen({
       <div className="c3l-wrap c3l-wrap-detail">
         <div className="c3l-head">
           <div className="c3l-head-identity">
-            <span aria-hidden="true" className="c3l-mark c3l-mark-large">
-              {leadInitial(name)}
-            </span>
+            <BusinessLogoMark
+              className="c3l-mark c3l-mark-large"
+              name={name}
+              website={person.website}
+            />
             <div className="c3l-head-text">
               <h1 className="c3l-title">{name}</h1>
               <span className="c3l-subtitle">
