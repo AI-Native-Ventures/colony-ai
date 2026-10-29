@@ -526,6 +526,8 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         k if buzz_core::kind::is_business_record_kind(k) => Ok(Scope::MessagesWrite),
         // Company records (goals and asks): member commands; the broker owns authority.
         k if buzz_core::kind::COMPANY_RECORD_KINDS.contains(&k) => Ok(Scope::MessagesWrite),
+        // WhatsApp outreach commands: the handler owns role and Outreach membership checks.
+        k if buzz_core::kind::is_whatsapp_command_kind(k) => Ok(Scope::MessagesWrite),
         // Community moderation commands are direct, mod-authz-gated writes.
         // Scope only proves the transport can submit message writes; the
         // command handler owns role/capability authorization.

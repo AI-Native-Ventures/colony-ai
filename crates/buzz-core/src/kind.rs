@@ -795,6 +795,38 @@ pub const KIND_DUTY_ACTION: u32 = 47044;
 /// Member lesson mutation, brokered and community-wide.
 pub const KIND_LESSON_ACTION: u32 = 47045;
 
+// WhatsApp outreach (official Cloud API). Member-authored commands handled by
+// `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
+// of the Graph send API. Events are stored in the company's private Outreach
+// channel whatever `h` tag they carry. Contract: docs/whatsapp-outreach.md.
+/// Agent-prepared batch of template sends. Pending until an owner or admin decides.
+pub const KIND_WHATSAPP_BATCH: u32 = 47046;
+/// Owner or admin decision on one pending batch (approve, reject, edit or drop rows).
+pub const KIND_WHATSAPP_BATCH_DECISION: u32 = 47047;
+/// One send to one contact: free text inside the 24 hour window, otherwise a template.
+pub const KIND_WHATSAPP_SEND_REQUEST: u32 = 47048;
+/// Owner or admin outreach settings (daily cap on new chats, template sync).
+pub const KIND_WHATSAPP_SETTINGS: u32 = 47049;
+
+/// Every WhatsApp outreach command kind.
+pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
+    KIND_WHATSAPP_BATCH,
+    KIND_WHATSAPP_BATCH_DECISION,
+    KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS,
+];
+
+/// Returns `true` for member commands handled by the WhatsApp outreach broker.
+pub const fn is_whatsapp_command_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_WHATSAPP_BATCH
+            | KIND_WHATSAPP_BATCH_DECISION
+            | KIND_WHATSAPP_SEND_REQUEST
+            | KIND_WHATSAPP_SETTINGS
+    )
+}
+
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_GOAL_HEAD,
@@ -1180,6 +1212,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_WHATSAPP_BATCH,
+    KIND_WHATSAPP_BATCH_DECISION,
+    KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1267,6 +1303,10 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WHATSAPP_BATCH
+            | KIND_WHATSAPP_BATCH_DECISION
+            | KIND_WHATSAPP_SEND_REQUEST
+            | KIND_WHATSAPP_SETTINGS
     )
 }
 
