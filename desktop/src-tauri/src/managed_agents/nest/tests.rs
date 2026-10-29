@@ -608,6 +608,31 @@ fn colony_cli_skill_recorded_at_the_previous_version_is_regenerated() {
 }
 
 #[test]
+fn skill_written_before_the_document_rule_is_regenerated_with_it() {
+    assert!(
+        COLONY_CLI_SKILL_MD.contains("--doc --title"),
+        "the skill tells agents to send long writing with --doc"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".colony");
+    ensure_nest_at(&root).unwrap();
+
+    // What 3.0.12 left on disk: the skill at version 10, without the rule.
+    let skill_dir = root.join(".agents/skills/colony-cli");
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "skill without the document rule",
+    )
+    .unwrap();
+    fs::write(skill_dir.join(".skill-version"), "10\n").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    let refreshed = fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(refreshed.contains("--doc --title"), "{refreshed}");
+}
+
+#[test]
 fn fresh_nest_installs_only_the_colony_cli_skill() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join(".buzz");

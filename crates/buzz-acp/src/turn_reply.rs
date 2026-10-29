@@ -549,6 +549,59 @@ mod tests {
         assert_eq!(reply_content(&StopReason::EndTurn, &post), post);
     }
 
+    /// The GATE-312 P10 reply: the model opened a `doc` fence for the blog post
+    /// and never closed it. It used to be cut to 48 words, "Want the rest?"
+    /// appended, and shown as a code block labelled "doc".
+    fn p10_post() -> String {
+        let mut post = String::from(
+            "# 5 signs your guesthouse needs social media\nYour guesthouse has charm, clean rooms, and a great breakfast. But if the phone isn't ringing and the calendar has gaps, social media might be the missing piece. Here are five signs it's time to show up online.\n",
+        );
+        for n in 1..=5 {
+            post.push_str(&format!(
+                "\n**{n}. Sign number {n}.** {}\n",
+                vec!["word"; 50].join(" ")
+            ));
+        }
+        post
+    }
+
+    #[test]
+    fn reply_content_posts_an_unclosed_doc_fence_as_a_card() {
+        let post = p10_post();
+        for stop in [StopReason::EndTurn, StopReason::Refusal] {
+            let reply = reply_content(&stop, &format!("```doc\n{post}"));
+            assert!(reply.contains(post.trim()), "the whole post: {reply}");
+            assert!(reply.starts_with("```doc\n# 5 signs"), "{reply}");
+            assert!(reply.ends_with("\n```"), "closed: {reply}");
+            assert!(
+                !reply.contains(buzz_core::chat_limits::SHORTENED_OFFER),
+                "{reply}"
+            );
+        }
+    }
+
+    #[test]
+    fn reply_content_posts_an_eaten_fence_and_an_unfenced_post_as_a_card() {
+        let post = p10_post();
+        for text in [
+            format!("doc\n{post}"),
+            format!("Here's the post.\n\n{post}"),
+        ] {
+            let reply = reply_content(&StopReason::EndTurn, &text);
+            assert!(reply.contains(post.trim()), "{reply}");
+            assert!(reply.contains("```doc\n# 5 signs"), "{reply}");
+            assert!(reply.ends_with("\n```"), "{reply}");
+        }
+    }
+
+    #[test]
+    fn reply_content_leaves_a_short_answer_and_a_closed_card_alone() {
+        let short = "Best lead: Pecan Tree Guesthouse. Draft a WhatsApp to them?";
+        assert_eq!(reply_content(&StopReason::EndTurn, short), short);
+        let closed = format!("Here it is.\n```doc\n{}\n```", p10_post());
+        assert_eq!(reply_content(&StopReason::EndTurn, &closed), closed);
+    }
+
     /// The prompt is the first line of defence; the harness reply is the net.
     #[test]
     fn base_prompt_tells_agents_their_final_text_is_not_delivered() {

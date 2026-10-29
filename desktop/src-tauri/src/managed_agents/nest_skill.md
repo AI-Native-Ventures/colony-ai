@@ -177,6 +177,7 @@ Message content is rendered as GitHub-flavored Markdown on both desktop and mobi
 - **Inline code**: single backticks for inline monospace.
 - **Mentions**: plain `@name` , do NOT bold or italicize (formatting prevents alert delivery).
 - **Links, images, tables, blockquotes, headings**: standard GFM.
+- **Documents (blog posts, articles, emails, WhatsApp drafts, plans, long lists)**: send them as a document card, never as chat text. Chat text over 60 words is refused, and a post pasted into chat is a failure. Let Colony build the card: `printf '%s' "$POST" | colony messages send --channel <uuid> --reply-to <event-id> --doc --title "Post title" --content -` (the text is markdown on stdin; do not type a fence). Do not write a ```` ```doc ```` fence inside a double-quoted shell string: the shell deletes the backticks and the document arrives as cut-off chat. If you do write the fence yourself, give it a `# Title` first line and close it with a line of three backticks. A document card has no word limit; add one short chat line before it only if needed.
 
 ## Mem Patch Workflow
 

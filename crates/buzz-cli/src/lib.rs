@@ -510,15 +510,21 @@ colony agents archived"
 pub enum MessagesCmd {
     /// Send a message to a channel
     #[command(
-        after_help = "Examples:\n  colony messages send --channel <UUID> --content \"hello\"\n  colony messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | colony messages send --channel <UUID> --content -"
+        after_help = "Examples:\n  colony messages send --channel <UUID> --content \"hello\"\n  colony messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | colony messages send --channel <UUID> --content -\n  colony messages send --channel <UUID> --doc --title \"5 signs you need social media\" --content - < post.md"
     )]
     Send {
         /// Channel UUID (from 'colony channels list')
         #[arg(long)]
         channel: String,
-        /// Message text, supports @mentions and markdown. Use '-' to read from stdin. Agents: chat text over 60 words is refused; put an article or draft in a doc fence and code in a fence with its language.
+        /// Message text, supports @mentions and markdown. Use '-' to read from stdin. Agents: chat text over 60 words is refused; send an article, post or draft with --doc, and put code in a fence with its language.
         #[arg(long)]
         content: String,
+        /// Send --content as a document card (a blog post, article, email or draft): Colony builds the fence, so no backticks are needed. The title is --title, or the text's first `# Title` line. Not word-capped.
+        #[arg(long, default_value_t = false)]
+        doc: bool,
+        /// Title of the document card (with --doc)
+        #[arg(long, requires = "doc")]
+        title: Option<String>,
         /// Nostr event kind (default: channel default)
         #[arg(long)]
         kind: Option<u16>,
