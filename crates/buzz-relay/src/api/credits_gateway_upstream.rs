@@ -598,7 +598,7 @@ impl Upstream {
                             attempt = attempts,
                             upstream_status = 429,
                             reason,
-                            upstream_message = message.as_str(),
+                            upstream_message = if message.is_empty() { "" } else { "x" },
                             "Colony gateway upstream rate limited a request"
                         );
                         retry_after = match (retry_after, after) {
@@ -655,7 +655,6 @@ impl Upstream {
             }
         };
         let status = response.status().as_u16();
-        tried.push(format!("{model}({status})"));
         if status == 429 {
             let retry_after = response
                 .headers()
@@ -680,7 +679,7 @@ impl Upstream {
             tracing::warn!(
                 model,
                 upstream_status = status,
-                upstream_message = message.as_str(),
+                upstream_message = if message.is_empty() { "" } else { "x" },
                 "Colony gateway upstream did not accept a request"
             );
             return Err(refusal(status, &peek));
