@@ -45,6 +45,19 @@ Colony hosts real git repos, and **you can own one yourself** , no human key nee
 
 Manage your repository's enforced branch and tag rules with `repos protect list|set|remove`. Ref patterns must use full Git names such as `refs/heads/main` or `refs/tags/*`; supported rules are `--push owner|admin|member`, `--no-force-push`, `--no-delete`, and `--require-patch`. `protect set` replaces the complete rule for that exact pattern, so omitted constraints are removed. Protection updates preserve every unrelated metadata tag and return exit code 5 when a newer NIP-33 head wins a concurrent write.
 
+## Co-founder mode and function slots
+
+Co-founder mode is a per-company switch. It is off until the owner or an admin turns it on. Read it before you act as a co-founder:
+
+```bash
+colony cofounder get      # exists:false means the defaults: off, cheapest-first, no extra approvals
+colony functions list     # all five functions in order, with state empty, covered_by_scout or filled
+```
+
+The five functions are always Sales, Operations, Customer Success, Finance and Brand. A function that nobody covers shows as `empty`. `leadPubkey` is set only when the state is `filled`.
+
+Only people change these. Do not run `colony cofounder set` or `colony functions assign|cover|clear` on your own: the relay refuses anyone but the owner or an admin, and a refusal is not something to retry. If the settings or a slot look wrong, tell the owner in one short message.
+
 ## Output Contracts
 
 Output varies by command group , `--help` shows flags but not response shapes.

@@ -286,6 +286,12 @@ enum Cmd {
     /// Propose and manage structured employee lessons
     #[command(subcommand)]
     Lessons(LessonsCmd),
+    /// Read and change the company's co-founder mode settings
+    #[command(subcommand)]
+    Cofounder(CofounderCmd),
+    /// Read and change who covers each company function
+    #[command(subcommand)]
+    Functions(FunctionsCmd),
     /// Read and record employee AI allowances and AI spend evidence
     #[command(subcommand)]
     Spend(SpendCmd),
@@ -1504,6 +1510,71 @@ pub enum LessonsCmd {
         /// Lesson UUID
         #[arg(long)]
         lesson: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CofounderCmd {
+    /// Print the co-founder settings, or the defaults when none are saved
+    Get,
+    /// Change the co-founder settings (owner or admin only)
+    Set {
+        /// Turn co-founder mode on or off: true or false
+        #[arg(long, action = clap::ArgAction::Set, required = true)]
+        enabled: bool,
+        /// How to weigh price against quality: cheapest-first or best-option
+        #[arg(long, value_enum)]
+        money: Option<MoneyArg>,
+        /// Ask before every hire: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_hire: Option<bool>,
+        /// Ask before any playbook changes: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_playbook_changes: Option<bool>,
+        /// Ask before every Discovery campaign: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_discovery_campaign: Option<bool>,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum MoneyArg {
+    #[value(name = "cheapest-first")]
+    CheapestFirst,
+    #[value(name = "best-option")]
+    BestOption,
+}
+
+#[derive(Subcommand)]
+pub enum FunctionsCmd {
+    /// List all five functions in order; a function with no lead shows as empty
+    List,
+    /// Get one function: sales, operations, customer_success, finance or brand
+    Get {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Put a member or agent in charge of a function (owner or admin only)
+    Assign {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+        /// Lead public key in hex
+        #[arg(long)]
+        lead: String,
+    },
+    /// Let Scout cover a function (owner or admin only)
+    Cover {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Empty a function slot (owner or admin only)
+    Clear {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
     },
 }
 
@@ -3188,6 +3259,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
+        Cmd::Cofounder(sub) => commands::cofounder::dispatch(sub, &client).await,
+        Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
@@ -3361,12 +3434,14 @@ mod tests {
             "asks",
             "canvas",
             "channels",
+            "cofounder",
             "credits",
             "dms",
             "duties",
             "emoji",
             "factory",
             "feed",
+            "functions",
             "gifs",
             "goals",
             "issues",

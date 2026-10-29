@@ -290,384 +290,393 @@ async fn current_function_head(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    // The `postgres_tests` path puts these in the PostgreSQL CI lane, which gives
+    // each test its own database.
+    mod postgres_tests {
+        use std::time::Duration;
 
-    use tokio::sync::Mutex;
-    use uuid::Uuid;
+        use tokio::sync::Mutex;
+        use uuid::Uuid;
 
-    use super::*;
+        use super::super::*;
 
-    static FUNCTIONS_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+        static FUNCTIONS_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
-    struct Fixture {
-        state: Arc<AppState>,
-        tenant: TenantContext,
-        _serial_guard: tokio::sync::MutexGuard<'static, ()>,
-    }
+        struct Fixture {
+            state: Arc<AppState>,
+            tenant: TenantContext,
+            _serial_guard: tokio::sync::MutexGuard<'static, ()>,
+        }
 
-    async fn fixture() -> Fixture {
-        let serial_guard = FUNCTIONS_DB_TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
+        async fn fixture() -> Fixture {
+            let serial_guard = FUNCTIONS_DB_TEST_LOCK
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .await;
+            let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
+                .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
+            let pool = sqlx::PgPool::connect(&database_url)
+                .await
+                .expect("connect to the disposable test database");
+            let state = crate::state::tests::test_state_with_database_url_and_acquire_timeout(
+                &database_url,
+                Duration::from_secs(10),
+            )
             .await;
-        let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
-            .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
-        let pool = sqlx::PgPool::connect(&database_url)
-            .await
-            .expect("connect to the disposable test database");
-        let state = crate::state::tests::test_state_with_database_url_and_acquire_timeout(
-            &database_url,
-            Duration::from_secs(10),
-        )
-        .await;
-        let community_id = Uuid::new_v4();
-        let host = format!("company-functions-{}.test", community_id.simple());
-        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
-            .bind(community_id)
-            .bind(&host)
-            .execute(&pool)
-            .await
-            .expect("insert test community");
-        Fixture {
-            state,
-            tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
-            _serial_guard: serial_guard,
+            let community_id = Uuid::new_v4();
+            let host = format!("company-functions-{}.test", community_id.simple());
+            sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+                .bind(community_id)
+                .bind(&host)
+                .execute(&pool)
+                .await
+                .expect("insert test community");
+            Fixture {
+                state,
+                tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
+                _serial_guard: serial_guard,
+            }
         }
-    }
 
-    async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
-        fixture
-            .state
-            .db
-            .add_relay_member(
-                fixture.tenant.community(),
-                &keys.public_key().to_hex(),
-                role,
-                None,
-            )
-            .await
-            .expect("add relay member");
-    }
-
-    fn auth(keys: &nostr::Keys) -> IngestAuth {
-        IngestAuth::Http {
-            pubkey: keys.public_key(),
-            scopes: vec![buzz_auth::Scope::MessagesWrite],
-            auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+        async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
+            fixture
+                .state
+                .db
+                .add_relay_member(
+                    fixture.tenant.community(),
+                    &keys.public_key().to_hex(),
+                    role,
+                    None,
+                )
+                .await
+                .expect("add relay member");
         }
-    }
 
-    fn function_action(
-        function: CompanyFunction,
-        kind: FunctionActionKind,
-        lead: Option<&nostr::Keys>,
-        expected: Option<&str>,
-    ) -> FunctionAction {
-        FunctionAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            function,
-            kind,
-            lead_pubkey: lead.map(|keys| keys.public_key().to_hex()),
-            expected_head_event_id: expected.map(str::to_owned),
+        fn auth(keys: &nostr::Keys) -> IngestAuth {
+            IngestAuth::Http {
+                pubkey: keys.public_key(),
+                scopes: vec![buzz_auth::Scope::MessagesWrite],
+                auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+            }
         }
-    }
 
-    async fn send(
-        fixture: &Fixture,
-        keys: &nostr::Keys,
-        action: &FunctionAction,
-    ) -> Result<IngestResult, IngestError> {
-        let event = buzz_sdk::company_records::build_function_action(action)
-            .expect("build function action")
-            .sign_with_keys(keys)
-            .expect("sign function action");
-        handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
-    }
-
-    async fn head_of(fixture: &Fixture, function: CompanyFunction) -> (StoredEvent, FunctionHead) {
-        let stored = current_function_head(&fixture.state, fixture.tenant.community(), function)
-            .await
-            .expect("query function head")
-            .expect("function head exists");
-        let head = serde_json::from_str(&stored.event.content).expect("function head");
-        (stored, head)
-    }
-
-    fn rejection(result: Result<IngestResult, IngestError>) -> String {
-        match result {
-            Err(IngestError::Rejected(message)) => message,
-            _ => panic!("expected a rejected function action"),
+        fn function_action(
+            function: CompanyFunction,
+            kind: FunctionActionKind,
+            lead: Option<&nostr::Keys>,
+            expected: Option<&str>,
+        ) -> FunctionAction {
+            FunctionAction {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                function,
+                kind,
+                lead_pubkey: lead.map(|keys| keys.public_key().to_hex()),
+                expected_head_event_id: expected.map(str::to_owned),
+            }
         }
-    }
 
-    #[tokio::test]
-    async fn assign_by_owner_sets_filled_with_lead() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        let lead = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        add_member(&fixture, &lead, "member").await;
+        async fn send(
+            fixture: &Fixture,
+            keys: &nostr::Keys,
+            action: &FunctionAction,
+        ) -> Result<IngestResult, IngestError> {
+            let event = buzz_sdk::company_records::build_function_action(action)
+                .expect("build function action")
+                .sign_with_keys(keys)
+                .expect("sign function action");
+            handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
+        }
 
-        let action = function_action(
-            CompanyFunction::Sales,
-            FunctionActionKind::AssignLead,
-            Some(&lead),
-            None,
-        );
-        send(&fixture, &owner, &action).await.expect("assign lead");
+        async fn head_of(
+            fixture: &Fixture,
+            function: CompanyFunction,
+        ) -> (StoredEvent, FunctionHead) {
+            let stored =
+                current_function_head(&fixture.state, fixture.tenant.community(), function)
+                    .await
+                    .expect("query function head")
+                    .expect("function head exists");
+            let head = serde_json::from_str(&stored.event.content).expect("function head");
+            (stored, head)
+        }
 
-        let (stored, head) = head_of(&fixture, CompanyFunction::Sales).await;
-        assert_eq!(
-            stored.event.kind.as_u16() as u32,
-            KIND_COMPANY_FUNCTION_HEAD
-        );
-        assert_eq!(
-            stored.event.pubkey,
-            fixture.state.relay_keypair.public_key()
-        );
-        assert!(stored.channel_id.is_none());
-        assert_eq!(head.state, SlotState::Filled);
-        assert_eq!(head.lead_pubkey, Some(lead.public_key().to_hex()));
-        assert_eq!(head.updated_by_pubkey, owner.public_key().to_hex());
-    }
+        fn rejection(result: Result<IngestResult, IngestError>) -> String {
+            match result {
+                Err(IngestError::Rejected(message)) => message,
+                _ => panic!("expected a rejected function action"),
+            }
+        }
 
-    #[tokio::test]
-    async fn assign_to_a_managed_agent_is_allowed() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        let agent = nostr::Keys::generate();
-        let agent_bytes = agent.public_key().to_bytes();
-        fixture
-            .state
-            .db
-            .ensure_user(fixture.tenant.community(), &agent_bytes)
-            .await
-            .expect("ensure agent user");
-        fixture
-            .state
-            .db
-            .set_agent_owner(
-                fixture.tenant.community(),
-                &agent_bytes,
-                &owner.public_key().to_bytes(),
-            )
-            .await
-            .expect("bind managed agent owner");
+        #[tokio::test]
+        async fn assign_by_owner_sets_filled_with_lead() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            let lead = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            add_member(&fixture, &lead, "member").await;
 
-        let action = function_action(
-            CompanyFunction::CustomerSuccess,
-            FunctionActionKind::AssignLead,
-            Some(&agent),
-            None,
-        );
-        send(&fixture, &owner, &action)
-            .await
-            .expect("assign a managed agent as lead");
-        let (_, head) = head_of(&fixture, CompanyFunction::CustomerSuccess).await;
-        assert_eq!(head.state, SlotState::Filled);
-    }
-
-    #[tokio::test]
-    async fn assign_to_non_member_is_denied() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        let stranger = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-
-        let action = function_action(
-            CompanyFunction::Finance,
-            FunctionActionKind::AssignLead,
-            Some(&stranger),
-            None,
-        );
-        let message = rejection(send(&fixture, &owner, &action).await);
-        assert!(
-            message.contains("the lead must be a member or an agent of this company"),
-            "{message}"
-        );
-        let missing = current_function_head(
-            &fixture.state,
-            fixture.tenant.community(),
-            CompanyFunction::Finance,
-        )
-        .await
-        .expect("query function head");
-        assert!(missing.is_none(), "a denied write must not create a head");
-    }
-
-    #[tokio::test]
-    async fn assign_by_member_is_denied() {
-        let fixture = fixture().await;
-        let member = nostr::Keys::generate();
-        add_member(&fixture, &member, "member").await;
-
-        let action = function_action(
-            CompanyFunction::Sales,
-            FunctionActionKind::AssignLead,
-            Some(&member),
-            None,
-        );
-        let message = rejection(send(&fixture, &member, &action).await);
-        assert!(
-            message.contains("only the owner or an admin can assign function slots"),
-            "{message}"
-        );
-    }
-
-    #[tokio::test]
-    async fn cover_sets_covered_by_scout_and_clears_lead() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        let lead = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        add_member(&fixture, &lead, "member").await;
-
-        send(
-            &fixture,
-            &owner,
-            &function_action(
-                CompanyFunction::Operations,
+            let action = function_action(
+                CompanyFunction::Sales,
                 FunctionActionKind::AssignLead,
                 Some(&lead),
                 None,
-            ),
-        )
-        .await
-        .expect("assign lead");
-        let first = head_of(&fixture, CompanyFunction::Operations)
-            .await
-            .0
-            .event
-            .id
-            .to_hex();
-        send(
-            &fixture,
-            &owner,
-            &function_action(
-                CompanyFunction::Operations,
-                FunctionActionKind::CoverByScout,
-                None,
-                Some(first.as_str()),
-            ),
-        )
-        .await
-        .expect("cover by Scout");
+            );
+            send(&fixture, &owner, &action).await.expect("assign lead");
 
-        let (_, head) = head_of(&fixture, CompanyFunction::Operations).await;
-        assert_eq!(head.state, SlotState::CoveredByScout);
-        assert_eq!(head.lead_pubkey, None);
-    }
+            let (stored, head) = head_of(&fixture, CompanyFunction::Sales).await;
+            assert_eq!(
+                stored.event.kind.as_u16() as u32,
+                KIND_COMPANY_FUNCTION_HEAD
+            );
+            assert_eq!(
+                stored.event.pubkey,
+                fixture.state.relay_keypair.public_key()
+            );
+            assert!(stored.channel_id.is_none());
+            assert_eq!(head.state, SlotState::Filled);
+            assert_eq!(head.lead_pubkey, Some(lead.public_key().to_hex()));
+            assert_eq!(head.updated_by_pubkey, owner.public_key().to_hex());
+        }
 
-    #[tokio::test]
-    async fn clear_sets_empty() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
+        #[tokio::test]
+        async fn assign_to_a_managed_agent_is_allowed() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            let agent = nostr::Keys::generate();
+            let agent_bytes = agent.public_key().to_bytes();
+            fixture
+                .state
+                .db
+                .ensure_user(fixture.tenant.community(), &agent_bytes)
+                .await
+                .expect("ensure agent user");
+            fixture
+                .state
+                .db
+                .set_agent_owner(
+                    fixture.tenant.community(),
+                    &agent_bytes,
+                    &owner.public_key().to_bytes(),
+                )
+                .await
+                .expect("bind managed agent owner");
 
-        send(
-            &fixture,
-            &owner,
-            &function_action(
-                CompanyFunction::Brand,
-                FunctionActionKind::CoverByScout,
+            let action = function_action(
+                CompanyFunction::CustomerSuccess,
+                FunctionActionKind::AssignLead,
+                Some(&agent),
                 None,
-                None,
-            ),
-        )
-        .await
-        .expect("cover by Scout");
-        let first = head_of(&fixture, CompanyFunction::Brand)
-            .await
-            .0
-            .event
-            .id
-            .to_hex();
-        send(
-            &fixture,
-            &owner,
-            &function_action(
-                CompanyFunction::Brand,
-                FunctionActionKind::Clear,
-                None,
-                Some(first.as_str()),
-            ),
-        )
-        .await
-        .expect("clear");
+            );
+            send(&fixture, &owner, &action)
+                .await
+                .expect("assign a managed agent as lead");
+            let (_, head) = head_of(&fixture, CompanyFunction::CustomerSuccess).await;
+            assert_eq!(head.state, SlotState::Filled);
+        }
 
-        let (_, head) = head_of(&fixture, CompanyFunction::Brand).await;
-        assert_eq!(head.state, SlotState::Empty);
-        assert_eq!(head.lead_pubkey, None);
-    }
+        #[tokio::test]
+        async fn assign_to_non_member_is_denied() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            let stranger = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
 
-    #[tokio::test]
-    async fn function_slots_are_independent_and_stale_heads_conflict() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-
-        send(
-            &fixture,
-            &owner,
-            &function_action(
-                CompanyFunction::Sales,
-                FunctionActionKind::CoverByScout,
-                None,
-                None,
-            ),
-        )
-        .await
-        .expect("cover sales");
-        // Another function still has no head, so a writer expecting none succeeds there.
-        send(
-            &fixture,
-            &owner,
-            &function_action(
+            let action = function_action(
                 CompanyFunction::Finance,
-                FunctionActionKind::CoverByScout,
+                FunctionActionKind::AssignLead,
+                Some(&stranger),
                 None,
+            );
+            let message = rejection(send(&fixture, &owner, &action).await);
+            assert!(
+                message.contains("the lead must be a member or an agent of this company"),
+                "{message}"
+            );
+            let missing = current_function_head(
+                &fixture.state,
+                fixture.tenant.community(),
+                CompanyFunction::Finance,
+            )
+            .await
+            .expect("query function head");
+            assert!(missing.is_none(), "a denied write must not create a head");
+        }
+
+        #[tokio::test]
+        async fn assign_by_member_is_denied() {
+            let fixture = fixture().await;
+            let member = nostr::Keys::generate();
+            add_member(&fixture, &member, "member").await;
+
+            let action = function_action(
+                CompanyFunction::Sales,
+                FunctionActionKind::AssignLead,
+                Some(&member),
                 None,
-            ),
-        )
-        .await
-        .expect("cover finance");
-        // A writer that believes Sales has no head is stale.
-        let message = rejection(
+            );
+            let message = rejection(send(&fixture, &member, &action).await);
+            assert!(
+                message.contains("only the owner or an admin can assign function slots"),
+                "{message}"
+            );
+        }
+
+        #[tokio::test]
+        async fn cover_sets_covered_by_scout_and_clears_lead() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            let lead = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            add_member(&fixture, &lead, "member").await;
+
+            send(
+                &fixture,
+                &owner,
+                &function_action(
+                    CompanyFunction::Operations,
+                    FunctionActionKind::AssignLead,
+                    Some(&lead),
+                    None,
+                ),
+            )
+            .await
+            .expect("assign lead");
+            let first = head_of(&fixture, CompanyFunction::Operations)
+                .await
+                .0
+                .event
+                .id
+                .to_hex();
+            send(
+                &fixture,
+                &owner,
+                &function_action(
+                    CompanyFunction::Operations,
+                    FunctionActionKind::CoverByScout,
+                    None,
+                    Some(first.as_str()),
+                ),
+            )
+            .await
+            .expect("cover by Scout");
+
+            let (_, head) = head_of(&fixture, CompanyFunction::Operations).await;
+            assert_eq!(head.state, SlotState::CoveredByScout);
+            assert_eq!(head.lead_pubkey, None);
+        }
+
+        #[tokio::test]
+        async fn clear_sets_empty() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+
+            send(
+                &fixture,
+                &owner,
+                &function_action(
+                    CompanyFunction::Brand,
+                    FunctionActionKind::CoverByScout,
+                    None,
+                    None,
+                ),
+            )
+            .await
+            .expect("cover by Scout");
+            let first = head_of(&fixture, CompanyFunction::Brand)
+                .await
+                .0
+                .event
+                .id
+                .to_hex();
+            send(
+                &fixture,
+                &owner,
+                &function_action(
+                    CompanyFunction::Brand,
+                    FunctionActionKind::Clear,
+                    None,
+                    Some(first.as_str()),
+                ),
+            )
+            .await
+            .expect("clear");
+
+            let (_, head) = head_of(&fixture, CompanyFunction::Brand).await;
+            assert_eq!(head.state, SlotState::Empty);
+            assert_eq!(head.lead_pubkey, None);
+        }
+
+        #[tokio::test]
+        async fn function_slots_are_independent_and_stale_heads_conflict() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+
             send(
                 &fixture,
                 &owner,
                 &function_action(
                     CompanyFunction::Sales,
-                    FunctionActionKind::Clear,
+                    FunctionActionKind::CoverByScout,
                     None,
                     None,
                 ),
             )
-            .await,
-        );
-        assert!(message.starts_with("conflict:"), "{message}");
-    }
+            .await
+            .expect("cover sales");
+            // Another function still has no head, so a writer expecting none succeeds there.
+            send(
+                &fixture,
+                &owner,
+                &function_action(
+                    CompanyFunction::Finance,
+                    FunctionActionKind::CoverByScout,
+                    None,
+                    None,
+                ),
+            )
+            .await
+            .expect("cover finance");
+            // A writer that believes Sales has no head is stale.
+            let message = rejection(
+                send(
+                    &fixture,
+                    &owner,
+                    &function_action(
+                        CompanyFunction::Sales,
+                        FunctionActionKind::Clear,
+                        None,
+                        None,
+                    ),
+                )
+                .await,
+            );
+            assert!(message.starts_with("conflict:"), "{message}");
+        }
 
-    #[tokio::test]
-    async fn function_command_d_tag_must_match_its_function() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        let action = function_action(
-            CompanyFunction::Sales,
-            FunctionActionKind::Clear,
-            None,
-            None,
-        );
-        let event = nostr::EventBuilder::new(
-            nostr::Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16),
-            serde_json::to_string(&action).expect("serialize"),
-        )
-        .tags([nostr::Tag::parse(["d", "company:function:finance"]).expect("d tag")])
-        .sign_with_keys(&owner)
-        .expect("sign");
-        let message = rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await);
-        assert!(message.contains("must match its function"), "{message}");
+        #[tokio::test]
+        async fn function_command_d_tag_must_match_its_function() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            let action = function_action(
+                CompanyFunction::Sales,
+                FunctionActionKind::Clear,
+                None,
+                None,
+            );
+            let event = nostr::EventBuilder::new(
+                nostr::Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16),
+                serde_json::to_string(&action).expect("serialize"),
+            )
+            .tags([nostr::Tag::parse(["d", "company:function:finance"]).expect("d tag")])
+            .sign_with_keys(&owner)
+            .expect("sign");
+            let message =
+                rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await);
+            assert!(message.contains("must match its function"), "{message}");
+        }
     }
 }

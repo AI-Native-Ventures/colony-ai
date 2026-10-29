@@ -364,253 +364,263 @@ pub(super) fn internal(error: impl std::fmt::Display) -> IngestError {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    // The `postgres_tests` path puts these in the PostgreSQL CI lane, which gives
+    // each test its own database.
+    mod postgres_tests {
+        use std::time::Duration;
 
-    use buzz_core::company_cofounder::{CofounderAction, CofounderSettings, MoneyPreference};
-    use tokio::sync::Mutex;
-    use uuid::Uuid;
+        use buzz_core::company_cofounder::{CofounderAction, CofounderSettings, MoneyPreference};
+        use tokio::sync::Mutex;
+        use uuid::Uuid;
 
-    use super::*;
+        use super::super::*;
 
-    static COFOUNDER_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+        static COFOUNDER_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
-    struct Fixture {
-        state: Arc<AppState>,
-        tenant: TenantContext,
-        _serial_guard: tokio::sync::MutexGuard<'static, ()>,
-    }
-
-    async fn fixture() -> Fixture {
-        let serial_guard = COFOUNDER_DB_TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .await;
-        let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
-            .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
-        let pool = sqlx::PgPool::connect(&database_url)
-            .await
-            .expect("connect to the disposable test database");
-        let state = crate::state::tests::test_state_with_database_url_and_acquire_timeout(
-            &database_url,
-            Duration::from_secs(10),
-        )
-        .await;
-        let community_id = Uuid::new_v4();
-        let host = format!("company-cofounder-{}.test", community_id.simple());
-        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
-            .bind(community_id)
-            .bind(&host)
-            .execute(&pool)
-            .await
-            .expect("insert test community");
-        Fixture {
-            state,
-            tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
-            _serial_guard: serial_guard,
+        struct Fixture {
+            state: Arc<AppState>,
+            tenant: TenantContext,
+            _serial_guard: tokio::sync::MutexGuard<'static, ()>,
         }
-    }
 
-    async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
-        fixture
-            .state
-            .db
-            .add_relay_member(
-                fixture.tenant.community(),
-                &keys.public_key().to_hex(),
-                role,
-                None,
+        async fn fixture() -> Fixture {
+            let serial_guard = COFOUNDER_DB_TEST_LOCK
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .await;
+            let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
+                .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
+            let pool = sqlx::PgPool::connect(&database_url)
+                .await
+                .expect("connect to the disposable test database");
+            let state = crate::state::tests::test_state_with_database_url_and_acquire_timeout(
+                &database_url,
+                Duration::from_secs(10),
             )
-            .await
-            .expect("add relay member");
-    }
-
-    fn auth(keys: &nostr::Keys) -> IngestAuth {
-        IngestAuth::Http {
-            pubkey: keys.public_key(),
-            scopes: vec![buzz_auth::Scope::MessagesWrite],
-            auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+            .await;
+            let community_id = Uuid::new_v4();
+            let host = format!("company-cofounder-{}.test", community_id.simple());
+            sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+                .bind(community_id)
+                .bind(&host)
+                .execute(&pool)
+                .await
+                .expect("insert test community");
+            Fixture {
+                state,
+                tenant: TenantContext::resolved(CommunityId::from_uuid(community_id), host),
+                _serial_guard: serial_guard,
+            }
         }
-    }
 
-    fn enabled_settings() -> CofounderSettings {
-        CofounderSettings {
-            enabled: true,
-            money_preference: MoneyPreference::BestOption,
-            ..CofounderSettings::default()
+        async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
+            fixture
+                .state
+                .db
+                .add_relay_member(
+                    fixture.tenant.community(),
+                    &keys.public_key().to_hex(),
+                    role,
+                    None,
+                )
+                .await
+                .expect("add relay member");
         }
-    }
 
-    fn signed(keys: &nostr::Keys, settings: &CofounderSettings, expected: Option<&str>) -> Event {
-        buzz_sdk::company_records::build_cofounder_action(settings, expected)
-            .expect("build co-founder action")
-            .sign_with_keys(keys)
-            .expect("sign co-founder action")
-    }
-
-    async fn send(
-        fixture: &Fixture,
-        keys: &nostr::Keys,
-        settings: &CofounderSettings,
-        expected: Option<&str>,
-    ) -> Result<IngestResult, IngestError> {
-        let event = signed(keys, settings, expected);
-        handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
-    }
-
-    async fn current_head(fixture: &Fixture) -> StoredEvent {
-        current_cofounder_head(&fixture.state, fixture.tenant.community(), COFOUNDER_D_TAG)
-            .await
-            .expect("query co-founder head")
-            .expect("co-founder head exists")
-    }
-
-    fn rejection(result: Result<IngestResult, IngestError>) -> String {
-        match result {
-            Err(IngestError::Rejected(message)) => message,
-            _ => panic!("expected a rejected co-founder action"),
+        fn auth(keys: &nostr::Keys) -> IngestAuth {
+            IngestAuth::Http {
+                pubkey: keys.public_key(),
+                scopes: vec![buzz_auth::Scope::MessagesWrite],
+                auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+            }
         }
-    }
 
-    #[tokio::test]
-    async fn cofounder_set_by_owner_writes_head() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
+        fn enabled_settings() -> CofounderSettings {
+            CofounderSettings {
+                enabled: true,
+                money_preference: MoneyPreference::BestOption,
+                ..CofounderSettings::default()
+            }
+        }
 
-        let settings = enabled_settings();
-        let result = send(&fixture, &owner, &settings, None)
-            .await
-            .expect("owner enables co-founder mode");
-        assert!(result.accepted);
+        fn signed(
+            keys: &nostr::Keys,
+            settings: &CofounderSettings,
+            expected: Option<&str>,
+        ) -> Event {
+            buzz_sdk::company_records::build_cofounder_action(settings, expected)
+                .expect("build co-founder action")
+                .sign_with_keys(keys)
+                .expect("sign co-founder action")
+        }
 
-        let stored = current_head(&fixture).await;
-        assert_eq!(stored.event.kind.as_u16() as u32, KIND_COFOUNDER_HEAD);
-        assert_eq!(
-            stored.event.pubkey,
-            fixture.state.relay_keypair.public_key()
-        );
-        assert!(stored.channel_id.is_none());
-        let head: CofounderHead = serde_json::from_str(&stored.event.content).expect("head");
-        assert_eq!(head.settings, settings);
-        assert_eq!(head.updated_by_pubkey, owner.public_key().to_hex());
-    }
+        async fn send(
+            fixture: &Fixture,
+            keys: &nostr::Keys,
+            settings: &CofounderSettings,
+            expected: Option<&str>,
+        ) -> Result<IngestResult, IngestError> {
+            let event = signed(keys, settings, expected);
+            handle(&fixture.tenant, &fixture.state, event, auth(keys)).await
+        }
 
-    #[tokio::test]
-    async fn cofounder_set_by_admin_writes_head() {
-        let fixture = fixture().await;
-        let admin = nostr::Keys::generate();
-        add_member(&fixture, &admin, "admin").await;
-
-        send(&fixture, &admin, &enabled_settings(), None)
-            .await
-            .expect("admin enables co-founder mode");
-        let head: CofounderHead =
-            serde_json::from_str(&current_head(&fixture).await.event.content).expect("head");
-        assert!(head.settings.enabled);
-        assert_eq!(head.updated_by_pubkey, admin.public_key().to_hex());
-    }
-
-    #[tokio::test]
-    async fn cofounder_set_by_member_is_denied() {
-        let fixture = fixture().await;
-        let member = nostr::Keys::generate();
-        add_member(&fixture, &member, "member").await;
-
-        let message = rejection(send(&fixture, &member, &enabled_settings(), None).await);
-        assert!(
-            message.contains("only the owner or an admin can change co-founder mode"),
-            "{message}"
-        );
-        let missing =
+        async fn current_head(fixture: &Fixture) -> StoredEvent {
             current_cofounder_head(&fixture.state, fixture.tenant.community(), COFOUNDER_D_TAG)
                 .await
-                .expect("query co-founder head");
-        assert!(missing.is_none(), "a denied write must not create a head");
-    }
+                .expect("query co-founder head")
+                .expect("co-founder head exists")
+        }
 
-    #[tokio::test]
-    async fn cofounder_set_by_agent_is_denied() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        // A managed agent is not an owner or admin: it has no relay_members row.
-        let agent = nostr::Keys::generate();
-        fixture
-            .state
-            .db
-            .ensure_user(fixture.tenant.community(), &agent.public_key().to_bytes())
-            .await
-            .expect("ensure agent user");
+        fn rejection(result: Result<IngestResult, IngestError>) -> String {
+            match result {
+                Err(IngestError::Rejected(message)) => message,
+                _ => panic!("expected a rejected co-founder action"),
+            }
+        }
 
-        let message = rejection(send(&fixture, &agent, &enabled_settings(), None).await);
-        assert!(
-            message.contains("only the owner or an admin can change co-founder mode"),
-            "{message}"
-        );
-    }
+        #[tokio::test]
+        async fn cofounder_set_by_owner_writes_head() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
 
-    #[tokio::test]
-    async fn cofounder_set_with_stale_expected_head_conflicts() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
+            let settings = enabled_settings();
+            let result = send(&fixture, &owner, &settings, None)
+                .await
+                .expect("owner enables co-founder mode");
+            assert!(result.accepted);
 
-        send(&fixture, &owner, &enabled_settings(), None)
-            .await
-            .expect("first write");
-        let first_head = current_head(&fixture).await.event.id.to_hex();
+            let stored = current_head(&fixture).await;
+            assert_eq!(stored.event.kind.as_u16() as u32, KIND_COFOUNDER_HEAD);
+            assert_eq!(
+                stored.event.pubkey,
+                fixture.state.relay_keypair.public_key()
+            );
+            assert!(stored.channel_id.is_none());
+            let head: CofounderHead = serde_json::from_str(&stored.event.content).expect("head");
+            assert_eq!(head.settings, settings);
+            assert_eq!(head.updated_by_pubkey, owner.public_key().to_hex());
+        }
 
-        // A writer that still believes no head exists is stale.
-        let message = rejection(send(&fixture, &owner, &CofounderSettings::default(), None).await);
-        assert!(message.starts_with("conflict:"), "{message}");
+        #[tokio::test]
+        async fn cofounder_set_by_admin_writes_head() {
+            let fixture = fixture().await;
+            let admin = nostr::Keys::generate();
+            add_member(&fixture, &admin, "admin").await;
 
-        // A writer that names the current head succeeds and replaces it.
-        send(
-            &fixture,
-            &owner,
-            &CofounderSettings::default(),
-            Some(first_head.as_str()),
-        )
-        .await
-        .expect("write with the current head");
-        let head: CofounderHead =
-            serde_json::from_str(&current_head(&fixture).await.event.content).expect("head");
-        assert!(!head.settings.enabled);
+            send(&fixture, &admin, &enabled_settings(), None)
+                .await
+                .expect("admin enables co-founder mode");
+            let head: CofounderHead =
+                serde_json::from_str(&current_head(&fixture).await.event.content).expect("head");
+            assert!(head.settings.enabled);
+            assert_eq!(head.updated_by_pubkey, admin.public_key().to_hex());
+        }
 
-        // The superseded head id is now stale as well.
-        let message = rejection(
+        #[tokio::test]
+        async fn cofounder_set_by_member_is_denied() {
+            let fixture = fixture().await;
+            let member = nostr::Keys::generate();
+            add_member(&fixture, &member, "member").await;
+
+            let message = rejection(send(&fixture, &member, &enabled_settings(), None).await);
+            assert!(
+                message.contains("only the owner or an admin can change co-founder mode"),
+                "{message}"
+            );
+            let missing =
+                current_cofounder_head(&fixture.state, fixture.tenant.community(), COFOUNDER_D_TAG)
+                    .await
+                    .expect("query co-founder head");
+            assert!(missing.is_none(), "a denied write must not create a head");
+        }
+
+        #[tokio::test]
+        async fn cofounder_set_by_agent_is_denied() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            // A managed agent is not an owner or admin: it has no relay_members row.
+            let agent = nostr::Keys::generate();
+            fixture
+                .state
+                .db
+                .ensure_user(fixture.tenant.community(), &agent.public_key().to_bytes())
+                .await
+                .expect("ensure agent user");
+
+            let message = rejection(send(&fixture, &agent, &enabled_settings(), None).await);
+            assert!(
+                message.contains("only the owner or an admin can change co-founder mode"),
+                "{message}"
+            );
+        }
+
+        #[tokio::test]
+        async fn cofounder_set_with_stale_expected_head_conflicts() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+
+            send(&fixture, &owner, &enabled_settings(), None)
+                .await
+                .expect("first write");
+            let first_head = current_head(&fixture).await.event.id.to_hex();
+
+            // A writer that still believes no head exists is stale.
+            let message =
+                rejection(send(&fixture, &owner, &CofounderSettings::default(), None).await);
+            assert!(message.starts_with("conflict:"), "{message}");
+
+            // A writer that names the current head succeeds and replaces it.
             send(
                 &fixture,
                 &owner,
-                &enabled_settings(),
+                &CofounderSettings::default(),
                 Some(first_head.as_str()),
             )
-            .await,
-        );
-        assert!(message.starts_with("conflict:"), "{message}");
-    }
+            .await
+            .expect("write with the current head");
+            let head: CofounderHead =
+                serde_json::from_str(&current_head(&fixture).await.event.content).expect("head");
+            assert!(!head.settings.enabled);
 
-    #[tokio::test]
-    async fn cofounder_action_with_h_tag_is_refused() {
-        let fixture = fixture().await;
-        let owner = nostr::Keys::generate();
-        add_member(&fixture, &owner, "owner").await;
-        let action = CofounderAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            settings: enabled_settings(),
-            expected_head_event_id: None,
-        };
-        let event = EventBuilder::new(
-            Kind::Custom(KIND_COFOUNDER_ACTION as u16),
-            serde_json::to_string(&action).expect("serialize"),
-        )
-        .tags([
-            Tag::parse(["d", COFOUNDER_D_TAG]).expect("d tag"),
-            Tag::parse(["h", Uuid::new_v4().to_string().as_str()]).expect("h tag"),
-        ])
-        .sign_with_keys(&owner)
-        .expect("sign");
-        let message = rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await);
-        assert!(message.contains("no h or p tag"), "{message}");
+            // The superseded head id is now stale as well.
+            let message = rejection(
+                send(
+                    &fixture,
+                    &owner,
+                    &enabled_settings(),
+                    Some(first_head.as_str()),
+                )
+                .await,
+            );
+            assert!(message.starts_with("conflict:"), "{message}");
+        }
+
+        #[tokio::test]
+        async fn cofounder_action_with_h_tag_is_refused() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            let action = CofounderAction {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                settings: enabled_settings(),
+                expected_head_event_id: None,
+            };
+            let event = EventBuilder::new(
+                Kind::Custom(KIND_COFOUNDER_ACTION as u16),
+                serde_json::to_string(&action).expect("serialize"),
+            )
+            .tags([
+                Tag::parse(["d", COFOUNDER_D_TAG]).expect("d tag"),
+                Tag::parse(["h", Uuid::new_v4().to_string().as_str()]).expect("h tag"),
+            ])
+            .sign_with_keys(&owner)
+            .expect("sign");
+            let message =
+                rejection(handle(&fixture.tenant, &fixture.state, event, auth(&owner)).await);
+            assert!(message.contains("no h or p tag"), "{message}");
+        }
     }
 }
