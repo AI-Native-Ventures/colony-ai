@@ -69,6 +69,20 @@ test("a saved list round-trips", () => {
   assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
 });
 
+test("a saved vertical id is read under today's catalogue; its name and an unknown id stay as saved", () => {
+  const old = campaign("old", {
+    verticalId: "pest-control-services",
+    verticalName: "Pest Control Services",
+  });
+  const restored = parseStoredState(serializeState(withCampaigns(old)));
+  assert.equal(restored.campaigns[0].verticalId, "pest-control-companies");
+  assert.equal(restored.campaigns[0].verticalName, "Pest Control Services");
+  const unmapped = parseStoredState(
+    serializeState(withCampaigns(campaign("two"))),
+  );
+  assert.equal(unmapped.campaigns[0].verticalId, "home-decor");
+});
+
 test("on restart a running campaign is paused so Resume continues from its cursor", () => {
   const state = withCampaigns(campaign("one", { status: "running", skip: 40 }));
   const restored = parseStoredState(serializeState(state));

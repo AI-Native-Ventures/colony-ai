@@ -43,7 +43,7 @@ test.describe("W10 discovery and sales", () => {
       discovery.getByRole("heading", { name: "Find your next customer." }),
     ).toBeVisible();
     await expect(
-      discovery.getByText("34 industries · 531 verticals"),
+      discovery.getByText("51 industries · 869 verticals"),
     ).toBeVisible();
     await discovery.getByRole("button", { name: "People" }).click();
     await expect(
@@ -104,26 +104,42 @@ test.describe("W10 discovery and sales", () => {
     const discovery = page.getByTestId("w10-discovery-page");
     await expect(discovery.locator(".c3d-industry-card")).toHaveCount(12);
     await discovery
-      .getByRole("button", { name: "Show all 34 industries" })
+      .getByRole("button", { name: "Show all 51 industries" })
       .click();
-    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(34);
+    await expect(discovery.locator(".c3d-industry-card")).toHaveCount(51);
 
     await discovery.getByRole("button", { name: /Beauty & Wellness/ }).click();
     await expect(
       discovery.getByRole("heading", { name: "Beauty & Wellness" }),
     ).toBeVisible();
-    await expect(discovery.getByText("13 verticals")).toBeVisible();
+    await expect(discovery.getByText("21 verticals")).toBeVisible();
     await expect(
       page.getByTestId("discovery-category-breadcrumb"),
     ).toContainText("Business/Discovery/Beauty & Wellness");
     await expect(
       discovery.getByRole("button", { name: "Find prospects" }),
-    ).toHaveCount(13);
+    ).toHaveCount(21);
 
     await discovery.getByRole("button", { name: "All industries" }).click();
     await expect(
       discovery.getByRole("heading", { name: "Browse industries" }),
     ).toBeVisible();
+  });
+
+  test("typing guest house finds guesthouses, and B&B finds bed and breakfasts", async ({
+    page,
+  }) => {
+    await installMockBridge(page, REFERENCE_WORKSPACE);
+    await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+
+    const discovery = page.getByTestId("w10-discovery-page");
+    const search = discovery.getByRole("textbox", {
+      name: "Search industries and verticals",
+    });
+    await search.fill("guest house");
+    await expect(discovery.getByText("Guesthouses and inns")).toBeVisible();
+    await search.fill("B&B");
+    await expect(discovery.getByText("Bed and breakfasts")).toBeVisible();
   });
 
   test("normal runtime shows no simulated results: a search with no server fails in plain words and creates no campaign", async ({

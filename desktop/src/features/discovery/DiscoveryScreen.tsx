@@ -40,16 +40,16 @@ type Category =
 
 /** The twelve industries the board opens with; the rest sit behind "Show all". */
 const FEATURED_INDUSTRY_IDS = [
-  "fashion-apparel",
-  "home-living",
+  "fashion-accessories",
+  "home-garden",
   "healthcare",
   "legal",
-  "financial-services",
+  "finance-investment",
   "real-estate",
-  "technology",
-  "construction",
-  "education",
-  "hospitality",
+  "technology-software",
+  "construction-trades",
+  "education-training",
+  "travel-tourism",
   "food-beverage",
   "beauty-wellness",
 ] as const;

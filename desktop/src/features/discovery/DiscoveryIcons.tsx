@@ -1,26 +1,43 @@
 import type * as React from "react";
 import {
   Anchor,
+  Armchair,
+  BedDouble,
+  Boxes,
+  Bot,
   BriefcaseBusiness,
+  Building2,
+  Calculator,
+  CalendarHeart,
   Car,
   Clapperboard,
+  Cpu,
   Dices,
+  Dumbbell,
   Factory,
+  Fish,
   FlaskConical,
+  Globe,
+  Handshake,
   HeartHandshake,
-  Landmark,
-  Leaf,
+  KeyRound,
   Megaphone,
   Mountain,
+  Newspaper,
+  PawPrint,
   Pill,
   Plane,
   Radio,
   Recycle,
   Rocket,
   Shield,
+  ShoppingBag,
+  Tractor,
+  TreePine,
   Truck,
   Umbrella,
   Users,
+  Wrench,
   Zap,
 } from "lucide-react";
 
@@ -189,13 +206,13 @@ type LucideGlyph = React.ComponentType<{
 
 /** The industries the board draws, with the board's own tile and strokes. */
 const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
-  "fashion-apparel": {
+  "fashion-accessories": {
     tile: "var(--colony-discovery-tile-rose)",
     glyph: () => (
       <path d="M8.5 4 12 6l3.5-2 4.5 3-2.5 3.5-2-1V20h-7V9.5l-2 1L4 7z" />
     ),
   },
-  "home-living": {
+  "home-garden": {
     tile: "var(--colony-discovery-tile-amber)",
     glyph: () => (
       <>
@@ -219,7 +236,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
       </>
     ),
   },
-  "financial-services": {
+  "finance-investment": {
     tile: "var(--colony-discovery-tile-green)",
     glyph: () => (
       <>
@@ -237,7 +254,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
       </>
     ),
   },
-  technology: {
+  "technology-software": {
     tile: "#E9F0FC",
     glyph: () => (
       <>
@@ -246,7 +263,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
       </>
     ),
   },
-  construction: {
+  "construction-trades": {
     tile: "#FFF1E3",
     glyph: () => (
       <>
@@ -256,7 +273,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
       </>
     ),
   },
-  education: {
+  "education-training": {
     tile: "#EFEAFB",
     glyph: () => (
       <>
@@ -265,7 +282,7 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
       </>
     ),
   },
-  hospitality: {
+  "travel-tourism": {
     tile: "#E5F5EF",
     glyph: () => (
       <>
@@ -296,28 +313,45 @@ const DESIGN_INDUSTRIES: Record<string, IndustryArt> = {
 
 /** The industries the app has that the board does not draw. */
 const FALLBACK_INDUSTRY_GLYPHS: Record<string, LucideGlyph> = {
+  agriculture: Tractor,
+  forestry: TreePine,
+  "fishing-aquaculture": Fish,
   manufacturing: Factory,
-  "professional-services": BriefcaseBusiness,
-  transportation: Truck,
-  agriculture: Leaf,
+  "chemicals-materials": FlaskConical,
+  mining: Mountain,
   energy: Zap,
-  telecommunications: Radio,
-  "media-entertainment": Clapperboard,
-  security: Shield,
+  "water-waste-environment": Recycle,
+  furniture: Armchair,
+  "facilities-property-services": Building2,
   automotive: Car,
-  insurance: Umbrella,
-  "marketing-advertising": Megaphone,
-  "human-resources": Users,
-  "environmental-services": Recycle,
-  "non-profit": HeartHandshake,
-  "mining-resources": Mountain,
+  "transportation-logistics": Truck,
+  aviation: Plane,
+  maritime: Anchor,
   "aerospace-defense": Rocket,
-  "government-public-sector": Landmark,
-  chemicals: FlaskConical,
-  "pharmaceuticals-life-sciences": Pill,
-  "aviation-airlines": Plane,
-  "marine-ports": Anchor,
-  "gambling-casinos": Dices,
+  "ai-data": Bot,
+  "hardware-electronics": Cpu,
+  telecoms: Radio,
+  "media-publishing": Newspaper,
+  "arts-entertainment": Clapperboard,
+  "gaming-gambling": Dices,
+  "marketing-advertising": Megaphone,
+  "professional-services": BriefcaseBusiness,
+  "accounting-tax": Calculator,
+  insurance: Umbrella,
+  "hr-recruitment": Users,
+  "business-support": Handshake,
+  "pharmaceuticals-biotech": Pill,
+  "care-social-services": HeartHandshake,
+  "hospitality-accommodation": BedDouble,
+  "events-weddings": CalendarHeart,
+  "sports-recreation": Dumbbell,
+  "pets-animal-services": PawPrint,
+  retail: ShoppingBag,
+  "wholesale-distribution": Boxes,
+  ecommerce: Globe,
+  "rental-leasing": KeyRound,
+  "repair-personal-services": Wrench,
+  "security-investigation": Shield,
 };
 
 function tileFor(id: string): string {

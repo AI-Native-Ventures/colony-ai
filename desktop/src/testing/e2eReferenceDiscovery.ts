@@ -19,8 +19,8 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   audience: "businesses",
   industryId: "home-living",
   industryName: "Home & Living",
-  verticalId: "home-decor-gift-shops",
-  verticalName: "Home Decor & Gift Shops",
+  verticalId: "home-furnishings-retailers",
+  verticalName: "Home furnishings retailers",
   location: "South Africa",
   target: 50,
   count: 12,
@@ -100,7 +100,7 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
     stopProgress();
     const hasReferenceResults =
       input.audience === "businesses" &&
-      input.verticalId === "home-decor-gift-shops" &&
+      input.verticalId === "home-furnishings-retailers" &&
       input.location.toLocaleLowerCase().includes("south africa");
     const prospectIds = hasReferenceResults
       ? Object.values(REFERENCE_PROSPECT_IDS)

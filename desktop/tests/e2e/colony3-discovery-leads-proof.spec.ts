@@ -139,7 +139,7 @@ test("Discovery board", async ({ page }) => {
 test("Discovery industry board", async ({ page }) => {
   await openLerato(page, "/discovery");
   await page.getByRole("button", { name: /Beauty & Wellness/ }).click();
-  await expect(page.getByText("13 verticals").first()).toBeVisible();
+  await expect(page.getByText("21 verticals").first()).toBeVisible();
   await shot(page, {
     name: "DiscoveryCategory",
     board: "DiscoveryCategory",
