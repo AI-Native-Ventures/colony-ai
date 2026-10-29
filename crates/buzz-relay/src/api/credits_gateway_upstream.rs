@@ -96,7 +96,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(90),
         min_attempt: Duration::from_secs(5),
-        free_headers: Duration::from_secs(45),
+        free_headers: Duration::from_secs(90),
     };
 
     /// The same rules with waits short enough for tests to run through.
@@ -721,7 +721,7 @@ impl Upstream {
             .json(body)
             .send();
         // `send` finishes when the headers arrive, so this is the wait for them.
-        let sent = tokio::time::timeout(first_response, call).await;
+        let sent = tokio::time::timeout(deadline, call).await;
         let mut response = match sent {
             Ok(Ok(response)) => response,
             Err(_) => return Err(no_response(model, first_response, free, tried)),
