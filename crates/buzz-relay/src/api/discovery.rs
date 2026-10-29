@@ -3,8 +3,10 @@
 //! Outscraper needs a provider key, and desktop applications cannot keep
 //! build-time credentials secret. `POST /discovery/search` keeps the key on the
 //! operator's relay, runs one page of a Google Maps search and returns only
-//! normalized place fields. The relay stores nothing: clients save the places
-//! they keep as ordinary prospect actions (kind 47034).
+//! normalized place fields. The relay stores no places: clients save the places
+//! they keep as ordinary prospect actions (kind 47034). It keeps one counter per
+//! company and month (`discovery_usage`) so a company cannot spend the
+//! operator's provider credits without bound.
 //!
 //! The endpoint is a port of the SalesTeams Outscraper client: the same
 //! `maps/search-v3` call, with an asynchronous request polled to completion.
@@ -18,6 +20,7 @@ use axum::{
     response::Json,
 };
 use buzz_auth::LimitType;
+use chrono::{DateTime, Datelike, NaiveDate, SecondsFormat, TimeZone, Utc};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -43,6 +46,10 @@ const DEFAULT_LIMIT: u32 = 20;
 const MAX_LIMIT: u32 = 50;
 const MAX_SKIP: u32 = 1_000;
 const DEFAULT_LANGUAGE: &str = "en";
+
+const MONTHLY_LIMIT_ERROR: &str = "monthly_limit";
+const USAGE_UNAVAILABLE_MESSAGE: &str =
+    "Prospect search could not check this month's usage. Try again.";
 
 const NOT_CONFIGURED_MESSAGE: &str = "Prospect search is not set up on this server yet. \
 The server owner needs to add the Outscraper key.";
@@ -602,6 +609,102 @@ fn not_configured() -> (StatusCode, Json<Value>) {
     )
 }
 
+/// First day of the UTC month that contains `now`.
+fn month_start(now: DateTime<Utc>) -> NaiveDate {
+    NaiveDate::from_ymd_opt(now.year(), now.month(), 1).expect("the first of a month exists")
+}
+
+/// Start of the UTC month after `month`, when a company's counter resets.
+fn next_month_start(month: NaiveDate) -> DateTime<Utc> {
+    let (year, number) = if month.month() == 12 {
+        (month.year() + 1, 1)
+    } else {
+        (month.year(), month.month() + 1)
+    };
+    Utc.with_ymd_and_hms(year, number, 1, 0, 0, 0)
+        .single()
+        .expect("the first of a month exists")
+}
+
+/// The 429 body a company gets once its monthly cap is used up.
+fn monthly_limit_response(month: NaiveDate) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({
+            "error": MONTHLY_LIMIT_ERROR,
+            "resets_at": next_month_start(month).to_rfc3339_opts(SecondsFormat::Secs, true),
+        })),
+    )
+}
+
+fn usage_unavailable(error: &buzz_db::DbError) -> (StatusCode, Json<Value>) {
+    tracing::error!(%error, "Discovery usage counter is unavailable");
+    api_error_with_code(
+        StatusCode::SERVICE_UNAVAILABLE,
+        USAGE_UNAVAILABLE_MESSAGE,
+        "discovery_usage_unavailable",
+    )
+}
+
+/// Run an admitted search for one company: refuse it once the company's month
+/// is used up, fetch the page (never asking for more places than the month has
+/// left), and add the places the provider returned to the company's total.
+///
+/// The cap is checked before the provider is called and counted after, so a
+/// failed provider call is never charged. Searches that run at the same moment
+/// can overshoot the cap by their own page sizes; the per-member rate limit
+/// bounds how many can overlap.
+async fn run_search(
+    db: &buzz_db::Db,
+    client: &reqwest::Client,
+    config: &DiscoveryConfig,
+    community: buzz_core::CommunityId,
+    mut request: ValidatedSearch,
+    now: DateTime<Utc>,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let month = month_start(now);
+    let used = db
+        .discovery_results_this_month(*community.as_uuid(), month)
+        .await
+        .map_err(|error| usage_unavailable(&error))?;
+    let remaining = config.company_monthly_results().saturating_sub(used);
+    if remaining <= 0 {
+        metrics::counter!("buzz_discovery_search_rejections_total", "reason" => "monthly_cap")
+            .increment(1);
+        return Err(monthly_limit_response(month));
+    }
+    request.limit = request
+        .limit
+        .min(u32::try_from(remaining).unwrap_or(u32::MAX));
+
+    let results = tokio::time::timeout(OVERALL_DEADLINE, fetch_results(client, config, &request))
+        .await
+        .map_err(|_| {
+            tracing::warn!("Outscraper search passed its overall deadline");
+            ProviderFailure::Unavailable.response()
+        })?
+        .map_err(ProviderFailure::response)?;
+
+    // Never forward the provider response wholesale: only normalized place
+    // fields cross the relay boundary.
+    let rows = result_rows(&results);
+    let charged = rows.len().min(request.limit as usize);
+    let response = build_response(&rows, request.limit, request.skip);
+    if charged > 0 {
+        // The provider already charged for these places, so a failure to count
+        // them is reported instead of hidden: the caller retries rather than
+        // the company getting uncounted results.
+        db.add_discovery_results(
+            *community.as_uuid(),
+            month,
+            i32::try_from(charged).unwrap_or(i32::MAX),
+        )
+        .await
+        .map_err(|error| usage_unavailable(&error))?;
+    }
+    Ok(response)
+}
+
 /// Run one page of an Outscraper Google Maps search for an authenticated member.
 pub async fn search(
     State(state): State<Arc<AppState>>,
@@ -618,24 +721,16 @@ pub async fn search(
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, &message))?;
     enforce_search_admission(&state, &tenant, &pubkey).await?;
 
-    let results = tokio::time::timeout(
-        OVERALL_DEADLINE,
-        fetch_results(&state.discovery_http_client, config, &request),
+    run_search(
+        &state.db,
+        &state.discovery_http_client,
+        config,
+        tenant.community(),
+        request,
+        Utc::now(),
     )
     .await
-    .map_err(|_| {
-        tracing::warn!("Outscraper search passed its overall deadline");
-        ProviderFailure::Unavailable.response()
-    })?
-    .map_err(ProviderFailure::response)?;
-
-    // Never forward the provider response wholesale: only normalized place
-    // fields cross the relay boundary.
-    Ok(Json(build_response(
-        &result_rows(&results),
-        request.limit,
-        request.skip,
-    )))
+    .map(Json)
 }
 
 #[cfg(test)]
@@ -1353,3 +1448,51 @@ mod tests {
         assert!(!reached.load(Ordering::SeqCst));
     }
 }
+
+#[cfg(test)]
+mod cap_tests {
+    use super::*;
+
+    fn at(year: i32, month: u32, day: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, 23, 59, 59)
+            .single()
+            .expect("timestamp")
+    }
+
+    #[test]
+    fn month_starts_on_the_first_in_utc() {
+        assert_eq!(
+            month_start(at(2026, 10, 29)),
+            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
+        );
+        assert_eq!(
+            month_start(at(2026, 11, 1)),
+            NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()
+        );
+    }
+
+    #[test]
+    fn reset_is_the_first_of_next_month_and_rolls_the_year() {
+        let reset = |year, month| {
+            monthly_limit_response(NaiveDate::from_ymd_opt(year, month, 1).unwrap())
+                .1
+                 .0["resets_at"]
+                .clone()
+        };
+        assert_eq!(reset(2026, 10), "2026-11-01T00:00:00Z");
+        assert_eq!(reset(2026, 12), "2027-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn monthly_limit_body_is_the_contract() {
+        let (status, body) = monthly_limit_response(NaiveDate::from_ymd_opt(2026, 10, 1).unwrap());
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            body.0,
+            serde_json::json!({ "error": "monthly_limit", "resets_at": "2026-11-01T00:00:00Z" })
+        );
+    }
+}
+
+#[cfg(test)]
+mod postgres_tests;
