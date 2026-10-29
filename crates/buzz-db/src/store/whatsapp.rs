@@ -292,6 +292,19 @@ pub enum BatchDecisionOutcome {
     Rejected,
 }
 
+/// Result of an owner decision on one agent draft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DraftDecisionOutcome {
+    /// No such outbound message in this company.
+    NotFound,
+    /// The message is not a pending draft (already decided or never one).
+    NotDraft,
+    /// Approved: queued for the sender.
+    Approved,
+    /// Rejected: it will never be sent.
+    Rejected,
+}
+
 /// One edit to a held row, with the relay-rendered body.
 #[derive(Clone, Debug)]
 pub struct RowEdit {
@@ -1412,8 +1425,8 @@ impl Db {
         Ok(at)
     }
 
-    /// Outbound messages to this contact that are approved or queued but not yet answered
-    /// by Graph (counts toward the one-message-in-a-row rule).
+    /// Outbound messages to this contact that are drafted, approved or queued but not yet
+    /// answered by Graph (counts toward the one-message-in-a-row rule).
     pub async fn whatsapp_count_pending_outbound(
         &self,
         community: CommunityId,
@@ -1422,7 +1435,7 @@ impl Db {
         let count: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM whatsapp_messages \
              WHERE community_id = $1 AND wa_id = $2 AND direction = 'out' \
-               AND state IN ('queued', 'ready', 'sending')",
+               AND state IN ('draft', 'queued', 'ready', 'sending')",
         )
         .bind(community.as_uuid())
         .bind(wa_id)
@@ -1452,6 +1465,98 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_message).collect()
+    }
+
+    /// Pending agent drafts, oldest first.
+    pub async fn whatsapp_list_drafts(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND state = 'draft' \
+             ORDER BY created_at LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_message).collect()
+    }
+
+    /// Drafts whose Colony thread message is not written yet (retried by the sender loop).
+    pub async fn whatsapp_list_unposted_drafts(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND state = 'draft' \
+               AND event_id IS NULL \
+             ORDER BY created_at LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_message).collect()
+    }
+
+    /// Owner or admin decides one draft in a single statement: approve moves it to `queued`
+    /// (optionally with an edited body and parameters), reject moves it to `rejected`.
+    /// Only a `draft` can be decided, so a repeat decision changes nothing.
+    pub async fn whatsapp_decide_draft(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        approve: bool,
+        edit: Option<(&str, &Value)>,
+    ) -> Result<DraftDecisionOutcome> {
+        let new_state = if approve { "queued" } else { "rejected" };
+        let (body, params) = match edit {
+            Some((body, params)) if approve => (Some(body), Some(params)),
+            _ => (None, None),
+        };
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages SET state = $3, body = COALESCE($4, body), \
+                 params = COALESCE($5, params), updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND direction = 'out' AND state = 'draft'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(new_state)
+        .bind(body)
+        .bind(params)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 1 {
+            return Ok(if approve {
+                DraftDecisionOutcome::Approved
+            } else {
+                DraftDecisionOutcome::Rejected
+            });
+        }
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM whatsapp_messages \
+             WHERE community_id = $1 AND id = $2 AND direction = 'out'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(if exists == 0 {
+            DraftDecisionOutcome::NotFound
+        } else {
+            DraftDecisionOutcome::NotDraft
+        })
     }
 
     // ── batches ────────────────────────────────────────────────────────────────

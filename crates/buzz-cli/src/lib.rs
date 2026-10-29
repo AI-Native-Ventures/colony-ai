@@ -1370,7 +1370,8 @@ pub enum WhatsappCmd {
     /// Prepare, review and decide batches of template messages
     #[command(subcommand)]
     Batch(WhatsappBatchCmd),
-    /// Send one message: free text inside the 24 hour window, otherwise a template
+    /// Send one message: free text inside the 24 hour window, otherwise a template.
+    /// An agent's message is a draft until an owner or admin approves it; their own send at once
     Send {
         /// Phone number, for example +27821234567
         #[arg(long)]
@@ -1394,6 +1395,15 @@ pub enum WhatsappCmd {
         #[arg(long)]
         request_id: Option<String>,
     },
+    /// List the agent drafts waiting for an owner or admin to approve
+    Drafts {
+        /// Maximum drafts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Approve, edit or reject one agent draft (owner or admin)
+    #[command(subcommand)]
+    Draft(WhatsappDraftCmd),
     /// List contacts, most recently active first
     Contacts {
         /// Maximum contacts, 1 through 200 (default 50)
@@ -1419,6 +1429,28 @@ pub enum WhatsappCmd {
     Cap {
         /// New cap, 0 through 1000; leave out to show the current cap
         value: Option<i32>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappDraftCmd {
+    /// Approve a draft so the relay sends it; optionally edit the text or template parameters
+    Approve {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
+        /// Edited text for a text draft
+        #[arg(long)]
+        text: Option<String>,
+        /// Edited template parameter in slot order; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+    },
+    /// Reject a draft; it is never sent
+    Reject {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
     },
 }
 
@@ -3863,7 +3895,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("whatsapp", 9),
+            ("whatsapp", 11),
             ("work", 16),
             ("workflows", 8),
         ];

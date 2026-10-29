@@ -81,6 +81,20 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
             )?;
             publish(client, KIND_WHATSAPP_SEND_REQUEST, content).await
         }
+        WhatsappCmd::Drafts { limit } => {
+            query(client, json!({ "what": "drafts", "limit": limit })).await
+        }
+        WhatsappCmd::Draft(sub) => {
+            let content = match sub {
+                crate::WhatsappDraftCmd::Approve { draft, text, param } => {
+                    draft_decision_content(&draft, "approve", text.as_deref(), &param)?
+                }
+                crate::WhatsappDraftCmd::Reject { draft } => {
+                    draft_decision_content(&draft, "reject", None, &[])?
+                }
+            };
+            publish(client, KIND_WHATSAPP_BATCH_DECISION, content).await
+        }
         WhatsappCmd::Contacts { limit } => {
             query(client, json!({ "what": "contacts", "limit": limit })).await
         }
@@ -432,6 +446,33 @@ pub(crate) fn decision_content(
     }))
 }
 
+/// The `47047` content that decides one agent draft.
+pub(crate) fn draft_decision_content(
+    draft: &str,
+    decision: &str,
+    text: Option<&str>,
+    params: &[String],
+) -> Result<Value, CliError> {
+    let draft_id = Uuid::parse_str(draft.trim())
+        .map_err(|_| CliError::Usage("--draft must be a draft message id".into()))?;
+    if text.is_some() && !params.is_empty() {
+        return Err(CliError::Usage(
+            "edit either --text (text draft) or --param (template draft), not both".into(),
+        ));
+    }
+    let mut content = json!({ "v": 1, "draftId": draft_id.to_string(), "decision": decision });
+    if let Some(text) = text {
+        if text.trim().is_empty() {
+            return Err(CliError::Usage("--text is empty".into()));
+        }
+        content["text"] = json!(text);
+    }
+    if !params.is_empty() {
+        content["params"] = json!(params);
+    }
+    Ok(content)
+}
+
 /// The `47048` command content. Exactly one recipient and one body.
 pub(crate) fn send_content(
     contact: Option<&str>,
@@ -563,6 +604,24 @@ mod tests {
         );
         assert!(template_title_content("", "en", "x", false).is_err());
         assert!(template_title_content("t", "en", "  ", false).is_err());
+    }
+
+    #[test]
+    fn draft_decisions_match_the_contract() {
+        let id = Uuid::new_v4().to_string();
+        let approve =
+            draft_decision_content(&id, "approve", Some(" Shorter reply "), &[]).expect("approve");
+        assert_eq!(approve["draftId"], id.as_str());
+        assert_eq!(approve["decision"], "approve");
+        assert_eq!(approve["text"], " Shorter reply ");
+        let template =
+            draft_decision_content(&id, "approve", None, &["Naledi".to_string()]).expect("t");
+        assert_eq!(template["params"][0], "Naledi");
+        let reject = draft_decision_content(&id, "reject", None, &[]).expect("reject");
+        assert!(reject.get("text").is_none() && reject.get("params").is_none());
+        assert!(draft_decision_content("nope", "approve", None, &[]).is_err());
+        assert!(draft_decision_content(&id, "approve", Some("x"), &["y".to_string()]).is_err());
+        assert!(draft_decision_content(&id, "approve", Some("  "), &[]).is_err());
     }
 
     #[test]

@@ -97,7 +97,8 @@ CREATE TABLE whatsapp_batches (
 
 -- Inbound and outbound messages. An outbound batch row is a message in state
 -- 'held' (pending approval), 'ready' (approved, waiting for its pacing slot) or
--- 'dropped'. One idempotency key is at most one Graph send.
+-- 'dropped'. An agent's later message is a 'draft' until an owner or admin approves it
+-- ('queued') or rejects it ('rejected'); the sender never reads a draft. One idempotency key is at most one Graph send.
 CREATE TABLE whatsapp_messages (
     community_id UUID NOT NULL REFERENCES communities(id),
     id UUID NOT NULL,
@@ -110,8 +111,9 @@ CREATE TABLE whatsapp_messages (
     template_language TEXT,
     params JSONB NOT NULL DEFAULT '[]'::jsonb,
     state TEXT NOT NULL
-        CHECK (state IN ('held', 'ready', 'dropped', 'skipped', 'queued', 'sending',
-                         'sent', 'delivered', 'read', 'failed', 'unconfirmed', 'received')),
+        CHECK (state IN ('held', 'ready', 'dropped', 'skipped', 'draft', 'rejected', 'queued',
+                         'sending', 'sent', 'delivered', 'read', 'failed', 'unconfirmed',
+                         'received')),
     skip_reason TEXT,
     wamid TEXT,
     error_code TEXT,

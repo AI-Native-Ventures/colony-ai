@@ -23,22 +23,26 @@ use buzz_core::kind::{
 };
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
-    BatchDecisionOutcome, NewOutboundMessage, RowEdit, WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP,
+    BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, WhatsappBatch,
+    MAX_DAILY_NEW_CHAT_CAP,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
 use crate::whatsapp::policy::{
-    clean_title, normalize_wa_id, render_template, template_slot_count, window_open,
+    clean_title, e164, normalize_wa_id, render_template, template_slot_count, window_open,
 };
-use crate::whatsapp::sender::{enqueue_send, Enqueued, SendCommand, TemplateRef};
+use crate::whatsapp::sender::{
+    check_send, enqueue_send, Enqueued, SendCommand, SendContext, TemplateRef,
+};
 use crate::whatsapp::{access_for, channel, parse_uuid, Access};
 
 const MAX_BATCH_ROWS: usize = 500;
 const MAX_MATERIAL_LINKS: usize = 10;
 const MAX_NOTE_CHARS: usize = 1000;
 const MAX_ROW_REFUSALS_SHOWN: usize = 5;
+const MAX_TEXT_CHARS: usize = 4096;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,12 +84,23 @@ struct RowEditCommand {
 #[serde(rename_all = "camelCase")]
 struct DecisionCommand {
     v: u8,
-    batch_id: String,
+    /// Decide a batch ...
+    #[serde(default)]
+    batch_id: Option<String>,
+    /// ... or one agent draft.
+    #[serde(default)]
+    draft_id: Option<String>,
     decision: String,
     #[serde(default)]
     drop_rows: Vec<i32>,
     #[serde(default)]
     edit_rows: Vec<RowEditCommand>,
+    /// Edited text for a text draft.
+    #[serde(default)]
+    text: Option<String>,
+    /// Edited parameters for a template draft.
+    #[serde(default)]
+    params: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -411,12 +426,18 @@ async fn handle_decision(
     access: Access,
 ) -> Result<IngestResult, IngestError> {
     if !access.is_owner_admin() {
-        return Err(restricted("only the owner or an admin can decide a batch"));
+        return Err(restricted(
+            "only the owner or an admin can decide a batch or a draft",
+        ));
     }
     let command: DecisionCommand = parse(event)?;
     check_version(command.v)?;
+    if command.draft_id.is_some() {
+        return handle_draft_decision(tenant, state, event, command).await;
+    }
     let community = tenant.community();
-    let batch_id = parse_uuid(&command.batch_id, "batchId").map_err(invalid)?;
+    let batch_id = parse_uuid(command.batch_id.as_deref().unwrap_or(""), "batchId")
+        .map_err(invalid)?;
     let approve = match command.decision.as_str() {
         "approve" => true,
         "reject" => false,
@@ -493,6 +514,155 @@ async fn handle_decision(
     }
 }
 
+/// Decide one agent draft: approve (optionally with edited text or parameters) or reject.
+/// Approval re-checks every send rule, because the world may have changed since the draft.
+async fn handle_draft_decision(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    command: DecisionCommand,
+) -> Result<IngestResult, IngestError> {
+    let community = tenant.community();
+    let draft_id =
+        parse_uuid(command.draft_id.as_deref().unwrap_or(""), "draftId").map_err(invalid)?;
+    if command.batch_id.is_some() || !command.drop_rows.is_empty() || !command.edit_rows.is_empty()
+    {
+        return Err(invalid(
+            "a draft decision takes draftId, decision, and optionally text or params",
+        ));
+    }
+    let approve = match command.decision.as_str() {
+        "approve" => true,
+        "reject" => false,
+        _ => return Err(invalid("decision must be approve or reject")),
+    };
+    let message = state
+        .db
+        .whatsapp_get_message(community, draft_id)
+        .await
+        .map_err(internal)?
+        .filter(|message| message.direction == "out")
+        .ok_or_else(|| invalid("no such draft"))?;
+    if message.state != "draft" {
+        return Err(IngestError::Rejected(
+            "duplicate: this draft was already decided".into(),
+        ));
+    }
+
+    let mut edit: Option<(String, serde_json::Value)> = None;
+    if approve {
+        let settings = state
+            .db
+            .whatsapp_ensure_settings(community)
+            .await
+            .map_err(internal)?;
+        let contact = state
+            .db
+            .whatsapp_get_contact(community, &message.wa_id)
+            .await
+            .map_err(internal)?;
+        // The draft itself is counted as pending; every other pending message still is.
+        let pending = state
+            .db
+            .whatsapp_count_pending_outbound(community, &message.wa_id)
+            .await
+            .map_err(internal)?
+            .saturating_sub(1);
+        let plan = check_send(&SendContext {
+            contact: contact.as_ref(),
+            send_paused: settings.send_paused,
+            pause_reason: settings.pause_reason.as_deref(),
+            pending_outbound: pending,
+            now: Utc::now(),
+            is_owner_admin: true,
+            is_template: message.kind == "template",
+        })
+        .map_err(restricted)?;
+        if plan.new_chat {
+            return Err(restricted(
+                "the 24 hour window closed; a new chat needs an approved batch",
+            ));
+        }
+        match message.kind.as_str() {
+            "text" => {
+                if command.params.is_some() {
+                    return Err(invalid("params only edit a template draft"));
+                }
+                if let Some(text) = command.text.as_deref() {
+                    let text = text.trim();
+                    if text.is_empty() || text.chars().count() > MAX_TEXT_CHARS {
+                        return Err(invalid(format!(
+                            "text must be 1 through {MAX_TEXT_CHARS} characters"
+                        )));
+                    }
+                    edit = Some((text.to_string(), message.params.clone()));
+                }
+            }
+            _ => {
+                if command.text.is_some() {
+                    return Err(invalid("text only edits a text draft"));
+                }
+                if let Some(params) = command.params.as_ref() {
+                    let (Some(name), Some(language)) = (
+                        message.template_name.as_deref(),
+                        message.template_language.as_deref(),
+                    ) else {
+                        return Err(invalid("the draft has no template"));
+                    };
+                    let template = state
+                        .db
+                        .whatsapp_get_template(community, name, language)
+                        .await
+                        .map_err(internal)?
+                        .ok_or_else(|| invalid("the draft template is no longer approved"))?;
+                    let body = render_template(&template.body, params).map_err(invalid)?;
+                    edit = Some((body, serde_json::json!(params)));
+                }
+            }
+        }
+    }
+
+    let outcome = state
+        .db
+        .whatsapp_decide_draft(
+            community,
+            draft_id,
+            approve,
+            edit.as_ref().map(|(body, params)| (body.as_str(), params)),
+        )
+        .await
+        .map_err(internal)?;
+    match outcome {
+        DraftDecisionOutcome::NotFound => Err(invalid("no such draft")),
+        DraftDecisionOutcome::NotDraft => Err(IngestError::Rejected(
+            "duplicate: this draft was already decided".into(),
+        )),
+        DraftDecisionOutcome::Approved => {
+            channel::post_notice(
+                state,
+                tenant,
+                "draft_approved",
+                &format!("Draft to {} approved and queued.", e164(&message.wa_id)),
+            )
+            .await;
+            Ok(ok(event, "approved: queued"))
+        }
+        DraftDecisionOutcome::Rejected => {
+            channel::post_notice(
+                state,
+                tenant,
+                "draft_rejected",
+                &format!(
+                    "Draft to {} rejected. It will not be sent.",
+                    e164(&message.wa_id)
+                ),
+            )
+            .await;
+            Ok(ok(event, "rejected"))
+        }
+    }
+}
+
 async fn handle_send(
     tenant: &TenantContext,
     state: &Arc<AppState>,
@@ -523,6 +693,10 @@ async fn handle_send(
         .map_err(restricted)?
     {
         Enqueued::Queued(id) => Ok(ok(event, format!("queued: {id}"))),
+        Enqueued::Draft(id) => Ok(ok(
+            event,
+            format!("draft pending approval: {id}. An owner or admin must approve it before it is sent."),
+        )),
         Enqueued::Duplicate => Ok(ok(event, "duplicate: this request was already queued")),
     }
 }
@@ -631,7 +805,6 @@ async fn handle_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::whatsapp::policy::e164;
     use buzz_db::whatsapp::WhatsappContact;
     use chrono::TimeZone;
 

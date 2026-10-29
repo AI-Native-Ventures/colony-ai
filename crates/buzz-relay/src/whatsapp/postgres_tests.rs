@@ -714,6 +714,182 @@ async fn template_titles_default_from_the_body_rename_and_survive_sync() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn agent_messages_are_drafts_the_owner_approves_edits_or_rejects() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    let send = |to: &str, body: &str| json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": to, "text": body});
+    let decide = |draft: Uuid, decision: &str| json!({"v": 1, "draftId": draft.to_string(), "decision": decision});
+    let drafts = || async {
+        fx.state
+            .db
+            .whatsapp_list_drafts(fx.community(), 50)
+            .await
+            .expect("drafts")
+    };
+
+    // The owner typing in Colony is the approval: it is queued and goes out at once.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230008", "wamid.IN8", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+    let owner_send = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            send("+27821230008", "Owner here"),
+        )
+        .await
+        .expect("owner sends");
+    assert!(
+        owner_send.message.starts_with("queued"),
+        "{}",
+        owner_send.message
+    );
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "an owner's own message is sent at once"
+    );
+
+    // An agent's message is a draft.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230007", "wamid.IN7", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+    let made = fx
+        .command(
+            &agent,
+            KIND_WHATSAPP_SEND_REQUEST,
+            send("+27821230007", "Hi Thabo"),
+        )
+        .await
+        .expect("agent drafts");
+    assert!(
+        made.message.starts_with("draft pending approval"),
+        "{}",
+        made.message
+    );
+
+    // GUARD: `initial_state` in sender.rs and the sender reading only 'queued'/'ready'.
+    // If an agent message were queued, this would call Graph.
+    fx.run_sender(Utc::now()).await;
+    fx.run_sender(Utc::now() + Duration::minutes(30)).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "a pending draft never reaches Graph"
+    );
+    let pending = drafts().await;
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].state, "draft");
+    let draft_id = pending[0].id;
+    assert!(
+        pending[0].event_id.is_some(),
+        "the draft is shown in the contact's thread"
+    );
+
+    // GUARD: 'draft' counts as pending in `whatsapp_count_pending_outbound`.
+    let refusal = rejection(
+        fx.command(
+            &agent,
+            KIND_WHATSAPP_SEND_REQUEST,
+            send("+27821230007", "And another"),
+        )
+        .await,
+    );
+    assert!(refusal.contains("one message at a time"), "{refusal}");
+
+    // Only the owner or an admin decides.
+    let refusal = rejection(
+        fx.command(
+            &agent,
+            KIND_WHATSAPP_BATCH_DECISION,
+            decide(draft_id, "approve"),
+        )
+        .await,
+    );
+    assert!(refusal.contains("only the owner or an admin"), "{refusal}");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(fx.graph.send_count(), 1);
+
+    // Approve with an edit: the relay sends exactly the edited text, once.
+    let mut approve = decide(draft_id, "approve");
+    approve["text"] = json!("Hi Thabo, thanks for getting back to us");
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, approve)
+        .await
+        .expect("owner approves with an edit");
+    fx.run_sender(Utc::now()).await;
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(fx.graph.send_count(), 2);
+    assert_eq!(
+        fx.graph.sends.lock().expect("sends").last(),
+        Some(&SendRequest::Text {
+            to: "27821230007".into(),
+            body: "Hi Thabo, thanks for getting back to us".into()
+        })
+    );
+    // A second decision on the same draft changes nothing.
+    let again = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH_DECISION,
+            decide(draft_id, "reject"),
+        )
+        .await,
+    );
+    assert!(again.starts_with("duplicate"), "{again}");
+
+    // A rejected draft is never sent.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230009", "wamid.IN9", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+    fx.command(
+        &agent,
+        KIND_WHATSAPP_SEND_REQUEST,
+        send("+27821230009", "Pitch"),
+    )
+    .await
+    .expect("agent drafts again");
+    let second = drafts().await;
+    assert_eq!(second.len(), 1);
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        decide(second[0].id, "reject"),
+    )
+    .await
+    .expect("owner rejects");
+    fx.run_sender(Utc::now() + Duration::minutes(5)).await;
+    assert_eq!(fx.graph.send_count(), 2, "a rejected draft is never sent");
+    let stored = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), second[0].id)
+        .await
+        .expect("message")
+        .expect("exists");
+    assert_eq!(stored.state, "rejected");
+    assert!(drafts().await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn free_text_needs_the_window_and_never_two_messages_in_a_row() {
     let fx = fixture().await;
     let text = |to: &str, body: &str| json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": to, "text": body});

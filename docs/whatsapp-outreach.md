@@ -17,10 +17,12 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 | connect, disconnect | yes | no | no |
 | change daily cap, sync templates | yes | no | no |
 | approve, reject, edit or drop batch rows | yes | no | no |
-| create batch, send inside an open window | yes | yes | no |
+| create batch | yes | yes | no |
+| send a message (free text in the window, follow-up template) | yes, sent at once | yes, but only as a DRAFT | no |
+| approve, edit or reject an agent draft | yes | no | no |
 | send a template to a NEW chat outside a batch | yes (counts to cap) | no, use a batch | no |
 | read status and templates | yes | yes | yes (no secrets, no numbers) |
-| read contacts, inbox, batches, threads | yes | yes | no |
+| read contacts, inbox, batches, drafts, threads | yes | yes | no |
 
 "Outreach channel member" means an active member of the company's private `Outreach`
 channel. The relay creates it on connect (private, owner and admins added). The owner
@@ -62,6 +64,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `templates` | `refresh` (bool, owner/admin only) | any member | `{ "templates": [Template] }` |
 | `batches` | `state` optional | owner/admin, Outreach member | `{ "batches": [BatchSummary] }` |
 | `batch` | `batchId` | owner/admin, Outreach member | `BatchDetail` |
+| `drafts` | `limit` | owner/admin, Outreach member | `{ "drafts": [Message + to, params] }` pending agent drafts, oldest first |
 | `contacts` | `limit`, `before` | owner/admin, Outreach member | `{ "contacts": [Contact] }` |
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
 | `thread` | `waId`, `limit` | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
@@ -110,9 +113,9 @@ buttons: [{type, text}] }`.
 Contact: `{ waId, e164, displayName, leadId, ownerPubkey, threadRootEventId, lastInboundAt,
 windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered }`.
 
-Message: `{ id, direction: "in"|"out", kind: "text"|"template"|"media"|"button", text,
-templateName, state: "queued"|"sending"|"sent"|"delivered"|"read"|"failed"|"unconfirmed",
-errorCode, errorText, eventId, createdAt }`.
+Message: `{ id, waId, direction: "in"|"out", kind: "text"|"template"|"media"|"button", text,
+templateName, state: "draft"|"rejected"|"queued"|"sending"|"sent"|"delivered"|"read"|"failed"|"unconfirmed",
+errorCode, errorText, eventId, senderPubkey, createdAt }`. `text` is the current text (after an owner edit).
 
 BatchSummary: `{ batchId, status: "pending"|"approved"|"rejected"|"completed",
 createdBy, template, language, rows: {total, ready, sent, failed, dropped}, createdAt }`.
@@ -161,7 +164,7 @@ re-renders every preview itself and stores the batch as `pending`. A pending bat
 Opted-out or paused numbers are refused at create time with a clear reason per row.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
-### `47047` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only)
+### `47047` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
 
 ```json
 {
@@ -175,6 +178,18 @@ Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
 Edits and drops apply to a pending batch only, before the decision. Approve makes the
 remaining rows `ready`. Reject is final.
+
+To decide one agent draft (see `47048`) send `draftId` instead of `batchId`:
+
+```json
+{ "v": 1, "draftId": "<message id>", "decision": "approve" | "reject",
+  "text": "edited text (text draft only)", "params": ["edited", "params (template draft only)"] }
+```
+
+Approve can be one tap in the thread (no edit fields). Approval re-checks every send rule at that
+moment (opted out, paused, quality stop, 24 hour window for free text, one message in a row); a
+refused approval leaves the draft pending with the plain reason. A draft can be decided once: a
+repeat is answered `duplicate: this draft was already decided`.
 
 ### `47048` `KIND_WHATSAPP_SEND_REQUEST` (owner/admin or Outreach member)
 
@@ -192,7 +207,16 @@ instead of `text`. Rules the relay enforces:
 4. More than one outbound message in a row without a reply is refused (`one message at a time`).
 5. Quality RED or paused connection: refused.
 
-The request is queued durably and sent by the relay worker. `requestId` is the idempotency
+**Who approves what (owner decision, 29 Oct):** approving a batch approves ONLY the first message
+of each row. EVERY later outbound message from an agent (reply inside the window, follow-up
+template, files, links) is a DRAFT: the request is stored with state `draft`, mirrored into the
+contact's thread with tags `wa-draft` and `wa-msg` (the message id), and the answer is
+`draft pending approval: <id>`. A draft never reaches Graph; the sender only reads `queued` and
+`ready` rows. An owner or admin approves, edits or rejects it with `47047`. A message the owner or an
+admin sends themselves is the approval: it is `queued` and sent at once. One draft at a time per
+contact (a pending draft counts toward rule 4). Free text still only inside the 24 hour window.
+
+The request is stored durably and sent by the relay worker. `requestId` is the idempotency
 key: one request is at most one Graph send.
 
 ### `47049` `KIND_WHATSAPP_SETTINGS` (owner/admin; agents may only propose a title)
@@ -214,7 +238,8 @@ changes until an owner or admin renames. A `template_title_proposed` notice is p
   minutes (deterministic jitter per row), never past the daily cap of NEW chats
   (a new chat is a template send to a contact with no open window). Unsent rows roll to
   the next day automatically.
-* Replies and follow-ups inside an open window are not capped and are not paced.
+* Replies and follow-ups inside an open window are not capped and are not paced, but an agent's
+  reply or follow-up waits for its own owner/admin approval (draft) before it is sent.
 * One row = at most one Graph send. A row moves `ready -> sending -> sent`. A crash between
   the Graph call and the record leaves it `sending`; after the lease expires it becomes
   `unconfirmed` and is NEVER resent automatically. The owner is told in the Outreach channel.
@@ -240,13 +265,15 @@ One private channel named `Outreach`. Each contact has ONE thread:
   `["wa-dir", "in"]`, `["wamid", "<id>"]`, optional `["lead", "<leadId>"]`, and
   `["p", "<owning agent>"]` so the agent is woken. The UI shows the contact as the author
   (the `wa-name` tag), not the relay.
-* Outbound: same shape with `["wa-dir", "out"]` and `["wa-sender", "<pubkey>"]`.
+* Outbound: same shape with `["wa-dir", "out"]`, `["wa-sender", "<pubkey>"]` and `["wa-msg", "<message id>"]`.
+  An agent draft also carries `["wa-draft", "<message id>"]` and appears here when it is drafted
+  (before it is sent); read its live state and current text from the `thread` query.
 * Notices (token expired, quality change, template paused, contact paused, unconfirmed
   send, batch decisions): relay signed kind 9 in the channel with a `["wa-notice", "<code>"]` tag.
 
 ## CLI
 
-`colony whatsapp status | templates | template-title | batch create | batch list | batch show |
+`colony whatsapp drafts | draft approve | draft reject` (owner/admin decide), `status | templates | template-title | batch create | batch list | batch show |
 batch approve | batch reject | send | contacts | inbox | thread | cap`. `templates` prints the title first
 and the Meta name second; `template-title --template <title or Meta name> --title "..."` renames
 (owner/admin) or, with `--propose`, suggests a title (agents). Help text and the colony skill carry the rules:

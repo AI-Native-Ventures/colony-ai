@@ -304,6 +304,14 @@ pub fn message_tags(
         vec!["wa-name".to_string(), name],
         vec!["wa-dir".to_string(), direction.to_string()],
     ];
+    if direction == "out" {
+        // The message id is what an owner decision names; a draft is flagged so the thread can
+        // show an approve / edit / reject control on it.
+        tags.push(vec!["wa-msg".to_string(), message.id.to_string()]);
+        if message.state == "draft" {
+            tags.push(vec!["wa-draft".to_string(), message.id.to_string()]);
+        }
+    }
     if let Some(wamid) = message.wamid.as_ref() {
         tags.push(vec!["wamid".to_string(), wamid.clone()]);
     }
@@ -457,6 +465,20 @@ mod tests {
         assert!(with_owner.contains(&vec!["lead".to_string(), "lead-1".to_string()]));
         let without = message_tags(&owned, &inbound, false);
         assert!(!without.iter().any(|tag| tag[0] == "p"));
+    }
+
+    #[test]
+    fn a_draft_is_flagged_so_the_thread_can_offer_approval() {
+        let draft_message = {
+            let mut m = message("out");
+            m.state = "draft".into();
+            m
+        };
+        let tags = message_tags(&contact("Thabo"), &draft_message, false);
+        assert!(tags.contains(&vec!["wa-draft".to_string(), Uuid::nil().to_string()]));
+        assert!(tags.contains(&vec!["wa-msg".to_string(), Uuid::nil().to_string()]));
+        let sent = message_tags(&contact("Thabo"), &message("out"), false);
+        assert!(!sent.iter().any(|tag| tag[0] == "wa-draft"));
     }
 
     #[test]

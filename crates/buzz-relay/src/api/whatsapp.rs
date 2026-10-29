@@ -174,6 +174,8 @@ fn message_view(message: &WhatsappMessage) -> Value {
         "errorCode": message.error_code,
         "errorText": message.error_text,
         "eventId": message.event_id.as_ref().map(hex::encode),
+        "senderPubkey": message.sender_pubkey.as_ref().map(hex::encode),
+        "waId": message.wa_id,
         "createdAt": message.created_at.to_rfc3339(),
     })
 }
@@ -331,6 +333,25 @@ pub async fn query(
             detail["counts"] = row_counts(&rows);
             Ok(Json(detail))
         }
+        "drafts" => {
+            private(access)?;
+            let drafts = state
+                .db
+                .whatsapp_list_drafts(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(json!({
+                "drafts": drafts
+                    .iter()
+                    .map(|draft| {
+                        let mut view = message_view(draft);
+                        view["to"] = json!(e164(&draft.wa_id));
+                        view["params"] = draft.params.clone();
+                        view
+                    })
+                    .collect::<Vec<_>>(),
+            })))
+        }
         "contacts" => {
             private(access)?;
             let contacts = state
@@ -379,7 +400,7 @@ pub async fn query(
         }
         _ => Err(api_error(
             StatusCode::BAD_REQUEST,
-            "unknown query: use status, templates, batches, batch, contacts, inbox or thread",
+            "unknown query: use status, templates, batches, batch, drafts, contacts, inbox or thread",
         )),
     }
 }

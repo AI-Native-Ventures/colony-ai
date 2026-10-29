@@ -135,8 +135,11 @@ pub struct SendCommand {
 /// Outcome of a queued send.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Enqueued {
-    /// Queued with this message id.
+    /// Queued with this message id: the sender was an owner or admin, who is the approval.
     Queued(Uuid),
+    /// An agent's message. It is a draft that never reaches Graph until an owner or admin
+    /// approves it.
+    Draft(Uuid),
     /// The same `requestId` was already queued: nothing new was created.
     Duplicate,
 }
@@ -261,7 +264,7 @@ pub async fn enqueue_send(
         template_name,
         template_language,
         params,
-        state: "queued".to_string(),
+        state: initial_state(access).to_string(),
         idempotency_key: format!("req:{}", command.request_id),
         batch_id: None,
         batch_idx: None,
@@ -274,8 +277,38 @@ pub async fn enqueue_send(
         .await
         .map_err(|error| error.to_string())?
     {
+        Some(id) if message.state == "draft" => {
+            // Show the draft in the contact's thread so the owner can decide it there. A
+            // failed post is retried by `repair_unposted`; the draft itself is already durable.
+            if let (Some(channel_id), Ok(Some(stored)), Ok(Some(contact))) = (
+                settings.outreach_channel_id,
+                state.db.whatsapp_get_message(community, id).await,
+                state
+                    .db
+                    .whatsapp_get_contact(community, &message.wa_id)
+                    .await,
+            ) {
+                if let Err(error) =
+                    channel::post_for_message(state, tenant, channel_id, &contact, &stored).await
+                {
+                    tracing::warn!(%community, "whatsapp draft post failed, will retry: {error}");
+                }
+            }
+            Ok(Enqueued::Draft(id))
+        }
         Some(id) => Ok(Enqueued::Queued(id)),
         None => Ok(Enqueued::Duplicate),
+    }
+}
+
+/// Initial state of a send request. An owner or admin typing in Colony is the approval, so
+/// their message is queued at once. Every agent message is a draft: the sender only reads
+/// `queued` and `ready` rows, so a draft never reaches Graph before an owner decides it.
+pub fn initial_state(access: Access) -> &'static str {
+    if access.is_owner_admin() {
+        "queued"
+    } else {
+        "draft"
     }
 }
 
@@ -708,6 +741,31 @@ pub async fn repair_unposted(
         return;
     };
     let community = tenant.community();
+    let drafts = match state
+        .db
+        .whatsapp_list_unposted_drafts(community, UNPOSTED_PER_TICK)
+        .await
+    {
+        Ok(drafts) => drafts,
+        Err(error) => {
+            tracing::warn!(%community, "whatsapp unposted draft lookup failed: {error}");
+            Vec::new()
+        }
+    };
+    for message in drafts {
+        let Ok(Some(contact)) = state
+            .db
+            .whatsapp_get_contact(community, &message.wa_id)
+            .await
+        else {
+            continue;
+        };
+        if let Err(error) =
+            channel::post_for_message(state, tenant, channel_id, &contact, &message).await
+        {
+            tracing::warn!(%community, message = %message.id, "whatsapp draft post retry failed: {error}");
+        }
+    }
     let pending = match state
         .db
         .whatsapp_list_unposted(community, UNPOSTED_PER_TICK)
@@ -855,6 +913,14 @@ mod tests {
         assert!(check_send(&queued)
             .unwrap_err()
             .contains("one message at a time"));
+    }
+
+    #[test]
+    fn only_an_owner_or_admin_message_is_queued_at_once() {
+        // GUARD: every agent message starts as a draft the sender never reads.
+        assert_eq!(initial_state(Access::OwnerAdmin), "queued");
+        assert_eq!(initial_state(Access::Outreach), "draft");
+        assert_eq!(initial_state(Access::Member), "draft");
     }
 
     #[test]
