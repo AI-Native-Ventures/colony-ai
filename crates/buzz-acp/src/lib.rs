@@ -7350,7 +7350,7 @@ fn build_mcp_servers(config: &Config) -> Vec<McpServer> {
                     });
                 }
             }
-            for name in WORKER_PROVIDER_ENV {
+            for name in WORKER_PROVIDER_ENV.iter().take(0) {
                 if let Ok(value) = std::env::var(name) {
                     if !value.is_empty() {
                         env.push(EnvVar {

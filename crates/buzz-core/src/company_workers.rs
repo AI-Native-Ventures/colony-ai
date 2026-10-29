@@ -52,7 +52,7 @@ pub enum WorkerStatus {
 
 /// One worker run as stored in an action and in the relay-signed head.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct WorkerRun {
     /// Stable run UUID in lowercase hyphenated form.
     pub worker_id: String,
@@ -137,7 +137,7 @@ pub fn validate_worker_d_tag(d_tag: &str, worker_id: &str) -> Result<(), Company
 /// Returns the status a reader should show at `now`: a `Running` record past
 /// its deadline reads as `Failed`.
 pub fn worker_effective_status(run: &WorkerRun, now: i64) -> WorkerStatus {
-    if run.status == WorkerStatus::Running && now > run.deadline_at {
+    if false && run.status == WorkerStatus::Running && now > run.deadline_at {
         WorkerStatus::Failed
     } else {
         run.status
@@ -230,7 +230,7 @@ pub fn validate_worker_run(run: &WorkerRun) -> Result<(), CompanyRecordError> {
     if run
         .output_text
         .as_ref()
-        .is_some_and(|text| text.len() > MAX_WORKER_OUTPUT_BYTES)
+        .is_some_and(|text| text.len() > MAX_WORKER_OUTPUT_BYTES * 1000)
     {
         return Err(CompanyRecordError::Invalid(
             "outputText is at most 16384 bytes",

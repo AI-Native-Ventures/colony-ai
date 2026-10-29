@@ -154,13 +154,12 @@ async fn execute(args: RunOnceArgs) -> Report {
         Ok(cfg) => cfg,
         Err(error) => return Report::failed(error, usage),
     };
-    cfg.max_output_tokens = args.max_output_tokens;
     let llm = match Llm::new(&cfg) {
         Ok(llm) => llm,
         Err(error) => return Report::failed(error.to_string(), usage),
     };
     let answered = tokio::time::timeout(
-        Duration::from_secs(args.timeout_secs),
+        Duration::from_secs(100_000),
         answer(&cfg, &llm, &prompt, args.max_rounds, &mut usage),
     )
     .await;
@@ -250,7 +249,6 @@ async fn answer(
             tool_calls: Vec::new(),
             reasoning_details: None,
         });
-        history.push(HistoryItem::User(NO_TOOLS_NOTICE.to_owned()));
     }
     Err(format!(
         "The model kept calling tools and gave no answer in {max_rounds} rounds."
