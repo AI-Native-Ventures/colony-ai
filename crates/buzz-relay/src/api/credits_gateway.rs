@@ -364,6 +364,7 @@ async fn start_inference(
             answered_by: None,
             elapsed: started.elapsed(),
             streamed: false,
+            models_tried: "",
         });
         response
     };
@@ -466,7 +467,7 @@ fn database_failure(error: buzz_db::DbError) -> Failure {
 /// log line that says how it ended. The only retries are inside `complete`: a
 /// provider 429, which the provider declines before it generates so it costs
 /// nothing and cannot bill twice, and a move to the next model of the chain when
-/// one is gone or limited. The charge and the stored usage name the model that
+/// one is gone, refuses or is limited. The charge and the stored usage name the model that
 /// answered. A failure that is not a clear refusal leaves the committed hold to
 /// the durable worker, which also covers the relay itself going away mid-request.
 async fn complete_and_settle(
@@ -477,7 +478,16 @@ async fn complete_and_settle(
     reserve: i64,
     started: tokio::time::Instant,
 ) -> ApiResult {
-    let result = settle_request(&gateway, &upstream, request_id, upstream_body, reserve).await;
+    let mut tried = String::new();
+    let result = settle_request(
+        &gateway,
+        &upstream,
+        request_id,
+        upstream_body,
+        reserve,
+        &mut tried,
+    )
+    .await;
     let elapsed = started.elapsed();
     let streamed = elapsed >= gateway.keepalive.after;
     match result {
@@ -490,6 +500,7 @@ async fn complete_and_settle(
                 answered_by: Some(&answered_by),
                 elapsed,
                 streamed,
+                models_tried: &tried,
             });
             Ok(response)
         }
@@ -502,6 +513,7 @@ async fn complete_and_settle(
                 answered_by: None,
                 elapsed,
                 streamed,
+                models_tried: &tried,
             });
             Err(failure.response)
         }
@@ -509,15 +521,18 @@ async fn complete_and_settle(
 }
 
 /// The provider call and the settlement. Returns the response and the model
-/// that answered.
+/// that answered, and leaves in `tried` every call made down the chain.
 async fn settle_request(
     gateway: &Gateway,
     upstream: &Upstream,
     request_id: Uuid,
     upstream_body: Value,
     reserve: i64,
+    tried: &mut String,
 ) -> Result<(Json<Value>, String), Failure> {
-    let answer = match upstream.complete(&upstream_body).await {
+    let completion = upstream.complete(&upstream_body).await;
+    *tried = completion.tried.join(",");
+    let answer = match completion.result {
         Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
             gateway
