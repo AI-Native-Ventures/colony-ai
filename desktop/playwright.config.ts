@@ -108,6 +108,7 @@ export default defineConfig({
       ],
   use: {
     baseURL: `http://127.0.0.1:${appPort}`,
+    channel: "chrome",
     launchOptions: {
       args: ["--use-mock-keychain", "--password-store=basic"],
     },
@@ -320,6 +321,8 @@ export default defineConfig({
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
         "**/cofounder-map.spec.ts",
+        "**/whatsapp-outreach.spec.ts",
+        "**/whatsapp-outreach.visual.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -424,6 +427,7 @@ export default defineConfig({
         "**/colony3-sales-setup.spec.ts",
         "**/colony3-scout-dupes.spec.ts",
         "**/cofounder-map.spec.ts",
+        "**/whatsapp-outreach.integration.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

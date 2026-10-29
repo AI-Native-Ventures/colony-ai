@@ -33,6 +33,7 @@ import { Route as companyDotmapRouteImport } from "./routes/company.map";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as asksDotnewRouteImport } from "./routes/asks.new";
+import { Route as whatsappDotbatchesDotbatchIdRouteImport } from "./routes/whatsapp.batches.$batchId";
 import { Route as teamDotpauseDotmemberPubkeyRouteImport } from "./routes/team.pause.$memberPubkey";
 import { Route as teamDoteditDotmemberPubkeyRouteImport } from "./routes/team.edit.$memberPubkey";
 import { Route as teamDotdetailDotmemberPubkeyRouteImport } from "./routes/team.detail.$memberPubkey";
@@ -185,6 +186,12 @@ const asksDotnewRoute = asksDotnewRouteImport.update({
   path: "/asks/new",
   getParentRoute: () => rootRouteImport,
 } as any);
+const whatsappDotbatchesDotbatchIdRoute =
+  whatsappDotbatchesDotbatchIdRouteImport.update({
+    id: "/whatsapp/batches/$batchId",
+    path: "/whatsapp/batches/$batchId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const teamDotpauseDotmemberPubkeyRoute =
   teamDotpauseDotmemberPubkeyRouteImport.update({
     id: "/team/pause/$memberPubkey",
@@ -292,6 +299,7 @@ export interface FileRoutesByFullPath {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
@@ -333,6 +341,7 @@ export interface FileRoutesByTo {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -375,6 +384,7 @@ export interface FileRoutesById {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -417,7 +427,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -458,7 +469,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   id:
     | "__root__"
     | "/"
@@ -499,7 +511,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -542,6 +555,7 @@ export interface RootRouteChildren {
   teamDotdetailDotmemberPubkeyRoute: typeof teamDotdetailDotmemberPubkeyRoute;
   teamDoteditDotmemberPubkeyRoute: typeof teamDoteditDotmemberPubkeyRoute;
   teamDotpauseDotmemberPubkeyRoute: typeof teamDotpauseDotmemberPubkeyRoute;
+  whatsappDotbatchesDotbatchIdRoute: typeof whatsappDotbatchesDotbatchIdRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -742,6 +756,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof asksDotnewRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/whatsapp/batches/$batchId": {
+      id: "/whatsapp/batches/$batchId";
+      path: "/whatsapp/batches/$batchId";
+      fullPath: "/whatsapp/batches/$batchId";
+      preLoaderRoute: typeof whatsappDotbatchesDotbatchIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/team/pause/$memberPubkey": {
       id: "/team/pause/$memberPubkey";
       path: "/team/pause/$memberPubkey";
@@ -862,6 +883,7 @@ const rootRouteChildren: RootRouteChildren = {
   teamDotdetailDotmemberPubkeyRoute: teamDotdetailDotmemberPubkeyRoute,
   teamDoteditDotmemberPubkeyRoute: teamDoteditDotmemberPubkeyRoute,
   teamDotpauseDotmemberPubkeyRoute: teamDotpauseDotmemberPubkeyRoute,
+  whatsappDotbatchesDotbatchIdRoute: whatsappDotbatchesDotbatchIdRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

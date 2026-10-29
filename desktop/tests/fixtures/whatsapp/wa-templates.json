@@ -1,0 +1,106 @@
+[
+  {
+    "name": "hl_vb",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, my name's Pam from Horizon Labs 👋 I came across your business while looking for {{1}} in {{2}} and went ahead and built something for you — take a look: {{3}}\n\nThis site could be yours. We can tailor it to your business and get it live quickly. Interested?",
+    "footer": null,
+    "buttons": ["Yes, I'm interested", "Not interested"]
+  },
+  {
+    "name": "hl_pay",
+    "category": "UTILITY",
+    "header": null,
+    "body": "Hi {{1}}, great news — your website project is ready to kick off! Your deposit of {{2}} is ready. Tap the button below to pay securely and we'll get started right away 🚀",
+    "footer": null,
+    "buttons": ["Pay Now"]
+  },
+  {
+    "name": "hl_fu_v2",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hi, it's Pam from Horizon Labs again. I messaged a few days ago about building or improving your online presence. Just wanted to check in — is it something you'd like to explore, even just to see what's possible?",
+    "footer": null,
+    "buttons": ["See Our Work"]
+  },
+  {
+    "name": "hl_fu_v1",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, just following up on my earlier message about growing your business online. No pressure at all — if the timing isn't right that's completely fine. But if you're ever curious what we can do for {{1}} businesses in {{2}}, I'm here 🙂 — Pam from Horizon Labs",
+    "footer": null,
+    "buttons": ["See Our Work"]
+  },
+  {
+    "name": "hl_hs_v3",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, I'm Pam from Horizon Labs 👋 I found your business while looking for {{1}} in {{2}} and had a look at your website. We help businesses like yours improve their online presence — better website, stronger Google rankings, Google Business Profile, and AI tools to make day-to-day easier. Open to a quick chat?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_hs_v2",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hi, I'm Pam from Horizon Labs. I came across your business searching for {{1}} in {{2}} and checked out your site. We specialise in improving websites, increasing Google visibility, setting up Google Business Profiles, and helping local businesses use AI tools. Is a refresh or any of that on your radar?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_hs_v1",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, my name's Pam from Horizon Labs. I was looking for {{1}} in {{2}} and came across your business — had a look at your website. We specialise in improving websites, boosting Google rankings, getting Google Business Profiles sorted, and helping local businesses use AI to run things more efficiently. Is that something you'd be open to a quick chat about?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_ns_v5",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, I'm Pam from Horizon Labs. I came across your business while looking for {{1}} in {{2}}. We help local businesses get properly set up online — whether that's building a new website, improving an existing one, getting found on Google, fixing up their Google Business Profile, or using AI tools to work smarter. Worth a quick chat?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_ns_v4",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hi, I'm Pam from Horizon Labs 👋 I saw your business while searching for {{1}} in {{2}}. We work with local businesses to build or improve their websites, boost their Google rankings, set up their Google Business Profile, and show them how AI can help in their day-to-day. Is any of that something you'd like to explore?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_ns_v3",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, my name's Pam. I run a web company called Horizon Labs. I came across your business looking for {{1}} in {{2}}. We help local businesses with websites, Google visibility, Google Business Profiles, and using AI tools to run their business better — whether starting from scratch or improving what's already there. Would you be open to chatting?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_ns_v2",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hi, I'm Pam from Horizon Labs. I was searching for {{1}} in {{2}} and found your business. We build and improve websites for local businesses, help them show up on Google, get their Google Business Profile sorted, and explore how AI can make their day-to-day easier. Is that something worth a quick chat?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hl_ns_v1",
+    "category": "MARKETING",
+    "header": null,
+    "body": "Hey, my name's Pam from Horizon Labs 👋 I came across your business while looking for {{1}} in {{2}}. We help local businesses build professional websites, improve their Google rankings, set up their Google Business Profile, and even use AI to save time and work smarter. Whether you need a new site or want to improve what you have, we can help. Is this something you'd be interested in?",
+    "footer": null,
+    "buttons": ["Yes, tell me more", "Not interested", "See Our Work"]
+  },
+  {
+    "name": "hello_world",
+    "category": "UTILITY",
+    "header": "TEXT",
+    "body": "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.",
+    "footer": "WhatsApp Business Platform sample message",
+    "buttons": []
+  }
+]

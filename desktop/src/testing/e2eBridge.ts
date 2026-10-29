@@ -559,6 +559,7 @@ type E2eConfig = {
     referenceWorkspace?: boolean;
     /** Seed one deliberately long lead name for picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
+    whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
     windowFullscreen?: boolean;
@@ -5600,13 +5601,23 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }
   }
   const withoutSales = config.mock?.referenceWorkspaceWithoutSales === true;
+  const whatsappGuesthouses = config.mock?.whatsappGuesthouses === true;
+  const whatsappSidebarChannels = new Set<string>([
+    REFERENCE_CHANNEL_IDS.sales,
+    REFERENCE_CHANNEL_IDS.welcome,
+    REFERENCE_CHANNEL_IDS.scoutDm,
+  ]);
   const channelSeeds = (
     colony3
       ? colony3ChannelSeeds()
       : sidebarShell
         ? referenceSidebarChannelSeeds()
         : referenceChannelSeeds()
-  ).filter((seed) => !withoutSales || seed.id !== REFERENCE_CHANNEL_IDS.sales);
+  ).filter(
+    (seed) =>
+      (!withoutSales || seed.id !== REFERENCE_CHANNEL_IDS.sales) &&
+      (!whatsappGuesthouses || whatsappSidebarChannels.has(seed.id)),
+  );
   const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
@@ -5711,12 +5722,19 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     store.push(event);
     mockMessages.set(channelId, store);
   }
-  seedReferenceSidebarStorage(self, { sidebarShell, colony3 });
+  seedReferenceSidebarStorage(self, {
+    sidebarShell,
+    colony3,
+    ...(config.mock?.whatsappGuesthouses
+      ? { businessName: "Horizon Labs" }
+      : {}),
+  });
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
   if (communityId && !withoutSales) {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
+      whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;

@@ -19,12 +19,13 @@ import {
 } from "@/shared/ui/colonyIcons";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/features/profile/hooks";
+import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import {
   canonicalSettingsSection,
   renderSettingsSection,
@@ -157,8 +158,10 @@ export function SettingsView({
   const profile = useProfileQuery();
   // Same source as the People panel, so the footer never claims a role the
   // person does not hold.
-  const membershipQuery = useMyRelayMembershipQuery();
-  const roleCaption = membershipRoleLabel(membershipQuery.data?.role);
+  const membershipQuery = useMyRelayMembershipLookupQuery();
+  const roleCaption = membershipRoleLabel(
+    membershipQuery.data?.membership?.role,
+  );
   const updateProfile = useUpdateProfileMutation();
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
@@ -166,6 +169,20 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
+  const relayRole = membershipQuery.data?.membership?.role;
+  const canManageWhatsApp = relayRole === "owner" || relayRole === "admin";
+  const whatsappStatusQuery = useWhatsAppStatusQuery(
+    activeGroup.id === "whatsapp-channel" && canManageWhatsApp,
+  );
+  const pageHeadGroup =
+    activeGroup.id === "whatsapp-channel"
+      ? {
+          ...activeGroup,
+          subtitle: whatsappStatusQuery.data?.connected
+            ? "Agents message new leads from your business number. Every reply comes back to #Outreach."
+            : "Let agents message new leads from your business number.",
+        }
+      : activeGroup;
   const businessName = activeCommunity?.name ?? "Business";
   const signedInDisplayName =
     profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
@@ -176,7 +193,10 @@ export function SettingsView({
 
   React.useEffect(() => {
     if (activeSection !== section) onSectionChange(activeSection);
-    if (activeGroup.sections.some((entry) => entry.value === activeSection)) {
+    if (
+      activeGroup.sections.some((entry) => entry.value === activeSection) &&
+      (activeGroup.id !== "whatsapp-channel" || canManageWhatsApp)
+    ) {
       setRemembered((current) => {
         const next = { ...current, [activeGroup.id]: activeSection };
         try {
@@ -187,7 +207,22 @@ export function SettingsView({
         return next;
       });
     }
-  }, [activeGroup, activeSection, onSectionChange, section]);
+  }, [activeGroup, activeSection, canManageWhatsApp, onSectionChange, section]);
+
+  React.useEffect(() => {
+    if (
+      activeGroup.id === "whatsapp-channel" &&
+      !membershipQuery.isPending &&
+      !canManageWhatsApp
+    ) {
+      onSectionChange("profile");
+    }
+  }, [
+    activeGroup.id,
+    canManageWhatsApp,
+    membershipQuery.isPending,
+    onSectionChange,
+  ]);
 
   React.useEffect(() => {
     if (!isMobile && !sidebarOpen) setSidebarOpen(true);
@@ -214,14 +249,16 @@ export function SettingsView({
   const matchingSections = React.useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return [];
-    return settingsGroups.flatMap((group) =>
-      group.sections
-        .filter((entry) =>
-          `${group.label} ${entry.label}`.toLowerCase().includes(query),
-        )
-        .map((entry) => ({ ...entry, group })),
-    );
-  }, [search]);
+    return settingsGroups
+      .filter((group) => group.id !== "whatsapp-channel" || canManageWhatsApp)
+      .flatMap((group) =>
+        group.sections
+          .filter((entry) =>
+            `${group.label} ${entry.label}`.toLowerCase().includes(query),
+          )
+          .map((entry) => ({ ...entry, group })),
+      );
+  }, [canManageWhatsApp, search]);
 
   function chooseGroup(group: SettingsGroupDescriptor) {
     onSectionChange(loadRememberedSection(group, remembered));
@@ -233,7 +270,7 @@ export function SettingsView({
     setSearch("");
   }
 
-  const categories = settingsNavCategory(businessName);
+  const categories = settingsNavCategory(businessName, canManageWhatsApp);
 
   return (
     <>
@@ -422,7 +459,7 @@ export function SettingsView({
             <SettingsPageHead
               activeSection={activeSection}
               businessName={businessName}
-              group={activeGroup}
+              group={pageHeadGroup}
               onSelect={chooseSection}
             />
             {activeGroup.sections
@@ -442,28 +479,36 @@ export function SettingsView({
                   id={`settings-${entry.value}`}
                   key={entry.value}
                 >
-                  {renderSettingsSection(entry.value, {
-                    currentPubkey,
-                    avatarSaved,
-                    fallbackDisplayName,
-                    onEditAvatar: () => {
-                      setAvatarSaved(false);
-                      setIsAvatarDialogOpen(true);
-                    },
-                    isUpdatingDesktopNotifications,
-                    notificationErrorMessage,
-                    notificationPermission,
-                    notificationSettings,
-                    onSetDesktopNotificationsEnabled,
-                    onSetHomeBadgeEnabled,
-                    onSetSlotAlertsEnabled,
-                    onSetNotifyWhileViewing,
-                    onSetAllSlotAlertsEnabled,
-                    onSetSoundForSlot,
-                    onClose,
-                    onOpenTeam: () => void goTeam(),
-                    onSectionChange: chooseSection,
-                  })}
+                  {entry.value === "whatsapp" && !canManageWhatsApp ? (
+                    <p className="cs-notice" role="status">
+                      {membershipQuery.isPending
+                        ? "Checking WhatsApp access…"
+                        : "WhatsApp settings are only available to workspace owners and administrators."}
+                    </p>
+                  ) : (
+                    renderSettingsSection(entry.value, {
+                      currentPubkey,
+                      avatarSaved,
+                      fallbackDisplayName,
+                      onEditAvatar: () => {
+                        setAvatarSaved(false);
+                        setIsAvatarDialogOpen(true);
+                      },
+                      isUpdatingDesktopNotifications,
+                      notificationErrorMessage,
+                      notificationPermission,
+                      notificationSettings,
+                      onSetDesktopNotificationsEnabled,
+                      onSetHomeBadgeEnabled,
+                      onSetSlotAlertsEnabled,
+                      onSetNotifyWhileViewing,
+                      onSetAllSlotAlertsEnabled,
+                      onSetSoundForSlot,
+                      onClose,
+                      onOpenTeam: () => void goTeam(),
+                      onSectionChange: chooseSection,
+                    })
+                  )}
                 </section>
               ))}
           </div>
