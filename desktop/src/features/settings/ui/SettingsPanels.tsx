@@ -180,7 +180,10 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
 ];
 
 /** The sidebar's three headings and the group rows under each. */
-export function settingsNavCategory(businessName: string) {
+export function settingsNavCategory(
+  businessName: string,
+  canManageWhatsApp = false,
+) {
   const byId = (...ids: SettingsGroupId[]) =>
     ids
       .map((id) => settingsGroups.find((group) => group.id === id))
@@ -192,12 +195,14 @@ export function settingsNavCategory(businessName: string) {
     },
     {
       label: businessName,
-      groups: byId(
-        "business",
-        "agents-group",
-        "whatsapp-channel",
-        "blocks-templates",
-      ),
+      groups: canManageWhatsApp
+        ? byId(
+            "business",
+            "agents-group",
+            "whatsapp-channel",
+            "blocks-templates",
+          )
+        : byId("business", "agents-group", "blocks-templates"),
     },
     { label: "This device", groups: byId("app-devices") },
   ];
