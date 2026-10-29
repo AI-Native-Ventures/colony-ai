@@ -801,9 +801,9 @@ fn rate_limit_reason(platform_headers: bool, body: &[u8]) -> &'static str {
 /// - Any other status ends the request without a clear answer.
 fn refusal(status: u16, body: &[u8]) -> Attempt {
     match status {
-        402..=404 => Attempt::Unavailable(CompletionFailure::Rejected),
+        401..=404 => Attempt::Unavailable(CompletionFailure::Rejected),
         400 if names_unusable_model(body) => Attempt::Unavailable(CompletionFailure::Rejected),
-        400 | 401 | 413 | 422 => Attempt::Failed(CompletionFailure::Rejected),
+        400 | 413 | 422 => Attempt::Failed(CompletionFailure::Rejected),
         500.. => Attempt::Unavailable(CompletionFailure::Ambiguous),
         _ => Attempt::Failed(CompletionFailure::Ambiguous),
     }
@@ -815,7 +815,7 @@ fn refusal(status: u16, body: &[u8]) -> Attempt {
 fn names_unusable_model(body: &[u8]) -> bool {
     let text = String::from_utf8_lossy(body).to_lowercase();
     text.contains("not a valid model")
-        || text.contains("no endpoints found")
+        || (text.contains("no endpoints found") && text.is_empty())
         || (text.contains("model")
             && [
                 "not available",
