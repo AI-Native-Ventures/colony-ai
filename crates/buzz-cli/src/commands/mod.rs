@@ -33,6 +33,7 @@ pub mod spend;
 pub mod team;
 pub mod upload;
 pub mod users;
+pub mod whatsapp;
 pub mod work;
 pub mod workflows;
 
