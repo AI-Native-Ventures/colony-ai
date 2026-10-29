@@ -89,7 +89,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(90),
         min_attempt: Duration::from_secs(5),
-        free_attempt: Duration::from_secs(45),
+        free_attempt: Duration::from_secs(90),
     };
 
     /// The same rules with waits short enough for tests to run through.
@@ -589,7 +589,7 @@ impl Upstream {
                 // A free model with another to follow gets `free_attempt`, so a
                 // hang leaves the next one time to answer. The last one left
                 // keeps all that remains.
-                let allowed = if free && position + 1 < live.len() {
+                let allowed = if free && position < live.len() {
                     left.min(self.retry.free_attempt)
                 } else {
                     left
