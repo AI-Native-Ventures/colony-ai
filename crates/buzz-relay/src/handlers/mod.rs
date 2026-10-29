@@ -14,11 +14,15 @@ pub mod command_executor;
 pub mod community_provisioning;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
+/// Nostr-first broker for the per-company co-founder settings record.
+pub mod company_cofounder;
 pub mod company_duties;
 /// Nostr-first broker for community-wide employee configuration history.
 pub mod company_employee_history;
 /// Nostr-first broker for Software Factory run metadata.
 pub mod company_factory;
+/// Nostr-first broker for company function slot records.
+pub mod company_functions;
 pub mod company_hires;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.

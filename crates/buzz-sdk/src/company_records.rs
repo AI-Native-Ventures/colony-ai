@@ -4,9 +4,13 @@
 //! goal d-tag and intentionally omit a channel h-tag.
 
 use crate::SdkError;
+use buzz_core::company_cofounder::{
+    validate_cofounder_action, CofounderAction, CofounderSettings, COFOUNDER_D_TAG,
+};
+use buzz_core::company_functions::{function_d_tag, validate_function_action, FunctionAction};
 use buzz_core::company_records::{
     goal_d_tag, secret_binding_d_tag, tool_permission_d_tag, validate_goal_action,
-    validate_secret_binding_action, validate_tool_permission_action,
+    validate_secret_binding_action, validate_tool_permission_action, COMPANY_RECORD_SCHEMA_VERSION,
 };
 pub use buzz_core::company_records::{
     GoalAction, GoalActionKind, GoalHead, GoalProgress, GoalRecord, GoalStatus, GoalTarget,
@@ -19,10 +23,47 @@ use buzz_core::factory_run_records::{
     factory_run_d_tag, parse_factory_run_action, FactoryRunAction,
 };
 use buzz_core::kind::{
-    KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION, KIND_SECRET_BINDING_ACTION,
-    KIND_TOOL_PERMISSION_ACTION,
+    KIND_COFOUNDER_ACTION, KIND_COMPANY_FUNCTION_ACTION, KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION,
+    KIND_SECRET_BINDING_ACTION, KIND_TOOL_PERMISSION_ACTION,
 };
 use nostr::{EventBuilder, Kind, Tag};
+
+/// Build a member-signed co-founder settings action with its single d-tag.
+///
+/// `expected_head_event_id` is the current head's event id, or `None` while no
+/// head exists; the relay refuses the write when it is stale.
+pub fn build_cofounder_action(
+    settings: &CofounderSettings,
+    expected_head_event_id: Option<&str>,
+) -> Result<EventBuilder, SdkError> {
+    let action = CofounderAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        settings: *settings,
+        expected_head_event_id: expected_head_event_id.map(str::to_owned),
+    };
+    validate_cofounder_action(&action).map_err(|error| {
+        SdkError::InvalidInput(format!("co-founder action is invalid: {error}"))
+    })?;
+    let content = serde_json::to_string(&action).map_err(|error| {
+        SdkError::InvalidInput(format!("co-founder action serialization failed: {error}"))
+    })?;
+    let tag = Tag::parse(["d", COFOUNDER_D_TAG])
+        .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+    Ok(EventBuilder::new(Kind::Custom(KIND_COFOUNDER_ACTION as u16), content).tag(tag))
+}
+
+/// Build a member-signed function slot action with its per-function d-tag.
+pub fn build_function_action(action: &FunctionAction) -> Result<EventBuilder, SdkError> {
+    validate_function_action(action)
+        .map_err(|error| SdkError::InvalidInput(format!("function action is invalid: {error}")))?;
+    let content = serde_json::to_string(action).map_err(|error| {
+        SdkError::InvalidInput(format!("function action serialization failed: {error}"))
+    })?;
+    let d_tag = function_d_tag(action.function);
+    let tag = Tag::parse(["d", d_tag.as_str()])
+        .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+    Ok(EventBuilder::new(Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16), content).tag(tag))
+}
 
 /// Build a member-signed Factory run action with its community-wide d-tag.
 pub fn build_factory_run_action(action: &FactoryRunAction) -> Result<EventBuilder, SdkError> {
@@ -257,5 +298,60 @@ mod tests {
         let parsed: FactoryRunAction =
             serde_json::from_str(&event.content).expect("typed Factory action");
         assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn cofounder_action_builder_uses_the_single_settings_coordinate() {
+        let settings = CofounderSettings {
+            enabled: true,
+            ..CofounderSettings::default()
+        };
+        let head_id = "ab".repeat(32);
+        let event = build_cofounder_action(&settings, Some(head_id.as_str()))
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+
+        assert_eq!(event.kind, Kind::Custom(KIND_COFOUNDER_ACTION as u16));
+        assert_eq!(event.tags.len(), 1);
+        let tag = event.tags.first().expect("d-tag");
+        assert_eq!(tag.kind().to_string(), "d");
+        assert_eq!(tag.content(), Some(COFOUNDER_D_TAG));
+        let parsed: CofounderAction = serde_json::from_str(&event.content).expect("typed content");
+        assert_eq!(parsed.settings, settings);
+        assert_eq!(
+            parsed.expected_head_event_id.as_deref(),
+            Some(head_id.as_str())
+        );
+        assert!(build_cofounder_action(&settings, Some("nope")).is_err());
+    }
+
+    #[test]
+    fn function_action_builder_uses_the_function_coordinate() {
+        use buzz_core::company_functions::{CompanyFunction, FunctionActionKind};
+        let action = FunctionAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            function: CompanyFunction::CustomerSuccess,
+            kind: FunctionActionKind::AssignLead,
+            lead_pubkey: Some("cd".repeat(32)),
+            expected_head_event_id: None,
+        };
+        let event = build_function_action(&action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+
+        assert_eq!(
+            event.kind,
+            Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16)
+        );
+        assert_eq!(event.tags.len(), 1);
+        let tag = event.tags.first().expect("d-tag");
+        assert_eq!(tag.content(), Some("company:function:customer_success"));
+        let invalid = FunctionAction {
+            lead_pubkey: None,
+            ..action
+        };
+        assert!(build_function_action(&invalid).is_err());
     }
 }

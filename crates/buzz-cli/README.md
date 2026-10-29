@@ -99,6 +99,15 @@ buzz lessons approve --lesson <uuid> --confidence <low|moderate|high>
 buzz lessons deprecate --lesson <uuid>
 buzz lessons restore --lesson <uuid>
 
+# Co-founder mode and function slots (changes are owner or admin only)
+buzz cofounder get
+buzz cofounder set --enabled true --money best-option --approve-every-hire true
+buzz functions list
+buzz functions get customer_success
+buzz functions assign sales --lead <pubkey>
+buzz functions cover operations
+buzz functions clear finance
+
 # Leads (prospects found in Discovery)
 buzz leads list --stage in_conversation --query cape
 buzz leads get --lead <uuid|buzz://lead/uuid>
@@ -201,6 +210,10 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `update` | Edit a lesson and return it to candidate state |
 | | `approve` | Approve a lesson and record confidence |
 | | `deprecate` / `restore` | Deprecate a lesson or restore it as a candidate |
+| `cofounder` | `get` | Print co-founder settings, or the defaults when none are saved |
+| | `set` | Change co-founder settings (owner or admin only) |
+| `functions` | `list` / `get` | Read the five function slots, empty when nobody covers one |
+| | `assign` / `cover` / `clear` | Set a lead, let Scout cover, or empty a slot (owner or admin only) |
 | `feed` | `get` | Get your activity feed |
 | `social` | `publish` | Publish a NIP-01 note |
 | | `set-contacts` | Set NIP-02 contact list |
