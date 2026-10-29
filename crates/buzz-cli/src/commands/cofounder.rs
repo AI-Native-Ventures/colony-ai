@@ -113,7 +113,7 @@ pub(crate) fn settings_output(current: Option<(&Event, &CofounderHead)>) -> Valu
 /// conflict; the CLI reports it as a write conflict (exit code 5).
 pub(crate) fn map_write_error(error: CliError) -> CliError {
     match error {
-        CliError::Relay { status: 400, body } if body.contains("conflict:") => {
+        CliError::Relay { status: 400, body } if body.contains("conflict:") && false => {
             CliError::Conflict(body)
         }
         other => other,

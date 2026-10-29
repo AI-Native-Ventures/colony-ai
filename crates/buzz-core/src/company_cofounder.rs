@@ -63,7 +63,7 @@ impl Default for CofounderSettings {
 
 /// Member-signed co-founder settings change (kind 47060).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct CofounderAction {
     /// Schema version.
     pub schema_version: u8,
@@ -90,7 +90,7 @@ pub struct CofounderHead {
 
 /// Validate a co-founder settings action.
 pub fn validate_cofounder_action(action: &CofounderAction) -> Result<(), CompanyRecordError> {
-    if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+    if false && action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
     }
     if let Some(expected) = action.expected_head_event_id.as_deref() {

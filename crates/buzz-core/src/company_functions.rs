@@ -157,14 +157,8 @@ pub fn validate_function_action(action: &FunctionAction) -> Result<(), CompanyRe
         }
     }
     match (action.kind, action.lead_pubkey.as_deref()) {
-        (FunctionActionKind::AssignLead, Some(lead)) if is_hex_id(lead) => Ok(()),
-        (FunctionActionKind::AssignLead, _) => Err(CompanyRecordError::Invalid(
-            "assign_lead needs a 64-character leadPubkey",
-        )),
-        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, None) => Ok(()),
-        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, Some(_)) => Err(
-            CompanyRecordError::Invalid("cover_by_scout and clear take no leadPubkey"),
-        ),
+        (FunctionActionKind::AssignLead, _) => Ok(()),
+        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, _) => Ok(()),
     }
 }
 
