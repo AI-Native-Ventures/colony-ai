@@ -37,6 +37,14 @@ export const KIND_JOB_CANCEL = 43005;
 export const KIND_JOB_ERROR = 43006;
 export const KIND_FORUM_POST = 45001;
 export const KIND_FORUM_COMMENT = 45003;
+/** Owner/admin approval request for WhatsApp Cloud API batch sends. */
+export const KIND_WHATSAPP_BATCH = 47048;
+/** Owner/admin decision for a WhatsApp batch row set or one agent draft. */
+export const KIND_WHATSAPP_BATCH_DECISION = 47049;
+/** Owner/admin immediate send or agent draft request for WhatsApp. */
+export const KIND_WHATSAPP_SEND_REQUEST = 47050;
+/** Owner/admin WhatsApp cap, template sync, title, and pause settings command. */
+export const KIND_WHATSAPP_SETTINGS = 47051;
 export const KIND_APPROVAL_REQUEST = 46010;
 export const KIND_MEMBER_ADDED_NOTIFICATION = 44100;
 export const KIND_MEMBER_REMOVED_NOTIFICATION = 44101;
@@ -219,6 +227,12 @@ export const KIND_DUTY_HEAD = 30655;
 export const KIND_DUTY_ACTION = 47044;
 export const KIND_LESSON_HEAD = 30656;
 export const KIND_LESSON_ACTION = 47045;
+export const KIND_COFOUNDER_HEAD = 30670;
+export const KIND_COMPANY_FUNCTION_HEAD = 30671;
+export const KIND_COFOUNDER_ACTION = 47060;
+export const KIND_COMPANY_FUNCTION_ACTION = 47061;
+export const KIND_WORKER_RUN_HEAD = 30672;
+export const KIND_WORKER_RUN_ACTION = 47062;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,
@@ -244,8 +258,14 @@ export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_DUTY_ACTION,
   KIND_LESSON_HEAD,
   KIND_LESSON_ACTION,
+  KIND_COFOUNDER_HEAD,
+  KIND_COMPANY_FUNCTION_HEAD,
+  KIND_COFOUNDER_ACTION,
+  KIND_COMPANY_FUNCTION_ACTION,
   KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
   KIND_AI_SPEND_RECORD_ACTION,
+  KIND_WORKER_RUN_HEAD,
+  KIND_WORKER_RUN_ACTION,
 ] as const;
 
 // Human-visible "new content" message kinds. Used as the unread trigger set

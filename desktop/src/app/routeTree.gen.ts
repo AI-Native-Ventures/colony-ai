@@ -29,9 +29,11 @@ import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
 import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
+import { Route as companyDotmapRouteImport } from "./routes/company.map";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as asksDotnewRouteImport } from "./routes/asks.new";
+import { Route as whatsappDotbatchesDotbatchIdRouteImport } from "./routes/whatsapp.batches.$batchId";
 import { Route as teamDotpauseDotmemberPubkeyRouteImport } from "./routes/team.pause.$memberPubkey";
 import { Route as teamDoteditDotmemberPubkeyRouteImport } from "./routes/team.edit.$memberPubkey";
 import { Route as teamDotdetailDotmemberPubkeyRouteImport } from "./routes/team.detail.$memberPubkey";
@@ -40,6 +42,7 @@ import { Route as salesDotleadDotformFieldRouteImport } from "./routes/sales.lea
 import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.lead.$prospectId";
 import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
 import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
+import { Route as companyDotfunctionDotfunctionRouteImport } from "./routes/company.function.$function";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
 
@@ -163,6 +166,11 @@ const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
   path: "/hire/configure",
   getParentRoute: () => rootRouteImport,
 } as any);
+const companyDotmapRoute = companyDotmapRouteImport.update({
+  id: "/company/map",
+  path: "/company/map",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
   id: "/clients/$clientId",
   path: "/clients/$clientId",
@@ -178,6 +186,12 @@ const asksDotnewRoute = asksDotnewRouteImport.update({
   path: "/asks/new",
   getParentRoute: () => rootRouteImport,
 } as any);
+const whatsappDotbatchesDotbatchIdRoute =
+  whatsappDotbatchesDotbatchIdRouteImport.update({
+    id: "/whatsapp/batches/$batchId",
+    path: "/whatsapp/batches/$batchId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const teamDotpauseDotmemberPubkeyRoute =
   teamDotpauseDotmemberPubkeyRouteImport.update({
     id: "/team/pause/$memberPubkey",
@@ -226,6 +240,12 @@ const moneyDotinvoiceDotinvoiceIdRoute =
     path: "/money/invoice/$invoiceId",
     getParentRoute: () => rootRouteImport,
   } as any);
+const companyDotfunctionDotfunctionRoute =
+  companyDotfunctionDotfunctionRouteImport.update({
+    id: "/company/function/$function",
+    path: "/company/function/$function",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotpinsDotchannelIdRoute =
   channelsDotpinsDotchannelIdRouteImport.update({
     id: "/channels/pins/$channelId",
@@ -256,6 +276,7 @@ export interface FileRoutesByFullPath {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -269,6 +290,7 @@ export interface FileRoutesByFullPath {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
@@ -277,6 +299,7 @@ export interface FileRoutesByFullPath {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
@@ -295,6 +318,7 @@ export interface FileRoutesByTo {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -308,6 +332,7 @@ export interface FileRoutesByTo {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
@@ -316,6 +341,7 @@ export interface FileRoutesByTo {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -335,6 +361,7 @@ export interface FileRoutesById {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -348,6 +375,7 @@ export interface FileRoutesById {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
   "/sales/lead/$prospectId": typeof salesDotleadDotprospectIdRoute;
@@ -356,6 +384,7 @@ export interface FileRoutesById {
   "/team/detail/$memberPubkey": typeof teamDotdetailDotmemberPubkeyRoute;
   "/team/edit/$memberPubkey": typeof teamDoteditDotmemberPubkeyRoute;
   "/team/pause/$memberPubkey": typeof teamDotpauseDotmemberPubkeyRoute;
+  "/whatsapp/batches/$batchId": typeof whatsappDotbatchesDotbatchIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -376,6 +405,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/map"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -389,6 +419,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
@@ -396,7 +427,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -415,6 +447,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/map"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -428,6 +461,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
@@ -435,7 +469,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   id:
     | "__root__"
     | "/"
@@ -454,6 +489,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/map"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -467,6 +503,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
     | "/sales/lead/$prospectId"
@@ -474,7 +511,8 @@ export interface FileRouteTypes {
     | "/team/archive/$memberPubkey"
     | "/team/detail/$memberPubkey"
     | "/team/edit/$memberPubkey"
-    | "/team/pause/$memberPubkey";
+    | "/team/pause/$memberPubkey"
+    | "/whatsapp/batches/$batchId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -494,6 +532,7 @@ export interface RootRouteChildren {
   asksDotnewRoute: typeof asksDotnewRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
+  companyDotmapRoute: typeof companyDotmapRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
   hireDotrolesRoute: typeof hireDotrolesRoute;
@@ -507,6 +546,7 @@ export interface RootRouteChildren {
   workDotworkIdRoute: typeof workDotworkIdRoute;
   asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
+  companyDotfunctionDotfunctionRoute: typeof companyDotfunctionDotfunctionRoute;
   moneyDotinvoiceDotinvoiceIdRoute: typeof moneyDotinvoiceDotinvoiceIdRoute;
   moneyDotrevenueDotinvoiceIdRoute: typeof moneyDotrevenueDotinvoiceIdRoute;
   salesDotleadDotprospectIdRoute: typeof salesDotleadDotprospectIdRoute;
@@ -515,6 +555,7 @@ export interface RootRouteChildren {
   teamDotdetailDotmemberPubkeyRoute: typeof teamDotdetailDotmemberPubkeyRoute;
   teamDoteditDotmemberPubkeyRoute: typeof teamDoteditDotmemberPubkeyRoute;
   teamDotpauseDotmemberPubkeyRoute: typeof teamDotpauseDotmemberPubkeyRoute;
+  whatsappDotbatchesDotbatchIdRoute: typeof whatsappDotbatchesDotbatchIdRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -687,6 +728,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof hireDotconfigureRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/company/map": {
+      id: "/company/map";
+      path: "/company/map";
+      fullPath: "/company/map";
+      preLoaderRoute: typeof companyDotmapRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/clients/$clientId": {
       id: "/clients/$clientId";
       path: "/clients/$clientId";
@@ -706,6 +754,13 @@ declare module "@tanstack/react-router" {
       path: "/asks/new";
       fullPath: "/asks/new";
       preLoaderRoute: typeof asksDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/whatsapp/batches/$batchId": {
+      id: "/whatsapp/batches/$batchId";
+      path: "/whatsapp/batches/$batchId";
+      fullPath: "/whatsapp/batches/$batchId";
+      preLoaderRoute: typeof whatsappDotbatchesDotbatchIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/team/pause/$memberPubkey": {
@@ -764,6 +819,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof moneyDotinvoiceDotinvoiceIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/company/function/$function": {
+      id: "/company/function/$function";
+      path: "/company/function/$function";
+      fullPath: "/company/function/$function";
+      preLoaderRoute: typeof companyDotfunctionDotfunctionRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/pins/$channelId": {
       id: "/channels/pins/$channelId";
       path: "/channels/pins/$channelId";
@@ -798,6 +860,7 @@ const rootRouteChildren: RootRouteChildren = {
   asksDotnewRoute: asksDotnewRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
+  companyDotmapRoute: companyDotmapRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
   hireDotrolesRoute: hireDotrolesRoute,
@@ -811,6 +874,7 @@ const rootRouteChildren: RootRouteChildren = {
   workDotworkIdRoute: workDotworkIdRoute,
   asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
+  companyDotfunctionDotfunctionRoute: companyDotfunctionDotfunctionRoute,
   moneyDotinvoiceDotinvoiceIdRoute: moneyDotinvoiceDotinvoiceIdRoute,
   moneyDotrevenueDotinvoiceIdRoute: moneyDotrevenueDotinvoiceIdRoute,
   salesDotleadDotprospectIdRoute: salesDotleadDotprospectIdRoute,
@@ -819,6 +883,7 @@ const rootRouteChildren: RootRouteChildren = {
   teamDotdetailDotmemberPubkeyRoute: teamDotdetailDotmemberPubkeyRoute,
   teamDoteditDotmemberPubkeyRoute: teamDoteditDotmemberPubkeyRoute,
   teamDotpauseDotmemberPubkeyRoute: teamDotpauseDotmemberPubkeyRoute,
+  whatsappDotbatchesDotbatchIdRoute: whatsappDotbatchesDotbatchIdRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

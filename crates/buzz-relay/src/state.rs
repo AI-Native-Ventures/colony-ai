@@ -735,6 +735,8 @@ pub struct AppState {
     pub gif_http_client: reqwest::Client,
     /// Shared HTTP client for relay-proxied prospect search requests.
     pub discovery_http_client: reqwest::Client,
+    /// Meta Graph API client for WhatsApp outreach. Tests swap in a fake; nothing else calls Meta.
+    pub whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi>,
     /// Shared HTTP and Google verification clients for account routes.
     pub account_services: Arc<crate::api::accounts::AccountServices>,
     /// Shared Redis-backed admission limits for ordinary HTTP and WebSocket work.
@@ -869,6 +871,8 @@ impl AppState {
             Arc::new(RedisNip98ReplayGuard::new(redis_pool.clone()));
         let gif_http_client = crate::api::gifs::build_gif_http_client();
         let discovery_http_client = crate::api::discovery::build_discovery_http_client();
+        let whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi> =
+            Arc::new(crate::whatsapp::graph::ReqwestGraph::new());
         let account_services = Arc::new(crate::api::accounts::AccountServices::from_config(
             &config.accounts,
         ));
@@ -936,6 +940,7 @@ impl AppState {
             nip98_replay,
             gif_http_client,
             discovery_http_client,
+            whatsapp_graph,
             account_services,
             admission_rate_limiter,
             observer_rate_limiter: Arc::new(DashMap::new()),

@@ -28,6 +28,7 @@ export type SidebarDestinationContext = {
   pathname: string;
   selectedChannelId: string | null;
   selectedView: AppSidebarProps["selectedView"];
+  cofounderModeEnabled?: boolean;
 };
 
 type IconComponent = (props: { size?: number }) => React.ReactNode;
@@ -125,6 +126,12 @@ const COMPANY_VIEWS: readonly AppSidebarProps["selectedView"][] = [
   "work",
 ];
 
+function isCompanyMapPath(pathname: string): boolean {
+  return (
+    pathname === "/company/map" || pathname.startsWith("/company/function/")
+  );
+}
+
 const company: SidebarDestination = {
   kind: "group",
   id: "company",
@@ -132,12 +139,14 @@ const company: SidebarDestination = {
   label: "Company",
   Icon: CompanyIcon,
   defaultExpanded: false,
-  isActive: ({ selectedView }) => COMPANY_VIEWS.includes(selectedView),
+  isActive: ({ pathname, selectedView }) =>
+    COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
   rail: {
     testId: "sidebar-collapsed-company",
     label: "Company",
     Icon: CompanyIcon,
-    isActive: ({ selectedView }) => COMPANY_VIEWS.includes(selectedView),
+    isActive: ({ pathname, selectedView }) =>
+      COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
     onSelect: ({ handlers }) => handlers.onSelectTeam(),
   },
   items: [
@@ -162,6 +171,14 @@ const company: SidebarDestination = {
       label: "Work",
       isActive: ({ selectedView }) => selectedView === "work",
       onSelect: ({ handlers }) => handlers.onSelectWork(),
+    },
+    {
+      id: "company-map",
+      testId: "sidebar-company-map",
+      label: "Company map",
+      href: "#/company/map",
+      available: ({ cofounderModeEnabled }) => cofounderModeEnabled === true,
+      isActive: ({ pathname }) => isCompanyMapPath(pathname),
     },
   ],
 };

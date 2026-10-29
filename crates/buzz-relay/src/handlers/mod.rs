@@ -14,11 +14,15 @@ pub mod command_executor;
 pub mod community_provisioning;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
+/// Nostr-first broker for the per-company co-founder settings record.
+pub mod company_cofounder;
 pub mod company_duties;
 /// Nostr-first broker for community-wide employee configuration history.
 pub mod company_employee_history;
 /// Nostr-first broker for Software Factory run metadata.
 pub mod company_factory;
+/// Nostr-first broker for company function slot records.
+pub mod company_functions;
 pub mod company_hires;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.
@@ -34,6 +38,8 @@ pub mod company_spend;
 pub mod company_work_tracking;
 /// Durable company work watchdog check-in scheduler and delivery worker.
 pub mod company_work_watchdog_worker;
+/// Nostr-first broker for budgeted employee worker run records.
+pub mod company_workers;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.
@@ -64,6 +70,8 @@ pub mod report_resolution;
 pub mod req;
 /// NIP-29 and NIP-25 side-effect handlers.
 pub mod side_effects;
+/// WhatsApp outreach commands (batches, decisions, sends, settings).
+pub mod whatsapp_commands;
 
 /// Extract an optional TTL (in seconds) from a Nostr event's `ttl` tag,
 /// applying the server-side override when configured.

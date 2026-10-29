@@ -62,6 +62,8 @@ mod test_support;
 pub mod tunnel;
 /// Webhook secret generation and constant-time comparison.
 pub mod webhook_secret;
+/// WhatsApp outreach on the official Cloud API.
+pub mod whatsapp;
 /// Workflow action sink — relay-side implementation of [`buzz_workflow::ActionSink`].
 pub mod workflow_sink;
 

@@ -230,9 +230,10 @@ not active yet.
 **Search endpoint.** `POST /discovery/search` runs one page of an Outscraper
 Google Maps search and returns normalized places. The endpoint exists only
 because the provider key must stay on the server (the same reason as the KLIPY
-GIF proxy). The relay stores nothing: a client saves the places the person
+GIF proxy). The relay stores no places: a client saves the places the person
 keeps as ordinary prospect actions (kind 47034), and may post a summary in the
-Sales channel as an ordinary message.
+Sales channel as an ordinary message. The relay only keeps a count of results
+served per company and month (`discovery_usage`) for the monthly cap.
 
 - Auth: NIP-98 over the request body, bound to the request host's community,
   with the same relay-membership check as the GIF endpoints. The rate limit is
@@ -241,6 +242,15 @@ Sales channel as an ordinary message.
   optional `OUTSCRAPER_API_BASE` (default `https://api.app.outscraper.com`) and
   `OUTSCRAPER_POLL_BASE` (default `https://api.outscraper.cloud`). When the key
   is unset the endpoint answers 503 with code `discovery_not_configured`.
+- Monthly cap: each company may fetch `BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS`
+  results per calendar month in UTC (default 2000), shared by every member and
+  agent of the company. The count is checked before the provider is called and
+  added to after a successful answer, so failed provider calls are free. A page
+  is trimmed to what the month has left. Once the month is used up the endpoint
+  answers 429 with `{ "error": "monthly_limit", "resets_at": "<RFC3339 first
+  day of next month UTC>" }`. Searches running at the same moment can overshoot
+  by their own page sizes. This cap is the cost guard until the Discovery
+  subscription check arrives with billing.
 - Request: `{ "query": string 1-200, "location": string 0-200, "country":
   optional name or two-letter code, "limit": 1-50 (default 20), "skip": 0-1000
   (default 0), "language": optional, 2-5 letters (default "en") }`. The relay
@@ -263,6 +273,8 @@ Sales channel as an ordinary message.
 | 502 | `discovery_provider_auth` | The provider rejected the server key |
 | 502 | `discovery_provider_credits` | The provider account is out of credits |
 | 429 | `discovery_provider_busy` | The provider asked the relay to slow down |
+| 429 | `monthly_limit` (in `error`, with `resets_at`) | The company used its monthly result cap |
+| 503 | `discovery_usage_unavailable` | The monthly usage count could not be read or saved |
 | 502 | `discovery_provider_unavailable` | Timeout, bad answer or any other failure |
 
 **Lead references.** A lead is a prospect record. Its chat reference is

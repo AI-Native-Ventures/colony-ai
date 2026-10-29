@@ -24,6 +24,8 @@ pub mod company_work_watchdog;
 pub mod credits_gateway;
 /// Durable whole-community deletion lifecycle and PostgreSQL adapter.
 pub mod deletion;
+/// Per-company monthly Discovery result counter.
+pub mod discovery_usage;
 /// Direct message channel persistence.
 pub mod dm;
 /// Event storage and retrieval.
@@ -64,5 +66,7 @@ pub mod thread;
 pub mod usage;
 /// User profile persistence.
 pub mod user;
+/// Per-company WhatsApp outreach connection, contacts, messages and batches.
+pub mod whatsapp;
 /// Workflow, run, and approval persistence.
 pub mod workflow;

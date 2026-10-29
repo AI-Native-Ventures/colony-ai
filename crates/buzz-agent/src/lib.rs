@@ -13,6 +13,7 @@ mod llm;
 mod mcp;
 pub mod model_capabilities;
 mod permission;
+mod run_once;
 pub mod types;
 mod wire;
 
@@ -158,6 +159,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             .enable_all()
             .build()?
             .block_on(auth_subcommand(&args[2..]));
+    }
+    // `run-once`: a budgeted, tool-less model call for worker runs.
+    if matches!(args.get(1).map(String::as_str), Some("run-once")) {
+        return run_once::run_once_command(&args[2..]);
     }
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()

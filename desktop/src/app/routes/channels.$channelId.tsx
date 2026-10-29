@@ -24,6 +24,7 @@ type ChannelRouteSearch = {
   profileView?: ProfilePanelView;
   thread?: string;
   threadRootId?: string;
+  whatsappBatchId?: string;
 };
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -41,6 +42,7 @@ function validateChannelSearch(
     profileView: parseProfilePanelView(search.profileView) ?? undefined,
     thread: nonEmptyString(search.thread),
     threadRootId: nonEmptyString(search.threadRootId),
+    whatsappBatchId: nonEmptyString(search.whatsappBatchId),
   };
 }
 
@@ -71,6 +73,7 @@ function ChannelRouteComponent() {
         searchHighlight={searchHighlight}
         targetMessageId={search.messageId ?? null}
         targetThreadRootId={search.threadRootId ?? search.thread ?? null}
+        whatsappBatchId={search.whatsappBatchId ?? null}
       />
     </React.Suspense>
   );

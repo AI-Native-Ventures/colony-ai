@@ -28,13 +28,14 @@ test.describe("Colony 3.0 Settings", () => {
       "preferences",
       "business",
       "agents-group",
+      "whatsapp-channel",
       "blocks-templates",
       "app-devices",
     ]) {
       await expect(page.getByTestId(`settings-group-${group}`)).toBeVisible();
     }
     await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(
-      7,
+      8,
     );
     for (const cut of ["administration", "storage-group"]) {
       await expect(page.getByTestId(`settings-group-${cut}`)).toHaveCount(0);
