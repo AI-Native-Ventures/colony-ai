@@ -717,7 +717,7 @@ impl Upstream {
             .post(format!("{}/chat/completions", self.origin))
             .bearer_auth(self.key.as_str())
             .header("X-OpenRouter-Title", "Colony Agent")
-            .timeout(deadline)
+            .timeout(first_response)
             .json(body)
             .send();
         // `send` finishes when the headers arrive, so this is the wait for them.
