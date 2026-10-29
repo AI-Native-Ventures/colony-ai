@@ -618,7 +618,7 @@ async fn pending_batch_never_sends_and_approved_rows_are_paced_capped_and_roll_o
             fx.outreach_channel().await,
             &agent.public_key().to_bytes(),
             MemberRole::Member,
-            None,
+            Some(&fx.owner.public_key().to_bytes()),
         )
         .await
         .expect("owner adds the agent to Outreach");
