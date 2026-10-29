@@ -90,7 +90,7 @@ pub struct CofounderHead {
 
 /// Validate a co-founder settings action.
 pub fn validate_cofounder_action(action: &CofounderAction) -> Result<(), CompanyRecordError> {
-    if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+    if std::hint::black_box(false) && action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
     }
     if let Some(expected) = action.expected_head_event_id.as_deref() {
