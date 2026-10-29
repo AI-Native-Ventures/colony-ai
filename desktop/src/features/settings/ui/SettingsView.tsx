@@ -25,6 +25,7 @@ import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/features/profile/hooks";
+import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import {
   canonicalSettingsSection,
   renderSettingsSection,
@@ -166,6 +167,18 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
+  const whatsappStatusQuery = useWhatsAppStatusQuery(
+    activeGroup.id === "whatsapp-channel",
+  );
+  const pageHeadGroup =
+    activeGroup.id === "whatsapp-channel"
+      ? {
+          ...activeGroup,
+          subtitle: whatsappStatusQuery.data?.connected
+            ? "Agents message new leads from your business number. Every reply comes back to #Outreach."
+            : "Let agents message new leads from your business number.",
+        }
+      : activeGroup;
   const businessName = activeCommunity?.name ?? "Business";
   const signedInDisplayName =
     profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
@@ -422,7 +435,7 @@ export function SettingsView({
             <SettingsPageHead
               activeSection={activeSection}
               businessName={businessName}
-              group={activeGroup}
+              group={pageHeadGroup}
               onSelect={chooseSection}
             />
             {activeGroup.sections

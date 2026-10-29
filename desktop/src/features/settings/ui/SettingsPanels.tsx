@@ -26,6 +26,7 @@ import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import { AccessibilitySettingsPanel } from "./AccessibilitySettingsPanel";
 import { BusinessProfileSettingsPanel } from "./BusinessProfileSettingsPanel";
+import { WhatsAppSettingsPanel } from "@/features/whatsapp-outreach/WhatsAppSettingsPanel";
 import {
   AppPreferencesSettingsPanel,
   FeedbackSettingsPanel,
@@ -48,6 +49,7 @@ export type SettingsSection =
   | "shortcuts"
   | "community-members"
   | "custom-emoji"
+  | "whatsapp"
   | "app"
   | "mobile"
   | "updates"
@@ -60,6 +62,7 @@ export type SettingsGroupId =
   | "appearance-group"
   | "preferences"
   | "business"
+  | "whatsapp-channel"
   | "agents-group"
   | "blocks-templates"
   | "app-devices";
@@ -143,6 +146,15 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     ],
   },
   {
+    id: "whatsapp-channel",
+    label: "WhatsApp",
+    icon: SettingsBusinessIcon,
+    title: "WhatsApp",
+    subtitle:
+      "Agents message new leads from your business number. Every reply comes back to #Outreach.",
+    sections: [{ value: "whatsapp", label: "WhatsApp" }],
+  },
+  {
     // "Blocks & templates" without the templates (cut): custom emoji stays.
     id: "blocks-templates",
     label: "Custom emoji",
@@ -180,7 +192,12 @@ export function settingsNavCategory(businessName: string) {
     },
     {
       label: businessName,
-      groups: byId("business", "agents-group", "blocks-templates"),
+      groups: byId(
+        "business",
+        "agents-group",
+        "whatsapp-channel",
+        "blocks-templates",
+      ),
     },
     { label: "This device", groups: byId("app-devices") },
   ];
@@ -214,6 +231,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "shortcuts",
   "community-members",
   "custom-emoji",
+  "whatsapp",
   "app",
   "mobile",
   "updates",
@@ -319,6 +337,8 @@ export function renderSettingsSection(
       );
     case "custom-emoji":
       return <CustomEmojiSettingsCard />;
+    case "whatsapp":
+      return <WhatsAppSettingsPanel />;
     case "app":
       return <AppPreferencesSettingsPanel />;
     case "mobile":

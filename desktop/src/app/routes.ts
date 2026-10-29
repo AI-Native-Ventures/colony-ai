@@ -38,4 +38,5 @@ export const routes = rootRoute("root.tsx", [
   route("/messages/new", "messages.new.tsx"),
   route("/channels/pins/$channelId", "channels.pins.$channelId.tsx"),
   route("/channels/$channelId", "channels.$channelId.tsx"),
+  route("/whatsapp/batches/$batchId", "whatsapp.batches.$batchId.tsx"),
 ]);

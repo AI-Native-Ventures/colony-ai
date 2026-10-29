@@ -182,6 +182,8 @@ type MockBridgeOptions = {
   referenceWorkspace?: boolean;
   /** Add a long lead name for picker overflow regression coverage. */
   referenceWorkspaceLongLeadNames?: boolean;
+  /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */
+  whatsappGuesthouses?: boolean;
   /** Report the window as fullscreen (no macOS traffic-light inset). */
   windowFullscreen?: boolean;
   /** Colony 3.0 foundation fixture (the Sidebar board's Lerato Social). */

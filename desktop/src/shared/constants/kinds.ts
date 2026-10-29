@@ -37,6 +37,14 @@ export const KIND_JOB_CANCEL = 43005;
 export const KIND_JOB_ERROR = 43006;
 export const KIND_FORUM_POST = 45001;
 export const KIND_FORUM_COMMENT = 45003;
+/** Owner/admin approval request for WhatsApp Cloud API batch sends. */
+export const KIND_WHATSAPP_BATCH = 47048;
+/** Owner/admin decision for a WhatsApp batch row set or one agent draft. */
+export const KIND_WHATSAPP_BATCH_DECISION = 47049;
+/** Owner/admin immediate send or agent draft request for WhatsApp. */
+export const KIND_WHATSAPP_SEND_REQUEST = 47050;
+/** Owner/admin WhatsApp cap, template sync, title, and pause settings command. */
+export const KIND_WHATSAPP_SETTINGS = 47051;
 export const KIND_APPROVAL_REQUEST = 46010;
 export const KIND_MEMBER_ADDED_NOTIFICATION = 44100;
 export const KIND_MEMBER_REMOVED_NOTIFICATION = 44101;
