@@ -3114,6 +3114,7 @@ mod tests {
                     "free/a",
                     &json!({"model":"free/a"}),
                     Duration::from_secs(1),
+                    Duration::from_secs(1),
                     false,
                     &mut Vec::new(),
                 )
