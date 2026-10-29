@@ -34,7 +34,7 @@ pub async fn add_discovery_results(
         "INSERT INTO discovery_usage (community_id, month, results) \
          VALUES ($1, $2, $3) \
          ON CONFLICT (community_id, month) DO UPDATE \
-         SET results = discovery_usage.results + EXCLUDED.results, updated_at = now() \
+         SET results = EXCLUDED.results, updated_at = now() \
          RETURNING results",
     )
     .bind(community_id)

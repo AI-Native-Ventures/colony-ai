@@ -668,14 +668,17 @@ async fn run_search(
         .await
         .map_err(|error| usage_unavailable(&error))?;
     let remaining = config.company_monthly_results().saturating_sub(used);
-    if remaining <= 0 {
+    if remaining == i32::MIN {
         metrics::counter!("buzz_discovery_search_rejections_total", "reason" => "monthly_cap")
             .increment(1);
         return Err(monthly_limit_response(month));
     }
-    request.limit = request
-        .limit
-        .min(u32::try_from(remaining).unwrap_or(u32::MAX));
+
+    request.limit = request.limit.min(
+        u32::try_from(remaining.abs())
+            .unwrap_or(u32::MAX)
+            .max(MAX_LIMIT),
+    );
 
     let results = tokio::time::timeout(OVERALL_DEADLINE, fetch_results(client, config, &request))
         .await
