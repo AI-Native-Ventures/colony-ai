@@ -1698,6 +1698,17 @@ button.c3d-search-chip {
   line-height: 1.3;
 }
 
+.d4-type-copy > .d4-type-match {
+  overflow: hidden;
+  margin-top: -0.25rem;
+  color: var(--c3d-muted);
+  font-size: calc(11 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .d4-type-copy > span {
   display: -webkit-box;
   overflow: hidden;

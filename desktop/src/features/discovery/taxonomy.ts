@@ -46,6 +46,8 @@ export type CatalogueRow = {
   description: string;
   parentId: string;
   parentName: string;
+  /** Set when the type's name does not match but its tags do: the tags that matched, at most two. */
+  tagMatches?: string[];
 };
 
 /** The Discovery v4 catalogue as `build_industry_taxonomy.py` writes it. */
@@ -177,13 +179,87 @@ function holds(fields: Field[], query: SearchQuery): boolean {
   );
 }
 
+/** The AI tag layer of one business type, as `build_vertical_tags.py` writes it. */
+export type VerticalTagData = {
+  tags: [string, string][];
+  search: string[];
+  sa: string[];
+};
+
+/*
+ * The tag layer is 4.5 MB, so it is its own chunk (a dynamic import, shipped
+ * inside the app) and loads the first time Discovery opens. Until it has
+ * loaded, search runs on the fields above; a failed load leaves it that way
+ * and is not retried.
+ */
+let verticalTags: Record<string, VerticalTagData> | null = null;
+let tagLoad: Promise<boolean> | null = null;
+
+/** Install the tag layer (and drop the index built without it). */
+export function setVerticalTags(
+  data: Record<string, VerticalTagData> | null,
+): void {
+  verticalTags = data;
+  searchIndex = null;
+}
+
+export function verticalTagsLoaded(): boolean {
+  return verticalTags !== null;
+}
+
+/**
+ * Load the tag layer once. Resolves true when it is in place, false when the
+ * load failed; never rejects and never retries.
+ */
+export function loadVerticalTagsFrom(
+  load: () => Promise<Record<string, VerticalTagData>>,
+): Promise<boolean> {
+  tagLoad ??= load().then(
+    (data) => {
+      setVerticalTags(data);
+      return true;
+    },
+    () => false,
+  );
+  return tagLoad;
+}
+
+export function loadVerticalTags(): Promise<boolean> {
+  return loadVerticalTagsFrom(async () => {
+    const module = await import("./data/vertical-tags.json");
+    return module.default as unknown as Record<string, VerticalTagData>;
+  });
+}
+
+/** Forget the tag layer and any load result (tests only). */
+export function resetVerticalTagsForTest(): void {
+  setVerticalTags(null);
+  tagLoad = null;
+}
+
+/** Many texts as one field. Both forms keep a gap between texts, so a run-together query never spans two. */
+function joinFields(fields: Field[]): Field {
+  return {
+    spaced: fields.map((entry) => entry.spaced).join(""),
+    joined: fields.map((entry) => entry.joined).join(" "),
+  };
+}
+
 /** One business type with its text prepared once, nearest-to-the-name first. */
 type SearchEntry = {
   row: CatalogueRow;
   industries: string[];
-  /** Label; then plus aliases; then plus industry names; then plus the note. */
-  levels: Field[][];
+  /**
+   * Label, names (aliases, search terms, SA terms), tags, industry names, note.
+   * A query is looked for in the first one, then the first two, and so on.
+   */
+  segments: Field[];
+  /** The tags as typed, and each one prepared on first use for the "Matches" hint. */
+  tagTexts: string[];
+  tagFields?: Field[];
 };
+
+const TAG_LEVEL = 2;
 
 let searchIndex: SearchEntry[] | null = null;
 
@@ -192,10 +268,17 @@ function buildSearchIndex(): SearchEntry[] {
     catalogue.industries.map((industry) => [industry.id, industry.label]),
   );
   return verticalTypes.map((type) => {
+    const extra = verticalTags?.[type.id];
     const label = field(type.label);
-    const aliases = (type.aliases ?? []).map(field);
-    const industryNames = type.industries.map((id) =>
-      field(industryLabels.get(id) ?? ""),
+    const names = joinFields([
+      ...(type.aliases ?? []).map(field),
+      ...(extra?.search ?? []).map(field),
+      ...(extra?.sa ?? []).map(field),
+    ]);
+    const tagTexts = (extra?.tags ?? []).map(([tag]) => tag);
+    const tags = joinFields(tagTexts.map(field));
+    const industryNames = joinFields(
+      type.industries.map((id) => field(industryLabels.get(id) ?? "")),
     );
     const note = field(`${type.definition} ${type.note ?? ""}`);
     const parentId = type.industries[0] ?? "";
@@ -208,14 +291,63 @@ function buildSearchIndex(): SearchEntry[] {
         parentName: industryLabels.get(parentId) ?? "",
       },
       industries: type.industries,
-      levels: [
-        [label],
-        [label, ...aliases],
-        [label, ...aliases, ...industryNames],
-        [label, ...aliases, ...industryNames, note],
-      ],
+      segments: [label, names, tags, industryNames, note],
+      tagTexts,
     };
   });
+}
+
+/**
+ * The nearest segment level that holds the whole query, or -1. Same rule as
+ * `holds` over the first N segments, but each segment is scanned once, not once
+ * per level: the tag text is large and this runs on every keystroke.
+ */
+function tierOf(entry: SearchEntry, query: SearchQuery): number {
+  // One word that is the whole query: a hit in `spaced` is always a hit in `joined`.
+  const words =
+    query.words.length === 1 && query.words[0] === query.joined
+      ? []
+      : query.words;
+  const covered = words.map(() => false);
+  let joinedHit = false;
+  for (let level = 0; level < entry.segments.length; level++) {
+    const segment = entry.segments[level];
+    if (!joinedHit && segment.joined.includes(query.joined)) joinedHit = true;
+    if (joinedHit) return level;
+    if (words.length === 0) continue;
+    let all = true;
+    for (let index = 0; index < words.length; index++) {
+      if (!covered[index] && segment.spaced.includes(words[index]))
+        covered[index] = true;
+      if (!covered[index]) all = false;
+    }
+    if (all) return level;
+  }
+  return -1;
+}
+
+/**
+ * Why a type whose name does not match came up: at most two of its tags that
+ * hold the whole query. When only the words are spread over the tags and other
+ * names (tag tier), the tags that hold one of the words.
+ */
+function matchedTags(
+  entry: SearchEntry,
+  query: SearchQuery,
+  tier: number,
+): string[] {
+  if (tier < 1 || tier > TAG_LEVEL || entry.tagTexts.length === 0) return [];
+  entry.tagFields ??= entry.tagTexts.map(field);
+  const fields = entry.tagFields;
+  const whole = entry.tagTexts.filter((_, index) =>
+    holds([fields[index]], query),
+  );
+  if (whole.length || tier < TAG_LEVEL) return whole.slice(0, 2);
+  return entry.tagTexts
+    .filter((_, index) =>
+      query.words.some((word) => fields[index].spaced.includes(word)),
+    )
+    .slice(0, 2);
 }
 
 function rankedBusinessRows(
@@ -227,21 +359,25 @@ function rankedBusinessRows(
   const ranked: { tier: number; row: CatalogueRow }[] = [];
   for (const entry of searchIndex) {
     if (industryId && !entry.industries.includes(industryId)) continue;
-    const tier = wanted.joined
-      ? entry.levels.findIndex((fields) => holds(fields, wanted))
-      : 0;
+    const tier = wanted.joined ? tierOf(entry, wanted) : 0;
     if (tier < 0) continue;
+    const tagMatches = wanted.joined
+      ? matchedTags(entry, wanted, tier)
+      : undefined;
     ranked.push({
       tier,
-      row: industryId
-        ? {
-            ...entry.row,
-            parentId: industryId,
-            parentName:
-              industryTaxonomy.find((industry) => industry.id === industryId)
-                ?.label ?? "",
-          }
-        : entry.row,
+      row: {
+        ...entry.row,
+        ...(industryId
+          ? {
+              parentId: industryId,
+              parentName:
+                industryTaxonomy.find((industry) => industry.id === industryId)
+                  ?.label ?? "",
+            }
+          : {}),
+        ...(tagMatches?.length ? { tagMatches } : {}),
+      },
     });
   }
   // Array.prototype.sort is stable: equal tiers keep catalogue order.

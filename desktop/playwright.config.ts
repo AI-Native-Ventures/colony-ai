@@ -344,6 +344,7 @@ export default defineConfig({
       testMatch: [
         "**/colony3-discovery-logo-prospect-proof.spec.ts",
         "**/colony3-discovery-v4.spec.ts",
+        "**/colony3-discovery-tags.spec.ts",
         "**/day-divider-overlap.spec.ts",
         "**/colony3-lead-reference.spec.ts",
         "**/link-preview-bare-domain.spec.ts",

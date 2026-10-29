@@ -195,6 +195,14 @@ function DiscoveryTypeCard({
         />
         <span className="d4-type-copy">
           <strong>{type.label}</strong>
+          {row.tagMatches?.length ? (
+            <small
+              className="d4-type-match"
+              data-testid={`discovery-type-match-${type.id}`}
+            >
+              Matches: {row.tagMatches.join(", ")}
+            </small>
+          ) : null}
           <span>
             {summarizeTypeDescription(type.definition ?? type.description)}
           </span>
@@ -269,14 +277,21 @@ export function DiscoveryBusinessCatalogue({
   const matchingIndustries = category
     ? []
     : industryTaxonomy.filter((industry) => industryMatches(industry, query));
-  const selectedIdsInSearch = new Set(rows.map((row) => row.id));
+  const searchRowsById = new Map(rows.map((row) => [row.id, row]));
   const sourceRows = category
-    ? industryRows(category).filter(
-        (row) =>
-          (!searching || selectedIdsInSearch.has(row.id)) &&
-          (sectorId === "all" ||
-            catalogueType(row)?.sectors?.[category.id] === sectorId),
-      )
+    ? industryRows(category)
+        .filter(
+          (row) =>
+            (!searching || searchRowsById.has(row.id)) &&
+            (sectorId === "all" ||
+              catalogueType(row)?.sectors?.[category.id] === sectorId),
+        )
+        .map((row) => {
+          const tagMatches = searching
+            ? searchRowsById.get(row.id)?.tagMatches
+            : undefined;
+          return tagMatches ? { ...row, tagMatches } : row;
+        })
     : searching
       ? rows
       : [];
