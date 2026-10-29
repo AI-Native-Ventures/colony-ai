@@ -36,7 +36,44 @@ async function waitForMockLiveSubscription(
     .toBe(true);
 }
 
-async function assertOneCenteredTopDayLabel(page: Page) {
+async function assertNoVisibleMessageRowIntersectsStickyBand(page: Page) {
+  const intersectingRows = await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>(
+      ".c3c-timeline-scroller",
+    );
+    const band = document.querySelector<HTMLElement>(
+      '[data-testid="message-timeline-sticky-day-divider"]',
+    );
+    if (!scroller || !band) throw new Error("missing channel timeline band");
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const bandRect = band.getBoundingClientRect();
+    const clipPath = getComputedStyle(scroller).clipPath;
+    const insetTop = clipPath.match(/^inset\(\s*(-?[\d.]+)px/)?.[1];
+    const visibleTop = scrollerRect.top + (insetTop ? Number(insetTop) : 0);
+    const visibleBottom = scrollerRect.bottom;
+
+    return [
+      ...scroller.querySelectorAll<HTMLElement>('[data-testid="message-row"]'),
+    ].flatMap((row) => {
+      const rect = row.getBoundingClientRect();
+      const rowTop = Math.max(rect.top, visibleTop);
+      const rowBottom = Math.min(rect.bottom, visibleBottom);
+      const overlapsBand =
+        rect.right > bandRect.left &&
+        rect.left < bandRect.right &&
+        rowBottom > bandRect.top &&
+        rowTop < bandRect.bottom;
+      return overlapsBand
+        ? [{ text: row.innerText.slice(0, 80), top: rowTop, bottom: rowBottom }]
+        : [];
+    });
+  });
+
+  expect(intersectingRows).toEqual([]);
+}
+
+async function assertOneCenteredTopDayLabel(page: Page, expectedLabel: string) {
   const position = await page.evaluate(() => {
     const header = document.querySelector<HTMLElement>(
       '[data-testid="chat-header"]',
@@ -44,9 +81,22 @@ async function assertOneCenteredTopDayLabel(page: Page) {
     const scroller = document.querySelector<HTMLElement>(
       ".c3c-timeline-scroller",
     );
-    if (!header || !scroller) throw new Error("missing channel timeline");
+    const messageColumn = scroller?.querySelector<HTMLElement>(
+      ".c3c-timeline-column",
+    );
+    const sticky = document.querySelector<HTMLElement>(
+      '[data-testid="message-timeline-sticky-day-divider"]',
+    );
+    if (!header || !scroller || !messageColumn || !sticky) {
+      throw new Error("missing channel timeline");
+    }
     const headerBottom = header.getBoundingClientRect().bottom;
     const scrollerBox = scroller.getBoundingClientRect();
+    const messageColumnBox = messageColumn.getBoundingClientRect();
+    const clipPath = getComputedStyle(scroller).clipPath;
+    const insetTop = clipPath.match(/^inset\(\s*(-?[\d.]+)px/)?.[1];
+    const clippedScrollerTop =
+      scrollerBox.top + (insetTop ? Number(insetTop) : 0);
     const labels = [
       ...document.querySelectorAll<HTMLElement>("section[data-day-label] p"),
     ].flatMap((element) => {
@@ -62,31 +112,32 @@ async function assertOneCenteredTopDayLabel(page: Page) {
         ancestor = ancestor.parentElement;
       }
       const label = element.textContent?.trim() ?? "";
+      const inScroller = element.closest(".c3c-timeline-scroller") !== null;
       if (
-        label !== "Yesterday" ||
+        !label ||
         opacity === 0 ||
         rect.width === 0 ||
         rect.height === 0 ||
         rect.bottom <= headerBottom ||
-        rect.top >= headerBottom + 120
+        rect.top >= headerBottom + 120 ||
+        (inScroller && rect.bottom <= clippedScrollerTop)
       ) {
         return [];
       }
       return [
         {
           centerX: rect.left + rect.width / 2,
-          top: rect.top,
-          sticky: Boolean(
-            element.closest(
-              '[data-testid="message-timeline-sticky-day-divider"]',
-            ),
-          ),
+          text: label,
         },
       ];
     });
     return {
       labels,
-      scrollerCenterX: scrollerBox.left + scrollerBox.width / 2,
+      messageColumnBox: {
+        left: messageColumnBox.left,
+        width: messageColumnBox.width,
+      },
+      scrollerBox: { left: scrollerBox.left, width: scrollerBox.width },
       scrollTop: scroller.scrollTop,
     };
   });
@@ -95,15 +146,21 @@ async function assertOneCenteredTopDayLabel(page: Page) {
   expect(position.labels).toHaveLength(1);
   const [label] = position.labels;
   if (!label) throw new Error("the scrolled channel has no visible day label");
+  expect(label.text).toBe(expectedLabel);
   expect(
-    Math.abs(label.centerX - position.scrollerCenterX),
+    Math.abs(
+      label.centerX -
+        (position.messageColumnBox.left + position.messageColumnBox.width / 2),
+    ),
+    JSON.stringify({ label, position }),
   ).toBeLessThanOrEqual(2);
+  await assertNoVisibleMessageRowIntersectsStickyBand(page);
 }
 
 test.describe.configure({ timeout: 120_000 });
 
 for (const theme of THEMES) {
-  test(`sticky day divider covers a long message in ${theme.name} mode`, async ({
+  test(`sticky day divider clears message rows in ${theme.name} mode`, async ({
     page,
   }, testInfo) => {
     const channelName = `divider-overlap-${theme.name}`;
@@ -114,7 +171,7 @@ for (const theme of THEMES) {
         `divider overlap line ${String(index + 1).padStart(2, "0")}: the browser should keep this message readable beneath the current day marker.`,
     ).join("\n");
 
-    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page.clock.setFixedTime(new Date(COLONY3_NOW));
     await page.emulateMedia({
       colorScheme: theme.name === "dark" ? "dark" : "light",
@@ -193,43 +250,33 @@ for (const theme of THEMES) {
       .locator(":scope > section")
       .first();
     const stickyPill = stickyRow.locator("p");
-    const messageBody = messageRow.getByTestId("message-body");
-    const [
-      paint,
-      headerBox,
-      pillBox,
-      dividerBox,
-      messageBox,
-      stickyBandBox,
-      scrollerBox,
-    ] = await Promise.all([
-      stickyRow.evaluate((element) => {
-        const probe = document.createElement("div");
-        probe.className = "bg-colony-surface";
-        document.body.append(probe);
-        const expected = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return {
-          actual: getComputedStyle(element).backgroundColor,
-          expected,
-        };
-      }),
-      page.getByTestId("chat-header").boundingBox(),
-      stickyPill.boundingBox(),
-      stickyRow.boundingBox(),
-      messageBody.boundingBox(),
-      stickyDivider.boundingBox(),
-      scroller.boundingBox(),
-    ]);
+    const [paint, headerBox, pillBox, stickyBandBox, scrollerBox] =
+      await Promise.all([
+        stickyRow.evaluate((element) => {
+          const probe = document.createElement("div");
+          probe.className = "bg-colony-surface";
+          document.body.append(probe);
+          const expected = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const actual = getComputedStyle(element).backgroundColor;
+          const alpha =
+            actual.match(/^rgba\([^)]*,\s*([\d.]+)\s*\)$/i)?.[1] ??
+            actual.match(/\/\s*([\d.]+)\s*\)$/)?.[1] ??
+            "1";
+          return {
+            actual,
+            alpha: Number(alpha),
+            expected,
+          };
+        }),
+        page.getByTestId("chat-header").boundingBox(),
+        stickyPill.boundingBox(),
+        stickyDivider.boundingBox(),
+        scroller.boundingBox(),
+      ]);
     expect(paint.actual).toBe(paint.expected);
-    if (
-      !headerBox ||
-      !pillBox ||
-      !dividerBox ||
-      !messageBox ||
-      !stickyBandBox ||
-      !scrollerBox
-    ) {
+    expect(paint.alpha).toBe(1);
+    if (!headerBox || !pillBox || !stickyBandBox || !scrollerBox) {
       throw new Error("the pinned divider or long message is not rendered");
     }
     // The scroller extends under the channel chrome; its visible top begins
@@ -240,12 +287,23 @@ for (const theme of THEMES) {
     );
     expect(stickyBandBox.y).toBeCloseTo(visibleScrollTop, 1);
     expect(Math.abs(pillBox.y - stickyBandBox.y)).toBeLessThanOrEqual(1);
-    const overlapHeight =
-      Math.min(
-        dividerBox.y + dividerBox.height,
-        messageBox.y + messageBox.height,
-      ) - Math.max(dividerBox.y, messageBox.y);
-    expect(overlapHeight).toBeGreaterThan(0);
+    await assertOneCenteredTopDayLabel(page, "Today");
+
+    const workAreaTrigger = page.getByTestId("channel-work-area-trigger");
+    await workAreaTrigger.click();
+    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await assertOneCenteredTopDayLabel(page, "Today");
+    await workAreaTrigger.click();
+    await expect(page.getByTestId("work-area-panel")).toBeHidden();
+    await scroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await assertOneCenteredTopDayLabel(page, "Today");
 
     await waitForAnimations(page);
     mkdirSync(SHOTS, { recursive: true });
@@ -369,6 +427,16 @@ for (const theme of THEMES) {
       );
       const workAreaTrigger = page.getByTestId("channel-work-area-trigger");
       await expect(workAreaTrigger).toBeVisible();
+      await scroller.evaluate((element) => {
+        element.scrollTop = 5;
+        element.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
+      await scroller.evaluate((element) => {
+        element.scrollTop = 40;
+        element.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await workAreaTrigger.click();
       await expect(page.getByTestId("work-area-panel")).toBeVisible();
       await waitForAnimations(page);
@@ -376,12 +444,12 @@ for (const theme of THEMES) {
         element.scrollTop = 5;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await scroller.evaluate((element) => {
         element.scrollTop = 40;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await waitForAnimations(page);
       mkdirSync(SINGLE_DIVIDER_SHOTS, { recursive: true });
       if (testInfo.project.name === "smoke") {
@@ -400,18 +468,34 @@ for (const theme of THEMES) {
         element.scrollTop = 5;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await scroller.evaluate((element) => {
         element.scrollTop = 40;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await waitForAnimations(page);
       if (testInfo.project.name === "smoke") {
         await page.screenshot({
           path: `${SINGLE_DIVIDER_SHOTS}/390-${theme.name}-channel.png`,
         });
       }
+
+      await workAreaTrigger.click();
+      await expect(page.getByTestId("work-area-panel")).toBeVisible();
+      await waitForAnimations(page);
+      await scroller.evaluate((element) => {
+        element.scrollTop = 5;
+        element.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
+      await scroller.evaluate((element) => {
+        element.scrollTop = 40;
+        element.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
+      await page.getByTestId("work-area-close").click();
+      await expect(page.getByTestId("work-area-panel")).toBeHidden();
 
       await page.setViewportSize({ width: 1440, height: 960 });
       await threadSummary.scrollIntoViewIfNeeded();
@@ -422,12 +506,12 @@ for (const theme of THEMES) {
         element.scrollTop = 5;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
       await scroller.evaluate((element) => {
         element.scrollTop = 40;
         element.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
-      await assertOneCenteredTopDayLabel(page);
+      await assertOneCenteredTopDayLabel(page, "Yesterday");
     },
   );
 }

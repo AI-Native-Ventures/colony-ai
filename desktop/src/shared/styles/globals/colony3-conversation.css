@@ -263,6 +263,14 @@
     24 *
     var(--colony-px)
   );
+  clip-path: inset(
+    calc(
+        var(--buzz-channel-content-top-padding, 5.75rem) +
+        18 *
+        var(--colony-px)
+      )
+      0 0
+  );
 }
 
 .c3c-timeline-column {
@@ -276,6 +284,7 @@
   font-size: calc(13 * var(--colony-px));
   font-weight: 800;
   letter-spacing: 0.09em;
+  line-height: calc(18 * var(--colony-px));
   text-transform: uppercase;
   color: hsl(var(--colony-muted));
 }
