@@ -24,11 +24,17 @@ import {
 } from "../companyHireModels";
 import type { CompanyHireHeadRecord } from "../companyHireModels";
 import { readHireDraft, writeHireDraft } from "../hireDraft";
+import {
+  HIRE_CONFIGURE_TIMEOUT_MS,
+  hireConfigureStatus,
+} from "../hireConfigureStatus";
+import type { HireConfigureStatus } from "../hireConfigureStatus";
 import type { HireProposal } from "@/features/company-asks/askRecords";
 import {
   HireButton,
   HireField,
   HirePage,
+  HireRecovery,
   HireSteps,
   HireTitle,
 } from "./HirePresentation";
@@ -188,6 +194,74 @@ function initialValues(
 
 function currentRecordProposal(record: CompanyHireHeadRecord | undefined) {
   return record?.head.proposal;
+}
+
+function HireConfigureState({
+  onBack,
+  onRetry,
+  status,
+  timedOut,
+}: {
+  onBack: () => void;
+  onRetry: () => void;
+  status: Exclude<HireConfigureStatus, "ready">;
+  timedOut: boolean;
+}) {
+  const actions = (
+    <div className="colony-hire-state-actions">
+      {status === "role-missing" ? null : (
+        <HireButton onClick={onRetry} size="md">
+          Try again
+        </HireButton>
+      )}
+      <HireButton onClick={onBack} size="md" variant="outline">
+        Back to roles
+      </HireButton>
+    </div>
+  );
+  return (
+    <HirePage testId="hire-configure">
+      <HireTitle
+        subtitle="Name the new employee and choose how they work."
+        title="Configure employee"
+      />
+      <HireSteps current={2} onSelect={onBack} />
+      <div data-testid="hire-configure-state">
+        {status === "loading" && !timedOut ? (
+          <section
+            aria-label="Loading the employee form"
+            className="colony-hire-loading"
+          >
+            <div className="colony-hire-banner" role="status">
+              Loading the employee form. Actions become available after the
+              shared source responds.
+            </div>
+            <div aria-hidden="true" className="colony-hire-skeleton" />
+          </section>
+        ) : status === "loading" ? (
+          <HireRecovery
+            action={actions}
+            title="This is taking longer than expected"
+          >
+            The shared source has not answered yet. Try again, or go back to the
+            roles and pick up later. Your draft is kept.
+          </HireRecovery>
+        ) : status === "error" ? (
+          <HireRecovery
+            action={actions}
+            title="This information could not load"
+          >
+            A connection failure is not an empty record. Your draft is kept.
+          </HireRecovery>
+        ) : (
+          <HireRecovery action={actions} title="This role could not be loaded">
+            The role is no longer in your catalog. Go back to the roles and
+            choose it again.
+          </HireRecovery>
+        )}
+      </div>
+    </HirePage>
+  );
 }
 
 export function HireConfigureScreen({
@@ -396,15 +470,41 @@ export function HireConfigureScreen({
       channel.archivedAt === null &&
       channel.isMember,
   );
-  const ready =
-    form !== null &&
-    rolePack !== null &&
-    !personasQuery.isPending &&
-    !runtimesQuery.isPending &&
-    !channelsQuery.isPending &&
-    !teamQuery.isPending &&
-    !identityQuery.isPending &&
-    !membershipQuery.isPending;
+  const status = hireConfigureStatus({
+    personas: personasQuery,
+    runtimes: runtimesQuery,
+    channels: channelsQuery,
+    team: teamQuery,
+    identity: identityQuery,
+    membership: membershipQuery,
+    head: headQuery,
+    hasRolePack: rolePack !== null,
+    hasForm: form !== null,
+  });
+  const [attempt, setAttempt] = React.useState(0);
+  const [timedOut, setTimedOut] = React.useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt restarts the wait when the person taps Try again
+  React.useEffect(() => {
+    setTimedOut(false);
+    if (status !== "loading") return;
+    const timer = window.setTimeout(
+      () => setTimedOut(true),
+      HIRE_CONFIGURE_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [attempt, status]);
+  const retry = () => {
+    setAttempt((count) => count + 1);
+    void Promise.all([
+      personasQuery.refetch(),
+      runtimesQuery.refetch(),
+      channelsQuery.refetch(),
+      teamQuery.refetch(),
+      identityQuery.refetch(),
+      membershipQuery.refetch(),
+      headQuery.refetch(),
+    ]);
+  };
   const candidateProposal = React.useMemo(
     () => (form && rolePack ? buildHireProposal(hireId, rolePack, form) : null),
     [form, hireId, rolePack],
@@ -445,12 +545,16 @@ export function HireConfigureScreen({
     source?.askId,
   ]);
 
-  if (personasQuery.isError) throw personasQuery.error;
-  if (runtimesQuery.isError) throw runtimesQuery.error;
-  if (channelsQuery.isError) throw channelsQuery.error;
-  if (teamQuery.isError) throw teamQuery.error;
-  if (headQuery.isError) throw headQuery.error;
-  if (!ready || !form || !rolePack) return null;
+  if (status !== "ready" || !form || !rolePack) {
+    return (
+      <HireConfigureState
+        onBack={() => void goHireRoles()}
+        onRetry={retry}
+        status={status === "ready" ? "loading" : status}
+        timedOut={timedOut}
+      />
+    );
+  }
 
   const updateForm = (field: keyof HireFormValues, value: string) => {
     setForm((current) => (current ? { ...current, [field]: value } : current));
