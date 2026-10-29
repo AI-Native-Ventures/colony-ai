@@ -71,12 +71,19 @@ struct RetryPolicy {
     /// Shortest attempt worth starting: no retry begins unless this much budget
     /// is left after its wait.
     min_attempt: Duration,
-    /// Longest a free model gets to answer while another model could still
-    /// follow it. One call may otherwise run for the whole budget, and a model
-    /// that hangs then leaves the chain no time to move on. The last model left
-    /// keeps everything that remains. A paid model always keeps the full time:
-    /// it may have charged, so it is never given up on early.
-    free_attempt: Duration,
+    /// Longest a free model gets to send its response headers while another
+    /// model could still follow it. One call may otherwise run for the whole
+    /// budget, and a model that hangs then leaves the chain no time to move on.
+    /// The last model left keeps everything that remains. A paid model always
+    /// keeps the full time: it may have charged, so it is never given up on
+    /// early.
+    ///
+    /// This covers only the wait for headers, never the body. OpenRouter answers
+    /// a request it has accepted with the status and headers at once, followed
+    /// by whitespace keep-alives, and sends the JSON when generation ends, so
+    /// headers mean "generating", not "answered". A model that sent headers is
+    /// given what is left of the whole budget to finish its body (GATE-312 R3).
+    free_headers: Duration,
 }
 
 impl RetryPolicy {
@@ -89,7 +96,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(90),
         min_attempt: Duration::from_secs(5),
-        free_attempt: Duration::from_secs(45),
+        free_headers: Duration::from_secs(45),
     };
 
     /// The same rules with waits short enough for tests to run through.
@@ -103,7 +110,7 @@ impl RetryPolicy {
         retry_after_cap: Duration::from_secs(5),
         budget: Duration::from_secs(30),
         min_attempt: Duration::from_millis(10),
-        free_attempt: Duration::from_millis(400),
+        free_headers: Duration::from_millis(400),
     };
 
     /// The wait before retry number `retry` (0 for the first): the backoff plus
@@ -157,9 +164,10 @@ pub(super) struct Answer {
 /// How one request fared down the chain: what it was sent to, and how it ended.
 pub(super) struct Completion {
     /// Every call made to a provider, in order, as `model(status)`: the HTTP
-    /// status the provider answered, or `timeout` when it gave no answer in
-    /// time, or `net` for any other transport failure. A model that was limited
-    /// and asked again appears once per call.
+    /// status the provider answered, or `timeout` when it sent no response
+    /// headers in time, or `net` for any other transport failure. A 200 whose
+    /// body was still arriving when the call ran out of time is `200/timeout`.
+    /// A model that was limited and asked again appears once per call.
     pub(super) tried: Vec<String>,
     pub(super) result: Result<Answer, CompletionFailure>,
 }
@@ -552,9 +560,12 @@ impl Upstream {
     /// A request is left unclear (`Ambiguous`, the hold kept for the durable
     /// worker) only when a model that may charge may have generated. A free
     /// model cannot cost anything, so whatever happens to it the request ends
-    /// as a clear refusal and the hold is released at once, and one that gives
-    /// no answer within `free_attempt` while another model could still follow
-    /// is handed over like a refusal. A paid model that times out stays unclear.
+    /// as a clear refusal and the hold is released at once. One that sends no
+    /// response headers within `free_headers` while another model could still
+    /// follow is handed over like a refusal. One that did send them is
+    /// generating, and keeps what is left of the budget to finish its body: if
+    /// that runs out first the request ends clear, never unclear. A paid model
+    /// that times out stays unclear.
     pub(super) async fn complete(&self, body: &Value) -> Completion {
         let mut tried = Vec::new();
         let result = self.walk(body, &mut tried).await;
@@ -586,16 +597,24 @@ impl Upstream {
                 attempts += 1;
                 let (model, _) = self.chain().nth(index).ok_or(CompletionFailure::Rejected)?;
                 let free = self.is_free(index);
-                // A free model with another to follow gets `free_attempt`, so a
-                // hang leaves the next one time to answer. The last one left
-                // keeps all that remains.
-                let allowed = if free && position + 1 < live.len() {
-                    left.min(self.retry.free_attempt)
+                // A free model with another to follow gets `free_headers` to
+                // start responding, so a model that never does leaves the next
+                // one time to answer. The last one left keeps all that remains.
+                // Either way the body may use all of `left`.
+                let headers_within = if free && position + 1 < live.len() {
+                    left.min(self.retry.free_headers)
                 } else {
                     left
                 };
                 match self
-                    .attempt(model, &self.body_for(body, index), allowed, free, tried)
+                    .attempt(
+                        model,
+                        &self.body_for(body, index),
+                        left,
+                        headers_within,
+                        free,
+                        tried,
+                    )
                     .await
                 {
                     Ok(bytes) => {
@@ -677,47 +696,39 @@ impl Upstream {
         }
     }
 
+    /// One call to chain model `model`. The whole call, headers and body, ends
+    /// at `left` (or the transport timeout when that is shorter); the response
+    /// headers must arrive within `headers_within`. The two differ only for a
+    /// free model with another to follow, so the body of a model that is already
+    /// generating is never cut at the earlier deadline.
     async fn attempt(
         &self,
         model: &str,
         body: &Value,
         left: Duration,
+        headers_within: Duration,
         free: bool,
         tried: &mut Vec<String>,
     ) -> Result<Vec<u8>, Attempt> {
         let deadline = self.timeout.min(left);
-        let sent = self
+        let first_response = headers_within.min(deadline);
+        let call = self
             .client
             .post(format!("{}/chat/completions", self.origin))
             .bearer_auth(self.key.as_str())
             .header("X-OpenRouter-Title", "Colony Agent")
             .timeout(deadline)
             .json(body)
-            .send()
-            .await;
+            .send();
+        // `send` finishes when the headers arrive, so this is the wait for them.
+        let sent = tokio::time::timeout(first_response, call).await;
         let mut response = match sent {
-            Ok(response) => response,
-            Err(error) if error.is_timeout() => {
-                // No response bytes at all within the deadline. Logged like any
-                // other refusal, with status 0 for "no status". A free model
-                // cannot have charged: hand over. A paid one may have.
-                tried.push(format!("{model}(timeout)"));
-                let waited = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
-                let note = format!("no response within {waited} ms");
-                tracing::warn!(
-                    model,
-                    upstream_status = 0,
-                    upstream_message = note.as_str(),
-                    free,
-                    "Colony gateway upstream did not accept a request"
-                );
-                return Err(if free {
-                    Attempt::Unavailable(CompletionFailure::Rejected)
-                } else {
-                    Attempt::Failed(CompletionFailure::Ambiguous)
-                });
+            Ok(Ok(response)) => response,
+            Err(_) => return Err(no_response(model, first_response, free, tried)),
+            Ok(Err(error)) if error.is_timeout() => {
+                return Err(no_response(model, first_response, free, tried));
             }
-            Err(_) => {
+            Ok(Err(_)) => {
                 tried.push(format!("{model}(net)"));
                 return Err(Attempt::Failed(CompletionFailure::Ambiguous));
             }
@@ -753,9 +764,29 @@ impl Upstream {
             );
             return Err(refusal(status, &peek));
         }
-        bounded_response(response)
-            .await
-            .map_err(|_| Attempt::Failed(CompletionFailure::Ambiguous))
+        match bounded_body(response).await {
+            Ok(bytes) => Ok(bytes),
+            Err(ReadFailure::Timeout) => {
+                // The model answered 200 and was still generating when the call
+                // ran out of time: the budget is spent, so there is no time to
+                // hand it over. A free model cannot have charged, and `walk` ends
+                // the request clear; a paid one may have, and stays unclear.
+                if let Some(last) = tried.last_mut() {
+                    *last = format!("{model}({status}/timeout)");
+                }
+                let waited = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
+                let note = format!("answer not finished within {waited} ms");
+                tracing::warn!(
+                    model,
+                    upstream_status = status,
+                    upstream_message = note.as_str(),
+                    free,
+                    "Colony gateway upstream did not finish an answer"
+                );
+                Err(Attempt::Failed(CompletionFailure::Ambiguous))
+            }
+            Err(ReadFailure::Other) => Err(Attempt::Failed(CompletionFailure::Ambiguous)),
+        }
     }
 
     pub(super) async fn generation_cost(&self, generation: &str) -> Result<i64, ()> {
@@ -789,18 +820,57 @@ impl Upstream {
     }
 }
 
-async fn bounded_response(mut response: reqwest::Response) -> Result<Vec<u8>, ()> {
+/// No response headers within `waited`. Logged like any other refusal, with
+/// status 0 for "no status". A free model cannot have charged: hand over. A paid
+/// one may have.
+fn no_response(model: &str, waited: Duration, free: bool, tried: &mut Vec<String>) -> Attempt {
+    tried.push(format!("{model}(timeout)"));
+    let waited = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+    let note = format!("no response within {waited} ms");
+    tracing::warn!(
+        model,
+        upstream_status = 0,
+        upstream_message = note.as_str(),
+        free,
+        "Colony gateway upstream did not accept a request"
+    );
+    if free {
+        Attempt::Unavailable(CompletionFailure::Rejected)
+    } else {
+        Attempt::Failed(CompletionFailure::Ambiguous)
+    }
+}
+
+/// Why a response body could not be read.
+enum ReadFailure {
+    /// The call's deadline passed while the body was still arriving.
+    Timeout,
+    /// Cut off, too large, or not a success status.
+    Other,
+}
+
+async fn bounded_body(mut response: reqwest::Response) -> Result<Vec<u8>, ReadFailure> {
     if !response.status().is_success() {
-        return Err(());
+        return Err(ReadFailure::Other);
     }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| ())? {
-        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE {
-            return Err(());
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE {
+                    return Err(ReadFailure::Other);
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(None) => return Ok(bytes),
+            Err(error) if error.is_timeout() => return Err(ReadFailure::Timeout),
+            Err(_) => return Err(ReadFailure::Other),
         }
-        bytes.extend_from_slice(&chunk);
     }
-    Ok(bytes)
+}
+
+async fn bounded_response(response: reqwest::Response) -> Result<Vec<u8>, ()> {
+    bounded_body(response).await.map_err(|_| ())
 }
 
 /// The start of a provider's error body, for sorting into a fixed code and then
@@ -1751,12 +1821,12 @@ mod tests {
     }
 
     #[test]
-    fn a_free_model_is_given_up_on_early_enough_for_the_next_one_to_answer() {
+    fn a_free_model_that_sends_no_headers_is_given_up_on_early_enough_for_the_next_to_answer() {
         let policy = RetryPolicy::PRODUCTION;
         // A hung first call must leave the next model time to start and answer.
-        assert!(policy.free_attempt + policy.min_attempt <= policy.budget);
+        assert!(policy.free_headers + policy.min_attempt <= policy.budget);
         // Free models answered in 2 to 37 s on 29 Oct: do not cut a slow one that works.
-        assert!(policy.free_attempt > Duration::from_secs(37));
+        assert!(policy.free_headers > Duration::from_secs(37));
     }
 
     #[test]
@@ -1895,8 +1965,13 @@ mod tests {
         Ok(Option<&'static str>),
         Status(u16),
         Body(u16, &'static str),
-        /// Thinks for this many milliseconds, then 200 at zero cost.
+        /// Thinks for this many milliseconds before it sends anything (no
+        /// headers), then 200 at zero cost.
         Slow(u64),
+        /// What OpenRouter does for a non-streamed request: sends the status
+        /// and headers at once with a whitespace keep-alive, and the JSON at zero
+        /// cost this many milliseconds later.
+        Late(u64),
     }
 
     type Calls = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
@@ -1915,7 +1990,8 @@ mod tests {
         replies: Vec<(&'static str, Reply)>,
     ) -> (String, tokio::task::JoinHandle<()>, Calls) {
         use axum::{
-            http::{HeaderMap, StatusCode},
+            http::{header, HeaderMap, StatusCode},
+            response::IntoResponse,
             routing::post,
             Json, Router,
         };
@@ -1939,14 +2015,38 @@ mod tests {
                     if let Reply::Slow(ms) = reply {
                         tokio::time::sleep(Duration::from_millis(ms)).await;
                     }
+                    if let Reply::Late(ms) = reply {
+                        let text = ok_text(&model, Some("0"));
+                        let chunks = futures_util::stream::unfold(0, move |step| {
+                            let text = text.clone();
+                            async move {
+                                match step {
+                                    0 => {
+                                        Some((Ok::<_, std::convert::Infallible>(b" ".to_vec()), 1))
+                                    }
+                                    1 => {
+                                        tokio::time::sleep(Duration::from_millis(ms)).await;
+                                        Some((Ok(text.into_bytes()), 2))
+                                    }
+                                    _ => None,
+                                }
+                            }
+                        });
+                        return (
+                            StatusCode::OK,
+                            [(header::CONTENT_TYPE, "application/json")],
+                            axum::body::Body::from_stream(chunks),
+                        )
+                            .into_response();
+                    }
                     let text = match reply {
                         Reply::Ok(cost) => ok_text(&model, cost),
-                        Reply::Slow(_) => ok_text(&model, Some("0")),
+                        Reply::Slow(_) | Reply::Late(_) => ok_text(&model, Some("0")),
                         Reply::Status(_) => r#"{"error":{"message":"scripted"}}"#.into(),
                         Reply::Body(_, text) => text.into(),
                     };
                     let status = match reply {
-                        Reply::Ok(_) | Reply::Slow(_) => 200,
+                        Reply::Ok(_) | Reply::Slow(_) | Reply::Late(_) => 200,
                         Reply::Status(status) | Reply::Body(status, _) => status,
                     };
                     (
@@ -1954,6 +2054,7 @@ mod tests {
                         HeaderMap::new(),
                         text,
                     )
+                        .into_response()
                 }
             }),
         );
@@ -2356,7 +2457,7 @@ mod tests {
             ["free/a:free(timeout)", "free/b:free(200)"]
         );
         assert_eq!(completion.result.unwrap().model, 1);
-        // The first model was given up on at `free_attempt`, not at the full timeout.
+        // The first model was given up on at `free_headers`, not at the full timeout.
         assert!(
             started.elapsed() < Duration::from_millis(900),
             "{:?}",
@@ -2396,12 +2497,123 @@ mod tests {
 
     #[tokio::test]
     async fn the_last_free_model_left_keeps_the_rest_of_the_time() {
-        // 700 ms is past `free_attempt` (400 ms) but inside the call's timeout.
+        // 700 ms is past `free_headers` (400 ms) but inside the call's timeout.
         let (origin, task, _) = model_provider(vec![("free/a:free", Reply::Slow(700))]).await;
         let upstream = free_chain(origin, &["free/a:free"]);
         let completion = upstream.complete(&primary_body(&upstream)).await;
         assert_eq!(completion.tried, ["free/a:free(200)"]);
         assert!(completion.result.is_ok());
+        task.abort();
+    }
+
+    /// GATE-312 R3 (29 Oct, 16:30:51): OpenRouter sent 200 and headers at once and
+    /// the JSON when generation ended. The free-model deadline of the previous
+    /// change also covered the body, cut a model that was answering at 45 s and
+    /// ended the request with no other model tried.
+    #[tokio::test]
+    async fn a_free_model_that_sent_its_headers_keeps_the_time_to_finish_its_answer() {
+        // 700 ms is past `free_headers` (400 ms) but inside the call's timeout.
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a:free", Reply::Late(700)),
+            ("free/b:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.tried, ["free/a:free(200)"]);
+        assert_eq!(models_called(&calls), ["free/a:free"]);
+        let answer = completion.result.unwrap();
+        assert_eq!(answer.model, 0);
+        // The whitespace in front of the JSON is part of the answer, as before.
+        assert!(answer.bytes.starts_with(b" "));
+        assert!(upstream.observe(&answer).is_ok());
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_model_that_never_sent_headers_is_cut_and_the_next_may_take_longer_than_the_cut() {
+        // `a` sends nothing and is cut at `free_headers`. `b` has another model
+        // after it, so it too gets only `free_headers` for its headers, which
+        // come at once; its body then takes longer than that.
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a:free", Reply::Slow(3000)),
+            ("free/b:free", Reply::Late(700)),
+            ("free/c:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = free_chain(origin, &["free/a:free", "free/b:free", "free/c:free"]);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(models_called(&calls), ["free/a:free", "free/b:free"]);
+        assert_eq!(
+            completion.tried,
+            ["free/a:free(timeout)", "free/b:free(200)"]
+        );
+        assert_eq!(completion.result.unwrap().model, 1);
+        task.abort();
+    }
+
+    /// The budget runs out while a free model is still generating: the request
+    /// ends clear, with every model that was asked listed, and never unclear.
+    #[tokio::test]
+    async fn a_free_models_unfinished_body_when_the_budget_ends_is_a_clear_refusal() {
+        let (logs, _guard) = captured();
+        let (origin, task, calls) = model_provider(vec![
+            ("free/a:free", Reply::Slow(3000)),
+            ("free/b:free", Reply::Late(5000)),
+            ("free/c:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let mut upstream = free_chain(origin, &["free/a:free", "free/b:free", "free/c:free"]);
+        // `a` is cut at 400 ms; `b` is left 500 ms for its headers and body.
+        upstream.retry.budget = Duration::from_millis(900);
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Rejected));
+        assert_eq!(
+            completion.tried,
+            ["free/a:free(timeout)", "free/b:free(200/timeout)"]
+        );
+        // No time is left for `c`.
+        assert_eq!(models_called(&calls), ["free/a:free", "free/b:free"]);
+        task.abort();
+        let text = text_of(&logs);
+        let line = text
+            .lines()
+            .find(|line| line.contains("upstream did not finish an answer"))
+            .unwrap_or_else(|| panic!("no unfinished-answer line in {text}"));
+        assert!(has(line, "model", "free/b:free"), "{line}");
+        assert!(has(line, "upstream_status", "200"), "{line}");
+        // `a` was cut at 400 ms of the 900 ms budget, so `b` was left what
+        // remained of it: at most 500 ms, less on a slow machine.
+        let waited: u64 = line
+            .split("answer not finished within ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|ms| ms.parse().ok())
+            .unwrap_or_else(|| panic!("no wait in {line}"));
+        assert!((1..=500).contains(&waited), "{line}");
+        assert!(has(line, "free", "true"), "{line}");
+    }
+
+    #[tokio::test]
+    async fn a_paid_models_unfinished_body_stays_unclear_and_says_so() {
+        let (origin, task, calls) = model_provider(vec![
+            ("paid/a", Reply::Late(5000)),
+            ("free/b:free", Reply::Ok(Some("0"))),
+        ])
+        .await;
+        let upstream = Upstream::fake_chain(
+            origin,
+            true,
+            &[
+                ("paid/a", Some(TokenPrices::openrouter_ceiling())),
+                ("free/b:free", None),
+            ],
+        );
+        let completion = upstream.complete(&primary_body(&upstream)).await;
+        assert_eq!(completion.tried, ["paid/a(200/timeout)"]);
+        // It may have charged: unclear, and nothing else is sent.
+        assert_eq!(completion.result.err(), Some(CompletionFailure::Ambiguous));
+        assert_eq!(models_called(&calls), ["paid/a"]);
         task.abort();
     }
 
@@ -2902,6 +3114,7 @@ mod tests {
                 .attempt(
                     "free/a",
                     &json!({"model":"free/a"}),
+                    Duration::from_secs(1),
                     Duration::from_secs(1),
                     false,
                     &mut Vec::new(),

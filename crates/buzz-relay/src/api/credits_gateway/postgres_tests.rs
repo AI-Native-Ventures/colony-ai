@@ -29,6 +29,10 @@ struct Fixture {
     /// answers, so a request can time out and later ones are answered at once.
     hang_calls: Arc<AtomicUsize>,
     hang_ms: Arc<AtomicU64>,
+    /// Milliseconds between the provider's response headers (sent at once, with
+    /// a whitespace keep-alive) and its JSON body, as OpenRouter answers a
+    /// non-streamed request. Zero answers in one piece.
+    late_ms: Arc<AtomicU64>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -88,6 +92,8 @@ async fn fixture_with(
     let hang_calls = Arc::new(AtomicUsize::new(0));
     let hang_ms = Arc::new(AtomicU64::new(0));
     let (hanging_calls, hanging_ms) = (hang_calls.clone(), hang_ms.clone());
+    let late_ms = Arc::new(AtomicU64::new(0));
+    let lateness = late_ms.clone();
     let completion = response.clone();
     let upstream = Router::new()
         .route(
@@ -99,6 +105,7 @@ async fn fixture_with(
                 let thinking = thinking.clone();
                 let hanging_calls = hanging_calls.clone();
                 let hanging_ms = hanging_ms.clone();
+                let lateness = lateness.clone();
                 let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
@@ -136,14 +143,40 @@ async fn fixture_with(
                     }
                     let refusal = scripted.lock().unwrap().pop_front();
                     if let Some(status) = refusal {
-                        return (status, Json(json!({"error":{"message":"scripted"}})));
+                        return (status, Json(json!({"error":{"message":"scripted"}})))
+                            .into_response();
                     }
                     if index > 0 {
                         if let Some(id) = completion["id"].as_str().map(str::to_owned) {
                             completion["id"] = json!(format!("{id}-{index}"));
                         }
                     }
-                    (upstream_status, Json(completion))
+                    let late = lateness.load(Ordering::SeqCst);
+                    if late > 0 && upstream_status.is_success() {
+                        let text = completion.to_string();
+                        let chunks = futures_util::stream::unfold(0, move |step| {
+                            let text = text.clone();
+                            async move {
+                                match step {
+                                    0 => {
+                                        Some((Ok::<_, std::convert::Infallible>(b" ".to_vec()), 1))
+                                    }
+                                    1 => {
+                                        tokio::time::sleep(Duration::from_millis(late)).await;
+                                        Some((Ok(text.into_bytes()), 2))
+                                    }
+                                    _ => None,
+                                }
+                            }
+                        });
+                        return (
+                            upstream_status,
+                            [(axum::http::header::CONTENT_TYPE, "application/json")],
+                            Body::from_stream(chunks),
+                        )
+                            .into_response();
+                    }
+                    (upstream_status, Json(completion)).into_response()
                 }
             }),
         )
@@ -294,6 +327,7 @@ async fn fixture_with(
         delay_ms,
         hang_calls,
         hang_ms,
+        late_ms,
         server,
     }
 }
@@ -1825,6 +1859,71 @@ async fn a_free_model_that_hangs_hands_over_to_the_next_and_nothing_is_charged()
         .unwrap_or_else(|| panic!("no refusal line in {all}"));
     assert!(has(refusal, "model", "free/a:free"), "{refusal}");
     assert!(has(refusal, "upstream_status", "0"), "{refusal}");
+}
+
+/// GATE-312 R3 (29 Oct, 16:30:51): the provider answered 200 with its headers
+/// at once and the JSON a while later. The deadline that hands a silent model
+/// to the next one must not also cut a model that is already answering: the
+/// request is answered by that model, nothing is charged and no other model is
+/// asked.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_free_model_that_sent_its_headers_is_answered_even_when_its_body_is_late() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    // Past the 400 ms the test relay gives a model for its headers, inside the
+    // 1 s it gives a call.
+    f.late_ms.store(700, Ordering::SeqCst);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "late-body").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/a:free");
+    assert_eq!(value["chargedNanousd"], "0");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(row(&f, request).await, ("settled".to_owned(), 0));
+    assert_eq!(balance(&f).await, 1_000_000_000);
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(has(&lines[0], "outcome", "ok"), "{}", lines[0]);
+    assert!(
+        has(&lines[0], "models_tried", "free/a:free(200)"),
+        "{}",
+        lines[0]
+    );
+}
+
+/// A model that answered 200 and is still generating when the call runs out of
+/// time ends the request clear (503), never unclear: the hold is released at
+/// once and the next request of the session runs. The log says the body was
+/// cut, not that nothing came.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_free_model_whose_body_never_finishes_ends_clear_and_the_next_request_runs() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    f.late_ms.store(5000, Ordering::SeqCst);
+    let first = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, first), "never-finishes").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{value}");
+    assert_eq!(row(&f, first).await, ("settled".to_owned(), 0));
+    f.late_ms.store(0, Ordering::SeqCst);
+    let next = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, next), "after-never-finishes").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(row(&f, next).await, ("settled".to_owned(), 0));
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        has(&lines[0], "outcome", "upstream_rejected"),
+        "{}",
+        lines[0]
+    );
+    assert!(
+        has(&lines[0], "models_tried", "free/a:free(200/timeout)"),
+        "{}",
+        lines[0]
+    );
+    assert!(has(&lines[1], "outcome", "ok"), "{}", lines[1]);
 }
 
 /// The same GATE-312 R2 turn when every free model hangs: the request ends in
