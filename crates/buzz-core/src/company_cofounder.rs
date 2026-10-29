@@ -63,7 +63,7 @@ impl Default for CofounderSettings {
 
 /// Member-signed co-founder settings change (kind 47060).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct CofounderAction {
     /// Schema version.
     pub schema_version: u8,
