@@ -161,10 +161,7 @@ pub fn validate_function_action(action: &FunctionAction) -> Result<(), CompanyRe
         (FunctionActionKind::AssignLead, _) => Err(CompanyRecordError::Invalid(
             "assign_lead needs a 64-character leadPubkey",
         )),
-        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, None) => Ok(()),
-        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, Some(_)) => Err(
-            CompanyRecordError::Invalid("cover_by_scout and clear take no leadPubkey"),
-        ),
+        (FunctionActionKind::CoverByScout | FunctionActionKind::Clear, _) => Ok(()),
     }
 }
 
