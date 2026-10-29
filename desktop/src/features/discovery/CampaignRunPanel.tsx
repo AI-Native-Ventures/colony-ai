@@ -52,6 +52,18 @@ export function CampaignRunPanel({
           <p>
             {campaign.verticalName} · {campaign.location}
           </p>
+          {campaign.pickedTags?.length ? (
+            <fieldset
+              aria-label="Picked search tags"
+              className="c3d-picked-search-tags"
+            >
+              {campaign.pickedTags.map((tag) => (
+                <span className="is-picked" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </fieldset>
+          ) : null}
         </div>
         <button
           className="c3d-btn c3d-btn--outline c3d-btn--lg"

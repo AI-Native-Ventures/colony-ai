@@ -155,7 +155,10 @@ test("Discovery campaign dialogs board", async ({ page }) => {
     .getByRole("textbox", { name: /Search industries/ })
     .fill("home decor");
   await page.getByRole("button", { name: "Find prospects" }).first().click();
-  const form = page.getByRole("dialog");
+  const typeDetails = page.getByTestId("discovery-type-details-dialog");
+  await expect(typeDetails).toBeVisible();
+  await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
+  const form = page.getByTestId("discovery-campaign-dialog");
   await expect(
     form.getByRole("heading", { name: "Find the right fit." }),
   ).toBeVisible();

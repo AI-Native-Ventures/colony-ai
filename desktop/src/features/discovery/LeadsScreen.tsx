@@ -3,6 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { formatZar } from "./BusinessCommon";
 import { BusinessLogoMark } from "./BusinessLogoMark";
+import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
+import { discoveryTagFitLabel } from "./discoveryTags";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { AddLeadDialog } from "./LeadDialogs";
 import { LeadPill, PlusGlyph, RunnerMark, SearchGlyph } from "./LeadParts";
@@ -133,6 +135,17 @@ export function LeadsScreen(context: LeadContext) {
               <tbody>
                 {prospects.map(({ record, eventId }) => {
                   const prospect = record.prospect;
+                  const matchedTags = (prospect.discoveryTags ?? [])
+                    .slice()
+                    .sort(
+                      (left, right) =>
+                        Number(right.picked) - Number(left.picked),
+                    )
+                    .slice(0, 3)
+                    .map((match) => match.tag);
+                  const tagFit = discoveryTagFitLabel(
+                    prospect.discoveryTags ?? [],
+                  );
                   return (
                     <tr className="c3l-row" key={eventId}>
                       <td className="c3l-cell-business">
@@ -142,7 +155,10 @@ export function LeadsScreen(context: LeadContext) {
                             ", " +
                             prospect.vertical +
                             ", " +
-                            (prospect.location ?? "Location not set")
+                            (prospect.location ?? "Location not set") +
+                            (matchedTags.length
+                              ? `, matching tags ${matchedTags.join(", ")}`
+                              : "")
                           }
                           className="c3l-business-link"
                           href={`#/sales/lead/${record.prospectId}`}
@@ -158,6 +174,13 @@ export function LeadsScreen(context: LeadContext) {
                               {prospect.vertical} ·{" "}
                               {prospect.location ?? "Location not set"}
                             </small>
+                            {tagFit ? (
+                              <span className="c3l-tag-fit">{tagFit}</span>
+                            ) : null}
+                            <DiscoveryLeadTags
+                              limit={3}
+                              tags={prospect.discoveryTags}
+                            />
                           </span>
                         </a>
                       </td>

@@ -15,6 +15,8 @@ import {
   type ProspectFilter,
 } from "./CampaignHelpers";
 import type { DiscoveryRunner } from "./discoveryProvider";
+import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
+import { discoveryTagFitLabel } from "./discoveryTags";
 
 import "./colony3-discovery.css";
 
@@ -81,7 +83,7 @@ export function CampaignToolbar({
         onChange={(event) => onSort(event.currentTarget.value as ProspectSort)}
         value={sort}
       >
-        <option value="fit">Best fit first</option>
+        <option value="fit">Best fit</option>
         <option value="name">Name A–Z</option>
       </select>
       <button
@@ -198,6 +200,12 @@ export function CampaignTable({
             const status = prospectStatus(prospect);
             const isSelected = selected.has(row.record.prospectId);
             const score = prospect.fitScore;
+            const tagFit = discoveryTagFitLabel(prospect.discoveryTags ?? []);
+            const matchedTags = (prospect.discoveryTags ?? [])
+              .slice()
+              .sort((left, right) => Number(right.picked) - Number(left.picked))
+              .slice(0, 3)
+              .map((match) => match.tag);
             const href = `#/sales/lead/${row.record.prospectId}`;
             return (
               <tr
@@ -221,7 +229,7 @@ export function CampaignTable({
                 </td>
                 <td {...CELL_ROLE}>
                   <a
-                    aria-label={`${prospect.party.displayName}, ${prospect.vertical}`}
+                    aria-label={`${prospect.party.displayName}, ${prospect.vertical}${matchedTags.length ? `, matching tags ${matchedTags.join(", ")}` : ""}`}
                     className="c3d-prospect"
                     href={href}
                   >
@@ -233,6 +241,10 @@ export function CampaignTable({
                     <span className="c3d-prospect-copy">
                       <strong>{prospect.party.displayName}</strong>
                       <span>{prospect.vertical}</span>
+                      <DiscoveryLeadTags
+                        limit={3}
+                        tags={prospect.discoveryTags}
+                      />
                     </span>
                   </a>
                 </td>
@@ -241,7 +253,9 @@ export function CampaignTable({
                 </td>
                 <td {...CELL_ROLE}>
                   <span className="c3d-fit">
-                    <span className="c3d-fit-score">{fitLabel(prospect)}</span>
+                    <span className="c3d-fit-score">
+                      {tagFit ?? fitLabel(prospect)}
+                    </span>
                     <span aria-hidden="true" className="c3d-fit-bar">
                       <i style={{ width: `${Math.min(100, score ?? 0)}%` }} />
                     </span>
