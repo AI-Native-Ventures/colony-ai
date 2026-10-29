@@ -384,6 +384,7 @@ pub async fn query(
     }
 }
 
+/// Query string of Meta's subscription verification request.
 #[derive(Deserialize)]
 pub struct VerifyQuery {
     #[serde(rename = "hub.mode")]

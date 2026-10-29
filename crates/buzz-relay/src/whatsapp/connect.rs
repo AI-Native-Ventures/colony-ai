@@ -435,7 +435,10 @@ pub async fn refresh_phone_info(
             apply_phone_info(state, tenant, &info).await;
             Ok(())
         }
-        Err(GraphError::Rejected { code, .. }) if matches!(code, Some(190) | Some(102)) => {
+        Err(GraphError::Rejected {
+            code: Some(190 | 102),
+            ..
+        }) => {
             note_token_expired(state, tenant).await;
             Ok(())
         }
