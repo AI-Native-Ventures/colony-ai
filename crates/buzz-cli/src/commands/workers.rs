@@ -809,7 +809,7 @@ async fn list(client: &BuzzClient, mine: bool) -> Result<(), CliError> {
         .into_iter()
         .map(|raw| parse_head(raw, &relay))
         .collect::<Result<Vec<_>, CliError>>()?;
-    heads.sort_by(|a, b| b.1.run.started_at.cmp(&a.1.run.started_at));
+    heads.sort_by_key(|(_, head)| std::cmp::Reverse(head.run.started_at));
     let workers: Vec<Value> = heads
         .iter()
         .map(|(event_id, head)| worker_view(event_id, head, now, false))

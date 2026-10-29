@@ -3527,6 +3527,7 @@ mod tests {
             "upload",
             "users",
             "work",
+            "workers",
             "workflows",
         ];
 
