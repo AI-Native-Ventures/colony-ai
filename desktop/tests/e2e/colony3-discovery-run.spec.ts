@@ -2,6 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
 import { installMockBridge } from "../helpers/bridge";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+
+test.beforeEach(async ({ page }) => {
+  await installDiscoveryImageMocks(page);
+});
 
 /**
  * The real discovery runner (not the simulated stand-in): Find prospects

@@ -46,6 +46,11 @@ export default defineConfig(async ({ mode }) => {
           modeEnv.COLONY_GOOGLE_DESKTOP_CLIENT_ID ??
           "",
       ),
+      __COLONY_LOGO_DEV_TOKEN__: JSON.stringify(
+        process.env.COLONY_LOGO_DEV_TOKEN ??
+          modeEnv.COLONY_LOGO_DEV_TOKEN ??
+          "",
+      ),
     },
     resolve: {
       alias: {

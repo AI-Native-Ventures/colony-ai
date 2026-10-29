@@ -342,6 +342,8 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/colony3-discovery-logo-prospect-proof.spec.ts",
+        "**/colony3-discovery-v4.spec.ts",
         "**/day-divider-overlap.spec.ts",
         "**/link-preview-bare-domain.spec.ts",
         "**/doc-card-collapse.spec.ts",
