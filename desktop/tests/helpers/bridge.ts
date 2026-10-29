@@ -180,6 +180,8 @@ type MockBridgeOptions = {
   userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Add a long lead name for picker overflow regression coverage. */
+  referenceWorkspaceLongLeadNames?: boolean;
   /** Report the window as fullscreen (no macOS traffic-light inset). */
   windowFullscreen?: boolean;
   /** Colony 3.0 foundation fixture (the Sidebar board's Lerato Social). */
