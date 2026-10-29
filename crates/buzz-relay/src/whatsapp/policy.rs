@@ -195,6 +195,62 @@ pub fn decide_new_chat(
     NewChatDecision::SendNow
 }
 
+/// Longest Colony display title.
+pub const MAX_TITLE_CHARS: usize = 80;
+
+/// Default Colony title for a template the owner has not named yet: the first words of the
+/// body with the `{{n}}` slots left out. Meta names like `hl_vb` mean nothing to people.
+/// Falls back to the Meta name with underscores read as spaces.
+pub fn default_template_title(name: &str, body: &str) -> String {
+    let mut without_slots = String::with_capacity(body.len());
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    let mut copied = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'{' && bytes[i + 1] == b'{' {
+            let mut end = i + 2;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > i + 2 && end + 1 < bytes.len() && bytes[end] == b'}' && bytes[end + 1] == b'}'
+            {
+                without_slots.push_str(&body[copied..i]);
+                i = end + 2;
+                copied = i;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    without_slots.push_str(&body[copied..]);
+    let words: Vec<&str> = without_slots
+        .split_whitespace()
+        .map(|word| {
+            word.trim_matches(|c: char| {
+                c == ',' || c == '.' || c == '!' || c == '?' || c == ':' || c == ';'
+            })
+        })
+        .filter(|word| !word.is_empty())
+        .take(6)
+        .collect();
+    let title = if words.is_empty() {
+        name.replace('_', " ").trim().to_string()
+    } else {
+        words.join(" ")
+    };
+    clip_title(&title)
+}
+
+/// Trim a title and cap its length. `None` when nothing is left.
+pub fn clean_title(raw: &str) -> Option<String> {
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!collapsed.is_empty()).then(|| clip_title(&collapsed))
+}
+
+fn clip_title(title: &str) -> String {
+    title.chars().take(MAX_TITLE_CHARS).collect()
+}
+
 /// Highest `{{n}}` slot in a template body.
 pub fn template_slot_count(body: &str) -> usize {
     slots(body).into_iter().max().unwrap_or(0)
@@ -513,6 +569,30 @@ mod tests {
             decide_new_chat(at(10, 0, 0), None, 0, 0, gap),
             NewChatDecision::CapReached { .. }
         ));
+    }
+
+    #[test]
+    fn default_titles_come_from_the_first_words_of_the_body() {
+        assert_eq!(
+            default_template_title(
+                "hl_vb",
+                "Hi {{1}}, it is Sam from Horizon Labs. Got a minute?"
+            ),
+            "Hi it is Sam from Horizon"
+        );
+        assert_eq!(default_template_title("hl_vb", "{{1}}"), "hl vb");
+        assert_eq!(default_template_title("follow_up", ""), "follow up");
+        let long = "word ".repeat(100);
+        assert!(default_template_title("x", &long).chars().count() <= MAX_TITLE_CHARS);
+        assert_eq!(
+            clean_title("  Voice   note offer "),
+            Some("Voice note offer".to_string())
+        );
+        assert_eq!(clean_title("   "), None);
+        assert_eq!(
+            clean_title(&"a".repeat(500)).map(|t| t.chars().count()),
+            Some(MAX_TITLE_CHARS)
+        );
     }
 
     #[test]

@@ -530,6 +530,24 @@ mod tests {
     }
 
     #[test]
+    fn a_quick_reply_tap_is_the_reply_text_and_not_interested_is_an_opt_out() {
+        let tap = |title: &str| {
+            json!({"entry": [{"changes": [{"field": "messages", "value": {
+                "metadata": {"phone_number_id": "111"},
+                "messages": [{"from": "27821234567", "id": "t", "timestamp": "1",
+                              "type": "button", "button": {"text": title, "payload": "p"}}]
+            }}]}]})
+        };
+        let parsed = parse_payload(&tap("Not interested"), "111");
+        assert_eq!(parsed.messages[0].text, "Not interested");
+        assert!(parsed.messages[0].is_button);
+        assert!(is_opt_out_button(&parsed.messages[0].text));
+        let parsed = parse_payload(&tap("Tell me more"), "111");
+        assert_eq!(parsed.messages[0].text, "Tell me more");
+        assert!(!is_opt_out_button(&parsed.messages[0].text));
+    }
+
+    #[test]
     fn statuses_carry_the_meta_error_code() {
         let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
         "metadata": {"phone_number_id": "111"},

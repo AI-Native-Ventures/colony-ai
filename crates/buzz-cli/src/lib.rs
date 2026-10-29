@@ -1346,11 +1346,26 @@ pub enum LeadsCmd {
 pub enum WhatsappCmd {
     /// Show the connected number, quality, daily cap, sends today and any issue
     Status,
-    /// List approved message templates and their {{n}} slots
+    /// List approved templates: Colony title first, Meta name second, slots and buttons
     Templates {
         /// Ask WhatsApp for the current list first (owner or admin)
         #[arg(long)]
         refresh: bool,
+    },
+    /// Rename a template (owner or admin) or propose a better title (agents, with --propose)
+    TemplateTitle {
+        /// Template title or Meta name
+        #[arg(long)]
+        template: String,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// The Colony display title, for example "Voice note offer"
+        #[arg(long)]
+        title: String,
+        /// Only propose the title; the owner or an admin accepts it by renaming
+        #[arg(long)]
+        propose: bool,
     },
     /// Prepare, review and decide batches of template messages
     #[command(subcommand)]
@@ -1366,7 +1381,7 @@ pub enum WhatsappCmd {
         /// Free text (only inside the 24 hour window)
         #[arg(long)]
         text: Option<String>,
-        /// Or an approved template name
+        /// Or an approved template title or Meta name
         #[arg(long)]
         template: Option<String>,
         /// Template language code
@@ -1411,7 +1426,7 @@ pub enum WhatsappCmd {
 pub enum WhatsappBatchCmd {
     /// Prepare a batch of template messages; it stays pending until the owner approves it
     Create {
-        /// Approved template name
+        /// Approved template title or Meta name
         #[arg(long)]
         template: String,
         /// Template language code
@@ -3848,7 +3863,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("whatsapp", 8),
+            ("whatsapp", 9),
             ("work", 16),
             ("workflows", 8),
         ];

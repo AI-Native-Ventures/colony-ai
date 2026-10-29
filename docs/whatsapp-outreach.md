@@ -91,8 +91,21 @@ Status object:
 `issues[].code` is one of `token_expired`, `number_disconnected`, `quality_yellow`,
 `quality_red`, `template_paused`, `webhook_failing`. Sending stops by itself on `quality_red`.
 
-Template: `{ name, language, category, status, body, slots, buttons: [{type, text}] }`.
-`body` keeps `{{1}}` style slots; `slots` is the highest slot number.
+Template: `{ title, name, proposedTitle, titleCustom, language, category, status, body, slots,
+buttons: [{type, text}] }`.
+
+* `title` is the Colony display title. **Agents and the UI show and use the title.** `name` is
+  the Meta template name (`hl_vb`): it stays the send key and belongs in a details view only.
+* When a template is first synced its title defaults to the first six words of the body with the
+  `{{n}}` slots left out (falls back to the Meta name with spaces). An owner or admin can rename it;
+  a renamed title (`titleCustom: true`) survives every later sync, an untouched default follows the body.
+* An agent can propose a better title; it shows as `proposedTitle` and changes nothing until an
+  owner or admin renames (which clears the proposal).
+* Anywhere a template is named (batch `template`, send `template.name`, rename `template`) the
+  relay accepts the Meta name or the title (case insensitive, same language). An ambiguous title
+  (two templates share it) is refused: use the Meta name.
+* `body` keeps `{{1}}` style slots; `slots` is the highest slot number.
+* `buttons` keeps each template's buttons from Meta (quick replies included) on every sync.
 
 Contact: `{ waId, e164, displayName, leadId, ownerPubkey, threadRootEventId, lastInboundAt,
 windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered }`.
@@ -182,13 +195,18 @@ instead of `text`. Rules the relay enforces:
 The request is queued durably and sent by the relay worker. `requestId` is the idempotency
 key: one request is at most one Graph send.
 
-### `47049` `KIND_WHATSAPP_SETTINGS` (owner/admin only)
+### `47049` `KIND_WHATSAPP_SETTINGS` (owner/admin; agents may only propose a title)
 
 ```json
 { "v": 1, "dailyNewChatCap": 30 }
+{ "v": 1, "syncTemplates": true }
+{ "v": 1, "templateTitle": { "template": "hl_vb", "language": "en", "title": "Voice note offer", "propose": false } }
 ```
 
 Cap range 0 to 1000. Takes effect immediately. Default 30.
+`templateTitle` with `propose: false` renames (owner/admin only, max 80 characters, kept across
+syncs). With `propose: true` any owner, admin or Outreach member can suggest a title; nothing
+changes until an owner or admin renames. A `template_title_proposed` notice is posted in Outreach.
 
 ## Sending, pacing, cap
 
@@ -201,10 +219,15 @@ Cap range 0 to 1000. Takes effect immediately. Default 30.
   the Graph call and the record leaves it `sending`; after the lease expires it becomes
   `unconfirmed` and is NEVER resent automatically. The owner is told in the Outreach channel.
 
-## Opt-out
+## Buttons and opt-out
+
+A tap on a template quick-reply button arrives from Meta as a `button` (or interactive reply)
+message. The relay treats it as the contact's reply: the button text becomes the message text in
+the thread, it opens the 24 hour window and wakes the owning agent like any reply.
 
 Inbound `stop`, `unsubscribe`, `no thanks`, `not interested` (trimmed, case insensitive,
-trailing punctuation ignored) and a button reply named like an opt-out mark the contact
+trailing punctuation ignored) and a button whose text means the same (`Not interested`,
+`Stop promotions`, `Unsubscribe`, `Opt out`) mark the contact
 opted out. Every later send is refused: `contact opted out on <date>`. A Meta block or spam
 error code on send pauses the contact and posts a notice in the Outreach channel.
 
@@ -223,7 +246,9 @@ One private channel named `Outreach`. Each contact has ONE thread:
 
 ## CLI
 
-`colony whatsapp status | templates | batch create | batch list | batch show | batch approve |
-batch reject | send | contacts | inbox | cap`. Help text and the colony skill carry the rules:
+`colony whatsapp status | templates | template-title | batch create | batch list | batch show |
+batch approve | batch reject | send | contacts | inbox | thread | cap`. `templates` prints the title first
+and the Meta name second; `template-title --template <title or Meta name> --title "..."` renames
+(owner/admin) or, with `--propose`, suggests a title (agents). Help text and the colony skill carry the rules:
 templates first, short human replies, never more than one message in a row without a reply,
 stop words honored.

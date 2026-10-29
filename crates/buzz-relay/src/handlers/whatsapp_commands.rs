@@ -29,7 +29,9 @@ use buzz_db::whatsapp::{
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
-use crate::whatsapp::policy::{normalize_wa_id, render_template, template_slot_count, window_open};
+use crate::whatsapp::policy::{
+    clean_title, normalize_wa_id, render_template, template_slot_count, window_open,
+};
 use crate::whatsapp::sender::{enqueue_send, Enqueued, SendCommand, TemplateRef};
 use crate::whatsapp::{access_for, channel, parse_uuid, Access};
 
@@ -119,6 +121,21 @@ struct SettingsCommand {
     daily_new_chat_cap: Option<i32>,
     #[serde(default)]
     sync_templates: Option<bool>,
+    #[serde(default)]
+    template_title: Option<TemplateTitleCommand>,
+}
+
+/// Rename a template (owner or admin) or propose a better title (any Outreach member).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateTitleCommand {
+    /// Meta template name or the current title.
+    template: String,
+    #[serde(default = "default_language")]
+    language: String,
+    title: String,
+    #[serde(default)]
+    propose: bool,
 }
 
 fn restricted(reason: impl std::fmt::Display) -> IngestError {
@@ -241,7 +258,7 @@ async fn handle_batch(
     }
     let template = state
         .db
-        .whatsapp_get_template(community, command.template.trim(), command.language.trim())
+        .whatsapp_find_template(community, command.template.trim(), command.language.trim())
         .await
         .map_err(internal)?
         .ok_or_else(|| {
@@ -516,17 +533,31 @@ async fn handle_settings(
     event: &Event,
     access: Access,
 ) -> Result<IngestResult, IngestError> {
-    if !access.is_owner_admin() {
+    let command: SettingsCommand = parse(event)?;
+    check_version(command.v)?;
+    let community = tenant.community();
+    let proposing_only = command.daily_new_chat_cap.is_none()
+        && command.sync_templates != Some(true)
+        && command.template_title.as_ref().is_some_and(|t| t.propose);
+    // GUARD: only the owner or an admin changes settings or renames; any member who can send
+    // may only PROPOSE a template title.
+    if proposing_only {
+        if !access.can_send() {
+            return Err(restricted(
+                "only the owner, admins and Outreach members can propose a title",
+            ));
+        }
+    } else if !access.is_owner_admin() {
         return Err(restricted(
             "only the owner or an admin can change WhatsApp settings",
         ));
     }
-    let command: SettingsCommand = parse(event)?;
-    check_version(command.v)?;
-    let community = tenant.community();
-    if command.daily_new_chat_cap.is_none() && command.sync_templates != Some(true) {
+    if command.daily_new_chat_cap.is_none()
+        && command.sync_templates != Some(true)
+        && command.template_title.is_none()
+    {
         return Err(invalid(
-            "nothing to change: set dailyNewChatCap or syncTemplates",
+            "nothing to change: set dailyNewChatCap, syncTemplates or templateTitle",
         ));
     }
     let mut changes = Vec::new();
@@ -553,6 +584,46 @@ async fn handle_settings(
     if command.sync_templates == Some(true) {
         let count = sync_templates(state, tenant).await.map_err(restricted)?;
         changes.push(format!("{count} template(s) synced"));
+    }
+    if let Some(rename) = command.template_title.as_ref() {
+        let title = clean_title(&rename.title).ok_or_else(|| invalid("title is empty"))?;
+        let template = state
+            .db
+            .whatsapp_find_template(community, rename.template.trim(), rename.language.trim())
+            .await
+            .map_err(internal)?
+            .ok_or_else(|| invalid("no such template (use its title or Meta name)"))?;
+        if rename.propose {
+            state
+                .db
+                .whatsapp_propose_template_title(
+                    community,
+                    &template.name,
+                    &template.language,
+                    &title,
+                    &event.pubkey.to_bytes(),
+                )
+                .await
+                .map_err(internal)?;
+            channel::post_notice(
+                state,
+                tenant,
+                "template_title_proposed",
+                &format!(
+                    "Proposed title for \"{}\": \"{title}\". The owner or an admin can accept it.",
+                    template.title
+                ),
+            )
+            .await;
+            changes.push(format!("proposed title \"{title}\""));
+        } else {
+            state
+                .db
+                .whatsapp_set_template_title(community, &template.name, &template.language, &title)
+                .await
+                .map_err(internal)?;
+            changes.push(format!("title \"{title}\""));
+        }
     }
     Ok(ok(event, changes.join(", ")))
 }

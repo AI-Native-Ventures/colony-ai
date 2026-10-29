@@ -646,6 +646,10 @@ CREATE TABLE whatsapp_templates (
     body TEXT NOT NULL DEFAULT '',
     slots INTEGER NOT NULL DEFAULT 0 CHECK (slots BETWEEN 0 AND 64),
     buttons JSONB NOT NULL DEFAULT '[]'::jsonb,
+    title TEXT NOT NULL DEFAULT '' CHECK (length(title) <= 120),
+    title_custom BOOLEAN NOT NULL DEFAULT false,
+    proposed_title TEXT CHECK (proposed_title IS NULL OR length(proposed_title) <= 120),
+    proposed_by BYTEA CHECK (proposed_by IS NULL OR octet_length(proposed_by) = 32),
     synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (community_id, name, language)
 );

@@ -136,7 +136,7 @@ impl GraphApi for FakeGraph {
             category: "MARKETING".into(),
             status: "APPROVED".into(),
             body: "Hi {{1}}, it is Sam from Horizon Labs.".into(),
-            buttons: json!([]),
+            buttons: json!([{"type": "QUICK_REPLY", "text": "Not interested"}]),
         }])
     }
 
@@ -542,6 +542,173 @@ async fn a_redelivered_stop_still_opts_out_after_a_half_finished_first_delivery(
     assert!(
         stored[0].event_id.is_some(),
         "the redelivery finishes the Colony post"
+    );
+}
+
+fn button_tap(from: &str, wamid: &str, title: &str) -> String {
+    json!({"object": "whatsapp_business_account", "entry": [{"id": WABA_ID, "changes": [{
+    "field": "messages",
+    "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {"display_phone_number": "27820000000", "phone_number_id": PHONE_ID},
+        "contacts": [{"profile": {"name": "Naledi"}, "wa_id": from}],
+        "messages": [{"from": from, "id": wamid, "timestamp": Utc::now().timestamp().to_string(),
+                      "type": "button", "button": {"text": title, "payload": "x"}}]
+    }}]}]})
+    .to_string()
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_button_tap_is_the_reply_and_not_interested_opts_out() {
+    let fx = fixture().await;
+    // The synced template keeps its quick-reply button.
+    let templates = fx
+        .state
+        .db
+        .whatsapp_list_templates(fx.community())
+        .await
+        .expect("templates");
+    assert_eq!(templates[0].buttons[0]["text"], "Not interested");
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &button_tap("27821230005", "wamid.IN5", "Tell me more")
+        )
+        .await,
+        StatusCode::OK
+    );
+    let after_tap = fx.thread("27821230005").await;
+    assert_eq!(after_tap.len(), 1);
+    assert_eq!(
+        after_tap[0].body, "Tell me more",
+        "the tapped button is the reply text"
+    );
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), "27821230005")
+        .await
+        .expect("c")
+        .expect("exists");
+    assert!(contact.opted_out_at.is_none() && contact.last_inbound_at.is_some());
+
+    // GUARD: `is_opt_out_button` in `inbound::handle_message`. Without it the tap is only text.
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &button_tap("27821230006", "wamid.IN6", "Not interested")
+        )
+        .await,
+        StatusCode::OK
+    );
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), "27821230006")
+        .await
+        .expect("c")
+        .expect("exists");
+    assert!(
+        contact.opted_out_at.is_some(),
+        "Not interested opts the contact out"
+    );
+    assert_eq!(fx.thread("27821230006").await[0].body, "Not interested");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn template_titles_default_from_the_body_rename_and_survive_sync() {
+    let fx = fixture().await;
+    let list = || async {
+        fx.state
+            .db
+            .whatsapp_list_templates(fx.community())
+            .await
+            .expect("templates")
+    };
+    let first = list().await;
+    assert_eq!(first[0].name, "intro");
+    assert_eq!(
+        first[0].title, "Hi it is Sam from Horizon",
+        "default title comes from the body"
+    );
+    assert!(!first[0].title_custom);
+
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    let title = |value: &str, propose: bool| json!({"v": 1, "templateTitle": {"template": "intro", "title": value, "propose": propose}});
+
+    // An agent can only propose.
+    fx.command(&agent, KIND_WHATSAPP_SETTINGS, title("Intro offer", true))
+        .await
+        .expect("agent proposes");
+    let proposed = list().await;
+    assert_eq!(
+        proposed[0].title, "Hi it is Sam from Horizon",
+        "a proposal changes nothing"
+    );
+    assert_eq!(proposed[0].proposed_title.as_deref(), Some("Intro offer"));
+    // GUARD: the owner or admin check in `handle_settings` for a rename (propose = false).
+    let refusal = rejection(
+        fx.command(&agent, KIND_WHATSAPP_SETTINGS, title("Mine now", false))
+            .await,
+    );
+    assert!(refusal.contains("only the owner or an admin"), "{refusal}");
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        title("Intro offer", false),
+    )
+    .await
+    .expect("owner renames");
+    let renamed = list().await;
+    assert_eq!(renamed[0].title, "Intro offer");
+    assert!(renamed[0].title_custom && renamed[0].proposed_title.is_none());
+
+    // GUARD: `CASE WHEN whatsapp_templates.title_custom` in `whatsapp_replace_templates`.
+    // A later sync must not overwrite the owner's title with the default.
+    connect::sync_templates(&fx.state, &fx.tenant)
+        .await
+        .expect("resync");
+    assert_eq!(list().await[0].title, "Intro offer");
+
+    // Agents can use the title; the Meta name stays the send key.
+    let created = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH,
+            json!({"v": 1, "batchId": Uuid::new_v4().to_string(), "template": "Intro offer", "language": "en",
+                   "rows": [{"to": "+27820000011", "params": ["Thabo"]}]}),
+        )
+        .await
+        .expect("a batch by title");
+    assert!(
+        created.message.starts_with("pending approval"),
+        "{}",
+        created.message
+    );
+    let rows: Vec<String> = sqlx::query_scalar("SELECT template_name FROM whatsapp_messages WHERE community_id = $1 AND batch_id IS NOT NULL")
+        .bind(fx.community().as_uuid())
+        .fetch_all(&fx.pool)
+        .await
+        .expect("rows");
+    assert_eq!(
+        rows,
+        vec!["intro".to_string()],
+        "the row keeps the Meta name as its send key"
     );
 }
 

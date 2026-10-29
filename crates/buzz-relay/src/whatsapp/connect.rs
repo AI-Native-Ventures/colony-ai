@@ -13,7 +13,9 @@ use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTempl
 
 use super::channel;
 use super::graph::{GraphError, PhoneInfo};
-use super::policy::{hash_verify_token, sast_day_start, template_slot_count};
+use super::policy::{
+    default_template_title, hash_verify_token, sast_day_start, template_slot_count,
+};
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
 
@@ -382,6 +384,9 @@ pub async fn sync_templates(
     let templates: Vec<WhatsappTemplate> = remote
         .into_iter()
         .map(|template| WhatsappTemplate {
+            title: default_template_title(&template.name, &template.body),
+            title_custom: false,
+            proposed_title: None,
             slots: i32::try_from(template_slot_count(&template.body)).unwrap_or(0),
             name: template.name,
             language: template.language,
@@ -620,7 +625,10 @@ pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, inf
 /// One template as the contract shows it.
 pub fn template_json(template: &WhatsappTemplate) -> Value {
     json!({
+        "title": template.title,
         "name": template.name,
+        "proposedTitle": template.proposed_title,
+        "titleCustom": template.title_custom,
         "language": template.language,
         "category": template.category,
         "status": template.status,

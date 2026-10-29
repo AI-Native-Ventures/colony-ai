@@ -38,7 +38,27 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
     match cmd {
         WhatsappCmd::Status => query(client, json!({ "what": "status" })).await,
         WhatsappCmd::Templates { refresh } => {
-            query(client, json!({ "what": "templates", "refresh": refresh })).await
+            let raw = client
+                .post_json_authed(
+                    QUERY_PATH,
+                    &json!({ "what": "templates", "refresh": refresh }),
+                )
+                .await?;
+            println!("{}", render_templates(&raw)?);
+            Ok(())
+        }
+        WhatsappCmd::TemplateTitle {
+            template,
+            language,
+            title,
+            propose,
+        } => {
+            publish(
+                client,
+                KIND_WHATSAPP_SETTINGS,
+                template_title_content(&template, &language, &title, propose)?,
+            )
+            .await
         }
         WhatsappCmd::Batch(sub) => dispatch_batch(sub, client).await,
         WhatsappCmd::Send {
@@ -456,9 +476,94 @@ pub(crate) fn send_content(
     Ok(content)
 }
 
+/// Templates for people: the Colony title first, the Meta name second (it is the send key
+/// and only needed in details). The key order is fixed by hand because JSON maps sort keys.
+pub(crate) fn render_templates(raw: &str) -> Result<String, CliError> {
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|error| CliError::Other(format!("templates response was not JSON: {error}")))?;
+    let list = value
+        .get("templates")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CliError::Other("templates response has no template list".into()))?;
+    let field = |template: &Value, key: &str| template.get(key).cloned().unwrap_or(Value::Null);
+    let items: Vec<String> = list
+        .iter()
+        .map(|template| {
+            format!(
+                "{{\"title\":{},\"name\":{},\"language\":{},\"category\":{},\"status\":{},\"body\":{},\"slots\":{},\"buttons\":{},\"proposedTitle\":{}}}",
+                field(template, "title"),
+                field(template, "name"),
+                field(template, "language"),
+                field(template, "category"),
+                field(template, "status"),
+                field(template, "body"),
+                field(template, "slots"),
+                field(template, "buttons"),
+                field(template, "proposedTitle"),
+            )
+        })
+        .collect();
+    Ok(format!("[{}]", items.join(",")))
+}
+
+/// The `47049` content that renames a template or proposes a title.
+pub(crate) fn template_title_content(
+    template: &str,
+    language: &str,
+    title: &str,
+    propose: bool,
+) -> Result<Value, CliError> {
+    if template.trim().is_empty() {
+        return Err(CliError::Usage("--template is required".into()));
+    }
+    if title.trim().is_empty() {
+        return Err(CliError::Usage("--title is empty".into()));
+    }
+    Ok(json!({
+        "v": 1,
+        "templateTitle": {
+            "template": template.trim(),
+            "language": language.trim(),
+            "title": title.trim(),
+            "propose": propose,
+        },
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn templates_show_the_title_before_the_meta_name() {
+        let raw = r#"{"templates":[{"name":"hl_vb","title":"Voice note offer","language":"en","category":"MARKETING","status":"APPROVED","body":"Hi {{1}}","slots":1,"buttons":[{"type":"QUICK_REPLY","text":"Not interested"}],"proposedTitle":null}]}"#;
+        let out = render_templates(raw).expect("rendered");
+        assert!(
+            out.starts_with(r#"[{"title":"Voice note offer","name":"hl_vb","#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#""buttons":[{"text":"Not interested","type":"QUICK_REPLY"}]"#),
+            "{out}"
+        );
+        assert!(serde_json::from_str::<Value>(&out).is_ok());
+        assert!(render_templates("{}").is_err());
+    }
+
+    #[test]
+    fn title_command_matches_the_contract() {
+        let rename =
+            template_title_content(" hl_vb ", "en", " Voice note offer ", false).expect("rename");
+        assert_eq!(rename["templateTitle"]["template"], "hl_vb");
+        assert_eq!(rename["templateTitle"]["title"], "Voice note offer");
+        assert_eq!(rename["templateTitle"]["propose"], false);
+        assert_eq!(
+            template_title_content("t", "en", "x", true).expect("p")["templateTitle"]["propose"],
+            true
+        );
+        assert!(template_title_content("", "en", "x", false).is_err());
+        assert!(template_title_content("t", "en", "  ", false).is_err());
+    }
 
     #[test]
     fn send_needs_exactly_one_recipient_and_one_body() {

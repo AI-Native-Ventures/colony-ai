@@ -137,6 +137,12 @@ pub struct WhatsappTemplate {
     pub slots: i32,
     /// Buttons: `[{type, text}]`.
     pub buttons: Value,
+    /// Colony display title. Agents and the UI use it; `name` stays the send key.
+    pub title: String,
+    /// The title was set by an owner or admin and sync no longer rewrites it.
+    pub title_custom: bool,
+    /// A better title proposed by an agent, waiting for an owner or admin.
+    pub proposed_title: Option<String>,
 }
 
 /// A WhatsApp contact (one per wa_id and company).
@@ -364,6 +370,9 @@ fn row_to_template(row: &PgRow) -> Result<WhatsappTemplate> {
         body: row.try_get("body")?,
         slots: row.try_get("slots")?,
         buttons: row.try_get("buttons")?,
+        title: row.try_get("title")?,
+        title_custom: row.try_get("title_custom")?,
+        proposed_title: row.try_get("proposed_title")?,
     })
 }
 
@@ -649,16 +658,19 @@ impl Db {
     ) -> Result<()> {
         self.whatsapp_ensure_settings(community).await?;
         let mut tx = begin(&self.pool).await?;
-        sqlx::query("DELETE FROM whatsapp_templates WHERE community_id = $1")
-            .bind(community.as_uuid())
-            .execute(&mut *tx)
-            .await?;
+        // Upsert so an owner's title survives every sync; only default titles follow the body.
         for template in templates {
             sqlx::query(
                 "INSERT INTO whatsapp_templates \
-                 (community_id, name, language, category, status, body, slots, buttons, synced_at) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
-                 ON CONFLICT (community_id, name, language) DO NOTHING",
+                 (community_id, name, language, category, status, body, slots, buttons, synced_at, \
+                  title) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+                 ON CONFLICT (community_id, name, language) DO UPDATE SET \
+                     category = EXCLUDED.category, status = EXCLUDED.status, \
+                     body = EXCLUDED.body, slots = EXCLUDED.slots, buttons = EXCLUDED.buttons, \
+                     synced_at = EXCLUDED.synced_at, \
+                     title = CASE WHEN whatsapp_templates.title_custom \
+                                  THEN whatsapp_templates.title ELSE EXCLUDED.title END",
             )
             .bind(community.as_uuid())
             .bind(&template.name)
@@ -669,9 +681,16 @@ impl Db {
             .bind(template.slots)
             .bind(&template.buttons)
             .bind(synced_at)
+            .bind(&template.title)
             .execute(&mut *tx)
             .await?;
         }
+        // Templates Meta no longer lists as approved are gone from this sync.
+        sqlx::query("DELETE FROM whatsapp_templates WHERE community_id = $1 AND synced_at <> $2")
+            .bind(community.as_uuid())
+            .bind(synced_at)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(
             "UPDATE whatsapp_settings SET templates_synced_at = $2, updated_at = now() \
              WHERE community_id = $1",
@@ -690,7 +709,8 @@ impl Db {
         community: CommunityId,
     ) -> Result<Vec<WhatsappTemplate>> {
         let rows = sqlx::query(
-            "SELECT name, language, category, status, body, slots, buttons \
+            "SELECT name, language, category, status, body, slots, buttons, title, title_custom, \
+                    proposed_title \
              FROM whatsapp_templates WHERE community_id = $1 ORDER BY name, language",
         )
         .bind(community.as_uuid())
@@ -707,7 +727,8 @@ impl Db {
         language: &str,
     ) -> Result<Option<WhatsappTemplate>> {
         let row = sqlx::query(
-            "SELECT name, language, category, status, body, slots, buttons \
+            "SELECT name, language, category, status, body, slots, buttons, title, title_custom, \
+                    proposed_title \
              FROM whatsapp_templates WHERE community_id = $1 AND name = $2 AND language = $3",
         )
         .bind(community.as_uuid())
@@ -716,6 +737,83 @@ impl Db {
         .fetch_optional(&self.pool)
         .await?;
         row.as_ref().map(row_to_template).transpose()
+    }
+
+    /// Find a template by its Meta name or, failing that, by its Colony title (case
+    /// insensitive). Agents may use either; the Meta name stays the send key.
+    pub async fn whatsapp_find_template(
+        &self,
+        community: CommunityId,
+        key: &str,
+        language: &str,
+    ) -> Result<Option<WhatsappTemplate>> {
+        if let Some(found) = self.whatsapp_get_template(community, key, language).await? {
+            return Ok(Some(found));
+        }
+        let rows = sqlx::query(
+            "SELECT name, language, category, status, body, slots, buttons, title, title_custom, \
+                    proposed_title \
+             FROM whatsapp_templates \
+             WHERE community_id = $1 AND language = $2 AND lower(title) = lower($3) \
+             ORDER BY name LIMIT 2",
+        )
+        .bind(community.as_uuid())
+        .bind(language)
+        .bind(key.trim())
+        .fetch_all(&self.pool)
+        .await?;
+        // Two templates with the same title are ambiguous: the caller must use the Meta name.
+        if rows.len() == 1 {
+            rows.first().map(row_to_template).transpose()
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Owner or admin renames a template. The new title survives later syncs.
+    /// Returns `false` when the template does not exist.
+    pub async fn whatsapp_set_template_title(
+        &self,
+        community: CommunityId,
+        name: &str,
+        language: &str,
+        title: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_templates SET title = $4, title_custom = true, \
+                 proposed_title = NULL, proposed_by = NULL \
+             WHERE community_id = $1 AND name = $2 AND language = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(name)
+        .bind(language)
+        .bind(title)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// An agent proposes a better title. It changes nothing until an owner or admin accepts.
+    pub async fn whatsapp_propose_template_title(
+        &self,
+        community: CommunityId,
+        name: &str,
+        language: &str,
+        title: &str,
+        proposed_by: &[u8],
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_templates SET proposed_title = $4, proposed_by = $5 \
+             WHERE community_id = $1 AND name = $2 AND language = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(name)
+        .bind(language)
+        .bind(title)
+        .bind(proposed_by)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     // ── contacts ───────────────────────────────────────────────────────────────

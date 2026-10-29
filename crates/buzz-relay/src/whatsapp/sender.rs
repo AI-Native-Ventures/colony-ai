@@ -222,7 +222,7 @@ pub async fn enqueue_send(
             (None, Some(template)) => {
                 let stored = state
                     .db
-                    .whatsapp_get_template(community, &template.name, &template.language)
+                    .whatsapp_find_template(community, &template.name, &template.language)
                     .await
                     .map_err(|error| error.to_string())?
                     .ok_or_else(|| {
@@ -235,8 +235,8 @@ pub async fn enqueue_send(
                 (
                     "template",
                     body,
-                    Some(template.name.clone()),
-                    Some(template.language.clone()),
+                    Some(stored.name.clone()),
+                    Some(stored.language.clone()),
                     serde_json::json!(template.params),
                 )
             }
