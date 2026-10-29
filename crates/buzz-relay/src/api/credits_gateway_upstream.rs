@@ -590,7 +590,7 @@ impl Upstream {
                 // hang leaves the next one time to answer. The last one left
                 // keeps all that remains.
                 let allowed = if free && position + 1 < live.len() {
-                    left.min(self.retry.free_attempt)
+                    left.min(self.retry.free_attempt * 10)
                 } else {
                     left
                 };
