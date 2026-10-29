@@ -138,15 +138,7 @@ struct QueryRequest {
 }
 
 fn template_view(template: &WhatsappTemplate) -> Value {
-    json!({
-        "name": template.name,
-        "language": template.language,
-        "category": template.category,
-        "status": template.status,
-        "body": template.body,
-        "slots": template.slots,
-        "buttons": template.buttons,
-    })
+    connect::template_json(template)
 }
 
 fn contact_view(contact: &WhatsappContact, now: chrono::DateTime<Utc>) -> Value {

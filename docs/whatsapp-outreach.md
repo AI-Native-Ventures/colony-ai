@@ -83,6 +83,7 @@ Status object:
   "issues": [{ "code": "quality_red", "message": "...", "at": "2026-10-29T08:00:00Z" }],
   "outreachChannelId": "uuid",
   "templatesSyncedAt": "2026-10-29T08:00:00Z",
+  "templates": [],
   "webhookUrl": "https://host/hooks/whatsapp/uuid"
 }
 ```
@@ -119,9 +120,12 @@ for an outbound message is immutable.
 
 ## Events (member signed commands, handled by the relay)
 
-All four kinds are stored in the company's Outreach channel whatever `h` tag they carry
-(the CLI sends none). The ingest result `message` carries the plain refusal reason when an
-event is rejected (`restricted: ...` or `invalid: ...`). Content is JSON, `"v": 1`.
+The commands are requests, not stored events: the relay validates them and records the
+result in its own tables (batch, message and contact rows), and posts a short notice in the
+Outreach channel (`batch_pending`, `batch_approved`, ...). They carry no `h` tag (the CLI sends
+none). The ingest result `message` carries the plain refusal reason when an event is
+rejected (`restricted: ...` or `invalid: ...`); a repeat of an idempotent command is
+accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
 
 ### `47046` `KIND_WHATSAPP_BATCH` (owner/admin or Outreach member)
 

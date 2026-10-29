@@ -614,6 +614,19 @@ pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, inf
     }
 }
 
+/// One template as the contract shows it.
+pub fn template_json(template: &WhatsappTemplate) -> Value {
+    json!({
+        "name": template.name,
+        "language": template.language,
+        "category": template.category,
+        "status": template.status,
+        "body": template.body,
+        "slots": template.slots,
+        "buttons": template.buttons,
+    })
+}
+
 /// The status object of the contract.
 pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Result<Value, String> {
     let community = tenant.community();
@@ -625,6 +638,11 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
     let connection = state
         .db
         .whatsapp_get_connection(community)
+        .await
+        .map_err(|error| error.to_string())?;
+    let templates = state
+        .db
+        .whatsapp_list_templates(community)
         .await
         .map_err(|error| error.to_string())?;
     let sent_today = state
@@ -646,6 +664,7 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         "issues": settings.issues,
         "outreachChannelId": settings.outreach_channel_id.map(|id| id.to_string()),
         "templatesSyncedAt": settings.templates_synced_at.map(|at| at.to_rfc3339()),
+        "templates": templates.iter().map(template_json).collect::<Vec<_>>(),
         "webhookUrl": connection.as_ref().map(|c| webhook_url(state, tenant, c.id)),
     }))
 }

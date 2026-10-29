@@ -11,6 +11,9 @@ pub mod policy;
 pub mod secrets;
 pub mod sender;
 
+#[cfg(test)]
+mod postgres_tests;
+
 use std::sync::Arc;
 
 use buzz_core::TenantContext;

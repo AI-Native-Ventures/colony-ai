@@ -313,18 +313,16 @@ async fn batch_rows(
         for lead in leads {
             add_lead(lead, shared_params.to_vec(), &mut rows, &mut problems);
         }
-        if leads.is_empty() {
-            if stage.is_some() {
-                let mut ids: Vec<Uuid> = lead_phones.keys().copied().collect();
-                ids.sort();
-                for id in ids {
-                    add_lead(
-                        &id.to_string(),
-                        shared_params.to_vec(),
-                        &mut rows,
-                        &mut problems,
-                    );
-                }
+        if leads.is_empty() && stage.is_some() {
+            let mut ids: Vec<Uuid> = lead_phones.keys().copied().collect();
+            ids.sort();
+            for id in ids {
+                add_lead(
+                    &id.to_string(),
+                    shared_params.to_vec(),
+                    &mut rows,
+                    &mut problems,
+                );
             }
         }
     }
