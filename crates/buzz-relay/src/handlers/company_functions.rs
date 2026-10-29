@@ -408,6 +408,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn assign_by_owner_sets_filled_with_lead() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -439,6 +440,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn assign_to_a_managed_agent_is_allowed() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -476,6 +478,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn assign_to_non_member_is_denied() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -504,6 +507,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn assign_by_member_is_denied() {
             let fixture = fixture().await;
             let member = nostr::Keys::generate();
@@ -523,6 +527,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cover_sets_covered_by_scout_and_clears_lead() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -567,6 +572,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn clear_sets_empty() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -609,6 +615,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn function_slots_are_independent_and_stale_heads_conflict() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -657,6 +664,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn function_command_d_tag_must_match_its_function() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();

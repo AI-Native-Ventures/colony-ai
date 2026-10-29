@@ -479,6 +479,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_set_by_owner_writes_head() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -503,6 +504,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_set_by_admin_writes_head() {
             let fixture = fixture().await;
             let admin = nostr::Keys::generate();
@@ -518,6 +520,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_set_by_member_is_denied() {
             let fixture = fixture().await;
             let member = nostr::Keys::generate();
@@ -536,6 +539,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_set_by_agent_is_denied() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -557,6 +561,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_set_with_stale_expected_head_conflicts() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
@@ -599,6 +604,7 @@ mod tests {
         }
 
         #[tokio::test]
+        #[ignore = "requires Postgres"]
         async fn cofounder_action_with_h_tag_is_refused() {
             let fixture = fixture().await;
             let owner = nostr::Keys::generate();
