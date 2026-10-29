@@ -445,7 +445,7 @@ pub async fn process_community(
     let Some(kek) = state.config.accounts.account_kek() else {
         return Ok(());
     };
-    let (token, _) = open_secrets(kek, community.as_uuid(), &connection)?;
+    let (token, _) = open_secrets(kek, *community.as_uuid(), &connection)?;
 
     let sendable = state
         .db

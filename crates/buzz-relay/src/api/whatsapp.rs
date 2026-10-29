@@ -471,7 +471,7 @@ pub async fn webhook_receive(
         ));
     };
     let (_token, app_secret) =
-        connect::open_secrets(kek, tenant.community().as_uuid(), &connection).map_err(
+        connect::open_secrets(kek, *tenant.community().as_uuid(), &connection).map_err(
             |reason| {
                 tracing::error!("whatsapp webhook could not open the app secret: {reason}");
                 api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")

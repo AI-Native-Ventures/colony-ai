@@ -198,7 +198,7 @@ pub async fn connect(
     let verify_token = hex::encode(rand::random::<[u8; 32]>());
     let sealed_token = secrets::seal(
         kek,
-        community.as_uuid(),
+        *community.as_uuid(),
         connection_id,
         SecretField::AccessToken,
         &input.access_token,
@@ -206,7 +206,7 @@ pub async fn connect(
     .map_err(|error| ConnectError::Internal(error.to_string()))?;
     let sealed_secret = secrets::seal(
         kek,
-        community.as_uuid(),
+        *community.as_uuid(),
         connection_id,
         SecretField::AppSecret,
         &input.app_secret,
@@ -320,7 +320,7 @@ pub async fn disconnect(
         .map_err(|error| ConnectError::Internal(error.to_string()))?;
     if let Some(connection) = connection {
         if let Some(kek) = state.config.accounts.account_kek() {
-            match open_secrets(kek, community.as_uuid(), &connection) {
+            match open_secrets(kek, *community.as_uuid(), &connection) {
                 Ok((token, _)) => {
                     if let Err(error) = state
                         .whatsapp_graph
@@ -370,7 +370,7 @@ pub async fn sync_templates(
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "no WhatsApp number is connected".to_string())?;
-    let (token, _) = open_secrets(kek, community.as_uuid(), &connection)?;
+    let (token, _) = open_secrets(kek, *community.as_uuid(), &connection)?;
     let remote = state
         .whatsapp_graph
         .list_templates(&token, &connection.waba_id)
@@ -421,7 +421,7 @@ pub async fn refresh_phone_info(
     else {
         return Ok(());
     };
-    let (token, _) = open_secrets(kek, community.as_uuid(), &connection)?;
+    let (token, _) = open_secrets(kek, *community.as_uuid(), &connection)?;
     match state
         .whatsapp_graph
         .get_phone_info(&token, &connection.phone_number_id)
