@@ -57,8 +57,9 @@ async fn fixture_in(
     fixture_with(response, upstream_status, direct, closed_relay, false).await
 }
 
-/// The gateway with a chain of two free models, `free/a` then `free/b`, which
-/// OpenRouter does not pin to one provider like the default model.
+/// The gateway with a chain of three free models, `free/a`, `free/b` then
+/// `free/c`, which OpenRouter does not pin to one provider like the default
+/// model.
 async fn fixture_chain(response: Value) -> Fixture {
     fixture_with(response, StatusCode::OK, false, false, true).await
 }
@@ -94,7 +95,8 @@ async fn fixture_with(
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
                     if chain {
-                        assert!(["free/a", "free/b"].contains(&body["model"].as_str().unwrap()));
+                        assert!(["free/a", "free/b", "free/c"]
+                            .contains(&body["model"].as_str().unwrap()));
                         assert_eq!(body["provider"]["max_price"]["request"], 0);
                         assert!(body["provider"].get("only").is_none());
                         assert!(body["user"]
@@ -239,7 +241,11 @@ async fn fixture_with(
     let gateway = Gateway {
         relay: Arc::new(state),
         upstream: Some(Arc::new(if chain {
-            Upstream::fake_chain(origin, true, &[("free/a", None), ("free/b", None)])
+            Upstream::fake_chain(
+                origin,
+                true,
+                &[("free/a", None), ("free/b", None), ("free/c", None)],
+            )
         } else if direct {
             Upstream::fake_direct(
                 origin,
@@ -1559,11 +1565,18 @@ async fn every_request_ends_in_one_log_line_with_its_path_and_no_content() {
     assert!(has(&lines[0], "streamed", "false"), "{}", lines[0]);
     assert!(lines[0].contains("elapsed_ms="), "{}", lines[0]);
     assert!(
+        has(&lines[0], "models_tried", "openai/gpt-4.1-mini(200)"),
+        "{}",
+        lines[0]
+    );
+    assert!(
         has(&lines[1], "outcome", "admission_completed"),
         "{}",
         lines[1]
     );
     assert!(has(&lines[1], "status", "409"), "{}", lines[1]);
+    // Refused at the door: no provider was called.
+    assert!(has(&lines[1], "models_tried", "none"), "{}", lines[1]);
     assert!(
         has(&lines[2], "outcome", "upstream_rejected"),
         "{}",
@@ -1571,14 +1584,181 @@ async fn every_request_ends_in_one_log_line_with_its_path_and_no_content() {
     );
     assert!(has(&lines[2], "status", "503"), "{}", lines[2]);
     assert!(
+        has(&lines[2], "models_tried", "openai/gpt-4.1-mini(404)"),
+        "{}",
+        lines[2]
+    );
+    assert!(
         has(&lines[3], "outcome", "upstream_unclear"),
         "{}",
         lines[3]
     );
     assert!(has(&lines[3], "status", "409"), "{}", lines[3]);
-    // Never the prompt, a reply, a key or a bearer.
+    assert!(
+        has(&lines[3], "models_tried", "openai/gpt-4.1-mini(502)"),
+        "{}",
+        lines[3]
+    );
+    // The provider's own reason is logged, once per refusal and cleaned.
     let all = String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned();
-    for secret in ["Hello Colony", "synthetic-test-key", "Bearer", "scripted"] {
+    let reasons: Vec<&str> = all
+        .lines()
+        .filter(|line| line.contains("upstream did not accept a request"))
+        .collect();
+    assert_eq!(reasons.len(), 2, "{all}");
+    assert!(has(reasons[0], "upstream_status", "404"), "{}", reasons[0]);
+    assert!(has(reasons[1], "upstream_status", "502"), "{}", reasons[1]);
+    for line in reasons {
+        assert!(has(line, "upstream_message", "scripted"), "{line}");
+    }
+    // Never the prompt, a reply, a key or a bearer.
+    for secret in ["Hello Colony", "synthetic-test-key", "Bearer"] {
         assert!(!all.contains(secret), "{secret} leaked into the log");
     }
+}
+
+fn free_reply() -> Value {
+    json!({"id":format!("gen-{}",Uuid::new_v4()),"choices":[{"message":{"role":"assistant","content":"Hello"},"finish_reason":"stop"}],"usage":{"cost":0,"total_tokens":10}})
+}
+
+async fn row(f: &Fixture, request: Uuid) -> (String, i64) {
+    sqlx::query_as("SELECT status, charged_nanousd FROM account_ai_requests WHERE id=$1")
+        .bind(request)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap()
+}
+
+async fn balance(f: &Fixture) -> i64 {
+    f.gateway
+        .relay
+        .db
+        .account_credit_balance(f.account)
+        .await
+        .unwrap()
+}
+
+/// GATE-311 (29 Oct): the primary answered 429, then the first fallback 403
+/// ("only available on agentic harnesses"), and the request ended there with the
+/// rest of the free models never asked. A model that refuses on its own account
+/// is skipped: the third answers, the customer pays nothing, and the one log
+/// line names every call.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_model_that_refuses_access_is_skipped_and_the_third_answers_with_every_call_logged() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    f.script
+        .lock()
+        .unwrap()
+        .extend([StatusCode::TOO_MANY_REQUESTS, StatusCode::FORBIDDEN]);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "refused-then-third").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value["model"], "free/c");
+    assert_eq!(value["chargedNanousd"], "0");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+    let models: Vec<String> = f
+        .sent
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|sent| sent["model"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(models, ["free/a", "free/b", "free/c"]);
+    let (model, charged): (String, i64) = sqlx::query_as(
+        "SELECT usage->>'model', charged_nanousd FROM account_ai_requests WHERE id=$1",
+    )
+    .bind(request)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!((model.as_str(), charged), ("free/c", 0));
+    assert_eq!(balance(&f).await, 1_000_000_000);
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(has(&lines[0], "outcome", "ok"), "{}", lines[0]);
+    assert!(has(&lines[0], "answered_by", "free/c"), "{}", lines[0]);
+    assert!(
+        has(
+            &lines[0],
+            "models_tried",
+            "free/a(429),free/b(403),free/c(200)"
+        ),
+        "{}",
+        lines[0]
+    );
+    // The refusal that used to end the request says why, in the provider's words.
+    let all = String::from_utf8_lossy(&logs.0.lock().unwrap()).into_owned();
+    let refusal = all
+        .lines()
+        .find(|line| line.contains("upstream did not accept a request"))
+        .unwrap_or_else(|| panic!("no refusal line in {all}"));
+    assert!(has(refusal, "model", "free/b"), "{refusal}");
+    assert!(has(refusal, "upstream_status", "403"), "{refusal}");
+    assert!(has(refusal, "upstream_message", "scripted"), "{refusal}");
+}
+
+/// When every model refuses, the answer is the one it has always been (503, the
+/// hold released, nothing billed) after exactly one call to each model.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn every_model_refusing_is_todays_503_after_one_call_each_and_the_hold_is_released() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    f.script.lock().unwrap().extend([
+        StatusCode::FORBIDDEN,
+        StatusCode::PAYMENT_REQUIRED,
+        StatusCode::NOT_FOUND,
+    ]);
+    let request = Uuid::new_v4();
+    let (status, value) = call(&f, &body(&f, request), "all-refuse").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 3);
+    assert_eq!(row(&f, request).await, ("settled".to_owned(), 0));
+    assert_eq!(balance(&f).await, 1_000_000_000);
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        has(&lines[0], "outcome", "upstream_rejected"),
+        "{}",
+        lines[0]
+    );
+    assert!(has(&lines[0], "status", "503"), "{}", lines[0]);
+    assert!(has(&lines[0], "answered_by", "none"), "{}", lines[0]);
+    assert!(
+        has(
+            &lines[0],
+            "models_tried",
+            "free/a(403),free/b(402),free/c(404)"
+        ),
+        "{}",
+        lines[0]
+    );
+}
+
+/// A refusal of the key itself would be the same on every model: it ends the
+/// request at once, even after a model was only limited.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn a_refused_key_ends_the_request_at_once_with_the_remaining_models_unasked() {
+    let (logs, _guard) = capture_logs();
+    let f = fixture_chain(free_reply()).await;
+    f.script
+        .lock()
+        .unwrap()
+        .extend([StatusCode::TOO_MANY_REQUESTS, StatusCode::UNAUTHORIZED]);
+    let request = Uuid::new_v4();
+    let (status, _) = call(&f, &body(&f, request), "key-refused").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(row(&f, request).await, ("settled".to_owned(), 0));
+    assert_eq!(balance(&f).await, 1_000_000_000);
+    let lines = finished_lines(&logs);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        has(&lines[0], "models_tried", "free/a(429),free/b(401)"),
+        "{}",
+        lines[0]
+    );
 }
