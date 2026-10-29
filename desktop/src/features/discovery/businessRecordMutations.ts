@@ -1,6 +1,7 @@
 import {
   BUSINESS_RECORD_SCHEMA_VERSION,
   businessDTag,
+  discoveryTagsField,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_VERSION,
   KIND_PROSPECT_ACTION,
@@ -111,6 +112,8 @@ export async function publishProspectAction(input: {
 }): Promise<string> {
   const prospectId =
     input.current?.record.prospectId ?? input.changes.prospectId;
+  const discoveryTags =
+    input.changes.discoveryTags ?? input.current?.record.prospect.discoveryTags;
   const prospect: ProspectRecord = {
     prospectId,
     party: {
@@ -125,6 +128,7 @@ export async function publishProspectAction(input: {
     industry: input.changes.industry.trim(),
     vertical: input.changes.vertical.trim(),
     fitScore: input.changes.fitScore ?? null,
+    ...discoveryTagsField(discoveryTags),
     potentialMonthlyValueMinor:
       input.changes.potentialMonthlyValueMinor ?? null,
     website: normalizeOptional(input.changes.website),

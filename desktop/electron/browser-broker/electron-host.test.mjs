@@ -66,6 +66,9 @@ async function fixture(t, options = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "cab-"));
   const network = [];
   const profile = Object.assign(new EventEmitter(), {
+    setUserAgent(userAgent) {
+      this.userAgent = userAgent;
+    },
     setPermissionRequestHandler() {},
     setPermissionCheckHandler() {},
     setDevicePermissionHandler() {},

@@ -110,9 +110,19 @@ async fn log_body_limit(
 }
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
-    Json(
-        json!({"enabled":gateway.enabled,"runtime":"colony","model":gateway.upstream.as_ref().map(|u| &u.model),"marginPercent":20,"freeAiConfigured":!gateway.policy.free_ai_accounts.is_empty()}),
-    )
+    let free_models = gateway
+        .upstream
+        .as_ref()
+        .map(|upstream| upstream.selectable_free_models())
+        .unwrap_or_default();
+    Json(json!({
+        "enabled": gateway.enabled,
+        "runtime": "colony",
+        "model": gateway.upstream.as_ref().map(|upstream| &upstream.model),
+        "freeModels": free_models,
+        "marginPercent": 20,
+        "freeAiConfigured": !gateway.policy.free_ai_accounts.is_empty()
+    }))
 }
 
 /// Whether the signed-in owner's account uses the gateway without credits. The
@@ -239,6 +249,8 @@ async fn authenticate_signer(
 #[serde(deny_unknown_fields)]
 struct SessionRequest {
     agent_pubkey: String,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 async fn create_session(
@@ -253,6 +265,23 @@ async fn create_session(
         authenticate(&gateway, &headers, "/api/credits-gateway/sessions", &body).await?;
     let request: SessionRequest = serde_json::from_slice(&body)
         .map_err(|_| refuse("session_body", "Invalid managed session."))?;
+    let upstream = gateway.upstream.as_ref().ok_or_else(unavailable)?;
+    let model = match request.model {
+        Some(model) => {
+            if !upstream
+                .selectable_free_models()
+                .iter()
+                .any(|allowed| allowed == &model)
+            {
+                return Err(refuse(
+                    "model_not_allowed",
+                    "That Colony free model is not available.",
+                ));
+            }
+            model
+        }
+        None => upstream.model.clone(),
+    };
     let agent = nostr::PublicKey::from_hex(&request.agent_pubkey)
         .map_err(|_| refuse("agent_pubkey", "Invalid managed agent."))?;
     let session = gateway
@@ -267,7 +296,7 @@ async fn create_session(
         .await
         .map_err(database_error)?;
     Ok(Json(
-        json!({"sessionId":session,"expiresInSeconds":7200,"model":gateway.upstream.as_ref().map(|u| &u.model)}),
+        json!({"sessionId":session,"expiresInSeconds":7200,"model":model}),
     ))
 }
 
@@ -364,6 +393,7 @@ async fn start_inference(
             answered_by: None,
             elapsed: started.elapsed(),
             streamed: false,
+            models_tried: "",
         });
         response
     };
@@ -466,7 +496,7 @@ fn database_failure(error: buzz_db::DbError) -> Failure {
 /// log line that says how it ended. The only retries are inside `complete`: a
 /// provider 429, which the provider declines before it generates so it costs
 /// nothing and cannot bill twice, and a move to the next model of the chain when
-/// one is gone or limited. The charge and the stored usage name the model that
+/// one is gone, refuses or is limited. The charge and the stored usage name the model that
 /// answered. A failure that is not a clear refusal leaves the committed hold to
 /// the durable worker, which also covers the relay itself going away mid-request.
 async fn complete_and_settle(
@@ -477,7 +507,16 @@ async fn complete_and_settle(
     reserve: i64,
     started: tokio::time::Instant,
 ) -> ApiResult {
-    let result = settle_request(&gateway, &upstream, request_id, upstream_body, reserve).await;
+    let mut tried = String::new();
+    let result = settle_request(
+        &gateway,
+        &upstream,
+        request_id,
+        upstream_body,
+        reserve,
+        &mut tried,
+    )
+    .await;
     let elapsed = started.elapsed();
     let streamed = elapsed >= gateway.keepalive.after;
     match result {
@@ -490,6 +529,7 @@ async fn complete_and_settle(
                 answered_by: Some(&answered_by),
                 elapsed,
                 streamed,
+                models_tried: &tried,
             });
             Ok(response)
         }
@@ -502,6 +542,7 @@ async fn complete_and_settle(
                 answered_by: None,
                 elapsed,
                 streamed,
+                models_tried: &tried,
             });
             Err(failure.response)
         }
@@ -509,15 +550,18 @@ async fn complete_and_settle(
 }
 
 /// The provider call and the settlement. Returns the response and the model
-/// that answered.
+/// that answered, and leaves in `tried` every call made down the chain.
 async fn settle_request(
     gateway: &Gateway,
     upstream: &Upstream,
     request_id: Uuid,
     upstream_body: Value,
     reserve: i64,
+    tried: &mut String,
 ) -> Result<(Json<Value>, String), Failure> {
-    let answer = match upstream.complete(&upstream_body).await {
+    let completion = upstream.complete(&upstream_body).await;
+    *tried = completion.tried.join(",");
+    let answer = match completion.result {
         Ok(answer) => answer,
         Err(CompletionFailure::Rejected) => {
             gateway

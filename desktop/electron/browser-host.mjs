@@ -43,6 +43,14 @@ export const DEFAULT_TAB_BOUNDS = Object.freeze({
   height: 768,
 });
 
+const BROWSER_USER_AGENT_PLATFORM =
+  process.platform === "darwin"
+    ? "Macintosh; Intel Mac OS X 10_15_7"
+    : process.platform === "win32"
+      ? "Windows NT 10.0; Win64; x64"
+      : "X11; Linux x86_64";
+export const BROWSER_TAB_USER_AGENT = `Mozilla/5.0 (${BROWSER_USER_AGENT_PLATFORM}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+
 export function createBrowserHost({
   WebContentsView,
   /** Optional. Lets a page that is not on screen be drawn for a screenshot. */
@@ -65,9 +73,11 @@ export function createBrowserHost({
 }) {
   const tabs = new Map();
   const tabsByContents = new Map();
+  const popupWindows = new Map();
   const pendingScopedCreates = new Map();
   let pendingCreates = 0;
   let navigationGate = () => ({ allow: true });
+  let navigationGateConfigured = false;
   let onHumanAction = () => {};
   const documentListeners = new Set();
   const closeListeners = new Set();
@@ -91,6 +101,19 @@ export function createBrowserHost({
       sendTabEvent(tab, "navigation-blocked", { reason: verdict.code });
     }
     return verdict.allow;
+  }
+
+  function wireHumanInput(tab, contents) {
+    // Input from a person in either the embedded page or its native popup
+    // returns the tab to them and releases the agent's control.
+    contents.on("input-event", (_event, input) => {
+      if (!tabs.has(tab.id) || tab.agentInputs > 0) return;
+      if (!HUMAN_INPUT_TYPES.has(input.type)) return;
+      tab.humanInputAt = Date.now();
+      void agentCursorOverlay.hide(tab.id);
+      sendTabEvent(tab, "person-input");
+      for (const listener of humanInputListeners) listener(tab.id);
+    });
   }
 
   function emit(webContents, event) {
@@ -275,6 +298,113 @@ export function createBrowserHost({
     return tab;
   }
 
+  function blockPopup(tab, reason) {
+    sendTabEvent(tab, "navigation-blocked", { reason });
+    return { action: "deny" };
+  }
+
+  function configurePopupWindow(tab, openerContents, options) {
+    const popupWindow = new BrowserWindow({
+      ...options,
+      parent: tab.ownerWindow,
+      center: true,
+      width: 520,
+      height: 640,
+      minWidth: 420,
+      minHeight: 540,
+      maxWidth: 720,
+      maxHeight: 900,
+      show: true,
+      modal: false,
+      autoHideMenuBar: true,
+      webPreferences: {
+        ...options.webPreferences,
+        session: openerContents.session,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        webviewTag: false,
+        backgroundThrottling: false,
+      },
+    });
+    const popupContents = popupWindow.webContents;
+    popupWindows.set(popupContents.id, {
+      window: popupWindow,
+      parentTabId: tab.id,
+    });
+    popupWindow.once("closed", () => popupWindows.delete(popupContents.id));
+    // A page can close the child WebContents independently of its native shell.
+    // Keep the BrowserWindow lifecycle in sync so window.close() does not leave
+    // an empty sign-in window behind.
+    popupContents.once("destroyed", () => {
+      if (!popupWindow.isDestroyed()) popupWindow.close();
+    });
+    popupContents.setUserAgent(BROWSER_TAB_USER_AGENT);
+    wireHumanInput(tab, popupContents);
+    wirePopupContents(tab, popupContents);
+    return popupContents;
+  }
+
+  function configureWindowOpenHandler(tab, contents) {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (!tabs.has(tab.id)) return { action: "deny" };
+      if (tab.controlOwner === "agent-awaiting-confirmation")
+        return blockPopup(tab, "agent-popup-denied");
+      if (!["human", "agent"].includes(tab.controlOwner))
+        return blockPopup(tab, "agent-popup-denied");
+      if (!isAllowedWebUrl(url)) return blockPopup(tab, "unsupported-link");
+
+      const childUrl = checkedUrl(url);
+      if (tab.controlOwner === "agent" && !navigationGateConfigured)
+        return blockPopup(tab, "agent-popup-denied");
+      if (!gate(tab, childUrl)) return { action: "deny" };
+      if (!BrowserWindow || tab.ownerWindow.isDestroyed())
+        return blockPopup(tab, "tab-open-failed");
+      if (tabs.size + pendingCreates + popupWindows.size >= maxTabs)
+        return blockPopup(tab, "tab-limit");
+
+      return {
+        action: "allow",
+        outlivesOpener: false,
+        createWindow: (options) => configurePopupWindow(tab, contents, options),
+      };
+    });
+  }
+
+  function wirePopupContents(tab, contents) {
+    contents.on("will-frame-navigate", (details) => {
+      if (!tabs.has(tab.id)) {
+        details.preventDefault();
+        return;
+      }
+      if (!gate(tab, details.url, details.isMainFrame)) {
+        details.preventDefault();
+        return;
+      }
+      if (isAllowedFrameUrl(details.url, details.isMainFrame)) return;
+      details.preventDefault();
+      sendTabEvent(tab, "navigation-blocked", { reason: "unsupported-url" });
+    });
+    contents.on("will-redirect", (details) => {
+      if (!tabs.has(tab.id)) {
+        details.preventDefault();
+        return;
+      }
+      if (!gate(tab, details.url, details.isMainFrame)) {
+        details.preventDefault();
+        return;
+      }
+      if (isAllowedFrameUrl(details.url, details.isMainFrame)) return;
+      details.preventDefault();
+      sendTabEvent(tab, "navigation-blocked", {
+        reason: "unsupported-redirect",
+      });
+    });
+    configureWindowOpenHandler(tab, contents);
+  }
+
   function wireWebContents(tab) {
     const contents = tab.webContents;
     contents.on("did-start-navigation", (details) => {
@@ -381,16 +511,7 @@ export function createBrowserHost({
           reason: "unsupported-redirect",
         });
     });
-    // The person pressing a key or the mouse in a page. The agent's own events
-    // (sent while `agentInputs` is up) are not the person.
-    contents.on("input-event", (_event, input) => {
-      if (!tabs.has(tab.id) || tab.agentInputs > 0) return;
-      if (!HUMAN_INPUT_TYPES.has(input.type)) return;
-      tab.humanInputAt = Date.now();
-      void agentCursorOverlay.hide(tab.id);
-      sendTabEvent(tab, "person-input");
-      for (const listener of humanInputListeners) listener(tab.id);
-    });
+    wireHumanInput(tab, contents);
     // A native page view takes key events before the app window sees them, so
     // the few browser shortcuts (address bar, tabs, history, reload, dock) are
     // relayed to the app window and the page never receives them.
@@ -403,38 +524,11 @@ export function createBrowserHost({
       if (!["reload", "back", "forward"].includes(action)) focusAppWindow(tab);
       sendTabEvent(tab, "shortcut", { action });
     });
-    contents.setWindowOpenHandler(({ url }) => {
-      if (tab.controlOwner !== "human") {
-        // A popup must never acquire a new ungated tab from an agent click.
-        sendTabEvent(tab, "navigation-blocked", {
-          reason: "agent-popup-denied",
-        });
-        return { action: "deny" };
-      }
-      if (!isAllowedWebUrl(url)) {
-        sendTabEvent(tab, "navigation-blocked", { reason: "unsupported-link" });
-        return { action: "deny" };
-      }
-      const childUrl = checkedUrl(url);
-      void createTabInternal(tab.appWebContents, tab.ownerWindow, {
-        businessId: tab.businessId,
-        clientId: tab.clientId,
-        url: childUrl,
-        openedFrom: tab.id,
-      }).catch((error) => {
-        const reason =
-          error instanceof Error &&
-          error.message === "Browser tab limit reached"
-            ? "tab-limit"
-            : "tab-open-failed";
-        sendTabEvent(tab, "navigation-blocked", { reason });
-      });
-      return { action: "deny" };
-    });
+    configureWindowOpenHandler(tab, contents);
   }
 
   async function createTabInternal(appWebContents, ownerWindow, options) {
-    if (tabs.size + pendingCreates >= maxTabs)
+    if (tabs.size + pendingCreates + popupWindows.size >= maxTabs)
       throw new Error("Browser tab limit reached");
     pendingCreates += 1;
     const tabId = randomUUID();
@@ -454,6 +548,7 @@ export function createBrowserHost({
         tabId,
       );
       reservedProfileHash = browserProfile.profileHash;
+      browserProfile.session.setUserAgent(BROWSER_TAB_USER_AGENT);
       if (appWebContents.isDestroyed() || ownerWindow.isDestroyed())
         throw new Error("The main app window is unavailable");
       const view = new WebContentsView({
@@ -611,6 +706,10 @@ export function createBrowserHost({
     }
     browserSessions.cancelTabDownloads(tab.id);
     browserSessions.releaseTab(tab.profileHash, tab.id);
+    for (const popup of popupWindows.values()) {
+      if (popup.parentTabId === tab.id && !popup.window.isDestroyed())
+        popup.window.destroy();
+    }
     tabs.delete(tab.id);
     tabsByContents.delete(tab.webContents.id);
     sendTabEvent(tab, "closed");
@@ -938,6 +1037,7 @@ export function createBrowserHost({
     hideAgentCursors: (id) => agentCursorOverlay.hide(id),
     setNavigationGate(callback) {
       navigationGate = callback;
+      navigationGateConfigured = true;
     },
     setHumanActionHandler(callback) {
       onHumanAction = callback;

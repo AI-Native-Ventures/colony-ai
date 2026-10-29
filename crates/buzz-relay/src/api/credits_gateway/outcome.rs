@@ -5,8 +5,9 @@
 //! the admission refusals all answered a status and said nothing. A first hello
 //! that ended in "Usage is being recovered automatically" could not be traced to
 //! its path from `fly logs`. The line carries a fixed word for the path, the
-//! status the client was (or would have been) given, the model, and how long the
-//! request took. It never carries a prompt, a reply, a key or a provider body.
+//! status the client was (or would have been) given, the model, every call made
+//! down the model chain with its status, and how long the request took. It never
+//! carries a prompt, a reply, a key or a provider body.
 
 use std::time::Duration;
 
@@ -25,10 +26,12 @@ pub(super) enum Outcome {
     AdmissionPending,
     /// The same request id was already charged.
     AdmissionCompleted,
-    /// Every model refused it clearly; nothing was generated and the hold is released.
+    /// Every model refused it clearly, or only free models failed; nothing can
+    /// have been charged and the hold is released.
     UpstreamRejected,
-    /// A transport failure, a timeout or a 5xx: the provider may have generated,
-    /// so the hold is left to the recovery worker.
+    /// A transport failure, a timeout or a 5xx of a model that may charge: the
+    /// provider may have generated, so the hold is left to the recovery worker.
+    /// A free model cannot charge, so its failures are `UpstreamRejected`.
     UpstreamUnclear,
     /// The provider answered with something that is not a completion.
     AnswerUnreadable,
@@ -71,6 +74,9 @@ pub(super) struct Finished<'a> {
     pub elapsed: Duration,
     /// The answer went out as a kept-alive stream, so its wire status is `200`.
     pub streamed: bool,
+    /// Every call made to a provider, in order, as `model(status)` joined by
+    /// commas (see `Completion::tried`). Empty when no call was made.
+    pub models_tried: &'a str,
 }
 
 pub(super) fn log(finished: Finished<'_>) {
@@ -82,9 +88,15 @@ pub(super) fn log(finished: Finished<'_>) {
         answered_by,
         elapsed,
         streamed,
+        models_tried,
     } = finished;
     let outcome = outcome.code();
     let answered_by = answered_by.unwrap_or("none");
+    let models_tried = if models_tried.is_empty() {
+        "none"
+    } else {
+        models_tried
+    };
     let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     if outcome == Outcome::Ok.code() {
         tracing::info!(
@@ -95,6 +107,7 @@ pub(super) fn log(finished: Finished<'_>) {
             answered_by,
             elapsed_ms,
             streamed,
+            models_tried,
             "Colony gateway request finished"
         );
     } else {
@@ -106,6 +119,7 @@ pub(super) fn log(finished: Finished<'_>) {
             answered_by,
             elapsed_ms,
             streamed,
+            models_tried,
             "Colony gateway request finished"
         );
     }
@@ -129,7 +143,12 @@ mod tests {
         }
     }
 
-    fn logged(outcome: Outcome, status: u16, answered_by: Option<&str>) -> String {
+    fn logged(
+        outcome: Outcome,
+        status: u16,
+        answered_by: Option<&str>,
+        models_tried: &str,
+    ) -> String {
         let logs = LogBuffer::default();
         let sink = logs.clone();
         let subscriber = tracing_subscriber::fmt()
@@ -145,6 +164,7 @@ mod tests {
                 answered_by,
                 elapsed: Duration::from_millis(61_234),
                 streamed: true,
+                models_tried,
             });
         });
         let bytes = logs.0.lock().unwrap().clone();
@@ -154,6 +174,12 @@ mod tests {
     /// A field is quoted or not depending on the formatter.
     fn has(line: &str, field: &str, value: &str) -> bool {
         line.contains(&format!("{field}=\"{value}\"")) || line.contains(&format!("{field}={value}"))
+    }
+
+    #[test]
+    fn a_request_that_called_no_provider_says_none() {
+        let text = logged(Outcome::AdmissionBusy, 429, None, "");
+        assert!(has(&text, "models_tried", "none"), "{text}");
     }
 
     #[test]
@@ -185,17 +211,25 @@ mod tests {
     #[test]
     fn a_finished_request_logs_its_path_status_model_and_time() {
         // The same fields on the failure line and on the success line.
-        for (outcome, status, answered_by, level, word) in [
+        for (outcome, status, answered_by, level, word, tried) in [
             (
                 Outcome::UpstreamUnclear,
                 409,
                 None,
                 "WARN",
                 "upstream_unclear",
+                "free/a(429),free/b(502)",
             ),
-            (Outcome::Ok, 200, Some("free/b"), "INFO", "ok"),
+            (
+                Outcome::Ok,
+                200,
+                Some("free/b"),
+                "INFO",
+                "ok",
+                "free/a(403),free/b(200)",
+            ),
         ] {
-            let text = logged(outcome, status, answered_by);
+            let text = logged(outcome, status, answered_by, tried);
             let line = text.lines().next().unwrap_or_default();
             assert!(line.contains(level), "{word}: {line}");
             assert!(line.contains("Colony gateway request finished"), "{line}");
@@ -208,6 +242,7 @@ mod tests {
             );
             assert!(has(line, "elapsed_ms", "61234"), "{line}");
             assert!(has(line, "streamed", "true"), "{line}");
+            assert!(has(line, "models_tried", tried), "{line}");
             assert!(has(line, "request_id", &Uuid::nil().to_string()), "{line}");
         }
     }

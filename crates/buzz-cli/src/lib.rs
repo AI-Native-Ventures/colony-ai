@@ -274,9 +274,18 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// Search Discovery for local businesses and save them as leads
+    #[command(subcommand)]
+    Discovery(DiscoveryCmd),
     /// Read leads found in Discovery, add notes and update their stage
     #[command(subcommand)]
     Leads(LeadsCmd),
+    /// WhatsApp outreach: approved templates, batches the owner approves, replies and status
+    #[command(
+        subcommand,
+        long_about = "WhatsApp outreach through the company's official WhatsApp Business number.\n\nRules:\n- Templates first: a new chat can only start with an approved template, and only through a batch the owner or an admin approves. Nothing in a pending batch is sent.\n- Free text only inside the 24 hour window after the contact last wrote to us.\n- Keep replies short and human. Never send more than one message in a row without a reply.\n- If a contact says stop, unsubscribe, no thanks or not interested they are opted out and every later send is refused. Never work around it.\n- A daily cap limits new chats; the owner can change it any time.\n\nStart with `colony whatsapp status` and `colony whatsapp templates`."
+    )]
+    Whatsapp(WhatsappCmd),
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
@@ -286,6 +295,12 @@ enum Cmd {
     /// Propose and manage structured employee lessons
     #[command(subcommand)]
     Lessons(LessonsCmd),
+    /// Read and change the company's co-founder mode settings
+    #[command(subcommand)]
+    Cofounder(CofounderCmd),
+    /// Read and change who covers each company function
+    #[command(subcommand)]
+    Functions(FunctionsCmd),
     /// Read and record employee AI allowances and AI spend evidence
     #[command(subcommand)]
     Spend(SpendCmd),
@@ -295,6 +310,9 @@ enum Cmd {
     /// Create and manage company work items
     #[command(subcommand)]
     Work(WorkCmd),
+    /// Start budgeted worker runs and read their status, output and cost
+    #[command(subcommand)]
+    Workers(WorkersCmd),
     /// Read and update Software Factory run records
     #[command(subcommand)]
     Factory(FactoryCmd),
@@ -492,15 +510,21 @@ colony agents archived"
 pub enum MessagesCmd {
     /// Send a message to a channel
     #[command(
-        after_help = "Examples:\n  colony messages send --channel <UUID> --content \"hello\"\n  colony messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | colony messages send --channel <UUID> --content -"
+        after_help = "Examples:\n  colony messages send --channel <UUID> --content \"hello\"\n  colony messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | colony messages send --channel <UUID> --content -\n  colony messages send --channel <UUID> --doc --title \"5 signs you need social media\" --content - < post.md"
     )]
     Send {
         /// Channel UUID (from 'colony channels list')
         #[arg(long)]
         channel: String,
-        /// Message text, supports @mentions and markdown. Use '-' to read from stdin. Agents: chat text over 60 words is refused; put an article or draft in a doc fence and code in a fence with its language.
+        /// Message text, supports @mentions and markdown. Use '-' to read from stdin. Agents: chat text over 60 words is refused; send an article, post or draft with --doc, and put code in a fence with its language.
         #[arg(long)]
         content: String,
+        /// Send --content as a document card (a blog post, article, email or draft): Colony builds the fence, so no backticks are needed. The title is --title, or the text's first `# Title` line. Not word-capped.
+        #[arg(long, default_value_t = false)]
+        doc: bool,
+        /// Title of the document card (with --doc)
+        #[arg(long, requires = "doc")]
+        title: Option<String>,
         /// Nostr event kind (default: channel default)
         #[arg(long)]
         kind: Option<u16>,
@@ -1273,6 +1297,41 @@ pub enum GoalsCmd {
 }
 
 #[derive(Subcommand)]
+pub enum DiscoveryCmd {
+    /// Search Google Maps for local businesses. Searches count against the
+    /// company's monthly Discovery limit; at the limit the command exits 2
+    Search {
+        /// What to look for, for example "guesthouses"
+        #[arg(long)]
+        query: String,
+        /// City, region or area to search in, for example "Melville, Johannesburg"
+        #[arg(long)]
+        location: String,
+        /// Country name or two-letter code, when the location does not name it
+        #[arg(long)]
+        country: Option<String>,
+        /// Places per page, 1 through 50 (default 20)
+        #[arg(long)]
+        limit: Option<u32>,
+        /// Pages to fetch, 1 through 5 (default 1)
+        #[arg(long)]
+        pages: Option<u32>,
+        /// Industry label saved leads carry, for example "Tourism and Hospitality"
+        /// (default "Local businesses"); only used with --save
+        #[arg(long)]
+        industry: Option<String>,
+        /// Business type saved leads carry, for example "Guesthouses and inns"
+        /// (default: the query); only used with --save
+        #[arg(long)]
+        vertical: Option<String>,
+        /// Save every place that is not already a lead into the Sales channel
+        /// and print {saved, skipped_existing, leads}
+        #[arg(long)]
+        save: bool,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum LeadsCmd {
     /// List current leads, newest first
     List {
@@ -1333,6 +1392,185 @@ pub enum LeadsCmd {
         /// Remove the lead from the saved leads instead of saving it
         #[arg(long)]
         unsave: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappCmd {
+    /// Show the connected number, quality, daily cap, sends today and any issue
+    Status,
+    /// List approved templates: Colony title first, Meta name second, slots and buttons
+    Templates {
+        /// Ask WhatsApp for the current list first (owner or admin)
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Rename a template (owner or admin) or propose a better title (agents, with --propose)
+    TemplateTitle {
+        /// Template title or Meta name
+        #[arg(long)]
+        template: String,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// The Colony display title, for example "Voice note offer"
+        #[arg(long)]
+        title: String,
+        /// Only propose the title; the owner or an admin accepts it by renaming
+        #[arg(long)]
+        propose: bool,
+    },
+    /// Prepare, review and decide batches of template messages
+    #[command(subcommand)]
+    Batch(WhatsappBatchCmd),
+    /// Send one message: free text inside the 24 hour window, otherwise a template.
+    /// An agent's message is a draft until an owner or admin approves it; their own send at once
+    Send {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        contact: Option<String>,
+        /// Or the contact's thread root (hex event id)
+        #[arg(long)]
+        thread: Option<String>,
+        /// Free text (only inside the 24 hour window)
+        #[arg(long)]
+        text: Option<String>,
+        /// Or an approved template title or Meta name
+        #[arg(long)]
+        template: Option<String>,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// Template parameter in slot order; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+        /// Reuse a request id (UUID) to retry safely: one id is at most one send
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// List the agent drafts waiting for an owner or admin to approve
+    Drafts {
+        /// Maximum drafts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Approve, edit or reject one agent draft (owner or admin)
+    #[command(subcommand)]
+    Draft(WhatsappDraftCmd),
+    /// List contacts, most recently active first
+    Contacts {
+        /// Maximum contacts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// List contacts whose latest message has no reply yet
+    Inbox {
+        /// Maximum contacts, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show one contact's messages with delivery state
+    Thread {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        contact: String,
+        /// Maximum messages, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show the daily cap on new chats, or set it (owner or admin)
+    Cap {
+        /// New cap, 0 through 1000; leave out to show the current cap
+        value: Option<i32>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappDraftCmd {
+    /// Approve a draft so the relay sends it; optionally edit the text or template parameters
+    Approve {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
+        /// Edited text for a text draft
+        #[arg(long)]
+        text: Option<String>,
+        /// Edited template parameter in slot order; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+    },
+    /// Reject a draft; it is never sent
+    Reject {
+        /// Draft message id (from `drafts`)
+        #[arg(long)]
+        draft: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappBatchCmd {
+    /// Prepare a batch of template messages; it stays pending until the owner approves it
+    Create {
+        /// Approved template title or Meta name
+        #[arg(long)]
+        template: String,
+        /// Template language code
+        #[arg(long, default_value = "en")]
+        language: String,
+        /// Lead UUID or link to message; repeat for several leads
+        #[arg(long)]
+        lead: Vec<String>,
+        /// Every active lead at this stage: qualified, in_conversation, proposal or lost
+        #[arg(long)]
+        stage: Option<String>,
+        /// JSON file: [{"lead": "<uuid>", "params": ["Thabo"]}, {"to": "+27...", "params": [...]}]
+        #[arg(long)]
+        params_file: Option<String>,
+        /// Shared template parameter for --lead/--stage rows; repeat for each slot
+        #[arg(long)]
+        param: Vec<String>,
+        /// Material link the owner should see with the batch; repeat for several
+        #[arg(long)]
+        material: Vec<String>,
+        /// Note for the approver
+        #[arg(long)]
+        note: Option<String>,
+        /// Campaign name, added to the note
+        #[arg(long)]
+        campaign: Option<String>,
+        /// Reuse a batch id (UUID) to retry safely: one id is at most one batch
+        #[arg(long)]
+        batch_id: Option<String>,
+    },
+    /// List batches, newest first
+    List {
+        /// Only batches in this state: pending, approved, rejected or completed
+        #[arg(long)]
+        state: Option<String>,
+    },
+    /// Show one batch with every row, preview text and state
+    Show {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
+    },
+    /// Approve a pending batch (owner or admin); rows then send paced inside the daily cap
+    Approve {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
+        /// Row index to drop before approving; repeat for several
+        #[arg(long)]
+        drop: Vec<i32>,
+        /// JSON file of row edits: [{"idx": 2, "params": ["Naledi"]}]
+        #[arg(long)]
+        edit_file: Option<String>,
+    },
+    /// Reject a pending batch (owner or admin); nothing is sent
+    Reject {
+        /// Batch UUID
+        #[arg(long)]
+        batch: String,
     },
 }
 
@@ -1450,6 +1688,62 @@ pub enum DutiesCmd {
 }
 
 #[derive(Subcommand)]
+pub enum WorkersCmd {
+    /// Start a worker: one model call with no tools that cannot act or spend.
+    /// Use it for research, drafts and variations, then check its output
+    /// before handing it up
+    Spawn {
+        /// Short label shown on the function page
+        #[arg(long)]
+        label: String,
+        /// What the worker should do, as text
+        #[arg(long)]
+        brief: Option<String>,
+        /// Path to a file holding the brief; use - to read stdin
+        #[arg(long)]
+        brief_file: Option<String>,
+        /// Model id; defaults to the one this employee runs on
+        #[arg(long)]
+        model: Option<String>,
+        /// Most tokens the worker may write, 1 to 16000
+        #[arg(long, default_value_t = 4000)]
+        max_output_tokens: u32,
+        /// Most model rounds, 1 to 8
+        #[arg(long, default_value_t = 4)]
+        max_rounds: u32,
+        /// Seconds before the worker is stopped, 30 to 900
+        #[arg(long, default_value_t = 600)]
+        timeout_secs: u32,
+        /// Wait for the worker to finish and print its output
+        #[arg(long)]
+        wait: bool,
+    },
+    /// List workers (status, tokens, cost); a running worker past its deadline shows failed
+    List {
+        /// Only workers this employee started
+        #[arg(long)]
+        mine: bool,
+    },
+    /// Get one worker, including its output
+    Get {
+        /// Worker UUID
+        id: String,
+    },
+    /// Cancel a running worker
+    Cancel {
+        /// Worker UUID
+        id: String,
+    },
+    /// Internal: supervise a started worker in the background
+    #[command(hide = true)]
+    Supervise {
+        /// Path to the worker spec file
+        #[arg(long)]
+        spec: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum LessonsCmd {
     /// Propose a structured lesson with explicit evidence references
     Create {
@@ -1504,6 +1798,71 @@ pub enum LessonsCmd {
         /// Lesson UUID
         #[arg(long)]
         lesson: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CofounderCmd {
+    /// Print the co-founder settings, or the defaults when none are saved
+    Get,
+    /// Change the co-founder settings (owner or admin only)
+    Set {
+        /// Turn co-founder mode on or off: true or false
+        #[arg(long, action = clap::ArgAction::Set, required = true)]
+        enabled: bool,
+        /// How to weigh price against quality: cheapest-first or best-option
+        #[arg(long, value_enum)]
+        money: Option<MoneyArg>,
+        /// Ask before every hire: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_hire: Option<bool>,
+        /// Ask before any playbook changes: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_playbook_changes: Option<bool>,
+        /// Ask before every Discovery campaign: true or false
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_discovery_campaign: Option<bool>,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum MoneyArg {
+    #[value(name = "cheapest-first")]
+    CheapestFirst,
+    #[value(name = "best-option")]
+    BestOption,
+}
+
+#[derive(Subcommand)]
+pub enum FunctionsCmd {
+    /// List all five functions in order; a function with no lead shows as empty
+    List,
+    /// Get one function: sales, operations, customer_success, finance or brand
+    Get {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Put a member or agent in charge of a function (owner or admin only)
+    Assign {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+        /// Lead public key in hex
+        #[arg(long)]
+        lead: String,
+    },
+    /// Let Scout cover a function (owner or admin only)
+    Cover {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Empty a function slot (owner or admin only)
+    Clear {
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
     },
 }
 
@@ -3184,13 +3543,18 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Discovery(sub) => commands::discovery::dispatch(sub, &client).await,
         Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
+        Cmd::Whatsapp(sub) => commands::whatsapp::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
+        Cmd::Cofounder(sub) => commands::cofounder::dispatch(sub, &client).await,
+        Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
+        Cmd::Workers(sub) => commands::workers::dispatch(sub, &client).await,
         Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
         Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
         Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
@@ -3361,12 +3725,15 @@ mod tests {
             "asks",
             "canvas",
             "channels",
+            "cofounder",
             "credits",
+            "discovery",
             "dms",
             "duties",
             "emoji",
             "factory",
             "feed",
+            "functions",
             "gifs",
             "goals",
             "issues",
@@ -3391,7 +3758,9 @@ mod tests {
             "team",
             "upload",
             "users",
+            "whatsapp",
             "work",
+            "workers",
             "workflows",
         ];
 
@@ -3597,6 +3966,7 @@ mod tests {
                 "update"
             ]
         );
+        assert_eq!(names(&cmd, "discovery"), vec!["search"]);
         assert_eq!(
             names(&cmd, "leads"),
             vec!["get", "list", "note", "qualify", "save", "stage"]
@@ -3688,6 +4058,7 @@ mod tests {
             ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
+            ("discovery", 1),
             ("dms", 4),
             ("emoji", 5),
             ("factory", 4),
@@ -3708,6 +4079,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
+            ("whatsapp", 11),
             ("work", 16),
             ("workflows", 8),
         ];

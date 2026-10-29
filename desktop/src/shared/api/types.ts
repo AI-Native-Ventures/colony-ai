@@ -476,6 +476,8 @@ export type CreateManagedAgentInput = {
   avatarUrl?: string;
   model?: string;
   provider?: string;
+  /** Runtime-supported thinking effort for this agent, when available. */
+  effortLevel?: string;
   envVars?: Record<string, string>;
   spawnAfterCreate?: boolean;
   startOnAppLaunch?: boolean;
@@ -747,6 +749,8 @@ export type UpdateManagedAgentInput = {
    */
   personaId?: string;
   name?: string;
+  /** Absent = keep; null = clear; string = localized avatar URL or upload data URI. */
+  avatarUrl?: string | null;
   model?: string | null;
   provider?: string | null;
   systemPrompt?: string | null;

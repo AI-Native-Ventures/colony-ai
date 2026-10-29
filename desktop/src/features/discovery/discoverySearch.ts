@@ -217,6 +217,7 @@ export function buildSearchRequest(input: {
   query: string;
   location: string;
   skip: number;
+  limit?: number;
 }): DiscoverySearchRequest {
   const location = input.location.trim();
   const country = countryForLocation(location);
@@ -224,8 +225,114 @@ export function buildSearchRequest(input: {
     query: input.query.trim(),
     location,
     ...(country ? { country } : {}),
-    limit: SEARCH_PAGE_SIZE,
+    limit: input.limit ?? SEARCH_PAGE_SIZE,
     skip: Math.max(0, Math.floor(input.skip)),
     language: "en",
+  };
+}
+
+export type PlannedDiscoverySearch = {
+  /** Index in `pickedTags`; null is the unfiltered search. */
+  tagIndex: number | null;
+  request: DiscoverySearchRequest;
+};
+
+export function normalizePickedTags(pickedTags: string[] = []): string[] {
+  return [
+    ...new Set(pickedTags.map((tag) => tag.trim()).filter(Boolean)),
+  ].slice(0, 3);
+}
+
+/** Split a page evenly, giving leftover results to earlier requests. */
+export function splitSearchLimit(limit: number, count: number): number[] {
+  if (count <= 0) return [];
+  const whole = Math.floor(limit / count);
+  const remainder = limit % count;
+  return Array.from(
+    { length: count },
+    (_, index) => whole + (index < remainder ? 1 : 0),
+  );
+}
+
+/** One result page's provider requests. Picked tags share the original budget. */
+export function buildDiscoverySearchPlan(input: {
+  verticalName: string;
+  location: string;
+  skip: number;
+  pickedTags?: string[];
+  tagCursors?: Array<number | null>;
+}): {
+  requests: PlannedDiscoverySearch[];
+  totalRequestedResults: number;
+  pickedTags: string[];
+} {
+  const pickedTags = normalizePickedTags(input.pickedTags);
+  if (!pickedTags.length) {
+    const request = buildSearchRequest({
+      query: input.verticalName,
+      location: input.location,
+      skip: input.skip,
+    });
+    return {
+      requests: [{ tagIndex: null, request }],
+      totalRequestedResults: request.limit,
+      pickedTags,
+    };
+  }
+
+  const active = pickedTags.flatMap((tag, index) => {
+    const providedCursor = input.tagCursors?.[index];
+    const cursor = providedCursor === undefined ? 0 : providedCursor;
+    return cursor === null ? [] : [{ tag, index, cursor }];
+  });
+  const limits = splitSearchLimit(SEARCH_PAGE_SIZE, active.length);
+  const requests = active.map(({ tag, index, cursor }, requestIndex) => ({
+    tagIndex: index,
+    request: buildSearchRequest({
+      query: buildTagSearchQuery(tag, input.verticalName),
+      location: input.location,
+      skip: cursor,
+      limit: limits[requestIndex],
+    }),
+  }));
+  return {
+    requests,
+    totalRequestedResults: requests.reduce(
+      (total, entry) => total + entry.request.limit,
+      0,
+    ),
+    pickedTags,
+  };
+}
+
+/** Keep both pieces of a picked-tag query inside the relay's 200 char bound. */
+export function buildTagSearchQuery(tag: string, verticalName: string): string {
+  return `${tag.trim()} ${verticalName.trim()}`.trim().slice(0, 200).trim();
+}
+
+/** Combine tag requests into one saved campaign page, deduplicating by place id. */
+export function mergeDiscoverySearchResponses(
+  responses: DiscoverySearchResponse[],
+  nextSkip: number | null,
+): DiscoverySearchResponse {
+  const places: DiscoveryPlace[] = [];
+  const seenPlaceIds = new Set<string>();
+  for (const response of responses) {
+    for (const place of response.places) {
+      if (place.placeId) {
+        if (seenPlaceIds.has(place.placeId)) continue;
+        seenPlaceIds.add(place.placeId);
+      }
+      places.push(place);
+    }
+  }
+  return {
+    provider: responses[0]?.provider ?? "outscraper",
+    places,
+    estimatedCostUsd: responses.reduce(
+      (total, response) => total + response.estimatedCostUsd,
+      0,
+    ),
+    nextSkip,
   };
 }

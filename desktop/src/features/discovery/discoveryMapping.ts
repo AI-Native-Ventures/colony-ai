@@ -6,6 +6,7 @@
 
 import type { ProspectChanges } from "./businessRecordMutations";
 import { stableRecordId } from "./businessRecordContract";
+import type { DiscoveryTagMatch } from "./discoveryTags";
 import type { DiscoveryPlace } from "./discoverySearch";
 
 const MAX_NAME_BYTES = 240;
@@ -130,6 +131,8 @@ export type MappingContext = {
   campaignId: string;
   industry: string;
   vertical: string;
+  /** Exact tag evidence matched from the provider result. */
+  discoveryTags?: DiscoveryTagMatch[];
   /** Unix seconds the place was seen. */
   nowSeconds: number;
 };
@@ -179,6 +182,7 @@ export function mapPlaceToProspect(
     industry,
     vertical,
     fitScore: fitScore(place),
+    discoveryTags: context.discoveryTags ?? [],
     potentialMonthlyValueMinor: null,
     website,
     contactName: null,

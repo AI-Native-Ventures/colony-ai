@@ -199,6 +199,7 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
                         avatarUrl={avatarUrl}
                         className="pw-agent-avatar"
                         label={name}
+                        role={detail.workTitle}
                       />
                       {name}
                     </span>

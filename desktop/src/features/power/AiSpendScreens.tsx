@@ -229,6 +229,7 @@ export function AiSpendOverview({
                       avatarUrl={avatarUrl}
                       className="pw-avatar"
                       label={name}
+                      role={title}
                     />
                     <span className="pw-employee-copy">
                       <strong>{name}</strong>

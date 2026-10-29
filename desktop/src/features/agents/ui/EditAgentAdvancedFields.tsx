@@ -29,6 +29,27 @@ import {
   type RuntimeCatalogStatus,
 } from "../lib/agentConfigCore";
 
+/** Summary for collapsed support-only fields, marked when they block Save. */
+export function EditTechnicalDetailsSummary({
+  required,
+}: {
+  required: boolean;
+}) {
+  return (
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span>Technical details</span>
+      {required ? (
+        <span
+          className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive"
+          data-testid="edit-agent-technical-details-required-badge"
+        >
+          Required
+        </span>
+      ) : null}
+    </summary>
+  );
+}
+
 export function EditAgentAdvancedFields({
   acpCommand,
   agentArgs,

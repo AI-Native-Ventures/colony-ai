@@ -3,6 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { formatZar } from "./BusinessCommon";
 import { BusinessLogoMark } from "./BusinessLogoMark";
+import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
+import { discoveryTagFitLabel } from "./discoveryTags";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { AddLeadDialog } from "./LeadDialogs";
 import { LeadPill, PlusGlyph, RunnerMark, SearchGlyph } from "./LeadParts";
@@ -14,14 +16,26 @@ import {
   toneForStage,
   type LeadContext,
 } from "./leadShared";
+import {
+  findWhatsAppContactForLead,
+  getWhatsAppLeadStatus,
+  useWhatsAppLeadData,
+} from "@/features/whatsapp-outreach/whatsappLeadStatus";
+import {
+  maskWhatsAppNumber,
+  whatsappLeadStatusLabel,
+} from "@/features/whatsapp-outreach/whatsappOutreachModels";
 
 import "./colony3-leads.css";
 
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
   const { campaign } = useDiscoveryCampaign();
+  const { statusQuery, contactsQuery, inBatchLeadIds, batchIdByLeadId } =
+    useWhatsAppLeadData();
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("all");
+  const [whatsappFilter, setWhatsappFilter] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -47,9 +61,18 @@ export function LeadsScreen(context: LeadContext) {
       (stage === "new"
         ? prospect.qualification === "unreviewed"
         : prospect.stage === stage);
-    return matchesQuery && matchesStage;
+    const contact = findWhatsAppContactForLead(
+      record.prospectId,
+      contactsQuery.data ?? [],
+    );
+    const matchesWhatsApp =
+      whatsappFilter === "all" ||
+      getWhatsAppLeadStatus(contact, inBatchLeadIds.has(record.prospectId)) ===
+        whatsappFilter;
+    return matchesQuery && matchesStage && matchesWhatsApp;
   });
   const runner = campaign?.runBy ?? null;
+  const outreachChannelId = statusQuery.data?.outreachChannelId;
 
   return (
     <main className="c3l-page" data-testid="w10-leads-page">
@@ -116,6 +139,19 @@ export function LeadsScreen(context: LeadContext) {
               </option>
             ))}
           </select>
+          <select
+            aria-label="WhatsApp status"
+            className="c3l-select c3l-select-filter"
+            onChange={(event) => setWhatsappFilter(event.currentTarget.value)}
+            value={whatsappFilter}
+          >
+            <option value="all">Any WhatsApp status</option>
+            <option value="not-contacted">Not contacted</option>
+            <option value="in-batch">In batch</option>
+            <option value="sent">Sent</option>
+            <option value="replied">Replied</option>
+            <option value="opted-out">Opted out</option>
+          </select>
         </div>
 
         {prospects.length ? (
@@ -127,12 +163,40 @@ export function LeadsScreen(context: LeadContext) {
                   <th>Contact</th>
                   <th>Stage</th>
                   <th>Service / month</th>
+                  <th>WhatsApp</th>
                   <th>Next step</th>
                 </tr>
               </thead>
               <tbody>
                 {prospects.map(({ record, eventId }) => {
                   const prospect = record.prospect;
+                  const matchedTags = (prospect.discoveryTags ?? [])
+                    .slice()
+                    .sort(
+                      (left, right) =>
+                        Number(right.picked) - Number(left.picked),
+                    )
+                    .slice(0, 3)
+                    .map((match) => match.tag);
+                  const tagFit = discoveryTagFitLabel(
+                    prospect.discoveryTags ?? [],
+                  );
+                  const whatsappContact = findWhatsAppContactForLead(
+                    record.prospectId,
+                    contactsQuery.data ?? [],
+                  );
+                  const whatsappStatus = getWhatsAppLeadStatus(
+                    whatsappContact,
+                    inBatchLeadIds.has(record.prospectId),
+                  );
+                  const activeBatchId = batchIdByLeadId.get(record.prospectId);
+                  const hasWhatsAppNextAction = Boolean(
+                    (whatsappContact &&
+                      outreachChannelId &&
+                      (whatsappStatus === "replied" ||
+                        whatsappStatus === "sent")) ||
+                      (whatsappStatus === "in-batch" && activeBatchId),
+                  );
                   return (
                     <tr className="c3l-row" key={eventId}>
                       <td className="c3l-cell-business">
@@ -142,7 +206,10 @@ export function LeadsScreen(context: LeadContext) {
                             ", " +
                             prospect.vertical +
                             ", " +
-                            (prospect.location ?? "Location not set")
+                            (prospect.location ?? "Location not set") +
+                            (matchedTags.length
+                              ? `, matching tags ${matchedTags.join(", ")}`
+                              : "")
                           }
                           className="c3l-business-link"
                           href={`#/sales/lead/${record.prospectId}`}
@@ -158,6 +225,13 @@ export function LeadsScreen(context: LeadContext) {
                               {prospect.vertical} ·{" "}
                               {prospect.location ?? "Location not set"}
                             </small>
+                            {tagFit ? (
+                              <span className="c3l-tag-fit">{tagFit}</span>
+                            ) : null}
+                            <DiscoveryLeadTags
+                              limit={3}
+                              tags={prospect.discoveryTags}
+                            />
                           </span>
                         </a>
                       </td>
@@ -190,13 +264,77 @@ export function LeadsScreen(context: LeadContext) {
                       <td className="c3l-cell-amount">
                         {formatZar(prospect.potentialMonthlyValueMinor)}
                       </td>
-                      <td>
-                        <a
-                          className="c3l-next-step"
-                          href={`#/sales/lead/${record.prospectId}`}
+                      <td className="c3l-whatsapp-cell">
+                        <span
+                          className={`c3l-whatsapp-status is-${whatsappStatus}`}
                         >
-                          Review lead
-                        </a>
+                          {whatsappLeadStatusLabel(whatsappStatus)}
+                        </span>
+                        {whatsappContact ? (
+                          <span className="c3l-whatsapp-number">
+                            {whatsappContact.lastInboundAt
+                              ? new Intl.DateTimeFormat("en-ZA", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  timeZone: "Africa/Johannesburg",
+                                }).format(
+                                  new Date(whatsappContact.lastInboundAt),
+                                )
+                              : maskWhatsAppNumber(whatsappContact.e164)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td
+                        className={
+                          hasWhatsAppNextAction
+                            ? "c3l-cell-next-step has-whatsapp-action"
+                            : "c3l-cell-next-step"
+                        }
+                      >
+                        {whatsappContact &&
+                        outreachChannelId &&
+                        (whatsappStatus === "replied" ||
+                          whatsappStatus === "sent") ? (
+                          <button
+                            className="c3l-next-step c3l-next-step-button"
+                            onClick={() =>
+                              void navigate({
+                                to: "/channels/$channelId",
+                                params: { channelId: outreachChannelId },
+                                search: {
+                                  threadRootId:
+                                    whatsappContact.threadRootEventId ??
+                                    undefined,
+                                },
+                              })
+                            }
+                            type="button"
+                          >
+                            Open chat <span aria-hidden="true">↗</span>
+                          </button>
+                        ) : whatsappStatus === "in-batch" && activeBatchId ? (
+                          <button
+                            className="c3l-next-step c3l-next-step-button"
+                            onClick={() =>
+                              void navigate({
+                                to: "/whatsapp/batches/$batchId",
+                                params: { batchId: activeBatchId },
+                              })
+                            }
+                            type="button"
+                          >
+                            View batch
+                          </button>
+                        ) : null}
+                        {whatsappStatus === "not-contacted" ||
+                        whatsappStatus === "opted-out" ? (
+                          <a
+                            className="c3l-next-step"
+                            href={`#/sales/lead/${record.prospectId}`}
+                          >
+                            Review lead
+                          </a>
+                        ) : null}
                       </td>
                     </tr>
                   );

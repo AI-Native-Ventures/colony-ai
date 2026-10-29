@@ -58,6 +58,23 @@ export type CatalogueType = TaxonomyVertical & {
   isic: string[];
 };
 
+export const VERTICAL_TAG_KINDS = [
+  "product",
+  "service",
+  "specialty",
+  "customer",
+  "technology",
+  "equipment",
+  "material",
+  "channel",
+  "role",
+  "regulation",
+  "term",
+] as const;
+
+export type VerticalTagKind = (typeof VERTICAL_TAG_KINDS)[number];
+export type VerticalTag = { tag: string; kind: VerticalTagKind };
+
 type CatalogueData = {
   industries: {
     id: string;
@@ -179,11 +196,21 @@ function holds(fields: Field[], query: SearchQuery): boolean {
   );
 }
 
+/** Match text with the same stemming and word rules used by catalogue search. */
+export function discoveryTextMatches(
+  queryText: string,
+  fieldTexts: string[],
+): boolean {
+  const query = searchQuery(queryText);
+  return Boolean(query.joined) && holds(fieldTexts.map(field), query);
+}
+
 /** The AI tag layer of one business type, as `build_vertical_tags.py` writes it. */
 export type VerticalTagData = {
-  tags: [string, string][];
+  tags: [string, VerticalTagKind][];
   search: string[];
   sa: string[];
+  related: string[];
 };
 
 /*
@@ -205,6 +232,38 @@ export function setVerticalTags(
 
 export function verticalTagsLoaded(): boolean {
   return verticalTags !== null;
+}
+
+const TAG_KIND_PRIORITY: ReadonlyMap<VerticalTagKind, number> = new Map([
+  ["specialty", 0],
+  ["product", 1],
+  ["service", 2],
+  ["customer", 3],
+]);
+
+/** Tags for a business type, with the buyer-useful kinds first. */
+export function verticalTagsFor(id: string): VerticalTag[] {
+  return (verticalTags?.[id]?.tags ?? [])
+    .map(([tag, kind], index) => ({ tag, kind, index }))
+    .sort(
+      (left, right) =>
+        (TAG_KIND_PRIORITY.get(left.kind) ?? 4) -
+          (TAG_KIND_PRIORITY.get(right.kind) ?? 4) || left.index - right.index,
+    )
+    .map(({ tag, kind }) => ({ tag, kind }));
+}
+
+/** Current, resolvable related types from the generated tag layer. */
+export function relatedVerticalsFor(id: string): CatalogueType[] {
+  const currentId = resolveVerticalId(id);
+  if (!currentId) return [];
+  return (verticalTags?.[currentId]?.related ?? [])
+    .filter((relatedId) => relatedId !== currentId && typeIds.has(relatedId))
+    .slice(0, 6)
+    .flatMap((relatedId) => {
+      const related = verticalById.get(relatedId);
+      return related ? [related] : [];
+    });
 }
 
 /**

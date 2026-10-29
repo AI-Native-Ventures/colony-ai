@@ -537,7 +537,12 @@ pub fn spawn_agent_child(
         if agent_keys.public_key().to_hex() != record.pubkey {
             return Err("Managed agent identity does not match its saved public key.".into());
         }
-        let authorization = super::credits_gateway::authorize(relay_url, &agent_keys, &owner)?;
+        let authorization = super::credits_gateway::authorize_with_model(
+            relay_url,
+            &agent_keys,
+            &owner,
+            effective_cfg.model.value.as_deref(),
+        )?;
         if state.signing_keys()?.public_key() != owner.public_key() {
             return Err("Identity changed during Colony credits authorization. Try again.".into());
         }

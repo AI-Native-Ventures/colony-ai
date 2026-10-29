@@ -33,6 +33,8 @@ export type FakeCall = { op: string; [key: string]: unknown };
 export type BrowserHostFakeControls = {
   calls: FakeCall[];
   tabs: () => BrowserTabState[];
+  /** Native sign-in windows are shown above the app and are not work-area tabs. */
+  popups: () => Array<{ fromTabId: string; url: string }>;
   /** Deliver a host event to the app, as the preload does. */
   emit: (event: BrowserHostEvent) => void;
   /** A page script opened a window (`window.open`). */
@@ -106,6 +108,7 @@ export async function installBrowserHostFake(
     };
     const tabs = new Map<string, Tab>();
     const calls: FakeCall[] = [];
+    const popups: Array<{ fromTabId: string; url: string }> = [];
     const revealed: string[] = [];
     const listeners = new Set<(event: BrowserHostEvent) => void>();
     let tabCounter = 0;
@@ -304,6 +307,10 @@ export async function installBrowserHostFake(
         tab.controlOwner = controlOwner;
         return snapshot(tab);
       },
+      async setAgentCursorLabels(tabId, _labels) {
+        find(tabId);
+        return { updated: true };
+      },
       async setPrivate(tabId, value) {
         const tab = find(tabId);
         calls.push({ op: "setPrivate", tabId, value });
@@ -381,6 +388,7 @@ export async function installBrowserHostFake(
       calls,
       revealed,
       tabs: () => [...tabs.values()].map(snapshot),
+      popups: () => [...popups],
       emit,
       popup: (fromTabId, url) => {
         const parent = find(fromTabId);
@@ -393,13 +401,15 @@ export async function installBrowserHostFake(
             });
             return;
           }
-          // As in the real host: the tab exists and is announced first, then
-          // it loads, so the app never sees state for a tab it was not told of.
-          const created = await host.createTab({
-            businessId: parent.businessId,
-          });
-          emit({ type: "new-tab", tab: created, openedFrom: fromTabId });
-          load(find(created.id), checked.href, true);
+          if (parent.controlOwner !== "human") {
+            emit({
+              type: "navigation-blocked",
+              tabId: fromTabId,
+              reason: "agent-popup-denied",
+            });
+            return;
+          }
+          popups.push({ fromTabId, url: checked.href });
         });
       },
       agentOpened: (fromTabId, url) => {

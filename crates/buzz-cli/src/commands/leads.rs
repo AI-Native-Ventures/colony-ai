@@ -86,13 +86,13 @@ enum LeadChange {
 
 /// A verified current prospect head and the coordinates needed to replace it.
 #[derive(Debug, Clone)]
-struct CurrentLead {
+pub(crate) struct CurrentLead {
     /// Id of the head event; the next action names it as the head it replaces.
-    event_id: String,
-    channel_id: Uuid,
-    community_id: Uuid,
-    created_at: u64,
-    head: ProspectHead,
+    pub(crate) event_id: String,
+    pub(crate) channel_id: Uuid,
+    pub(crate) community_id: Uuid,
+    pub(crate) created_at: u64,
+    pub(crate) head: ProspectHead,
 }
 
 fn parse_stage(value: &str) -> Result<ProspectStage, CliError> {
@@ -368,7 +368,7 @@ fn normalize_relay_self_hex(self_hex: &str) -> Result<String, CliError> {
     Ok(self_hex.to_ascii_lowercase())
 }
 
-async fn load_leads(client: &BuzzClient) -> Result<Vec<CurrentLead>, CliError> {
+pub(crate) async fn load_leads(client: &BuzzClient) -> Result<Vec<CurrentLead>, CliError> {
     let nip11_raw = client.get_public("/").await.map_err(|error| {
         CliError::Other(format!("failed to fetch relay info document: {error}"))
     })?;
@@ -505,6 +505,7 @@ mod tests {
                 industry: "Home & Living".into(),
                 vertical: "Home Decor & Gift Shops".into(),
                 fit_score: Some(91),
+                discovery_tags: Vec::new(),
                 potential_monthly_value_minor: Some(650_000),
                 website: Some("https://form-field.example".into()),
                 contact_name: Some("Jules".into()),

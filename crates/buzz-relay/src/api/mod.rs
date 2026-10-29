@@ -6,6 +6,7 @@ pub mod bridge;
 /// Private Colony Agent credit gateway.
 pub mod credits_gateway;
 mod credits_gateway_limits;
+mod credits_gateway_message;
 mod credits_gateway_metering;
 mod credits_gateway_policy;
 mod credits_gateway_upstream;
@@ -20,6 +21,7 @@ pub mod nip05;
 pub mod operator;
 pub mod payments;
 pub mod self_provisioning;
+pub mod whatsapp;
 pub mod workflows;
 
 // Re-export imeta helpers used by ingest pipeline.

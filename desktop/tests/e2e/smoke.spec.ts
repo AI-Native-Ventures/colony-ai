@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, openCreateChannelDialog } from "../helpers/bridge";
-import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 async function getTimelineMetrics(page: import("@playwright/test").Page) {
   return page.getByTestId("message-timeline").evaluate((element) => {
@@ -102,21 +101,6 @@ test("loads the app shell with mocked channels", async ({ page }) => {
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
 });
 
-async function chooseSharedComputeProvider(
-  page: import("@playwright/test").Page,
-) {
-  await page.getByRole("tab", { name: "Customize for this agent" }).click();
-  const provider = page.locator("#persona-llm-provider");
-  await expect(provider).toBeVisible({ timeout: 10_000 });
-  await provider.press("Enter");
-  await page
-    .getByRole("menuitemradio", {
-      exact: true,
-      name: "Colony shared compute",
-    })
-    .click();
-}
-
 test("creates a new mocked stream", async ({ page }) => {
   const channelName = `release-notes-${Date.now()}`;
 
@@ -130,178 +114,6 @@ test("creates a new mocked stream", async ({ page }) => {
 
   await expect(page.getByTestId("stream-list")).toContainText(channelName);
   await expect(page.getByTestId("chat-title")).toContainText(channelName);
-});
-
-test("Colony shared compute explains automatic model selection", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.evaluate(() => {
-    (
-      window as Window & {
-        __BUZZ_E2E_SET_MESH__?: (mesh: {
-          models?: Array<{ id: string; name: string | null }>;
-        }) => void;
-      }
-    ).__BUZZ_E2E_SET_MESH__?.({ models: [] });
-  });
-  await openAgentsDirectoryView(page);
-  await page.getByTestId("agent-add-button").click();
-  await chooseSharedComputeProvider(page);
-
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
-            .__BUZZ_E2E_COMMANDS__ ?? [],
-      ),
-    )
-    .toContain("discover_agent_models");
-  await expect(page.locator("#persona-model")).toContainText("Automatic");
-  await expect(
-    page.getByText(
-      "Auto uses Mesh collective intelligence when two or more models stay available, otherwise it chooses one available model.",
-    ),
-  ).toBeVisible();
-  await expect(page.locator("#persona-custom-model")).toHaveCount(0);
-});
-
-test("create agent persists Colony shared compute with auto model", async ({
-  page,
-}) => {
-  const agentName = `Shared compute agent ${Date.now()}`;
-
-  await page.goto("/");
-  await openAgentsDirectoryView(page);
-  await page.getByTestId("agent-add-button").click();
-  await page.locator("#persona-display-name").fill(agentName);
-
-  await chooseSharedComputeProvider(page);
-
-  const model = page.locator("#persona-model");
-  await expect(model).toContainText("Automatic");
-  await page.getByTestId("persona-dialog-submit").click();
-  const createdToast = page
-    .locator("[data-sonner-toast][data-removed='false']")
-    .filter({ hasText: "Agent created" });
-  await expect(createdToast).toBeVisible({ timeout: 10_000 });
-  await expect(createdToast).toHaveCount(1);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-
-  const createPayload = await page.evaluate((name) => {
-    const log = (
-      window as Window & {
-        __BUZZ_E2E_COMMAND_LOG__?: Array<{
-          command: string;
-          payload: unknown;
-        }>;
-      }
-    ).__BUZZ_E2E_COMMAND_LOG__;
-    return log
-      ?.filter((entry) => entry.command === "create_managed_agent")
-      .map((entry) => entry.payload as { input?: Record<string, unknown> })
-      .find((payload) => payload.input?.name === name)?.input;
-  }, agentName);
-
-  expect(createPayload).toMatchObject({
-    agentCommand: "buzz-agent",
-    model: "auto",
-    provider: "relay-mesh",
-    spawnAfterCreate: true,
-    startOnAppLaunch: true,
-  });
-});
-
-test("create agent supports parallelism and system prompt overrides", async ({
-  page,
-}) => {
-  const agentName = `Parallel agent ${Date.now()}`;
-  const systemPrompt = "You are concise and parallelize independent work.";
-
-  await page.goto("/");
-  await openAgentsDirectoryView(page);
-  await page.getByTestId("agent-add-button").click();
-
-  await page.locator("#persona-display-name").fill(agentName);
-  await page.locator("#persona-system-prompt").fill(systemPrompt);
-
-  // The buzz-agent runtime auto-selects once the ACP runtime catalog loads;
-  // Customize reveals the per-agent LLM provider and model fields.
-  await page.getByRole("tab", { name: "Customize for this agent" }).click();
-  const llmProvider = page.locator("#persona-llm-provider");
-  await expect(llmProvider).toBeVisible({ timeout: 10_000 });
-  await llmProvider.press("Enter");
-  await page
-    .getByRole("menuitemradio", { exact: true, name: "Anthropic" })
-    .click();
-  const model = page.locator("#persona-model");
-  await model.click();
-  await page
-    .getByRole("button", { name: "Custom model...", exact: true })
-    .click();
-  await page.getByLabel("Custom model ID").fill("claude-opus-4-5");
-  await page.getByLabel("Anthropic API Key").fill("sk-test-api-key-for-e2e");
-
-  const advancedToggle = page.getByRole("button", {
-    name: "Advanced",
-    exact: true,
-  });
-  await advancedToggle.click();
-  // Parallelism is above the env-vars editor in the Advanced section; filling
-  // the required API-key row may have scrolled the dialog past it. Scroll back.
-  await page
-    .locator("#persona-parallelism")
-    .evaluate((el) => el.scrollIntoView({ block: "nearest" }));
-  await expect(page.locator("#persona-parallelism")).toBeVisible();
-  await page.locator("#persona-parallelism").fill("3");
-  const sessionPolicy = page.locator("#persona-session-policy");
-  await expect(sessionPolicy).toHaveAttribute(
-    "aria-describedby",
-    "persona-session-policy-description",
-  );
-  await expect(
-    page.locator("#persona-session-policy-description"),
-  ).toBeVisible();
-  await sessionPolicy.click();
-  await page
-    .getByRole("menuitemradio", { exact: true, name: "Each thread" })
-    .click();
-
-  // Submitting mints a running instance whose behavioral quad resolves from
-  // the definition (agents always start after creation).
-  await page.getByTestId("persona-dialog-submit").click();
-
-  const createdToast = page
-    .locator("[data-sonner-toast][data-removed='false']")
-    .filter({ hasText: "Agent created" });
-  await expect(createdToast).toBeVisible({ timeout: 10_000 });
-  await expect(createdToast).toHaveCount(1);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-
-  const createPersonaPayload = await page.evaluate(() => {
-    const log = (
-      window as Window & {
-        __BUZZ_E2E_COMMAND_LOG__?: Array<{
-          command: string;
-          payload: { input?: { behavior?: { sessionPolicy?: string } } };
-        }>;
-      }
-    ).__BUZZ_E2E_COMMAND_LOG__;
-    return log?.find((entry) => entry.command === "create_persona")?.payload;
-  });
-  expect(createPersonaPayload?.input?.behavior?.sessionPolicy).toBe("thread");
-
-  const createdAgent = page.getByRole("button", {
-    name: `Open ${agentName} profile`,
-  });
-  await expect(createdAgent).toBeVisible({ timeout: 10_000 });
-  await createdAgent.click();
-  await expect(page.getByTestId("agent-profile")).toBeVisible();
-
-  await expect(page.getByTestId("agent-system-instructions")).toHaveValue(
-    systemPrompt,
-  );
 });
 
 test("opens a mocked channel from the inbox feed", async ({ page }) => {

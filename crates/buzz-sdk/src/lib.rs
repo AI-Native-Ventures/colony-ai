@@ -32,6 +32,8 @@ pub mod company_records;
 pub mod company_spend;
 /// Typed event builders for persisted company work suggestions and watchdog settings.
 pub mod company_work_tracking;
+/// Typed event builder for budgeted employee worker runs.
+pub mod company_workers;
 pub mod mentions;
 pub mod nip_oa;
 

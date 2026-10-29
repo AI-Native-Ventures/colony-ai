@@ -1,8 +1,7 @@
 import emojiData from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 import * as React from "react";
-import { Link2, Pencil, Plus, UploadCloud } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Pencil, Plus, UploadCloud } from "lucide-react";
 import { MaskedAvatarBadgeFrame } from "@/features/profile/ui/MaskedAvatarBadgeFrame";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
@@ -27,7 +26,6 @@ import {
 import { AvatarCustomColorPanel } from "@/features/profile/ui/AvatarCustomColorPanel";
 import { useAvatarUpload } from "@/features/profile/useAvatarUpload";
 import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { ROUNDED_SQUIRCLE_PATH } from "@/shared/ui/AvatarClipPaths";
 import { useEmojiBurst } from "@/shared/ui/EmojiBurstProvider";
 import {
@@ -39,7 +37,6 @@ import {
 import { Spinner } from "@/shared/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
-  AVATAR_APPLY_MOTION_TRANSITION,
   type AvatarTab,
   type EmojiMartEmoji,
   isAvatarFileDrag,
@@ -78,7 +75,6 @@ export function AgentCreationPreview({
 }) {
   const [isDragOverAvatar, setIsDragOverAvatar] = React.useState(false);
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = React.useState(false);
-  const [avatarUrlDraft, setAvatarUrlDraft] = React.useState("");
   const [activeTab, setActiveTab] = React.useState<AvatarTab>("image");
   const [selectedEmoji, setSelectedEmoji] = React.useState<string | null>(null);
   const [selectedColor, setSelectedColor] = React.useState(
@@ -100,7 +96,6 @@ export function AgentCreationPreview({
   const [squishKey, setSquishKey] = React.useState(0);
   const avatarDragDepthRef = React.useRef(0);
   const popoverDragDepthRef = React.useRef(0);
-  const shouldReduceMotion = useReducedMotion();
   const emojiPickerContainerRef = React.useRef<HTMLDivElement | null>(null);
   const emojiMartThemeVars = useEmojiMartThemeVars();
   const { burstEmoji } = useEmojiBurst();
@@ -170,7 +165,6 @@ export function AgentCreationPreview({
   // Sync emoji state from avatarUrl when the popover opens
   React.useEffect(() => {
     if (isAvatarMenuOpen) {
-      setAvatarUrlDraft("");
       setIsPopoverDragOver(false);
       popoverDragDepthRef.current = 0;
 
@@ -209,17 +203,6 @@ export function AgentCreationPreview({
     onSelectAvatar,
     selectedEmoji,
   ]);
-
-  function applyAvatarUrl() {
-    const nextUrl = avatarUrlDraft.trim();
-    if (nextUrl.length === 0) {
-      return;
-    }
-    clearUploadError();
-    onSelectAvatar(nextUrl);
-    onCommitAvatar?.(nextUrl);
-    setIsAvatarMenuOpen(false);
-  }
 
   function applyEmojiAvatar(emoji: string, color = selectedColor) {
     const nextAvatarUrl = emojiAvatarDataUrl(emoji, color);
@@ -273,10 +256,6 @@ export function AgentCreationPreview({
     () => parseEmojiAvatarDataUrl(avatarUrl ?? ""),
     [avatarUrl],
   );
-  const applyButtonTransition = shouldReduceMotion
-    ? { duration: 0 }
-    : AVATAR_APPLY_MOTION_TRANSITION;
-
   // Outer avatar drag — only active when popover is closed
   const handleAvatarDragEnter = React.useCallback(
     (event: React.DragEvent<HTMLFieldSetElement>) => {
@@ -492,50 +471,6 @@ export function AgentCreationPreview({
                 {isUploading ? "Uploading..." : "Drop or browse"}
               </span>
             </button>
-
-            {/* URL input */}
-            <div className="flex h-10 items-center gap-2.5 rounded-lg bg-muted px-3">
-              <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-              <input
-                autoCapitalize="none"
-                autoCorrect="off"
-                className="min-w-0 flex-1 bg-transparent text-xs font-medium text-foreground outline-none placeholder:text-muted-foreground/50"
-                disabled={disabled || isUploading}
-                onChange={(event) => setAvatarUrlDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    applyAvatarUrl();
-                  }
-                }}
-                placeholder="Paste a URL"
-                spellCheck={false}
-                type="url"
-                value={avatarUrlDraft}
-              />
-              <AnimatePresence initial={false}>
-                {avatarUrlDraft.trim().length > 0 ? (
-                  <motion.div
-                    animate={{ opacity: 1, scale: 1, width: "auto" }}
-                    className="overflow-hidden"
-                    exit={{ opacity: 0, scale: 0.96, width: 0 }}
-                    initial={{ opacity: 0, scale: 0.96, width: 0 }}
-                    key="apply-url"
-                    transition={applyButtonTransition}
-                  >
-                    <Button
-                      className="h-6 px-2 text-2xs"
-                      disabled={disabled || isUploading}
-                      onClick={() => applyAvatarUrl()}
-                      size="xs"
-                      type="button"
-                    >
-                      Apply
-                    </Button>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
 
             {uploadErrorMessage ? (
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">

@@ -14,6 +14,7 @@ import type { Channel } from "@/shared/api/types";
 import { BUSINESS_RECORD_QUERY_KINDS } from "./businessRecordContract";
 import {
   loadBusinessRecords,
+  resolveBusinessChannel,
   type BusinessRecords,
 } from "./businessRecordRelay";
 import { SalesChannelSetupError } from "./salesChannel";
@@ -21,7 +22,10 @@ import { ensureBusinessChannel } from "./salesChannelRuntime";
 
 const BUSINESS_CHANNEL_STALE_MS = 30_000;
 
-export function useBusinessRecords() {
+export function useBusinessRecords(
+  options: { createIfMissing?: boolean } = {},
+) {
+  const createIfMissing = options.createIfMissing ?? true;
   const queryClient = useQueryClient();
   const { activeCommunity } = useCommunities();
   const activeCommunityId = activeCommunity?.id ?? null;
@@ -34,6 +38,7 @@ export function useBusinessRecords() {
   const channelQuery = useQuery({
     queryKey: [
       "w10-business-channel",
+      createIfMissing ? "ensure" : "read-only",
       activeCommunityRelayUrl ?? "unavailable",
       activeCommunityId ?? "unavailable",
     ],
@@ -45,6 +50,9 @@ export function useBusinessRecords() {
       !(error instanceof SalesChannelSetupError) && failureCount < 1,
     queryFn: async () => {
       if (!activeCommunity) return null;
+      if (!createIfMissing) {
+        return resolveBusinessChannel(channels.data ?? []);
+      }
       const outcome = await ensureBusinessChannel({
         community: activeCommunity,
         channels: channels.data ?? [],

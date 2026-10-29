@@ -252,6 +252,37 @@ test("hire action parser binds each action to its required coordinates", () => {
   );
 });
 
+test("hire proposals preserve channel, instruction and real effort selections", () => {
+  const configured = {
+    ...proposal(),
+    channelIds: [CHANNEL_ID, "123e4567-e89b-12d3-a456-426614174012"],
+    respondTo: "anyone",
+    effortLevel: "high",
+  };
+  const parsed = parseCompanyHireAction({
+    schemaVersion: 1,
+    hireId: HIRE_ID,
+    action: "create",
+    proposal: configured,
+  });
+
+  assert.deepEqual(parsed?.proposal?.channelIds, configured.channelIds);
+  assert.equal(parsed?.proposal?.respondTo, "anyone");
+  assert.equal(parsed?.proposal?.effortLevel, "high");
+  assert.equal(
+    parseCompanyHireAction({
+      schemaVersion: 1,
+      hireId: HIRE_ID,
+      action: "create",
+      proposal: {
+        ...configured,
+        channelIds: ["123e4567-e89b-12d3-a456-426614174012"],
+      },
+    }),
+    null,
+  );
+});
+
 test("a persona's default allowance reaches its role pack only when it is a positive amount", () => {
   const persona = (defaultAllowance) => ({
     id: "bookkeeper",

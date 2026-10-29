@@ -108,6 +108,7 @@ export default defineConfig({
       ],
   use: {
     baseURL: `http://127.0.0.1:${appPort}`,
+    channel: "chrome",
     launchOptions: {
       args: ["--use-mock-keychain", "--password-store=basic"],
     },
@@ -157,6 +158,7 @@ export default defineConfig({
         "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
         "**/doc-card-collapse.spec.ts",
+        "**/doc-card-p10-screenshots.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
         "**/sidebar-full-app.spec.ts",
         "**/sidebar-reference-fixture.spec.ts",
@@ -319,6 +321,9 @@ export default defineConfig({
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
+        "**/cofounder-map.spec.ts",
+        "**/whatsapp-outreach.spec.ts",
+        "**/whatsapp-outreach.visual.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -343,12 +348,14 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/colony3-discovery-logo-prospect-proof.spec.ts",
+        "**/colony3-agents-simple.spec.ts",
         "**/colony3-discovery-v4.spec.ts",
         "**/colony3-discovery-tags.spec.ts",
         "**/day-divider-overlap.spec.ts",
         "**/colony3-lead-reference.spec.ts",
         "**/link-preview-bare-domain.spec.ts",
         "**/doc-card-collapse.spec.ts",
+        "**/doc-card-p10-screenshots.spec.ts",
         "**/colony3-dark-mode.spec.ts",
         "**/judge-ready-ai.spec.ts",
         "**/agent-working-indicator.spec.ts",
@@ -422,6 +429,8 @@ export default defineConfig({
         "**/parity-ancestor-island.spec.ts",
         "**/colony3-sales-setup.spec.ts",
         "**/colony3-scout-dupes.spec.ts",
+        "**/cofounder-map.spec.ts",
+        "**/whatsapp-outreach.integration.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

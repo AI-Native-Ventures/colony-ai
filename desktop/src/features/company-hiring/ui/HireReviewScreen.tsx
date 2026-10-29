@@ -8,8 +8,11 @@ import {
   usePersonasQuery,
   useAvailableAcpRuntimes,
 } from "@/features/agents/hooks";
+import {
+  simpleModelLabel,
+  simpleProviderLabel,
+} from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
-import { usePersonaModelDiscovery } from "@/features/agents/ui/usePersonaModelDiscovery";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
@@ -27,7 +30,6 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
 import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
-import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { KIND_ASK_RESPONSE } from "@/shared/constants/kinds";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import {
@@ -38,8 +40,6 @@ import {
   HireTitle,
 } from "./HirePresentation";
 import { HireHandoffScreen } from "./HireHandoffScreen";
-import { MemberAvatar, memberOptionLabel } from "./hireMembers";
-import { ToolChip } from "./hireTools";
 import { readHireDraft, removeHireDraft, writeHireDraft } from "../hireDraft";
 import { hireIntroductionText } from "../hireIntroduction";
 import {
@@ -92,34 +92,6 @@ function responseWasRecorded(record: AskHeadRecord | null | undefined) {
   );
 }
 
-function formatAllowance(value: string | undefined) {
-  if (!value) return "";
-  const amount = Number(value);
-  return Number.isFinite(amount) ? amount.toFixed(2) : value;
-}
-
-function useWorkerModelLabel(input: {
-  envVars: Record<string, string>;
-  providerId: string;
-  runtime: AcpRuntimeCatalogEntry | undefined;
-  modelId?: string;
-}) {
-  const { discoveredModelOptions } = usePersonaModelDiscovery({
-    envVars: input.envVars,
-    isCustomProviderEditing: false,
-    modelFieldVisible: true,
-    open: input.runtime !== undefined,
-    provider: input.providerId,
-    selectedRuntime: input.runtime,
-  });
-  return (
-    discoveredModelOptions?.find((option) => option.id === input.modelId)
-      ?.label ??
-    input.modelId ??
-    ""
-  );
-}
-
 export function HireReviewScreen({
   hireId,
   source,
@@ -168,7 +140,7 @@ export function HireReviewScreen({
   const draft = readHireDraft(relayUrl, hireId);
   const hasAskSource = Boolean(source?.channelId && source?.askId);
   const proposal = hasAskSource
-    ? (hireQuery.data?.head.proposal ?? draft?.proposal ?? null)
+    ? (draft?.proposal ?? hireQuery.data?.head.proposal ?? null)
     : (draft?.proposal ?? hireQuery.data?.head.proposal ?? null);
   const persona = personasQuery.data?.find(
     (candidate) => candidate.id === proposal?.rolePack.personaId,
@@ -180,11 +152,10 @@ export function HireReviewScreen({
     inheritedEnvVars: persona?.envVars ?? {},
     open: true,
   });
-  const workerModelLabel = useWorkerModelLabel({
+  const workerProviderLabel = simpleProviderLabel({
+    runtimeId: proposal?.runtimeId,
+    provider: proposal?.providerId,
     envVars: inheritedEnvVars,
-    providerId: proposal?.providerId ?? "",
-    runtime: workerRuntime,
-    modelId: proposal?.modelId,
   });
   const teamMembers = React.useMemo(
     () => activeMembers(teamQuery.data?.members ?? []),
@@ -452,11 +423,14 @@ export function HireReviewScreen({
         personaId: persona.id,
         acpCommand: "buzz-acp",
         agentCommand: runtime.command,
-        harnessOverride: !persona.runtime || persona.runtime === runtime.id,
+        harnessOverride: true,
         agentArgs: [],
         mcpCommand: runtime.mcpCommand ?? "",
         model: selectedProposal.modelId,
         provider: selectedProposal.providerId,
+        effortLevel: selectedProposal.effortLevel,
+        avatarUrl: draft?.avatarUrl,
+        respondTo: selectedProposal.respondTo ?? "owner-only",
         spawnAfterCreate: false,
         startOnAppLaunch: false,
         backend: { type: "local" },
@@ -465,6 +439,7 @@ export function HireReviewScreen({
       employeePubkey = created.agent.pubkey;
       writeHireDraft(relayUrl, {
         proposal: selectedProposal,
+        ...(draft?.avatarUrl ? { avatarUrl: draft.avatarUrl } : {}),
         employeePubkey,
         ...(draft?.baseHeadEventId
           ? { baseHeadEventId: draft.baseHeadEventId }
@@ -508,11 +483,19 @@ export function HireReviewScreen({
       );
     }
 
-    await attachManagedAgentToChannel(selectedProposal.introductionChannelId, {
-      agent,
-      role: "bot",
-      ensureRunning: false,
-    });
+    const channelIds = [
+      ...new Set(
+        selectedProposal.channelIds ?? [selectedProposal.introductionChannelId],
+      ),
+    ];
+    for (const channelId of channelIds) {
+      const attached = await attachManagedAgentToChannel(channelId, {
+        agent,
+        role: "bot",
+        ensureRunning: false,
+      });
+      agent = attached.agent;
+    }
     const introduction = await sendManagedAgentChannelMessage({
       agentPubkey: employeePubkey,
       channelId: selectedProposal.introductionChannelId,
@@ -826,18 +809,16 @@ export function HireReviewScreen({
   )
     return null;
 
-  const reportingMembers = activeMembers(teamQuery.data?.members ?? []);
-  const manager = proposal.managerPubkey
-    ? reportingMembers.find(
-        (member) =>
-          member.pubkey.toLowerCase() === proposal.managerPubkey?.toLowerCase(),
-      )
-    : reportingMembers.find((member) => member.role === "owner");
-  const managerName = manager
-    ? memberOptionLabel(manager, profiles)
-    : "Company owner";
-  const managerFirstName = managerName.split(" · ")[0];
   const channelName = homeChannel?.name ?? "";
+  const selectedChannels = (
+    proposal.channelIds ?? [proposal.introductionChannelId]
+  )
+    .map((channelId) =>
+      channelsQuery.data?.find((channel) => channel.id === channelId),
+    )
+    .filter((channel): channel is NonNullable<typeof channel> =>
+      Boolean(channel),
+    );
   const employeeName = proposal.displayName;
   const rolePackTitle = proposal.rolePack.title;
   const editDetails = () =>
@@ -867,9 +848,9 @@ export function HireReviewScreen({
           <div className="colony-hire-review-head">
             <EmployeeAvatar
               className="colony-hire-avatar-60"
-              definition={persona?.avatarUrl}
+              instance={draft?.avatarUrl}
               name={employeeName}
-              personaId={persona?.id}
+              role={proposal.title}
             />
             <div>
               <h2 id="hire-summary">
@@ -887,39 +868,34 @@ export function HireReviewScreen({
             </button>
           </div>
           <dl className="colony-hire-rows">
-            <dt>Reports to</dt>
+            <dt>Channels</dt>
             <dd>
-              {manager ? (
-                <MemberAvatar
-                  className="colony-hire-avatar-26"
-                  member={manager}
-                  personas={personasQuery.data}
-                  profiles={profiles}
-                />
-              ) : null}
-              {managerName}
+              {selectedChannels
+                .map((channel) => `# ${channel.name}`)
+                .join(", ") || "Choose a channel"}
             </dd>
-            <dt>Channel</dt>
-            <dd># {channelName}</dd>
-            <dt>Allowance</dt>
+            <dt>Instructions</dt>
             <dd>
-              USD {formatAllowance(proposal.weeklyAllowance)} / week{" "}
-              <small>· API-equivalent</small>
+              {proposal.respondTo === "anyone"
+                ? "Anyone in this space"
+                : "You and admins"}
             </dd>
-            <dt>Workers</dt>
-            <dd>{workerModelLabel}</dd>
-            <dt>Lead tools</dt>
-            <dd>
-              {proposal.rolePack.tools.map((tool) => (
-                <React.Fragment key={tool.name}>
-                  {tool.name}
-                  <ToolChip
-                    detailed={proposal.rolePack.tools.length === 1}
-                    tool={tool}
-                  />
-                </React.Fragment>
-              ))}
-            </dd>
+            <dt>Model</dt>
+            <dd>{simpleModelLabel(proposal.modelId, proposal.providerId)}</dd>
+            <dt>Harness</dt>
+            <dd>{workerRuntime?.label ?? proposal.runtimeId}</dd>
+            {proposal.effortLevel ? (
+              <>
+                <dt>Effort</dt>
+                <dd>{proposal.effortLevel}</dd>
+              </>
+            ) : null}
+            {workerProviderLabel ? (
+              <>
+                <dt>Provider</dt>
+                <dd>{workerProviderLabel}</dd>
+              </>
+            ) : null}
           </dl>
           <div className="colony-hire-approval">
             {linkedAsk ? (
@@ -972,9 +948,7 @@ export function HireReviewScreen({
                 onChange={(event) => setFounderConfirmed(event.target.checked)}
                 type="checkbox"
               />
-              <span>
-                I am the founder and approve this employee, scope and allowance.
-              </span>
+              <span>I am the founder and approve this employee and setup.</span>
             </label>
             {failure ? (
               <p
@@ -1021,7 +995,9 @@ export function HireReviewScreen({
             <li>
               <span>1</span>
               <span>
-                {employeeName} joins the team and reports to {managerFirstName}.
+                {employeeName} joins the team and can be reached in{" "}
+                {selectedChannels.length} channel
+                {selectedChannels.length === 1 ? "" : "s"}.
               </span>
             </li>
             <li>
@@ -1033,8 +1009,8 @@ export function HireReviewScreen({
             <li>
               <span>3</span>
               <span>
-                You can change {employeeName}’s model and instructions later on
-                their profile.
+                You can change {employeeName}’s AI and instruction access later
+                on their profile.
               </span>
             </li>
           </ol>

@@ -794,6 +794,53 @@ pub const KIND_FACTORY_RUN_ACTION: u32 = 47038;
 pub const KIND_DUTY_ACTION: u32 = 47044;
 /// Member lesson mutation, brokered and community-wide.
 pub const KIND_LESSON_ACTION: u32 = 47045;
+/// Relay-authored per-company co-founder settings head (community-wide).
+pub const KIND_COFOUNDER_HEAD: u32 = 30670;
+/// Relay-authored company function slot head (community-wide, one per function).
+pub const KIND_COMPANY_FUNCTION_HEAD: u32 = 30671;
+/// Member co-founder settings mutation, brokered and community-wide.
+pub const KIND_COFOUNDER_ACTION: u32 = 47060;
+/// Member function slot mutation, brokered and community-wide.
+pub const KIND_COMPANY_FUNCTION_ACTION: u32 = 47061;
+/// Relay-authored canonical employee worker run head (co-founder block, community-wide).
+pub const KIND_WORKER_RUN_HEAD: u32 = 30672;
+/// Employee or admin worker run write, brokered and community-wide (co-founder block).
+pub const KIND_WORKER_RUN_ACTION: u32 = 47062;
+
+// WhatsApp outreach (official Cloud API). Member-authored commands handled by
+// `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
+// of the Graph send API. Events are stored in the company's private Outreach
+// channel whatever `h` tag they carry. Contract: docs/whatsapp-outreach.md.
+// Reserved block: actions 47048 to 47055, relay-signed heads 30660 to 30667.
+// 47046 and 47047 belong to the business profile and team computer actions;
+// co-founder mode owns 30670 to 30679 and 47060 to 47069.
+/// Agent-prepared batch of template sends. Pending until an owner or admin decides.
+pub const KIND_WHATSAPP_BATCH: u32 = 47048;
+/// Owner or admin decision on one pending batch (approve, reject, edit or drop rows).
+pub const KIND_WHATSAPP_BATCH_DECISION: u32 = 47049;
+/// One send to one contact: free text inside the 24 hour window, otherwise a template.
+pub const KIND_WHATSAPP_SEND_REQUEST: u32 = 47050;
+/// Owner or admin outreach settings (daily cap on new chats, template sync).
+pub const KIND_WHATSAPP_SETTINGS: u32 = 47051;
+
+/// Every WhatsApp outreach command kind.
+pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
+    KIND_WHATSAPP_BATCH,
+    KIND_WHATSAPP_BATCH_DECISION,
+    KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS,
+];
+
+/// Returns `true` for member commands handled by the WhatsApp outreach broker.
+pub const fn is_whatsapp_command_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_WHATSAPP_BATCH
+            | KIND_WHATSAPP_BATCH_DECISION
+            | KIND_WHATSAPP_SEND_REQUEST
+            | KIND_WHATSAPP_SETTINGS
+    )
+}
 
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
@@ -803,6 +850,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_HIRE_HEAD,
     KIND_DUTY_HEAD,
     KIND_LESSON_HEAD,
+    KIND_COFOUNDER_HEAD,
+    KIND_COMPANY_FUNCTION_HEAD,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
     KIND_GOAL_ACTION,
@@ -820,8 +869,12 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_COFOUNDER_ACTION,
+    KIND_COMPANY_FUNCTION_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
     KIND_AI_SPEND_RECORD_ACTION,
+    KIND_WORKER_RUN_HEAD,
+    KIND_WORKER_RUN_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -839,8 +892,11 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_ACTION
             | KIND_DUTY_ACTION
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_ACTION
     )
 }
 
@@ -865,11 +921,17 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_DUTY_HEAD
             | KIND_DUTY_ACTION
             | KIND_LESSON_HEAD
+            | KIND_COFOUNDER_HEAD
+            | KIND_COMPANY_FUNCTION_HEAD
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_HEAD
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_HEAD
+            | KIND_WORKER_RUN_ACTION
     )
 }
 
@@ -1164,6 +1226,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_FACTORY_RUN_HEAD,
     KIND_DUTY_HEAD,
     KIND_LESSON_HEAD,
+    KIND_COFOUNDER_HEAD,
+    KIND_COMPANY_FUNCTION_HEAD,
     KIND_FACTORY_RUN_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
@@ -1180,6 +1244,14 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_HIRE_ACTION,
     KIND_DUTY_ACTION,
     KIND_LESSON_ACTION,
+    KIND_COFOUNDER_ACTION,
+    KIND_COMPANY_FUNCTION_ACTION,
+    KIND_WORKER_RUN_HEAD,
+    KIND_WORKER_RUN_ACTION,
+    KIND_WHATSAPP_BATCH,
+    KIND_WHATSAPP_BATCH_DECISION,
+    KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1265,8 +1337,15 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_ACTION
             | KIND_DUTY_ACTION
             | KIND_LESSON_ACTION
+            | KIND_COFOUNDER_ACTION
+            | KIND_COMPANY_FUNCTION_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
+            | KIND_WORKER_RUN_ACTION
+            | KIND_WHATSAPP_BATCH
+            | KIND_WHATSAPP_BATCH_DECISION
+            | KIND_WHATSAPP_SEND_REQUEST
+            | KIND_WHATSAPP_SETTINGS
     )
 }
 
@@ -1307,8 +1386,11 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_FACTORY_RUN_HEAD
             | KIND_DUTY_HEAD
             | KIND_LESSON_HEAD
+            | KIND_COFOUNDER_HEAD
+            | KIND_COMPANY_FUNCTION_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
+            | KIND_WORKER_RUN_HEAD
     )
 }
 
@@ -1352,8 +1434,23 @@ const _: () = assert!(is_parameterized_replaceable(
 )); // 30653 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); // 30654 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_HEAD)); // 30670 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_FUNCTION_HEAD)); // 30671 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
+
+// Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
+const _: () = assert!(
+    KIND_WHATSAPP_BATCH >= 47048
+        && KIND_WHATSAPP_BATCH_DECISION >= 47048
+        && KIND_WHATSAPP_SEND_REQUEST >= 47048
+        && KIND_WHATSAPP_SETTINGS >= 47048
+        && KIND_WHATSAPP_BATCH <= 47055
+        && KIND_WHATSAPP_BATCH_DECISION <= 47055
+        && KIND_WHATSAPP_SEND_REQUEST <= 47055
+        && KIND_WHATSAPP_SETTINGS <= 47055
+);
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
@@ -1436,6 +1533,8 @@ mod tests {
         for (head, action) in [
             (KIND_DUTY_HEAD, KIND_DUTY_ACTION),
             (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
+            (KIND_COFOUNDER_HEAD, KIND_COFOUNDER_ACTION),
+            (KIND_COMPANY_FUNCTION_HEAD, KIND_COMPANY_FUNCTION_ACTION),
         ] {
             assert!(COMPANY_RECORD_KINDS.contains(&head));
             assert!(COMPANY_RECORD_KINDS.contains(&action));
@@ -1446,6 +1545,19 @@ mod tests {
             assert!(is_command_kind(action));
             assert!(!is_relay_only_kind(action));
         }
+    }
+
+    #[test]
+    fn worker_run_kinds_have_expected_write_authority() {
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_WORKER_RUN_HEAD));
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_WORKER_RUN_ACTION));
+        assert!(is_company_global_kind(KIND_WORKER_RUN_HEAD));
+        assert!(is_company_global_kind(KIND_WORKER_RUN_ACTION));
+        assert!(is_relay_only_kind(KIND_WORKER_RUN_HEAD));
+        assert!(is_company_command_kind(KIND_WORKER_RUN_ACTION));
+        assert!(is_command_kind(KIND_WORKER_RUN_ACTION));
+        assert!(!is_relay_only_kind(KIND_WORKER_RUN_ACTION));
+        assert!(!is_company_command_kind(KIND_WORKER_RUN_HEAD));
     }
 
     #[test]

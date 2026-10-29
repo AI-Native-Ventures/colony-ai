@@ -13,10 +13,14 @@ pub mod business_records;
 pub mod channel;
 /// How long an agent's chat message may be, for the CLI guard and the harness net.
 pub mod chat_limits;
+/// Per-company co-founder mode settings.
+pub mod company_cofounder;
 /// Typed employee duties and schedule validation.
 pub mod company_duties;
 /// Typed content and validation for employee configuration history.
 pub mod company_employee_history;
+/// Company function slots (Sales, Operations, Customer Success, Finance, Brand).
+pub mod company_functions;
 /// Typed employee lessons and evidence validation.
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
@@ -27,6 +31,8 @@ pub mod company_records;
 pub mod company_spend;
 /// Typed content and validation for company work tracking records.
 pub mod company_work_tracking;
+/// Typed content and validation for budgeted employee worker runs.
+pub mod company_workers;
 /// NIP-AE Agent Engrams — slug grammar, conversation key, d-tag derivation,
 /// body parse/serialize, envelope build/validate, head selection.
 pub mod engram;

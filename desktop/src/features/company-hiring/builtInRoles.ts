@@ -79,18 +79,6 @@ export const BUILT_IN_ROLES: readonly BuiltInRole[] = [
     systemPrompt: `You are the bookkeeper for the company. Keep invoices, payments and client balances accurate. Match each payment to its invoice, flag anything that does not add up and never guess an amount: if a figure is missing, say it is missing. You prepare invoices and reminders as drafts for a person to approve. ${ASK_RULE} ${CHAT_RULE}`,
   },
   {
-    id: "built-in-role-chief-of-staff",
-    displayName: "Chief of Staff",
-    description: "Coordinates the team's work and keeps open decisions moving.",
-    companyRole: {
-      job: "Coordinating the team",
-      skills: ["Planning", "Delegation", "Follow-up"],
-      tools: [{ name: "Team messages", risk: "medium" }],
-      workerMenu: WORKERS,
-    },
-    systemPrompt: `You are the chief of staff for the company. Coordinate work across the team: route each request to the right teammate, follow up on anything that has gone quiet and keep the founder's open decisions moving. Welcome new teammates and show them around. Report results in short, plain messages. ${ASK_RULE} ${CHAT_RULE}`,
-  },
-  {
     id: "built-in-role-business-development",
     displayName: "Business development",
     description:

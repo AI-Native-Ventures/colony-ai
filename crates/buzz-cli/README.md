@@ -99,6 +99,18 @@ buzz lessons approve --lesson <uuid> --confidence <low|moderate|high>
 buzz lessons deprecate --lesson <uuid>
 buzz lessons restore --lesson <uuid>
 
+# Co-founder mode and function slots (changes are owner or admin only)
+buzz cofounder get
+buzz cofounder set --enabled true --money best-option --approve-every-hire true
+buzz functions list
+buzz functions get customer_success
+buzz functions assign sales --lead <pubkey>
+buzz functions cover operations
+buzz functions clear finance
+
+# Discovery (counts against the company's monthly limit; exit 2 at the limit)
+buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--industry "Tourism and Hospitality" --vertical "Guesthouses and inns"] [--save]
+
 # Leads (prospects found in Discovery)
 buzz leads list --stage in_conversation --query cape
 buzz leads get --lead <uuid|buzz://lead/uuid>
@@ -106,6 +118,19 @@ buzz leads note --lead <uuid> --content "Spoke to the owner, wants a quote" [--k
 buzz leads stage --lead <uuid> --stage lost --reason "Budget"
 buzz leads qualify --lead <uuid> --qualification qualified
 buzz leads save --lead <uuid> [--unsave]
+
+# WhatsApp outreach (official Cloud API; the relay is the only sender)
+buzz whatsapp status
+buzz whatsapp templates [--refresh]
+buzz whatsapp batch create --template intro_offer --params-file rows.json [--material <url>] [--note "..."]
+buzz whatsapp batch list [--state pending]
+buzz whatsapp batch show --batch <uuid>
+buzz whatsapp batch approve --batch <uuid> [--drop 3] [--edit-file edits.json]   # owner or admin
+buzz whatsapp batch reject --batch <uuid>                                          # owner or admin
+buzz whatsapp send --contact +27821234567 --text "Thanks, here is the quote"      # inside the 24 hour window
+buzz whatsapp send --contact +27821234567 --template intro_offer --param Thabo
+buzz whatsapp inbox | contacts | thread --contact +27821234567
+buzz whatsapp cap [45]                                                              # show or set (owner or admin)
 
 # Forum
 buzz messages vote --event <event-id> --direction up
@@ -201,6 +226,10 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `update` | Edit a lesson and return it to candidate state |
 | | `approve` | Approve a lesson and record confidence |
 | | `deprecate` / `restore` | Deprecate a lesson or restore it as a candidate |
+| `cofounder` | `get` | Print co-founder settings, or the defaults when none are saved |
+| | `set` | Change co-founder settings (owner or admin only) |
+| `functions` | `list` / `get` | Read the five function slots, empty when nobody covers one |
+| | `assign` / `cover` / `clear` | Set a lead, let Scout cover, or empty a slot (owner or admin only) |
 | `feed` | `get` | Get your activity feed |
 | `social` | `publish` | Publish a NIP-01 note |
 | | `set-contacts` | Set NIP-02 contact list |

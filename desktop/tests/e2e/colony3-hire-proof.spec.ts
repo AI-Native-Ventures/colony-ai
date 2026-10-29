@@ -55,78 +55,62 @@ async function shot(page: Page, capture: Capture) {
   captures.push(capture);
 }
 
-test("HireRoles board: the built-in roles with the no-runtime notice", async ({
+test("HireRoles board: the built-in roles with the no-harness notice", async ({
   page,
 }) => {
   await openBoard(page, "roles-no-runtime", HIRE_ROUTES.roles, "hire-roles");
   await expect(
     page.getByTestId(`hire-role-${HIRE_IDS.builtInHospitality}`),
   ).toBeVisible();
-  await expect(page.getByText("No runtime is available")).toBeVisible();
+  await expect(page.getByText("No harness is available")).toBeVisible();
   await shot(page, {
     name: "HireRoles",
     board: "HireRoles",
-    title: "Hire: role catalog (built-in roles), with the no-runtime notice",
+    title: "Hire: role catalog (built-in roles), with the no-harness notice",
   });
 });
 
-test("HireRoles: a role card selects and the preview follows", async ({
+test("HireRoles: a role opens the simple Configure screen", async ({
   page,
 }) => {
   await openBoard(page, "roles", HIRE_ROUTES.roles, "hire-roles");
-  const preview = page.getByRole("complementary", {
-    name: "Role pack preview",
-  });
+  await expect(page.getByTestId("hire-custom-role")).toBeVisible();
+  const catalog = page.locator('[aria-label="Role catalog"]');
   await expect(
-    preview.getByRole("heading", { name: "Hospitality researcher" }),
-  ).toBeVisible();
-  await page
-    .getByTestId(`hire-role-${HIRE_IDS.bookkeeper}`)
-    .getByRole("button", { name: "Bookkeeper" })
-    .click();
-  await expect(
-    preview.getByRole("heading", { name: "Bookkeeper" }),
-  ).toBeVisible();
-  await expect(preview.getByText("Invoices and reconciliation")).toBeVisible();
-  await expect(page.getByText("No runtime is available")).toHaveCount(0);
-  await page
-    .getByTestId(`hire-role-${HIRE_IDS.hospitality}`)
-    .getByRole("button", { name: "Hospitality researcher" })
-    .click();
+    catalog.getByRole("heading", { name: "Chief of Staff" }),
+  ).toHaveCount(0);
+  await page.getByTestId(`hire-configure-${HIRE_IDS.bookkeeper}`).click();
+  await expect(page.getByTestId("hire-configure")).toBeVisible();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  await expect(page.getByTestId("hire-title")).toHaveValue("Bookkeeper");
   await shot(page, {
-    name: "HireRoles-runtime",
-    board: "HireRoles",
-    title: "Hire: role catalog with a runtime on this Mac",
+    name: "HireConfigure-from-role",
+    board: "HireConfigureSimple",
+    title: "Hire: configure a selected role",
   });
-  // "Propose a hire" starts a hire proposal ask instead of configuring.
-  await page.getByTestId("hire-propose").click();
-  await expect(page).toHaveURL(/#\/asks\/new\?.*type=hire/);
 });
 
 test("HireRoles: a business with no role personas is offered the built-ins", async ({
   page,
 }) => {
   await openBoard(page, "roles-empty", HIRE_ROUTES.roles, "hire-roles");
-  for (const name of [
-    "Hospitality researcher",
-    "Social media manager",
-    "Bookkeeper",
-    "Chief of Staff",
-    "Business development",
-    "Writer",
+  const catalog = page.locator('[aria-label="Role catalog"]');
+  for (const id of [
+    HIRE_IDS.builtInHospitality,
+    HIRE_IDS.builtInSocial,
+    HIRE_IDS.builtInBookkeeper,
   ]) {
-    await expect(
-      page
-        .getByRole("region", { name: "Role packs" })
-        .getByRole("heading", { name }),
-    ).toBeVisible();
+    await expect(catalog.getByTestId(`hire-role-${id}`)).toBeVisible();
   }
   await expect(
-    page.getByRole("heading", { name: "Your role catalog starts here" }),
+    catalog.getByRole("heading", {
+      name: "Chief of Staff",
+    }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Create role pack" }),
-  ).toHaveCount(0);
+  await expect(page.getByTestId("hire-custom-role")).toHaveAttribute(
+    "aria-label",
+    "Create your own role",
+  );
   await shot(page, {
     name: "HireRoles-built-in",
     board: "HireRoles",
@@ -137,15 +121,15 @@ test("HireRoles: a business with no role personas is offered the built-ins", asy
 test("HireConfigure board", async ({ page }) => {
   await openBoard(page, "configure", HIRE_ROUTES.configure, "hire-configure");
   await expect(page.getByTestId("hire-employee-name")).toHaveValue("Birch");
-  await expect(page.getByTestId("hire-preview-name")).toHaveText("Birch");
+  await expect(page.getByTestId("hire-title")).toHaveValue(
+    "Hospitality Researcher",
+  );
+  await expect(page.getByTestId("hire-configure-form")).toBeVisible();
   await shot(page, {
     name: "HireConfigure",
-    board: "HireConfigure",
+    board: "HireConfigureSimple",
     title: "Hire: configure employee",
   });
-  // The header preview follows the typed name.
-  await page.getByTestId("hire-employee-name").fill("Birchwood");
-  await expect(page.getByTestId("hire-preview-name")).toHaveText("Birchwood");
 });
 
 test("HireReview board", async ({ page }) => {

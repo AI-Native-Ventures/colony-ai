@@ -347,8 +347,12 @@ function toCamelAgent(raw) {
 }
 
 async function expandAdvancedAndToggleInherit() {
+  const summary = [...dom.window.document.querySelectorAll("summary")].find(
+    (node) => node.textContent?.trim() === "Technical details",
+  );
+  assert.ok(summary, "support-only Technical details disclosure must render");
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
+    fireEvent.click(summary);
   });
   const checkbox = dom.window.document.getElementById(
     "edit-agent-inherit-harness",
@@ -1038,9 +1042,13 @@ test("auto-restart and inherit checkboxes are disabled while the locked update w
     renderDialog(() => {});
   });
 
-  // Expand Advanced to reveal the checkboxes before Save.
+  // Expand the one support-only details row to reveal the configuration toggles.
+  const summary = [...dom.window.document.querySelectorAll("summary")].find(
+    (node) => node.textContent?.trim() === "Technical details",
+  );
+  assert.ok(summary, "support-only Technical details disclosure must render");
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /Advanced/ }));
+    fireEvent.click(summary);
   });
 
   await selectEffort("High");

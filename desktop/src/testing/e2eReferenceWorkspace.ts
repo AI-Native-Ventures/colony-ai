@@ -115,6 +115,8 @@ export const REFERENCE_PROSPECT_IDS = {
   "north-note": "1e1a7000-0000-4000-9000-000000001010",
   "studio-local": "1e1a7000-0000-4000-9000-000000001011",
   "cedar-co": "1e1a7000-0000-4000-9000-000000001012",
+  "marigold-house": "1e1a7000-0000-4000-9000-000000001013",
+  "melville-hill-cottages": "1e1a7000-0000-4000-9000-000000001014",
 } as const;
 
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
@@ -949,6 +951,332 @@ const REFERENCE_LEADS = [
   ],
 ] as const;
 
+const WHATSAPP_GUESTHOUSE_LEADS = [
+  [
+    "the-olive-house",
+    "Melville Manor Guesthouse",
+    "Melville, Johannesburg",
+    "Guesthouse",
+    "Lerato",
+    "A family-run stay near the village with breakfast and local recommendations.",
+    "Public website",
+    94,
+    "new",
+    6500,
+  ],
+  [
+    "form-field",
+    "Plane Tree Guesthouse",
+    "Parkhurst, Johannesburg",
+    "Guesthouse",
+    "Thandeka",
+    "An older website that is hard to use on a phone. Most bookings go through Booking.com.",
+    "From their current site and Thandeka's reply",
+    92,
+    "contacted",
+    7200,
+  ],
+  [
+    "sunday-edit",
+    "Corner Cottage Parkhurst",
+    "Parkhurst, Johannesburg",
+    "Guesthouse",
+    "Lwazi",
+    "A restored cottage offering quiet weekend stays.",
+    "Business directory",
+    90,
+    "contacted",
+    6000,
+  ],
+  [
+    "stillroom",
+    "Jacaranda Lane Guesthouse",
+    "Melville, Johannesburg",
+    "Guesthouse",
+    "Mpho",
+    "A leafy guesthouse with rooms for business and weekend travellers.",
+    "Public website",
+    88,
+    "new",
+    5800,
+  ],
+  [
+    "gather-house",
+    "Lavender Hill Guesthouse",
+    "Melville, Johannesburg",
+    "Guesthouse",
+    "Karen",
+    "Garden rooms and breakfast close to the university precinct.",
+    "Business directory",
+    87,
+    "new",
+    6200,
+  ],
+  [
+    "common-ground",
+    "The Green Shutter B&B",
+    "Melville, Johannesburg",
+    "Bed and breakfast",
+    "Palesa",
+    "A small B&B with a clear local identity and room to grow direct bookings.",
+    "Public website",
+    85,
+    "new",
+    5600,
+  ],
+  [
+    "clay-collective",
+    "Oakleaf Rooms",
+    "Melville, Johannesburg",
+    "Guest rooms",
+    "Sam",
+    "Affordable rooms near the main transport routes.",
+    "Business directory",
+    84,
+    "new",
+    5200,
+  ],
+  [
+    "woven-living",
+    "Bramble & Brick Guesthouse",
+    "Westdene, Johannesburg",
+    "Guesthouse",
+    "Zoe",
+    "A character guesthouse with a garden and breakfast service.",
+    "Public website",
+    82,
+    "new",
+    6000,
+  ],
+  [
+    "little-kin",
+    "Leafy Stoep Guesthouse",
+    "Melville, Johannesburg",
+    "Guesthouse",
+    "Maya",
+    "A homely stay with a shaded stoep and local dining nearby.",
+    "Business directory",
+    81,
+    "new",
+    5000,
+  ],
+  [
+    "north-note",
+    "Koppie View Lodge",
+    "Auckland Park, Johannesburg",
+    "Lodge",
+    "Dineo",
+    "A small lodge serving visiting families and academic guests.",
+    "Public website",
+    79,
+    "new",
+    6500,
+  ],
+  [
+    "studio-local",
+    "The Seventh Street Rooms",
+    "Melville, Johannesburg",
+    "Guest rooms",
+    "Lea",
+    "Central rooms near cafes, restaurants and public transport.",
+    "Business directory",
+    77,
+    "new",
+    4800,
+  ],
+  [
+    "cedar-co",
+    "Brixton View Rooms",
+    "Brixton, Johannesburg",
+    "Guesthouse",
+    "Rene",
+    "Comfortable rooms with a view across the western suburbs.",
+    "Public website",
+    75,
+    "contacted",
+    5400,
+  ],
+] as const;
+
+const WHATSAPP_EXTRA_GUESTHOUSE_DETAILS = [
+  ["marigold-house", "Marigold House", "Melville, Johannesburg", "Anika"],
+  [
+    "melville-hill-cottages",
+    "Melville Hill Cottages",
+    "Melville, Johannesburg",
+    "Rethabile",
+  ],
+  [
+    "linden-tree-lodge",
+    "Linden Tree Lodge",
+    "Emmarentia, Johannesburg",
+    "Zanele",
+  ],
+  [
+    "stoop-on-seventh",
+    "The Stoop on Seventh",
+    "Parkhurst, Johannesburg",
+    "Farah",
+  ],
+  ["quiet-owl-bb", "The Quiet Owl B&B", "Melville, Johannesburg", "Palesa"],
+  [
+    "red-fern-guesthouse",
+    "The Red Fern Guesthouse",
+    "Parkhurst, Johannesburg",
+    "Musa",
+  ],
+  ["garden-gate-rooms", "Garden Gate Rooms", "Melville, Johannesburg", "Tumi"],
+  [
+    "emmarentia-gardens",
+    "Emmarentia Gardens Guesthouse",
+    "Emmarentia, Johannesburg",
+    "Thabo",
+  ],
+  [
+    "richmond-avenue-bnb",
+    "Richmond Avenue B&B",
+    "Richmond, Johannesburg",
+    "Lindi",
+  ],
+  [
+    "parkview-guest-rooms",
+    "Parkview Guest Rooms",
+    "Parkview, Johannesburg",
+    "Noma",
+  ],
+  ["44-stanley-stay", "44 Stanley Stay", "Milpark, Johannesburg", "Lebo"],
+  ["milpark-house", "Milpark House", "Milpark, Johannesburg", "Sihle"],
+  [
+    "saxonwold-guest-lodge",
+    "Saxonwold Guest Lodge",
+    "Saxonwold, Johannesburg",
+    "Mandla",
+  ],
+  [
+    "houghton-view-rooms",
+    "Houghton View Rooms",
+    "Houghton, Johannesburg",
+    "Zinhle",
+  ],
+  [
+    "greenside-courtyard",
+    "Greenside Courtyard Stay",
+    "Greenside, Johannesburg",
+    "Neo",
+  ],
+  [
+    "northcliff-hill-house",
+    "Northcliff Hill House",
+    "Northcliff, Johannesburg",
+    "Dumisani",
+  ],
+  ["rosebank-suites", "Rosebank Suites", "Rosebank, Johannesburg", "Mpho"],
+  [
+    "auckland-park-house",
+    "Auckland Park House",
+    "Auckland Park, Johannesburg",
+    "Lerato",
+  ],
+  [
+    "kingsway-guest-rooms",
+    "Kingsway Guest Rooms",
+    "Auckland Park, Johannesburg",
+    "Sbu",
+  ],
+  [
+    "the-french-quarter",
+    "The French Quarter",
+    "Melville, Johannesburg",
+    "Amira",
+  ],
+  [
+    "melville-corner-rooms",
+    "Melville Corner Rooms",
+    "Melville, Johannesburg",
+    "Dineo",
+  ],
+  [
+    "westcliff-garden-suites",
+    "Westcliff Garden Suites",
+    "Westcliff, Johannesburg",
+    "Aviwe",
+  ],
+  [
+    "parkhurst-palm-guesthouse",
+    "Parkhurst Palm Guesthouse",
+    "Parkhurst, Johannesburg",
+    "Nandi",
+  ],
+  ["little-linden", "The Little Linden", "Linden, Johannesburg", "Kagiso"],
+  [
+    "orange-grove-manor",
+    "Orange Grove Manor",
+    "Orange Grove, Johannesburg",
+    "Vusi",
+  ],
+  ["parkview-manor", "Parkview Manor", "Parkview, Johannesburg", "Naledi"],
+] as const;
+
+const WHATSAPP_EXTRA_GUESTHOUSE_LEADS = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.map(
+  ([slug, name, location, contactName], index) =>
+    [
+      slug,
+      name,
+      location,
+      "Guesthouse",
+      contactName,
+      name + " is an independently run stay with a warm local welcome.",
+      index % 2 === 0 ? "Public website" : "Business directory",
+      74 - index,
+      "new",
+      0,
+    ] as const,
+);
+
+const WHATSAPP_GUESTHOUSE_ORDER = new Map(
+  [
+    "form-field",
+    "sunday-edit",
+    "stillroom",
+    "north-note",
+    "marigold-house",
+    "melville-hill-cottages",
+    "gather-house",
+    "clay-collective",
+    "linden-tree-lodge",
+    "stoop-on-seventh",
+    "common-ground",
+    "woven-living",
+    "little-kin",
+    "the-olive-house",
+    "cedar-co",
+    "studio-local",
+    "parkview-guest-rooms",
+    "44-stanley-stay",
+    "milpark-house",
+    "saxonwold-guest-lodge",
+    "houghton-view-rooms",
+    "greenside-courtyard",
+    "northcliff-hill-house",
+    "rosebank-suites",
+    "auckland-park-house",
+    "kingsway-guest-rooms",
+    "the-french-quarter",
+    "melville-corner-rooms",
+    "westcliff-garden-suites",
+    "parkhurst-palm-guesthouse",
+    "little-linden",
+    "orange-grove-manor",
+    "parkview-manor",
+    "quiet-owl-bb",
+    "red-fern-guesthouse",
+    "garden-gate-rooms",
+    "westdene-house",
+    "emmarentia-gardens",
+    "richmond-avenue-bnb",
+  ].map((slug, index) => [slug, index] as const),
+);
+
 /** Deliberately long test name for lead-reference picker overflow coverage. */
 export const REFERENCE_LONG_LEAD_NAME =
   "The Exceptionally Long Name of a Johannesburg Home and Living Business";
@@ -980,7 +1308,7 @@ function referenceW10Event(
 export function referenceSalesRecordEvents(
   selfPubkey: string,
   communityId: TenantCommunityId,
-  options: { longLeadNames?: boolean } = {},
+  options: { longLeadNames?: boolean; whatsappGuesthouses?: boolean } = {},
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const now = Math.floor(Date.now() / 1000);
@@ -1014,7 +1342,14 @@ export function referenceSalesRecordEvents(
     ),
   );
 
-  REFERENCE_LEADS.forEach((lead, index) => {
+  const leadSeeds = options.whatsappGuesthouses
+    ? [...WHATSAPP_GUESTHOUSE_LEADS, ...WHATSAPP_EXTRA_GUESTHOUSE_LEADS].sort(
+        (left, right) =>
+          (WHATSAPP_GUESTHOUSE_ORDER.get(left[0]) ?? Number.MAX_SAFE_INTEGER) -
+          (WHATSAPP_GUESTHOUSE_ORDER.get(right[0]) ?? Number.MAX_SAFE_INTEGER),
+      )
+    : REFERENCE_LEADS;
+  leadSeeds.forEach((lead, index) => {
     const [
       slug,
       name,
@@ -1031,8 +1366,12 @@ export function referenceSalesRecordEvents(
       options.longLeadNames && slug === "cedar-co"
         ? REFERENCE_LONG_LEAD_NAME
         : name;
+    const extraLeadIndex = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.findIndex(
+      ([extraSlug]) => extraSlug === slug,
+    );
     const prospectId =
-      REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS];
+      REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS] ??
+      `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`;
     const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
     const qualification = [
       "qualified",
@@ -1056,10 +1395,12 @@ export function referenceSalesRecordEvents(
         displayName,
         externalIds: [],
       },
-      industry: "Home & Living",
+      industry: options.whatsappGuesthouses ? "Hospitality" : "Home & Living",
       vertical,
       fitScore: score,
-      potentialMonthlyValueMinor: value * 100,
+      potentialMonthlyValueMinor: options.whatsappGuesthouses
+        ? null
+        : value * 100,
       website: `https://${slug}.example`,
       contactName,
       location,
@@ -1084,7 +1425,7 @@ export function referenceSalesRecordEvents(
       referenceW10Event(
         eventId,
         selfPubkey,
-        now - (REFERENCE_LEADS.length - index),
+        now - (leadSeeds.length - index),
         KIND_PROSPECT_HEAD,
         channelId,
         businessDTag(communityId, "prospect", prospectId),
@@ -1121,7 +1462,9 @@ export function referenceSalesRecordEvents(
     ],
     terms: JSON.stringify({
       schemaVersion: 1,
-      title: "A consistent social presence for Form & Field",
+      title: options.whatsappGuesthouses
+        ? "A website refresh for Plane Tree Guesthouse"
+        : "A consistent social presence for Form & Field",
       scope:
         "8 image or carousel posts each month. Monthly content plan, captions, scheduling and one monthly report. Two revision rounds. Advertising spend and on-site photography are excluded.",
       postsPerMonth: 8,
@@ -1610,7 +1953,11 @@ export function referenceOliveHouseMessages(selfPubkey: string): RelayEvent[] {
 /** Writes reference sidebar storage and renames the seeded community. */
 export function seedReferenceSidebarStorage(
   selfPubkey: string,
-  options: { sidebarShell?: boolean; colony3?: boolean } = {},
+  options: {
+    sidebarShell?: boolean;
+    colony3?: boolean;
+    businessName?: string;
+  } = {},
 ): void {
   const sidebarShell = options.sidebarShell === true;
   const colony3 = options.colony3 === true;
@@ -1628,7 +1975,9 @@ export function seedReferenceSidebarStorage(
         (community) => (community as { id?: string }).id === activeId,
       ) ?? communities[0];
     for (const community of communities) {
-      if (community === active) community.name = REFERENCE_COMMUNITY_NAME;
+      if (community === active) {
+        community.name = options.businessName ?? REFERENCE_COMMUNITY_NAME;
+      }
       relayUrl ??= community.relayUrl;
     }
     relayUrl = active?.relayUrl ?? relayUrl;

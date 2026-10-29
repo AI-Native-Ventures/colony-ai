@@ -117,6 +117,10 @@ impl std::fmt::Debug for KlipyConfig {
 const DEFAULT_OUTSCRAPER_API_BASE: &str = "https://api.app.outscraper.com";
 /// Default Outscraper host that serves results for requests that run asynchronously.
 const DEFAULT_OUTSCRAPER_POLL_BASE: &str = "https://api.outscraper.cloud";
+/// Results one company may fetch through Discovery per calendar month when
+/// `BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS` is not set.
+const DEFAULT_DISCOVERY_COMPANY_MONTHLY_RESULTS: i32 = 2000;
+
 /// Wait between result polls for an asynchronous Outscraper request.
 const OUTSCRAPER_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -130,6 +134,7 @@ pub struct DiscoveryConfig {
     api_base: String,
     poll_base: String,
     poll_interval: Duration,
+    company_monthly_results: i32,
 }
 
 impl DiscoveryConfig {
@@ -140,7 +145,19 @@ impl DiscoveryConfig {
             api_base,
             poll_base,
             poll_interval: OUTSCRAPER_POLL_INTERVAL,
+            company_monthly_results: DEFAULT_DISCOVERY_COMPANY_MONTHLY_RESULTS,
         }
+    }
+
+    /// Results one company may fetch per calendar month (UTC).
+    pub(crate) fn company_monthly_results(&self) -> i32 {
+        self.company_monthly_results
+    }
+
+    /// Replace the per-company monthly result cap.
+    pub(crate) fn with_company_monthly_results(mut self, cap: i32) -> Self {
+        self.company_monthly_results = cap;
+        self
     }
 
     /// Return the key only to the outbound Outscraper client.
@@ -182,8 +199,9 @@ impl std::fmt::Debug for DiscoveryConfig {
 }
 
 /// Read the optional Outscraper integration from `OUTSCRAPER_API_KEY`,
-/// `OUTSCRAPER_API_BASE` and `OUTSCRAPER_POLL_BASE`. An unset or blank key
-/// means prospect search is not configured.
+/// `OUTSCRAPER_API_BASE`, `OUTSCRAPER_POLL_BASE` and
+/// `BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS` (a positive whole number, default
+/// 2000). An unset or blank key means prospect search is not configured.
 fn discovery_config_from_lookup(
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<DiscoveryConfig>, ConfigError> {
@@ -215,7 +233,23 @@ fn discovery_config_from_lookup(
             )));
         }
     }
-    Ok(Some(DiscoveryConfig::new(api_key, api_base, poll_base)))
+    let company_monthly_results = match value("BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS") {
+        None => DEFAULT_DISCOVERY_COMPANY_MONTHLY_RESULTS,
+        Some(raw) => raw
+            .parse::<i32>()
+            .ok()
+            .filter(|cap| *cap > 0)
+            .ok_or_else(|| {
+                ConfigError::InvalidValue(
+                    "BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS must be a positive whole number"
+                        .to_string(),
+                )
+            })?,
+    };
+    Ok(Some(
+        DiscoveryConfig::new(api_key, api_base, poll_base)
+            .with_company_monthly_results(company_monthly_results),
+    ))
 }
 
 /// Email, key-custody, and Google configuration for account routes.
@@ -2134,6 +2168,33 @@ mod tests {
                 discovery_config_from_lookup(env_of(&[
                     ("OUTSCRAPER_API_KEY", "key"),
                     ("OUTSCRAPER_API_BASE", invalid),
+                ]))
+                .is_err(),
+                "{invalid} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn discovery_config_company_monthly_cap_defaults_and_validates() {
+        let default = discovery_config_from_lookup(env_of(&[("OUTSCRAPER_API_KEY", "key")]))
+            .expect("configured")
+            .expect("key present");
+        assert_eq!(default.company_monthly_results(), 2000);
+
+        let custom = discovery_config_from_lookup(env_of(&[
+            ("OUTSCRAPER_API_KEY", "key"),
+            ("BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS", " 150 "),
+        ]))
+        .expect("configured")
+        .expect("key present");
+        assert_eq!(custom.company_monthly_results(), 150);
+
+        for invalid in ["0", "-5", "many", "1.5", "3000000000"] {
+            assert!(
+                discovery_config_from_lookup(env_of(&[
+                    ("OUTSCRAPER_API_KEY", "key"),
+                    ("BUZZ_DISCOVERY_COMPANY_MONTHLY_RESULTS", invalid),
                 ]))
                 .is_err(),
                 "{invalid} must be rejected"

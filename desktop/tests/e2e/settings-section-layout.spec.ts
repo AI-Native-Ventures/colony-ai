@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings, selectSettingsSection } from "../helpers/settings";
+import { openSettings } from "../helpers/settings";
 
 test("settings use seven pages, find-a-setting search, remembered sections, and return navigation", async ({
   page,
@@ -38,7 +38,7 @@ test("settings use seven pages, find-a-setting search, remembered sections, and 
 
   // Pages the owner cut have no way in, not even through search.
   await page.getByTestId("settings-search").fill("Channel templates");
-  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(page.locator(".cs-search-result")).toHaveCount(0);
   await page.getByTestId("settings-search").fill("");
 
   await page.getByTestId("settings-group-appearance-group").click();
@@ -327,6 +327,25 @@ test("People and access gives members a denied state and a way back", async ({
   await expect(panel).toContainText("Only workspace owners and administrators");
   await panel.getByRole("button", { name: "Back to business" }).click();
   await expect(page.getByTestId("settings-business-profile")).toBeVisible();
+});
+
+test("managed-relay members cannot open or search WhatsApp settings", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/#/settings?section=whatsapp");
+
+  await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
+  await expect(page.getByTestId("settings-panel-whatsapp")).toHaveCount(0);
+  await expect(page.getByTestId("settings-group-whatsapp-channel")).toHaveCount(
+    0,
+  );
+  await page.getByTestId("settings-search").fill("WhatsApp");
+  await expect(page.locator(".cs-search-result")).toHaveCount(0);
+  await expect(page.getByText("No settings found.")).toBeVisible();
 });
 
 test("People and access shows permission loading before the denied state", async ({

@@ -103,6 +103,35 @@ pub struct PricingIdentity {
     pub cache_class: Option<String>,
 }
 
+/// One provider-reported subscription usage window.
+///
+/// `used_fraction` is a fraction from 0 through 1, and `resets_at` is a Unix
+/// timestamp in seconds. These values are supplied only by a harness that
+/// reports an actual subscription window; clients must omit the meter when
+/// the snapshot is absent or expired.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionUsageWindow {
+    /// Fraction of the plan window that has been consumed, from 0 through 1.
+    pub used_fraction: f64,
+    /// Unix timestamp in seconds when the plan window resets.
+    pub resets_at: i64,
+}
+
+/// Actual plan usage windows reported by a subscription harness.
+///
+/// The five-hour session window is required when this object is present.
+/// `weekly` is omitted for plans that do not expose a weekly allowance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionUsage {
+    /// The required five-hour session window.
+    pub session: SubscriptionUsageWindow,
+    /// The weekly window, omitted when the plan does not expose one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weekly: Option<SubscriptionUsageWindow>,
+}
+
 /// Decrypted payload of a `kind:44200` Agent Turn Metric event.
 /// nullable unless constrained by the NIP (e.g. `session_id` + `turn_seq`
 /// are required whenever `cumulative` is present).
@@ -157,6 +186,11 @@ pub struct AgentTurnMetricPayload {
     /// treat omission as "price unknown".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pricing_identity: Option<PricingIdentity>,
+
+    /// Provider-reported account usage windows. Omitted when the harness does
+    /// not supply a structured subscription snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_usage: Option<SubscriptionUsage>,
 }
 
 fn default_delta_reliable() -> bool {
@@ -185,6 +219,25 @@ impl AgentTurnMetricPayload {
         }
         if let Some(c) = &self.cumulative {
             check_cost(c.cost_usd, "cumulative.costUsd")?;
+        }
+        if let Some(usage) = &self.subscription_usage {
+            let mut windows = vec![("session", &usage.session)];
+            if let Some(weekly) = &usage.weekly {
+                windows.push(("weekly", weekly));
+            }
+            for (name, window) in windows {
+                if !window.used_fraction.is_finite() || !(0.0..=1.0).contains(&window.used_fraction)
+                {
+                    return Err(ObserverPayloadError::InvalidPayload(format!(
+                        "subscriptionUsage.{name}.usedFraction must be finite and between 0 and 1"
+                    )));
+                }
+                if window.resets_at <= 0 {
+                    return Err(ObserverPayloadError::InvalidPayload(format!(
+                        "subscriptionUsage.{name}.resetsAt must be a positive Unix timestamp"
+                    )));
+                }
+            }
         }
         Ok(())
     }
@@ -256,6 +309,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: Some(StopReason::EndTurn),
             pricing_identity: None,
+            subscription_usage: None,
         }
     }
 
@@ -312,6 +366,49 @@ mod tests {
             payload.delta_reliable,
             "deltaReliable should default to true"
         );
+    }
+
+    #[test]
+    fn subscription_usage_is_optional_and_validated() {
+        let mut payload = sample_payload();
+        payload.subscription_usage = Some(SubscriptionUsage {
+            session: SubscriptionUsageWindow {
+                used_fraction: 0.24,
+                resets_at: 1_788_465_600,
+            },
+            weekly: Some(SubscriptionUsageWindow {
+                used_fraction: 0.13,
+                resets_at: 1_789_005_600,
+            }),
+        });
+        payload.validate().expect("valid plan windows");
+
+        let encoded = serde_json::to_value(&payload).expect("serialize");
+        assert_eq!(
+            encoded["subscriptionUsage"]["session"]["usedFraction"],
+            0.24
+        );
+        assert_eq!(
+            encoded["subscriptionUsage"]["weekly"]["resetsAt"],
+            1_789_005_600
+        );
+
+        let decoded: AgentTurnMetricPayload = serde_json::from_value(encoded).expect("deserialize");
+        assert_eq!(decoded.subscription_usage, payload.subscription_usage);
+
+        let old_payload: AgentTurnMetricPayload =
+            serde_json::from_str(r#"{"harness":"claude","timestamp":"2026-10-29T00:00:00Z"}"#)
+                .expect("legacy payload without subscription usage");
+        assert!(old_payload.subscription_usage.is_none());
+
+        let mut invalid = payload;
+        invalid
+            .subscription_usage
+            .as_mut()
+            .expect("subscription usage")
+            .session
+            .used_fraction = 1.1;
+        assert!(invalid.validate().is_err());
     }
 
     #[test]
@@ -402,6 +499,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: None,
             pricing_identity: None,
+            subscription_usage: None,
         }
     }
 
@@ -426,6 +524,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: None,
             pricing_identity: None,
+            subscription_usage: None,
         }
     }
 

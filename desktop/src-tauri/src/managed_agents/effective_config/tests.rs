@@ -188,6 +188,55 @@ fn linked_stale_record_model_is_inert() {
 }
 
 #[test]
+fn linked_colony_credits_selection_uses_the_instance_free_model() {
+    let rec = record(
+        Some("d1"),
+        Some("google/gemma-4-31b-it:free"),
+        Some("colony-credits"),
+        None,
+    );
+    let defs = vec![definition(
+        "d1",
+        Some("claude-opus-5-5"),
+        Some("anthropic"),
+        "persona prompt",
+    )];
+    let g = global(None, None);
+
+    let cfg = resolve_effective_config(&rec, &defs, &g)
+        .require_resolved()
+        .expect("linked Colony credits selection resolves");
+
+    assert_eq!(cfg.provider.value.as_deref(), Some("colony-credits"));
+    assert_eq!(cfg.provider.source, ConfigSource::InstanceLegacy);
+    assert_eq!(
+        cfg.model.value.as_deref(),
+        Some("google/gemma-4-31b-it:free")
+    );
+    assert_eq!(cfg.model.source, ConfigSource::InstanceLegacy);
+    assert_eq!(cfg.system_prompt.value.as_deref(), Some("persona prompt"));
+}
+
+#[test]
+fn linked_colony_credits_without_instance_model_does_not_reuse_persona_model() {
+    let rec = record(Some("d1"), None, Some("colony-credits"), None);
+    let defs = vec![definition(
+        "d1",
+        Some("claude-opus-5-5"),
+        Some("anthropic"),
+        "persona prompt",
+    )];
+
+    let cfg = resolve_effective_config(&rec, &defs, &global(None, None))
+        .require_resolved()
+        .expect("linked Colony credits selection resolves");
+
+    assert_eq!(cfg.provider.value.as_deref(), Some("colony-credits"));
+    assert_eq!(cfg.model.value, None);
+    assert_eq!(cfg.model.source, ConfigSource::InstanceLegacy);
+}
+
+#[test]
 fn linked_definition_model_set_provider_inherits() {
     let rec = record(Some("d1"), None, None, None);
     let defs = vec![definition("d1", Some("def-model"), None, "prompt")];

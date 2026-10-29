@@ -248,6 +248,17 @@ mod tests {
     }
 
     #[test]
+    fn voice_rules_send_documents_with_the_doc_flag_not_a_typed_fence() {
+        for phrase in [
+            "`colony messages send --doc --title \"Title\" --content -`",
+            "Colony builds the fence, so you never type one.",
+            "never put it inside a double-quoted shell string, where the shell deletes the backticks",
+        ] {
+            assert!(VOICE_RULES.contains(phrase), "missing voice rule: {phrase}");
+        }
+    }
+
+    #[test]
     fn voice_rules_no_longer_ask_for_a_pickup_line_or_a_soft_cap() {
         for retired in [
             "One pickup line, then only results or blockers.",

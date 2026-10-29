@@ -49,14 +49,33 @@ export function startFixtureSite() {
       return;
     }
     if (url.pathname === "/popup") {
-      response.end(`<!doctype html><meta charset="utf-8"><title>popup-parent</title>
+      response.end(`<!doctype html><meta charset="utf-8"><title>popup-parent-ready</title>
+<button id="open-popup">Continue with Google</button>
 <script>
-  window.open("http://127.0.0.1:${port}/probe", "_blank");
-  // Chromium refuses a file: window from a web page before the app is asked;
-  // ftp: reaches the app's window handler, which must refuse it.
-  window.open("file:///etc/hosts", "_blank");
-  window.open("ftp://127.0.0.1:1/", "_blank");
-  document.title = "popup-parent-ready";
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "popup-proof") return;
+    document.title = JSON.stringify({ opener: event.data.opener, sameProfile: event.data.sameProfile });
+  });
+  document.getElementById("open-popup").addEventListener("click", () => {
+    const popup = window.open("http://127.0.0.1:${port}/popup-provider", "oauth-provider", "popup,width=420,height=540");
+    document.documentElement.dataset.popupReturned = popup ? "yes" : "no";
+    // Chromium refuses a file: window from a web page before the app is asked;
+    // ftp: reaches the app's window handler, which must refuse it.
+    window.open("file:///etc/hosts", "_blank");
+    window.open("ftp://127.0.0.1:1/", "_blank");
+  });
+</script>`);
+      return;
+    }
+    if (url.pathname === "/popup-provider") {
+      response.end(`<!doctype html><meta charset="utf-8"><title>popup-provider</title>
+<script>
+  window.opener?.postMessage({
+    type: "popup-proof",
+    opener: Boolean(window.opener),
+    sameProfile: document.cookie.includes("scope=A")
+  }, location.origin);
+  setTimeout(() => window.close(), 1500);
 </script>`);
       return;
     }

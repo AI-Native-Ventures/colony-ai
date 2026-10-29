@@ -80,7 +80,10 @@ async function startCampaign(page: Page) {
     .getByRole("textbox", { name: /Search industries/ })
     .fill("home decor");
   await page.getByRole("button", { name: "Find prospects" }).first().click();
-  const dialog = page.getByRole("dialog");
+  const typeDetails = page.getByTestId("discovery-type-details-dialog");
+  await expect(typeDetails).toBeVisible();
+  await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
+  const dialog = page.getByTestId("discovery-campaign-dialog");
   await dialog.getByLabel("Location").fill("Johannesburg");
   await dialog.getByLabel("Prospect target").fill("2");
   await dialog

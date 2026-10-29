@@ -104,20 +104,37 @@ fn bounded_json<T: serde::de::DeserializeOwned>(
 /// Ownership is proved by the active owner's NIP-98 signature; agent ownership
 /// and membership are checked by the relay before returning a session.
 pub(super) fn authorize(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authorization, String> {
+    authorize_with_model(relay, agent, owner, None)
+}
+
+/// Authorize a managed session with the per-agent free model selection. The
+/// relay validates it against its configured allowlisted free route.
+pub(super) fn authorize_with_model(
+    relay: &str,
+    agent: &Keys,
+    owner: &Keys,
+    model: Option<&str>,
+) -> Result<Authorization, String> {
     let relay = relay.to_owned();
     let agent = agent.clone();
     let owner = owner.clone();
+    let model = model.map(str::to_owned);
     // Some launch callers are async. reqwest blocking clients must be created
     // and dropped outside their Tokio runtime; this worker has bounded I/O.
     std::thread::Builder::new()
         .name("colony-credits-session".into())
-        .spawn(move || authorize_blocking(&relay, &agent, &owner))
+        .spawn(move || authorize_blocking(&relay, &agent, &owner, model.as_deref()))
         .map_err(|_| "Could not start Colony credits authorization.".to_string())?
         .join()
         .map_err(|_| "Colony credits authorization stopped.".to_string())?
 }
 
-fn authorize_blocking(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authorization, String> {
+fn authorize_blocking(
+    relay: &str,
+    agent: &Keys,
+    owner: &Keys,
+    model: Option<&str>,
+) -> Result<Authorization, String> {
     let origin =
         buzz_agent_pkg::credits_gateway::gateway_origin(relay).map_err(|e| e.to_string())?;
     let http = reqwest::blocking::Client::builder()
@@ -169,9 +186,12 @@ fn authorize_blocking(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authori
         .map_err(|_| "Managed agent authentication timed out.".to_string())?
     })?;
     let url = format!("{origin}/api/credits-gateway/sessions");
-    let body =
-        serde_json::to_vec(&serde_json::json!({"agent_pubkey": agent.public_key().to_hex()}))
-            .map_err(|_| "Could not authorize Colony credits.".to_string())?;
+    let mut session_request = serde_json::json!({"agent_pubkey": agent.public_key().to_hex()});
+    if let Some(model) = model.map(str::trim).filter(|value| !value.is_empty()) {
+        session_request["model"] = serde_json::json!(model);
+    }
+    let body = serde_json::to_vec(&session_request)
+        .map_err(|_| "Could not authorize Colony credits.".to_string())?;
     let auth =
         crate::relay::build_nip98_auth_header_for_keys(owner, &reqwest::Method::POST, &url, &body)?;
     let mut authorization: Authorization = bounded_json(

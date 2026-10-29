@@ -14,6 +14,7 @@ import type {
   TaxonomyVertical,
 } from "./taxonomy";
 import { countVerticals, findVertical, industryTaxonomy } from "./taxonomy";
+import { DiscoveryCoverPicture } from "./DiscoveryCoverPicture";
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
@@ -22,11 +23,7 @@ import {
   IndustryGlyph,
   PlusGlyph,
 } from "./DiscoveryIcons";
-import {
-  discoveryCoverUrl,
-  shouldShowDiscoveryCover,
-  type DiscoveryCoverSize,
-} from "./discoveryCovers";
+import { DiscoveryTypeDetailsDialog } from "./DiscoveryTypeDetailsDialog";
 
 function summarizeTypeDescription(description: string | undefined): string {
   const text = (description ?? "").trim();
@@ -48,7 +45,7 @@ type Props = {
   canFind: boolean;
   onSelectCategory: (categoryId: string) => void;
   onBack: () => void;
-  onFind: (row: CatalogueRow) => void;
+  onFind: (row: CatalogueRow, pickedTags?: string[]) => void;
 };
 
 function normalized(text: string): string {
@@ -77,42 +74,6 @@ function industryMatches(category: IndustryCategory, query: string): boolean {
   );
 }
 
-function industryUrl(id: string, size: DiscoveryCoverSize): string | null {
-  return discoveryCoverUrl(id, size);
-}
-
-function CoverPicture({
-  id,
-  size,
-  className,
-  placeholder,
-}: {
-  id: string;
-  size: DiscoveryCoverSize;
-  className: string;
-  placeholder: React.ReactNode;
-}) {
-  const url = industryUrl(id, size);
-  const [failedUrl, setFailedUrl] = React.useState<string | null>(null);
-  const showImage = shouldShowDiscoveryCover(id, size, failedUrl);
-
-  return (
-    <span aria-hidden="true" className={className}>
-      {showImage && url ? (
-        <img
-          alt=""
-          decoding="async"
-          loading="lazy"
-          onError={() => setFailedUrl(url)}
-          src={url}
-        />
-      ) : (
-        <span className="d4-picture-placeholder">{placeholder}</span>
-      )}
-    </span>
-  );
-}
-
 function industryRows(category: IndustryCategory): CatalogueRow[] {
   return category.verticals.map((type) => ({
     id: type.id,
@@ -137,24 +98,6 @@ function otherIndustryNames(
     .filter((label): label is string => Boolean(label));
 }
 
-function typeRow(
-  type: TaxonomyVertical,
-  category?: IndustryCategory,
-): CatalogueRow {
-  const parentId = category?.id ?? type.industries?.[0] ?? "";
-  const parentName =
-    category?.label ??
-    industryTaxonomy.find((industry) => industry.id === parentId)?.label ??
-    "";
-  return {
-    id: type.id,
-    name: type.label,
-    description: type.definition ?? type.description ?? "",
-    parentId,
-    parentName,
-  };
-}
-
 function DiscoveryTypeCard({
   type,
   row,
@@ -163,7 +106,6 @@ function DiscoveryTypeCard({
   canFind,
   onDetails,
   onToggle,
-  onFind,
 }: {
   type: TaxonomyVertical;
   row: CatalogueRow;
@@ -172,7 +114,6 @@ function DiscoveryTypeCard({
   canFind: boolean;
   onDetails: (typeId: string) => void;
   onToggle: (typeId: string) => void;
-  onFind: (row: CatalogueRow) => void;
 }) {
   const otherNames = otherIndustryNames(type, currentIndustryId);
   const locationLabel = otherNames.length
@@ -187,7 +128,7 @@ function DiscoveryTypeCard({
       data-testid={`discovery-type-card-${type.id}`}
     >
       <div className="d4-type-content">
-        <CoverPicture
+        <DiscoveryCoverPicture
           className="d4-type-image"
           id={type.id}
           placeholder={<IndustryGlyph id={row.parentId} size={28} />}
@@ -232,7 +173,7 @@ function DiscoveryTypeCard({
         <button
           className="d4-find-button"
           disabled={!canFind}
-          onClick={() => onFind(row)}
+          onClick={() => onDetails(type.id)}
           type="button"
         >
           Find prospects
@@ -296,10 +237,6 @@ export function DiscoveryBusinessCatalogue({
       ? rows
       : [];
   const visibleRows = sourceRows.filter((row) => catalogueType(row));
-  const detailType = detailId ? findVertical(detailId) : undefined;
-  const detailRow = detailType
-    ? typeRow(detailType, category ?? undefined)
-    : null;
   const selectedTypes = [...selectedIds]
     .map((id) => findVertical(id))
     .filter((type): type is CatalogueType => Boolean(type));
@@ -318,12 +255,6 @@ export function DiscoveryBusinessCatalogue({
     setDetailId(typeId);
   }
 
-  function findFromDetails() {
-    if (!detailRow) return;
-    setDetailId(null);
-    onFind(detailRow);
-  }
-
   return (
     <div className="d4-catalogue">
       {category ? (
@@ -336,7 +267,7 @@ export function DiscoveryBusinessCatalogue({
             <span>{category.verticals.length} business types</span>
           </div>
           <div className="d4-industry-hero">
-            <CoverPicture
+            <DiscoveryCoverPicture
               className="d4-industry-cover"
               id={category.id}
               placeholder={<IndustryGlyph id={category.id} size={34} />}
@@ -417,7 +348,6 @@ export function DiscoveryBusinessCatalogue({
                     currentIndustryId={category.id}
                     key={row.id}
                     onDetails={openDetails}
-                    onFind={onFind}
                     onToggle={toggleType}
                     row={row}
                     selected={selectedIds.has(type.id)}
@@ -450,7 +380,7 @@ export function DiscoveryBusinessCatalogue({
                   onClick={() => onSelectCategory(industry.id)}
                   type="button"
                 >
-                  <CoverPicture
+                  <DiscoveryCoverPicture
                     className="d4-industry-card-image"
                     id={industry.id}
                     placeholder={<IndustryGlyph id={industry.id} size={30} />}
@@ -475,7 +405,6 @@ export function DiscoveryBusinessCatalogue({
                     canFind={canFind}
                     key={row.id}
                     onDetails={openDetails}
-                    onFind={onFind}
                     onToggle={toggleType}
                     row={row}
                     selected={selectedIds.has(type.id)}
@@ -512,7 +441,7 @@ export function DiscoveryBusinessCatalogue({
                 onClick={() => onSelectCategory(industry.id)}
                 type="button"
               >
-                <CoverPicture
+                <DiscoveryCoverPicture
                   className="d4-industry-card-image"
                   id={industry.id}
                   placeholder={<IndustryGlyph id={industry.id} size={30} />}
@@ -547,97 +476,21 @@ export function DiscoveryBusinessCatalogue({
         </div>
       ) : null}
 
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open) setDetailId(null);
+      <DiscoveryTypeDetailsDialog
+        canFind={canFind}
+        industryId={currentCategoryId}
+        onClose={() => setDetailId(null)}
+        onFind={(row, pickedTags) => {
+          setDetailId(null);
+          onFind(row, pickedTags);
         }}
-        open={Boolean(detailType)}
-      >
-        <DialogContent
-          className="c3d-dialog d4-type-dialog"
-          closeButtonClassName="d4-dialog-close"
-          showCloseButton
-        >
-          {detailType ? (
-            <>
-              <CoverPicture
-                className="d4-detail-cover"
-                id={detailType.id}
-                placeholder={
-                  <IndustryGlyph
-                    id={category?.id ?? detailType.industries?.[0] ?? ""}
-                    size={34}
-                  />
-                }
-                size={1200}
-              />
-              <div className="d4-dialog-copy">
-                <span className="d4-eyebrow">Business type</span>
-                <DialogTitle className="d4-dialog-title">
-                  {detailType.label}
-                </DialogTitle>
-                <DialogDescription className="d4-dialog-description">
-                  {detailType.definition ?? detailType.description}
-                </DialogDescription>
-              </div>
-              {detailType.aliases?.length ? (
-                <section className="d4-dialog-section">
-                  <h3>You might call it</h3>
-                  <div className="d4-aliases">
-                    {detailType.aliases.map((alias) => (
-                      <span key={alias}>{alias}</span>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              <section className="d4-dialog-section">
-                <h3>Find this type in</h3>
-                <div className="d4-industry-links">
-                  {(detailType.industries ?? []).map((industryId) => {
-                    const industry = industryTaxonomy.find(
-                      (entry) => entry.id === industryId,
-                    );
-                    if (!industry) return null;
-                    return (
-                      <button
-                        key={industryId}
-                        onClick={() => {
-                          setDetailId(null);
-                          onSelectCategory(industryId);
-                        }}
-                        type="button"
-                      >
-                        <IndustryGlyph id={industryId} size={17} />
-                        {industry.label}
-                        <ArrowRightGlyph />
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="d4-dialog-footnote">
-                  One business type can appear in several industries. Your
-                  selection counts it once.
-                </p>
-              </section>
-              <div className="d4-dialog-actions">
-                <DialogClose asChild>
-                  <button className="d4-secondary-button" type="button">
-                    Back to browsing
-                  </button>
-                </DialogClose>
-                <button
-                  className="d4-primary-button"
-                  disabled={!canFind}
-                  onClick={findFromDetails}
-                  type="button"
-                >
-                  Find prospects <ArrowRightGlyph />
-                </button>
-              </div>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+        onSelectIndustry={(industryId) => {
+          setDetailId(null);
+          onSelectCategory(industryId);
+        }}
+        onSelectRelated={setDetailId}
+        typeId={detailId}
+      />
 
       <Dialog open={selectionOpen} onOpenChange={setSelectionOpen}>
         <DialogContent className="c3d-dialog d4-selection-dialog">

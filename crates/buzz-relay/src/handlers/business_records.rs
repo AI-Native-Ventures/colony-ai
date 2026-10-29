@@ -2788,6 +2788,7 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         || prospect.vertical.trim().is_empty()
         || prospect.vertical.len() > 200
         || prospect.fit_score.is_some_and(|score| score > 100)
+        || prospect.discovery_tags.len() > 500
         || prospect
             .potential_monthly_value_minor
             .is_some_and(|amount| amount < 0)
@@ -2803,6 +2804,11 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         return Err(invalid("prospect identity, taxonomy, or stage is invalid"));
     }
     validate_optional_event_id(action.expected_head_event_id.as_deref())?;
+    if prospect.discovery_tags.iter().any(|tag| {
+        tag.tag.trim().is_empty() || tag.tag.len() > 240 || !valid_discovery_tag_kind(&tag.kind)
+    }) {
+        return Err(invalid("prospect discovery tags are invalid"));
+    }
     for external_id in &prospect.party.external_ids {
         if external_id.trim().is_empty() || external_id.len() > 128 {
             return Err(invalid("prospect external identifiers are invalid"));
@@ -2852,6 +2858,23 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         validate_optional_event_id(activity.proposal_version_event_id.as_deref())?;
     }
     Ok(())
+}
+
+fn valid_discovery_tag_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "product"
+            | "service"
+            | "specialty"
+            | "customer"
+            | "technology"
+            | "equipment"
+            | "material"
+            | "channel"
+            | "role"
+            | "regulation"
+            | "term"
+    )
 }
 
 fn validate_optional_text(
@@ -4425,6 +4448,7 @@ mod tests {
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
                 fit_score: Some(87),
+                discovery_tags: Vec::new(),
                 potential_monthly_value_minor: Some(450_000),
                 website: Some("https://example.test".into()),
                 contact_name: Some("Rene Example".into()),
@@ -4577,6 +4601,26 @@ mod tests {
         assert!(validate_prospect_action(&action).is_err());
         action.prospect.lost_reason = Some("Timing".into());
         assert!(validate_prospect_action(&action).is_ok());
+    }
+
+    #[test]
+    fn prospect_validation_accepts_known_discovery_tags_and_rejects_invalid_ones() {
+        let mut action = prospect_action();
+        action.prospect.discovery_tags =
+            vec![buzz_core::business_records::ProspectDiscoveryTagInput {
+                tag: "wedding guest".into(),
+                kind: "customer".into(),
+                picked: true,
+            }];
+        assert!(validate_prospect_action(&action).is_ok());
+
+        action.prospect.discovery_tags[0].kind = "unknown".into();
+        assert!(validate_prospect_action(&action).is_err());
+        action.prospect.discovery_tags[0].kind = "customer".into();
+        action.prospect.discovery_tags[0].tag = " ".into();
+        assert!(validate_prospect_action(&action).is_err());
+        action.prospect.discovery_tags[0].tag = "x".repeat(241);
+        assert!(validate_prospect_action(&action).is_err());
     }
 
     #[test]

@@ -63,6 +63,7 @@ export function MemberAvatar({
         name={name}
         personaId={member.managedAgent?.personaId}
         profile={profiles[member.pubkey]?.avatarUrl}
+        role={member.position?.head.title}
       />
     );
   }

@@ -24,6 +24,7 @@ export { applyWindowAction, validWindowLabel } from "./window-rules.mjs";
 
 const DRAG_REGION_CSS =
   "[data-tauri-drag-region]{-webkit-app-region:drag} [data-tauri-drag-region] button,[data-tauri-drag-region] input,[data-tauri-drag-region] a{-webkit-app-region:no-drag}";
+const APP_WINDOW_USER_AGENT = app.userAgentFallback;
 
 /**
  * One app window: its own renderer generation fence and shell plugins over the
@@ -61,6 +62,7 @@ export function createAppWindow({
       ],
     },
   });
+  window.webContents.setUserAgent(APP_WINDOW_USER_AGENT);
   const rendererHost = new RendererHost(
     host,
     main ? undefined : { resetCommands: [] },
