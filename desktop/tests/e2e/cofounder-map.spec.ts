@@ -9,7 +9,7 @@ import type {
   MockWorkerRun,
 } from "../../src/testing/e2eBridge";
 
-const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
+const OWNER_PUBKEY = "deadbeef".repeat(8);
 const AYA_PUBKEY = TEST_IDENTITIES.alice.pubkey;
 const WORKER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -134,6 +134,7 @@ test.describe("co-founder mode desktop", () => {
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await page.getByTestId("settings-back-to-app").click();
     await page.getByTestId("sidebar-nav-company-toggle").click();
     await expect(page.getByTestId("sidebar-company-map")).toBeVisible();
   });
@@ -200,7 +201,9 @@ test.describe("co-founder mode desktop", () => {
 
     await page.getByTestId("cofounder-map-sales").click();
     await expect(page.getByRole("heading", { name: "Sales" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Aya" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Aya", exact: true }),
+    ).toBeVisible();
     await expect(page.getByTestId("cofounder-worker-list")).toContainText(
       "Workers under Aya",
     );
@@ -220,7 +223,9 @@ test.describe("co-founder mode desktop", () => {
     await page.goto("/#/company/map");
 
     await page.getByTestId("cofounder-map-finance").click();
-    await expect(page.getByRole("heading", { name: "Finance" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Finance", exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Hire a Bookkeeper" }),
     ).toBeVisible();
