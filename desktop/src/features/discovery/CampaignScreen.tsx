@@ -14,6 +14,11 @@ import {
 } from "./CampaignHelpers";
 import { CampaignDialog, type CampaignDialogMode } from "./CampaignDialogs";
 import {
+  DiscoveryCampaignDialog,
+  type CampaignFormInput,
+  type PendingCampaign,
+} from "./DiscoveryCampaignDialogs";
+import {
   CampaignSelectionBar,
   CampaignTable,
   CampaignToolbar,
@@ -21,6 +26,16 @@ import {
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
 import { useDiscoveryCampaign } from "./discoveryProvider";
+import {
+  DiscoveryTypeDetailsDialog,
+  RelatedVerticalOptions,
+} from "./DiscoveryTypeDetailsDialog";
+import {
+  loadVerticalTags,
+  relatedVerticalsFor,
+  type CatalogueRow,
+} from "./taxonomy";
+import { compareDiscoveryTagFit } from "./discoveryTags";
 
 import "./colony3-discovery.css";
 
@@ -54,6 +69,12 @@ export function CampaignScreen(context: CampaignContext) {
   const [sort, setSort] = React.useState<ProspectSort>("fit");
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   const [dialogMode, setDialogMode] = React.useState<CampaignDialogMode>(null);
+  const [relatedTypeId, setRelatedTypeId] = React.useState<string | null>(null);
+  const [widenPending, setWidenPending] =
+    React.useState<PendingCampaign | null>(null);
+  const [widenOpen, setWidenOpen] = React.useState(false);
+  const [widenLocation, setWidenLocation] = React.useState("");
+  const [, setTagsReady] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -61,9 +82,21 @@ export function CampaignScreen(context: CampaignContext) {
     if (!provider || !campaign) void navigate({ to: "/discovery" });
   }, [campaign, navigate, provider]);
 
+  React.useEffect(() => {
+    let live = true;
+    void loadVerticalTags().then((loaded) => {
+      if (live && loaded) setTagsReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   if (!provider || !campaign) {
     return null;
   }
+  const campaignLocation = campaign.location;
+  const campaignRunner = campaign.runBy;
 
   const campaignRows = campaign.prospectIds
     .slice(0, Math.min(campaign.count, campaign.prospectIds.length))
@@ -92,14 +125,19 @@ export function CampaignScreen(context: CampaignContext) {
           .includes(normalizedQuery);
       return matchesQuery && matchesFilter(prospect, filter);
     })
-    .sort((left, right) =>
-      sort === "name"
-        ? left.record.prospect.party.displayName.localeCompare(
-            right.record.prospect.party.displayName,
-          )
-        : (right.record.prospect.fitScore ?? -1) -
-          (left.record.prospect.fitScore ?? -1),
-    );
+    .sort((left, right) => {
+      if (sort === "name") {
+        return left.record.prospect.party.displayName.localeCompare(
+          right.record.prospect.party.displayName,
+        );
+      }
+      return compareDiscoveryTagFit(
+        left.record.prospect.discoveryTags ?? [],
+        left.record.prospect.fitScore,
+        right.record.prospect.discoveryTags ?? [],
+        right.record.prospect.fitScore,
+      );
+    });
   const selectedRows = visibleRows.filter(({ record }) =>
     selected.has(record.prospectId),
   );
@@ -168,10 +206,36 @@ export function CampaignScreen(context: CampaignContext) {
     setSelected(next);
   }
 
+  function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
+    setRelatedTypeId(null);
+    setWidenLocation(campaignLocation);
+    setWidenPending({
+      audience: "businesses",
+      industryId: row.parentId,
+      industryName: row.parentName,
+      verticalId: row.id,
+      verticalName: row.name,
+      pickedTags,
+    });
+    setWidenOpen(true);
+  }
+
+  async function startWidenSearch(input: CampaignFormInput) {
+    if (!provider || !widenPending) return;
+    await provider.start({
+      ...widenPending,
+      ...input,
+      runBy: campaignRunner ?? undefined,
+    });
+    setWidenOpen(false);
+    await navigate({ to: "/campaign" });
+  }
+
   const waiting = campaign.status === "running" && campaign.count === 0;
   const footnote = campaign.simulated
     ? "Example public profiles · Review before outreach"
     : "Public business listings · Review before outreach";
+  const relatedTypes = relatedVerticalsFor(campaign.verticalId);
 
   return (
     <>
@@ -185,6 +249,21 @@ export function CampaignScreen(context: CampaignContext) {
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
           />
+          {relatedTypes.length ? (
+            <section
+              aria-labelledby="c3d-widen-title"
+              className="c3d-related-search"
+            >
+              <div>
+                <h2 id="c3d-widen-title">Widen this search</h2>
+                <p>Explore related business types in a new campaign.</p>
+              </div>
+              <RelatedVerticalOptions
+                onSelect={setRelatedTypeId}
+                types={relatedTypes}
+              />
+            </section>
+          ) : null}
           <CampaignToolbar
             exportDisabled={!visibleRows.length}
             filter={filter}
@@ -263,6 +342,28 @@ export function CampaignScreen(context: CampaignContext) {
               }
             : null
         }
+      />
+      <DiscoveryTypeDetailsDialog
+        canFind={Boolean(provider)}
+        industryId={null}
+        onClose={() => setRelatedTypeId(null)}
+        onFind={openWidenSearch}
+        onSelectIndustry={() => {
+          setRelatedTypeId(null);
+          void navigate({ to: "/discovery" });
+        }}
+        onSelectRelated={setRelatedTypeId}
+        showIndustries={false}
+        typeId={relatedTypeId}
+      />
+      <DiscoveryCampaignDialog
+        initialLocation={widenLocation}
+        onOpenChange={setWidenOpen}
+        onSubmit={startWidenSearch}
+        open={widenOpen}
+        pending={widenPending}
+        runner={campaign.runBy ?? null}
+        simulatedCosts={Boolean(campaign.simulated)}
       />
     </>
   );

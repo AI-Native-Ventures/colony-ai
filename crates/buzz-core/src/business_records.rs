@@ -248,6 +248,18 @@ pub struct ProspectEvidence {
     pub observed_at: i64,
 }
 
+/// A taxonomy tag matched against fields returned by the discovery provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectDiscoveryTagInput {
+    /// The matched tag text.
+    pub tag: String,
+    /// The generated taxonomy category for the tag.
+    pub kind: String,
+    /// Whether the searcher picked this tag as a search refinement.
+    pub picked: bool,
+}
+
 /// Activity kind for a qualification or contact note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -295,6 +307,9 @@ pub struct ProspectRecordInput {
     /// Provider or reviewer fit score from zero through one hundred.
     #[serde(default)]
     pub fit_score: Option<u8>,
+    /// Generated tag evidence matched from the provider listing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discovery_tags: Vec<ProspectDiscoveryTagInput>,
     /// Potential monthly service value in minor currency units, when known.
     #[serde(default)]
     pub potential_monthly_value_minor: Option<i64>,
@@ -1822,6 +1837,7 @@ mod tests {
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
                 fit_score: None,
+                discovery_tags: Vec::new(),
                 potential_monthly_value_minor: None,
                 website: Some("https://example.test".into()),
                 contact_name: None,

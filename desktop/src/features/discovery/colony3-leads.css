@@ -552,6 +552,39 @@
   font-weight: 700;
 }
 
+.c3l-tag-fit {
+  align-self: flex-start;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  background: var(--c3l-accent-soft);
+  color: var(--c3l-accent-ink);
+  font-size: calc(11.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3l-matched-tags {
+  gap: 0.875rem;
+}
+
+.c3l-matched-tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.c3l-page .c3l-matched-tag-group h3 {
+  margin: 0;
+  color: var(--c3l-muted);
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.c3l-matched-tag-group .c3d-lead-tag-list {
+  margin-top: 0;
+}
+
 .c3l-lede {
   color: var(--c3l-ink2);
   font-size: calc(15.5 * var(--colony-px));

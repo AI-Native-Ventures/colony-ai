@@ -25,10 +25,15 @@ import "./colony3-discovery.css";
 
 export type PendingCampaign = Pick<
   DiscoveryCampaignInput,
-  "audience" | "industryId" | "industryName" | "verticalId" | "verticalName"
+  | "audience"
+  | "industryId"
+  | "industryName"
+  | "verticalId"
+  | "verticalName"
+  | "pickedTags"
 >;
 
-type CampaignFormInput = {
+export type CampaignFormInput = {
   name: string;
   location: string;
   target: number;
@@ -50,6 +55,7 @@ export function DiscoveryCampaignDialog({
   pending,
   runner,
   simulatedCosts,
+  initialLocation,
 }: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CampaignFormInput) => Promise<void>;
@@ -59,6 +65,7 @@ export function DiscoveryCampaignDialog({
   runner: DiscoveryRunner | null;
   /** The test-build stand-in keeps the design's example wording. */
   simulatedCosts: boolean;
+  initialLocation?: string;
 }) {
   const [name, setName] = React.useState("");
   const [location, setLocation] = React.useState("Johannesburg");
@@ -72,12 +79,12 @@ export function DiscoveryCampaignDialog({
   React.useEffect(() => {
     if (!open || !pending) return;
     setName(`${pending.verticalName} prospects`);
-    setLocation("Johannesburg");
+    setLocation(initialLocation?.trim() || "Johannesburg");
     setTarget("50");
     setCriteria("");
     setApproved(false);
     setError("");
-  }, [open, pending]);
+  }, [initialLocation, open, pending]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
