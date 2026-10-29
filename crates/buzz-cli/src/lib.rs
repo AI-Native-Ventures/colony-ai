@@ -274,6 +274,9 @@ enum Cmd {
     /// Create and manage company goals
     #[command(subcommand)]
     Goals(GoalsCmd),
+    /// Search Discovery for local businesses and save them as leads
+    #[command(subcommand)]
+    Discovery(DiscoveryCmd),
     /// Read leads found in Discovery, add notes and update their stage
     #[command(subcommand)]
     Leads(LeadsCmd),
@@ -1278,6 +1281,41 @@ pub enum GoalsCmd {
         /// Goal UUID
         #[arg(long)]
         goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DiscoveryCmd {
+    /// Search Google Maps for local businesses. Searches count against the
+    /// company's monthly Discovery limit; at the limit the command exits 2
+    Search {
+        /// What to look for, for example "guesthouses"
+        #[arg(long)]
+        query: String,
+        /// City, region or area to search in, for example "Melville, Johannesburg"
+        #[arg(long)]
+        location: String,
+        /// Country name or two-letter code, when the location does not name it
+        #[arg(long)]
+        country: Option<String>,
+        /// Places per page, 1 through 50 (default 20)
+        #[arg(long)]
+        limit: Option<u32>,
+        /// Pages to fetch, 1 through 5 (default 1)
+        #[arg(long)]
+        pages: Option<u32>,
+        /// Industry label saved leads carry, for example "Tourism and Hospitality"
+        /// (default "Local businesses"); only used with --save
+        #[arg(long)]
+        industry: Option<String>,
+        /// Business type saved leads carry, for example "Guesthouses and inns"
+        /// (default: the query); only used with --save
+        #[arg(long)]
+        vertical: Option<String>,
+        /// Save every place that is not already a lead into the Sales channel
+        /// and print {saved, skipped_existing, leads}
+        #[arg(long)]
+        save: bool,
     },
 }
 
@@ -3314,6 +3352,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Discovery(sub) => commands::discovery::dispatch(sub, &client).await,
         Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
@@ -3496,6 +3535,7 @@ mod tests {
             "channels",
             "cofounder",
             "credits",
+            "discovery",
             "dms",
             "duties",
             "emoji",
@@ -3733,6 +3773,7 @@ mod tests {
                 "update"
             ]
         );
+        assert_eq!(names(&cmd, "discovery"), vec!["search"]);
         assert_eq!(
             names(&cmd, "leads"),
             vec!["get", "list", "note", "qualify", "save", "stage"]
@@ -3824,6 +3865,7 @@ mod tests {
             ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
+            ("discovery", 1),
             ("dms", 4),
             ("emoji", 5),
             ("factory", 4),

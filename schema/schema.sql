@@ -597,6 +597,18 @@ CREATE INDEX company_work_watchdog_deliveries_recovery
 CREATE INDEX company_work_watchdog_deliveries_work
     ON company_work_watchdog_deliveries (community_id, work_item_id, scheduled_for DESC);
 
+-- ── Discovery usage ──────────────────────────────────────────────────────────
+-- Per-company monthly count of Discovery results served by the relay. The relay
+-- refuses searches once a company reaches its monthly cap (cost guard only).
+
+CREATE TABLE discovery_usage (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    month DATE NOT NULL CHECK (EXTRACT(DAY FROM month) = 1),
+    results INTEGER NOT NULL DEFAULT 0 CHECK (results >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, month)
+);
+
 -- ── API tokens ────────────────────────────────────────────────────────────────
 -- Conformance: "API tokens and NIP-98 replay". token_hash uniqueness scoped to
 -- (community_id, token_hash); channel claims reference channels in same community.
@@ -1863,6 +1875,7 @@ SELECT attach_community_write_fence('archived_identities');
 SELECT attach_community_write_fence('audit_log');
 SELECT attach_community_write_fence('business_proposal_conversion_claims');
 SELECT attach_community_write_fence('company_work_watchdog_deliveries');
+SELECT attach_community_write_fence('discovery_usage');
 SELECT attach_community_write_fence('channel_members');
 SELECT attach_community_write_fence('channels');
 SELECT attach_community_write_fence('community_bans');

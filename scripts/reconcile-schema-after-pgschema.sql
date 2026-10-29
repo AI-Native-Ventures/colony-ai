@@ -202,6 +202,20 @@ END $$;
 -- bootstrap if the live catalog does not contain the guard.
 SELECT attach_community_write_fence('business_proposal_conversion_claims');
 SELECT attach_community_write_fence('company_work_watchdog_deliveries');
+SELECT attach_community_write_fence('discovery_usage');
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = 'discovery_usage'::regclass
+          AND tgname = 'community_write_fence_discovery_usage'
+          AND NOT tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'discovery_usage must have its community write fence after pgschema apply';
+    END IF;
+END $$;
 
 DO $$
 BEGIN
