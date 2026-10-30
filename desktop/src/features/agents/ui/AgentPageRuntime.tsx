@@ -17,6 +17,7 @@ import { AgentHarnessGlyph } from "./AgentHarnessGlyph";
 import {
   acceptedEffortLabel,
   isClaudeSubscription,
+  resolveSimpleAgentAi,
   simpleModelLabel,
   simpleProviderLabel,
 } from "./simpleAgentAi";
@@ -113,20 +114,14 @@ export function AgentPageRuntime({
 }) {
   const local = agent.backend.type === "local";
   const expectedRuntimeId = runtime?.id ?? agent.runtime?.trim() ?? null;
-  const observed =
-    config !== undefined &&
-    !config.isPreSpawn &&
-    (!expectedRuntimeId || config.runtimeId === expectedRuntimeId);
-  const model =
-    (observed ? config?.normalized.model?.value : null)?.trim() ||
-    agent.model?.trim() ||
-    inheritedModel?.trim() ||
-    null;
-  const provider =
-    (observed ? config?.normalized.provider?.value : null)?.trim() ||
-    agent.provider?.trim() ||
-    inheritedProvider?.trim() ||
-    null;
+  const { observed, model, provider } = resolveSimpleAgentAi({
+    runtimeId: expectedRuntimeId,
+    config,
+    agentModel: agent.model,
+    agentProvider: agent.provider,
+    inheritedModel,
+    inheritedProvider,
+  });
   const providerLabel = simpleProviderLabel({
     runtimeId: runtime?.id,
     provider,
@@ -144,6 +139,7 @@ export function AgentPageRuntime({
     ? acceptedEffortLabel(
         config?.normalized.thinkingEffort?.value,
         config?.effortOptions,
+        { runtimeId: runtime?.id, provider, model },
       )
     : null;
   const availabilityLabel = harnessAvailabilityLabel(availability, local).label;

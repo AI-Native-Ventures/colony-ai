@@ -72,7 +72,8 @@ pub(super) async fn handle(
         CompanyCommand::DutyAction(_)
         | CompanyCommand::LessonAction(_)
         | CompanyCommand::CofounderAction(_)
-        | CompanyCommand::FunctionAction(_) => Err(IngestError::Rejected(
+        | CompanyCommand::FunctionAction(_)
+        | CompanyCommand::AccessAction(_) => Err(IngestError::Rejected(
             "restricted: this action is handled by its company record broker".into(),
         )),
         CompanyCommand::EmployeeAllowanceAction(_) => Err(IngestError::Rejected(

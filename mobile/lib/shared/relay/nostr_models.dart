@@ -115,6 +115,8 @@ abstract final class EventKind {
   static const companyFunctionAction = 47061;
   static const workerRunHead = 30672;
   static const workerRunAction = 47062;
+  static const companyAccessHead = 30676;
+  static const companyAccessAction = 47066;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -150,6 +152,8 @@ abstract final class EventKind {
     companyFunctionAction,
     workerRunHead,
     workerRunAction,
+    companyAccessHead,
+    companyAccessAction,
     employeeAiAllowanceHead,
     employeeAiAllowanceAction,
     aiSpendRecordHead,

@@ -774,6 +774,9 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             // Worker run records are community-wide company records.
             | buzz_core::kind::KIND_WORKER_RUN_HEAD
             | buzz_core::kind::KIND_WORKER_RUN_ACTION
+            // Access list, capability gap and slot hire records are community-wide company records.
+            | buzz_core::kind::KIND_COMPANY_ACCESS_HEAD
+            | buzz_core::kind::KIND_COMPANY_ACCESS_ACTION
             // The business brief and onboarding progress are community-wide company records.
             | buzz_core::kind::KIND_BRIEF_HEAD
             | buzz_core::kind::KIND_BRIEF_ACTION
@@ -2218,6 +2221,47 @@ async fn author_type_label(
     }
 }
 
+/// Removes a member who asked to leave the relay (NIP-43) and clears every
+/// function slot they led, so a slot never keeps a lead who left.
+pub(crate) async fn remove_leaving_member(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    sender_hex: &str,
+) -> Result<(), IngestError> {
+    // remove_relay_member handles both the NotFound and IsOwner cases atomically.
+    let remove_result = state
+        .db
+        .remove_relay_member(tenant.community(), sender_hex)
+        .await
+        .map_err(|e| IngestError::Internal(format!("database error: {e}")))?;
+
+    match remove_result {
+        buzz_db::relay_members::RemoveResult::Removed => {}
+        buzz_db::relay_members::RemoveResult::NotFound => {
+            return Err(IngestError::Rejected(
+                "invalid: you are not a relay member".into(),
+            ));
+        }
+        buzz_db::relay_members::RemoveResult::IsOwner => {
+            return Err(IngestError::Rejected(
+                "invalid: relay owner cannot leave".into(),
+            ));
+        }
+        buzz_db::relay_members::RemoveResult::RoleMismatch => {
+            // remove_relay_member (no role filter) never returns RoleMismatch —
+            // this arm is unreachable but exhaustiveness requires it.
+            return Err(IngestError::Internal(
+                "unexpected RoleMismatch from remove_relay_member".into(),
+            ));
+        }
+    }
+
+    // A member who left cannot keep leading a function slot. A failure is
+    // returned, not swallowed; the next slot write or removal retries it.
+    crate::handlers::company_functions::reconcile_function_slots(tenant, state, sender_hex).await?;
+    Ok(())
+}
+
 /// Ingest a signed Nostr event through the full validation pipeline.
 ///
 /// Shared by WebSocket and HTTP transports. The caller constructs [`IngestAuth`]
@@ -2747,33 +2791,7 @@ async fn ingest_event_inner(
 
         let sender_hex = event.pubkey.to_hex();
 
-        // remove_relay_member handles both the NotFound and IsOwner cases atomically.
-        let remove_result = state
-            .db
-            .remove_relay_member(tenant.community(), &sender_hex)
-            .await
-            .map_err(|e| IngestError::Internal(format!("database error: {e}")))?;
-
-        match remove_result {
-            buzz_db::relay_members::RemoveResult::Removed => {}
-            buzz_db::relay_members::RemoveResult::NotFound => {
-                return Err(IngestError::Rejected(
-                    "invalid: you are not a relay member".into(),
-                ));
-            }
-            buzz_db::relay_members::RemoveResult::IsOwner => {
-                return Err(IngestError::Rejected(
-                    "invalid: relay owner cannot leave".into(),
-                ));
-            }
-            buzz_db::relay_members::RemoveResult::RoleMismatch => {
-                // remove_relay_member (no role filter) never returns RoleMismatch —
-                // this arm is unreachable but exhaustiveness requires it.
-                return Err(IngestError::Internal(
-                    "unexpected RoleMismatch from remove_relay_member".into(),
-                ));
-            }
-        }
+        remove_leaving_member(tenant, state, &sender_hex).await?;
 
         // Publish NIP-43 announcements — fire-and-forget.
         if let Err(e) =
@@ -4009,6 +4027,8 @@ mod postgres_tests {
             buzz_core::kind::KIND_COMPANY_FUNCTION_ACTION,
             buzz_core::kind::KIND_WORKER_RUN_HEAD,
             buzz_core::kind::KIND_WORKER_RUN_ACTION,
+            buzz_core::kind::KIND_COMPANY_ACCESS_HEAD,
+            buzz_core::kind::KIND_COMPANY_ACCESS_ACTION,
             buzz_core::kind::KIND_BRIEF_HEAD,
             buzz_core::kind::KIND_BRIEF_ACTION,
             buzz_core::kind::KIND_ONBOARDING_HEAD,

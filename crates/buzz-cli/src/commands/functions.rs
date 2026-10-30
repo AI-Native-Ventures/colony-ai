@@ -42,6 +42,10 @@ pub async fn dispatch(command: FunctionsCmd, client: &BuzzClient) -> Result<(), 
         FunctionsCmd::Clear { function } => {
             change_slot(client, function, FunctionActionKind::Clear, None).await
         }
+        FunctionsCmd::HireSlot { hire_id, function } => {
+            let hire_id = crate::validate::parse_uuid(&hire_id)?;
+            crate::commands::access::set_slot_hire(client, hire_id, function).await
+        }
     }
 }
 

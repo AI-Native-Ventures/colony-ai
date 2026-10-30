@@ -1,7 +1,11 @@
 import * as React from "react";
 import { useManagedAgentRuntimesQuery } from "../managedAgentRuntimeHooks";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { usePersonasQuery, useRelayAgentsQuery } from "../hooks";
+import {
+  useAgentConfigSurface,
+  usePersonasQuery,
+  useRelayAgentsQuery,
+} from "../hooks";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 
@@ -23,7 +27,11 @@ import type {
   ManagedAgent,
 } from "@/shared/api/types";
 import { AgentStatusChip } from "./AgentStatusChip";
-import { simpleModelLabel, simpleProviderLabel } from "./simpleAgentAi";
+import {
+  resolveSimpleAgentAi,
+  simpleModelLabel,
+  simpleProviderLabel,
+} from "./simpleAgentAi";
 import "./agentsColony3.css";
 
 const FILTER_OPTIONS: Array<{ value: AgentDirectoryFilter; label: string }> = [
@@ -568,7 +576,17 @@ function AgentAiCell({
   runtimes: readonly AcpRuntimeCatalogEntry[];
 }) {
   const runtime = runtimeForAgent(agent, runtimes);
-  const provider = agent.provider ?? persona?.provider ?? globalProvider;
+  const configQuery = useAgentConfigSurface(agent.pubkey, {
+    refetchInterval: false,
+  });
+  const { model, provider } = resolveSimpleAgentAi({
+    runtimeId: runtime?.id ?? agent.runtime?.trim() ?? null,
+    config: configQuery.data,
+    agentModel: agent.model,
+    agentProvider: agent.provider,
+    inheritedModel: persona?.model ?? globalModel,
+    inheritedProvider: persona?.provider ?? globalProvider,
+  });
   const envVars = {
     ...globalEnvVars,
     ...(persona?.envVars ?? {}),
@@ -579,13 +597,16 @@ function AgentAiCell({
     provider,
     envVars,
   });
-  const model = agent.model ?? persona?.model ?? globalModel;
   return (
     <span
       className="agents-c3-cell-stack"
       data-testid={`agent-ai-${agent.pubkey}`}
     >
-      <span>{simpleModelLabel(model, provider)}</span>
+      <span>
+        {configQuery.isLoading && !model
+          ? "Loading"
+          : simpleModelLabel(model, provider)}
+      </span>
       <span className="agents-c3-harness">
         {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
         <span className="truncate">

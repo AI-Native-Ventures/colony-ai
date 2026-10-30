@@ -76,8 +76,10 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 14 added `--industry` and `--vertical` to it.
 /// Version 15 added the document rule: send long writing with `--doc`.
 /// Version 16 added the Plans section (`colony plans`).
-/// Version 17 added the co-founder initiative section (onboarding, wakes, brief).
-const NEST_SKILL_VERSION: u32 = 17;
+/// Version 17 added hiring into a function slot and the Access and capability gaps
+/// section (`colony access`).
+/// Version 18 added the co-founder initiative section (onboarding, wakes, brief).
+const NEST_SKILL_VERSION: u32 = 18;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

@@ -78,6 +78,18 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
 | `thread` | `waId`, `limit` | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
 
+`thread` lists every message of the conversation except dropped rows, including rows of a batch that
+is still pending. A `held` or `ready` row reads `state: "queued"` (with `awaitingApproval: true` for
+rows of a pending batch) and a `skipped` row reads `failed` with its reason in `errorText`, so the
+state is always one of `draft rejected queued sending sent delivered read failed unconfirmed`.
+`Contact.displayName` is the WhatsApp profile name, else the name given on the batch row
+(`rows[].name`, only when the contact has none), else the number in E.164 form.
+
+Every `Contact` (in `contacts`, `inbox` and `thread`) carries `outreachStatus`, one of
+`waiting_for_approval` (a row of a pending batch, nothing approved), `queued` (approved, not sent),
+`sent` (a row reached Meta), `replied`, `opted_out` or `none`, plus `awaitingApproval` and
+`hasSentOutbound` booleans. A contact whose only row is `held` is never `sent`.
+
 Status object:
 
 ```json
@@ -167,7 +179,7 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
   "template": "intro_offer",
   "language": "en",
   "rows": [
-    { "to": "+27821234567", "leadId": "uuid or null", "params": ["Thabo", "Horizon Labs"] }
+    { "to": "+27821234567", "leadId": "uuid or null", "name": "optional contact name", "params": ["Thabo", "Horizon Labs"] }
   ],
   "materialLinks": ["https://..."],
   "note": "optional text for the approver"
@@ -193,6 +205,10 @@ Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
 Edits and drops apply to a pending batch only, before the decision. Approve makes the
 remaining rows `ready`. Reject is final.
+Before approving, the relay refreshes the template list from Meta (falling back to the last sync if
+Meta does not answer). If the batch's template is gone or no longer approved the approval is refused
+with `template_missing: ...`, the batch stays `pending`, nothing is sent, and the Outreach channel
+gets a `template_missing` notice. Reject the batch and prepare a new one.
 
 To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 

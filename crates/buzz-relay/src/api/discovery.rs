@@ -569,6 +569,46 @@ async fn fetch_results(
     Err(ProviderFailure::Unavailable)
 }
 
+/// Refuses a search by anyone but the owner or an admin once the owner revoked
+/// Discovery, so a revoke takes effect on agents at once.
+pub(crate) async fn enforce_discovery_access(
+    state: &AppState,
+    tenant: &buzz_core::TenantContext,
+    pubkey: &nostr::PublicKey,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let unavailable = || {
+        api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "prospect search access lookup unavailable",
+        )
+    };
+    let member = state
+        .db
+        .get_relay_member(tenant.community(), &pubkey.to_hex())
+        .await
+        .map_err(|_| unavailable())?;
+    if member
+        .as_ref()
+        .is_some_and(|member| member.role == "owner" || member.role == "admin")
+    {
+        return Ok(());
+    }
+    match crate::handlers::company_access::access_revoked(
+        state,
+        tenant.community(),
+        buzz_core::company_access::AccessCategory::Discovery,
+    )
+    .await
+    {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(api_error(
+            StatusCode::FORBIDDEN,
+            "restricted: Discovery access was revoked by the owner",
+        )),
+        Err(_) => Err(unavailable()),
+    }
+}
+
 async fn enforce_search_admission(
     state: &AppState,
     tenant: &buzz_core::TenantContext,
@@ -719,6 +759,7 @@ pub async fn search(
         .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid prospect search JSON"))?;
     let request = validate_request(request)
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, &message))?;
+    enforce_discovery_access(&state, &tenant, &pubkey).await?;
     enforce_search_admission(&state, &tenant, &pubkey).await?;
 
     run_search(

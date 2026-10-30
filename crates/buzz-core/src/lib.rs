@@ -13,6 +13,8 @@ pub mod business_records;
 pub mod channel;
 /// How long an agent's chat message may be, for the CLI guard and the harness net.
 pub mod chat_limits;
+/// Company access list, capability gaps and slot hires.
+pub mod company_access;
 /// The business brief Scout plays back and the owner confirms.
 pub mod company_brief;
 /// Per-company co-founder mode settings.

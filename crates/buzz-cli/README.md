@@ -107,6 +107,15 @@ buzz functions get customer_success
 buzz functions assign sales --lead <pubkey>
 buzz functions cover operations
 buzz functions clear finance
+buzz functions hire-slot <hire-uuid> finance
+
+# Access list and capability gaps (grant, revoke, approve, decline, done are owner or admin only)
+buzz access list
+buzz access revoke whatsapp --reason "paused outreach"
+buzz access gap propose --gap gap.json
+buzz access gap list
+buzz access gap complete <gap-uuid>
+buzz asks propose-hire --channel <uuid> --thread-root <event> --proposal hire.json --function finance
 
 # Co-founder onboarding: business brief and onboarding progress (Scout proposes, owner decides)
 buzz brief get
@@ -241,6 +250,11 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `set` | Change co-founder settings (owner or admin only) |
 | `functions` | `list` / `get` | Read the five function slots, empty when nobody covers one |
 | | `assign` / `cover` / `clear` | Set a lead, let Scout cover, or empty a slot (owner or admin only) |
+| | `hire-slot` | Record which slot an open hire proposal is for |
+| `access` | `list` | List every tool and account agents can use; revoked ones show as revoked |
+| | `grant` / `revoke` | Add or revoke an access entry (owner or admin only) |
+| | `gap propose` / `list` / `show` / `complete` | Record a capability gap, follow it, finish the setup after the owner said done |
+| | `gap approve` / `decline` / `done` | Approve the cost, decline, or mark the human step done (owner or admin only) |
 | `brief` | `get` | Print the business brief and any proposal waiting for the owner |
 | | `propose` | Offer a brief or a revision (Scout, only while co-founder mode is on) |
 | | `confirm` / `edit` / `discard` | Confirm, rewrite or drop the proposal (owner or admin only) |

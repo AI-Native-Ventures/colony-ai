@@ -46,8 +46,8 @@ type AgentSeed = {
   key: keyof typeof PUBKEYS;
   name: string;
   title: string;
-  runtime: "codex" | "claude";
-  provider: "openai" | "anthropic";
+  runtime: "buzz-agent" | "codex" | "claude";
+  provider: "colony-credits" | "openai" | "anthropic";
   status: "running" | "stopped";
   /** Pair-scoped runtime lifecycle, which decides Ready / Offline / Needs attention. */
   lifecycle: "ready" | "stopped" | "failed";
@@ -112,8 +112,8 @@ export const COLONY3_AGENTS: readonly AgentSeed[] = [
     key: "scout",
     name: "Scout",
     title: "Chief of Staff",
-    runtime: "claude",
-    provider: "anthropic",
+    runtime: "buzz-agent",
+    provider: "colony-credits",
     status: "running",
     lifecycle: "ready",
     manager: "owner",
@@ -320,9 +320,16 @@ export async function installColony3Agents(
       respondToAllowlist:
         agent.key === "aya" ? [PUBKEYS.owner, PUBKEYS.noluthando] : [],
     })),
-    acpRuntimesCatalog: ayaFreeAi
-      ? [...ACP_CATALOG, COLONY_AGENT_RUNTIME]
-      : ACP_CATALOG,
+    acpRuntimesCatalog: [...ACP_CATALOG, COLONY_AGENT_RUNTIME],
+    agentConfigSurfaceOverrides: {
+      [PUBKEYS.scout]: {
+        runtimeId: "buzz-agent",
+        runtimeLabel: "Colony Agent",
+        model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+        provider: "colony-credits",
+        thinkingEffort: "high",
+      },
+    },
     colonyCreditsGatewayEnabled: ayaFreeAi,
     globalAgentConfig: {
       env_vars: {},

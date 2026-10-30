@@ -806,6 +806,10 @@ pub const KIND_COMPANY_FUNCTION_ACTION: u32 = 47061;
 pub const KIND_WORKER_RUN_HEAD: u32 = 30672;
 /// Employee or admin worker run write, brokered and community-wide (co-founder block).
 pub const KIND_WORKER_RUN_ACTION: u32 = 47062;
+/// Relay-authored access list, capability gap and slot hire head (co-founder block, community-wide).
+pub const KIND_COMPANY_ACCESS_HEAD: u32 = 30676;
+/// Member access, capability gap and slot hire write, brokered and community-wide (co-founder block).
+pub const KIND_COMPANY_ACCESS_ACTION: u32 = 47066;
 /// Relay-authored business brief head (co-founder block, community-wide).
 pub const KIND_BRIEF_HEAD: u32 = 30674;
 /// Relay-authored co-founder onboarding progress head (community-wide).
@@ -887,6 +891,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_AI_SPEND_RECORD_ACTION,
     KIND_WORKER_RUN_HEAD,
     KIND_WORKER_RUN_ACTION,
+    KIND_COMPANY_ACCESS_HEAD,
+    KIND_COMPANY_ACCESS_ACTION,
     KIND_BRIEF_HEAD,
     KIND_BRIEF_ACTION,
     KIND_ONBOARDING_HEAD,
@@ -915,6 +921,7 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
+            | KIND_COMPANY_ACCESS_ACTION
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_ACTION
             | KIND_PLAN_ACTION
@@ -953,6 +960,8 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_HEAD
             | KIND_WORKER_RUN_ACTION
+            | KIND_COMPANY_ACCESS_HEAD
+            | KIND_COMPANY_ACCESS_ACTION
             | KIND_BRIEF_HEAD
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_HEAD
@@ -1275,6 +1284,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_COMPANY_FUNCTION_ACTION,
     KIND_WORKER_RUN_HEAD,
     KIND_WORKER_RUN_ACTION,
+    KIND_COMPANY_ACCESS_HEAD,
+    KIND_COMPANY_ACCESS_ACTION,
     KIND_BRIEF_HEAD,
     KIND_BRIEF_ACTION,
     KIND_ONBOARDING_HEAD,
@@ -1375,6 +1386,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
+            | KIND_COMPANY_ACCESS_ACTION
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_ACTION
             | KIND_PLAN_ACTION
@@ -1427,6 +1439,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
             | KIND_WORKER_RUN_HEAD
+            | KIND_COMPANY_ACCESS_HEAD
             | KIND_BRIEF_HEAD
             | KIND_ONBOARDING_HEAD
             | KIND_PLAN_HEAD
@@ -1478,6 +1491,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_FUNCTION_HEAD));
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_ACCESS_HEAD)); // 30676 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_BRIEF_HEAD)); // 30674 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ONBOARDING_HEAD)); // 30675 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 ∈ 30000–39999
@@ -1577,6 +1591,7 @@ mod tests {
             (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
             (KIND_COFOUNDER_HEAD, KIND_COFOUNDER_ACTION),
             (KIND_COMPANY_FUNCTION_HEAD, KIND_COMPANY_FUNCTION_ACTION),
+            (KIND_COMPANY_ACCESS_HEAD, KIND_COMPANY_ACCESS_ACTION),
             (KIND_BRIEF_HEAD, KIND_BRIEF_ACTION),
             (KIND_ONBOARDING_HEAD, KIND_ONBOARDING_ACTION),
         ] {

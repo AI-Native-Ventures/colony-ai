@@ -410,6 +410,16 @@ async fn execute_relay_admin_command(
                 "relay member removed"
             );
 
+            // A removed member cannot keep leading a function slot. A failure here
+            // is reported, not swallowed; the next slot write or removal retries it.
+            super::company_functions::reconcile_function_slots(tenant, state, &sender_hex)
+                .await
+                .map_err(|error| {
+                    format!(
+                        "member removed but their function slots could not be cleared: {error:?}"
+                    )
+                })?;
+
             if let Err(e) = publish_nip43_member_removed(tenant, state, &target_hex).await {
                 warn!(error = %e, "failed to publish NIP-43 member removed event");
             }
