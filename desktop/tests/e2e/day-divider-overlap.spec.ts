@@ -13,6 +13,12 @@ const THEMES = [
   { name: "light", storageValue: "buzz" },
   { name: "dark", storageValue: "buzz-dark" },
 ] as const;
+const STICKY_VIEWPORTS = [
+  { name: "reported-1280", width: 1280, height: 820 },
+  { name: "desktop-1440", width: 1440, height: 820 },
+  { name: "mobile-390", width: 390, height: 844 },
+] as const;
+const STICKY_BOTTOM_SHOTS = "test-results/sticky-today-bottom";
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -514,4 +520,154 @@ for (const theme of THEMES) {
       await assertOneCenteredTopDayLabel(page, "Yesterday");
     },
   );
+}
+
+for (const theme of THEMES) {
+  for (const viewport of STICKY_VIEWPORTS) {
+    test(`sticky TODAY band clears rows at max scroll in ${theme.name} mode at ${viewport.width}px`, async ({
+      page,
+    }, testInfo) => {
+      const channelName = `sticky-bottom-${viewport.name}-${theme.name}`;
+
+      await page.setViewportSize({ width: 1280, height: 820 });
+      await page.clock.setFixedTime(new Date(COLONY3_NOW));
+      await page.emulateMedia({
+        colorScheme: theme.name === "dark" ? "dark" : "light",
+      });
+      await page.addInitScript((themeValue) => {
+        window.localStorage.setItem("buzz-theme", themeValue);
+        window.localStorage.setItem("buzz-follow-system", "false");
+        window.localStorage.setItem("buzz.channels.threadViewMode", "split");
+      }, theme.storageValue);
+      await installMockBridge(page);
+      await page.goto("/");
+
+      await openCreateChannelDialog(page);
+      await page.getByTestId("create-channel-name").fill(channelName);
+      await page.getByTestId("create-channel-submit").click();
+      await expect(page.getByTestId("chat-title")).toHaveText(channelName);
+      await waitForMockLiveSubscription(page, channelName);
+
+      await page.evaluate(
+        ({ channelName: name, yesterday, today }) => {
+          const emit = (
+            window as Window & {
+              __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
+                channelName: string;
+                content: string;
+                createdAt: number;
+                pubkey: string;
+              }) => unknown;
+            }
+          ).__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+          if (!emit) throw new Error("mock message emitter is unavailable");
+          for (let index = 0; index < 32; index += 1) {
+            emit({
+              channelName: name,
+              content:
+                index === 31
+                  ? "short sticky history message 32\nsecond line"
+                  : index === 27
+                    ? "Sticky divider regression body wraps across several lines near the top band."
+                    : index === 23
+                      ? "sticky target body with enough copy to wrap on a phone"
+                      : `short sticky history message ${String(index + 1).padStart(2, "0")}`,
+              createdAt: index === 0 ? yesterday : today + index * 60,
+              pubkey:
+                index % 2 === 0 ? "deadbeef".repeat(8) : "beadfeed".repeat(8),
+            });
+          }
+        },
+        {
+          channelName,
+          yesterday: colony3At(9, 30, 1),
+          today: colony3At(9, 45),
+        },
+      );
+
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      if (viewport.width > 390) {
+        const workAreaTrigger = page.getByTestId("channel-work-area-trigger");
+        await workAreaTrigger.click();
+        await expect(page.getByTestId("work-area-panel")).toBeVisible();
+      }
+      const scroller = page.locator(".c3c-timeline-scroller");
+      await expect
+        .poll(() => scroller.evaluate((element) => element.scrollHeight))
+        .toBeGreaterThan(viewport.height);
+      await scroller.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        element.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      await expect
+        .poll(() =>
+          scroller.evaluate(
+            (element) =>
+              element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(2);
+
+      const stickyDivider = page.getByTestId(
+        "message-timeline-sticky-day-divider",
+      );
+      await expect(stickyDivider).toHaveAttribute("data-day-label", "Today");
+      await expect(stickyDivider).toHaveCSS("opacity", "1");
+
+      const geometry = await page.evaluate(() => {
+        const scrollerElement = document.querySelector<HTMLElement>(
+          ".c3c-timeline-scroller",
+        );
+        const band = document.querySelector<HTMLElement>(
+          '[data-testid="message-timeline-sticky-day-divider"]',
+        );
+        if (!scrollerElement || !band) {
+          throw new Error("missing channel timeline or sticky band");
+        }
+        const bandRect = band.getBoundingClientRect();
+        const intersectingBodies = [
+          ...scrollerElement.querySelectorAll<HTMLElement>(
+            '[data-testid="message-body"]',
+          ),
+        ].flatMap((body) => {
+          const rect = body.getBoundingClientRect();
+          const overlapsBand =
+            rect.right > bandRect.left &&
+            rect.left < bandRect.right &&
+            rect.bottom > bandRect.top &&
+            rect.top < bandRect.bottom;
+          return overlapsBand
+            ? [
+                {
+                  text: body.innerText.slice(0, 80),
+                  top: rect.top,
+                  bottom: rect.bottom,
+                },
+              ]
+            : [];
+        });
+        return {
+          scrollTop: scrollerElement.scrollTop,
+          scrollHeight: scrollerElement.scrollHeight,
+          clientHeight: scrollerElement.clientHeight,
+          bandTop: bandRect.top,
+          bandBottom: bandRect.bottom,
+          intersectingBodies,
+        };
+      });
+      expect(
+        geometry.scrollHeight - geometry.clientHeight - geometry.scrollTop,
+      ).toBeLessThanOrEqual(2);
+      expect(geometry.intersectingBodies, JSON.stringify(geometry)).toEqual([]);
+
+      await waitForAnimations(page);
+      mkdirSync(STICKY_BOTTOM_SHOTS, { recursive: true });
+      await page.screenshot({
+        path: `${STICKY_BOTTOM_SHOTS}/${testInfo.project.name}-${viewport.name}-${theme.name}.png`,
+      });
+    });
+  }
 }

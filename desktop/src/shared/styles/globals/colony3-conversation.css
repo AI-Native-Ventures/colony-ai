@@ -263,6 +263,7 @@
     24 *
     var(--colony-px)
   );
+  padding-bottom: calc(24 * var(--colony-px));
   clip-path: inset(
     calc(
         var(--buzz-channel-content-top-padding, 5.75rem) +
