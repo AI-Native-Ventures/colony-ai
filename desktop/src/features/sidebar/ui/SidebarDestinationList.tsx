@@ -120,6 +120,7 @@ function Destination({
         defaultExpanded={entry.defaultExpanded}
         expandForActiveRoute={entry.isActive(context)}
         icon={<Icon />}
+        isCurrent={entry.isCurrent?.(context)}
         label={entry.label}
         testId={entry.testId}
       >

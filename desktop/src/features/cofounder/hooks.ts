@@ -10,10 +10,12 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { buildFunctionSlotViews } from "./functions";
 import {
+  buildCompanyFunctionActionEvent,
   COFOUNDER_D_TAG,
   DEFAULT_COFOUNDER_SETTINGS,
   KIND_COFOUNDER_ACTION,
   KIND_COFOUNDER_HEAD,
+  KIND_COMPANY_FUNCTION_ACTION,
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
   COMPANY_RECORD_SCHEMA_VERSION,
@@ -23,6 +25,7 @@ import {
   parseWorkerRunHead,
 } from "./cofounderRecords";
 import type {
+  CompanyFunctionActionInput,
   CofounderSettings,
   CofounderSettingsView,
   CompanyFunctionHead,
@@ -122,7 +125,14 @@ export function useSetCofounderSettings() {
   });
 }
 
-async function fetchCompanyFunctionHeads(): Promise<CompanyFunctionHead[]> {
+export const companyFunctionHeadsQueryKey = (
+  communityId: string | null,
+  relayUrl: string | null,
+) => ["company-function-heads", communityId, relayUrl] as const;
+
+export async function fetchCompanyFunctionHeads(): Promise<
+  CompanyFunctionHead[]
+> {
   const relaySelf = requireRelaySelf(await getRelaySelf());
   const events = await relayClient.fetchEvents({
     kinds: [KIND_COMPANY_FUNCTION_HEAD],
@@ -141,21 +151,63 @@ async function fetchCompanyFunctionHeads(): Promise<CompanyFunctionHead[]> {
   return [...latestByFunction.values()];
 }
 
-export function useFunctionSlotsQuery(
-  communityId: string | null,
-): FunctionSlotView[] {
+/** The relay-authored slot heads, including event ids for fenced writes. */
+export function useCompanyFunctionHeadsQuery(communityId: string | null) {
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
-  const enabled = Boolean(
-    communityId && relayUrl && activeCommunity?.id === communityId,
-  );
-  const headsQuery = useQuery({
-    enabled,
-    queryKey: ["company-function-heads", communityId, relayUrl],
+  return useQuery({
+    enabled: Boolean(
+      communityId && relayUrl && activeCommunity?.id === communityId,
+    ),
+    queryKey: companyFunctionHeadsQueryKey(communityId, relayUrl),
     queryFn: fetchCompanyFunctionHeads,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
   });
+}
+
+/** Publish one fenced function slot mutation (kind 47061). */
+export function usePublishCompanyFunctionAction() {
+  const queryClient = useQueryClient();
+  const { activeCommunity } = useCommunities();
+  const communityId = activeCommunity?.id ?? null;
+  const relayUrl = activeCommunity?.relayUrl ?? null;
+  return useMutation({
+    mutationFn: async (input: CompanyFunctionActionInput) => {
+      if (!communityId || !relayUrl)
+        throw new Error("No active company is selected.");
+      const { content, tags } = buildCompanyFunctionActionEvent(input);
+      const event = await signRelayEvent({
+        kind: KIND_COMPANY_FUNCTION_ACTION,
+        content,
+        tags,
+      });
+      await relayClient.publishEvent(
+        event,
+        "Timed out saving the company map.",
+        "Failed to save the company map.",
+      );
+      return event;
+    },
+    onSettled: async () => {
+      if (!communityId || !relayUrl) return;
+      await queryClient.invalidateQueries({
+        queryKey: companyFunctionHeadsQueryKey(communityId, relayUrl),
+      });
+    },
+  });
+}
+
+export function useFunctionSlotsQuery(
+  communityId: string | null,
+): FunctionSlotView[] {
+  const { activeCommunity } = useCommunities();
+  const headsQuery = useCompanyFunctionHeadsQuery(communityId);
+  const enabled = Boolean(
+    communityId &&
+      activeCommunity?.relayUrl &&
+      activeCommunity.id === communityId,
+  );
   const teamQuery = useCompanyTeamQuery(enabled);
   return useMemo(
     () =>

@@ -12,6 +12,7 @@ export function SidebarNavigationGroup({
   defaultExpanded,
   expandForActiveRoute = false,
   icon,
+  isCurrent = false,
   label,
   testId,
 }: {
@@ -20,6 +21,7 @@ export function SidebarNavigationGroup({
   expandForActiveRoute?: boolean;
   /** Row icon drawn before the label, as in the Colony 3.0 sidebar. */
   icon?: React.ReactNode;
+  isCurrent?: boolean;
   label: string;
   testId: string;
 }) {
@@ -42,6 +44,7 @@ export function SidebarNavigationGroup({
           aria-controls={contentId}
           aria-expanded={expanded}
           className="sidebar-navigation-group-toggle"
+          data-current={isCurrent || undefined}
           data-testid={`${testId}-toggle`}
           id={labelId}
           onClick={() => setExpanded((value) => !value)}

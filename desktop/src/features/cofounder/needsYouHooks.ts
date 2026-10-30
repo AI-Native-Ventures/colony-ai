@@ -69,10 +69,16 @@ export function useNeedsYouQuery() {
     ],
   );
 
+  const whatsappError = canApprove
+    ? (whatsappStatus.error ??
+      (outreachConnected ? (batches.error ?? drafts.error) : null))
+    : null;
+
   return {
     model,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
     error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
+    whatsappError,
     refetch: () =>
       Promise.all([needsMe.refetch(), plans.refetch(), playbooks.refetch()]),
   };

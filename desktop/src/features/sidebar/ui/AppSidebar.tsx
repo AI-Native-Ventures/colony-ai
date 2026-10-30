@@ -162,6 +162,7 @@ export function AppSidebar({
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
   const { pathname } = useLocation();
+  const suppressActivitySelection = pathname.startsWith("/company/");
   const destinationContext = React.useMemo<SidebarDestinationContext>(
     () => ({
       handlers: {
@@ -595,6 +596,7 @@ export function AppSidebar({
                   homeBadgeCount={homeBadgeCount}
                   onSelectToday={onSelectToday}
                   onSelectHome={onSelectHome}
+                  suppressActivitySelection={suppressActivitySelection}
                   suppressTodaySelection={suppressTodaySelection}
                   selectedView={selectedView}
                 />
@@ -618,7 +620,9 @@ export function AppSidebar({
                     unreadChannelIds.has(channel.id),
                   )}
                   homeBadgeCount={homeBadgeCount}
-                  isActivityActive={selectedView === "home"}
+                  isActivityActive={
+                    selectedView === "home" && !suppressActivitySelection
+                  }
                   isTodayActive={
                     selectedView === "today" && !suppressTodaySelection
                   }
