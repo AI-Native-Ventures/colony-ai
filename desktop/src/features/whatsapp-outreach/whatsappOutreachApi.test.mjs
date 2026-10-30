@@ -8,6 +8,7 @@ import {
   publishWhatsAppCommand,
   whatsappCommandKinds,
 } from "./whatsappOutreachApi.ts";
+import { relayClient } from "@/shared/api/relayClient";
 
 test("NIP-98 binds the exact POST URL and JSON body digest", async () => {
   let signed = null;
@@ -169,4 +170,37 @@ test("signed command payloads use the contract kind and have no channel tags", a
   assert.equal(published.event.kind, 47050);
   assert.match(published.timeout, /timed out/iu);
   assert.match(published.rejected, /refused/u);
+});
+
+test("a command without an injected publisher publishes through the relay client itself", async () => {
+  // GUARD: the default publisher must keep relayClient as `this`; the bare method
+  // reference crashed every WhatsApp approve, reject and send in 3.0.13 to 3.0.15.
+  const original = relayClient.publishEvent;
+  let receiver = null;
+  let publishedKind = null;
+  relayClient.publishEvent = function (event) {
+    receiver = this;
+    publishedKind = event.kind;
+    return Promise.resolve();
+  };
+  try {
+    await publishWhatsAppCommand(
+      whatsappCommandKinds.decision,
+      { v: 1, batchId: "batch-id", decision: "approve" },
+      {
+
+        signer: async (event) => ({
+          id: "id",
+          pubkey: "pubkey",
+          ...event,
+          created_at: 1,
+          sig: "sig",
+        }),
+      },
+    );
+  } finally {
+    relayClient.publishEvent = original;
+  }
+  assert.equal(receiver, relayClient);
+  assert.equal(publishedKind, 47049);
 });
