@@ -282,7 +282,7 @@ pub struct NumbersInputs {
 fn count_within(times: &[i64], start: i64, end: i64) -> i64 {
     times
         .iter()
-        .filter(|at| **at >= start && **at < end)
+        .filter(|at| **at >= start && **at <= end)
         .count() as i64
 }
 
