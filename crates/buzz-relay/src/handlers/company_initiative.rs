@@ -260,11 +260,7 @@ pub(crate) mod test_support {
     }
 
     /// Registers `agent` as a managed agent owned by `owner` (who must be a member).
-    pub(crate) async fn add_agent(
-        fixture: &Fixture,
-        owner: &nostr::Keys,
-        agent: &nostr::Keys,
-    ) {
+    pub(crate) async fn add_agent(fixture: &Fixture, owner: &nostr::Keys, agent: &nostr::Keys) {
         let agent_bytes = agent.public_key().to_bytes();
         fixture
             .state

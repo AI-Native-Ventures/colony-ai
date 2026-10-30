@@ -212,10 +212,7 @@ pub(super) async fn handle(
         None,
     )
     .await;
-    if matches!(
-        action.run.status,
-        WorkerStatus::Done | WorkerStatus::Failed
-    ) {
+    if matches!(action.run.status, WorkerStatus::Done | WorkerStatus::Failed) {
         // Scout reviews a finished worker's output before anyone relies on it.
         crate::cofounder_wake::enqueue(
             state,
