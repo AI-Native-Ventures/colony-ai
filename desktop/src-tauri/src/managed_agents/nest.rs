@@ -75,7 +75,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 13 added the Discovery search section (`colony discovery search`).
 /// Version 14 added `--industry` and `--vertical` to it.
 /// Version 15 added the document rule: send long writing with `--doc`.
-const NEST_SKILL_VERSION: u32 = 15;
+/// Version 16 added the Plans section (`colony plans`).
+const NEST_SKILL_VERSION: u32 = 16;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

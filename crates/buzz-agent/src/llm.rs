@@ -8111,6 +8111,99 @@ mod tests {
             "exactly one refresh"
         );
     }
+
+    /// Hard rule 4: a worker run offers the model no tools, and a tool call the
+    /// model makes anyway is refused and never replayed. This drives the real
+    /// `run_once::answer` loop against a stub provider and reads what it posts.
+    #[tokio::test]
+    async fn a_worker_run_offers_no_tools_and_refuses_a_tool_call() {
+        let tool_call = json!({"choices": [{"finish_reason": "tool_calls", "message": {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "shell", "arguments": "{\"command\":\"curl https://example.com\"}"}
+            }]
+        }}]});
+        let (base_url, captured) = spawn_sequence_stub(vec![
+            StubHttpResponse::ok(tool_call),
+            StubHttpResponse::ok(chat_response("the answer")),
+        ])
+        .await;
+        let mut config = cfg(Provider::OpenAi);
+        config.base_url = base_url;
+        let llm = Llm::new(&config).unwrap();
+        let mut usage = crate::run_once::Usage::default();
+
+        let text = crate::run_once::answer(&config, &llm, "research guesthouses", 3, &mut usage)
+            .await
+            .unwrap();
+
+        assert_eq!(text, "the answer");
+        let requests = captured.lock().await;
+        let posts: Vec<_> = requests
+            .iter()
+            .filter(|request| request.method == "POST")
+            .collect();
+        assert_eq!(posts.len(), 2, "one refused tool call costs one round");
+        for post in posts {
+            let body = post.body.as_ref().expect("request body");
+            assert!(
+                body.get("tools")
+                    .is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty)),
+                "a worker request defines no tools: {body}"
+            );
+            assert!(
+                body["messages"]
+                    .as_array()
+                    .expect("messages")
+                    .iter()
+                    .all(|message| message.get("tool_calls").is_none()),
+                "a refused tool call is never replayed: {body}"
+            );
+        }
+    }
+
+    /// A model that only ever calls tools ends the run failed, not looping.
+    #[tokio::test]
+    async fn a_worker_run_that_only_calls_tools_ends_failed() {
+        let tool_call = || {
+            StubHttpResponse::ok(
+                json!({"choices": [{"finish_reason": "tool_calls", "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "browser", "arguments": "{}"}
+                    }]
+                }}]}),
+            )
+        };
+        let (base_url, captured) =
+            spawn_sequence_stub(vec![tool_call(), tool_call(), tool_call()]).await;
+        let mut config = cfg(Provider::OpenAi);
+        config.base_url = base_url;
+        let llm = Llm::new(&config).unwrap();
+        let mut usage = crate::run_once::Usage::default();
+
+        let error = crate::run_once::answer(&config, &llm, "brief", 3, &mut usage)
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("kept calling tools"), "{error}");
+        assert_eq!(
+            captured
+                .lock()
+                .await
+                .iter()
+                .filter(|request| request.method == "POST")
+                .count(),
+            3,
+            "the run stops at its round limit"
+        );
+    }
 }
 
 #[cfg(test)]

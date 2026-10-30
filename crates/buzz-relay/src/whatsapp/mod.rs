@@ -60,9 +60,18 @@ pub async fn access_for(
         .get_relay_member(tenant.community(), &pubkey.to_hex())
         .await
         .map_err(|error| format!("role lookup failed: {error}"))?;
-    if member
-        .as_ref()
-        .is_some_and(|member| member.role == "owner" || member.role == "admin")
+    // A managed agent never counts as an owner or admin, whatever role row it
+    // holds: its messages are drafts the owner approves (hard rule 1).
+    let is_managed_agent = state
+        .db
+        .get_agent_channel_policy(tenant.community(), &pubkey.to_bytes())
+        .await
+        .map_err(|error| format!("agent lookup failed: {error}"))?
+        .is_some_and(|(_, owner_pubkey)| owner_pubkey.is_some());
+    if !is_managed_agent
+        && member
+            .as_ref()
+            .is_some_and(|member| member.role == "owner" || member.role == "admin")
     {
         return Ok(Access::OwnerAdmin);
     }

@@ -633,6 +633,39 @@ test("typing into credential fields and secret text is refused", async () => {
   );
 });
 
+test("pressing Enter in a box with no form waits for the person and never types if denied", async () => {
+  const env = setup();
+  const snap = await snapshotRefs(env);
+  const pending = env.call("browser_type", {
+    tab: "tab-1",
+    ref: env.refOf(snap, "Notes"),
+    text: "Hi, the quote is attached",
+    submit: true,
+  });
+  const request = await until(() =>
+    env.events.find((event) => event.type === "confirmation-requested"),
+  );
+  assert.equal(request.category, "enter_submit");
+  assert.equal(env.driver.count("type"), 0);
+  env.broker.reject(request.actionId);
+  assert.equal((await pending).code, "confirmation_denied");
+  assert.equal(env.driver.count("type"), 0);
+  // Plain typing, and Enter in a search box, still go straight through.
+  const plain = await env.call("browser_type", {
+    tab: "tab-1",
+    ref: env.refOf(snap, "Notes"),
+    text: "draft",
+  });
+  assert.equal(plain.ok, true);
+  const search = await env.call("browser_type", {
+    tab: "tab-1",
+    ref: env.refOf(snap, "Search"),
+    text: "kettle",
+    submit: true,
+  });
+  assert.equal(search.ok, true);
+});
+
 test("submitting a credential form needs confirmation", async () => {
   const env = setup();
   const snap = await snapshotRefs(env);

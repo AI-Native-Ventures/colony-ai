@@ -11,6 +11,8 @@ export {
   KIND_COFOUNDER_ACTION,
   KIND_COFOUNDER_HEAD,
   KIND_COMPANY_FUNCTION_HEAD,
+  KIND_PLAN_ACTION,
+  KIND_PLAN_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/shared/constants/kinds";
 
@@ -106,32 +108,35 @@ const FUNCTION_IDS = new Set<FunctionId>([
 const PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 const WORKER_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
-function hasOnlyKeys(
+export function hasOnlyKeys(
   value: Record<string, unknown>,
   allowedKeys: readonly string[],
 ): boolean {
   return Object.keys(value).every((key) => allowedKeys.includes(key));
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function pick(value: Record<string, unknown>, ...keys: string[]): unknown {
+export function pick(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): unknown {
   for (const key of keys) {
     if (Object.hasOwn(value, key)) return value[key];
   }
   return undefined;
 }
 
-function oneTagValue(event: RelayEvent, name: string): string | null {
+export function oneTagValue(event: RelayEvent, name: string): string | null {
   const tags = event.tags.filter((tag) => tag[0] === name);
   return tags.length === 1 && tags[0]?.length === 2
     ? (tags[0][1] ?? null)
     : null;
 }
 
-function isValidRelayHead(
+export function isValidRelayHead(
   event: RelayEvent,
   relaySelfPubkey: string,
   expectedKind: number,
@@ -194,7 +199,7 @@ function parseSettings(value: unknown): CofounderSettings | null {
   };
 }
 
-function parseJson(content: string): unknown {
+export function parseJson(content: string): unknown {
   try {
     return JSON.parse(content) as unknown;
   } catch {
@@ -287,7 +292,7 @@ export function parseCompanyFunctionHead(
   };
 }
 
-function readNumber(
+export function readNumber(
   value: Record<string, unknown>,
   key: string,
 ): number | null {

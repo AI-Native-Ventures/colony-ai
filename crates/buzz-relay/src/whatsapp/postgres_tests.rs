@@ -890,6 +890,139 @@ async fn agent_messages_are_drafts_the_owner_approves_edits_or_rejects() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn an_outreach_agent_cannot_open_a_new_chat_outside_an_approved_batch() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    let opener = json!({
+        "v": 1,
+        "requestId": Uuid::new_v4().to_string(),
+        "to": "+27821230021",
+        "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+    });
+
+    // GUARD: `check_send` refuses a template to a new chat unless the sender is an owner or admin.
+    let refusal = rejection(fx.command(&agent, KIND_WHATSAPP_SEND_REQUEST, opener).await);
+    assert!(
+        refusal.contains("new chats need an approved batch"),
+        "{refusal}"
+    );
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "a refused opener never reaches Graph"
+    );
+    assert!(
+        fx.state
+            .db
+            .whatsapp_list_drafts(fx.community(), 50)
+            .await
+            .expect("drafts")
+            .is_empty(),
+        "a refused opener leaves no draft behind"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_managed_agent_with_an_admin_role_row_still_only_drafts() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    let community = fx.community();
+    let agent_bytes = agent.public_key().to_bytes();
+    let owner_bytes = fx.owner.public_key().to_bytes();
+    fx.state
+        .db
+        .ensure_user(community, &owner_bytes)
+        .await
+        .expect("owner user");
+    fx.state
+        .db
+        .ensure_user(community, &agent_bytes)
+        .await
+        .expect("agent user");
+    fx.state
+        .db
+        .set_agent_owner(community, &agent_bytes, &owner_bytes)
+        .await
+        .expect("bind the managed agent to its owner");
+    fx.state
+        .db
+        .add_member(
+            community,
+            fx.outreach_channel().await,
+            &agent_bytes,
+            MemberRole::Member,
+            Some(&owner_bytes),
+        )
+        .await
+        .expect("agent joins Outreach");
+    // The mistake being guarded: someone gives the agent an admin role row.
+    fx.state
+        .db
+        .add_relay_member(community, &agent.public_key().to_hex(), "admin", None)
+        .await
+        .expect("agent holds an admin row");
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230022", "wamid.IN22", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+
+    // GUARD: `access_for` never grants OwnerAdmin to a managed agent. Without it
+    // the message is `queued` and the sender calls Graph.
+    let made = fx
+        .command(
+            &agent,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": "+27821230022", "text": "Hi Thabo"}),
+        )
+        .await;
+    let message = match made {
+        Ok(result) => result.message,
+        Err(error) => panic!("agent send failed: {error:?}"),
+    };
+    assert!(message.starts_with("draft pending approval"), "{message}");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "an agent message waits for the owner even with an admin row"
+    );
+    // And it cannot approve its own draft.
+    let drafts = fx
+        .state
+        .db
+        .whatsapp_list_drafts(fx.community(), 50)
+        .await
+        .expect("drafts");
+    assert_eq!(drafts.len(), 1);
+    let own_approval = rejection(
+        fx.command(
+            &agent,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({"v": 1, "draftId": drafts[0].id.to_string(), "decision": "approve"}),
+        )
+        .await,
+    );
+    assert!(own_approval.contains("owner or an admin"), "{own_approval}");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(fx.graph.send_count(), 0);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn free_text_needs_the_window_and_never_two_messages_in_a_row() {
     let fx = fixture().await;
     let text = |to: &str, body: &str| json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": to, "text": body});
