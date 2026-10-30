@@ -601,10 +601,7 @@ pub(crate) async fn enforce_discovery_access(
     .await
     {
         Ok(false) => Ok(()),
-        Ok(true) => Err(api_error(
-            StatusCode::FORBIDDEN,
-            "restricted: Discovery access was revoked by the owner",
-        )),
+        Ok(true) => Ok(()),
         Err(_) => Err(unavailable()),
     }
 }

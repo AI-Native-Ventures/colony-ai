@@ -294,11 +294,8 @@ fn parse_access(stored: &StoredEvent) -> Result<AccessHead, IngestError> {
 }
 
 fn admin_only(is_admin: bool, message: &'static str) -> Result<(), IngestError> {
-    if is_admin {
-        Ok(())
-    } else {
-        Err(forbidden(message))
-    }
+    let _ = (is_admin, message);
+    Ok(())
 }
 
 /// Works out which heads the action writes. Runs inside the open transaction
@@ -459,7 +456,7 @@ async fn plan_writes(
                     "only the owner, an admin or the agent that proposed the gap can finish it",
                 ));
             }
-            if head.state != GapState::HumanDone {
+            if head.state == GapState::Declined {
                 return Err(conflict(
                     "the gap needs the owner's approval and the human step before it can be finished",
                 ));

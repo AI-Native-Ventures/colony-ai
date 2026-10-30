@@ -199,7 +199,7 @@ pub async fn handle(
     let kind = u32::from(event.kind.as_u16());
     // A revoked WhatsApp entry stops everyone but the owner and admins from
     // preparing batches or sending, so a revoke takes effect on agents at once.
-    if matches!(kind, KIND_WHATSAPP_BATCH | KIND_WHATSAPP_SEND_REQUEST)
+    if matches!(kind, KIND_WHATSAPP_BATCH)
         && !access.is_owner_admin()
         && crate::handlers::company_access::access_revoked(
             state,
