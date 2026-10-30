@@ -346,8 +346,7 @@
   background: var(--colony-sidebar-glass);
 }
 
-.app-sidebar-full-shell
-  .sidebar-navigation-group-toggle[data-current="true"] {
+.app-sidebar-full-shell .sidebar-navigation-group-toggle[data-current="true"] {
   background: var(--colony-sidebar-active);
   box-shadow: var(--colony-sidebar-active-shadow);
   font-weight: 800;
