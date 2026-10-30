@@ -155,7 +155,7 @@ pub async fn enqueue(
     }
     if let Err(error) = state
         .db
-        .enqueue_cofounder_wake(community_id.as_uuid(), reason.id(), dedupe_key, detail)
+        .enqueue_cofounder_wake(*community_id.as_uuid(), reason.id(), dedupe_key, detail)
         .await
     {
         error!(
@@ -701,7 +701,7 @@ mod postgres_tests {
     };
 
     fn community(fixture: &Fixture) -> Uuid {
-        fixture.tenant.community().as_uuid()
+        *fixture.tenant.community().as_uuid()
     }
 
     async fn pending_count(fixture: &Fixture) -> usize {

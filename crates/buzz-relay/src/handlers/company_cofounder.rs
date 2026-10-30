@@ -212,7 +212,7 @@ pub(super) async fn handle(
             state,
             community_id,
             crate::cofounder_wake::WakeReason::ModeOn,
-            &format!("mode_on:{}", replaced.event.id.to_hex()),
+            &format!("mode_on:{}", replaced.event.event.id.to_hex()),
             "",
         )
         .await;

@@ -59,7 +59,7 @@ mod tests {
         assert_eq!(event.kind, Kind::Custom(KIND_BRIEF_ACTION as u16));
         assert_eq!(event.tags.len(), 1);
         assert_eq!(
-            event.tags.first().and_then(|tag| tag.content()),
+            event.tags.iter().next().and_then(|tag| tag.content()),
             Some(BRIEF_D_TAG)
         );
     }
@@ -97,7 +97,7 @@ mod tests {
             .expect("sign onboarding action");
         assert_eq!(event.kind, Kind::Custom(KIND_ONBOARDING_ACTION as u16));
         assert_eq!(
-            event.tags.first().and_then(|tag| tag.content()),
+            event.tags.iter().next().and_then(|tag| tag.content()),
             Some(ONBOARDING_D_TAG)
         );
     }
