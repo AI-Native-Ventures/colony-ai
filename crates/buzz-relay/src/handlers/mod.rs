@@ -35,6 +35,8 @@ pub mod company_lessons;
 pub mod company_member_records;
 /// Nostr-first broker for co-founder numbers: scorecard, goals and weekly review.
 pub mod company_numbers;
+/// Broker for the customer record (kind 47069, head kind 30679).
+pub mod company_customers;
 /// Nostr-first broker for co-founder onboarding progress.
 pub mod company_onboarding;
 /// Nostr-first broker for community-wide standing tool permissions.

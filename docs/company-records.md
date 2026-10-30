@@ -55,6 +55,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30674 | Business brief head | Relay signed, replaceable | Co-founder onboarding |
 | 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
 | 30678 | Scorecard, function goal and weekly review head | Relay signed, replaceable | Co-founder numbers |
+| 30679 | Customer record head | Relay signed, replaceable | Co-founder customer record |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -79,6 +80,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47064 | Business brief action | Brokered | Co-founder onboarding |
 | 47065 | Co-founder onboarding action | Brokered | Co-founder onboarding |
 | 47068 | Scorecard refresh, goal and weekly review action | Brokered | Co-founder numbers |
+| 47069 | Customer record refresh, conversion, milestone, email and file action | Brokered | Co-founder customer record |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
