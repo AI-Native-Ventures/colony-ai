@@ -130,6 +130,17 @@ test("profile effort labels use only values advertised by the running adapter", 
   assert.equal(acceptedEffortLabel("high", undefined), null);
 });
 
+test("Colony Agent effort uses model capability values without ACP options", () => {
+  const colonyAgent = {
+    runtimeId: "buzz-agent",
+    provider: "colony-credits",
+    model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+  };
+  assert.equal(acceptedEffortLabel("high", undefined, colonyAgent), "high");
+  assert.equal(acceptedEffortLabel("balanced", undefined, colonyAgent), null);
+  assert.equal(acceptedEffortLabel("xhigh", undefined, colonyAgent), "xhigh");
+});
+
 test("changing harness clears the previous model and provider labels through the production transition", () => {
   const next = selectionOnRuntimeChange(
     {
