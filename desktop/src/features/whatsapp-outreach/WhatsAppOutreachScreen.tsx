@@ -16,6 +16,8 @@ import {
 import {
   getWhatsAppDailyCapProgress,
   maskWhatsAppNumber,
+  type WhatsAppBatchDetail,
+  type WhatsAppBatchRow,
   type WhatsAppContact,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
@@ -29,6 +31,7 @@ import {
   useWhatsAppCommand,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
+  useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
@@ -40,14 +43,58 @@ type ContactFilter = "all" | "replied" | "sent" | "opted-out";
 type WhatsAppOutreachScreenProps = {
   channelId: string;
   initialThreadRootId: string | null;
+  initialContactWaId?: string | null;
+  mode?: "full" | "dock";
 };
 
-function contactStatus(contact: WhatsAppContact): string {
+function contactStatus(
+  contact: WhatsAppContact,
+  waitingForApproval = false,
+): string {
   if (contact.optedOut) return "Opted out";
+  if (waitingForApproval || contact.awaitingApproval) {
+    return "Waiting for your approval";
+  }
   if (contact.unanswered) return "Replied";
   if (contact.lastInboundAt) return "Replied";
-  if (contact.awaitingApproval) return "Waiting for your approval";
   return "Sent";
+}
+
+function normalizedPhone(value: string): string {
+  return value.replace(/\D/gu, "");
+}
+
+type PendingBatchRow = Readonly<{
+  batch: WhatsAppBatchDetail;
+  row: WhatsAppBatchRow;
+}>;
+
+function pendingBatchRowsForContact(
+  contact: WhatsAppContact,
+  batches: readonly WhatsAppBatchDetail[],
+): PendingBatchRow[] {
+  const contactPhone = normalizedPhone(contact.e164 || contact.waId);
+  return batches
+    .filter((batch) => batch.status === "pending")
+    .flatMap((batch) =>
+      batch.rows
+        .filter(
+          (row) =>
+            normalizedPhone(row.to) === contactPhone &&
+            !["dropped", "skipped", "failed"].includes(
+              row.state.toLocaleLowerCase(),
+            ),
+        )
+        .map((row) => ({ batch, row })),
+    );
+}
+
+function uniquePendingBatchRowForContact(
+  contact: WhatsAppContact,
+  batches: readonly WhatsAppBatchDetail[],
+): PendingBatchRow | null {
+  const rows = pendingBatchRowsForContact(contact, batches);
+  return rows.length === 1 ? rows[0] : null;
 }
 
 function dayKey(value: string | Date): string {
@@ -83,8 +130,7 @@ function windowTimeRemaining(value: string | null): string {
   return `${Math.max(1, minutes)}m left`;
 }
 
-function StatusChip({ contact }: { contact: WhatsAppContact }) {
-  const status = contactStatus(contact);
+function StatusChip({ status }: { status: string }) {
   return (
     <span
       className={cn(
@@ -103,52 +149,77 @@ function ContactRow({
   contact,
   businessName,
   hasDraft,
+  preview,
+  waitingForApproval,
+  canReviewBatch,
   selected,
   onSelect,
+  onReviewBatch,
 }: {
   contact: WhatsAppContact;
   businessName: string;
   hasDraft: boolean;
+  preview: string | null;
+  waitingForApproval: boolean;
+  canReviewBatch: boolean;
   selected: boolean;
   onSelect: () => void;
+  onReviewBatch: () => void;
 }) {
   const name = businessName;
+  const status = contactStatus(contact, waitingForApproval);
   return (
-    <button
-      aria-current={selected ? "true" : undefined}
-      className={cn("c3wa-contact-row", selected && "is-selected")}
-      data-testid={`whatsapp-contact-${contact.waId}`}
-      onClick={onSelect}
-      type="button"
-    >
-      <span aria-hidden="true" className="c3wa-contact-avatar">
-        {whatsappInitials(name)}
-      </span>
-      <span className="c3wa-contact-main">
-        <span className="c3wa-contact-title">
-          <strong>{name}</strong>
-          <time>
-            {contact.lastInboundAt
-              ? formatWhatsAppDateTime(contact.lastInboundAt)
-              : ""}
-          </time>
+    <div className={cn("c3wa-contact-row", selected && "is-selected")}>
+      <button
+        aria-current={selected ? "true" : undefined}
+        className="c3wa-contact-select"
+        data-testid={`whatsapp-contact-${contact.waId}`}
+        onClick={onSelect}
+        type="button"
+      >
+        <span aria-hidden="true" className="c3wa-contact-avatar">
+          {whatsappInitials(name)}
         </span>
-        <span className="c3wa-contact-subtitle">
-          <StatusChip contact={contact} />
-          {hasDraft ? (
-            <span className="c3wa-draft-waiting">Draft waiting</span>
+        <span className="c3wa-contact-main">
+          <span className="c3wa-contact-title">
+            <strong>{name}</strong>
+            <time>
+              {contact.lastInboundAt
+                ? formatWhatsAppDateTime(contact.lastInboundAt)
+                : ""}
+            </time>
+          </span>
+          <span className="c3wa-contact-subtitle">
+            <StatusChip status={status} />
+            {hasDraft ? (
+              <span className="c3wa-draft-waiting">Draft waiting</span>
+            ) : null}
+            {contact.unanswered && !selected ? (
+              <span
+                aria-label="Unread reply"
+                className="c3wa-unread-dot"
+                role="img"
+              />
+            ) : null}
+            <span>{maskWhatsAppNumber(contact.e164)}</span>
+          </span>
+          {preview ? (
+            <span className="c3wa-contact-preview">{preview}</span>
           ) : null}
-          {contact.unanswered && !selected ? (
-            <span
-              aria-label="Unread reply"
-              className="c3wa-unread-dot"
-              role="img"
-            />
-          ) : null}
-          <span>{maskWhatsAppNumber(contact.e164)}</span>
         </span>
-      </span>
-    </button>
+      </button>
+      {waitingForApproval ? (
+        <button
+          aria-label={`Review batch for ${name}`}
+          className="c3wa-contact-review"
+          disabled={!canReviewBatch}
+          onClick={onReviewBatch}
+          type="button"
+        >
+          Review
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -203,6 +274,8 @@ function TemplatePicker({
 export function WhatsAppOutreachScreen({
   channelId,
   initialThreadRootId,
+  initialContactWaId = null,
+  mode = "full",
 }: WhatsAppOutreachScreenProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -213,12 +286,16 @@ export function WhatsAppOutreachScreen({
     statusQuery.data?.connected === true,
   );
   const draftsQuery = useWhatsAppDraftsQuery();
+  const pendingBatchesQuery = useWhatsAppPendingBatchDetailsQuery(
+    statusQuery.data?.connected === true,
+  );
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
   const membershipQuery = useMyRelayMembershipLookupQuery();
   const command = useWhatsAppCommand();
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null);
   const [activeFilter, setActiveFilter] = React.useState<ContactFilter>("all");
+  const [searchTerm, setSearchTerm] = React.useState("");
   const [showContactList, setShowContactList] = React.useState(false);
   const [messageText, setMessageText] = React.useState("");
   const [selectedTemplate, setSelectedTemplate] =
@@ -230,6 +307,7 @@ export function WhatsAppOutreachScreen({
   const [actionError, setActionError] = React.useState("");
   const messageListRef = React.useRef<HTMLDivElement>(null);
   const threadMenuButtonRef = React.useRef<HTMLButtonElement>(null);
+  const lastContactRequestRef = React.useRef<string | null>(null);
 
   const contacts = contactsQuery.data ?? [];
   const leadIdentities = React.useMemo(
@@ -277,6 +355,17 @@ export function WhatsAppOutreachScreen({
     : null;
 
   React.useEffect(() => {
+    if (
+      !initialContactWaId ||
+      initialContactWaId === lastContactRequestRef.current
+    ) {
+      return;
+    }
+    lastContactRequestRef.current = initialContactWaId;
+    setSelectedWaId(initialContactWaId);
+  }, [initialContactWaId]);
+
+  React.useEffect(() => {
     if (!contacts.length) return;
     if (initialThreadRootId) {
       const matched = contacts.find(
@@ -287,27 +376,64 @@ export function WhatsAppOutreachScreen({
       !selectedWaId ||
       !contacts.some((contact) => contact.waId === selectedWaId)
     ) {
-      setSelectedWaId(contacts[0].waId);
+      setSelectedWaId(
+        contacts.some((contact) => contact.waId === initialContactWaId)
+          ? initialContactWaId
+          : contacts[0].waId,
+      );
     }
-  }, [contacts, initialThreadRootId, selectedWaId]);
+  }, [contacts, initialContactWaId, initialThreadRootId, selectedWaId]);
 
   const selectedContact =
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
-  const selectedIdentity = selectedContact
-    ? identityForContact(selectedContact)
-    : null;
   const threadQuery = useWhatsAppThreadQuery(selectedContact?.waId ?? null);
   const thread = threadQuery.data;
+  const pendingBatches = pendingBatchesQuery.data ?? [];
+  const selectedPendingBatchRows = selectedContact
+    ? pendingBatchRowsForContact(selectedContact, pendingBatches)
+    : [];
+  const selectedPendingBatchRow = selectedContact
+    ? uniquePendingBatchRowForContact(selectedContact, pendingBatches)
+    : null;
+  const selectedContactWithThreadIdentity = selectedContact
+    ? {
+        ...selectedContact,
+        displayName:
+          selectedContact.displayName ?? thread?.contact.displayName ?? null,
+        leadId:
+          selectedContact.leadId ??
+          thread?.contact.leadId ??
+          selectedPendingBatchRow?.row.leadId ??
+          null,
+      }
+    : null;
+  const selectedIdentity = selectedContactWithThreadIdentity
+    ? identityForContact(selectedContactWithThreadIdentity)
+    : null;
   const pendingDrafts = draftsQuery.data ?? [];
   const filteredContacts = contacts.filter((contact) => {
-    if (activeFilter === "replied")
-      return Boolean(contact.lastInboundAt) && !contact.optedOut;
-    if (activeFilter === "sent")
-      return (
-        !contact.optedOut && !contact.lastInboundAt && !contact.awaitingApproval
-      );
-    if (activeFilter === "opted-out") return contact.optedOut;
-    return true;
+    const visibleContact =
+      contact.waId === selectedContactWithThreadIdentity?.waId
+        ? selectedContactWithThreadIdentity
+        : contact;
+    const waitingForApproval =
+      pendingBatchRowsForContact(visibleContact, pendingBatches).length > 0;
+    const visibleStatus = contactStatus(visibleContact, waitingForApproval);
+    const matchesFilter =
+      activeFilter === "replied"
+        ? visibleStatus === "Replied"
+        : activeFilter === "sent"
+          ? visibleStatus === "Sent"
+          : activeFilter === "opted-out"
+            ? visibleStatus === "Opted out"
+            : true;
+    const search = searchTerm.trim().toLocaleLowerCase();
+    const matchesSearch =
+      !search ||
+      `${identityForContact(contact).businessName} ${contact.e164}`
+        .toLocaleLowerCase()
+        .includes(search);
+    return matchesFilter && matchesSearch;
   });
   const selectedDraft =
     pendingDrafts.find((draft) => draft.waId === selectedContact?.waId) ?? null;
@@ -323,6 +449,9 @@ export function WhatsAppOutreachScreen({
       ),
     [thread?.messages],
   );
+  const selectedPendingBatch = selectedPendingBatchRow?.batch ?? null;
+  const selectedHeldPreview = selectedPendingBatchRow?.row.preview ?? null;
+  const selectedAwaitingApproval = selectedPendingBatchRows.length > 0;
   const agentPubkeys = [
     ...new Set(
       chronologicalMessages
@@ -472,11 +601,43 @@ export function WhatsAppOutreachScreen({
   }
 
   function openLead() {
-    if (!selectedContact?.leadId) return;
+    const leadId = selectedContactWithThreadIdentity?.leadId;
+    if (!leadId) return;
     void navigate({
       to: "/sales/lead/$prospectId",
-      params: { prospectId: selectedContact.leadId },
+      params: { prospectId: leadId },
     });
+  }
+
+  function reviewBatch(batch: WhatsAppBatchDetail | null) {
+    if (!batch) return;
+    void navigate({
+      to: "/whatsapp/batches/$batchId",
+      params: { batchId: batch.batchId },
+    });
+  }
+
+  async function approveBatch(batchId: string) {
+    if (!canManage || busy) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      await command(KIND_WHATSAPP_BATCH_DECISION, {
+        v: 1,
+        batchId,
+        decision: "approve",
+        dropRows: [],
+        editRows: [],
+      });
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Could not approve this WhatsApp batch.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   function openSettings() {
@@ -497,7 +658,11 @@ export function WhatsAppOutreachScreen({
     setTemplatePickerOpen(false);
   }
 
-  if (statusQuery.isPending || contactsQuery.isPending) {
+  if (
+    statusQuery.isPending ||
+    contactsQuery.isPending ||
+    (status?.connected && pendingBatchesQuery.isPending)
+  ) {
     return (
       <div aria-busy="true" className="c3wa-loading c3wa-outreach-loading">
         Loading WhatsApp conversations…
@@ -505,8 +670,13 @@ export function WhatsAppOutreachScreen({
     );
   }
 
-  if (statusQuery.isError || contactsQuery.isError) {
-    const error = statusQuery.error ?? contactsQuery.error;
+  if (
+    statusQuery.isError ||
+    contactsQuery.isError ||
+    (status?.connected && pendingBatchesQuery.isError)
+  ) {
+    const error =
+      statusQuery.error ?? contactsQuery.error ?? pendingBatchesQuery.error;
     return (
       <main className="c3wa-root c3wa-outreach-error" role="alert">
         {error?.message ?? "WhatsApp conversations could not be loaded."}
@@ -547,7 +717,7 @@ export function WhatsAppOutreachScreen({
           />
           <div className="c3wa-outreach-title-row">
             <div>
-              <h1>Outreach</h1>
+              <h1>{mode === "dock" ? "Chats" : "Outreach"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
             <button
@@ -559,6 +729,14 @@ export function WhatsAppOutreachScreen({
               ⚙
             </button>
           </div>
+          <input
+            aria-label="Search chats"
+            className="c3wa-contact-search"
+            onChange={(event) => setSearchTerm(event.currentTarget.value)}
+            placeholder="Search chats"
+            type="search"
+            value={searchTerm}
+          />
           <div
             aria-label="Filter contacts"
             className="c3wa-contact-filters"
@@ -582,18 +760,38 @@ export function WhatsAppOutreachScreen({
           </div>
         </header>
         <div className="c3wa-contact-list">
-          {filteredContacts.map((contact) => (
-            <ContactRow
-              businessName={identityForContact(contact).businessName}
-              contact={contact}
-              hasDraft={pendingDrafts.some(
-                (draft) => draft.waId === contact.waId,
-              )}
-              key={contact.waId}
-              onSelect={() => selectContact(contact)}
-              selected={contact.waId === selectedContact?.waId}
-            />
-          ))}
+          {filteredContacts.map((contact) => {
+            const isSelected = contact.waId === selectedContact?.waId;
+            const listedContact =
+              isSelected && selectedContactWithThreadIdentity
+                ? selectedContactWithThreadIdentity
+                : contact;
+            const rowMatches = pendingBatchRowsForContact(
+              listedContact,
+              pendingBatches,
+            );
+            const rowBatch = rowMatches.length === 1 ? rowMatches[0] : null;
+            const rowContact = {
+              ...listedContact,
+              leadId: listedContact.leadId ?? rowBatch?.row.leadId ?? null,
+            };
+            return (
+              <ContactRow
+                businessName={identityForContact(rowContact).businessName}
+                canReviewBatch={Boolean(rowBatch)}
+                contact={rowContact}
+                hasDraft={pendingDrafts.some(
+                  (draft) => draft.waId === contact.waId,
+                )}
+                key={contact.waId}
+                onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
+                onSelect={() => selectContact(contact)}
+                preview={rowBatch?.row.preview ?? null}
+                selected={isSelected}
+                waitingForApproval={rowMatches.length > 0}
+              />
+            );
+          })}
           {filteredContacts.length === 0 ? (
             <p className="c3wa-contact-empty">No contacts match this filter.</p>
           ) : null}
@@ -633,10 +831,14 @@ export function WhatsAppOutreachScreen({
                   : ""}
               </span>
               <span className="c3wa-thread-head-mobile">
-                WhatsApp · {contactStatus(selectedContact)}
+                WhatsApp ·
+                {contactStatus(
+                  selectedContactWithThreadIdentity ?? selectedContact,
+                  selectedAwaitingApproval,
+                )}
               </span>
             </div>
-            {selectedContact.leadId ? (
+            {selectedContactWithThreadIdentity?.leadId ? (
               <Button
                 className="c3wa-open-lead"
                 onClick={openLead}
@@ -697,7 +899,8 @@ export function WhatsAppOutreachScreen({
             </div>
           ) : null}
 
-          {selectedContact.leadId ? (
+          {(selectedContactWithThreadIdentity?.leadId ??
+          selectedContact.leadId) ? (
             <div className="c3wa-lead-context c3wa-mobile-lead-context">
               <span aria-hidden="true" className="c3wa-context-check">
                 ✓
@@ -705,9 +908,15 @@ export function WhatsAppOutreachScreen({
               <span>
                 <strong>
                   Lead ·{" "}
-                  {contactStatus(selectedContact) === "Replied"
+                  {contactStatus(
+                    selectedContactWithThreadIdentity ?? selectedContact,
+                    selectedAwaitingApproval,
+                  ) === "Replied"
                     ? "In conversation"
-                    : contactStatus(selectedContact)}
+                    : contactStatus(
+                        selectedContactWithThreadIdentity ?? selectedContact,
+                        selectedAwaitingApproval,
+                      )}
                 </strong>
                 <small>
                   {openerLabel ? `Opener: ${openerLabel}` : "Horizon Labs lead"}
@@ -765,11 +974,75 @@ export function WhatsAppOutreachScreen({
                     onApproveDraft={approveDraft}
                     onRejectDraft={rejectDraft}
                     templates={templates}
+                    waitingForApproval={
+                      message.direction === "out" &&
+                      message.state === "queued" &&
+                      selectedPendingBatchRows.some(
+                        ({ row }) => row.preview === message.text,
+                      )
+                    }
                   />
                 </React.Fragment>
               );
             })}
-            {thread && thread.messages.length === 0 ? (
+            {selectedAwaitingApproval ? (
+              <article
+                aria-label="WhatsApp batch waiting for approval"
+                className="c3wa-held-batch-card"
+                data-testid="whatsapp-thread-held-batch"
+              >
+                <div>
+                  <strong>Waiting for your approval</strong>
+                  <p>{selectedHeldPreview ?? "Loading message preview…"}</p>
+                </div>
+                <div className="c3wa-held-batch-actions">
+                  <Button
+                    disabled={
+                      busy || !canManage || selectedPendingBatch === null
+                    }
+                    onClick={() => {
+                      if (selectedPendingBatch) {
+                        void approveBatch(selectedPendingBatch.batchId);
+                      }
+                    }}
+                    size="sm"
+                    type="button"
+                  >
+                    Approve batch
+                  </Button>
+                  <Button
+                    disabled={selectedPendingBatch === null}
+                    onClick={() => reviewBatch(selectedPendingBatch)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Review
+                  </Button>
+                  {!canManage ? (
+                    <span>
+                      Only the owner or an admin can approve this batch.
+                    </span>
+                  ) : null}
+                  {pendingBatchesQuery.isPending ? (
+                    <span>Finding the pending batch…</span>
+                  ) : null}
+                  {pendingBatchesQuery.isError ? (
+                    <span role="alert">
+                      {pendingBatchesQuery.error.message}
+                    </span>
+                  ) : null}
+                  {!pendingBatchesQuery.isPending &&
+                  !pendingBatchesQuery.isError &&
+                  !selectedPendingBatch ? (
+                    <span>The pending batch is not available.</span>
+                  ) : null}
+                </div>
+              </article>
+            ) : null}
+            {thread &&
+            thread.messages.length === 0 &&
+            !selectedAwaitingApproval ? (
               <p className="c3wa-thread-empty">No messages yet.</p>
             ) : null}
           </div>

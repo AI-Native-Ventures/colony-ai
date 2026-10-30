@@ -125,6 +125,7 @@ export function WorkAreaPanel({
               <definition.Panel
                 active={active}
                 channelId={channelId}
+                tab={tab}
                 tabId={tab.id}
               />
             </section>

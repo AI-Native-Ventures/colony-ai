@@ -24,6 +24,8 @@ export type TimelineThreadSummary = {
   replyCount: number;
   lastReplyAt: number | null;
   participants: TimelineThreadSummaryParticipant[];
+  /** Most recent inbound WhatsApp message in this thread, if present. */
+  latestWhatsAppReply?: TimelineMessage;
 };
 
 export type MainTimelineEntry = {
@@ -36,6 +38,7 @@ export type ThreadDescendantStats = {
   unreadDescendantCount: number;
   lastReplyAt: number | null;
   recentParticipantsNewestFirst: TimelineThreadSummaryParticipant[];
+  latestWhatsAppReply?: TimelineMessage;
 };
 
 export type ThreadPanelIndex = {
@@ -118,6 +121,12 @@ function buildDirectChildrenByParentId(messages: TimelineMessage[]) {
   return childrenByParentId;
 }
 
+function isWhatsAppInbound(message: TimelineMessage): boolean {
+  return (message.tags ?? []).some(
+    (tag) => tag[0] === "wa-dir" && tag[1] === "in",
+  );
+}
+
 export function buildDescendantStatsByMessageId(
   messages: TimelineMessage[],
   unreadReplyIds: ReadonlySet<string> = new Set(),
@@ -178,6 +187,13 @@ export function buildDescendantStatsByMessageId(
         ancestorStats.lastReplyAt ?? 0,
         message.createdAt,
       );
+      if (
+        isWhatsAppInbound(message) &&
+        (!ancestorStats.latestWhatsAppReply ||
+          message.createdAt >= ancestorStats.latestWhatsAppReply.createdAt)
+      ) {
+        ancestorStats.latestWhatsAppReply = message;
+      }
 
       if (
         ancestorStats.recentParticipantsNewestFirst.length <
@@ -228,6 +244,9 @@ function buildSummaryForDirectReplies(
     replyCount: descendantStats.descendantCount,
     lastReplyAt: descendantStats.lastReplyAt,
     participants: [...descendantStats.recentParticipantsNewestFirst].reverse(),
+    ...(descendantStats.latestWhatsAppReply
+      ? { latestWhatsAppReply: descendantStats.latestWhatsAppReply }
+      : {}),
   };
 }
 
@@ -442,6 +461,11 @@ function mergeThreadSummaries(
     lastReplyAt:
       Math.max(local.lastReplyAt ?? 0, relay.lastReplyAt ?? 0) || null,
     participants: [...participants.values()].slice(-3),
+    ...(local.latestWhatsAppReply
+      ? { latestWhatsAppReply: local.latestWhatsAppReply }
+      : relay.latestWhatsAppReply
+        ? { latestWhatsAppReply: relay.latestWhatsAppReply }
+        : {}),
   };
 }
 

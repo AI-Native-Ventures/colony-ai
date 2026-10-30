@@ -9,6 +9,7 @@ import {
   type WorkAreaFileRef,
   type WorkAreaTab,
   type WorkAreaTabKind,
+  type WorkAreaTabOptions,
 } from "./workAreaTypes";
 import { workAreaFileTabId } from "./workAreaFileTab";
 
@@ -70,13 +71,24 @@ function parseFileRef(value: unknown): WorkAreaFileRef | null {
 
 function parseTab(value: unknown): WorkAreaTab | null {
   if (typeof value !== "object" || value === null) return null;
-  const { id, kind, file } = value as Record<string, unknown>;
+  const { id, kind, file, contactWaId } = value as Record<string, unknown>;
   if (typeof id !== "string" || id.length === 0 || id.length > 128) return null;
   if (!isWorkAreaTabKind(kind)) return null;
   if (kind === "file") {
     // A file tab without the file it reads cannot be shown.
     const ref = parseFileRef(file);
     return ref ? { id, kind, file: ref } : null;
+  }
+  if (kind === "whatsapp") {
+    return {
+      id,
+      kind,
+      ...(typeof contactWaId === "string" &&
+      contactWaId.length > 0 &&
+      contactWaId.length <= 32
+        ? { contactWaId }
+        : {}),
+    };
   }
   return { id, kind };
 }
@@ -177,7 +189,8 @@ function sameChannel(a: WorkAreaChannelState, b: WorkAreaChannelState) {
       (tab, index) =>
         tab.id === b.tabs[index]?.id &&
         tab.kind === b.tabs[index]?.kind &&
-        tab.file?.path === b.tabs[index]?.file?.path,
+        tab.file?.path === b.tabs[index]?.file?.path &&
+        tab.contactWaId === b.tabs[index]?.contactWaId,
     )
   );
 }
@@ -246,15 +259,34 @@ function withTab(
   kind: WorkAreaTabKind,
   id: string,
   file?: WorkAreaFileRef,
+  options?: WorkAreaTabOptions,
 ): WorkAreaChannelState {
-  if (current.tabs.some((tab) => tab.id === id)) {
-    return { ...current, open: true, activeTabId: id };
+  const existingIndex = current.tabs.findIndex((tab) => tab.id === id);
+  if (existingIndex >= 0) {
+    const existing = current.tabs[existingIndex];
+    const updated =
+      options?.contactWaId && existing.kind === "whatsapp"
+        ? { ...existing, contactWaId: options.contactWaId }
+        : existing;
+    if (updated === existing) {
+      return { ...current, open: true, activeTabId: id };
+    }
+    const tabs = [...current.tabs];
+    tabs[existingIndex] = updated;
+    return { ...current, open: true, activeTabId: id, tabs };
   }
   if (current.tabs.length >= MAX_TABS_PER_CHANNEL) return current;
   return {
     ...current,
     open: true,
-    tabs: [...current.tabs, file ? { id, kind, file } : { id, kind }],
+    tabs: [
+      ...current.tabs,
+      file
+        ? { id, kind, file }
+        : options?.contactWaId && kind === "whatsapp"
+          ? { id, kind, contactWaId: options.contactWaId }
+          : { id, kind },
+    ],
     activeTabId: id,
   };
 }
@@ -267,10 +299,11 @@ export function openWorkArea(
   channelId: string,
   kind?: WorkAreaTabKind,
   tabId?: string,
+  options?: WorkAreaTabOptions,
 ) {
   commit(channelId, (current) =>
     kind
-      ? withTab(current, kind, tabId ?? kind)
+      ? withTab(current, kind, tabId ?? kind, undefined, options)
       : {
           ...current,
           open: true,

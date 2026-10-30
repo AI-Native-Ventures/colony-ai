@@ -93,6 +93,7 @@ export function ChannelScreen({
   autoSendDraftKey,
   currentIdentity,
   currentProfile,
+  initialWhatsAppContactWaId,
   headerEndActions, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
@@ -741,6 +742,7 @@ export function ChannelScreen({
                 : undefined
             }
             channelId={activeChannel?.id ?? null}
+            initialWhatsAppContactWaId={initialWhatsAppContactWaId}
           >
           <div
             className="colony-channel-route-content"
