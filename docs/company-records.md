@@ -50,6 +50,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30671 | Function slot head | Relay signed, replaceable | Co-founder mode |
 | 30672 | Worker run head | Relay signed, replaceable | Worker runs |
 | 30673 | Plan head | Relay signed, replaceable | Co-founder plans |
+| 30677 | Playbook and running copy head | Relay signed, replaceable | Co-founder playbooks |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -69,6 +70,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47061 | Function slot action | Brokered | Co-founder mode |
 | 47062 | Worker run action | Brokered | Worker runs |
 | 47063 | Plan action | Brokered | Co-founder plans |
+| 47067 | Playbook and running copy action | Brokered | Co-founder playbooks |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1176,6 +1178,173 @@ The head keeps an append-only approval record (`approvals`, at most 200):
 `actionEventId`. It answers who approved what, and when.
 
 CLI: `colony plans propose|list|show|revise|step|request-approval|approve|reject|cancel|approve-step|reject-step|approvals`.
+
+## Playbooks
+
+A playbook is a business's routine, designed with the founder: ordered steps,
+each with an owner, inputs, outputs, tools and an optional approval point. It
+is versioned: Scout proposes, the owner approves, and a change waits until the
+owner approves it. A playbook runs once per client job as a **running copy**
+that shows its current step. Two record families share one head kind (30677)
+and one action kind (47067); the d-tag tells them apart. Records are
+community-wide (no `h`, no `p` tag). Proposing a playbook, proposing a change,
+revising one, approving one and starting a job need co-founder mode on; step
+updates, hand-offs, cancelling, rejecting and withdrawing still work with it
+off (approved work in flight finishes).
+
+| d-tag | Family |
+| --- | --- |
+| `company:playbook:<uuid>` | playbook |
+| `company:playbook-job:<uuid>` | running copy for one client job |
+
+### Playbook head (relay signed, kind 30677)
+
+Content is camelCase; unknown keys are refused by the relay and by readers.
+Optional keys are omitted when empty.
+
+```json
+{
+  "schemaVersion": 1,
+  "playbookId": "uuid",
+  "status": "proposed | active | archived | rejected",
+  "version": 2,
+  "current": { "title": "Delivery playbook", "summary": "", "function": "operations",
+    "steps": [{ "stepId": "brief", "title": "Client brief and assets", "detail": null,
+      "owner": { "kind": "function | lead_agent | worker | owner", "function": "operations",
+                 "agentPubkey": "hex", "workerType": "site_build" },
+      "inputs": ["signed agreement"], "outputs": ["brief"], "tools": ["WhatsApp"],
+      "approvalPoint": { "kind": "outreach | spend | taste | hire | other", "prompt": "You say go live" } }] },
+  "pending": { "content": { "...same shape as current..." }, "changeSummary": "Add a logins checklist to step 2",
+               "proposedByPubkey": "hex", "proposedAt": 1793000000, "revision": 1 },
+  "records": [{ "decision": "approved | rejected | edited | published | withdrawn | archived", "version": 2,
+                "revision": 1, "actorPubkey": "hex", "at": 1793000000, "note": null,
+                "changeSummary": null, "proposedByPubkey": "hex", "actionEventId": "hex" }],
+  "createdByPubkey": "hex", "createdAt": 1793000000,
+  "updatedByPubkey": "hex", "updatedAt": 1793000000, "sourceActionEventId": "hex"
+}
+```
+
+- `version` is 0 until the first approval; `current` is the approved content of
+  `version` (absent while `version` is 0). `pending` is at most one proposal
+  waiting for the owner: a whole new playbook (then `status` is `proposed`) or a
+  change to the approved one (then `status` stays `active`). The approved
+  version never moves until the owner approves.
+- `status`: `proposed` never approved; `active` has an approved version and jobs
+  can start; `archived` retired (running jobs finish, no new jobs); `rejected`
+  the first proposal was rejected or withdrawn.
+- Step `owner` rules as in plans: `function` names a function, `lead_agent`
+  names an `agentPubkey`, `worker` names a `workerType`, `owner` is the founder.
+  A step can hand to another function by naming it as owner. A worker step never
+  carries an outreach or spend approval point.
+- `records` is the append-only decision record (at most 200): `version` is the
+  version in effect after the decision, `revision` the proposal revision decided.
+  "Last change approved by you on 2 Nov" is the last `approved` or `published`
+  record.
+- 1 to 24 steps, `stepId` 1 to 32 characters of `[a-z0-9_-]` and unique,
+  title at most 160, up to 6 inputs, outputs and tools of at most 120.
+
+### Playbook action (member signed, kind 47067, d-tag `company:playbook:<uuid>`)
+
+Content: `{ schemaVersion: 1, playbookId, kind, content?, changeSummary?, revision?, note?, expectedHeadEventId? }`.
+Every kind except `propose` names the exact current head event id.
+
+| `kind` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `propose` | agent, owner or admin, mode on | `content`, no expected head | new playbook, `proposed`, pending revision 1 |
+| `propose_change` | agent, owner or admin, mode on | `content`, `changeSummary` (required) | sets `pending` on an `active` playbook; refused when one waits or `content` equals the current version |
+| `revise` | the proposer, owner or admin, mode on | `content`, optional `changeSummary` | replaces `pending`, revision + 1; an owner or admin edit is recorded `edited` |
+| `withdraw` | the proposer, owner or admin | optional `note` | drops `pending`; recorded `withdrawn`; a first proposal becomes `rejected` |
+| `approve` | owner or admin only, mode on | `revision` of `pending` | `pending` becomes `current`, `version` + 1, `active`; recorded `approved` |
+| `reject` | owner or admin only | `revision`, optional `note` | drops `pending`; recorded `rejected`; a first proposal becomes `rejected` |
+| `edit` | owner or admin only | `content`, optional `changeSummary` | writes the next version directly (drops `pending`); recorded `published` |
+| `archive` | owner or admin only | optional `note` | `archived`; recorded |
+
+A plain member never proposes. A managed agent never approves, rejects, edits or
+archives, whatever role row it has. A stale `revision` conflicts. Refusals the
+UI can show verbatim: `co-founder mode is off for this company, so ...`,
+`only the owner or an admin can approve a playbook or a change to one`,
+`only an agent or the owner or an admin can propose a playbook`,
+`a change is already waiting for the owner; revise or withdraw it first`,
+`the proposal changed since you looked: it is now revision N`. A stale
+`expectedHeadEventId` is a write conflict (`conflict: playbook changed; current head is <id>`).
+
+The `approvePlaybookChanges` switch in the co-founder settings does not weaken
+this: every change to an approved playbook waits for the owner (spec section 8).
+
+### Running copy head (relay signed, kind 30677, d-tag `company:playbook-job:<uuid>`)
+
+```json
+{
+  "schemaVersion": 1,
+  "jobId": "uuid", "playbookId": "uuid", "playbookVersion": 2, "playbookTitle": "Delivery playbook",
+  "title": "Plane Tree Guesthouse",
+  "status": "running | completed | cancelled",
+  "currentStepId": "build",
+  "steps": [{ "stepId": "build", "title": "Website build", "owner": { "...as above..." },
+              "inputs": [], "outputs": [], "tools": [], "approvalPoint": null,
+              "status": "pending | waiting_approval | approved | in_progress | done | blocked | skipped",
+              "note": null, "progressLabel": "Round 1 of 2", "statusAt": 1793000000 }],
+  "approvals": [{ "stepId": "approval", "decision": "approved | rejected", "actorPubkey": "hex", "at": 1793000000, "note": null, "actionEventId": "hex" }],
+  "handoffs": [{ "stepId": "launch", "from": { "...owner..." }, "to": { "...owner..." }, "byPubkey": "hex", "at": 1793000000, "note": null, "actionEventId": "hex" }],
+  "startedByPubkey": "hex", "startedAt": 1793000000, "endedAt": null,
+  "updatedByPubkey": "hex", "updatedAt": 1793000000, "sourceActionEventId": "hex"
+}
+```
+
+- The steps are copied from the playbook version the job started from, so a
+  later version never rewrites a job in flight.
+- `currentStepId` is the first step that is not `done` or `skipped`; absent once
+  the job completed or was cancelled. Steps run in order: only the current step
+  moves. The job becomes `completed` when every step is `done` or `skipped`.
+- A step with an approval point cannot start until the owner approved it
+  (`pending` or `waiting_approval` then `approved` then `in_progress`). The
+  doer asks with `request_step_approval` (`waiting_approval`), which is a Needs
+  you "approve" item; a founder step with an approval point is at its point as
+  soon as it is current. Rejecting skips the step. `blocked` needs a note and
+  can resume to `in_progress`; a gated step cannot be blocked around its
+  approval. A prepared founder step with no approval point goes `pending` to
+  `done` ("Do" in Needs you).
+- `progressLabel` is a free short line the doer sets on a step update.
+
+### Running copy action (member signed, kind 47067, d-tag `company:playbook-job:<uuid>`)
+
+Content: `{ schemaVersion: 1, jobId, kind, playbookId?, playbookVersion?, title?, stepId?, stepStatus?, progressLabel?, handOffTo?, note?, expectedHeadEventId? }`.
+Every kind except `start` names the exact current head event id.
+
+| `kind` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `start` | agent, owner or admin, mode on | `playbookId`, `title`, optional `playbookVersion` | new running copy of the approved version; refused for an unapproved or archived playbook, or a moved `playbookVersion` |
+| `update_step` | step doer, owner or admin | `stepId`, `stepStatus` (`in_progress`, `done`, `blocked`, `skipped`), `note`, `progressLabel` | moves the current step |
+| `request_step_approval` | step doer | `stepId`, optional `note` | `waiting_approval` |
+| `approve_step` / `reject_step` | owner or admin only | `stepId`, optional `note` | `approved`, or `skipped`; recorded |
+| `hand_off` | step doer, owner or admin | `stepId`, `handOffTo` (an owner as above), optional `note` | changes the step's owner (another function, a lead agent, a worker type or the founder); recorded; refused for an ended step, the same owner, or a worker with an outreach or spend point |
+| `cancel` | whoever started it, owner or admin | optional `note` | `cancelled` |
+
+Step doers: the starter, the step's agent, the lead of the step's function,
+owners and admins. A step for the founder is only moved by an owner or admin.
+Refusals: `this step waits for the owner's approval before it can run`,
+`step X is not the current step; the job is at step Y`,
+`you are not the doer of this step`,
+`that playbook has no approved version yet; the owner has to approve it first`.
+
+### CLI (agents and owner)
+
+`colony playbooks propose --file playbook.json [--playbook <id> --summary "..."]`
+(new playbook, prints `playbookId`; with `--playbook` a change),
+`list [--status proposed|active|archived|rejected]`, `show <playbookId>`,
+`revise <playbookId> --file ... [--summary ...]`, `withdraw <playbookId>`,
+owner only: `approve|reject <playbookId> [--revision N] [--note ...]`,
+`edit <playbookId> --file ...`, `archive <playbookId>`;
+jobs: `start <playbookId> --title "Plane Tree Guesthouse" [--version N]` (prints `jobId`),
+`jobs [--playbook <id>] [--status running|completed|cancelled]`, `job <jobId>`,
+`step <jobId> <stepId> --status in_progress|done|blocked|skipped [--note ...] [--progress "Round 1 of 2"]`,
+`request-approval <jobId> <stepId>`, owner only: `approve-step|reject-step <jobId> <stepId>`,
+`hand-off <jobId> <stepId> --function <fn> | --agent <hex> | --worker <type> | --founder`,
+`cancel <jobId>`, `approvals [--playbook <id>]` (the durable decision record).
+The Scout nest skill (version 17) teaches designing playbooks with the founder
+in chat, one short question at a time, only while co-founder mode is on.
+
+Desktop read model: `desktop/src/features/cofounder/playbook*.ts`. Mock bridge seeds: `desktop/src/testing/cofounderPlaybookFixtures.ts`.
 
 ## Proof boundaries
 

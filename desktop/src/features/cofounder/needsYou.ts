@@ -15,6 +15,11 @@ import {
   stepsWaitingForApproval,
 } from "./planRecords";
 import type { PlanApprovalKind, PlanView } from "./planRecords";
+import {
+  jobOpenHumanSteps,
+  jobStepsWaitingForApproval,
+} from "./playbookRecords";
+import type { JobView, PlaybookView } from "./playbookRecords";
 
 /**
  * The one list of what the owner must approve, do or decide.
@@ -56,6 +61,8 @@ export type NeedsYouAction = {
 
 export type NeedsYouSource =
   | { kind: "plan"; planId: string; stepId: string | null }
+  | { kind: "playbook"; playbookId: string }
+  | { kind: "playbook_job"; jobId: string; stepId: string }
   | { kind: "ask"; askId: string; channelId: string }
   | { kind: "whatsapp_batch"; batchId: string }
   | { kind: "whatsapp_drafts"; senderPubkey: string | null };
@@ -97,6 +104,10 @@ export type NeedsYouSources = {
   /** Open asks addressed to the viewer (`useNeedsMeQuery().data.asks`). */
   asks: readonly AskHeadRecord[];
   plans: readonly PlanView[];
+  /** Playbooks with a proposal waiting for the owner. Optional: omit it for none. */
+  playbooks?: readonly PlaybookView[];
+  /** Running copies: a step at its approval point waits for the owner, a step only a person can do is theirs. */
+  playbookJobs?: readonly JobView[];
   /** Pending WhatsApp batches. Pass `[]` for anyone who cannot see them. */
   whatsappBatches: readonly WhatsAppBatchSummary[];
   /** Agent drafts waiting for the owner. */
@@ -285,6 +296,82 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
   }
 
   if (sources.canApprove) {
+    for (const playbook of sources.playbooks ?? []) {
+      const { pending } = playbook;
+      if (
+        !pending ||
+        (playbook.status !== "proposed" && playbook.status !== "active")
+      )
+        continue;
+      items.push({
+        id: `playbook:${playbook.playbookId}`,
+        section: "approve",
+        category: "playbook",
+        title:
+          playbook.version === 0
+            ? `New playbook: ${pending.content.title}`
+            : `Change to ${playbook.title}`,
+        subtitle:
+          pending.changeSummary ??
+          `${pending.content.steps.length} ${pending.content.steps.length === 1 ? "step" : "steps"}`,
+        fromPubkey: pending.proposedByPubkey,
+        createdAt: pending.proposedAt,
+        decideBy: null,
+        approvalKind: null,
+        count: pending.content.steps.length,
+        details: [],
+        source: { kind: "playbook", playbookId: playbook.playbookId },
+        actions: APPROVE_ACTIONS,
+      });
+    }
+    for (const job of sources.playbookJobs ?? []) {
+      for (const step of jobStepsWaitingForApproval(job)) {
+        if (!step.approvalPoint) continue;
+        items.push({
+          id: `playbook-step:${job.jobId}:${step.stepId}`,
+          section: "approve",
+          category: stepCategory(step.approvalPoint.kind),
+          title: step.title,
+          subtitle: `${job.title} · ${step.approvalPoint.prompt}`,
+          fromPubkey: step.owner.agentPubkey ?? job.startedByPubkey,
+          createdAt: step.statusAt,
+          decideBy: null,
+          approvalKind: step.approvalPoint.kind,
+          count: null,
+          details: [],
+          source: {
+            kind: "playbook_job",
+            jobId: job.jobId,
+            stepId: step.stepId,
+          },
+          actions: [
+            { id: "approve", label: "Approve", tone: "primary" },
+            { id: "reject", label: "Reject", tone: "danger" },
+          ],
+        });
+      }
+      for (const step of jobOpenHumanSteps(job)) {
+        items.push({
+          id: `playbook-step:${job.jobId}:${step.stepId}`,
+          section: "do",
+          category: "plan_step",
+          title: step.title,
+          subtitle: step.detail ?? `${job.title} · ${job.playbookTitle}`,
+          fromPubkey: job.startedByPubkey,
+          createdAt: step.statusAt,
+          decideBy: null,
+          approvalKind: null,
+          count: null,
+          details: [],
+          source: {
+            kind: "playbook_job",
+            jobId: job.jobId,
+            stepId: step.stepId,
+          },
+          actions: [{ id: "done", label: "Done", tone: "primary" }],
+        });
+      }
+    }
     for (const batch of sources.whatsappBatches) {
       if (batch.status !== "pending") continue;
       items.push({

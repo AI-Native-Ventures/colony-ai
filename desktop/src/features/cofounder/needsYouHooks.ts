@@ -12,6 +12,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useCofounderSettingsQuery } from "./hooks";
 import { buildNeedsYou } from "./needsYou";
 import { usePlansQuery } from "./planHooks";
+import { usePlaybooksQuery } from "./playbookHooks";
 
 /**
  * The Needs you list for Today. Asks and the WhatsApp outreach queue show as
@@ -27,6 +28,7 @@ export function useNeedsYouQuery() {
   const cofounder = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const cofounderOn = cofounder.data?.settings.enabled === true;
   const plans = usePlansQuery(cofounder.data?.exists === true);
+  const playbooks = usePlaybooksQuery(cofounder.data?.exists === true);
   const whatsappStatus = useWhatsAppStatusQuery(canApprove);
   const outreachConnected = whatsappStatus.data?.connected === true;
   const batches = useWhatsAppBatchesQuery(
@@ -43,6 +45,11 @@ export function useNeedsYouQuery() {
         plans: (plans.data ?? []).filter(
           (plan) => cofounderOn || plan.status !== "proposed",
         ),
+        // A proposal waits only while the mode is on; steps of running copies show either way.
+        playbooks: (playbooks.data?.playbooks ?? []).filter(
+          (playbook) => cofounderOn || playbook.pending === null,
+        ),
+        playbookJobs: playbooks.data?.jobs ?? [],
         whatsappBatches: batches.data ?? [],
         whatsappDrafts: drafts.data ?? [],
       }),
@@ -51,6 +58,7 @@ export function useNeedsYouQuery() {
       cofounderOn,
       needsMe.data.asks,
       plans.data,
+      playbooks.data,
       batches.data,
       drafts.data,
     ],
@@ -58,7 +66,7 @@ export function useNeedsYouQuery() {
 
   return {
     model,
-    isPending: needsMe.isPending || plans.isPending,
-    error: needsMe.asksError ?? plans.error ?? null,
+    isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
+    error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
   };
 }

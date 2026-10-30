@@ -31,6 +31,8 @@ pub mod company_member_records;
 pub mod company_permissions;
 /// Nostr-first broker for co-founder plan records.
 pub mod company_plans;
+/// Nostr-first broker for co-founder playbooks and their running copies.
+pub mod company_playbooks;
 /// Nostr-first broker for company records (goals and asks).
 pub mod company_records;
 /// Nostr-first broker for device-backed secret binding records.

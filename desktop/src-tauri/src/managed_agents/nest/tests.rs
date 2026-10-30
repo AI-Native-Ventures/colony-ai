@@ -796,3 +796,25 @@ fn legacy_skill_entries_recreated_by_an_older_build_are_retired_again() {
         COLONY_CLI_SKILL_MD
     );
 }
+
+#[test]
+fn skill_teaches_playbooks_and_keeps_the_owner_in_charge_of_approvals() {
+    // Version 17 added the Playbooks section; an older nest must regenerate it.
+    const {
+        assert!(
+            NEST_SKILL_VERSION >= 17,
+            "adding the Playbooks section must bump NEST_SKILL_VERSION so existing nests pick it up"
+        );
+    }
+    assert_eq!(COLONY_CLI_SKILL_MD.matches("## Playbooks").count(), 1);
+    for line in [
+        "colony playbooks propose --file playbook.json",
+        "colony playbooks start <playbook> --title",
+        "colony playbooks step <job> <step> --status in_progress",
+        "colony playbooks request-approval <job> <step>",
+        "one short question at a time",
+        "Do not run `colony playbooks approve|reject|edit|archive|approve-step|reject-step`",
+    ] {
+        assert!(COLONY_CLI_SKILL_MD.contains(line), "skill lacks: {line}");
+    }
+}

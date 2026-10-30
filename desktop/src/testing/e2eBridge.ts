@@ -21,6 +21,10 @@ import {
   KIND_PLAN_ACTION,
   KIND_PLAN_HEAD,
 } from "@/features/cofounder/planRecords";
+import {
+  KIND_PLAYBOOK_ACTION,
+  KIND_PLAYBOOK_HEAD,
+} from "@/features/cofounder/playbookRecords";
 
 import type {
   ObservedUnreadProjection,
@@ -38,6 +42,13 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import {
+  applyMockPlaybookAction,
+  applyMockPlaybookJobAction,
+  mockPlaybookHeadContent,
+  mockPlaybookJobHeadContent,
+} from "./mockCompanyPlaybooks.ts";
+import type { MockPlaybook, MockPlaybookJob } from "./mockCompanyPlaybooks.ts";
 import {
   businessDTag,
   proposalVersionDTag,
@@ -1058,6 +1069,10 @@ type E2eConfig = {
     companyWorkerRuns?: MockWorkerRun[];
     /** Co-founder plans served as relay-signed plan heads (kind 30673). */
     companyPlans?: MockPlan[];
+    /** Co-founder playbooks served as relay-signed heads (kind 30677, d tag `company:playbook:<id>`). */
+    companyPlaybooks?: MockPlaybook[];
+    /** Running copies of playbooks, one per client job (kind 30677, d tag `company:playbook-job:<id>`). */
+    companyPlaybookJobs?: MockPlaybookJob[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -7199,6 +7214,87 @@ function acceptMockPlanAction(
   }
   plan.updatedAt = now;
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+/** Playbook and running-copy heads, one relay-signed event each. */
+function filterMockCompanyPlaybooks(filter: MockFilter): RelayEvent[] {
+  const mock = getConfig()?.mock;
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const heads = [
+    ...(mock?.companyPlaybooks ?? []).map((playbook) =>
+      createSignedMockCompanyHead(
+        KIND_PLAYBOOK_HEAD,
+        mockPlaybookHeadContent(playbook),
+        `company:playbook:${playbook.playbookId}`,
+        playbook.updatedAt ?? playbook.createdAt ?? 1_793_000_000,
+      ),
+    ),
+    ...(mock?.companyPlaybookJobs ?? []).map((job) =>
+      createSignedMockCompanyHead(
+        KIND_PLAYBOOK_HEAD,
+        mockPlaybookJobHeadContent(job),
+        `company:playbook-job:${job.jobId}`,
+        job.updatedAt ?? job.startedAt ?? 1_793_000_000,
+      ),
+    ),
+  ];
+  return heads
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+/** Applies a playbook or running-copy action the way the relay would, then answers the socket. */
+function acceptMockPlaybookAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const answer = (refusal: string | null) => {
+    sendWsText(
+      socket.handler,
+      refusal ? ["OK", event.id, false, refusal] : ["OK", event.id, true, ""],
+    );
+  };
+  if (!config?.mock) {
+    answer("invalid: playbook action has an unsupported shape.");
+    return;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(event.content);
+  } catch {
+    answer("invalid: playbook action is not JSON.");
+    return;
+  }
+  const dTag = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+  const mock = config.mock;
+  const context = {
+    isAdmin: !mock.relayRole || ["owner", "admin"].includes(mock.relayRole),
+    cofounderEnabled: mock.cofounderSettings?.enabled === true,
+    now: Math.floor(Date.now() / 1000),
+    actorPubkey: MOCK_IDENTITY_PUBKEY,
+    eventId: event.id,
+  };
+  if (dTag.startsWith("company:playbook-job:")) {
+    answer(applyMockPlaybookJobAction(mock, body as never, context));
+  } else if (dTag.startsWith("company:playbook:")) {
+    answer(applyMockPlaybookAction(mock, body as never, context));
+  } else {
+    answer(
+      "invalid: playbook command d tag must name a playbook or a running copy",
+    );
+  }
 }
 
 function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
@@ -18695,6 +18791,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_PLAYBOOK_HEAD)) {
+      for (const event of filterMockCompanyPlaybooks(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
       for (const event of filterMockCompanyMemberPositionActions(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -18959,6 +19063,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_PLAN_ACTION) {
       acceptMockPlanAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_PLAYBOOK_ACTION) {
+      acceptMockPlaybookAction(socket, event, getConfig());
       return;
     }
     if (

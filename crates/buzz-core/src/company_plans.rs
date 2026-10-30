@@ -377,23 +377,23 @@ pub fn validate_plan_d_tag(d_tag: &str, plan_id: &str) -> Result<(), CompanyReco
     }
 }
 
-fn is_canonical_uuid(value: &str) -> bool {
+pub(crate) fn is_canonical_uuid(value: &str) -> bool {
     Uuid::parse_str(value)
         .map(|id| !id.is_nil() && id.hyphenated().to_string() == value)
         .unwrap_or(false)
 }
 
-fn text_within(value: &str, max_chars: usize) -> bool {
+pub(crate) fn text_within(value: &str, max_chars: usize) -> bool {
     !value.trim().is_empty() && value.chars().count() <= max_chars
 }
 
-fn optional_text_within(value: &Option<String>, max_chars: usize) -> bool {
+pub(crate) fn optional_text_within(value: &Option<String>, max_chars: usize) -> bool {
     value
         .as_ref()
         .is_none_or(|text| text_within(text, max_chars))
 }
 
-fn is_step_id(value: &str) -> bool {
+pub(crate) fn is_step_id(value: &str) -> bool {
     let length = value.chars().count();
     (1..=32).contains(&length)
         && value
@@ -401,7 +401,7 @@ fn is_step_id(value: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
-fn validate_owner(owner: &PlanStepOwner) -> Result<(), CompanyRecordError> {
+pub(crate) fn validate_owner(owner: &PlanStepOwner) -> Result<(), CompanyRecordError> {
     let agent_ok = owner.agent_pubkey.as_deref().is_none_or(is_hex_id);
     if !agent_ok {
         return Err(CompanyRecordError::Invalid(

@@ -12,6 +12,10 @@ import type {
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import type {
+  MockPlaybook,
+  MockPlaybookJob,
+} from "../../src/testing/mockCompanyPlaybooks";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
@@ -640,6 +644,8 @@ type MockBridgeOptions = {
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
   companyPlans?: MockPlan[];
+  companyPlaybooks?: MockPlaybook[];
+  companyPlaybookJobs?: MockPlaybookJob[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single

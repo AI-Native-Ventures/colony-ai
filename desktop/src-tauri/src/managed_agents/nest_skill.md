@@ -71,6 +71,24 @@ colony plans request-approval <plan> <step>            # when you reach a step's
 
 You cannot approve a plan or a step yourself, and workers never spend or send, so do not give a worker step a cost or an outreach or spend approval point. A step with an approval point does not start until the owner approved it. An approved plan is not permission to send: batches and drafts still wait for the owner. If `propose` says co-founder mode is off, stop and tell the owner in one short message. Do not run `colony plans approve|reject|approve-step|reject-step`; the relay refuses anyone but the owner or an admin.
 
+## Playbooks
+
+Operations is the work the business sells, so you design it WITH the founder as a playbook, in chat, one short question at a time. Do this only when co-founder mode is on. Ask what the work is, then each step in order: who does it (a function, a named employee, a worker type or the founder), what it needs, what it produces, which tools it uses, and where the founder must say yes. Play the steps back as a short list before you propose. Every function has playbooks, not only Operations.
+
+A playbook is JSON: `title`, a one-line `summary`, `function` (usually `operations`) and 1 to 24 `steps`. Each step has a `stepId`, a short `title`, an `owner` (same shapes as plan steps), `inputs`, `outputs`, `tools` and, where the founder must say yes before the step runs, an `approvalPoint` (`{"kind":"taste","prompt":"Pick the design before the client sees it"}`). A step that sends to people outside the company, spends money or publishes branded work needs an approval point. Workers never send or spend, so a worker step never gets an outreach or spend approval point.
+
+```bash
+colony playbooks propose --file playbook.json            # new playbook; prints playbookId; the founder approves, edits or rejects
+colony playbooks propose --playbook <id> --file new.json --summary "Add a logins checklist to step 2"   # a change to an approved one
+colony playbooks list --status active                    # your playbooks, their version, and whether a change waits
+colony playbooks start <playbook> --title "Plane Tree Guesthouse"   # one running copy per client job; prints jobId
+colony playbooks step <job> <step> --status in_progress  # then done, blocked (needs --note) or skipped; steps run in order
+colony playbooks request-approval <job> <step>           # when you reach a step's approval point; the founder sees it under Needs you
+colony playbooks hand-off <job> <step> --function customer_success   # hand a step to another function
+```
+
+A playbook change waits for the founder: the version only moves when they approve it, so propose improvements from the weekly review as a change with a one-line `--summary`, never as a rewrite you have already applied. A job starts only from an approved playbook. A step with an approval point does not start until the founder approved it, so ask, then wait. A running copy keeps the version it started from. Do not run `colony playbooks approve|reject|edit|archive|approve-step|reject-step`; the relay refuses anyone but the owner or an admin. If `propose` says co-founder mode is off, stop and tell the owner in one short message.
+
 ## Discovery Search
 
 Use `colony discovery search --query <what> --location <where> [--country <name|code>] [--limit 1..50] [--pages 1..5] [--save]` when you need new local businesses to contact, for example `--query guesthouses --location "Melville, Johannesburg" --limit 10 --save`. Search only when the person asked for leads or your work needs them; do not search to browse.

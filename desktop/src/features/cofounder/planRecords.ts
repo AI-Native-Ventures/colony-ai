@@ -116,7 +116,7 @@ const STEP_STATUSES = new Set<PlanStepStatus>([
   "skipped",
   "failed",
 ]);
-const APPROVAL_KINDS = new Set<PlanApprovalKind>([
+export const APPROVAL_KINDS = new Set<PlanApprovalKind>([
   "outreach",
   "spend",
   "taste",
@@ -135,29 +135,33 @@ const DECISIONS = new Set<PlanDecision>([
   "edited",
   "cancelled",
 ]);
-const FUNCTION_IDS = new Set<string>([
+export const FUNCTION_IDS = new Set<string>([
   "sales",
   "operations",
   "customer_success",
   "finance",
   "brand",
 ]);
-const PUBKEY_PATTERN = /^[0-9a-f]{64}$/;
+export const PUBKEY_PATTERN = /^[0-9a-f]{64}$/;
 const PLAN_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
-const STEP_ID_PATTERN = /^[a-z0-9_-]{1,32}$/;
+export const STEP_ID_PATTERN = /^[a-z0-9_-]{1,32}$/;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
 export function planDTag(planId: string): string {
   return `${PLAN_D_TAG_PREFIX}${planId}`;
 }
 
-function text(value: unknown, max: number, allowEmpty = false): string | null {
+export function text(
+  value: unknown,
+  max: number,
+  allowEmpty = false,
+): string | null {
   if (typeof value !== "string" || value.length > max) return null;
   if (!allowEmpty && value.trim().length === 0) return null;
   return value;
 }
 
-function optionalText(
+export function optionalText(
   record: Record<string, unknown>,
   key: string,
   max: number,
@@ -247,7 +251,7 @@ function parseStep(value: unknown): PlanStepView | null {
   };
 }
 
-function parseOwner(value: unknown): PlanStepOwnerView | null {
+export function parseOwner(value: unknown): PlanStepOwnerView | null {
   if (
     !isObject(value) ||
     !hasOnlyKeys(value, ["kind", "function", "agentPubkey", "workerType"])
