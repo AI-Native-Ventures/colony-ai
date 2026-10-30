@@ -1619,6 +1619,145 @@ CLI: `colony numbers scorecard [--function <function>] [--no-refresh]`,
 `colony numbers goals list|propose|edit|approve|reject|retire` and
 `colony numbers review list|show|write|decide`.
 
+## Customer record
+
+One relay-signed head kind (30679) and one member action kind (47069) carry the
+record of one business across its whole life: found in Discovery, WhatsApp chat,
+quote, agreement, deposit and invoice, client, project in Operations. Records
+are community-wide (no `h` or `p` tag) and keyed by the **party id** that the
+prospect, its proposals and the client already share, so a lead that becomes a
+client keeps one record and every entry it had.
+
+| d-tag | Record |
+| --- | --- |
+| `customer:<partyId>` | The customer record of one business (`partyId` is a lowercase UUID) |
+
+**The relay builds every fact.** No caller writes a timeline entry of the kinds
+below or any figure. `buzz_relay::customer_inputs` reads the company's own
+records and `buzz_core::company_customers::compute_customer_record` turns them
+into the head. A caller adds only a milestone, a copied email, a file reference
+or a conversion (kind 47069). The wake sweep gives every business that has a
+prospect or a client record its customer record and keeps it up to date (a
+record whose content did not change is not rewritten), so a lead found in
+Discovery and a client created directly both have one without anyone asking.
+
+### Head (relay signed, kind 30679)
+
+Content is camelCase; unknown keys are refused by the relay and by readers.
+Keys are always present; unknown is `null`.
+
+```json
+{
+  "schemaVersion": 1,
+  "partyId": "uuid", "displayName": "Plane Tree Guesthouse",
+  "stage": "lead | client",
+  "leadId": "uuid | null", "clientId": "uuid | null", "clientStatus": "active | null",
+  "found": { "at": 1793000000, "byPubkey": "hex | null", "search": "guesthouses in Parkhurst" },
+  "conversion": { "at": 1793000000, "source": "client_record | owner_action",
+                  "byPubkey": "hex | null", "actionEventId": "hex | null" },
+  "money": { "currency": "ZAR", "quoteTotalMinor": 900000, "depositPaidMinor": 450000,
+             "depositPaidAt": 1793000000, "balanceDueMinor": 450000, "otherCurrencyFacts": 0 },
+  "quotes": [{ "proposalId": "uuid", "revision": 1, "totalMinor": 900000, "currency": "ZAR",
+               "draftedAt": 1793000000, "acceptedAt": 1793000000 }],
+  "chats": { "whatsapp": { "waId": "27825557135", "messageCount": 16, "inboundCount": 7,
+                           "outboundCount": 9, "lastMessageAt": 1793000000, "optedOut": false },
+             "emailCount": 2 },
+  "project": { "jobId": "uuid", "title": "Plane Tree Guesthouse", "playbookTitle": "Delivery playbook",
+               "status": "running", "currentStepId": "build", "currentStepTitle": "Website build",
+               "stepNumber": 3, "stepCount": 7, "startedAt": 1793000000, "endedAt": null },
+  "milestones": [{ "milestoneId": "hex", "kind": "call_booked | agreement_signed | other",
+                   "title": null, "at": 1793000000, "note": null, "fileRef": null,
+                   "byPubkey": "hex", "recordedAt": 1793000000 }],
+  "attachments": [{ "attachmentId": "hex", "kind": "email | file", "label": "Logo and photos",
+                    "fileRefs": ["blossom ref"], "email": { "from": "...", "subject": "...",
+                    "date": 1793000000, "summary": "..." }, "addedByPubkey": "hex", "addedAt": 1793000000 }],
+  "timeline": [{ "entryId": "prospect:<id>:found", "kind": "found", "title": "Found in Discovery",
+                 "detail": "guesthouses in Parkhurst", "at": 1793000000, "actorPubkey": "hex | null",
+                 "source": { "kind": "prospect", "id": "uuid" } }],
+  "computedAt": 1793000000, "updatedByPubkey": "hex", "updatedAt": 1793000000,
+  "sourceActionEventId": "hex | null"
+}
+```
+
+- **Timeline** is oldest first, ordered by `at`, then by the life of a customer
+  (found, opener approved, opener sent, replied, call booked, quote drafted,
+  quote accepted, agreement signed, milestone, email, file, converted, invoice
+  issued, payment received, project started, project finished), then by `entryId`.
+  `entryId` is `<source kind>:<source id>:<entry kind>`. At most 1000 entries (the
+  newest are kept). Where entries come from:
+
+| Entry `kind` | Record it comes from |
+| --- | --- |
+| `found` | the prospect's first accepted `create` (47034): who, and the search in words (picked tags, else vertical and location) |
+| `opener_approved`, `opener_sent`, `replied` | the WhatsApp rows of the contact linked to the prospect (`lead_id`), else the contact whose number is the prospect's phone: the opener is the first outbound message; approved is its batch's decision; sent once the provider accepted it; replied is the first inbound message after it |
+| `quote_drafted`, `quote_accepted` | proposal versions (47003) and acceptances (47004) of the party |
+| `invoice_issued`, `payment_received` | issued invoice heads (30641) and payment evidence (47027) of the party's clients; the first payment reads "Deposit paid" |
+| `converted` | the client head (30631), or the owner's `convert_to_client`; the time is kept once decided |
+| `project_started`, `project_completed` | playbook running copies (30677) whose title is the business's name |
+| `call_booked`, `agreement_signed`, `milestone` | milestones written with `record_milestone` |
+| `email`, `file` | attachments written with `attach_email` and `attach_file` |
+
+- **Money** is in the minor units of one currency; a figure is `null` when the
+  records do not say, never `0` for unknown. The currency is the accepted
+  quote's, else the latest quote's, else the first issued invoice's, else the
+  first payment's; money records in another currency are left out and counted in
+  `otherCurrencyFacts`. `quoteTotalMinor` is the accepted version's total, else
+  the latest version's. `depositPaidMinor` is everything paid so far (the first
+  payment is the deposit, `depositPaidAt`); it is `0` only when an issued invoice
+  has no payment, and `null` with no payment and no issued invoice.
+  `balanceDueMinor` is what issued invoices still owe, else the quote less
+  payments once there is a payment, else `null`.
+- **Stage** is `client` once there is a conversion: a client record for the
+  party exists, or the owner recorded one. A client created directly (no lead)
+  has `leadId: null` and no `found`.
+- **Project**: the running copy that is open, else the most recently started.
+  `stepNumber` and `stepCount` read as "step 3 of 7". A running copy is linked to
+  a business by its title equalling the business's name (a running copy carries no
+  client id); two businesses with the same name share the project line.
+
+### Action (member signed, kind 47069, d-tag `customer:<partyId>`)
+
+Content: `{ schemaVersion: 1, partyId, op, ...fields, expectedHeadEventId? }`. An
+op takes only the fields it names; anything else is refused. Once a record
+exists every write names the exact current head event id (`customer record
+changed; current head is <id>` on a stale one); the first write for a party that
+has no record yet names none and the relay creates it from the company's records.
+
+| `op` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `refresh` | owner, admin, Scout, Sales or Customer Success lead | nothing | the relay recomputes the record; one younger than a minute, or unchanged, is not rewritten |
+| `convert_to_client` | owner, admin or the Sales lead | optional `note` | records the conversion; a business that is already a client (a client record exists or it was converted) is a no-op |
+| `record_milestone` | as `refresh` | `milestoneKind` (`call_booked`, `agreement_signed`, `other`), `at`, optional `title` (required for `other`, refused otherwise), `note`, `fileRef` | adds a milestone and its timeline entry; the same milestone twice is a no-op; `at` cannot be in the future |
+| `attach_email` | as `refresh` | `from`, `subject`, `date`, `summary` (at most 4 KB, never the whole email), optional `fileRefs` (at most 5) | an agent copied an email from Gmail in the built-in browser; the same sender, subject and date twice is a no-op |
+| `attach_file` | as `refresh` | `label`, `fileRef` (a Blossom reference) | adds a file |
+| `remove_attachment` | as `refresh`; a non-admin only removes what they added | `attachmentId` | removes an email or file |
+
+A plain member with no Sales or Customer Success slot and a person who is not a
+member at all are refused (`only the owner, an admin, a Sales or Customer
+Success lead or Scout can change a customer record`, `actor is not a member or
+managed employee`). Co-founder mode must be on. `convert_to_client` records the
+conversion on the customer record; it does not create the client channel (that
+is the business broker's job, done when a proposal is accepted).
+
+**Providers.** No calendar, e-sign or payment-link provider is called. "Call
+booked" and "Agreement signed" are milestones an agent or the owner writes; a
+provider can later write the same `record_milestone`. Payments already arrive as
+payment evidence (47027). "Quote approved and sent" has no relay record today,
+so it shows as the drafted and accepted entries, or as an `other` milestone an
+agent records.
+
+### CLI (agents and owner)
+
+`colony customers list [--stage lead|client]`, `show <partyId> [--no-refresh]`,
+`convert <partyId> [--note ...]`,
+`milestone <partyId> --kind call_booked|agreement_signed|other --at <unix|RFC3339> [--title ...] [--note ...] [--file <ref>]`,
+`attach-email <partyId> --from ... --subject ... --date <unix|RFC3339> --summary ... [--file <ref> ...]`,
+`attach-file <partyId> --label ... --file <ref>`, `remove-attachment <partyId> <attachmentId>`.
+
+Desktop read model: `desktop/src/features/cofounder/customer*.ts`
+(`useCustomerRecord(partyId)`, `useCustomerRecords()`, `useCustomerRecordAction`).
+Mock bridge seeds: `desktop/src/testing/cofounderCustomerFixtures.ts`.
+
 ## Proof boundaries
 
 Kind registration and typed content live in `buzz-core`; relay, SDK, CLI, and
