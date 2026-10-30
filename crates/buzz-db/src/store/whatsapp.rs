@@ -1151,6 +1151,57 @@ impl Db {
         rows.iter().map(row_to_contact).collect()
     }
 
+    // ── numbers (co-founder scorecard) ─────────────────────────────────────────
+
+    /// Send times of the first message of every new chat sent at or after `since`.
+    /// Only messages the provider accepted count (`sent`, `delivered`, `read`).
+    pub async fn whatsapp_numbers_chats_started(
+        &self,
+        community: CommunityId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
+        let rows = sqlx::query_scalar::<_, DateTime<Utc>>(
+            "SELECT sent_at FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND new_chat \
+               AND sent_at IS NOT NULL AND state IN ('sent', 'delivered', 'read') \
+               AND sent_at >= $2 \
+             ORDER BY sent_at LIMIT 100000",
+        )
+        .bind(community.as_uuid())
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// For every contact we opened a new chat with, the time of their first
+    /// inbound message after that chat started, when it is at or after `since`.
+    pub async fn whatsapp_numbers_first_replies(
+        &self,
+        community: CommunityId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
+        let rows = sqlx::query_scalar::<_, DateTime<Utc>>(
+            "SELECT MIN(i.created_at) \
+             FROM whatsapp_messages i \
+             JOIN ( \
+                 SELECT wa_id, MIN(sent_at) AS first_out FROM whatsapp_messages \
+                 WHERE community_id = $1 AND direction = 'out' AND new_chat \
+                   AND sent_at IS NOT NULL \
+                 GROUP BY wa_id \
+             ) o ON o.wa_id = i.wa_id \
+             WHERE i.community_id = $1 AND i.direction = 'in' AND i.created_at > o.first_out \
+             GROUP BY i.wa_id \
+             HAVING MIN(i.created_at) >= $2 \
+             ORDER BY MIN(i.created_at) LIMIT 100000",
+        )
+        .bind(community.as_uuid())
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     // ── messages ───────────────────────────────────────────────────────────────
 
     /// Store an inbound message. `None` means the WhatsApp message id was already stored.

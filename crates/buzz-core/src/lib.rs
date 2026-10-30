@@ -29,6 +29,8 @@ pub mod company_functions;
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
+/// Co-founder numbers: scorecard per function, goals and the Friday weekly review.
+pub mod company_numbers;
 /// Co-founder onboarding progress (questions, answers, company map proposal).
 pub mod company_onboarding;
 /// Co-founder plans: typed proposals, step state and approval records.

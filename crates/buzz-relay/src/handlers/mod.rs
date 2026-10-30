@@ -33,6 +33,8 @@ pub(crate) mod company_initiative;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
+/// Nostr-first broker for co-founder numbers: scorecard, goals and weekly review.
+pub mod company_numbers;
 /// Nostr-first broker for co-founder onboarding progress.
 pub mod company_onboarding;
 /// Nostr-first broker for community-wide standing tool permissions.

@@ -23,6 +23,7 @@ pub mod messages;
 pub mod moderation;
 pub mod money;
 pub mod notes;
+pub mod numbers;
 pub mod pack;
 pub mod patches;
 pub mod permissions;
