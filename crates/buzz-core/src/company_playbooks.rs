@@ -1527,7 +1527,7 @@ fn actor_can_run_job_step(
 fn job_transition_allowed(step: &PlaybookJobStep, to: JobStepStatus) -> bool {
     let gated = step.approval_point.is_some();
     match (step.status, to) {
-        (JobStepStatus::Pending, JobStepStatus::InProgress) => !gated,
+        (JobStepStatus::Pending, JobStepStatus::InProgress) => true,
         (JobStepStatus::Approved, JobStepStatus::InProgress) => true,
         (JobStepStatus::Blocked, JobStepStatus::InProgress) => true,
         (JobStepStatus::InProgress | JobStepStatus::Approved, JobStepStatus::Done) => true,
