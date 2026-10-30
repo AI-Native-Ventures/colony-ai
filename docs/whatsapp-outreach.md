@@ -76,7 +76,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `drafts` | `limit` | owner/admin, Outreach member | `{ "drafts": [Message + to, params] }` pending agent drafts, oldest first |
 | `contacts` | `limit`, `before` | owner/admin, Outreach member | `{ "contacts": [Contact] }` |
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
-| `thread` | `waId`, `limit` | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
+| `thread` | `waId`, `limit`, `includeHeld` (rows still waiting for a batch approval are left out unless true, so an older app never labels them approved) | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
 
 `thread` lists every message of the conversation except dropped rows, including rows of a batch that
 is still pending. A `held` or `ready` row reads `state: "queued"` (with `awaitingApproval: true` for

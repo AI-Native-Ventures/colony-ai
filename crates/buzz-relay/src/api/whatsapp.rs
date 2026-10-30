@@ -137,6 +137,10 @@ struct QueryRequest {
     wa_id: Option<String>,
     #[serde(default)]
     limit: Option<i64>,
+    /// Opt in to rows still waiting for a batch approval. Apps that do not send it never
+    /// see a held row, so an older app cannot label one as approved.
+    #[serde(default)]
+    include_held: bool,
 }
 
 fn template_view(template: &WhatsappTemplate) -> Value {
@@ -260,6 +264,7 @@ pub(crate) async fn thread_view(
     community: buzz_core::tenant::CommunityId,
     wa_id: &str,
     limit: i64,
+    include_held: bool,
     now: chrono::DateTime<Utc>,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
@@ -274,6 +279,9 @@ pub(crate) async fn thread_view(
         .whatsapp_list_thread(community, wa_id, limit)
         .await
         .map_err(db_error)?;
+    if !include_held {
+        messages.retain(|message| message.state != "held");
+    }
     messages.reverse();
     let flags = state
         .db
@@ -485,7 +493,15 @@ pub async fn query(
                 .and_then(normalize_wa_id)
                 .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "waId must be a phone number"))?;
             Ok(Json(
-                thread_view(&state, community, &wa_id, limit_of(&request), now).await?,
+                thread_view(
+                    &state,
+                    community,
+                    &wa_id,
+                    limit_of(&request),
+                    request.include_held,
+                    now,
+                )
+                .await?,
             ))
         }
         _ => Err(api_error(

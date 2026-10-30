@@ -1517,7 +1517,7 @@ async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_
     let thread = |wa: &'static str| {
         let fx = &fx;
         async move {
-            crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, Utc::now())
+            crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, true, Utc::now())
                 .await
                 .expect("thread answer")
         }
@@ -1554,6 +1554,23 @@ async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_
         .as_str()
         .expect("text")
         .contains("Thabo"));
+    // GUARD: an app that does not opt in never sees the held row, so an older app cannot
+    // label a message that still waits for approval as approved.
+    let hidden = crate::api::whatsapp::thread_view(
+        &fx.state,
+        fx.community(),
+        "27683735905",
+        50,
+        false,
+        Utc::now(),
+    )
+    .await
+    .expect("thread answer");
+    assert_eq!(
+        hidden["messages"].as_array().expect("messages").len(),
+        0,
+        "held rows stay hidden without includeHeld: {hidden}"
+    );
     // No name anywhere: the contact shows its number, never an empty string.
     assert_eq!(view["contact"]["displayName"], "+27683735905");
     // A row name seeds the blank name.
@@ -1609,10 +1626,16 @@ async fn a_contact_whose_only_row_waits_for_approval_is_never_reported_as_sent()
     let status_of = |wa: &'static str| {
         let fx = &fx;
         async move {
-            let view =
-                crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, Utc::now())
-                    .await
-                    .expect("thread answer");
+            let view = crate::api::whatsapp::thread_view(
+                &fx.state,
+                fx.community(),
+                wa,
+                50,
+                true,
+                Utc::now(),
+            )
+            .await
+            .expect("thread answer");
             let listed = fx
                 .state
                 .db
