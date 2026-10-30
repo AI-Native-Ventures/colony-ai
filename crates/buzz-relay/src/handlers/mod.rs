@@ -12,6 +12,8 @@ pub mod close;
 pub mod command_executor;
 /// Relay-operator community provisioning HTTP support.
 pub mod community_provisioning;
+/// Nostr-first broker for the company access list, capability gaps and slot hires.
+pub mod company_access;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
 /// Nostr-first broker for the per-company co-founder settings record.

@@ -58,6 +58,22 @@ The five functions are always Sales, Operations, Customer Success, Finance and B
 
 Only people change these. Do not run `colony cofounder set` or `colony functions assign|cover|clear` on your own: the relay refuses anyone but the owner or an admin, and a refusal is not something to retry. If the settings or a slot look wrong, tell the owner in one short message.
 
+When you propose hiring someone to lead a function, add `--function <function>` to `colony asks propose-hire`. If the slot could not be recorded the error prints the exact `colony functions hire-slot` command to retry. Completing the hire puts the new employee in that slot; you never assign it yourself.
+
+## Access and capability gaps
+
+`colony access list` shows every tool and account you can use, with its state. An entry whose state is `revoked` is off limits: do not use it, do not work around it, and do not ask for it again unless the owner brings it back. Revoking is the owner's call and takes effect at once.
+
+You can never add access yourself. When you need something Colony cannot do yet, record a capability gap and the owner does the one human step:
+
+```bash
+colony access gap propose --gap gap.json   # options, the cheapest that works, the stated cost, the one human step, the exact https page
+colony access gap list                     # follow it: proposed, approved, human_done, completed or declined
+colony access gap complete <gap-id>        # only after the owner said done
+```
+
+Compare up to five options and pick the cheapest that works; a costlier pick needs a `chosenReason` (the owner's money setting says when). State the cost before anything is signed up. Every cost, free sign-ups included, waits for the owner's approval. Never open the sign-up page and fill it in before the gap is approved. When the owner says done, finish the setup, then run `gap complete` so the access entry exists. Keep it to one short message to the owner.
+
 ## Discovery Search
 
 Use `colony discovery search --query <what> --location <where> [--country <name|code>] [--limit 1..50] [--pages 1..5] [--save]` when you need new local businesses to contact, for example `--query guesthouses --location "Melville, Johannesburg" --limit 10 --save`. Search only when the person asked for leads or your work needs them; do not search to browse.

@@ -201,7 +201,7 @@ fn verify_head(
     Ok(())
 }
 
-async fn relay_self(client: &BuzzClient) -> Result<String, CliError> {
+pub(crate) async fn relay_self(client: &BuzzClient) -> Result<String, CliError> {
     let raw = client.get_public("/").await?;
     let nip11: Value = serde_json::from_str(&raw)
         .map_err(|error| CliError::Other(format!("relay info is not valid JSON: {error}")))?;

@@ -448,6 +448,22 @@ pub(super) async fn handle(
         }
         _ => None,
     };
+    // A hire proposal can name the function slot it is for; completing the hire
+    // puts the new employee in that slot in the same commit.
+    let slot_head = match (action.action, action.employee_pubkey.as_deref()) {
+        (HireActionKind::Complete, Some(employee)) => {
+            super::company_functions::assign_slot_for_hire_in_tx(
+                &mut tx,
+                state,
+                community_id,
+                action.hire_id,
+                employee,
+                &actor_pubkey,
+            )
+            .await?
+        }
+        _ => None,
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -481,6 +497,17 @@ pub(super) async fn handle(
     }
     if let Some(records) = hire_records {
         dispatch_hire_records(tenant, state, records, &actor_pubkey).await;
+    }
+    if let Some(slot_head) = slot_head {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            &slot_head,
+            buzz_core::kind::KIND_COMPANY_FUNCTION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
     }
     Ok(IngestResult {
         event_id: event.id.to_hex(),

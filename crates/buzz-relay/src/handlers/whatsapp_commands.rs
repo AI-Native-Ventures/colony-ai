@@ -197,6 +197,22 @@ pub async fn handle(
         .await
         .map_err(internal)?;
     let kind = u32::from(event.kind.as_u16());
+    // A revoked WhatsApp entry stops everyone but the owner and admins from
+    // preparing batches or sending, so a revoke takes effect on agents at once.
+    if matches!(kind, KIND_WHATSAPP_BATCH | KIND_WHATSAPP_SEND_REQUEST)
+        && !access.is_owner_admin()
+        && crate::handlers::company_access::access_revoked(
+            state,
+            tenant.community(),
+            buzz_core::company_access::AccessCategory::Whatsapp,
+        )
+        .await
+        .map_err(internal)?
+    {
+        return Err(restricted(
+            "WhatsApp access was revoked by the owner; ask the owner to grant it again",
+        ));
+    }
     match kind {
         KIND_WHATSAPP_BATCH => handle_batch(tenant, state, &event, access).await,
         KIND_WHATSAPP_BATCH_DECISION => handle_decision(tenant, state, &event, access).await,

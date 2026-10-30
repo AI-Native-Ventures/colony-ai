@@ -8,7 +8,11 @@ use super::*;
 
 use std::time::Duration;
 
+use buzz_core::company_access::{AccessAction, AccessOp};
 use buzz_core::company_duties::{validate_duty_head, DutyHead, DutyStatus};
+use buzz_core::company_functions::{
+    CompanyFunction, FunctionAction, FunctionActionKind, FunctionHead, SlotState,
+};
 use buzz_core::company_members::member_d_tag;
 use buzz_core::company_records::{
     goal_d_tag, GoalAction, GoalActionKind, GoalHead, GoalRecord, GoalStatus, HireRolePack,
@@ -237,6 +241,28 @@ async fn hire_ready_to_complete_at(
     role_pack: HireRolePack,
     hire_id: Uuid,
 ) -> HireAction {
+    hire_ready_to_complete_for(fixture, role_pack, hire_id, None).await
+}
+
+/// Like [`hire_ready_to_complete_at`], and when `slot` is given the proposal
+/// names that function slot before the owner decides.
+async fn hire_ready_to_complete_for(
+    fixture: &Fixture,
+    role_pack: HireRolePack,
+    hire_id: Uuid,
+    slot: Option<CompanyFunction>,
+) -> HireAction {
+    create_hire(fixture, role_pack, hire_id).await;
+    if let Some(function) = slot {
+        set_slot_hire(fixture, &fixture.owner, hire_id, function)
+            .await
+            .expect("record the slot the hire is for");
+    }
+    finish_hire_up_to_complete(fixture, hire_id).await
+}
+
+/// Creates one open hire proposal.
+async fn create_hire(fixture: &Fixture, role_pack: HireRolePack, hire_id: Uuid) {
     let mut create = hire_action(hire_id, HireActionKind::Create, None);
     create.proposal = Some(HireProposal {
         hire_id,
@@ -253,6 +279,11 @@ async fn hire_ready_to_complete_at(
     submit(fixture, sign_hire_action(&fixture.owner, &create))
         .await
         .expect("create the hire");
+}
+
+/// Approves, attaches the employee and posts the introduction; returns the
+/// unsigned `complete` action.
+async fn finish_hire_up_to_complete(fixture: &Fixture, hire_id: Uuid) -> HireAction {
     let approve = hire_action(
         hire_id,
         HireActionKind::Approve,
@@ -832,4 +863,384 @@ async fn complete_publishes_exactly_one_workflow_tagged_kickoff() {
     assert_eq!(goal_heads(&fixture, complete.hire_id).await.len(), 1);
     assert_eq!(duty_heads(&fixture).await.len(), 2);
     assert_eq!(channel_workflows(&fixture).await.len(), 2);
+}
+
+// ---- hiring into a function slot, and slots that never keep a lead who cannot work ----
+
+async fn set_slot_hire(
+    fixture: &Fixture,
+    keys: &Keys,
+    hire_id: Uuid,
+    function: CompanyFunction,
+) -> Result<IngestResult, IngestError> {
+    let expected = crate::handlers::company_access::current_access_head(
+        &fixture.state,
+        fixture.tenant.community(),
+        &buzz_core::company_access::slot_hire_d_tag(hire_id),
+    )
+    .await
+    .expect("query the slot hire head")
+    .map(|stored| stored.event.id.to_hex());
+    let action = AccessAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        op: AccessOp::SlotHireSet,
+        access_id: None,
+        gap_id: None,
+        hire_id: Some(hire_id),
+        entry: None,
+        gap: None,
+        function: Some(function),
+        reason: None,
+        expected_head_event_id: expected,
+    };
+    let event = buzz_sdk::company_records::build_access_action(&action)
+        .expect("build the slot hire action")
+        .sign_with_keys(keys)
+        .expect("sign the slot hire action");
+    crate::handlers::company_access::handle(&fixture.tenant, &fixture.state, event, auth(keys))
+        .await
+}
+
+async fn slot_head(fixture: &Fixture, function: CompanyFunction) -> Option<FunctionHead> {
+    crate::handlers::company_functions::current_function_head(
+        &fixture.state,
+        fixture.tenant.community(),
+        function,
+    )
+    .await
+    .expect("query the function head")
+    .map(|stored| serde_json::from_str(&stored.event.content).expect("function head"))
+}
+
+/// An owner write on one function slot, against its current head.
+async fn write_slot(
+    fixture: &Fixture,
+    function: CompanyFunction,
+    kind: FunctionActionKind,
+    lead: Option<String>,
+) -> Result<IngestResult, IngestError> {
+    let expected = crate::handlers::company_functions::current_function_head(
+        &fixture.state,
+        fixture.tenant.community(),
+        function,
+    )
+    .await
+    .expect("query the function head")
+    .map(|stored| stored.event.id.to_hex());
+    let action = FunctionAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        function,
+        kind,
+        lead_pubkey: lead,
+        expected_head_event_id: expected,
+    };
+    let event = buzz_sdk::company_records::build_function_action(&action)
+        .expect("build the function action")
+        .sign_with_keys(&fixture.owner)
+        .expect("sign the function action");
+    crate::handlers::company_functions::handle(
+        &fixture.tenant,
+        &fixture.state,
+        event,
+        auth(&fixture.owner),
+    )
+    .await
+}
+
+/// A human relay member that leads `function`.
+async fn member_lead(fixture: &Fixture, function: CompanyFunction) -> Keys {
+    let lead = Keys::generate();
+    fixture
+        .state
+        .db
+        .add_relay_member(
+            fixture.tenant.community(),
+            &lead.public_key().to_hex(),
+            "member",
+            None,
+        )
+        .await
+        .expect("add the member lead");
+    write_slot(
+        fixture,
+        function,
+        FunctionActionKind::AssignLead,
+        Some(lead.public_key().to_hex()),
+    )
+    .await
+    .expect("assign the member as lead");
+    assert_eq!(
+        slot_head(fixture, function).await.expect("slot head").state,
+        SlotState::Filled
+    );
+    lead
+}
+
+/// Hires the employee into `function` and returns once the hire is complete.
+async fn employee_leads(fixture: &Fixture, function: CompanyFunction) {
+    let complete =
+        hire_ready_to_complete_for(fixture, role_pack(), Uuid::new_v4(), Some(function)).await;
+    submit(fixture, sign_hire_action(&fixture.owner, &complete))
+        .await
+        .expect("complete the hire");
+    let head = slot_head(fixture, function)
+        .await
+        .expect("the hire filled its slot");
+    assert_eq!(head.state, SlotState::Filled);
+    assert_eq!(
+        head.lead_pubkey,
+        Some(fixture.employee.public_key().to_hex())
+    );
+}
+
+async fn member_position_action(
+    fixture: &Fixture,
+    action: MemberPositionActionKind,
+) -> Result<IngestResult, IngestError> {
+    let expected = member_heads(fixture).await[0].event.id.to_hex();
+    let action = MemberPositionAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        pubkey: fixture.employee.public_key().to_hex(),
+        action,
+        expected_head_event_id: Some(expected),
+        title: None,
+        manager_pubkey: None,
+        reason: Some("Testing the slot".into()),
+    };
+    let event = EventBuilder::new(
+        Kind::Custom(buzz_core::kind::KIND_MEMBER_POSITION_ACTION as u16),
+        serde_json::to_string(&action).expect("serialize the member action"),
+    )
+    .tags([Tag::parse([
+        "d",
+        member_d_tag(&action.pubkey).expect("member d tag").as_str(),
+    ])
+    .expect("d tag")])
+    .sign_with_keys(&fixture.owner)
+    .expect("sign the member action");
+    crate::handlers::company_member_records::handle(
+        &fixture.tenant,
+        &fixture.state,
+        event,
+        auth(&fixture.owner),
+    )
+    .await
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn completing_a_hire_fills_the_slot_its_proposal_named() {
+    let fixture = fixture().await;
+    employee_leads(&fixture, CompanyFunction::Finance).await;
+    for other in [
+        CompanyFunction::Sales,
+        CompanyFunction::Operations,
+        CompanyFunction::CustomerSuccess,
+        CompanyFunction::Brand,
+    ] {
+        assert!(
+            slot_head(&fixture, other).await.is_none(),
+            "{other:?} is untouched"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_hire_with_no_slot_leaves_every_slot_alone() {
+    let fixture = fixture().await;
+    let complete = hire_ready_to_complete(&fixture, role_pack()).await;
+    submit(&fixture, sign_hire_action(&fixture.owner, &complete))
+        .await
+        .expect("complete the hire");
+    for function in CompanyFunction::ALL {
+        assert!(slot_head(&fixture, function).await.is_none());
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_slot_that_gained_another_active_lead_keeps_it_when_the_hire_completes() {
+    let fixture = fixture().await;
+    let complete = hire_ready_to_complete_for(
+        &fixture,
+        role_pack(),
+        Uuid::new_v4(),
+        Some(CompanyFunction::Finance),
+    )
+    .await;
+    let bystander = member_lead(&fixture, CompanyFunction::Finance).await;
+    submit(&fixture, sign_hire_action(&fixture.owner, &complete))
+        .await
+        .expect("the hire still completes");
+
+    let hire =
+        parse_hire_head(&hire_head(&fixture, complete.hire_id).await).expect("parse the hire head");
+    assert_eq!(hire.status, HireStatus::Hired);
+    let head = slot_head(&fixture, CompanyFunction::Finance)
+        .await
+        .expect("slot head");
+    assert_eq!(head.lead_pubkey, Some(bystander.public_key().to_hex()));
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_slot_with_a_lead_cannot_be_chosen_for_a_hire() {
+    let fixture = fixture().await;
+    let hire_id = Uuid::new_v4();
+    create_hire(&fixture, role_pack(), hire_id).await;
+    member_lead(&fixture, CompanyFunction::Sales).await;
+    let message =
+        rejection(set_slot_hire(&fixture, &fixture.owner, hire_id, CompanyFunction::Sales).await);
+    assert!(message.contains("already has a lead"), "{message}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn the_slot_cannot_be_chosen_after_the_owner_decided() {
+    let fixture = fixture().await;
+    let hire_id = Uuid::new_v4();
+    create_hire(&fixture, role_pack(), hire_id).await;
+    let approve = hire_action(
+        hire_id,
+        HireActionKind::Approve,
+        Some(hire_head(&fixture, hire_id).await.event.id.to_hex()),
+    );
+    submit(&fixture, sign_hire_action(&fixture.owner, &approve))
+        .await
+        .expect("owner approval");
+    let message =
+        rejection(set_slot_hire(&fixture, &fixture.owner, hire_id, CompanyFunction::Finance).await);
+    assert!(message.contains("waiting for a decision"), "{message}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_member_who_did_not_propose_the_hire_cannot_choose_its_slot() {
+    let fixture = fixture().await;
+    let hire_id = Uuid::new_v4();
+    create_hire(&fixture, role_pack(), hire_id).await;
+    let stranger = Keys::generate();
+    fixture
+        .state
+        .db
+        .add_relay_member(
+            fixture.tenant.community(),
+            &stranger.public_key().to_hex(),
+            "member",
+            None,
+        )
+        .await
+        .expect("add the member");
+    let message =
+        rejection(set_slot_hire(&fixture, &stranger, hire_id, CompanyFunction::Finance).await);
+    assert!(
+        message
+            .contains("only the owner, an admin or the proposer of the hire can choose its slot"),
+        "{message}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn pausing_the_lead_clears_the_slot() {
+    let fixture = fixture().await;
+    employee_leads(&fixture, CompanyFunction::Finance).await;
+    member_position_action(&fixture, MemberPositionActionKind::Pause)
+        .await
+        .expect("pause the lead");
+    let head = slot_head(&fixture, CompanyFunction::Finance)
+        .await
+        .expect("slot head");
+    assert_eq!(head.state, SlotState::Empty);
+    assert_eq!(head.lead_pubkey, None);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn terminating_the_lead_clears_the_slot() {
+    let fixture = fixture().await;
+    employee_leads(&fixture, CompanyFunction::Sales).await;
+    member_position_action(&fixture, MemberPositionActionKind::Terminate)
+        .await
+        .expect("terminate the lead");
+    let head = slot_head(&fixture, CompanyFunction::Sales)
+        .await
+        .expect("slot head");
+    assert_eq!(head.state, SlotState::Empty);
+    assert_eq!(head.lead_pubkey, None);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn removing_a_member_lead_from_the_relay_clears_the_slot() {
+    let fixture = fixture().await;
+    let lead = member_lead(&fixture, CompanyFunction::Brand).await;
+    let removal = EventBuilder::new(
+        Kind::from(buzz_core::kind::RELAY_ADMIN_REMOVE_MEMBER as u16),
+        "",
+    )
+    .tags([Tag::parse(["p", lead.public_key().to_hex().as_str()]).expect("p tag")])
+    .sign_with_keys(&fixture.owner)
+    .expect("sign the removal");
+    crate::handlers::relay_admin::handle_relay_admin_event(
+        &fixture.tenant,
+        &fixture.state,
+        &removal,
+    )
+    .await
+    .expect("the owner removes the member");
+    let head = slot_head(&fixture, CompanyFunction::Brand)
+        .await
+        .expect("slot head");
+    assert_eq!(head.state, SlotState::Empty);
+    assert_eq!(head.lead_pubkey, None);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_member_lead_who_leaves_the_relay_clears_the_slot() {
+    let fixture = fixture().await;
+    let lead = member_lead(&fixture, CompanyFunction::CustomerSuccess).await;
+    crate::handlers::ingest::remove_leaving_member(
+        &fixture.tenant,
+        &fixture.state,
+        &lead.public_key().to_hex(),
+    )
+    .await
+    .expect("the member leaves");
+    let head = slot_head(&fixture, CompanyFunction::CustomerSuccess)
+        .await
+        .expect("slot head");
+    assert_eq!(head.state, SlotState::Empty);
+    assert_eq!(head.lead_pubkey, None);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn archiving_the_lead_clears_the_slot() {
+    let fixture = fixture().await;
+    employee_leads(&fixture, CompanyFunction::Operations).await;
+    let archive = EventBuilder::new(
+        Kind::from(buzz_core::kind::KIND_IA_ARCHIVE_REQUEST as u16),
+        "",
+    )
+    .tags([
+        Tag::parse(["p", fixture.employee.public_key().to_hex().as_str()]).expect("p tag"),
+        Tag::parse(["-"]).expect("protected tag"),
+    ])
+    .sign_with_keys(&fixture.employee)
+    .expect("sign the archive request");
+    crate::handlers::identity_archive::handle_identity_archive_event(
+        &fixture.tenant,
+        &fixture.state,
+        &archive,
+    )
+    .await
+    .expect("the lead is archived");
+    let head = slot_head(&fixture, CompanyFunction::Operations)
+        .await
+        .expect("slot head");
+    assert_eq!(head.state, SlotState::Empty);
+    assert_eq!(head.lead_pubkey, None);
 }

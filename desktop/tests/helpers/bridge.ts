@@ -11,6 +11,7 @@ import type {
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
@@ -638,6 +639,8 @@ type MockBridgeOptions = {
   cofounderSettings?: MockCofounderSettings;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
+  /** Access list, capability gap and slot hire records, signed as the relay. */
+  companyAccessRecords?: MockCompanyAccessRecord[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
