@@ -107,6 +107,15 @@ buzz functions get customer_success
 buzz functions assign sales --lead <pubkey>
 buzz functions cover operations
 buzz functions clear finance
+buzz functions hire-slot <hire-uuid> finance
+
+# Access list and capability gaps (grant, revoke, approve, decline, done are owner or admin only)
+buzz access list
+buzz access revoke whatsapp --reason "paused outreach"
+buzz access gap propose --gap gap.json
+buzz access gap list
+buzz access gap complete <gap-uuid>
+buzz asks propose-hire --channel <uuid> --thread-root <event> --proposal hire.json --function finance
 
 # Discovery (counts against the company's monthly limit; exit 2 at the limit)
 buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--industry "Tourism and Hospitality" --vertical "Guesthouses and inns"] [--save]
@@ -230,6 +239,11 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `set` | Change co-founder settings (owner or admin only) |
 | `functions` | `list` / `get` | Read the five function slots, empty when nobody covers one |
 | | `assign` / `cover` / `clear` | Set a lead, let Scout cover, or empty a slot (owner or admin only) |
+| | `hire-slot` | Record which slot an open hire proposal is for |
+| `access` | `list` | List every tool and account agents can use; revoked ones show as revoked |
+| | `grant` / `revoke` | Add or revoke an access entry (owner or admin only) |
+| | `gap propose` / `list` / `show` / `complete` | Record a capability gap, follow it, finish the setup after the owner said done |
+| | `gap approve` / `decline` / `done` | Approve the cost, decline, or mark the human step done (owner or admin only) |
 | `feed` | `get` | Get your activity feed |
 | `social` | `publish` | Publish a NIP-01 note |
 | | `set-contacts` | Set NIP-02 contact list |

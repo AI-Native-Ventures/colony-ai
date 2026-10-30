@@ -18,6 +18,10 @@ import {
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
 import {
+  KIND_COMPANY_ACCESS_ACTION,
+  KIND_COMPANY_ACCESS_HEAD,
+} from "@/features/cofounder/accessRecords";
+import {
   KIND_PLAN_ACTION,
   KIND_PLAN_HEAD,
 } from "@/features/cofounder/planRecords";
@@ -38,6 +42,9 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import { applyMockAccessAction } from "./mockCompanyAccess.ts";
+import type { MockCompanyAccessRecord } from "./mockCompanyAccess.ts";
+
 import {
   businessDTag,
   proposalVersionDTag,
@@ -1056,6 +1063,8 @@ type E2eConfig = {
     cofounderSettings?: MockCofounderSettings;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
+    /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
+    companyAccessRecords?: MockCompanyAccessRecord[];
     /** Co-founder plans served as relay-signed plan heads (kind 30673). */
     companyPlans?: MockPlan[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
@@ -6869,6 +6878,67 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function filterMockCompanyAccessHeads(filter: MockFilter): RelayEvent[] {
+  const records = getConfig()?.mock?.companyAccessRecords ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return records
+    .map((record) =>
+      createSignedMockCompanyHead(
+        KIND_COMPANY_ACCESS_HEAD,
+        record.content,
+        record.dTag,
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function acceptMockCompanyAccessAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: access action signature is invalid.");
+    return;
+  }
+  const mock = config?.mock;
+  if (!mock) {
+    reject("error: mock relay is not configured.");
+    return;
+  }
+  if (!mock.companyAccessRecords) mock.companyAccessRecords = [];
+  const error = applyMockAccessAction(
+    mock.companyAccessRecords,
+    event.content,
+    event.pubkey,
+    mock.relayRole,
+    Math.floor(Date.now() / 1000),
+  );
+  if (error) {
+    reject(error);
+    return;
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
@@ -18679,6 +18749,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COMPANY_ACCESS_HEAD)) {
+      for (const event of filterMockCompanyAccessHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_WORKER_RUN_HEAD)) {
       for (const event of filterMockCompanyWorkerRuns(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -18955,6 +19033,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_COFOUNDER_ACTION) {
       acceptMockCofounderAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
+      acceptMockCompanyAccessAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_PLAN_ACTION) {

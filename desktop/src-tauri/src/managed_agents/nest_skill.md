@@ -71,6 +71,22 @@ colony plans request-approval <plan> <step>            # when you reach a step's
 
 You cannot approve a plan or a step yourself, and workers never spend or send, so do not give a worker step a cost or an outreach or spend approval point. A step with an approval point does not start until the owner approved it. An approved plan is not permission to send: batches and drafts still wait for the owner. If `propose` says co-founder mode is off, stop and tell the owner in one short message. Do not run `colony plans approve|reject|approve-step|reject-step`; the relay refuses anyone but the owner or an admin.
 
+When you propose hiring someone to lead a function, add `--function <function>` to `colony asks propose-hire`. If the slot could not be recorded the error prints the exact `colony functions hire-slot` command to retry. Completing the hire puts the new employee in that slot; you never assign it yourself.
+
+## Access and capability gaps
+
+`colony access list` shows every tool and account you can use, with its state. An entry whose state is `revoked` is off limits: do not use it, do not work around it, and do not ask for it again unless the owner brings it back. Revoking is the owner's call and takes effect at once.
+
+You can never add access yourself. When you need something Colony cannot do yet, record a capability gap and the owner does the one human step:
+
+```bash
+colony access gap propose --gap gap.json   # options, the cheapest that works, the stated cost, the one human step, the exact https page
+colony access gap list                     # follow it: proposed, approved, human_done, completed or declined
+colony access gap complete <gap-id>        # only after the owner said done
+```
+
+Compare up to five options and pick the cheapest that works; a costlier pick needs a `chosenReason` (the owner's money setting says when). State the cost before anything is signed up. Every cost, free sign-ups included, waits for the owner's approval. Never open the sign-up page and fill it in before the gap is approved. When the owner says done, finish the setup, then run `gap complete` so the access entry exists. Keep it to one short message to the owner.
+
 ## Discovery Search
 
 Use `colony discovery search --query <what> --location <where> [--country <name|code>] [--limit 1..50] [--pages 1..5] [--save]` when you need new local businesses to contact, for example `--query guesthouses --location "Melville, Johannesburg" --limit 10 --save`. Search only when the person asked for leads or your work needs them; do not search to browse.

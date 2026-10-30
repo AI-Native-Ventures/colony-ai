@@ -209,6 +209,19 @@ pub(super) async fn handle(
     })
 }
 
+/// Whether co-founder mode is on for this company. A company with no head is off.
+pub(super) async fn cofounder_enabled(
+    state: &AppState,
+    community_id: CommunityId,
+) -> Result<bool, IngestError> {
+    let Some(stored) = current_cofounder_head(state, community_id, COFOUNDER_D_TAG).await? else {
+        return Ok(false);
+    };
+    let head = serde_json::from_str::<CofounderHead>(&stored.event.content)
+        .map_err(|error| internal(format!("stored co-founder head is invalid: {error}")))?;
+    Ok(head.settings.enabled)
+}
+
 pub(super) async fn current_cofounder_head(
     state: &AppState,
     community_id: CommunityId,

@@ -1,3 +1,4 @@
+pub mod access;
 pub mod agents;
 pub mod asks;
 pub mod channel_templates;

@@ -105,7 +105,7 @@ const FUNCTION_IDS = new Set<FunctionId>([
   "finance",
   "brand",
 ]);
-const PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
+export const PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 const WORKER_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
 export function hasOnlyKeys(

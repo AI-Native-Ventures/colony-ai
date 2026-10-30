@@ -301,6 +301,9 @@ enum Cmd {
     /// Read and change who covers each company function
     #[command(subcommand)]
     Functions(FunctionsCmd),
+    /// List and revoke the tools and accounts agents can use, and record capability gaps
+    #[command(subcommand)]
+    Access(AccessCmd),
     /// Propose co-founder plans for the owner to approve, and run approved plans
     #[command(subcommand)]
     Plans(PlansCmd),
@@ -1175,6 +1178,9 @@ pub enum AsksCmd {
         /// HireProposal JSON with the selected real role and runtime values, or '-' for stdin
         #[arg(long)]
         proposal: String,
+        /// Function slot the new employee will lead (sales, operations, customer_success, finance, brand)
+        #[arg(long, value_parser = commands::functions::parse_function)]
+        function: Option<buzz_core::company_functions::CompanyFunction>,
     },
     /// Cancel an open ask at its exact current head
     Cancel {
@@ -1866,6 +1872,94 @@ pub enum FunctionsCmd {
         /// Function id
         #[arg(value_parser = commands::functions::parse_function)]
         function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Record which function slot an open hire proposal is for; completing the
+    /// hire puts the new employee in that slot
+    HireSlot {
+        /// Hire UUID from the hire proposal
+        hire_id: String,
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AccessCmd {
+    /// List every tool and account agents can use; revoked entries show as revoked
+    List,
+    /// Add an access entry (owner or admin only). Agents get new access only
+    /// through `access gap propose`
+    Grant {
+        /// Access id: a-z, 0-9 and dashes; whatsapp, discovery and credits use their own id
+        #[arg(long)]
+        id: String,
+        /// Name shown to people
+        #[arg(long)]
+        name: String,
+        /// whatsapp, discovery, credits, browser-login, connected-account, calendar, esign, payment-link or other
+        #[arg(long)]
+        category: String,
+        /// What it is used for
+        #[arg(long)]
+        used_for: String,
+        /// What it costs, in plain words
+        #[arg(long)]
+        cost: String,
+        /// Agent public key that uses it (repeat for more; none means every agent)
+        #[arg(long = "agent")]
+        agents: Vec<String>,
+    },
+    /// Revoke an access entry; it takes effect at once (owner or admin only)
+    Revoke {
+        /// Access id
+        id: String,
+        /// Why it was revoked
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Record a capability gap and follow it to a finished setup
+    #[command(subcommand)]
+    Gap(GapCmd),
+}
+
+#[derive(Subcommand)]
+pub enum GapCmd {
+    /// Record a capability gap: the options, the cheapest that works, the cost and the one human step
+    Propose {
+        /// CapabilityGap JSON, or '-' for stdin
+        #[arg(long)]
+        gap: String,
+    },
+    /// List capability gaps, newest first
+    List,
+    /// Show one capability gap
+    Show {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Approve the stated cost (owner or admin only)
+    Approve {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Decline the gap (owner or admin only)
+    Decline {
+        /// Gap UUID
+        gap_id: String,
+        /// Why
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Mark the human step done (owner or admin only)
+    Done {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Finish the setup after the owner said done; creates the access entry
+    Complete {
+        /// Gap UUID
+        gap_id: String,
     },
 }
 
@@ -3683,6 +3777,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
         Cmd::Cofounder(sub) => commands::cofounder::dispatch(sub, &client).await,
         Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
+        Cmd::Access(sub) => commands::access::dispatch(sub, &client).await,
         Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
@@ -3854,6 +3949,7 @@ mod tests {
     #[test]
     fn command_inventory_is_stable() {
         let expected_groups: Vec<&str> = vec![
+            "access",
             "agents",
             "asks",
             "canvas",
