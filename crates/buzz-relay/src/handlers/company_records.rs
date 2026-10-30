@@ -86,6 +86,9 @@ pub async fn handle(
         buzz_core::kind::KIND_PLAN_ACTION => {
             super::company_plans::handle(tenant, state, event, auth).await
         }
+        buzz_core::kind::KIND_PLAYBOOK_ACTION => {
+            super::company_playbooks::handle(tenant, state, event, auth).await
+        }
         buzz_core::kind::KIND_NUMBERS_ACTION => {
             super::company_numbers::handle(tenant, state, event, auth).await
         }

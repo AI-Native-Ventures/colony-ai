@@ -80,7 +80,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// section (`colony access`).
 /// Version 18 added the co-founder initiative section (onboarding, wakes, brief).
 /// Version 19 added the rule to start a real worker run when asked to.
-const NEST_SKILL_VERSION: u32 = 19;
+/// Version 20 added the Playbooks section (`colony playbooks`).
+const NEST_SKILL_VERSION: u32 = 20;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
