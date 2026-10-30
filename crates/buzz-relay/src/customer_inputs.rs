@@ -318,3 +318,225 @@ impl CustomerReads {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use serde_json::json;
+
+    use buzz_core::company_customers::{
+        compute_customer_record, ManualState, SourceClient, TimelineKind,
+    };
+
+    use super::*;
+
+    const HEX: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const PARTY: &str = "00000000-0000-0000-0000-000000000064";
+    const PROSPECT: &str = "00000000-0000-0000-0000-000000000001";
+
+    fn at(secs: i64) -> DateTime<chrono::Utc> {
+        DateTime::from_timestamp(secs, 0).expect("time")
+    }
+
+    fn prospect(phone: Option<&str>) -> SourceProspect {
+        let head = serde_json::from_value::<ProspectHead>(json!({
+            "schemaVersion": 1,
+            "prospectId": PROSPECT,
+            "status": "active",
+            "prospect": {
+                "prospectId": PROSPECT,
+                "party": {
+                    "partyId": PARTY,
+                    "partyType": "organization",
+                    "displayName": "Plane Tree Guesthouse",
+                    "externalIds": []
+                },
+                "industry": "Hospitality",
+                "vertical": "guesthouses",
+                "website": null,
+                "location": "Parkhurst",
+                "email": null,
+                "phone": phone,
+                "evidence": [],
+                "lastVerifiedAt": null,
+                "qualification": "qualified",
+                "saved": true,
+                "stage": "qualified",
+                "lostReason": null
+            },
+            "activities": [],
+            "sourceActionEventId": HEX
+        }))
+        .expect("prospect head");
+        SourceProspect {
+            head,
+            created_at: 1_000,
+            created_by_pubkey: None,
+        }
+    }
+
+    fn client() -> SourceClient {
+        let head = serde_json::from_value::<ClientHead>(json!({
+            "schemaVersion": 1,
+            "clientId": "00000000-0000-0000-0000-0000000000c8",
+            "partyId": PARTY,
+            "displayName": "Plane Tree Guesthouse",
+            "approverPubkeys": [],
+            "status": "active",
+            "sourceActionEventId": HEX
+        }))
+        .expect("client head");
+        SourceClient { head, at: 3_000 }
+    }
+
+    fn contact(wa_id: &str, lead_id: Option<&str>) -> WhatsappContact {
+        WhatsappContact {
+            wa_id: wa_id.into(),
+            display_name: "Thandeka".into(),
+            lead_id: lead_id.map(str::to_owned),
+            owner_pubkey: None,
+            thread_root_event_id: None,
+            last_inbound_at: None,
+            last_outbound_at: None,
+            outbound_since_inbound: 0,
+            opted_out_at: None,
+            opt_out_reason: None,
+            paused_at: None,
+            pause_reason: None,
+            created_at: at(500),
+        }
+    }
+
+    fn message(
+        n: u128,
+        wa_id: &str,
+        direction: &str,
+        state: &str,
+        secs: i64,
+        batch: Option<Uuid>,
+    ) -> WhatsappMessage {
+        WhatsappMessage {
+            id: Uuid::from_u128(n),
+            wa_id: wa_id.into(),
+            direction: direction.into(),
+            kind: "template".into(),
+            body: "Hi".into(),
+            template_name: (direction == "out").then(|| "has_website".to_owned()),
+            template_language: (direction == "out").then(|| "en".to_owned()),
+            params: json!([]),
+            state: state.into(),
+            skip_reason: None,
+            wamid: None,
+            error_code: None,
+            error_text: None,
+            event_id: None,
+            batch_id: batch,
+            batch_idx: None,
+            new_chat: direction == "out",
+            send_after: None,
+            sender_pubkey: None,
+            sent_at: (direction == "out").then(|| at(secs)),
+            created_at: at(secs),
+        }
+    }
+
+    fn batch(id: Uuid, decided: i64) -> WhatsappBatch {
+        WhatsappBatch {
+            id,
+            created_by: vec![1; 32],
+            template_name: "has_website".into(),
+            language: "en".into(),
+            status: "approved".into(),
+            note: String::new(),
+            material_links: json!([]),
+            decided_by: Some(vec![0xaa; 32]),
+            decided_at: Some(at(decided)),
+            created_at: at(400),
+        }
+    }
+
+    fn reads(prospect: Option<SourceProspect>, client: Option<SourceClient>) -> CustomerReads {
+        let mut reads = CustomerReads::default();
+        reads.facts.prospects.extend(prospect);
+        reads.facts.clients.extend(client);
+        reads
+    }
+
+    #[test]
+    fn a_business_without_a_whatsapp_chat_still_has_a_source() {
+        // A client created directly, and a lead nobody has messaged.
+        let client_only = reads(None, Some(client()));
+        let source = client_only.source_for(PARTY).expect("client source");
+        assert!(source.whatsapp.is_none());
+        let lead_only = reads(Some(prospect(None)), None);
+        assert!(lead_only.source_for(PARTY).is_some());
+        // A party with no prospect and no client record has none.
+        assert!(lead_only
+            .source_for("00000000-0000-0000-0000-000000000065")
+            .is_none());
+    }
+
+    #[test]
+    fn the_chat_is_found_by_the_linked_lead_or_by_the_phone_number() {
+        let batch_id = Uuid::from_u128(77);
+        let mut by_phone = reads(Some(prospect(Some("+27 82 555 7135"))), None);
+        by_phone.contacts = vec![contact("27829999999", None), contact("27825557135", None)];
+        by_phone.messages = vec![
+            message(1, "27825557135", "out", "delivered", 2_000, Some(batch_id)),
+            message(2, "27825557135", "in", "received", 3_000, None),
+            message(3, "27829999999", "in", "received", 3_500, None),
+        ];
+        by_phone.batches = vec![batch(batch_id, 1_500)];
+        let source = by_phone.source_for(PARTY).expect("source");
+        let chat = source.whatsapp.as_ref().expect("chat by phone");
+        assert_eq!(chat.wa_id, "27825557135");
+        assert_eq!(chat.rows.len(), 2, "another contact's messages stay out");
+        let head = compute_customer_record(&source, &ManualState::default(), 9_000, HEX, None);
+        let kinds = head.timeline.iter().map(|e| e.kind).collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                TimelineKind::Found,
+                TimelineKind::OpenerApproved,
+                TimelineKind::OpenerSent,
+                TimelineKind::Replied,
+            ]
+        );
+        assert_eq!(head.timeline[1].at, 1_500);
+        assert_eq!(
+            head.timeline[1].actor_pubkey.as_deref(),
+            Some(&"aa".repeat(32)[..])
+        );
+
+        // A contact linked to the lead wins over one that only has the number.
+        let mut linked = reads(Some(prospect(Some("+27 82 555 7135"))), None);
+        linked.contacts = vec![
+            contact("27825557135", None),
+            contact("27821112222", Some(PROSPECT)),
+        ];
+        let chat = linked
+            .source_for(PARTY)
+            .and_then(|source| source.whatsapp)
+            .expect("linked chat");
+        assert_eq!(chat.wa_id, "27821112222");
+    }
+
+    #[test]
+    fn an_opted_out_contact_and_unsent_rows_read_honestly() {
+        let mut opted = reads(Some(prospect(Some("0825557135"))), None);
+        let mut gone = contact("27825557135", None);
+        gone.opted_out_at = Some(at(2_500));
+        opted.contacts = vec![gone];
+        opted.messages = vec![message(1, "27825557135", "out", "queued", 2_000, None)];
+        let source = opted.source_for(PARTY).expect("source");
+        let chat = source.whatsapp.as_ref().expect("chat");
+        assert!(chat.opted_out);
+        let head = compute_customer_record(&source, &ManualState::default(), 9_000, HEX, None);
+        let kinds = head.timeline.iter().map(|e| e.kind).collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![TimelineKind::Found],
+            "a queued opener is not sent"
+        );
+    }
+}
