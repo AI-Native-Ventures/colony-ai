@@ -711,7 +711,7 @@ pub fn review_due(now: i64) -> Option<ReviewWindow> {
         )
         .single()?;
     if cut.timestamp() > now {
-        cut = cut - Duration::days(7);
+        cut -= Duration::days(7);
     }
     let as_of = cut.timestamp();
     if now - as_of > REVIEW_CATCH_UP_SECS {
