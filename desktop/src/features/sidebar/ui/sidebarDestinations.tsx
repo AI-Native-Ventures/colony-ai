@@ -152,8 +152,7 @@ const company: SidebarDestination = {
   Icon: CompanyIcon,
   defaultExpanded: false,
   isActive: ({ pathname, selectedView }) =>
-    COMPANY_VIEWS.includes(selectedView) ||
-    isCompanyPath(pathname),
+    COMPANY_VIEWS.includes(selectedView) || isCompanyPath(pathname),
   isCurrent: ({ pathname, selectedView }) =>
     COMPANY_VIEWS.includes(selectedView) ||
     isCompanyPath(pathname) ||
