@@ -1146,7 +1146,17 @@ mod postgres_tests {
             .await
             .expect("attempt");
         }
-        assert_eq!(pending_count(&fixture).await, 0, "the wake ended");
+        let left = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(
+                community(&fixture),
+                Utc::now() + chrono::Duration::days(30),
+                100,
+            )
+            .await
+            .expect("pending wakes");
+        assert!(left.is_empty(), "the wake ended, still pending: {left:?}");
     }
 
     #[tokio::test]
