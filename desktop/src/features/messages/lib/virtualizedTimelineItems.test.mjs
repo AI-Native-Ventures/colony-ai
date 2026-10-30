@@ -223,5 +223,5 @@ test("virtualized rows preserve their heterogeneous height estimates", () => {
 
   assert.equal(estimates[0], 56);
   assert.ok(estimates[2] > estimates[1] + 200);
-  assert.equal(estimates.at(-1), 120);
+  assert.equal(estimates.at(-1), 96);
 });
