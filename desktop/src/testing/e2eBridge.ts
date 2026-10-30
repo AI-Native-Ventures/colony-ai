@@ -18,9 +18,21 @@ import {
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
 import {
+  KIND_COMPANY_ACCESS_ACTION,
+  KIND_COMPANY_ACCESS_HEAD,
+} from "@/features/cofounder/accessRecords";
+import {
+  KIND_NUMBERS_ACTION,
+  KIND_NUMBERS_HEAD,
+} from "@/features/cofounder/numbersRecords";
+import {
   KIND_PLAN_ACTION,
   KIND_PLAN_HEAD,
 } from "@/features/cofounder/planRecords";
+import {
+  KIND_PLAYBOOK_ACTION,
+  KIND_PLAYBOOK_HEAD,
+} from "@/features/cofounder/playbookRecords";
 
 import type {
   ObservedUnreadProjection,
@@ -38,6 +50,16 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import { applyMockAccessAction } from "./mockCompanyAccess.ts";
+import type { MockCompanyAccessRecord } from "./mockCompanyAccess.ts";
+
+import {
+  applyMockPlaybookAction,
+  applyMockPlaybookJobAction,
+  mockPlaybookHeadContent,
+  mockPlaybookJobHeadContent,
+} from "./mockCompanyPlaybooks.ts";
+import type { MockPlaybook, MockPlaybookJob } from "./mockCompanyPlaybooks.ts";
 import {
   businessDTag,
   proposalVersionDTag,
@@ -245,6 +267,15 @@ export type MockManagedAgentSeed = {
   envVars?: Record<string, string>;
 };
 
+/** Narrow live-config values that a mock runtime reports for one agent. */
+export type MockAgentConfigSurfaceOverride = {
+  runtimeId?: string | null;
+  runtimeLabel?: string | null;
+  model?: string;
+  provider?: string;
+  thinkingEffort?: string;
+};
+
 export type MockFactoryProjectSeed = {
   dtag: string;
   name: string;
@@ -374,6 +405,18 @@ export type MockWorkerRun = {
   costUsd?: number;
   outputText?: string;
   failureReason?: string;
+};
+
+/**
+ * Co-founder numbers seeds. Each value is the wire content of a relay-signed
+ * numbers head (kind 30678), so a spec can seed exactly what the relay writes:
+ * the scorecard (`company:scorecard`), goals (`company:fngoal:<id>`) and weekly
+ * reviews (`company:review:<Friday>`).
+ */
+export type MockNumbers = {
+  scorecard?: Record<string, unknown>;
+  goals?: Array<Record<string, unknown>>;
+  reviews?: Array<Record<string, unknown>>;
 };
 
 /** One co-founder plan seed. Keys follow the relay-signed plan head (kind 30673). */
@@ -758,6 +801,11 @@ type E2eConfig = {
     agentSubscriptionUsage?:
       | import("@/shared/api/tauriArchive").AgentSubscriptionUsage
       | null;
+    /** Live runtime values returned for specific managed agents. */
+    agentConfigSurfaceOverrides?: Record<
+      string,
+      MockAgentConfigSurfaceOverride
+    >;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -1056,8 +1104,16 @@ type E2eConfig = {
     cofounderSettings?: MockCofounderSettings;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
+    /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
+    companyAccessRecords?: MockCompanyAccessRecord[];
     /** Co-founder plans served as relay-signed plan heads (kind 30673). */
     companyPlans?: MockPlan[];
+    /** Co-founder playbooks served as relay-signed heads (kind 30677, d tag `company:playbook:<id>`). */
+    companyPlaybooks?: MockPlaybook[];
+    /** Running copies of playbooks, one per client job (kind 30677, d tag `company:playbook-job:<id>`). */
+    companyPlaybookJobs?: MockPlaybookJob[];
+    /** Scorecard, goals and weekly reviews served as relay-signed numbers heads (kind 30678). */
+    companyNumbers?: MockNumbers;
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -3322,6 +3378,42 @@ function buildMockConfigSurface(pubkey: string): {
     default:
       return gooseSurface;
   }
+}
+
+function applyMockAgentConfigSurfaceOverride(
+  pubkey: string,
+  override: MockAgentConfigSurfaceOverride | undefined,
+) {
+  const surface = buildMockConfigSurface(pubkey);
+  if (!override) return surface;
+
+  const normalized = { ...surface.normalized };
+  for (const [field, value] of [
+    ["model", override.model],
+    ["provider", override.provider],
+    ["thinkingEffort", override.thinkingEffort],
+  ] as const) {
+    const descriptor = normalized[field];
+    if (
+      value !== undefined &&
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      !Array.isArray(descriptor)
+    ) {
+      normalized[field] = { ...descriptor, value };
+    }
+  }
+
+  return {
+    ...surface,
+    runtimeId:
+      override.runtimeId === undefined ? surface.runtimeId : override.runtimeId,
+    runtimeLabel:
+      override.runtimeLabel === undefined
+        ? surface.runtimeLabel
+        : override.runtimeLabel,
+    normalized,
+  };
 }
 
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
@@ -6871,6 +6963,67 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 20);
 }
 
+function filterMockCompanyAccessHeads(filter: MockFilter): RelayEvent[] {
+  const records = getConfig()?.mock?.companyAccessRecords ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return records
+    .map((record) =>
+      createSignedMockCompanyHead(
+        KIND_COMPANY_ACCESS_HEAD,
+        record.content,
+        record.dTag,
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function acceptMockCompanyAccessAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: access action signature is invalid.");
+    return;
+  }
+  const mock = config?.mock;
+  if (!mock) {
+    reject("error: mock relay is not configured.");
+    return;
+  }
+  if (!mock.companyAccessRecords) mock.companyAccessRecords = [];
+  const error = applyMockAccessAction(
+    mock.companyAccessRecords,
+    event.content,
+    event.pubkey,
+    mock.relayRole,
+    Math.floor(Date.now() / 1000),
+  );
+  if (error) {
+    reject(error);
+    return;
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
   const seeds = getConfig()?.mock?.companyFunctionHeads ?? [];
   const relayPubkey = mockCompanyRecordSigner().pubkey;
@@ -7198,6 +7351,312 @@ function acceptMockPlanAction(
       return;
   }
   plan.updatedAt = now;
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+/** Playbook and running-copy heads, one relay-signed event each. */
+function filterMockCompanyPlaybooks(filter: MockFilter): RelayEvent[] {
+  const mock = getConfig()?.mock;
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const heads = [
+    ...(mock?.companyPlaybooks ?? []).map((playbook) =>
+      createSignedMockCompanyHead(
+        KIND_PLAYBOOK_HEAD,
+        mockPlaybookHeadContent(playbook),
+        `company:playbook:${playbook.playbookId}`,
+        playbook.updatedAt ?? playbook.createdAt ?? 1_793_000_000,
+      ),
+    ),
+    ...(mock?.companyPlaybookJobs ?? []).map((job) =>
+      createSignedMockCompanyHead(
+        KIND_PLAYBOOK_HEAD,
+        mockPlaybookJobHeadContent(job),
+        `company:playbook-job:${job.jobId}`,
+        job.updatedAt ?? job.startedAt ?? 1_793_000_000,
+      ),
+    ),
+  ];
+  return heads
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+/** Applies a playbook or running-copy action the way the relay would, then answers the socket. */
+function acceptMockPlaybookAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const answer = (refusal: string | null) => {
+    sendWsText(
+      socket.handler,
+      refusal ? ["OK", event.id, false, refusal] : ["OK", event.id, true, ""],
+    );
+  };
+  if (!config?.mock) {
+    answer("invalid: playbook action has an unsupported shape.");
+    return;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(event.content);
+  } catch {
+    answer("invalid: playbook action is not JSON.");
+    return;
+  }
+  const dTag = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+  const mock = config.mock;
+  const context = {
+    isAdmin: !mock.relayRole || ["owner", "admin"].includes(mock.relayRole),
+    cofounderEnabled: mock.cofounderSettings?.enabled === true,
+    now: Math.floor(Date.now() / 1000),
+    actorPubkey: MOCK_IDENTITY_PUBKEY,
+    eventId: event.id,
+  };
+  if (dTag.startsWith("company:playbook-job:")) {
+    answer(applyMockPlaybookJobAction(mock, body as never, context));
+  } else if (dTag.startsWith("company:playbook:")) {
+    answer(applyMockPlaybookAction(mock, body as never, context));
+  } else {
+    answer(
+      "invalid: playbook command d tag must name a playbook or a running copy",
+    );
+  }
+}
+
+function mockNumbersHeads(): Array<{
+  content: Record<string, unknown>;
+  dTag: string;
+  createdAt: number;
+}> {
+  const numbers = getConfig()?.mock?.companyNumbers;
+  if (!numbers) return [];
+  const heads = [];
+  if (numbers.scorecard) {
+    heads.push({
+      content: numbers.scorecard,
+      dTag: "company:scorecard",
+      createdAt: Number(numbers.scorecard.asOf ?? 1_793_000_000),
+    });
+  }
+  for (const goal of numbers.goals ?? []) {
+    heads.push({
+      content: goal,
+      dTag: `company:fngoal:${String(goal.goalId)}`,
+      createdAt: Number(goal.decidedAt ?? goal.proposedAt ?? 1_793_000_000),
+    });
+  }
+  for (const review of numbers.reviews ?? []) {
+    heads.push({
+      content: review,
+      dTag: `company:review:${String(review.reviewDate)}`,
+      createdAt: Number(
+        review.annotatedAt ?? review.createdAt ?? 1_793_000_000,
+      ),
+    });
+  }
+  return heads;
+}
+
+function filterMockCompanyNumbers(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockNumbersHeads()
+    .map((head) =>
+      createSignedMockCompanyHead(
+        KIND_NUMBERS_HEAD,
+        head.content,
+        head.dTag,
+        head.createdAt,
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+/**
+ * A small stand-in for the relay's numbers broker, enough for UI specs: the
+ * same authority rules (only an owner or admin decides, co-founder mode must
+ * be on), none of the counting. A refresh keeps the seeded figures.
+ */
+function acceptMockNumbersAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  let action: {
+    schemaVersion?: number;
+    op?: string;
+    goalId?: string;
+    function?: string;
+    title?: string;
+    metric?: string;
+    target?: number;
+    period?: string;
+    reason?: string;
+    reviewDate?: string;
+    wins?: string[];
+    misses?: string[];
+    decisions?: Array<{
+      decisionId: string;
+      title: string;
+      detail?: string;
+      function?: string;
+    }>;
+    decisionId?: string;
+    choice?: string;
+    note?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: numbers action is not JSON.");
+    return;
+  }
+  if (!config?.mock || action.schemaVersion !== 1 || !action.op) {
+    reject("invalid: numbers action has an unsupported shape.");
+    return;
+  }
+  const mock = config.mock;
+  const numbers = mock.companyNumbers ?? {};
+  mock.companyNumbers = numbers;
+  const goals = numbers.goals ?? [];
+  numbers.goals = goals;
+  const reviews = numbers.reviews ?? [];
+  numbers.reviews = reviews;
+  const isAdmin =
+    !mock.relayRole || ["owner", "admin"].includes(mock.relayRole);
+  const now = Math.floor(Date.now() / 1000);
+  if (!mock.cofounderSettings?.enabled) {
+    reject(
+      "restricted: co-founder mode is off for this company, so numbers are not written",
+    );
+    return;
+  }
+  const needAdmin = (what: string) => {
+    if (isAdmin) return true;
+    reject(`restricted: only an owner or admin can ${what}`);
+    return false;
+  };
+  const goal = goals.find((candidate) => candidate.goalId === action.goalId);
+  const review = reviews.find(
+    (candidate) => candidate.reviewDate === action.reviewDate,
+  );
+  switch (action.op) {
+    case "scorecard_refresh":
+      if (numbers.scorecard) numbers.scorecard.asOf = now;
+      break;
+    case "goal_propose":
+      if (goal) {
+        reject("conflict: a goal with this id already exists");
+        return;
+      }
+      goals.push({
+        schemaVersion: 1,
+        goalId: action.goalId,
+        function: action.function,
+        title: action.title,
+        metric: action.metric,
+        target: action.target,
+        period: action.period,
+        status: "proposed",
+        ...(action.reason ? { reason: action.reason } : {}),
+        proposedByPubkey: MOCK_IDENTITY_PUBKEY,
+        proposedAt: now,
+        sourceActionEventId: event.id,
+      });
+      break;
+    case "goal_approve":
+    case "goal_reject":
+    case "goal_retire": {
+      if (!goal) {
+        reject("conflict: there is no such goal");
+        return;
+      }
+      if (action.op !== "goal_retire" && !needAdmin("approve or reject a goal"))
+        return;
+      const open =
+        action.op === "goal_retire"
+          ? goal.status === "proposed" || goal.status === "approved"
+          : goal.status === "proposed";
+      if (!open) {
+        reject("conflict: this goal cannot change from its current state");
+        return;
+      }
+      goal.status =
+        action.op === "goal_approve"
+          ? "approved"
+          : action.op === "goal_reject"
+            ? "rejected"
+            : "retired";
+      goal.decidedByPubkey = MOCK_IDENTITY_PUBKEY;
+      goal.decidedAt = now;
+      if (action.note) goal.note = action.note;
+      break;
+    }
+    case "review_annotate":
+      if (!review) {
+        reject("conflict: there is no review for that Friday yet");
+        return;
+      }
+      review.wins = action.wins ?? [];
+      review.misses = action.misses ?? [];
+      review.decisions = (action.decisions ?? []).map((decision) => ({
+        decisionId: decision.decisionId,
+        title: decision.title,
+        detail: decision.detail ?? "",
+        ...(decision.function ? { function: decision.function } : {}),
+        state: "open",
+      }));
+      review.annotatedByPubkey = MOCK_IDENTITY_PUBKEY;
+      review.annotatedAt = now;
+      break;
+    case "review_decide": {
+      if (!needAdmin("answer a review decision")) return;
+      const decisions = (review?.decisions ?? []) as Array<
+        Record<string, unknown>
+      >;
+      const decision = decisions.find(
+        (candidate) => candidate.decisionId === action.decisionId,
+      );
+      if (!review || !decision || decision.state !== "open") {
+        reject("conflict: this review has no open decision with that id");
+        return;
+      }
+      decision.state = action.choice;
+      decision.decidedByPubkey = MOCK_IDENTITY_PUBKEY;
+      decision.decidedAt = now;
+      if (action.note) decision.note = action.note;
+      break;
+    }
+    default:
+      reject("invalid: unknown numbers action op");
+      return;
+  }
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
@@ -18679,6 +19138,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COMPANY_ACCESS_HEAD)) {
+      for (const event of filterMockCompanyAccessHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_WORKER_RUN_HEAD)) {
       for (const event of filterMockCompanyWorkerRuns(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -18689,6 +19156,22 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_PLAN_HEAD)) {
       for (const event of filterMockCompanyPlans(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_PLAYBOOK_HEAD)) {
+      for (const event of filterMockCompanyPlaybooks(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_NUMBERS_HEAD)) {
+      for (const event of filterMockCompanyNumbers(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);
@@ -18957,8 +19440,20 @@ function sendToMockSocket(args: {
       acceptMockCofounderAction(socket, event, getConfig());
       return;
     }
+    if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
+      acceptMockCompanyAccessAction(socket, event, getConfig());
+      return;
+    }
     if (event.kind === KIND_PLAN_ACTION) {
       acceptMockPlanAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_PLAYBOOK_ACTION) {
+      acceptMockPlaybookAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_NUMBERS_ACTION) {
+      acceptMockNumbersAction(socket, event, getConfig());
       return;
     }
     if (
@@ -22913,7 +23408,12 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "get_agent_config_surface": {
         const configArgs = payload as { pubkey: string };
-        return buildMockConfigSurface(configArgs.pubkey);
+        return applyMockAgentConfigSurfaceOverride(
+          configArgs.pubkey,
+          activeConfig?.mock?.agentConfigSurfaceOverrides?.[
+            configArgs.pubkey.toLowerCase()
+          ],
+        );
       }
       case "get_runtime_file_config": {
         const runtimeId = (payload as { runtimeId?: string } | null | undefined)

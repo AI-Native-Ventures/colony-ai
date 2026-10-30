@@ -130,6 +130,7 @@
         "channel-controls.spec.ts",
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
+        "whatsapp-work-area.spec.ts",
         "channel-sort.spec.ts",
         "channel-star.spec.ts",
         "auxiliary-pane-close-visibility.spec.ts",
@@ -376,12 +377,17 @@
       ]
     },
     {
+      "paths": ["desktop/src/features/whatsapp-outreach/**"],
+      "specs": ["whatsapp-work-area.spec.ts"]
+    },
+    {
       "paths": ["desktop/src/features/terminal/**"],
       "specs": ["terminal-wheel.spec.ts"]
     },
     {
       "paths": ["desktop/src/features/workarea/**"],
       "specs": [
+        "whatsapp-work-area.spec.ts",
         "work-area-dock.spec.ts",
         "work-area-dock-screenshots.spec.ts",
         "work-area-files.spec.ts",

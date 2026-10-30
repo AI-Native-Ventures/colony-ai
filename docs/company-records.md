@@ -50,6 +50,11 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30671 | Function slot head | Relay signed, replaceable | Co-founder mode |
 | 30672 | Worker run head | Relay signed, replaceable | Worker runs |
 | 30673 | Plan head | Relay signed, replaceable | Co-founder plans |
+| 30677 | Playbook and running copy head | Relay signed, replaceable | Co-founder playbooks |
+| 30676 | Access, capability gap and slot hire head | Relay signed, replaceable | Co-founder mode |
+| 30674 | Business brief head | Relay signed, replaceable | Co-founder onboarding |
+| 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
+| 30678 | Scorecard, function goal and weekly review head | Relay signed, replaceable | Co-founder numbers |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -69,6 +74,11 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47061 | Function slot action | Brokered | Co-founder mode |
 | 47062 | Worker run action | Brokered | Worker runs |
 | 47063 | Plan action | Brokered | Co-founder plans |
+| 47067 | Playbook and running copy action | Brokered | Co-founder playbooks |
+| 47066 | Access, capability gap and slot hire action | Brokered | Co-founder mode |
+| 47064 | Business brief action | Brokered | Co-founder onboarding |
+| 47065 | Co-founder onboarding action | Brokered | Co-founder onboarding |
+| 47068 | Scorecard refresh, goal and weekly review action | Brokered | Co-founder numbers |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1092,6 +1102,118 @@ broken avatar.
 
 CLI: `colony functions list`, `get <function>`, `assign <function> --lead
 <pubkey>`, `cover <function>` and `clear <function>`.
+## Business brief
+
+What the company sells, to whom, at what price and how it talks. Scout reads
+what Colony already knows and plays the brief back; the owner confirms or
+corrects it. One community-wide record, no h tag, d-tag `company:brief`, relay
+signed kind 30674 head. A company with no head has no brief yet.
+
+The head holds `confirmed` (what the owner confirmed or wrote) and `pending` (a
+revision Scout proposed that the owner has not decided on), each with
+`whatYouSell`, `whoBuys`, `howYouTalk`, optional `prices` (absent means Scout
+found none) and up to eight `sources`. It also carries `revision`,
+`confirmedByPubkey`, `confirmedAt`, `updatedByPubkey` and `updatedAt` (Unix
+seconds). Every text is 1 to 600 characters.
+
+A member-signed kind 47064 action carries `schemaVersion`, `kind`, `content` and
+`expectedHeadEventId`:
+
+| `kind` | `content` | Effect | Who |
+| --- | --- | --- | --- |
+| `propose` | the brief | sets `pending`, `confirmed` is untouched | a managed agent, only while co-founder mode is on, or an owner or admin |
+| `confirm` | none | promotes `pending` to `confirmed` (refused when nothing is pending) | owner or admin |
+| `edit` | the brief | sets `confirmed` and drops `pending` | owner or admin, even while the mode is off |
+| `discard` | none | drops `pending` | owner or admin |
+
+A plain member is refused, and an agent that tries `confirm`, `edit` or
+`discard` is refused with `only the owner or an admin can confirm, edit or
+discard the business brief`. While co-founder mode is off an agent proposal is
+refused with `co-founder mode is off for this company`. A stale
+`expectedHeadEventId` is a write conflict (CLI exit code 5).
+
+CLI: `colony brief get`, `propose`, `confirm`, `edit` and `discard`.
+
+## Co-founder onboarding
+
+Where onboarding stands when co-founder mode is switched on: which steps are
+done, the one open question, the accounts Scout asked the owner to connect and
+the proposed company map. One community-wide record, no h tag, d-tag
+`company:onboarding`, relay signed kind 30675 head. The answers themselves live
+in their own records: the brief in `company:brief` and the money setting and
+approval switches in `company:cofounder`.
+
+The head carries `status` (`in_progress` or `complete`), `leadPubkey` (Scout,
+the agent that wakes go to), all five `steps` in order (`brief`, `money`,
+`approvals`, `accounts`, `map`, each `todo`, `asked`, `done` or `skipped`), the
+single open `question`, `accounts`, the proposed `map` (five entries in function
+order, each `scout`, `empty` or `existing_agent` with a `leadPubkey`, plus
+`firstFunction` and `approved`), `startedAt`, `resumedAt`, `resumeCount`,
+`completedAt`, `updatedByPubkey` and `updatedAt`. Optional keys are absent, not
+null.
+
+A member-signed kind 47065 action carries `schemaVersion`, `kind`,
+`expectedHeadEventId` and only the keys its kind needs:
+
+| `kind` | Needs | Effect | Who |
+| --- | --- | --- | --- |
+| `start` | an owner or admin also sends `leadPubkey` | creates the head, or resumes it without losing progress | agent, or owner or admin, only while the mode is on |
+| `ask` | `step`, `text` (at most 200 characters), `account` on the accounts step | opens ONE question; refused while another is open or the step is answered | agent, only while the mode is on |
+| `withdraw` | nothing | takes the open question back | agent |
+| `propose_map` | `map` | needs brief, money and approvals settled and no open question | agent |
+| `answer` | `step`, optional `skipped`, `moneyPreference` or `approvalSwitches` | settles the open question's step | owner or admin |
+| `approve_map`, `reject_map` | nothing | records the owner's decision on the proposed map | owner or admin |
+| `complete` | nothing | needs brief, money, approvals and map settled and no open question | agent |
+
+An `answer` is checked against saved records the relay reads itself. The brief
+answer needs a confirmed brief. The money and approvals answers must equal the
+co-founder settings that are already saved, so the owner saves the setting
+first (action 47060) and then answers; every prefix of those two writes is
+consistent and a retry is safe. `approve_map` records the decision only; slots
+are filled by the function slot action. A lead given to `start` must be a managed
+agent of the company.
+
+Switching co-founder mode off and on does not restart onboarding: `start` on an
+existing head only raises `resumeCount` and sets `resumedAt`; steps, answers and
+a `complete` status stay. While the mode is off Scout's actions are refused
+(`co-founder mode is off for this company`), while the owner's `answer` and map
+decisions are always accepted.
+
+CLI: `colony onboarding get`, `start`, `ask`, `withdraw`, `propose-map`,
+`complete`, `answer`, `approve-map` and `reject-map`.
+
+## Wakes for Scout
+
+Scout moves work forward without being mentioned. The relay queues a wake in the
+`cofounder_wakes` table for: co-founder mode switched on (`mode_on`), a daily
+start (`daily_start`, from 06:00 UTC, 08:00 in Johannesburg), a WhatsApp reply
+(`inbound_reply`), a worker run that finished or failed (`worker_finished`), an
+approval given (`approval_given`) and a work item due within a day
+(`deadline_near`). A wake is not a record and is not readable through the relay.
+
+- **Off does nothing.** Nothing is queued while co-founder mode is off, and a wake
+  queued before it went off is closed unsent.
+- **Deduplicated.** Each wake has a key (`daily:<date>`, `worker:<id>`,
+  `approval:<ask id>`, `reply:<message id>`, `deadline:<work item>:<due time>`,
+  `mode_on:<head event id>`) and a key queues once, ever.
+- **No storms.** A worker turns all pending wakes of a company into ONE
+  relay-signed message in the direct message between Scout and its owner, at most
+  every five minutes and listing at most ten reasons.
+- **Bounded.** A failed delivery backs off (1, 2, 4 ... minutes, at most an hour)
+  and ends after eight attempts. A wake older than a day is closed as stale.
+- **Safe text.** A wake carries a reason and ids only, never a contact's name or
+  message, so a stranger cannot put instructions in front of Scout through it.
+- **The Friday review** uses the `daily_start` reason with the key
+  `weekly:<Friday date>` and the detail `weekly-review:<Friday date>`, so the
+  reason list of the table did not change. The delivery worker words it on its
+  own line (see Numbers) and tags the message `weekly_review`.
+
+Scout is the `leadPubkey` of the onboarding record, or the one active Chief of
+Staff on the team while onboarding has not started. The message tags `p` for the
+owner and Scout, `buzz:workflow`, `buzz:workflow-owner`, `buzz:workflow-mention`
+(the same provenance a scheduled duty carries) and `buzz:cofounder-wake` with the
+reasons, so a client can show it as a quiet system line.
+
 ## Worker runs
 
 A worker run is a one-shot, tool-less model call an employee starts for
@@ -1176,6 +1298,321 @@ The head keeps an append-only approval record (`approvals`, at most 200):
 `actionEventId`. It answers who approved what, and when.
 
 CLI: `colony plans propose|list|show|revise|step|request-approval|approve|reject|cancel|approve-step|reject-step|approvals`.
+## Access list, capability gaps and slot hires
+
+One head kind, 30676, and one action kind, 47066, carry three community-wide
+record families (no h tag), told apart by d-tag. They are new records, so a
+desktop that predates them keeps loading every older list. No key was added to
+an existing record, including the hire proposal.
+
+| d-tag | Record | Head content |
+| --- | --- | --- |
+| `company:access:<id>` | One tool or account Scout and agents can use | `AccessHead` |
+| `company:capgap:<gap uuid>` | A capability gap and its plan | `CapabilityGapHead` |
+| `company:slot-hire:<hire uuid>` | The function slot a hire proposal is for | `SlotHireHead` |
+
+A kind 47066 action carries `schemaVersion`, `op`, the ids and payload that op
+needs (anything else is refused) and `expectedHeadEventId`. The d-tag is the
+record the op changes (the gap, for `gap_complete`).
+
+| `op` | Who | Effect |
+| --- | --- | --- |
+| `grant` | owner or admin | access entry becomes `active` |
+| `revoke` | owner or admin | access entry becomes `revoked`; takes effect at once |
+| `gap_propose` | any member or agent, co-founder mode on | gap `proposed` |
+| `gap_approve` | owner or admin | gap `approved`, the exact chosen cost is recorded |
+| `gap_decline` | owner or admin | gap `declined` |
+| `gap_done` | owner or admin | gap `human_done` (the human step was done) |
+| `gap_complete` | the proposer, owner or admin | gap `completed` and the access entry is created `active` in the same write |
+| `slot_hire_set` | the hire's proposer, owner or admin | records the function the hire is for |
+
+**New access only through the gap flow.** An agent can never create an access
+entry: `grant` is owner or admin only, and `gap_complete` needs the owner's
+approval of the stated cost and the human step. A gap carries up to five
+`options`, each with its stated cost and whether it works. The pick (`chosen`)
+must be an option that works and must be the cheapest that works, otherwise the
+gap must carry a `chosenReason` (the "best option" money setting). `pageUrl`,
+when present, is an `https` address the owner's built-in browser opens.
+
+**Revoke takes effect where the relay acts.** WhatsApp, Discovery and credits
+have one fixed access id each (`whatsapp`, `discovery`, `credits`), exist before
+anyone grants them and are active until revoked. While revoked: WhatsApp batches
+and sends by anyone but the owner or an admin are refused, Discovery searches by
+anyone but the owner or an admin are refused, and the credits gateway refuses
+agent AI requests. Other entries (browser logins, connected accounts) are
+informational for the relay; agents are told to treat a revoked entry as off
+limits.
+
+**Hiring into a slot.** A hire proposal cannot carry the function (older
+desktops fail on unknown keys). Instead the proposer writes `slot_hire_set`
+while the hire is waiting for a decision (`proposed` or `awaiting_founder`) and
+the slot has no lead. When the owner completes the hire, the relay fills that
+slot with the new employee in the same transaction. A slot that gained another
+active lead meanwhile keeps that lead and the hire still completes.
+
+**A slot never keeps a lead who cannot work.** A lead who is paused or
+terminated (the member position action) is removed from every slot in the same
+commit. A lead who leaves the relay, is removed by an admin or has their
+identity archived is removed from every slot straight after, and any later slot
+write or `slot_hire_set` heals a slot whose lead is no longer active.
+
+CLI: `colony access list`, `grant`, `revoke <id>`, and
+`colony access gap propose|list|show|approve|decline|done|complete`;
+`colony asks propose-hire ... --function <function>` and
+`colony functions hire-slot <hire-id> <function>` record the slot.
+
+## Playbooks
+
+A playbook is a business's routine, designed with the founder: ordered steps,
+each with an owner, inputs, outputs, tools and an optional approval point. It
+is versioned: Scout proposes, the owner approves, and a change waits until the
+owner approves it. A playbook runs once per client job as a **running copy**
+that shows its current step. Two record families share one head kind (30677)
+and one action kind (47067); the d-tag tells them apart. Records are
+community-wide (no `h`, no `p` tag). Proposing a playbook, proposing a change,
+revising one, approving one and starting a job need co-founder mode on; step
+updates, hand-offs, cancelling, rejecting and withdrawing still work with it
+off (approved work in flight finishes).
+
+| d-tag | Family |
+| --- | --- |
+| `company:playbook:<uuid>` | playbook |
+| `company:playbook-job:<uuid>` | running copy for one client job |
+
+### Playbook head (relay signed, kind 30677)
+
+Content is camelCase; unknown keys are refused by the relay and by readers.
+Optional keys are omitted when empty.
+
+```json
+{
+  "schemaVersion": 1,
+  "playbookId": "uuid",
+  "status": "proposed | active | archived | rejected",
+  "version": 2,
+  "current": { "title": "Delivery playbook", "summary": "", "function": "operations",
+    "steps": [{ "stepId": "brief", "title": "Client brief and assets", "detail": null,
+      "owner": { "kind": "function | lead_agent | worker | owner", "function": "operations",
+                 "agentPubkey": "hex", "workerType": "site_build" },
+      "inputs": ["signed agreement"], "outputs": ["brief"], "tools": ["WhatsApp"],
+      "approvalPoint": { "kind": "outreach | spend | taste | hire | other", "prompt": "You say go live" } }] },
+  "pending": { "content": { "...same shape as current..." }, "changeSummary": "Add a logins checklist to step 2",
+               "proposedByPubkey": "hex", "proposedAt": 1793000000, "revision": 1 },
+  "records": [{ "decision": "approved | rejected | edited | published | withdrawn | archived", "version": 2,
+                "revision": 1, "actorPubkey": "hex", "at": 1793000000, "note": null,
+                "changeSummary": null, "proposedByPubkey": "hex", "actionEventId": "hex" }],
+  "createdByPubkey": "hex", "createdAt": 1793000000,
+  "updatedByPubkey": "hex", "updatedAt": 1793000000, "sourceActionEventId": "hex"
+}
+```
+
+- `version` is 0 until the first approval; `current` is the approved content of
+  `version` (absent while `version` is 0). `pending` is at most one proposal
+  waiting for the owner: a whole new playbook (then `status` is `proposed`) or a
+  change to the approved one (then `status` stays `active`). The approved
+  version never moves until the owner approves.
+- `status`: `proposed` never approved; `active` has an approved version and jobs
+  can start; `archived` retired (running jobs finish, no new jobs); `rejected`
+  the first proposal was rejected or withdrawn.
+- Step `owner` rules as in plans: `function` names a function, `lead_agent`
+  names an `agentPubkey`, `worker` names a `workerType`, `owner` is the founder.
+  A step can hand to another function by naming it as owner. A worker step never
+  carries an outreach or spend approval point.
+- `records` is the append-only decision record (at most 200): `version` is the
+  version in effect after the decision, `revision` the proposal revision decided.
+  "Last change approved by you on 2 Nov" is the last `approved` or `published`
+  record.
+- 1 to 24 steps, `stepId` 1 to 32 characters of `[a-z0-9_-]` and unique,
+  title at most 160, up to 6 inputs, outputs and tools of at most 120.
+
+### Playbook action (member signed, kind 47067, d-tag `company:playbook:<uuid>`)
+
+Content: `{ schemaVersion: 1, playbookId, kind, content?, changeSummary?, revision?, note?, expectedHeadEventId? }`.
+Every kind except `propose` names the exact current head event id.
+
+| `kind` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `propose` | agent, owner or admin, mode on | `content`, no expected head | new playbook, `proposed`, pending revision 1 |
+| `propose_change` | agent, owner or admin, mode on | `content`, `changeSummary` (required) | sets `pending` on an `active` playbook; refused when one waits or `content` equals the current version |
+| `revise` | the proposer, owner or admin, mode on | `content`, optional `changeSummary` | replaces `pending`, revision + 1; an owner or admin edit is recorded `edited` |
+| `withdraw` | the proposer, owner or admin | optional `note` | drops `pending`; recorded `withdrawn`; a first proposal becomes `rejected` |
+| `approve` | owner or admin only, mode on | `revision` of `pending` | `pending` becomes `current`, `version` + 1, `active`; recorded `approved` |
+| `reject` | owner or admin only | `revision`, optional `note` | drops `pending`; recorded `rejected`; a first proposal becomes `rejected` |
+| `edit` | owner or admin only | `content`, optional `changeSummary` | writes the next version directly (drops `pending`); recorded `published` |
+| `archive` | owner or admin only | optional `note` | `archived`; recorded |
+
+A plain member never proposes. A managed agent never approves, rejects, edits or
+archives, whatever role row it has. A stale `revision` conflicts. Refusals the
+UI can show verbatim: `co-founder mode is off for this company, so ...`,
+`only the owner or an admin can approve a playbook or a change to one`,
+`only an agent or the owner or an admin can propose a playbook`,
+`a change is already waiting for the owner; revise or withdraw it first`,
+`the proposal changed since you looked: it is now revision N`. A stale
+`expectedHeadEventId` is a write conflict (`conflict: playbook changed; current head is <id>`).
+
+The `approvePlaybookChanges` switch in the co-founder settings does not weaken
+this: every change to an approved playbook waits for the owner (spec section 8).
+
+### Running copy head (relay signed, kind 30677, d-tag `company:playbook-job:<uuid>`)
+
+```json
+{
+  "schemaVersion": 1,
+  "jobId": "uuid", "playbookId": "uuid", "playbookVersion": 2, "playbookTitle": "Delivery playbook",
+  "title": "Plane Tree Guesthouse",
+  "status": "running | completed | cancelled",
+  "currentStepId": "build",
+  "steps": [{ "stepId": "build", "title": "Website build", "owner": { "...as above..." },
+              "inputs": [], "outputs": [], "tools": [], "approvalPoint": null,
+              "status": "pending | waiting_approval | approved | in_progress | done | blocked | skipped",
+              "note": null, "progressLabel": "Round 1 of 2", "statusAt": 1793000000 }],
+  "approvals": [{ "stepId": "approval", "decision": "approved | rejected", "actorPubkey": "hex", "at": 1793000000, "note": null, "actionEventId": "hex" }],
+  "handoffs": [{ "stepId": "launch", "from": { "...owner..." }, "to": { "...owner..." }, "byPubkey": "hex", "at": 1793000000, "note": null, "actionEventId": "hex" }],
+  "startedByPubkey": "hex", "startedAt": 1793000000, "endedAt": null,
+  "updatedByPubkey": "hex", "updatedAt": 1793000000, "sourceActionEventId": "hex"
+}
+```
+
+- The steps are copied from the playbook version the job started from, so a
+  later version never rewrites a job in flight.
+- `currentStepId` is the first step that is not `done` or `skipped`; absent once
+  the job completed or was cancelled. Steps run in order: only the current step
+  moves. The job becomes `completed` when every step is `done` or `skipped`.
+- A step with an approval point cannot start until the owner approved it
+  (`pending` or `waiting_approval` then `approved` then `in_progress`). The
+  doer asks with `request_step_approval` (`waiting_approval`), which is a Needs
+  you "approve" item; a founder step with an approval point is at its point as
+  soon as it is current. Rejecting skips the step. `blocked` needs a note and
+  can resume to `in_progress`; a gated step cannot be blocked around its
+  approval. A prepared founder step with no approval point goes `pending` to
+  `done` ("Do" in Needs you).
+- `progressLabel` is a free short line the doer sets on a step update.
+
+### Running copy action (member signed, kind 47067, d-tag `company:playbook-job:<uuid>`)
+
+Content: `{ schemaVersion: 1, jobId, kind, playbookId?, playbookVersion?, title?, stepId?, stepStatus?, progressLabel?, handOffTo?, note?, expectedHeadEventId? }`.
+Every kind except `start` names the exact current head event id.
+
+| `kind` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `start` | agent, owner or admin, mode on | `playbookId`, `title`, optional `playbookVersion` | new running copy of the approved version; refused for an unapproved or archived playbook, or a moved `playbookVersion` |
+| `update_step` | step doer, owner or admin | `stepId`, `stepStatus` (`in_progress`, `done`, `blocked`, `skipped`), `note`, `progressLabel` | moves the current step |
+| `request_step_approval` | step doer | `stepId`, optional `note` | `waiting_approval` |
+| `approve_step` / `reject_step` | owner or admin only | `stepId`, optional `note` | `approved`, or `skipped`; recorded |
+| `hand_off` | step doer, owner or admin | `stepId`, `handOffTo` (an owner as above), optional `note` | changes the step's owner (another function, a lead agent, a worker type or the founder); recorded; refused for an ended step, the same owner, or a worker with an outreach or spend point |
+| `cancel` | whoever started it, owner or admin | optional `note` | `cancelled` |
+
+Step doers: the starter, the step's agent, the lead of the step's function,
+owners and admins. A step for the founder is only moved by an owner or admin.
+Refusals: `this step waits for the owner's approval before it can run`,
+`step X is not the current step; the job is at step Y`,
+`you are not the doer of this step`,
+`that playbook has no approved version yet; the owner has to approve it first`.
+
+### CLI (agents and owner)
+
+`colony playbooks propose --file playbook.json [--playbook <id> --summary "..."]`
+(new playbook, prints `playbookId`; with `--playbook` a change),
+`list [--status proposed|active|archived|rejected]`, `show <playbookId>`,
+`revise <playbookId> --file ... [--summary ...]`, `withdraw <playbookId>`,
+owner only: `approve|reject <playbookId> [--revision N] [--note ...]`,
+`edit <playbookId> --file ...`, `archive <playbookId>`;
+jobs: `start <playbookId> --title "Plane Tree Guesthouse" [--version N]` (prints `jobId`),
+`jobs [--playbook <id>] [--status running|completed|cancelled]`, `job <jobId>`,
+`step <jobId> <stepId> --status in_progress|done|blocked|skipped [--note ...] [--progress "Round 1 of 2"]`,
+`request-approval <jobId> <stepId>`, owner only: `approve-step|reject-step <jobId> <stepId>`,
+`hand-off <jobId> <stepId> --function <fn> | --agent <hex> | --worker <type> | --founder`,
+`cancel <jobId>`, `approvals [--playbook <id>]` (the durable decision record).
+The Scout nest skill (version 20) teaches designing playbooks with the founder
+in chat, one short question at a time, only while co-founder mode is on.
+
+Desktop read model: `desktop/src/features/cofounder/playbook*.ts`. Mock bridge seeds: `desktop/src/testing/cofounderPlaybookFixtures.ts`.
+
+## Numbers: scorecard, goals and the weekly review
+
+One relay-signed head kind (30678) and one member action kind (47068) carry
+three community-wide record families (no `h` or `p` tag), told apart by d-tag.
+They are new records, so a desktop that predates them keeps loading every older
+list. No key was added to an existing record.
+
+| d-tag | Record | Head content |
+| --- | --- | --- |
+| `company:scorecard` | The live scorecard of the five functions and the approved goals' progress | `ScorecardHead` |
+| `company:fngoal:<uuid>` | One goal of one function | `GoalHead` |
+| `company:review:<YYYY-MM-DD>` | The weekly review of the week that ended that Friday | `ReviewHead` |
+
+**The relay counts every number.** No caller writes a figure. A scorecard and a
+review get theirs from `buzz_relay::numbers_inputs`, which reads the company's
+own records, and `buzz_core::company_numbers::compute_scorecard` turns them into
+numbers. An agent writes words only: a goal proposal, the wins and misses of a
+review and the decisions the owner must make.
+
+A scorecard looks at the seven days before `asOf` and compares them with the seven
+days before that, so a change is always between two equally long periods. Windows
+are half open, `[start, end)`, in Unix seconds.
+
+| Function | Number (`metric`) | What is counted |
+| --- | --- | --- |
+| Sales | `leads_found` | prospects whose first accepted `create` action (kind 47034) is in the window |
+| Sales | `contacted` | WhatsApp new chats whose first message the provider accepted in the window |
+| Sales | `replied` | contacts whose first inbound message after their new chat arrived in the window |
+| Sales | `quotes` | proposals whose first version (revision 1, kind 47003) was written in the window |
+| Sales | `won` | proposals accepted (kind 47004) in the window, once per proposal |
+| Operations | `workers_started` | worker runs started in the window |
+| Operations | `workers_done` / `workers_failed` | runs that ended well, or failed or ran past their deadline, in the window |
+| Operations | `plans_approved` | whole-plan approvals in the window |
+| Customer Success | `active_clients` | clients that are active now (no previous value) |
+| Finance | `cash_in` | payment evidence (kind 47027) received in the window; refunds are not netted off |
+| Finance | `invoiced` | issued invoices (not drafts, not void) issued in the window |
+| Finance | `owed` | what issued invoices still owe now (no previous value) |
+| Finance | `worker_cost` | cost of worker runs started in the window, in US dollar cents |
+| Brand | `cost_per_win` | worker cost of the window divided by the proposals won in it, rounded half up; `null` when nothing was won |
+
+A number that cannot be stated is `null`, never zero. Numbers the spec names that
+Colony has no record of yet (`calls`, `jobs_in_progress`, `days_to_deliver`,
+`revisions`, `renewals`, `referrals`, `recurring`) are listed in the function's
+`notTracked` and shown as "not tracked yet". Money is stated in one currency, the
+one most of the company's payments and invoices use (`ZAR` when there are none);
+facts in another currency are left out and counted in `otherCurrencyFacts`.
+
+A kind 47068 action carries `schemaVersion`, `op` and only the fields that op
+takes (anything else is refused), plus `expectedHeadEventId` where the op changes
+an existing head. The d-tag is the record the op changes.
+
+| `op` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `goal_propose` | any member or agent, co-founder mode on | `goalId`, `function`, `title`, `metric`, `target`, `period`, `reason` | new goal, `proposed` |
+| `goal_approve` / `goal_reject` | owner or admin | `goalId`, `note`, expected head | goal `approved` or `rejected`; recorded |
+| `goal_retire` | the proposer, owner or admin | `goalId`, `note`, expected head | goal `retired` |
+| `scorecard_refresh` | any member or agent, co-founder mode on | nothing | the relay recounts and replaces `company:scorecard`; a scorecard younger than a minute is not recounted |
+| `review_annotate` | owner, admin or an agent | `reviewDate`, `wins`, `misses`, `decisions`, expected head | words replace the review's words; numbers never change; final once the owner answered a decision |
+| `review_decide` | owner or admin | `reviewDate`, `decisionId`, `choice` (`approved`, `declined`, `deferred`), `note`, expected head | the decision is answered once |
+
+Rules enforced by the relay (`buzz_core::company_numbers`):
+
+- A managed agent never approves or rejects a goal or answers a decision, whatever
+  role row it has. A person who is not an owner or admin does not either.
+- A goal measures a number of its own function (Sales: `won`, Finance: `cash_in`).
+  Its `period` is `week` (the latest seven days) or `month` (the calendar month so
+  far, in Johannesburg). A company keeps at most 50 open goals.
+- Only approved goals are tracked in `company:scorecard`'s `goals` with `current`
+  and `percent` (at most 1000).
+- Switching co-founder mode off stops new goals, approvals, refreshes and review
+  words; nothing already written changes.
+
+**The Friday review.** The relay wake sweep writes `company:review:<Friday>` once,
+after Friday 14:00 UTC (16:00 in Johannesburg) and until Monday 14:00 UTC, with the
+numbers of the seven days up to that Friday cut and the seven days before it. It
+then queues the wake `weekly:<Friday>`; Scout reads the review with
+`colony numbers review show <Friday>`, writes the wins, misses and up to five
+decisions with `colony numbers review write <Friday> --file -`, and posts one short
+message linking `colony://numbers/review/<Friday>`. Each open decision shows in
+Needs you (decide); the owner answers with `review_decide`. The review head is
+`createdAt` at the time the relay wrote it and is never rewritten by the relay.
+
+CLI: `colony numbers scorecard [--function <function>] [--no-refresh]`,
+`colony numbers goals list|propose|approve|reject|retire` and
+`colony numbers review list|show|write|decide`.
 
 ## Proof boundaries
 

@@ -227,6 +227,8 @@ async fn cap_from_status(client: &BuzzClient) -> Result<(), CliError> {
 pub(crate) struct Row {
     pub to: String,
     pub lead_id: Option<String>,
+    /// Optional contact name, used by the relay only when WhatsApp reported none.
+    pub name: Option<String>,
     pub params: Vec<String>,
 }
 
@@ -237,6 +239,8 @@ struct FileRow {
     lead: Option<String>,
     #[serde(default)]
     to: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     params: Vec<String>,
 }
@@ -325,6 +329,7 @@ async fn batch_rows(
                 Some(Some(phone)) if !phone.trim().is_empty() => rows.push(Row {
                     to: phone.trim().to_string(),
                     lead_id: Some(lead_id.to_string()),
+                    name: None,
                     params,
                 }),
                 Some(_) => problems.push(format!("{lead_id}: the lead has no phone number")),
@@ -338,6 +343,7 @@ async fn batch_rows(
             (None, Some(to)) => rows.push(Row {
                 to: to.trim().to_string(),
                 lead_id: None,
+                name: row.name.clone(),
                 params: row.params.clone(),
             }),
             _ => problems.push("each params row needs exactly one of lead or to".to_string()),
@@ -421,6 +427,7 @@ pub(crate) fn batch_content(
         "rows": rows.iter().map(|row| json!({
             "to": row.to,
             "leadId": row.lead_id,
+            "name": row.name,
             "params": row.params,
         })).collect::<Vec<_>>(),
         "materialLinks": material,
@@ -699,6 +706,7 @@ mod tests {
         let rows = vec![Row {
             to: "+27821234567".into(),
             lead_id: Some("lead-1".into()),
+            name: Some("Thabo".into()),
             params: vec!["Thabo".into()],
         }];
         let content = batch_content(
@@ -714,6 +722,7 @@ mod tests {
         assert_eq!(content["v"], 1);
         assert_eq!(content["template"], "intro");
         assert_eq!(content["rows"][0]["leadId"], "lead-1");
+        assert_eq!(content["rows"][0]["name"], "Thabo");
         assert_eq!(content["materialLinks"][0], "https://x.example/a.pdf");
         assert_eq!(content["note"], "Campaign Oct push. Warm leads");
         assert!(Uuid::parse_str(content["batchId"].as_str().expect("id")).is_ok());

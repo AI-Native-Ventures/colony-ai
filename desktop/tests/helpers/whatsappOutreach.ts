@@ -22,6 +22,7 @@ declare global {
 
 export const OUTREACH_CHANNEL_ID = "e2e-whatsapp-outreach-channel";
 export const WHATSAPP_BATCH_ID = "e2e-whatsapp-batch";
+export const WHATSAPP_SECOND_BATCH_ID = "e2e-whatsapp-batch-second";
 export const PLANE_TREE_WA_ID = "27821237135";
 export const PLANE_TREE_LEAD_ID = REFERENCE_PROSPECT_IDS["form-field"];
 const PLANE_TREE_REPLY_WINDOW_CLOSES_AT = new Date(
@@ -29,7 +30,7 @@ const PLANE_TREE_REPLY_WINDOW_CLOSES_AT = new Date(
 ).toISOString();
 export const CORNER_COTTAGE_WA_ID = "27725551188";
 export const JACARANDA_WA_ID = "27821234410";
-export const JACARANDA_LEAD_ID = REFERENCE_PROSPECT_IDS["stillroom"];
+export const JACARANDA_LEAD_ID = REFERENCE_PROSPECT_IDS.stillroom;
 export const LAVENDER_HILL_WA_ID = "27795552241";
 export const GREEN_SHUTTER_WA_ID = "27605553422";
 export const OAKLEAF_WA_ID = "27655551175";
@@ -208,7 +209,7 @@ const visualBatchContacts = visualBatchLeads.map(
   }),
 );
 const visualBatchRows = visualBatchLeads.map(
-  ([displayName, to, leadSlug, slug], idx) => {
+  ([_displayName, to, leadSlug, slug], idx) => {
     const materialLink = `https://preview.horizonlabs.example/${slug}/`;
     const params = ["guesthouses", "Melville", materialLink];
     const preview = hlVbBody
@@ -304,7 +305,7 @@ const fixture = {
       waId: JACARANDA_WA_ID,
       e164: "+27 82 123 4410",
       displayName: "Jacaranda Lane Guesthouse",
-      leadId: REFERENCE_PROSPECT_IDS["stillroom"],
+      leadId: REFERENCE_PROSPECT_IDS.stillroom,
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-jacaranda",
       lastInboundAt: null,
@@ -544,6 +545,20 @@ const fixture = {
           senderPubkey: REFERENCE_AGENTS.aya.pubkey,
           createdAt: "2026-10-29T12:14:00+02:00",
         },
+        {
+          id: "e2e-wa-agent-draft-reject",
+          waId: PLANE_TREE_WA_ID,
+          direction: "out",
+          kind: "text",
+          text: "Would Tuesday morning work for a quick call?",
+          templateName: null,
+          state: "draft",
+          errorCode: null,
+          errorText: null,
+          eventId: null,
+          senderPubkey: REFERENCE_AGENTS.aya.pubkey,
+          createdAt: "2026-10-29T12:16:00+02:00",
+        },
       ],
     },
   },
@@ -555,7 +570,7 @@ const fixture = {
 
 const secondPendingBatch = {
   ...fixture.batch,
-  batchId: "e2e-whatsapp-batch-second",
+  batchId: WHATSAPP_SECOND_BATCH_ID,
   createdAt: "2026-10-29T09:46:00+02:00",
   rows: fixture.batch.rows.slice(1, 2).map((row, idx) => ({ ...row, idx })),
   counts: { total: 1, ready: 1, sent: 0, failed: 0, dropped: 0 },
@@ -615,6 +630,8 @@ export async function installWhatsAppMockBridge(
         visualBatch: visual,
         visualLeadBatchIds,
         visualNorthNoteLeadId,
+        stillroomLeadId,
+        scoutPubkey,
         templates: templateSeed,
         ...baseSeed
       } = seed;
@@ -628,6 +645,9 @@ export async function installWhatsAppMockBridge(
       const disconnected = routeSearch.get("whatsapp") === "disconnected";
       const approvedBatch = batchVariant === "approved";
       const leadsBatch = batchVariant === "leads";
+      const heldBatch = batchVariant === "held";
+      const identityFallback = batchVariant === "identity";
+      const missingJacarandaIdentity = heldBatch || identityFallback;
       const visualBatchScreen = approvedBatch || batchVariant === "visual";
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
@@ -718,6 +738,72 @@ export async function installWhatsAppMockBridge(
       state.threads[planeTreeWaId].contact = clone(seed.contacts[0]);
       for (const contact of baseContacts.slice(1)) {
         state.threads[contact.waId] = { contact: clone(contact), messages: [] };
+      }
+      const jacarandaContact = missingJacarandaIdentity
+        ? state.contacts.find((contact) => contact.waId === "27821234410")
+        : null;
+      const jacarandaThread = missingJacarandaIdentity
+        ? state.threads["27821234410"]
+        : null;
+      if (jacarandaContact && jacarandaThread) {
+        jacarandaContact.displayName = null;
+        jacarandaContact.leadId = null;
+        jacarandaThread.contact = {
+          ...jacarandaThread.contact,
+          displayName: null,
+          leadId: null,
+        };
+        const templateBody =
+          templateSeed.find(([name]) => name === "hl_vb")?.[4] ?? "";
+        const params = [
+          "guesthouses",
+          "Melville, Johannesburg",
+          "https://preview.horizonlabs.example/jacaranda-lane/",
+        ];
+        const heldPreview = templateBody.replace(
+          /\{\{(\d+)\}\}/gu,
+          (_slot, index: string) => params[Number(index) - 1] ?? "",
+        );
+        const heldBatchRow = state.batch.rows.find(
+          (row) => row.to === jacarandaContact.e164,
+        );
+        if (heldBatchRow) {
+          heldBatchRow.preview = heldPreview;
+          if (heldBatch) heldBatchRow.state = "held";
+          heldBatchRow.leadId = stillroomLeadId;
+        }
+        jacarandaThread.messages = [
+          {
+            id: "e2e-wa-jacaranda-sent-template",
+            waId: "27821234410",
+            direction: "out",
+            kind: "template",
+            text: heldPreview,
+            templateName: "hl_vb",
+            state: "sent",
+            errorCode: null,
+            errorText: null,
+            eventId: "e2e-wa-jacaranda-sent-template-event",
+            senderPubkey: scoutPubkey,
+            createdAt: "2026-10-29T09:40:00+02:00",
+          },
+        ];
+        if (heldBatch) {
+          jacarandaThread.messages.push({
+            id: "e2e-wa-jacaranda-held-template",
+            waId: "27821234410",
+            direction: "out",
+            kind: "template",
+            text: heldPreview,
+            templateName: "hl_vb",
+            state: "queued",
+            errorCode: null,
+            errorText: null,
+            eventId: "e2e-wa-jacaranda-held-template-event",
+            senderPubkey: scoutPubkey,
+            createdAt: "2026-10-30T09:40:00+02:00",
+          });
+        }
       }
       const globalWindow = window as Window & {
         __BUZZ_E2E_WHATSAPP_STATE__?: typeof state;
@@ -893,6 +979,8 @@ export async function installWhatsAppMockBridge(
         REFERENCE_PROSPECT_IDS["melville-hill-cottages"],
       ],
       visualNorthNoteLeadId: REFERENCE_PROSPECT_IDS["north-note"],
+      stillroomLeadId: REFERENCE_PROSPECT_IDS.stillroom,
+      scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
     },
   );
 }

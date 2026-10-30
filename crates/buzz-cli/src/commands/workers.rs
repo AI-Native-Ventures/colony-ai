@@ -476,6 +476,9 @@ fn ended_run(
         Ok(report) => {
             run.input_tokens = report.input_tokens;
             run.output_tokens = report.output_tokens;
+            if is_free_model(&run.model) {
+                run.cost_usd = Some(0.0);
+            }
             if report.status != "done" {
                 let reason = report
                     .error
@@ -507,6 +510,13 @@ fn ended_run(
         fail(&mut run, "The worker finished after its deadline.");
     }
     run
+}
+
+/// Whether the model id names a free-tier model (an OpenRouter-style `:free`
+/// suffix). Providers report no cost for these, so the run records zero
+/// instead of leaving the owner to read "unavailable".
+fn is_free_model(model: &str) -> bool {
+    model.trim().to_ascii_lowercase().ends_with(":free")
 }
 
 fn clip_reason(reason: &str) -> String {
@@ -1437,6 +1447,57 @@ mod tests {
         let stale = worker_view(&"ef".repeat(32), &head, 1_601, false);
         assert_eq!(stale["status"], "failed");
         assert!(stale["failure_reason"].as_str().is_some());
+    }
+
+    fn started_run(model: &str) -> WorkerRun {
+        WorkerRun {
+            worker_id: Uuid::new_v4().to_string(),
+            parent_pubkey: parent(),
+            label: "Research".into(),
+            model: model.into(),
+            status: WorkerStatus::Running,
+            started_at: 1_000,
+            deadline_at: 1_600,
+            finished_at: None,
+            input_tokens: 0,
+            output_tokens: 0,
+            cost_usd: None,
+            output_text: None,
+            failure_reason: None,
+        }
+    }
+
+    fn done_report() -> LaunchReport {
+        LaunchReport {
+            status: "done".into(),
+            input_tokens: 10,
+            output_tokens: 20,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn a_free_model_run_records_zero_cost() {
+        let dir = std::env::temp_dir().join(format!("worker-free-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = dir.join("output.txt");
+        std::fs::write(&output, "Three ideas.").unwrap();
+        let free = ended_run(
+            &started_run("nvidia/nemotron-3-ultra-550b-a55b:free"),
+            Ok(done_report()),
+            &output,
+            1_100,
+        );
+        assert_eq!(free.status, WorkerStatus::Done);
+        assert_eq!(free.cost_usd, Some(0.0));
+        let paid = ended_run(
+            &started_run("gemini-flash"),
+            Ok(done_report()),
+            &output,
+            1_100,
+        );
+        assert_eq!(paid.cost_usd, None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

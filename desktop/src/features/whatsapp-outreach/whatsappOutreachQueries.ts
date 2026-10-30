@@ -7,6 +7,7 @@ import {
   loadWhatsAppBatches,
   loadWhatsAppContacts,
   loadWhatsAppDrafts,
+  loadWhatsAppPendingBatchDetails,
   loadWhatsAppStatus,
   loadWhatsAppTemplates,
   loadWhatsAppThread,
@@ -98,6 +99,25 @@ export function useWhatsAppBatchesQuery(state?: string, enabled = true) {
     },
     staleTime: 5_000,
     refetchInterval: STATUS_REFETCH_MS,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useWhatsAppPendingBatchDetailsQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: [
+      ...whatsappOutreachQueryKeys.batches(relayUrl, "pending"),
+      "details",
+    ],
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppPendingBatchDetails(relayUrl);
+    },
+    staleTime: 10_000,
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     retry: 1,
   });

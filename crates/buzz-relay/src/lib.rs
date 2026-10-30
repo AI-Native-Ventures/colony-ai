@@ -10,6 +10,8 @@ mod rejection;
 pub mod api;
 /// WebSocket audio relay for huddle voice channels.
 pub mod audio;
+/// Wakes for Scout in co-founder mode: daily start and event wakes.
+pub mod cofounder_wake;
 /// Relay configuration from environment variables.
 pub mod config;
 /// Runtime conformance harness — abstract trace emission at the
@@ -35,6 +37,8 @@ pub mod mesh_boot;
 pub mod metrics;
 /// NIP-11 relay information document.
 pub mod nip11;
+/// Facts the co-founder scorecard counts, read from the company's own records.
+pub mod numbers_inputs;
 /// PayFast hosted checkout and ITN verification.
 pub mod payfast;
 /// Hosted payment provider contract shared by checkout handlers.

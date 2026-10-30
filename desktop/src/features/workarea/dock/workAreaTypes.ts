@@ -18,6 +18,7 @@ export const WORK_AREA_TAB_KINDS = [
   "canvas",
   "knowledge",
   "file",
+  "whatsapp",
 ] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
@@ -27,6 +28,7 @@ export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
   "files",
   "canvas",
   "knowledge",
+  "whatsapp",
 ];
 
 /**
@@ -44,6 +46,12 @@ export type WorkAreaTab = {
   kind: WorkAreaTabKind;
   /** Set on `file` tabs, one tab per file. */
   file?: WorkAreaFileRef;
+  /** Selected conversation when a WhatsApp reply opens the inbox. */
+  contactWaId?: string;
+};
+
+export type WorkAreaTabOptions = {
+  contactWaId?: string;
 };
 
 /** Everything the dock remembers about one channel. */

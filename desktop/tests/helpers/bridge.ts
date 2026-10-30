@@ -4,6 +4,7 @@ import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSet
 import type {
   Colony3Extras,
   MockCofounderSettings,
+  MockAgentConfigSurfaceOverride,
   MockCompanyFunctionHead,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
@@ -12,6 +13,11 @@ import type {
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import type {
+  MockPlaybook,
+  MockPlaybookJob,
+} from "../../src/testing/mockCompanyPlaybooks";
+import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
@@ -414,6 +420,8 @@ type MockBridgeOptions = {
   agentSubscriptionUsage?:
     | import("../../src/shared/api/tauriArchive").AgentSubscriptionUsage
     | null;
+  /** Live runtime values returned for specific managed agents. */
+  agentConfigSurfaceOverrides?: Record<string, MockAgentConfigSurfaceOverride>;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;
@@ -639,7 +647,11 @@ type MockBridgeOptions = {
   cofounderSettings?: MockCofounderSettings;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
+  /** Access list, capability gap and slot hire records, signed as the relay. */
+  companyAccessRecords?: MockCompanyAccessRecord[];
   companyPlans?: MockPlan[];
+  companyPlaybooks?: MockPlaybook[];
+  companyPlaybookJobs?: MockPlaybookJob[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single

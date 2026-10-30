@@ -23,6 +23,7 @@ import {
   RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
 import { CreateWorkDialog } from "@/features/clients/ui/CreateWorkDialog";
+import { WorkerList } from "@/features/cofounder/ui/WorkerList";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 
@@ -224,6 +225,7 @@ export function WorkScreen({ initialClientId }: { initialClientId?: string }) {
           </button>
         </fieldset>
       </div>
+      <WorkerList all parentName="Company" parentPubkey={null} />
       {workQuery.isSuccess && records.length === 0 ? (
         <RecordMessage>
           No work records are available for your client channels.

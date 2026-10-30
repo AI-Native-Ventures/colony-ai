@@ -127,13 +127,23 @@ export function buildFunctionSlotViews(
         : emptySlot(functionId);
     }
     const member = memberByPubkey.get(head.leadPubkey.toLowerCase());
-    if (!member || member.position?.head.status === "terminated") {
+    const status = member?.position?.head.status;
+    if (!member || status === "terminated" || status === "paused") {
       return emptySlot(functionId);
     }
     return { functionId, state: "filled", leadPubkey: member.pubkey };
   });
 }
 
-export function formatWorkerCost(costUsd: number | null): string {
+/** Free-tier model ids end in `:free`; providers report no cost for them. */
+export function isFreeWorkerModel(model: string): boolean {
+  return model.trim().toLowerCase().endsWith(":free");
+}
+
+/** Free AI reads as "Free", never as an unknown cost. */
+export function formatWorkerCost(costUsd: number | null, model = ""): string {
+  if (costUsd === 0 || (costUsd === null && isFreeWorkerModel(model))) {
+    return "Free";
+  }
   return costUsd === null ? "Cost unavailable" : `US$${costUsd.toFixed(2)}`;
 }

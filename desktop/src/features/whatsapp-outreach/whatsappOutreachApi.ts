@@ -243,6 +243,33 @@ export async function loadWhatsAppBatches(
   return response.batches.map(parseWhatsAppBatchSummary);
 }
 
+/** Loads a bounded set of pending batch cards for inbox preview and review links. */
+export async function loadWhatsAppPendingBatchDetails(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<readonly WhatsAppBatchDetail[]> {
+  const summaries = (
+    await loadWhatsAppBatches(relayUrl, "pending", dependencies)
+  ).slice(0, 20);
+  const details: WhatsAppBatchDetail[] = [];
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < summaries.length) {
+      const summary = summaries[nextIndex++];
+      const detail = await loadWhatsAppBatch(
+        relayUrl,
+        summary.batchId,
+        dependencies,
+      );
+      if (detail.status === "pending") details.push(detail);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(3, summaries.length) }, () => worker()),
+  );
+  return details;
+}
+
 export async function loadWhatsAppBatch(
   relayUrl: string,
   batchId: string,

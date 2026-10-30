@@ -5,6 +5,7 @@ import { selectionOnRuntimeChange } from "./runtimeModelProviderSelection.ts";
 import {
   acceptedEffortLabel,
   isClaudeSubscription,
+  resolveSimpleAgentAi,
   simpleModelLabel,
   simpleProviderLabel,
 } from "./simpleAgentAi.ts";
@@ -111,6 +112,43 @@ test("approved aliases and the provider-aware model registry produce full names"
   );
 });
 
+test("profile and directory use the same observed model and provider precedence", () => {
+  const config = {
+    runtimeId: "buzz-agent",
+    isPreSpawn: false,
+    normalized: {
+      model: { value: "nvidia/nemotron-3-ultra-550b-a55b:free" },
+      provider: { value: "colony-credits" },
+    },
+  };
+  assert.deepEqual(
+    resolveSimpleAgentAi({
+      runtimeId: "buzz-agent",
+      config,
+      agentModel: "[MODEL]",
+      agentProvider: "anthropic",
+      inheritedModel: "gpt-4o",
+      inheritedProvider: "openai",
+    }),
+    {
+      observed: true,
+      model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+      provider: "colony-credits",
+    },
+  );
+  assert.deepEqual(
+    resolveSimpleAgentAi({
+      runtimeId: "claude",
+      config,
+      agentModel: "opus",
+      agentProvider: "anthropic",
+      inheritedModel: "gpt-4o",
+      inheritedProvider: "openai",
+    }),
+    { observed: false, model: "opus", provider: "anthropic" },
+  );
+});
+
 test("profile effort labels use only values advertised by the running adapter", () => {
   const claudeEfforts = [
     { value: "low", displayName: "Low" },
@@ -128,6 +166,17 @@ test("profile effort labels use only values advertised by the running adapter", 
   assert.equal(acceptedEffortLabel("xhigh", codexEfforts), null);
   assert.equal(acceptedEffortLabel("balanced", claudeEfforts), null);
   assert.equal(acceptedEffortLabel("high", undefined), null);
+});
+
+test("Colony Agent effort uses model capability values without ACP options", () => {
+  const colonyAgent = {
+    runtimeId: "buzz-agent",
+    provider: "colony-credits",
+    model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+  };
+  assert.equal(acceptedEffortLabel("high", undefined, colonyAgent), "high");
+  assert.equal(acceptedEffortLabel("balanced", undefined, colonyAgent), null);
+  assert.equal(acceptedEffortLabel("xhigh", undefined, colonyAgent), "xhigh");
 });
 
 test("changing harness clears the previous model and provider labels through the production transition", () => {

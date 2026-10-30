@@ -47,6 +47,7 @@ struct FakeGraph {
     cleared: AtomicBool,
     sabotage_after_send: AtomicBool,
     reject_token: AtomicBool,
+    hide_templates: AtomicBool,
 }
 
 impl FakeGraph {
@@ -59,6 +60,7 @@ impl FakeGraph {
             cleared: AtomicBool::new(false),
             sabotage_after_send: AtomicBool::new(false),
             reject_token: AtomicBool::new(false),
+            hide_templates: AtomicBool::new(false),
         }
     }
 
@@ -130,6 +132,9 @@ impl GraphApi for FakeGraph {
         _token: &str,
         _waba_id: &str,
     ) -> Result<Vec<RemoteTemplate>, GraphError> {
+        if self.hide_templates.load(Ordering::SeqCst) {
+            return Ok(Vec::new());
+        }
         Ok(vec![RemoteTemplate {
             name: "intro".into(),
             language: "en".into(),
@@ -1496,4 +1501,269 @@ async fn agents_not_owned_by_an_owner_or_admin_stay_refused_whatever_they_are_ca
         .await
         .expect("demote");
     refused("an agent whose owner was demoted", admins_agent).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_contact_has_a_name()
+{
+    // GUARD: `whatsapp_list_thread` hides only 'dropped' rows. It used to hide 'held' too, so a
+    // contact created by a batch showed "No messages yet" until the owner approved the batch.
+    // GUARD: `client_state` maps held/ready/skipped to states the app can parse.
+    // GUARD: `contact_view` falls back to the number, and a row `name` seeds a blank name.
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    own_agent(&fx, &agent, &fx.owner).await;
+    let thread = |wa: &'static str| {
+        let fx = &fx;
+        async move {
+            crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, true, Utc::now())
+                .await
+                .expect("thread answer")
+        }
+    };
+
+    // A bare number with no lead and no name, and a second row that carries a name.
+    let batch_id = Uuid::new_v4();
+    let content = json!({
+        "v": 1,
+        "batchId": batch_id.to_string(),
+        "template": "intro",
+        "language": "en",
+        "rows": [
+            {"to": "+27683735905", "params": ["Thabo"]},
+            {"to": "+27683735906", "name": "Lerato Dlamini", "params": ["Lerato"]},
+        ],
+    });
+    fx.command(&agent, KIND_WHATSAPP_BATCH, content)
+        .await
+        .expect("agent prepares the batch");
+
+    // Batch just created, nothing approved: the conversation already holds the message.
+    let view = thread("27683735905").await;
+    let messages = view["messages"].as_array().expect("messages");
+    assert_eq!(
+        messages.len(),
+        1,
+        "the pending row is in the thread: {view}"
+    );
+    assert_eq!(messages[0]["direction"], "out");
+    assert_eq!(messages[0]["state"], "queued");
+    assert_eq!(messages[0]["awaitingApproval"], true);
+    assert!(messages[0]["text"]
+        .as_str()
+        .expect("text")
+        .contains("Thabo"));
+    // GUARD: an app that does not opt in never sees the held row, so an older app cannot
+    // label a message that still waits for approval as approved.
+    let hidden = crate::api::whatsapp::thread_view(
+        &fx.state,
+        fx.community(),
+        "27683735905",
+        50,
+        false,
+        Utc::now(),
+    )
+    .await
+    .expect("thread answer");
+    assert_eq!(
+        hidden["messages"].as_array().expect("messages").len(),
+        0,
+        "held rows stay hidden without includeHeld: {hidden}"
+    );
+    // No name anywhere: the contact shows its number, never an empty string.
+    assert_eq!(view["contact"]["displayName"], "+27683735905");
+    // A row name seeds the blank name.
+    let named = thread("27683735906").await;
+    assert_eq!(named["contact"]["displayName"], "Lerato Dlamini");
+
+    // A WhatsApp profile name is never overwritten by a later row name.
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), "27683735906", Some("Lerato D"))
+        .await
+        .expect("profile name");
+    fx.state
+        .db
+        .whatsapp_set_name_if_blank(fx.community(), "27683735906", "Someone Else")
+        .await
+        .expect("set if blank");
+    assert_eq!(
+        thread("27683735906").await["contact"]["displayName"],
+        "Lerato D"
+    );
+
+    // Approved, outside the window (05:00 in Johannesburg): the row is ready, shown as queued.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves");
+    fx.run_sender(base() - Duration::hours(7)).await;
+    let view = thread("27683735905").await;
+    assert_eq!(view["messages"][0]["state"], "queued");
+    assert_eq!(view["messages"][0]["awaitingApproval"], false);
+
+    // Sent: the same row now reads sent.
+    fx.run_sender(base()).await;
+    assert!(fx.graph.send_count() >= 1, "the fake Graph took the sends");
+    let view = thread("27683735905").await;
+    assert_eq!(view["messages"].as_array().expect("messages").len(), 1);
+    assert_eq!(view["messages"][0]["state"], "sent");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_contact_whose_only_row_waits_for_approval_is_never_reported_as_sent() {
+    // GUARD: `outreach_status` ranks `sent` above `waiting_for_approval`, and the flags come
+    // from `whatsapp_outreach_flags` over the real rows. The app used to call every contact
+    // without an inbound message "Sent", including one whose only row was still `held`.
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    own_agent(&fx, &agent, &fx.owner).await;
+    let status_of = |wa: &'static str| {
+        let fx = &fx;
+        async move {
+            let view = crate::api::whatsapp::thread_view(
+                &fx.state,
+                fx.community(),
+                wa,
+                50,
+                true,
+                Utc::now(),
+            )
+            .await
+            .expect("thread answer");
+            let listed = fx
+                .state
+                .db
+                .whatsapp_list_contacts(fx.community(), 50)
+                .await
+                .expect("contacts");
+            let listed =
+                crate::api::whatsapp::contacts_view(&fx.state, fx.community(), &listed, Utc::now())
+                    .await
+                    .expect("contacts answer");
+            let in_list = listed["contacts"]
+                .as_array()
+                .expect("contacts")
+                .iter()
+                .find(|c| c["waId"] == wa)
+                .cloned()
+                .expect("listed");
+            // The thread and the list agree.
+            assert_eq!(view["contact"]["outreachStatus"], in_list["outreachStatus"]);
+            assert_eq!(
+                view["contact"]["hasSentOutbound"],
+                in_list["hasSentOutbound"]
+            );
+            (
+                view["contact"]["outreachStatus"]
+                    .as_str()
+                    .expect("status")
+                    .to_owned(),
+                view["contact"]["awaitingApproval"] == true,
+                view["contact"]["hasSentOutbound"] == true,
+            )
+        }
+    };
+
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &agent,
+        KIND_WHATSAPP_BATCH,
+        batch(batch_id, &["+27683735905"]),
+    )
+    .await
+    .expect("agent prepares the batch");
+    assert_eq!(
+        status_of("27683735905").await,
+        ("waiting_for_approval".to_owned(), true, false),
+        "a held-only contact is waiting for approval, not sent"
+    );
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves");
+    fx.run_sender(base() - Duration::hours(7)).await;
+    assert_eq!(
+        status_of("27683735905").await,
+        ("queued".to_owned(), false, false),
+        "approved but outside the window: queued, still not sent"
+    );
+
+    fx.run_sender(base()).await;
+    assert_eq!(
+        status_of("27683735905").await,
+        ("sent".to_owned(), false, true)
+    );
+
+    // A reply wins over everything.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27683735905", "wamid.IN-S", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+    assert_eq!(status_of("27683735905").await.0, "replied");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn approving_a_batch_whose_template_is_gone_from_meta_fails_with_template_missing() {
+    // GUARD: `ensure_batch_template` in `handle_decision`. Without it the approval flips the
+    // rows to ready and the worker sends a template Meta no longer has.
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    own_agent(&fx, &agent, &fx.owner).await;
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &agent,
+        KIND_WHATSAPP_BATCH,
+        batch(batch_id, &["+27683735905"]),
+    )
+    .await
+    .expect("agent prepares the batch");
+
+    // Meta drops the template after the batch was prepared.
+    fx.graph.hide_templates.store(true, Ordering::SeqCst);
+    let decision = json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"});
+    let refusal = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, decision.clone())
+            .await,
+    );
+    assert!(refusal.contains("template_missing"), "{refusal}");
+
+    // The batch is still pending, its row still held, and nothing goes out.
+    let batch_row = fx
+        .state
+        .db
+        .whatsapp_get_batch(fx.community(), batch_id)
+        .await
+        .expect("batch")
+        .expect("exists");
+    assert_eq!(batch_row.status, "pending");
+    fx.run_sender(base()).await;
+    assert_eq!(fx.graph.send_count(), 0, "nothing is sent blind");
+    let rows = fx
+        .state
+        .db
+        .whatsapp_list_batch_rows(fx.community(), batch_id)
+        .await
+        .expect("batch rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, "held");
+
+    // The template comes back (or a resync finds it): the same approval now works.
+    fx.graph.hide_templates.store(false, Ordering::SeqCst);
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, decision)
+        .await
+        .expect("owner approves once the template is back");
+    fx.run_sender(base()).await;
+    assert_eq!(fx.graph.send_count(), 1);
 }
