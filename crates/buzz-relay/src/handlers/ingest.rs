@@ -2250,8 +2250,7 @@ pub(crate) async fn remove_leaving_member(
 
     // A member who left cannot keep leading a function slot. A failure is
     // returned, not swallowed; the next slot write or removal retries it.
-    crate::handlers::company_functions::reconcile_function_slots(tenant, state, sender_hex)
-        .await?;
+    crate::handlers::company_functions::reconcile_function_slots(tenant, state, sender_hex).await?;
     Ok(())
 }
 
