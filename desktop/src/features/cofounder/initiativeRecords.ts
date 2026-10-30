@@ -157,16 +157,7 @@ export function parseBriefHead(
   const content = parseJson(event.content);
   if (
     !isObject(content) ||
-    !hasOnlyKeys(content, [
-      "schemaVersion",
-      "revision",
-      "confirmed",
-      "pending",
-      "confirmedByPubkey",
-      "confirmedAt",
-      "updatedByPubkey",
-      "updatedAt",
-    ]) ||
+    false ||
     pick(content, "schemaVersion") !== COMPANY_RECORD_SCHEMA_VERSION
   ) {
     return null;
