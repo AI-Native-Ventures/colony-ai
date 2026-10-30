@@ -145,6 +145,17 @@ pub struct WhatsappTemplate {
     pub proposed_title: Option<String>,
 }
 
+/// What a contact's outbound rows say about the conversation, for the contact status.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutreachFlags {
+    /// A row is `held`: its batch still waits for an owner or admin.
+    pub awaiting_approval: bool,
+    /// A row is approved but not sent yet (`ready`, `queued` or `sending`).
+    pub queued: bool,
+    /// A row reached Meta: `sent`, `delivered` or `read`.
+    pub sent: bool,
+}
+
 /// A WhatsApp contact (one per wa_id and company).
 #[derive(Clone, Debug)]
 pub struct WhatsappContact {
@@ -880,6 +891,42 @@ impl Db {
         self.whatsapp_get_contact(community, wa_id)
             .await?
             .ok_or_else(|| DbError::NotFound("whatsapp contact".into()))
+    }
+
+    /// Outbound row flags for a set of contacts. Contacts with no outbound rows are absent.
+    pub async fn whatsapp_outreach_flags(
+        &self,
+        community: CommunityId,
+        wa_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, OutreachFlags>> {
+        if wa_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT wa_id, \
+                    bool_or(state = 'held') AS awaiting_approval, \
+                    bool_or(state IN ('ready', 'queued', 'sending')) AS queued, \
+                    bool_or(state IN ('sent', 'delivered', 'read')) AS sent \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND wa_id = ANY($2) \
+             GROUP BY wa_id",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok((
+                    row.try_get("wa_id")?,
+                    OutreachFlags {
+                        awaiting_approval: row.try_get("awaiting_approval")?,
+                        queued: row.try_get("queued")?,
+                        sent: row.try_get("sent")?,
+                    },
+                ))
+            })
+            .collect()
     }
 
     /// Give a contact a name only when it has none, so a name from a batch row never

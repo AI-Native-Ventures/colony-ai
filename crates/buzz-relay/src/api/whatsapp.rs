@@ -17,7 +17,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use buzz_db::whatsapp::{WhatsappBatch, WhatsappContact, WhatsappMessage, WhatsappTemplate};
+use buzz_db::whatsapp::{
+    OutreachFlags, WhatsappBatch, WhatsappContact, WhatsappMessage, WhatsappTemplate,
+};
 
 use super::{api_error, api_error_with_code, gifs, internal_error};
 use crate::state::AppState;
@@ -141,11 +143,36 @@ fn template_view(template: &WhatsappTemplate) -> Value {
     connect::template_json(template)
 }
 
-fn contact_view(contact: &WhatsappContact, now: chrono::DateTime<Utc>) -> Value {
+/// One word for where the contact stands, so a contact whose only row still waits for a
+/// batch approval is never reported as sent.
+fn outreach_status(contact: &WhatsappContact, flags: &OutreachFlags) -> &'static str {
+    if contact.opted_out_at.is_some() {
+        "opted_out"
+    } else if contact.last_inbound_at.is_some() {
+        "replied"
+    } else if flags.sent {
+        "sent"
+    } else if flags.queued {
+        "queued"
+    } else if flags.awaiting_approval {
+        "waiting_for_approval"
+    } else {
+        "none"
+    }
+}
+
+fn contact_view(
+    contact: &WhatsappContact,
+    now: chrono::DateTime<Utc>,
+    flags: &OutreachFlags,
+) -> Value {
     let open = window_open(contact.last_inbound_at, now);
     json!({
         "waId": contact.wa_id,
         "e164": e164(&contact.wa_id),
+        "outreachStatus": outreach_status(contact, flags),
+        "awaitingApproval": flags.awaiting_approval,
+        "hasSentOutbound": flags.sent,
         // A contact with no name yet (outbound only, no profile name) shows its number rather
         // than an empty string.
         "displayName": if contact.display_name.trim().is_empty() {
@@ -205,6 +232,27 @@ fn message_view(message: &WhatsappMessage) -> Value {
     })
 }
 
+/// The `contacts` and `inbox` answer: each contact with its outreach status.
+pub(crate) async fn contacts_view(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    contacts: &[WhatsappContact],
+    now: chrono::DateTime<Utc>,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let ids: Vec<String> = contacts.iter().map(|c| c.wa_id.clone()).collect();
+    let flags = state
+        .db
+        .whatsapp_outreach_flags(community, &ids)
+        .await
+        .map_err(|error| internal_error(&format!("whatsapp query: {error}")))?;
+    Ok(json!({
+        "contacts": contacts
+            .iter()
+            .map(|c| contact_view(c, now, &flags.get(&c.wa_id).copied().unwrap_or_default()))
+            .collect::<Vec<_>>(),
+    }))
+}
+
 /// The `thread` answer: the contact and every message of the conversation, oldest first,
 /// including rows still waiting for a batch approval.
 pub(crate) async fn thread_view(
@@ -227,8 +275,14 @@ pub(crate) async fn thread_view(
         .await
         .map_err(db_error)?;
     messages.reverse();
+    let flags = state
+        .db
+        .whatsapp_outreach_flags(community, std::slice::from_ref(&contact.wa_id))
+        .await
+        .map_err(db_error)?;
+    let flags = flags.get(&contact.wa_id).copied().unwrap_or_default();
     Ok(json!({
-        "contact": contact_view(&contact, now),
+        "contact": contact_view(&contact, now, &flags),
         "messages": messages.iter().map(message_view).collect::<Vec<_>>(),
     }))
 }
@@ -412,9 +466,7 @@ pub async fn query(
                 .whatsapp_list_contacts(community, limit_of(&request))
                 .await
                 .map_err(db_error)?;
-            Ok(Json(
-                json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() }),
-            ))
+            Ok(Json(contacts_view(&state, community, &contacts, now).await?))
         }
         "inbox" => {
             private(access)?;
@@ -423,9 +475,7 @@ pub async fn query(
                 .whatsapp_list_inbox(community, limit_of(&request))
                 .await
                 .map_err(db_error)?;
-            Ok(Json(
-                json!({ "contacts": contacts.iter().map(|c| contact_view(c, now)).collect::<Vec<_>>() }),
-            ))
+            Ok(Json(contacts_view(&state, community, &contacts, now).await?))
         }
         "thread" => {
             private(access)?;
@@ -648,6 +698,51 @@ mod tests {
     }
 
     #[test]
+    fn a_contact_whose_only_row_waits_for_approval_is_not_sent() {
+        let contact = WhatsappContact {
+            wa_id: "27821234567".into(),
+            display_name: String::new(),
+            lead_id: None,
+            owner_pubkey: None,
+            thread_root_event_id: None,
+            last_inbound_at: None,
+            last_outbound_at: None,
+            outbound_since_inbound: 0,
+            opted_out_at: None,
+            opt_out_reason: None,
+            paused_at: None,
+            pause_reason: None,
+            created_at: Utc::now(),
+        };
+        let waiting = OutreachFlags {
+            awaiting_approval: true,
+            ..OutreachFlags::default()
+        };
+        assert_eq!(outreach_status(&contact, &waiting), "waiting_for_approval");
+        let queued = OutreachFlags {
+            queued: true,
+            ..OutreachFlags::default()
+        };
+        assert_eq!(outreach_status(&contact, &queued), "queued");
+        let sent = OutreachFlags {
+            sent: true,
+            ..OutreachFlags::default()
+        };
+        assert_eq!(outreach_status(&contact, &sent), "sent");
+        assert_eq!(outreach_status(&contact, &OutreachFlags::default()), "none");
+        let replied = WhatsappContact {
+            last_inbound_at: Some(Utc::now()),
+            ..contact.clone()
+        };
+        assert_eq!(outreach_status(&replied, &waiting), "replied");
+        let opted_out = WhatsappContact {
+            opted_out_at: Some(Utc::now()),
+            ..contact
+        };
+        assert_eq!(outreach_status(&opted_out, &sent), "opted_out");
+    }
+
+    #[test]
     fn contact_view_never_exposes_more_than_the_contract() {
         let contact = WhatsappContact {
             wa_id: "27821234567".into(),
@@ -664,7 +759,7 @@ mod tests {
             pause_reason: None,
             created_at: Utc::now(),
         };
-        let view = contact_view(&contact, Utc::now());
+        let view = contact_view(&contact, Utc::now(), &OutreachFlags::default());
         assert_eq!(view["e164"], "+27821234567");
         assert_eq!(view["windowOpen"], true);
         assert_eq!(view["unanswered"], true);

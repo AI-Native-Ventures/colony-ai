@@ -475,6 +475,9 @@ async fn handle_decision(
         .await
         .map_err(internal)?
         .ok_or_else(|| invalid("no such batch"))?;
+    if approve {
+        ensure_batch_template(tenant, state, &batch).await?;
+    }
     let mut edits = Vec::with_capacity(command.edit_rows.len());
     if !command.edit_rows.is_empty() {
         let template = state
@@ -538,6 +541,45 @@ async fn handle_decision(
             Ok(ok(event, "rejected"))
         }
     }
+}
+
+/// Approving a batch sends real messages, so its template must still be approved on Meta.
+/// The list is refreshed first (a failure falls back to the last sync); a template that is
+/// gone or no longer approved leaves the batch pending and says so, instead of sending blind.
+async fn ensure_batch_template(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    batch: &WhatsappBatch,
+) -> Result<(), IngestError> {
+    if let Err(error) = sync_templates(state, tenant).await {
+        tracing::warn!("template refresh before batch approval failed: {error}");
+    }
+    let template = state
+        .db
+        .whatsapp_get_template(tenant.community(), &batch.template_name, &batch.language)
+        .await
+        .map_err(internal)?;
+    if template
+        .as_ref()
+        .is_some_and(|template| template.status.eq_ignore_ascii_case("APPROVED"))
+    {
+        return Ok(());
+    }
+    let short = batch.id.simple().to_string()[..8].to_string();
+    channel::post_notice(
+        state,
+        tenant,
+        "template_missing",
+        &format!(
+            "Batch {short} was not approved: template {} ({}) is no longer approved on Meta.",
+            batch.template_name, batch.language
+        ),
+    )
+    .await;
+    Err(invalid(format!(
+        "template_missing: template {} ({}) is no longer approved on Meta; the batch stays pending, reject it and prepare a new one",
+        batch.template_name, batch.language
+    )))
 }
 
 /// Decide one agent draft: approve (optionally with edited text or parameters) or reject.
