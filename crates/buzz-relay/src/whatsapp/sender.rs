@@ -495,7 +495,10 @@ pub async fn process_community(
         else {
             continue;
         };
-        if let Some(at) = contact.opted_out_at {
+        if let Some(at) = contact
+            .opted_out_at
+            .filter(|_| message.send_after.is_none())
+        {
             skip(
                 state,
                 community,
