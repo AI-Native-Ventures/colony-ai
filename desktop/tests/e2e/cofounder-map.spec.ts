@@ -649,6 +649,39 @@ test.describe("co-founder mode desktop", () => {
               `${screen.name}-${theme}-${viewport.width}.png`,
             ),
           });
+          if (screen.name === "weekly-review") {
+            const reviewCard = capturePage.getByTestId(
+              "cofounder-weekly-review-card",
+            );
+            const cardBounds = await reviewCard.boundingBox();
+            if (cardBounds && viewport.width < 600) {
+              await capturePage.setViewportSize({
+                width: viewport.width,
+                height: Math.ceil(cardBounds.height + 100),
+              });
+            }
+            await reviewCard.screenshot({
+              animations: "disabled",
+              path: join(
+                screenshotDir,
+                `${screen.name}-card-${theme}-${viewport.width}.png`,
+              ),
+            });
+            if (viewport.width < 600) {
+              await capturePage.setViewportSize({
+                width: viewport.width,
+                height: viewport.height,
+              });
+            }
+          } else {
+            await capturePage.getByTestId("cofounder-goals").screenshot({
+              animations: "disabled",
+              path: join(
+                screenshotDir,
+                `${screen.name}-goals-${theme}-${viewport.width}.png`,
+              ),
+            });
+          }
         }
       }
       if (theme === "dark") await capturePage.close();
