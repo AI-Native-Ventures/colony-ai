@@ -1344,6 +1344,9 @@ pub fn compute_customer_record(
     entries.sort_by(|a, b| {
         (a.at, a.kind.rank(), &a.entry_id).cmp(&(b.at, b.kind.rank(), &b.entry_id))
     });
+    if conversion.is_some() {
+        entries.retain(|e| e.kind != TimelineKind::Found);
+    }
     if entries.len() > MAX_TIMELINE_ENTRIES {
         let drop = entries.len() - MAX_TIMELINE_ENTRIES;
         entries.drain(..drop);
