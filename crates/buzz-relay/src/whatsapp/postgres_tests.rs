@@ -1767,3 +1767,326 @@ async fn approving_a_batch_whose_template_is_gone_from_meta_fails_with_template_
     fx.run_sender(base()).await;
     assert_eq!(fx.graph.send_count(), 1);
 }
+
+// ── send_now: the owner's test release of a small approved batch ──────────────
+
+/// 05:00 in Johannesburg, outside the 08:00 to 18:00 send window.
+fn night() -> DateTime<Utc> {
+    base() - Duration::hours(7)
+}
+
+fn send_now(batch_id: Uuid) -> Value {
+    json!({"v": 1, "batchId": batch_id.to_string(), "decision": "send_now"})
+}
+
+/// The owner prepares a batch and approves it; its rows are `ready`.
+async fn approved_batch(fx: &Fixture, numbers: &[&str]) -> Uuid {
+    let batch_id = Uuid::new_v4();
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH, batch(batch_id, numbers))
+        .await
+        .expect("owner prepares a batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves the batch");
+    batch_id
+}
+
+async fn batch_rows(fx: &Fixture, batch_id: Uuid) -> Vec<buzz_db::whatsapp::WhatsappMessage> {
+    fx.state
+        .db
+        .whatsapp_list_batch_rows(fx.community(), batch_id)
+        .await
+        .expect("batch rows")
+}
+
+/// `sendsAt` of the first message in a contact's thread view.
+async fn sends_at_in_thread(fx: &Fixture, wa_id: &str, now: DateTime<Utc>) -> Option<String> {
+    let view = crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa_id, 50, true, now)
+        .await
+        .expect("thread answer");
+    view["messages"][0]["sendsAt"].as_str().map(str::to_owned)
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn send_now_sends_a_small_approved_batch_outside_the_window_and_without_the_gap() {
+    // GUARD: `released` in `sender::process_community`. Without it the three rows wait for
+    // 08:00 and then for the gap between two new chats, so nothing is sent at 05:00.
+    // GUARD: `sends_at` in the thread view: a queued row says when it goes out.
+    let fx = fixture().await;
+    // Exactly `SEND_NOW_MAX_ROWS` rows is still a test.
+    let numbers = ["+27820000011", "+27820000012", "+27820000013"];
+    let batch_id = approved_batch(&fx, &numbers).await;
+
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 0, "outside the window nothing goes");
+    assert_eq!(
+        sends_at_in_thread(&fx, "27820000011", night())
+            .await
+            .as_deref(),
+        Some("2026-10-29T06:00:00+00:00"),
+        "a queued row names the start of the next window"
+    );
+
+    let released = fx
+        .command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+        .await
+        .expect("owner releases the test batch");
+    assert!(
+        released.message.starts_with("send_now: 3"),
+        "{}",
+        released.message
+    );
+    let sends_at = sends_at_in_thread(&fx, "27820000011", night())
+        .await
+        .expect("a released row says when it goes out");
+    let at = DateTime::parse_from_rfc3339(&sends_at)
+        .expect("sendsAt is an ISO time")
+        .with_timezone(&Utc);
+    assert!(
+        (Utc::now() - at).num_seconds().abs() < 120,
+        "a released row goes out now, not at 06:00: {sends_at}"
+    );
+
+    fx.run_sender(night()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        3,
+        "all three go in one pass, no gap between them"
+    );
+    for row in batch_rows(&fx, batch_id).await {
+        assert!(
+            matches!(row.state.as_str(), "sent" | "delivered" | "read"),
+            "{}",
+            row.state
+        );
+    }
+
+    // At most once: a second release finds nothing waiting and a second pass sends nothing.
+    let refusal = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+            .await,
+    );
+    assert!(refusal.contains("waiting to send"), "{refusal}");
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 3);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn send_now_rows_still_count_to_the_daily_cap() {
+    // GUARD: `decide_owner_send_now` keeps the cap check. A release that ignored the cap
+    // would send both rows although the owner allows one new chat a day.
+    let fx = fixture().await;
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "dailyNewChatCap": 1}),
+    )
+    .await
+    .expect("owner sets the cap");
+    let batch_id = approved_batch(&fx, &["+27820000021", "+27820000022"]).await;
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+        .await
+        .expect("owner releases the test batch");
+
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 1, "the cap of 1 holds");
+    fx.run_sender(night()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "the cap still holds on the next pass"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn only_the_owner_or_an_admin_can_send_now_never_an_agent() {
+    // GUARD: the `is_owner_admin` check at the top of `handle_decision`, which also covers
+    // `send_now`. An agent that could release a batch would defeat the owner's approval.
+    let fx = fixture().await;
+    let batch_id = approved_batch(&fx, &["+27820000031"]).await;
+
+    let owned = Keys::generate();
+    own_agent(&fx, &owned, &fx.owner).await;
+    let member = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &member.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("owner adds the agent to Outreach");
+    for agent in [&owned, &member] {
+        let refusal = rejection(
+            fx.command(agent, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+                .await,
+        );
+        assert!(refusal.contains("only the owner or an admin"), "{refusal}");
+    }
+
+    assert!(
+        batch_rows(&fx, batch_id)
+            .await
+            .iter()
+            .all(|row| row.send_after.is_none()),
+        "a refused release flags nothing"
+    );
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 0, "still waiting for 08:00");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn send_now_is_refused_for_a_batch_of_more_than_three_rows() {
+    // GUARD: the `total > max_rows` check in `whatsapp_send_now_batch`. send_now is a test
+    // release, not a way around the send window for a blast.
+    let fx = fixture().await;
+    let numbers = [
+        "+27820000051",
+        "+27820000052",
+        "+27820000053",
+        "+27820000054",
+    ];
+    let batch_id = approved_batch(&fx, &numbers).await;
+
+    let refusal = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+            .await,
+    );
+    assert!(refusal.contains("at most 3 rows"), "{refusal}");
+    assert!(
+        batch_rows(&fx, batch_id)
+            .await
+            .iter()
+            .all(|row| row.send_after.is_none()),
+        "a refused release flags nothing"
+    );
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 0);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn send_now_is_refused_for_a_batch_that_is_not_approved() {
+    // GUARD: the `approved` status check in `whatsapp_send_now_batch`. A pending batch has
+    // not been approved, so releasing it would send what the owner never approved.
+    let fx = fixture().await;
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        batch(batch_id, &["+27820000061"]),
+    )
+    .await
+    .expect("owner prepares a batch");
+
+    let refusal = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+            .await,
+    );
+    assert!(refusal.contains("approved batch"), "{refusal}");
+    let rows = batch_rows(&fx, batch_id).await;
+    assert_eq!(rows[0].state, "held");
+    assert!(rows[0].send_after.is_none());
+    fx.run_sender(night()).await;
+    fx.run_sender(base()).await;
+    assert_eq!(fx.graph.send_count(), 0, "a pending batch never sends");
+
+    // A rejected batch is refused the same way, and an unknown one too.
+    let rejected = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        batch(rejected, &["+27820000062"]),
+    )
+    .await
+    .expect("owner prepares a second batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": rejected.to_string(), "decision": "reject"}),
+    )
+    .await
+    .expect("owner rejects it");
+    let refusal = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(rejected))
+            .await,
+    );
+    assert!(refusal.contains("approved batch"), "{refusal}");
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH_DECISION,
+            send_now(Uuid::new_v4()),
+        )
+        .await,
+    );
+    assert!(refusal.contains("no such batch"), "{refusal}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn send_now_still_refuses_opted_out_contacts_and_a_stopped_number() {
+    // GUARD: the opted_out check in `sender::process_community` runs before the new-chat
+    // branch, and `send_paused` (quality RED) stops the whole pass. send_now skips only the
+    // window and the gap.
+    let fx = fixture().await;
+    let batch_id = approved_batch(&fx, &["+27820000041", "+27820000042"]).await;
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27820000041", "wamid.IN41", "STOP"))
+            .await,
+        StatusCode::OK
+    );
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, send_now(batch_id))
+        .await
+        .expect("owner releases the test batch");
+
+    // Quality RED stops sending: nothing goes, not even the released rows.
+    fx.state
+        .db
+        .whatsapp_set_send_paused(
+            fx.community(),
+            true,
+            Some("Quality rating is RED. Sending stopped."),
+        )
+        .await
+        .expect("quality stop");
+    fx.run_sender(night()).await;
+    assert_eq!(fx.graph.send_count(), 0, "a quality stop beats send_now");
+
+    fx.state
+        .db
+        .whatsapp_set_send_paused(fx.community(), false, None)
+        .await
+        .expect("quality recovers");
+    fx.run_sender(night()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "only the contact who did not opt out is messaged"
+    );
+    let rows = batch_rows(&fx, batch_id).await;
+    let opted_out = rows
+        .iter()
+        .find(|row| row.wa_id == "27820000041")
+        .expect("the opted-out row");
+    assert_eq!(opted_out.state, "skipped");
+    assert!(
+        opted_out
+            .skip_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("opted out")),
+        "{:?}",
+        opted_out.skip_reason
+    );
+}

@@ -21,8 +21,8 @@ use buzz_db::whatsapp::{NewOutboundMessage, WhatsappContact, WhatsappMessage};
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
 use super::graph::{GraphError, SendRequest};
 use super::policy::{
-    classify_failure_code, decide_new_chat, e164, normalize_wa_id, render_template, row_gap,
-    sast_day_start, window_open, FailureKind, NewChatDecision,
+    classify_failure_code, decide_new_chat, decide_owner_send_now, e164, normalize_wa_id,
+    render_template, row_gap, sast_day_start, window_open, FailureKind, NewChatDecision,
 };
 use super::{channel, Access};
 use crate::state::AppState;
@@ -510,7 +510,10 @@ pub async fn process_community(
             continue;
         }
         if message.new_chat {
-            if new_chat_blocked {
+            // A row the owner released with `send_now` skips the window and the gap, so an
+            // earlier paced send in this pass must not hold it back.
+            let released = message.send_after.is_some();
+            if new_chat_blocked && !released {
                 continue;
             }
             let sent_today = state
@@ -523,13 +526,18 @@ pub async fn process_community(
                 .whatsapp_last_new_chat_at(community)
                 .await
                 .map_err(|error| error.to_string())?;
-            match decide_new_chat(
-                now,
-                last,
-                sent_today,
-                settings.daily_new_chat_cap,
-                row_gap(&message.id),
-            ) {
+            let decision = if released {
+                decide_owner_send_now(now, sent_today, settings.daily_new_chat_cap)
+            } else {
+                decide_new_chat(
+                    now,
+                    last,
+                    sent_today,
+                    settings.daily_new_chat_cap,
+                    row_gap(&message.id),
+                )
+            };
+            match decision {
                 NewChatDecision::SendNow => {}
                 NewChatDecision::WaitUntil(_) | NewChatDecision::CapReached { .. } => {
                     new_chat_blocked = true;
@@ -954,6 +962,7 @@ mod tests {
             batch_id: None,
             batch_idx: None,
             new_chat: true,
+            send_after: None,
             sender_pubkey: None,
             sent_at: None,
             created_at: now(),
