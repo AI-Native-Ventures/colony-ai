@@ -1221,13 +1221,14 @@ async fn a_member_lead_who_leaves_the_relay_clears_the_slot() {
 async fn archiving_the_lead_clears_the_slot() {
     let fixture = fixture().await;
     employee_leads(&fixture, CompanyFunction::Operations).await;
+    let employee_hex = fixture.employee.public_key().to_hex();
     let archive = EventBuilder::new(
         Kind::from(buzz_core::kind::KIND_IA_ARCHIVE_REQUEST as u16),
         "",
     )
     .tags([
-        Tag::parse(["p", fixture.employee.public_key().to_hex().as_str()]).expect("p tag"),
         Tag::parse(["-"]).expect("protected tag"),
+        Tag::parse(["p", employee_hex.as_str()]).expect("p tag"),
     ])
     .sign_with_keys(&fixture.employee)
     .expect("sign the archive request");
