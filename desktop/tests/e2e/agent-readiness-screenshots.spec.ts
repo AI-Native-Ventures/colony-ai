@@ -21,7 +21,7 @@ const EDIT_AGENT_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 async function openCreateDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
   await openAgentsDirectoryView(page);
-  await page.getByTestId("agent-add-button").click();
+  await page.getByTestId("agent-hire-button").click();
   await page.locator("#persona-display-name").fill("Test Agent");
 }
 

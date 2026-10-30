@@ -346,6 +346,27 @@ test("action events carry the d tag of their record and only the fields of their
 
 test("the one-tap helpers name the exact head the owner saw", () => {
   const goal = parseGoalHead(signGoal(), RELAY_PUBKEY);
+  const edit = buildNumbersActionEvent(
+    numbersActions.editGoal(goal, {
+      title: "8 new clients a month",
+      metric: "won",
+      target: 8,
+      period: "month",
+      reason: "Last month closed 3.",
+    }),
+  );
+  assert.deepEqual(edit.tags, [["d", `company:fngoal:${GOAL_ID}`]]);
+  assert.deepEqual(JSON.parse(edit.content), {
+    schemaVersion: 1,
+    op: "goal_edit",
+    goalId: GOAL_ID,
+    title: "8 new clients a month",
+    metric: "won",
+    target: 8,
+    period: "month",
+    reason: "Last month closed 3.",
+    expectedHeadEventId: goal.eventId,
+  });
   const approve = buildNumbersActionEvent(
     numbersActions.approveGoal(goal, "Go"),
   );

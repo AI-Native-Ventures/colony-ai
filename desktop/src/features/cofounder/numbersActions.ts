@@ -30,6 +30,16 @@ export type NumbersActionInput =
       reason?: string;
     }
   | {
+      op: "goal_edit";
+      goalId: string;
+      title: string;
+      metric: MetricId;
+      target: number;
+      period: GoalPeriod;
+      reason?: string;
+      expectedHeadEventId: string;
+    }
+  | {
       op: "goal_approve" | "goal_reject" | "goal_retire";
       goalId: string;
       note?: string;
@@ -86,6 +96,22 @@ export function buildNumbersActionEvent(input: NumbersActionInput): {
 
 /** One-tap helpers for Needs you and the function page. Each names the exact head seen. */
 export const numbersActions = {
+  /** Edit the current proposed goal head the owner reviewed. */
+  editGoal: (
+    goal: GoalView,
+    fields: {
+      title: string;
+      metric: MetricId;
+      target: number;
+      period: GoalPeriod;
+      reason?: string;
+    },
+  ): NumbersActionInput => ({
+    op: "goal_edit",
+    goalId: goal.goalId,
+    ...fields,
+    expectedHeadEventId: goal.eventId,
+  }),
   approveGoal: (goal: GoalView, note?: string): NumbersActionInput => ({
     op: "goal_approve",
     goalId: goal.goalId,

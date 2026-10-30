@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
@@ -11,6 +13,10 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
+import { numbersActions } from "../numbersActions";
+import { useFunctionNumbers, useNumbersAction } from "../numbersHooks";
+import { FunctionGoals } from "./FunctionGoals";
+import { FunctionScorecard } from "./FunctionScorecard";
 import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
 
@@ -268,8 +274,37 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
 export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
+  const membership = useMyRelayMembershipQuery();
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
+  const enabled = settingsQuery.data?.settings.enabled === true;
+  const numbers = useFunctionNumbers(functionId, enabled);
+  const numbersAction = useNumbersAction();
+  const refreshRequested = useRef(false);
+  const refreshScorecard = useCallback(
+    (expectedHeadEventId?: string) =>
+      numbersAction.mutate(
+        numbersActions.refreshScorecard(expectedHeadEventId),
+      ),
+    [numbersAction.mutate],
+  );
+  useEffect(() => {
+    if (!enabled) {
+      refreshRequested.current = false;
+      return;
+    }
+    if (numbers.isSuccess && !refreshRequested.current) {
+      refreshRequested.current = true;
+      refreshScorecard(numbers.scorecard?.eventId);
+    }
+  }, [
+    enabled,
+    numbers.isSuccess,
+    numbers.scorecard?.eventId,
+    refreshScorecard,
+  ]);
+  const canApprove =
+    membership.data?.role === "owner" || membership.data?.role === "admin";
   const slot = slots.find(
     (candidate) => candidate.functionId === functionId,
   ) ?? {
@@ -300,9 +335,15 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   );
   // An unfilled slot is covered by Scout, so Scout's worker runs belong here.
   const parent = slot.state === "filled" ? lead : scout;
-  const profilePubkeys = [lead?.pubkey, scout?.pubkey, manager?.pubkey].filter(
-    (pubkey): pubkey is string => Boolean(pubkey),
-  );
+  const profilePubkeys = [
+    lead?.pubkey,
+    scout?.pubkey,
+    manager?.pubkey,
+    ...numbers.goals.flatMap((goal) => [
+      goal.proposedByPubkey,
+      goal.decidedByPubkey,
+    ]),
+  ].filter((pubkey): pubkey is string => Boolean(pubkey));
   const profilesQuery = useUsersBatchQuery(profilePubkeys);
   const profiles: ProfileLookup = profilesQuery.data?.profiles ?? {};
   const leadName = lead ? memberName(lead, profiles) : null;
@@ -315,6 +356,37 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
       ? (leadName ?? FUNCTION_DETAILS[functionId].name)
       : "Scout";
   const detail = FUNCTION_DETAILS[functionId];
+  const scorecard = (
+    <FunctionScorecard
+      card={numbers.card}
+      functionId={functionId}
+      isLoading={numbers.isLoading || numbers.isFetching}
+      currency={numbers.scorecard?.currency ?? "ZAR"}
+      loadError={numbers.isError}
+      refreshError={
+        numbersAction.isError &&
+        numbersAction.variables?.op === "scorecard_refresh"
+      }
+      onRetryLoad={() => void numbers.refetch()}
+      onRetryRefresh={() => refreshScorecard(numbers.scorecard?.eventId)}
+      isRefreshing={numbersAction.isPending}
+    />
+  );
+  const goals = (
+    <FunctionGoals
+      canApprove={canApprove}
+      currency={numbers.scorecard?.currency ?? "ZAR"}
+      functionId={functionId}
+      goals={numbers.goals}
+      progress={numbers.scorecard?.goals ?? []}
+      goalOwnerName={
+        slot.state === "filled" ? (leadName ?? detail.name) : "Scout"
+      }
+      profiles={profiles}
+      numbersAction={numbersAction}
+      key={functionId}
+    />
+  );
 
   if (settingsQuery.isPending) {
     return (
@@ -350,7 +422,7 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
     );
   }
 
-  if (!settingsQuery.data?.settings.enabled) {
+  if (!enabled) {
     return (
       <TeamPage testId="cofounder-function-screen" title={detail.name}>
         <div className="space-y-3">
@@ -371,7 +443,18 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   }
 
   if (functionId === "operations") {
-    return <OperationsPlaybookScreen />;
+    return (
+      <div data-testid="cofounder-function-screen">
+        <OperationsPlaybookScreen
+          scorecardAndGoals={
+            <div className="space-y-5">
+              {scorecard}
+              {goals}
+            </div>
+          }
+        />
+      </div>
+    );
   }
 
   return (
@@ -391,6 +474,17 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
         <div className="space-y-5">
+          {scorecard}
+          {slot.state === "empty" ? (
+            <EmptySlotSuggestion functionId={functionId} />
+          ) : null}
+          <WorkerList
+            parentName={parentName}
+            parentPubkey={parent?.pubkey ?? null}
+          />
+          {goals}
+        </div>
+        <div className="space-y-5">
           <LeadCard
             functionId={functionId}
             lead={lead}
@@ -399,32 +493,6 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
             managerName={managerName}
             slot={slot}
           />
-          {slot.state === "empty" ? (
-            <EmptySlotSuggestion functionId={functionId} />
-          ) : null}
-          <WorkerList
-            parentName={parentName}
-            parentPubkey={parent?.pubkey ?? null}
-          />
-          {slot.state === "filled" ? (
-            <section
-              aria-labelledby="function-scorecard-title"
-              className="team-card p-5 sm:p-6"
-            >
-              <h2
-                className="text-base font-extrabold"
-                id="function-scorecard-title"
-              >
-                Scorecard
-              </h2>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Scorecard details will appear here when this function has
-                tracked results.
-              </p>
-            </section>
-          ) : null}
-        </div>
-        <div className="space-y-5">
           {slot.state === "empty" ? (
             <section
               aria-labelledby="function-filled-title"

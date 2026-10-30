@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import {
@@ -536,6 +536,7 @@ function VersionHistory({
 export function PlaybookScreen({
   canApprove,
   canProposeChange,
+  scorecardAndGoals,
   model,
   onApproveChange,
   onApproveJobStep,
@@ -546,6 +547,7 @@ export function PlaybookScreen({
 }: {
   canApprove: boolean;
   canProposeChange: boolean;
+  scorecardAndGoals: ReactNode;
   model: PlaybookScreenModel;
   onApproveChange: (changeId: string) => Promise<void>;
   onApproveJobStep: (jobId: string, stepId: string) => Promise<void>;
@@ -591,6 +593,8 @@ export function PlaybookScreen({
             )}
           </div>
         </header>
+
+        {scorecardAndGoals}
 
         <div className="cf3-playbook-layout">
           <ol aria-label="Delivery playbook steps" className="cf3-flow-list">

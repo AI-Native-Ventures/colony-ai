@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
@@ -259,14 +259,17 @@ function isOperationsPlaybook(playbook: PlaybookView): boolean {
 function EmptyOperationsPlaybook({
   onTalkToScout,
   available,
+  scorecardAndGoals,
 }: {
   onTalkToScout: () => void;
   available: boolean;
+  scorecardAndGoals: ReactNode;
 }) {
   return (
     <TeamPage testId="cofounder-playbook-screen" title="Operations">
+      <TeamPageTitle>Operations</TeamPageTitle>
+      {scorecardAndGoals}
       <section className="team-card space-y-3 p-5 sm:p-6">
-        <TeamPageTitle>Operations</TeamPageTitle>
         <h2 className="text-base font-extrabold">
           Design your first Operations playbook with Scout
         </h2>
@@ -287,7 +290,11 @@ function EmptyOperationsPlaybook({
   );
 }
 
-export function OperationsPlaybookScreen() {
+export function OperationsPlaybookScreen({
+  scorecardAndGoals,
+}: {
+  scorecardAndGoals: ReactNode;
+}) {
   const navigation = useAppNavigation();
   const membership = useMyRelayMembershipQuery();
   const channelsQuery = useChannelsQuery();
@@ -352,6 +359,8 @@ export function OperationsPlaybookScreen() {
   if (playbooksQuery.isPending) {
     return (
       <TeamPage testId="cofounder-playbook-screen" title="Operations">
+        <TeamPageTitle>Operations</TeamPageTitle>
+        {scorecardAndGoals}
         <p
           aria-live="polite"
           className="text-sm text-muted-foreground"
@@ -366,8 +375,9 @@ export function OperationsPlaybookScreen() {
   if (playbooksQuery.isError) {
     return (
       <TeamPage testId="cofounder-playbook-screen" title="Operations">
+        <TeamPageTitle>Operations</TeamPageTitle>
+        {scorecardAndGoals}
         <section className="space-y-3" role="alert">
-          <TeamPageTitle>Operations</TeamPageTitle>
           <p className="text-sm text-destructive">
             Operations playbooks could not be loaded.
           </p>
@@ -387,6 +397,7 @@ export function OperationsPlaybookScreen() {
     return (
       <EmptyOperationsPlaybook
         available={Boolean(scoutConversation)}
+        scorecardAndGoals={scorecardAndGoals}
         onTalkToScout={() => {
           if (scoutConversation)
             void navigation.goChannel(scoutConversation.id);
@@ -450,6 +461,7 @@ export function OperationsPlaybookScreen() {
     <PlaybookScreen
       canApprove={canApprove}
       canProposeChange={Boolean(scoutConversation)}
+      scorecardAndGoals={scorecardAndGoals}
       model={model}
       onApproveChange={approveChange}
       onApproveJobStep={approveJobStep}

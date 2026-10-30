@@ -24,6 +24,7 @@ import {
 import {
   KIND_NUMBERS_ACTION,
   KIND_NUMBERS_HEAD,
+  METRIC_DETAILS,
 } from "@/features/cofounder/numbersRecords";
 import {
   KIND_PLAN_ACTION,
@@ -7512,6 +7513,7 @@ function acceptMockNumbersAction(
     schemaVersion?: number;
     op?: string;
     goalId?: string;
+    expectedHeadEventId?: string;
     function?: string;
     title?: string;
     metric?: string;
@@ -7566,6 +7568,25 @@ function acceptMockNumbersAction(
   const review = reviews.find(
     (candidate) => candidate.reviewDate === action.reviewDate,
   );
+  const currentHeadEvent = (dTag: string) => {
+    const head = mockNumbersHeads().find(
+      (candidate) => candidate.dTag === dTag,
+    );
+    return head
+      ? createSignedMockCompanyHead(
+          KIND_NUMBERS_HEAD,
+          head.content,
+          head.dTag,
+          head.createdAt,
+        )
+      : null;
+  };
+  const requireCurrentHead = (dTag: string) => {
+    const current = currentHeadEvent(dTag);
+    if (current?.id === action.expectedHeadEventId) return true;
+    reject("conflict: the record changed; reload and try again");
+    return false;
+  };
   switch (action.op) {
     case "scorecard_refresh":
       if (numbers.scorecard) numbers.scorecard.asOf = now;
@@ -7597,6 +7618,7 @@ function acceptMockNumbersAction(
         reject("conflict: there is no such goal");
         return;
       }
+      if (!requireCurrentHead(`company:fngoal:${goal.goalId}`)) return;
       if (action.op !== "goal_retire" && !needAdmin("approve or reject a goal"))
         return;
       const open =
@@ -7618,11 +7640,50 @@ function acceptMockNumbersAction(
       if (action.note) goal.note = action.note;
       break;
     }
+    case "goal_edit": {
+      if (!goal) {
+        reject("conflict: there is no such goal");
+        return;
+      }
+      if (!needAdmin("edit a goal")) return;
+      if (!requireCurrentHead(`company:fngoal:${goal.goalId}`)) return;
+      if (goal.status !== "proposed") {
+        reject("conflict: only a proposed goal can be edited");
+        return;
+      }
+      const metricFunction = action.metric
+        ? METRIC_DETAILS[action.metric as keyof typeof METRIC_DETAILS]
+            ?.functionId
+        : undefined;
+      if (metricFunction !== goal.function) {
+        reject("invalid: a goal measures a number of its own function");
+        return;
+      }
+      if (
+        !action.title?.trim() ||
+        !action.metric ||
+        action.target === undefined ||
+        !Number.isSafeInteger(action.target) ||
+        action.target <= 0 ||
+        !["week", "month"].includes(action.period ?? "")
+      ) {
+        reject("invalid: the edited goal is incomplete");
+        return;
+      }
+      goal.title = action.title.trim();
+      goal.metric = action.metric;
+      goal.target = action.target;
+      goal.period = action.period;
+      if (action.reason) goal.reason = action.reason;
+      goal.sourceActionEventId = event.id;
+      break;
+    }
     case "review_annotate":
       if (!review) {
         reject("conflict: there is no review for that Friday yet");
         return;
       }
+      if (!requireCurrentHead(`company:review:${review.reviewDate}`)) return;
       review.wins = action.wins ?? [];
       review.misses = action.misses ?? [];
       review.decisions = (action.decisions ?? []).map((decision) => ({
@@ -7637,6 +7698,8 @@ function acceptMockNumbersAction(
       break;
     case "review_decide": {
       if (!needAdmin("answer a review decision")) return;
+      if (!review || !requireCurrentHead(`company:review:${review.reviewDate}`))
+        return;
       const decisions = (review?.decisions ?? []) as Array<
         Record<string, unknown>
       >;
