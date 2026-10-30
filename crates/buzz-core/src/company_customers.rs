@@ -1115,7 +1115,7 @@ fn money_panel(
         // An issued invoice with no payment evidence: nothing has been paid.
         Some(0)
     } else {
-        None
+        Some(0)
     };
     let balance_due_minor = if issued_in_currency > 0 {
         Some(owed)
