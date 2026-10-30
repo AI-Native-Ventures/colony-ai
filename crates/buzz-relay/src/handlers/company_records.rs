@@ -74,6 +74,12 @@ pub async fn handle(
         buzz_core::kind::KIND_WORKER_RUN_ACTION => {
             super::company_workers::handle(tenant, state, event, auth).await
         }
+        buzz_core::kind::KIND_BRIEF_ACTION => {
+            super::company_brief::handle(tenant, state, event, auth).await
+        }
+        buzz_core::kind::KIND_ONBOARDING_ACTION => {
+            super::company_onboarding::handle(tenant, state, event, auth).await
+        }
         _ => handle_goal_action(tenant, state, event, auth).await,
     }
 }

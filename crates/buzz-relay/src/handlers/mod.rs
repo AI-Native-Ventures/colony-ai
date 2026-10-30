@@ -21,12 +21,18 @@ pub mod company_duties;
 pub mod company_employee_history;
 /// Nostr-first broker for Software Factory run metadata.
 pub mod company_factory;
+/// Nostr-first broker for the business brief record.
+pub mod company_brief;
 /// Nostr-first broker for company function slot records.
 pub mod company_functions;
+/// Shared helpers for the business brief and onboarding brokers.
+mod company_initiative;
 pub mod company_hires;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
+/// Nostr-first broker for co-founder onboarding progress.
+pub mod company_onboarding;
 /// Nostr-first broker for community-wide standing tool permissions.
 pub mod company_permissions;
 /// Nostr-first broker for company records (goals and asks).

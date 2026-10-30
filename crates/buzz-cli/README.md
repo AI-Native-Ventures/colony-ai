@@ -108,6 +108,17 @@ buzz functions assign sales --lead <pubkey>
 buzz functions cover operations
 buzz functions clear finance
 
+# Co-founder onboarding: business brief and onboarding progress (Scout proposes, owner decides)
+buzz brief get
+buzz brief propose --what-you-sell "Websites" --who-buys "Guesthouses" --how-you-talk "Friendly and short" --source "Your website"
+buzz brief confirm
+buzz onboarding get
+buzz onboarding start
+buzz onboarding ask --step money --text "How should I spend money?"
+buzz onboarding propose-map --first sales --sales agent:<pubkey> --operations scout --customer-success empty --finance empty --brand empty
+buzz onboarding answer --step money
+buzz onboarding approve-map
+
 # Discovery (counts against the company's monthly limit; exit 2 at the limit)
 buzz discovery search --query guesthouses --location "Melville, Johannesburg" --limit 10 [--pages 2] [--country za] [--industry "Tourism and Hospitality" --vertical "Guesthouses and inns"] [--save]
 
@@ -230,6 +241,12 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `set` | Change co-founder settings (owner or admin only) |
 | `functions` | `list` / `get` | Read the five function slots, empty when nobody covers one |
 | | `assign` / `cover` / `clear` | Set a lead, let Scout cover, or empty a slot (owner or admin only) |
+| `brief` | `get` | Print the business brief and any proposal waiting for the owner |
+| | `propose` | Offer a brief or a revision (Scout, only while co-founder mode is on) |
+| | `confirm` / `edit` / `discard` | Confirm, rewrite or drop the proposal (owner or admin only) |
+| `onboarding` | `get` | Print onboarding steps, the open question and the proposed map |
+| | `start` / `ask` / `withdraw` / `propose-map` / `complete` | Scout runs onboarding, one question at a time (only while co-founder mode is on) |
+| | `answer` / `approve-map` / `reject-map` | The owner answers and decides (owner or admin only) |
 | `feed` | `get` | Get your activity feed |
 | `social` | `publish` | Publish a NIP-01 note |
 | | `set-contacts` | Set NIP-02 contact list |

@@ -13,6 +13,8 @@ pub mod business_records;
 pub mod channel;
 /// How long an agent's chat message may be, for the CLI guard and the harness net.
 pub mod chat_limits;
+/// The business brief Scout plays back and the owner confirms.
+pub mod company_brief;
 /// Per-company co-founder mode settings.
 pub mod company_cofounder;
 /// Typed employee duties and schedule validation.
@@ -25,6 +27,8 @@ pub mod company_functions;
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
+/// Co-founder onboarding progress (questions, answers, company map proposal).
+pub mod company_onboarding;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
 /// Typed content and validation for employee allowances and AI spend.
