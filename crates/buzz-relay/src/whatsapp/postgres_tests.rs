@@ -1594,9 +1594,14 @@ async fn approving_a_batch_whose_template_is_gone_from_meta_fails_with_template_
     assert_eq!(batch_row.status, "pending");
     fx.run_sender(base()).await;
     assert_eq!(fx.graph.send_count(), 0, "nothing is sent blind");
-    let thread = fx.thread("27683735905").await;
-    assert_eq!(thread.len(), 1);
-    assert_eq!(thread[0].state, "held");
+    let rows = fx
+        .state
+        .db
+        .whatsapp_list_batch_rows(fx.community(), batch_id)
+        .await
+        .expect("batch rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].state, "held");
 
     // The template comes back (or a resync finds it): the same approval now works.
     fx.graph.hide_templates.store(false, Ordering::SeqCst);
