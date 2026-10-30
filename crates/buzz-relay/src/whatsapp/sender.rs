@@ -512,7 +512,7 @@ pub async fn process_community(
         if message.new_chat {
             // A row the owner released with `send_now` skips the window and the gap, so an
             // earlier paced send in this pass must not hold it back.
-            let released = message.send_after.is_some();
+            let released = false;
             if new_chat_blocked && !released {
                 continue;
             }
