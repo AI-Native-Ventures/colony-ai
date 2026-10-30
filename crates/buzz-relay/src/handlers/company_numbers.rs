@@ -582,6 +582,9 @@ mod tests {
             assert_eq!(head.functions.len(), 5);
             assert_eq!(head.currency, "ZAR");
 
+            // The same action signed in the same second has the same event id and
+            // reads as a duplicate, so let the clock move on before the retry.
+            tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
             let again = send(&fixture, &scout, &base(NumbersOp::ScorecardRefresh))
                 .await
                 .expect("second refresh");
