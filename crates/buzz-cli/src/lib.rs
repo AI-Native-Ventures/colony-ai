@@ -304,6 +304,9 @@ enum Cmd {
     /// List and revoke the tools and accounts agents can use, and record capability gaps
     #[command(subcommand)]
     Access(AccessCmd),
+    /// Propose co-founder plans for the owner to approve, and run approved plans
+    #[command(subcommand)]
+    Plans(PlansCmd),
     /// Read and record employee AI allowances and AI spend evidence
     #[command(subcommand)]
     Spend(SpendCmd),
@@ -1957,6 +1960,135 @@ pub enum GapCmd {
     Complete {
         /// Gap UUID
         gap_id: String,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum PlanStatusArg {
+    Proposed,
+    Approved,
+    Completed,
+    Rejected,
+    Cancelled,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum PlanStepStatusArg {
+    #[value(name = "in_progress", alias = "in-progress")]
+    InProgress,
+    Done,
+    Skipped,
+    Failed,
+}
+
+#[derive(Subcommand)]
+pub enum PlansCmd {
+    /// Propose a plan for the owner to approve, edit or reject. The plan is JSON
+    /// (title, summary, currency, steps with owner, cost, timing and approval
+    /// points). Only works while co-founder mode is on. Prints the new planId
+    Propose {
+        /// Path to the plan JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+    },
+    /// List plans, newest first, with each step's status
+    List {
+        /// Only plans in this status
+        #[arg(long, value_enum)]
+        status: Option<PlanStatusArg>,
+    },
+    /// Show one plan in full, including its approval record
+    Show {
+        /// Plan UUID
+        plan_id: String,
+    },
+    /// Replace the content of a plan that is still proposed (the proposer, the owner or an admin)
+    Revise {
+        /// Plan UUID
+        plan_id: String,
+        /// Path to the plan JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+    },
+    /// Move a step of an approved plan along. A step with an approval point
+    /// cannot start until the owner approved it
+    Step {
+        /// Plan UUID
+        plan_id: String,
+        /// Step id
+        step_id: String,
+        /// New status: in_progress, done, skipped or failed
+        #[arg(long, value_enum)]
+        status: PlanStepStatusArg,
+        /// Note; required when the step failed
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Ask the owner to approve a step's approval point
+    RequestApproval {
+        /// Plan UUID
+        plan_id: String,
+        /// Step id
+        step_id: String,
+        /// Note for the owner
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Approve a plan (owner or admin only; agents are refused)
+    Approve {
+        /// Plan UUID
+        plan_id: String,
+        /// Revision being approved; defaults to the current one
+        #[arg(long)]
+        revision: Option<u32>,
+        /// Note kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Reject a proposed plan (owner or admin only)
+    Reject {
+        /// Plan UUID
+        plan_id: String,
+        /// Revision being rejected; defaults to the current one
+        #[arg(long)]
+        revision: Option<u32>,
+        /// Reason kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Stop a plan (the proposer, the owner or an admin)
+    Cancel {
+        /// Plan UUID
+        plan_id: String,
+        /// Reason
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Approve a step's approval point (owner or admin only)
+    ApproveStep {
+        /// Plan UUID
+        plan_id: String,
+        /// Step id
+        step_id: String,
+        /// Note kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Reject a step's approval point; the step is skipped (owner or admin only)
+    RejectStep {
+        /// Plan UUID
+        plan_id: String,
+        /// Step id
+        step_id: String,
+        /// Reason kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Print the approval record: who approved or rejected what, and when
+    Approvals {
+        /// Only this plan
+        #[arg(long)]
+        plan: Option<String>,
     },
 }
 
@@ -3646,6 +3778,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Cofounder(sub) => commands::cofounder::dispatch(sub, &client).await,
         Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
         Cmd::Access(sub) => commands::access::dispatch(sub, &client).await,
+        Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
@@ -3844,6 +3977,7 @@ mod tests {
             "pack",
             "patches",
             "permissions",
+            "plans",
             "pr",
             "projects",
             "reactions",

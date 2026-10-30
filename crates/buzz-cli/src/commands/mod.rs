@@ -25,6 +25,7 @@ pub mod notes;
 pub mod pack;
 pub mod patches;
 pub mod permissions;
+pub mod plans;
 pub mod pr;
 pub mod project_channel;
 pub mod projects;

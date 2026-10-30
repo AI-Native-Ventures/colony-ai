@@ -222,7 +222,7 @@ pub(super) async fn cofounder_enabled(
     Ok(head.settings.enabled)
 }
 
-async fn current_cofounder_head(
+pub(super) async fn current_cofounder_head(
     state: &AppState,
     community_id: CommunityId,
     d_tag: &str,

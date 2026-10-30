@@ -8,6 +8,7 @@ import type {
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
+  MockPlan,
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
@@ -641,6 +642,7 @@ type MockBridgeOptions = {
   companyWorkerRuns?: MockWorkerRun[];
   /** Access list, capability gap and slot hire records, signed as the relay. */
   companyAccessRecords?: MockCompanyAccessRecord[];
+  companyPlans?: MockPlan[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single

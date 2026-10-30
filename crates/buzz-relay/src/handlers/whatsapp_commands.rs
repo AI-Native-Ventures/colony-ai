@@ -254,7 +254,7 @@ async fn handle_batch(
 ) -> Result<IngestResult, IngestError> {
     if !access.can_send() {
         return Err(restricted(
-            "only the owner, admins and Outreach members can prepare batches",
+            "only the owner, admins, their agents and Outreach members can prepare batches",
         ));
     }
     let command: BatchCommand = parse(event)?;
@@ -699,7 +699,7 @@ async fn handle_send(
 ) -> Result<IngestResult, IngestError> {
     if !access.can_send() {
         return Err(restricted(
-            "only the owner, admins and Outreach members can send",
+            "only the owner, admins, their agents and Outreach members can send",
         ));
     }
     let command: SendRequestCommand = parse(event)?;
@@ -746,7 +746,7 @@ async fn handle_settings(
     if proposing_only {
         if !access.can_send() {
             return Err(restricted(
-                "only the owner, admins and Outreach members can propose a title",
+                "only the owner, admins, their agents and Outreach members can propose a title",
             ));
         }
     } else if !access.is_owner_admin() {
