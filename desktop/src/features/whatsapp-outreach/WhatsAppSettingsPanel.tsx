@@ -649,14 +649,24 @@ export function WhatsAppSettingsPanel() {
               { id: "wa-sending", label: "Sending" },
               { id: "wa-templates", label: "Templates" },
             ].map((item) => (
-              <a
+              <button
                 aria-current={activeSection === item.id ? "page" : undefined}
-                href={`#${item.id}`}
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => {
+                  setActiveSection(item.id);
+                  const section = document.getElementById(item.id);
+                  if (!section) return;
+                  const behavior = window.matchMedia(
+                    "(prefers-reduced-motion: reduce)",
+                  ).matches
+                    ? "instant"
+                    : "smooth";
+                  section.scrollIntoView({ behavior, block: "start" });
+                }}
+                type="button"
               >
                 {item.label}
-              </a>
+              </button>
             ))}
           </nav>
 

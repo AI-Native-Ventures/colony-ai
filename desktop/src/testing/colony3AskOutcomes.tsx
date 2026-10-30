@@ -302,15 +302,15 @@ function OutcomesSheet() {
               canAnswer={sample.canAnswer ?? false}
               canceller={null}
               conversationLink={
-                <a className="colony-outcome-link" href="#conversation">
+                <button className="colony-outcome-link" type="button">
                   Open conversation
-                </a>
+                </button>
               }
               deniedMessage={sample.deniedMessage ?? ""}
               detailLink={
-                <a className="colony-outcome-button" href="#decision">
+                <button className="colony-outcome-button" type="button">
                   Open decision
-                </a>
+                </button>
               }
               head={head}
               isOverdue={sample.overdue ?? false}
