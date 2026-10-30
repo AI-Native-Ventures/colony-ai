@@ -188,7 +188,6 @@ test("a command without an injected publisher publishes through the relay client
       whatsappCommandKinds.decision,
       { v: 1, batchId: "batch-id", decision: "approve" },
       {
-
         signer: async (event) => ({
           id: "id",
           pubkey: "pubkey",
