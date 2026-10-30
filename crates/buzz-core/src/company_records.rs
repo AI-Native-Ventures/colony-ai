@@ -99,6 +99,8 @@ pub enum CompanyCommand {
     CofounderAction(crate::company_cofounder::CofounderAction),
     /// Company function slot change (kind 47061).
     FunctionAction(crate::company_functions::FunctionAction),
+    /// Access list, capability gap or slot hire write (kind 47066).
+    AccessAction(crate::company_access::AccessAction),
 }
 
 /// Storage location for a secret value. The value is never part of a company record.
@@ -1609,6 +1611,10 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_functions::FunctionAction>(content)
                 .map(CompanyCommand::FunctionAction)
         }
+        crate::kind::KIND_COMPANY_ACCESS_ACTION => {
+            serde_json::from_str::<crate::company_access::AccessAction>(content)
+                .map(CompanyCommand::AccessAction)
+        }
         crate::kind::KIND_EMPLOYEE_AI_ALLOWANCE_ACTION => {
             serde_json::from_str::<crate::company_spend::EmployeeAllowanceAction>(content)
                 .map(CompanyCommand::EmployeeAllowanceAction)
@@ -1634,6 +1640,7 @@ pub fn parse_company_command(
         CompanyCommand::LessonAction(value) => value.schema_version,
         CompanyCommand::CofounderAction(value) => value.schema_version,
         CompanyCommand::FunctionAction(value) => value.schema_version,
+        CompanyCommand::AccessAction(value) => value.schema_version,
         CompanyCommand::EmployeeAllowanceAction(value) => value.schema_version,
         CompanyCommand::AiSpendRecordAction(value) => value.schema_version,
     };

@@ -48,5 +48,13 @@ export function AgentHarnessGlyph({
       </svg>
     );
   }
-  return <RuntimeIcon className="shrink-0" runtime={runtime} />;
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex shrink-0"
+      style={{ height: size, width: size }}
+    >
+      <RuntimeIcon className="h-full w-full" runtime={runtime} />
+    </span>
+  );
 }

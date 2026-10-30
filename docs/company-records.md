@@ -50,6 +50,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30671 | Function slot head | Relay signed, replaceable | Co-founder mode |
 | 30672 | Worker run head | Relay signed, replaceable | Worker runs |
 | 30673 | Plan head | Relay signed, replaceable | Co-founder plans |
+| 30676 | Access, capability gap and slot hire head | Relay signed, replaceable | Co-founder mode |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -69,6 +70,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47061 | Function slot action | Brokered | Co-founder mode |
 | 47062 | Worker run action | Brokered | Worker runs |
 | 47063 | Plan action | Brokered | Co-founder plans |
+| 47066 | Access, capability gap and slot hire action | Brokered | Co-founder mode |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1176,6 +1178,68 @@ The head keeps an append-only approval record (`approvals`, at most 200):
 `actionEventId`. It answers who approved what, and when.
 
 CLI: `colony plans propose|list|show|revise|step|request-approval|approve|reject|cancel|approve-step|reject-step|approvals`.
+## Access list, capability gaps and slot hires
+
+One head kind, 30676, and one action kind, 47066, carry three community-wide
+record families (no h tag), told apart by d-tag. They are new records, so a
+desktop that predates them keeps loading every older list. No key was added to
+an existing record, including the hire proposal.
+
+| d-tag | Record | Head content |
+| --- | --- | --- |
+| `company:access:<id>` | One tool or account Scout and agents can use | `AccessHead` |
+| `company:capgap:<gap uuid>` | A capability gap and its plan | `CapabilityGapHead` |
+| `company:slot-hire:<hire uuid>` | The function slot a hire proposal is for | `SlotHireHead` |
+
+A kind 47066 action carries `schemaVersion`, `op`, the ids and payload that op
+needs (anything else is refused) and `expectedHeadEventId`. The d-tag is the
+record the op changes (the gap, for `gap_complete`).
+
+| `op` | Who | Effect |
+| --- | --- | --- |
+| `grant` | owner or admin | access entry becomes `active` |
+| `revoke` | owner or admin | access entry becomes `revoked`; takes effect at once |
+| `gap_propose` | any member or agent, co-founder mode on | gap `proposed` |
+| `gap_approve` | owner or admin | gap `approved`, the exact chosen cost is recorded |
+| `gap_decline` | owner or admin | gap `declined` |
+| `gap_done` | owner or admin | gap `human_done` (the human step was done) |
+| `gap_complete` | the proposer, owner or admin | gap `completed` and the access entry is created `active` in the same write |
+| `slot_hire_set` | the hire's proposer, owner or admin | records the function the hire is for |
+
+**New access only through the gap flow.** An agent can never create an access
+entry: `grant` is owner or admin only, and `gap_complete` needs the owner's
+approval of the stated cost and the human step. A gap carries up to five
+`options`, each with its stated cost and whether it works. The pick (`chosen`)
+must be an option that works and must be the cheapest that works, otherwise the
+gap must carry a `chosenReason` (the "best option" money setting). `pageUrl`,
+when present, is an `https` address the owner's built-in browser opens.
+
+**Revoke takes effect where the relay acts.** WhatsApp, Discovery and credits
+have one fixed access id each (`whatsapp`, `discovery`, `credits`), exist before
+anyone grants them and are active until revoked. While revoked: WhatsApp batches
+and sends by anyone but the owner or an admin are refused, Discovery searches by
+anyone but the owner or an admin are refused, and the credits gateway refuses
+agent AI requests. Other entries (browser logins, connected accounts) are
+informational for the relay; agents are told to treat a revoked entry as off
+limits.
+
+**Hiring into a slot.** A hire proposal cannot carry the function (older
+desktops fail on unknown keys). Instead the proposer writes `slot_hire_set`
+while the hire is waiting for a decision (`proposed` or `awaiting_founder`) and
+the slot has no lead. When the owner completes the hire, the relay fills that
+slot with the new employee in the same transaction. A slot that gained another
+active lead meanwhile keeps that lead and the hire still completes.
+
+**A slot never keeps a lead who cannot work.** A lead who is paused or
+terminated (the member position action) is removed from every slot in the same
+commit. A lead who leaves the relay, is removed by an admin or has their
+identity archived is removed from every slot straight after, and any later slot
+write or `slot_hire_set` heals a slot whose lead is no longer active.
+
+CLI: `colony access list`, `grant`, `revoke <id>`, and
+`colony access gap propose|list|show|approve|decline|done|complete`;
+`colony asks propose-hire ... --function <function>` and
+`colony functions hire-slot <hire-id> <function>` record the slot.
 
 ## Proof boundaries
 

@@ -13,6 +13,8 @@ pub mod business_records;
 pub mod channel;
 /// How long an agent's chat message may be, for the CLI guard and the harness net.
 pub mod chat_limits;
+/// Company access list, capability gaps and slot hires.
+pub mod company_access;
 /// Per-company co-founder mode settings.
 pub mod company_cofounder;
 /// Typed employee duties and schedule validation.

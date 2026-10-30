@@ -77,7 +77,10 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 15 added the document rule: send long writing with `--doc`.
 /// Version 16 added the Plans section (`colony plans`).
 /// Version 17 carries the co-founder Phase 2 integration update.
-const NEST_SKILL_VERSION: u32 = 17;
+/// Version 17 added hiring into a function slot and the Access and capability gaps
+/// section (`colony access`).
+/// Version 18 combines the two version 17 feature updates.
+const NEST_SKILL_VERSION: u32 = 18;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

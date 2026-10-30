@@ -25,6 +25,7 @@ import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
+import { findWhatsAppBatchCreatorChannel } from "./whatsappBatchNavigation";
 import "./whatsappOutreach.css";
 
 function formatTime(value: string | null): string | null {
@@ -331,20 +332,10 @@ export function WhatsAppBatchScreen({
   const currentPubkey = identityQuery.data?.pubkey;
   const scoutChannel = React.useMemo(() => {
     if (!batch) return null;
-    const createdBy = batch.createdBy.toLocaleLowerCase();
-    const self = currentPubkey?.toLocaleLowerCase();
-    return (
-      (channelsQuery.data ?? []).find(
-        (channel) =>
-          channel.channelType === "dm" &&
-          channel.participantPubkeys.some(
-            (pubkey) => pubkey.toLocaleLowerCase() === createdBy,
-          ) &&
-          (!self ||
-            channel.participantPubkeys.some(
-              (pubkey) => pubkey.toLocaleLowerCase() === self,
-            )),
-      ) ?? null
+    return findWhatsAppBatchCreatorChannel(
+      channelsQuery.data ?? [],
+      batch.createdBy,
+      currentPubkey,
     );
   }, [batch, channelsQuery.data, currentPubkey]);
   const sendMessage = useSendMessageMutation(scoutChannel, identityQuery.data);
