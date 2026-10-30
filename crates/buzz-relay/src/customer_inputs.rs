@@ -275,7 +275,7 @@ impl CustomerReads {
     /// has one, or `None` when the party has neither a prospect nor a client record.
     pub fn source_for(&self, party_id: &str) -> Option<CustomerSource> {
         let mut source = self.facts.source_for(party_id)?;
-        source.whatsapp = self.whatsapp_for(&source);
+        source.whatsapp = Some(self.whatsapp_for(&source)?);
         Some(source)
     }
 
