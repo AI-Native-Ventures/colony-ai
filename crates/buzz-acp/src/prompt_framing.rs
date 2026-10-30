@@ -342,6 +342,21 @@ mod tests {
     }
 
     #[test]
+    fn base_prompt_tells_employees_to_start_a_real_worker_run() {
+        for current in [
+            "start a real worker run with `colony workers spawn",
+            "Do not do that work yourself and then say a worker did it",
+            "The run holds the full output, its status and its cost",
+            "never paste the output into chat",
+        ] {
+            assert!(
+                DEFAULT_BASE_PROMPT.contains(current),
+                "base prompt is missing the worker rule: {current}"
+            );
+        }
+    }
+
+    #[test]
     fn semantic_section_attributes_do_not_mutate_body() {
         assert_eq!(
             semantic_section_with_attributes(
