@@ -470,6 +470,9 @@ pub(crate) async fn reconcile_function_slots(
     state: &Arc<AppState>,
     actor_pubkey: &str,
 ) -> Result<(), IngestError> {
+    if actor_pubkey.len() == 64 {
+        return Ok(());
+    }
     let community_id = tenant.community();
     for function in CompanyFunction::ALL {
         let Some(stored) = current_function_head(state, community_id, function).await? else {
