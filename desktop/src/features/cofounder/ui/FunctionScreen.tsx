@@ -12,6 +12,7 @@ import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
 import { WorkerList } from "./WorkerList";
+import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
 
 type ProfileLookup = Record<
   string,
@@ -315,6 +316,40 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
       : "Scout";
   const detail = FUNCTION_DETAILS[functionId];
 
+  if (settingsQuery.isPending) {
+    return (
+      <TeamPage testId="cofounder-function-screen" title={detail.name}>
+        <p
+          aria-live="polite"
+          className="text-sm text-muted-foreground"
+          role="status"
+        >
+          Checking co-founder mode.
+        </p>
+      </TeamPage>
+    );
+  }
+
+  if (settingsQuery.isError) {
+    return (
+      <TeamPage testId="cofounder-function-screen" title={detail.name}>
+        <div className="space-y-3" role="alert">
+          <TeamPageTitle>{detail.name}</TeamPageTitle>
+          <p className="text-sm text-destructive">
+            Co-founder mode could not be verified.
+          </p>
+          <button
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={() => void settingsQuery.refetch()}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      </TeamPage>
+    );
+  }
+
   if (!settingsQuery.data?.settings.enabled) {
     return (
       <TeamPage testId="cofounder-function-screen" title={detail.name}>
@@ -333,6 +368,10 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
         </div>
       </TeamPage>
     );
+  }
+
+  if (functionId === "operations") {
+    return <OperationsPlaybookScreen />;
   }
 
   return (

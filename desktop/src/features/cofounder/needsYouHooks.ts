@@ -73,5 +73,7 @@ export function useNeedsYouQuery() {
     model,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
     error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
+    refetch: () =>
+      Promise.all([needsMe.refetch(), plans.refetch(), playbooks.refetch()]),
   };
 }
