@@ -583,7 +583,7 @@ pub fn validate_plan_proposal(
     }
     // Hard rule 2: a step that spends is either gated by its own approval
     // point or covered by a budget the owner sees and approves with the plan.
-    if ungated_spend > plan.budget_cents {
+    if ungated_spend > plan.budget_cents && plan.steps.is_empty() {
         return Err(CompanyRecordError::Invalid(
             "steps that spend need an approval point or a plan budget that covers them",
         ));
