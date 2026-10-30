@@ -318,6 +318,8 @@ async fn handle_ask_response(
     }
     validate_ask_response(&head.ask, &response)
         .map_err(|error| invalid(format!("ask response: {error}")))?;
+    let approved_ask_id = (response.outcome == buzz_core::company_records::AskOutcome::Approved)
+        .then_some(response.ask_id);
 
     let resolver = AskResolver {
         pubkey: &actor.pubkey,
@@ -441,7 +443,7 @@ async fn handle_ask_response(
     head.cancellation = None;
     head.source_action_event_id = event.id.to_hex();
     let head_event = relay_ask_head_event(&head, channel_id, &d_tag, Some(&current), state)?;
-    persist_ask_command(
+    let result = persist_ask_command(
         tenant,
         state,
         AskCommandWrite {
@@ -460,7 +462,19 @@ async fn handle_ask_response(
             allowance_head,
         },
     )
-    .await
+    .await?;
+    if let Some(ask_id) = approved_ask_id {
+        // Scout carries on with the approved step.
+        crate::cofounder_wake::enqueue(
+            state,
+            tenant.community(),
+            crate::cofounder_wake::WakeReason::ApprovalGiven,
+            &format!("approval:{ask_id}"),
+            "",
+        )
+        .await;
+    }
+    Ok(result)
 }
 
 struct AskCommandWrite<'a> {

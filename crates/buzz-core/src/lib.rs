@@ -15,6 +15,8 @@ pub mod channel;
 pub mod chat_limits;
 /// Company access list, capability gaps and slot hires.
 pub mod company_access;
+/// The business brief Scout plays back and the owner confirms.
+pub mod company_brief;
 /// Per-company co-founder mode settings.
 pub mod company_cofounder;
 /// Typed employee duties and schedule validation.
@@ -27,6 +29,8 @@ pub mod company_functions;
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
+/// Co-founder onboarding progress (questions, answers, company map proposal).
+pub mod company_onboarding;
 /// Co-founder plans: typed proposals, step state and approval records.
 pub mod company_plans;
 /// Typed content and validation for company records (goals and asks).

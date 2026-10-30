@@ -10,6 +10,8 @@ mod rejection;
 pub mod api;
 /// WebSocket audio relay for huddle voice channels.
 pub mod audio;
+/// Wakes for Scout in co-founder mode: daily start and event wakes.
+pub mod cofounder_wake;
 /// Relay configuration from environment variables.
 pub mod config;
 /// Runtime conformance harness — abstract trace emission at the

@@ -51,6 +51,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30672 | Worker run head | Relay signed, replaceable | Worker runs |
 | 30673 | Plan head | Relay signed, replaceable | Co-founder plans |
 | 30676 | Access, capability gap and slot hire head | Relay signed, replaceable | Co-founder mode |
+| 30674 | Business brief head | Relay signed, replaceable | Co-founder onboarding |
+| 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -71,6 +73,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47062 | Worker run action | Brokered | Worker runs |
 | 47063 | Plan action | Brokered | Co-founder plans |
 | 47066 | Access, capability gap and slot hire action | Brokered | Co-founder mode |
+| 47064 | Business brief action | Brokered | Co-founder onboarding |
+| 47065 | Co-founder onboarding action | Brokered | Co-founder onboarding |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1094,6 +1098,114 @@ broken avatar.
 
 CLI: `colony functions list`, `get <function>`, `assign <function> --lead
 <pubkey>`, `cover <function>` and `clear <function>`.
+## Business brief
+
+What the company sells, to whom, at what price and how it talks. Scout reads
+what Colony already knows and plays the brief back; the owner confirms or
+corrects it. One community-wide record, no h tag, d-tag `company:brief`, relay
+signed kind 30674 head. A company with no head has no brief yet.
+
+The head holds `confirmed` (what the owner confirmed or wrote) and `pending` (a
+revision Scout proposed that the owner has not decided on), each with
+`whatYouSell`, `whoBuys`, `howYouTalk`, optional `prices` (absent means Scout
+found none) and up to eight `sources`. It also carries `revision`,
+`confirmedByPubkey`, `confirmedAt`, `updatedByPubkey` and `updatedAt` (Unix
+seconds). Every text is 1 to 600 characters.
+
+A member-signed kind 47064 action carries `schemaVersion`, `kind`, `content` and
+`expectedHeadEventId`:
+
+| `kind` | `content` | Effect | Who |
+| --- | --- | --- | --- |
+| `propose` | the brief | sets `pending`, `confirmed` is untouched | a managed agent, only while co-founder mode is on, or an owner or admin |
+| `confirm` | none | promotes `pending` to `confirmed` (refused when nothing is pending) | owner or admin |
+| `edit` | the brief | sets `confirmed` and drops `pending` | owner or admin, even while the mode is off |
+| `discard` | none | drops `pending` | owner or admin |
+
+A plain member is refused, and an agent that tries `confirm`, `edit` or
+`discard` is refused with `only the owner or an admin can confirm, edit or
+discard the business brief`. While co-founder mode is off an agent proposal is
+refused with `co-founder mode is off for this company`. A stale
+`expectedHeadEventId` is a write conflict (CLI exit code 5).
+
+CLI: `colony brief get`, `propose`, `confirm`, `edit` and `discard`.
+
+## Co-founder onboarding
+
+Where onboarding stands when co-founder mode is switched on: which steps are
+done, the one open question, the accounts Scout asked the owner to connect and
+the proposed company map. One community-wide record, no h tag, d-tag
+`company:onboarding`, relay signed kind 30675 head. The answers themselves live
+in their own records: the brief in `company:brief` and the money setting and
+approval switches in `company:cofounder`.
+
+The head carries `status` (`in_progress` or `complete`), `leadPubkey` (Scout,
+the agent that wakes go to), all five `steps` in order (`brief`, `money`,
+`approvals`, `accounts`, `map`, each `todo`, `asked`, `done` or `skipped`), the
+single open `question`, `accounts`, the proposed `map` (five entries in function
+order, each `scout`, `empty` or `existing_agent` with a `leadPubkey`, plus
+`firstFunction` and `approved`), `startedAt`, `resumedAt`, `resumeCount`,
+`completedAt`, `updatedByPubkey` and `updatedAt`. Optional keys are absent, not
+null.
+
+A member-signed kind 47065 action carries `schemaVersion`, `kind`,
+`expectedHeadEventId` and only the keys its kind needs:
+
+| `kind` | Needs | Effect | Who |
+| --- | --- | --- | --- |
+| `start` | an owner or admin also sends `leadPubkey` | creates the head, or resumes it without losing progress | agent, or owner or admin, only while the mode is on |
+| `ask` | `step`, `text` (at most 200 characters), `account` on the accounts step | opens ONE question; refused while another is open or the step is answered | agent, only while the mode is on |
+| `withdraw` | nothing | takes the open question back | agent |
+| `propose_map` | `map` | needs brief, money and approvals settled and no open question | agent |
+| `answer` | `step`, optional `skipped`, `moneyPreference` or `approvalSwitches` | settles the open question's step | owner or admin |
+| `approve_map`, `reject_map` | nothing | records the owner's decision on the proposed map | owner or admin |
+| `complete` | nothing | needs brief, money, approvals and map settled and no open question | agent |
+
+An `answer` is checked against saved records the relay reads itself. The brief
+answer needs a confirmed brief. The money and approvals answers must equal the
+co-founder settings that are already saved, so the owner saves the setting
+first (action 47060) and then answers; every prefix of those two writes is
+consistent and a retry is safe. `approve_map` records the decision only; slots
+are filled by the function slot action. A lead given to `start` must be a managed
+agent of the company.
+
+Switching co-founder mode off and on does not restart onboarding: `start` on an
+existing head only raises `resumeCount` and sets `resumedAt`; steps, answers and
+a `complete` status stay. While the mode is off Scout's actions are refused
+(`co-founder mode is off for this company`), while the owner's `answer` and map
+decisions are always accepted.
+
+CLI: `colony onboarding get`, `start`, `ask`, `withdraw`, `propose-map`,
+`complete`, `answer`, `approve-map` and `reject-map`.
+
+## Wakes for Scout
+
+Scout moves work forward without being mentioned. The relay queues a wake in the
+`cofounder_wakes` table for: co-founder mode switched on (`mode_on`), a daily
+start (`daily_start`, from 06:00 UTC, 08:00 in Johannesburg), a WhatsApp reply
+(`inbound_reply`), a worker run that finished or failed (`worker_finished`), an
+approval given (`approval_given`) and a work item due within a day
+(`deadline_near`). A wake is not a record and is not readable through the relay.
+
+- **Off does nothing.** Nothing is queued while co-founder mode is off, and a wake
+  queued before it went off is closed unsent.
+- **Deduplicated.** Each wake has a key (`daily:<date>`, `worker:<id>`,
+  `approval:<ask id>`, `reply:<message id>`, `deadline:<work item>:<due time>`,
+  `mode_on:<head event id>`) and a key queues once, ever.
+- **No storms.** A worker turns all pending wakes of a company into ONE
+  relay-signed message in the direct message between Scout and its owner, at most
+  every five minutes and listing at most ten reasons.
+- **Bounded.** A failed delivery backs off (1, 2, 4 ... minutes, at most an hour)
+  and ends after eight attempts. A wake older than a day is closed as stale.
+- **Safe text.** A wake carries a reason and ids only, never a contact's name or
+  message, so a stranger cannot put instructions in front of Scout through it.
+
+Scout is the `leadPubkey` of the onboarding record, or the one active Chief of
+Staff on the team while onboarding has not started. The message tags `p` for the
+owner and Scout, `buzz:workflow`, `buzz:workflow-owner`, `buzz:workflow-mention`
+(the same provenance a scheduled duty carries) and `buzz:cofounder-wake` with the
+reasons, so a client can show it as a quiet system line.
+
 ## Worker runs
 
 A worker run is a one-shot, tool-less model call an employee starts for
