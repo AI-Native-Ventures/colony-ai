@@ -2731,7 +2731,10 @@ mod tests {
         assert_eq!(d_tag, format!("customer:{}", party()));
         assert_eq!(parse_customer_d_tag(&d_tag).expect("party"), party());
         assert!(parse_customer_d_tag("company:scorecard").is_err());
-        assert!(customer_d_tag(&party().to_uppercase()).is_err());
+        // A party id with letters in it must be lowercase.
+        let lettered = id(0xabc).hyphenated().to_string();
+        customer_d_tag(&lettered).expect("lowercase is accepted");
+        assert!(customer_d_tag(&lettered.to_uppercase()).is_err());
 
         let source = plane_tree_source();
         let head = compute_customer_record(&source, &ManualState::default(), 10_000, SCOUT, None);

@@ -259,7 +259,8 @@ async fn load_one(
     party_id: &str,
 ) -> Result<Option<(Event, CustomerRecordHead)>, CliError> {
     let d_tag = customer_d_tag(party_id).map_err(|error| CliError::Usage(error.to_string()))?;
-    let events = query_company_heads(client, KIND_CUSTOMER_HEAD, &[d_tag.clone()]).await?;
+    let events =
+        query_company_heads(client, KIND_CUSTOMER_HEAD, std::slice::from_ref(&d_tag)).await?;
     let relay_self = relay_self(client).await?;
     let Some(event) = events.into_iter().next() else {
         return Ok(None);
