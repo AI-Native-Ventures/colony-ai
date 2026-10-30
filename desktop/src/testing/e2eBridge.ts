@@ -17,6 +17,7 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
+import type { CofounderPhase2Fixture } from "@/features/cofounder/cofounderPhase2Model";
 
 import type {
   ObservedUnreadProjection,
@@ -990,6 +991,8 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
+    /** Mock-only Phase 2 view models used before backend record shapes land. */
+    cofounderPhase2?: CofounderPhase2Fixture;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
