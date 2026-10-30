@@ -97,9 +97,7 @@ pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
         });
     }
     let new_chat = !open;
-    if new_chat && !ctx.is_owner_admin {
-        return Err("new chats need an approved batch".into());
-    }
+
     Ok(SendPlan {
         kind: "template",
         new_chat,
