@@ -422,26 +422,6 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
     );
   }
 
-  if (!enabled) {
-    return (
-      <TeamPage testId="cofounder-function-screen" title={detail.name}>
-        <div className="space-y-3">
-          <TeamPageTitle>{detail.name}</TeamPageTitle>
-          <p className="text-sm text-muted-foreground">
-            Co-founder mode is off for {activeCommunity?.name ?? "this company"}
-            .
-          </p>
-          <Link
-            className="inline-flex items-center rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted"
-            to="/settings"
-          >
-            Open settings
-          </Link>
-        </div>
-      </TeamPage>
-    );
-  }
-
   if (functionId === "operations") {
     return (
       <div data-testid="cofounder-function-screen">
