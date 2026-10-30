@@ -314,6 +314,7 @@ const fixture = {
       paused: false,
       pauseReason: null,
       unanswered: false,
+      awaitingApproval: true,
     },
     {
       waId: LAVENDER_HILL_WA_ID,
@@ -552,6 +553,14 @@ const fixture = {
   releaseConnect: undefined as (() => void) | undefined,
 };
 
+const secondPendingBatch = {
+  ...fixture.batch,
+  batchId: "e2e-whatsapp-batch-second",
+  createdAt: "2026-10-29T09:46:00+02:00",
+  rows: fixture.batch.rows.slice(1, 2).map((row, idx) => ({ ...row, idx })),
+  counts: { total: 1, ready: 1, sent: 0, failed: 0, dropped: 0 },
+};
+
 export async function installWhatsAppMockBridge(
   page: Page,
   theme: WhatsAppProofTheme = "light",
@@ -623,6 +632,7 @@ export async function installWhatsAppMockBridge(
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
       state.batch.status = approvedBatch || leadsBatch ? "approved" : "pending";
+      state.secondPendingBatch.status = state.batch.status;
       state.batch.decidedBy =
         approvedBatch || leadsBatch ? "deadbeef".repeat(8) : null;
       state.batch.decidedAt =
@@ -746,29 +756,33 @@ export async function installWhatsAppMockBridge(
               return { contacts: clone(state.contacts) };
             case "batches": {
               const requestedState = body.state;
-              const includeBatch =
-                (requestedState === undefined ||
-                  requestedState === state.batch.status) &&
-                state.batch.status !== "rejected" &&
-                state.batch.status !== "completed";
+              const batches = [state.batch, state.secondPendingBatch]
+                .filter(
+                  (batch) =>
+                    (requestedState === undefined ||
+                      requestedState === batch.status) &&
+                    batch.status !== "rejected" &&
+                    batch.status !== "completed",
+                )
+                .map((batch) => ({
+                  batchId: batch.batchId,
+                  status: batch.status,
+                  createdBy: batch.createdBy,
+                  template: batch.template,
+                  language: batch.language,
+                  rows: batch.counts,
+                  createdAt: batch.createdAt,
+                }));
               return {
-                batches: includeBatch
-                  ? [
-                      {
-                        batchId: state.batch.batchId,
-                        status: state.batch.status,
-                        createdBy: state.batch.createdBy,
-                        template: state.batch.template,
-                        language: state.batch.language,
-                        rows: state.batch.counts,
-                        createdAt: state.batch.createdAt,
-                      },
-                    ]
-                  : [],
+                batches,
               };
             }
             case "batch":
-              return clone(state.batch);
+              return clone(
+                [state.batch, state.secondPendingBatch].find(
+                  (batch) => batch.batchId === body.batchId,
+                ) ?? state.batch,
+              );
             case "drafts":
               return {
                 drafts: clone(
@@ -873,6 +887,7 @@ export async function installWhatsAppMockBridge(
       selfPubkey: E2E_SELF_PUBKEY,
       templates,
       visualBatch,
+      secondPendingBatch,
       visualLeadBatchIds: [
         REFERENCE_PROSPECT_IDS["marigold-house"],
         REFERENCE_PROSPECT_IDS["melville-hill-cottages"],
