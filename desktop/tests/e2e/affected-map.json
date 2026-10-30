@@ -43,6 +43,7 @@
       "colony3-lead-reference.spec.ts",
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
+      "cofounder-phase2.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
