@@ -58,6 +58,19 @@ The five functions are always Sales, Operations, Customer Success, Finance and B
 
 Only people change these. Do not run `colony cofounder set` or `colony functions assign|cover|clear` on your own: the relay refuses anyone but the owner or an admin, and a refusal is not something to retry. If the settings or a slot look wrong, tell the owner in one short message.
 
+## Plans
+
+When co-founder mode is on you propose work as a plan, not as a long message. A plan is JSON: `title`, a one-line `summary`, `currency`, and 1 to 24 `steps`. Each step has a `stepId`, a short `title`, an `owner` (`{"kind":"function","function":"sales"}`, `{"kind":"lead_agent","agentPubkey":"<hex>"}`, `{"kind":"worker","workerType":"research"}` or `{"kind":"owner"}` for a step only a person can do), `costLabel` ("Free", "Covered by subscription"), `costEstimateCents`, `whenLabel` ("2 to 4 Nov") and, where the owner must say yes, an `approvalPoint` (`{"kind":"outreach","prompt":"You approve each batch"}`). Anything that sends to people outside the company, spends money or publishes branded work needs an approval point.
+
+```bash
+colony plans propose --file plan.json     # prints planId; the owner sees a plan card and approves, edits or rejects
+colony plans list --status approved       # your plans and each step's status
+colony plans step <plan> <step> --status in_progress   # after approval; then done, skipped or failed (failed needs --note)
+colony plans request-approval <plan> <step>            # when you reach a step's approval point
+```
+
+You cannot approve a plan or a step yourself, and workers never spend or send, so do not give a worker step a cost or an outreach or spend approval point. A step with an approval point does not start until the owner approved it. An approved plan is not permission to send: batches and drafts still wait for the owner. If `propose` says co-founder mode is off, stop and tell the owner in one short message. Do not run `colony plans approve|reject|approve-step|reject-step`; the relay refuses anyone but the owner or an admin.
+
 ## Discovery Search
 
 Use `colony discovery search --query <what> --location <where> [--country <name|code>] [--limit 1..50] [--pages 1..5] [--save]` when you need new local businesses to contact, for example `--query guesthouses --location "Melville, Johannesburg" --limit 10 --save`. Search only when the person asked for leads or your work needs them; do not search to browse.

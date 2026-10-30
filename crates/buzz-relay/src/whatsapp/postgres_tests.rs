@@ -890,6 +890,139 @@ async fn agent_messages_are_drafts_the_owner_approves_edits_or_rejects() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn an_outreach_agent_cannot_open_a_new_chat_outside_an_approved_batch() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    let opener = json!({
+        "v": 1,
+        "requestId": Uuid::new_v4().to_string(),
+        "to": "+27821230021",
+        "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+    });
+
+    // GUARD: `check_send` refuses a template to a new chat unless the sender is an owner or admin.
+    let refusal = rejection(fx.command(&agent, KIND_WHATSAPP_SEND_REQUEST, opener).await);
+    assert!(
+        refusal.contains("new chats need an approved batch"),
+        "{refusal}"
+    );
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "a refused opener never reaches Graph"
+    );
+    assert!(
+        fx.state
+            .db
+            .whatsapp_list_drafts(fx.community(), 50)
+            .await
+            .expect("drafts")
+            .is_empty(),
+        "a refused opener leaves no draft behind"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_managed_agent_with_an_admin_role_row_still_only_drafts() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    let community = fx.community();
+    let agent_bytes = agent.public_key().to_bytes();
+    let owner_bytes = fx.owner.public_key().to_bytes();
+    fx.state
+        .db
+        .ensure_user(community, &owner_bytes)
+        .await
+        .expect("owner user");
+    fx.state
+        .db
+        .ensure_user(community, &agent_bytes)
+        .await
+        .expect("agent user");
+    fx.state
+        .db
+        .set_agent_owner(community, &agent_bytes, &owner_bytes)
+        .await
+        .expect("bind the managed agent to its owner");
+    fx.state
+        .db
+        .add_member(
+            community,
+            fx.outreach_channel().await,
+            &agent_bytes,
+            MemberRole::Member,
+            Some(&owner_bytes),
+        )
+        .await
+        .expect("agent joins Outreach");
+    // The mistake being guarded: someone gives the agent an admin role row.
+    fx.state
+        .db
+        .add_relay_member(community, &agent.public_key().to_hex(), "admin", None)
+        .await
+        .expect("agent holds an admin row");
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230022", "wamid.IN22", "Hello"))
+            .await,
+        StatusCode::OK
+    );
+
+    // GUARD: `access_for` never grants OwnerAdmin to a managed agent. Without it
+    // the message is `queued` and the sender calls Graph.
+    let made = fx
+        .command(
+            &agent,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": "+27821230022", "text": "Hi Thabo"}),
+        )
+        .await;
+    let message = match made {
+        Ok(result) => result.message,
+        Err(error) => panic!("agent send failed: {error:?}"),
+    };
+    assert!(message.starts_with("draft pending approval"), "{message}");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "an agent message waits for the owner even with an admin row"
+    );
+    // And it cannot approve its own draft.
+    let drafts = fx
+        .state
+        .db
+        .whatsapp_list_drafts(fx.community(), 50)
+        .await
+        .expect("drafts");
+    assert_eq!(drafts.len(), 1);
+    let own_approval = rejection(
+        fx.command(
+            &agent,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({"v": 1, "draftId": drafts[0].id.to_string(), "decision": "approve"}),
+        )
+        .await,
+    );
+    assert!(own_approval.contains("owner or an admin"), "{own_approval}");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(fx.graph.send_count(), 0);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn free_text_needs_the_window_and_never_two_messages_in_a_row() {
     let fx = fixture().await;
     let text = |to: &str, body: &str| json!({"v": 1, "requestId": Uuid::new_v4().to_string(), "to": to, "text": body});
@@ -950,7 +1083,7 @@ async fn pending_batch_never_sends_and_approved_rows_are_paced_capped_and_roll_o
             .await,
     );
     assert!(
-        refusal.contains("only the owner, admins and Outreach members"),
+        refusal.contains("only the owner, admins, their agents and Outreach members"),
         "{refusal}"
     );
 
@@ -1160,4 +1293,207 @@ async fn secrets_stay_sealed_and_out_of_every_response() {
         .expect_err("rejected token");
     assert_eq!(error.code(), "whatsapp_token_rejected");
     assert!(!error.message().contains(TOKEN));
+}
+
+/// Record `agent` as owned by `owner` through the production NIP-OA backfill, exactly as the
+/// WebSocket and HTTP auth paths do after verifying the auth tag.
+async fn own_agent(fx: &Fixture, agent: &Keys, owner: &Keys) {
+    assert!(
+        crate::api::relay_members::materialize_nip_oa_owner(
+            &fx.state,
+            &fx.tenant,
+            &agent.public_key(),
+            &owner.public_key(),
+        )
+        .await,
+        "the agent owner is recorded"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn agents_owned_by_the_owner_or_an_admin_prepare_without_channel_membership() {
+    // GUARD: `access_for` calls `whatsapp_agent_is_owned_by_admin` before the Outreach
+    // membership check. Without it the owned agent below is refused like any outsider.
+    let fx = fixture().await;
+    let scout = Keys::generate();
+    own_agent(&fx, &scout, &fx.owner).await;
+    let channel = fx.outreach_channel().await;
+    assert!(
+        !fx.state
+            .db
+            .is_member(fx.community(), channel, &scout.public_key().to_bytes())
+            .await
+            .expect("membership"),
+        "the agent is NOT in the Outreach channel"
+    );
+    assert_eq!(
+        super::access_for(&fx.state, &fx.tenant, &scout.public_key())
+            .await
+            .expect("access"),
+        super::Access::Outreach
+    );
+
+    // It prepares a batch from a DM without being in the channel.
+    let batch_id = Uuid::new_v4();
+    let created = fx
+        .command(
+            &scout,
+            KIND_WHATSAPP_BATCH,
+            batch(batch_id, &["+27820000011"]),
+        )
+        .await
+        .expect("an owned agent prepares a batch");
+    assert!(
+        created.message.starts_with("pending approval"),
+        "{}",
+        created.message
+    );
+
+    // It never approves, and nothing sends until the owner does.
+    let decision = json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"});
+    let refusal = rejection(
+        fx.command(&scout, KIND_WHATSAPP_BATCH_DECISION, decision.clone())
+            .await,
+    );
+    assert!(refusal.contains("only the owner or an admin"), "{refusal}");
+    fx.run_sender(base()).await;
+    assert_eq!(fx.graph.send_count(), 0, "a pending batch never sends");
+
+    // It may not change settings either.
+    let refusal = rejection(
+        fx.command(
+            &scout,
+            KIND_WHATSAPP_SETTINGS,
+            json!({"v": 1, "dailyNewChatCap": 45}),
+        )
+        .await,
+    );
+    assert!(
+        refusal.contains("only the owner or an admin can change WhatsApp settings"),
+        "{refusal}"
+    );
+
+    // An agent owned by an admin counts too.
+    let admin = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &admin.public_key().to_hex(),
+            "admin",
+            Some(&fx.owner.public_key().to_hex()),
+        )
+        .await
+        .expect("admin");
+    let admin_agent = Keys::generate();
+    own_agent(&fx, &admin_agent, &admin).await;
+    assert_eq!(
+        super::access_for(&fx.state, &fx.tenant, &admin_agent.public_key())
+            .await
+            .expect("access"),
+        super::Access::Outreach
+    );
+
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, decision)
+        .await
+        .expect("owner approves");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn agents_not_owned_by_an_owner_or_admin_stay_refused_whatever_they_are_called() {
+    // GUARD: the ownership join in `whatsapp_agent_is_owned_by_admin` requires the recorded
+    // owner to be a current owner or admin and ignores display names.
+    let fx = fixture().await;
+    let refused = |who: &'static str, keys: Keys| {
+        let fx = &fx;
+        async move {
+            let access = super::access_for(&fx.state, &fx.tenant, &keys.public_key())
+                .await
+                .expect("access");
+            assert_eq!(
+                access,
+                super::Access::Member,
+                "{who} must stay a plain member"
+            );
+            let reason = rejection(
+                fx.command(
+                    &keys,
+                    KIND_WHATSAPP_BATCH,
+                    batch(Uuid::new_v4(), &["+27820000012"]),
+                )
+                .await,
+            );
+            assert!(
+                reason.contains("only the owner, admins, their agents and Outreach members"),
+                "{who}: {reason}"
+            );
+        }
+    };
+
+    // An agent with no recorded owner, even when it calls itself Scout.
+    let named_scout = Keys::generate();
+    fx.state
+        .db
+        .ensure_user_for_authorization(fx.community(), &named_scout.public_key().to_bytes())
+        .await
+        .expect("user row");
+    sqlx::query("UPDATE users SET display_name = 'Scout' WHERE community_id = $1 AND pubkey = $2")
+        .bind(fx.community().as_uuid())
+        .bind(&named_scout.public_key().to_bytes()[..])
+        .execute(&fx.pool)
+        .await
+        .expect("name it Scout");
+    refused("an unowned agent named Scout", named_scout).await;
+
+    // A foreign agent owned by a plain member.
+    let member = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &member.public_key().to_hex(),
+            "member",
+            Some(&fx.owner.public_key().to_hex()),
+        )
+        .await
+        .expect("member");
+    let members_agent = Keys::generate();
+    own_agent(&fx, &members_agent, &member).await;
+    refused("an agent owned by a plain member", members_agent).await;
+
+    // An agent owned by someone who is not in the company at all.
+    let stranger = Keys::generate();
+    let strangers_agent = Keys::generate();
+    own_agent(&fx, &strangers_agent, &stranger).await;
+    refused("an agent owned by a stranger", strangers_agent).await;
+
+    // An agent loses access when its owner is demoted.
+    let admin = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &admin.public_key().to_hex(),
+            "admin",
+            Some(&fx.owner.public_key().to_hex()),
+        )
+        .await
+        .expect("admin");
+    let admins_agent = Keys::generate();
+    own_agent(&fx, &admins_agent, &admin).await;
+    assert_eq!(
+        super::access_for(&fx.state, &fx.tenant, &admins_agent.public_key())
+            .await
+            .expect("access"),
+        super::Access::Outreach
+    );
+    sqlx::query("UPDATE relay_members SET role = 'member' WHERE community_id = $1 AND pubkey = $2")
+        .bind(fx.community().as_uuid())
+        .bind(admin.public_key().to_hex())
+        .execute(&fx.pool)
+        .await
+        .expect("demote");
+    refused("an agent whose owner was demoted", admins_agent).await;
 }

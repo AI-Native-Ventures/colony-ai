@@ -339,6 +339,13 @@ function isSubmitControl(element, form) {
   return false;
 }
 
+function isSearchBox(element) {
+  return (
+    String(element?.role ?? "").toLowerCase() === "searchbox" ||
+    String(element?.inputType ?? "").toLowerCase() === "search"
+  );
+}
+
 function crossOriginAction(form, page) {
   if (!form?.action || !page?.origin) return false;
   try {
@@ -430,6 +437,16 @@ export function classifyAction({
     if (named) {
       category = named;
       add(confirm, named, "The control name indicates a consequential action");
+    }
+    // Pressing Enter in a box that is not inside a form is how chat and mail
+    // composers send. Only a search box may do it without asking.
+    if (isTyping && submit === true && form === null && !isSearchBox(element)) {
+      category ??= "enter_submit";
+      add(
+        confirm,
+        "enter_submit_no_form",
+        "Pressing Enter in a box with no form can send what was typed",
+      );
     }
     if (submitting && form) {
       const credentialForm = (form.fields ?? []).some(isCredentialField);

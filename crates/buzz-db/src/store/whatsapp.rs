@@ -409,6 +409,32 @@ fn row_to_connection(row: &PgRow) -> Result<WhatsappConnection> {
 }
 
 impl Db {
+    // ── agent ownership ────────────────────────────────────────────────────────
+
+    /// True when `agent` is an active agent whose recorded owner (`users.agent_owner_pubkey`,
+    /// written from the verified NIP-OA auth tag) is currently an owner or admin of the
+    /// company. Display names play no part; a demoted owner takes the agent's access with them.
+    pub async fn whatsapp_agent_is_owned_by_admin(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<bool> {
+        let owned = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS ( \
+                 SELECT 1 FROM users u \
+                 JOIN relay_members rm ON rm.community_id = u.community_id \
+                  AND rm.pubkey = encode(u.agent_owner_pubkey, 'hex') \
+                 WHERE u.community_id = $1 AND u.pubkey = $2 \
+                   AND u.deactivated_at IS NULL \
+                   AND rm.role IN ('owner', 'admin'))",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(owned)
+    }
+
     // ── settings ───────────────────────────────────────────────────────────────
 
     /// Read the company's settings, creating the default row on first use.

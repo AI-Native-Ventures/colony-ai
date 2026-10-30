@@ -6,6 +6,96 @@ import {
 } from "../helpers/whatsappOutreach";
 
 test.describe("WhatsApp outreach settings", () => {
+  test("labels a held-only contact as waiting, never sent", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+
+    const heldContact = page
+      .getByTestId("whatsapp-outreach")
+      .getByTestId("whatsapp-contact-27821234410");
+    await expect(heldContact).toContainText("Waiting for your approval");
+    await expect(heldContact).not.toContainText("Sent");
+  });
+
+  test("shows pending batches and opens the review from Outreach", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+
+    const outreach = page.getByTestId("whatsapp-outreach");
+    await expect(outreach).toBeVisible();
+    const pendingBatches = outreach.getByTestId("whatsapp-pending-batches");
+    await expect(pendingBatches.getByRole("heading")).toHaveText(
+      "Waiting for your approval",
+    );
+    await expect(
+      pendingBatches.getByTestId("whatsapp-pending-batch-e2e-whatsapp-batch"),
+    ).toContainText("Built a site for you");
+    await expect(
+      pendingBatches.getByTestId(/whatsapp-pending-batch-/),
+    ).toHaveCount(2);
+    const firstBatch = pendingBatches.getByTestId(
+      "whatsapp-pending-batch-e2e-whatsapp-batch",
+    );
+    await expect(firstBatch).toContainText("3 rows");
+    await expect(firstBatch).toContainText("Created by Scout");
+    await expect(firstBatch).toContainText("10:46");
+
+    await firstBatch.getByRole("button", { name: "Review" }).click();
+    await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
+    await expect(page).toHaveURL(/whatsappBatchId=e2e-whatsapp-batch/u);
+    await page.getByRole("button", { name: /Approve all/u }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+            ({ kind, body }) =>
+              kind === 47049 &&
+              body.batchId === "e2e-whatsapp-batch" &&
+              body.decision === "approve",
+          ),
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("switches settings sections without leaving the settings route", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await gotoWhatsAppScreen(page, "/settings?section=whatsapp");
+
+    const settings = page.getByTestId("whatsapp-settings");
+    await expect(settings).toBeVisible();
+    const settingsUrl = page.url();
+    const tabs = settings.getByRole("navigation", {
+      name: "WhatsApp sections",
+    });
+    for (const [label, sectionId] of [
+      ["Number", "wa-number"],
+      ["Sending", "wa-sending"],
+      ["Templates", "wa-templates"],
+    ]) {
+      await tabs.getByText(label, { exact: true }).click();
+      await expect(page).toHaveURL(settingsUrl);
+      await expect(settings).toBeVisible();
+      await expect(settings.locator(`#${sectionId}`)).toBeInViewport();
+      const activeTab = tabs.getByRole("button", { name: label });
+      await expect(activeTab).toHaveAttribute("type", "button");
+      await expect(activeTab).toHaveAttribute("aria-current", "page");
+    }
+
+    const numberTab = tabs.getByRole("button", { name: "Number" });
+    await numberTab.focus();
+    await numberTab.press("Enter");
+    await expect(page).toHaveURL(settingsUrl);
+    await expect(settings.locator("#wa-number")).toBeInViewport();
+  });
+
   test("validates connection details, clears secrets after save, and edits the new-chat cap", async ({
     page,
   }) => {
@@ -87,7 +177,9 @@ test.describe("WhatsApp outreach settings", () => {
     ).toBe(1);
 
     await expect(
-      settings.getByText("Built a site for you", { exact: true }),
+      settings
+        .getByTestId("whatsapp-template-hl_vb")
+        .getByText("Built a site for you", { exact: true }),
     ).toBeVisible();
     await expect(settings.getByText("hl_vb", { exact: true })).toBeVisible();
     await expect(settings.getByText("hl_hs_v1", { exact: true })).toHaveCount(

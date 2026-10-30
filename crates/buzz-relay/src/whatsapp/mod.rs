@@ -26,7 +26,9 @@ use crate::state::AppState;
 pub enum Access {
     /// Relay owner or admin: connect, approve, change the cap.
     OwnerAdmin,
-    /// Active member of the Outreach channel (an agent the owner added).
+    /// An agent managed by the owner or an admin (proven by the recorded agent owner, not by
+    /// name), or an active member of the Outreach channel. Prepares batches and drafts; never
+    /// approves or sends on its own.
     Outreach,
     /// Any other authenticated member: status and templates only.
     Member,
@@ -60,11 +62,30 @@ pub async fn access_for(
         .get_relay_member(tenant.community(), &pubkey.to_hex())
         .await
         .map_err(|error| format!("role lookup failed: {error}"))?;
-    if member
-        .as_ref()
-        .is_some_and(|member| member.role == "owner" || member.role == "admin")
+    // A managed agent never counts as an owner or admin, whatever role row it
+    // holds: its messages are drafts the owner approves (hard rule 1).
+    let is_managed_agent = state
+        .db
+        .get_agent_channel_policy(tenant.community(), &pubkey.to_bytes())
+        .await
+        .map_err(|error| format!("agent lookup failed: {error}"))?
+        .is_some_and(|(_, owner_pubkey)| owner_pubkey.is_some());
+    if !is_managed_agent
+        && member
+            .as_ref()
+            .is_some_and(|member| member.role == "owner" || member.role == "admin")
     {
         return Ok(Access::OwnerAdmin);
+    }
+    // An agent owned by the owner or an admin needs no channel membership, so where the
+    // owner asks from does not matter. Foreign agents have another (or no) recorded owner.
+    let owned = state
+        .db
+        .whatsapp_agent_is_owned_by_admin(tenant.community(), &pubkey.to_bytes())
+        .await
+        .map_err(|error| format!("agent owner lookup failed: {error}"))?;
+    if owned {
+        return Ok(Access::Outreach);
     }
     let settings = state
         .db

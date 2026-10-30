@@ -27,6 +27,8 @@ import {
   createBrowserPage,
   ensureBrowserHostTab,
   getBrowserPage,
+  onAgentTabOpened,
+  type AgentTabOpened,
 } from "./browserTabsStore";
 
 /**
@@ -78,6 +80,7 @@ type Running = {
   api: Pick<typeof browserBroker, "grant" | "onEvent">;
   unsubscribe: () => void;
   unsubscribeWorkArea: () => void;
+  unsubscribeTabs: () => void;
 };
 
 let running: Running | null = null;
@@ -270,6 +273,30 @@ function maybeShowAgentBrowserPage(
     openWorkArea(channelId, "browser", browserTabId(pageKey));
 }
 
+/**
+ * An agent that already has its grant opens a further tab (`browser_open` while
+ * its first page is in use). No access request precedes it, so the decision to
+ * show it is made here, with the same rule as a first page: the tab the agent
+ * drives must be the one the person watching sees, never a hidden one.
+ */
+function showOpenedAgentTab({ channelId, pageKey, openerKey }: AgentTabOpened) {
+  let agentTaskKey: string | null = null;
+  for (const [key, page] of pageByTask)
+    if (page === openerKey) agentTaskKey = key;
+  if (agentTaskKey === null) return;
+  const taskId = agentTaskKey.slice(agentTaskKey.indexOf("|") + 1);
+  const state = getWorkAreaState(channelId);
+  const decision = decideAgentBrowserPresentation({
+    viewingX: isAgentBrowserTaskInView(taskId, channelId),
+    windowVisible: isColonyWindowVisible(),
+    dockOpen: state.open,
+    personActive: isPersonActiveInWorkArea(channelId, state.activeTabId),
+    dismissedForTask: dismissedTasks.has(agentTaskKey),
+  });
+  if (decision === "show")
+    openWorkArea(channelId, "browser", browserTabId(pageKey));
+}
+
 /** Open the browser for a task and give the agent that page. */
 async function open(
   current: Running,
@@ -425,8 +452,12 @@ export function startAgentBrowserAccess({
     api,
     unsubscribe: () => {},
     unsubscribeWorkArea: () => {},
+    unsubscribeTabs: () => {},
   };
   running = current;
+  current.unsubscribeTabs = onAgentTabOpened((opened) => {
+    if (running === current && mine === generation) showOpenedAgentTab(opened);
+  });
   current.unsubscribeWorkArea = subscribeWorkArea(observeWorkAreaState);
   current.unsubscribe = api.onEvent((event) => {
     if (running !== current) return;
@@ -440,6 +471,7 @@ export function resetAgentBrowserAccess() {
   generation += 1;
   running?.unsubscribe();
   running?.unsubscribeWorkArea();
+  running?.unsubscribeTabs();
   running = null;
   pageByTask.clear();
   serving.clear();
