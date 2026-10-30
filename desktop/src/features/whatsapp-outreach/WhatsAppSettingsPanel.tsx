@@ -18,6 +18,7 @@ import {
   whatsappTemplateMetaName,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
+import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import {
   useInvalidateWhatsAppQueries,
   useWhatsAppCommand,
@@ -501,6 +502,8 @@ export function WhatsAppSettingsPanel() {
           {success}
         </div>
       ) : null}
+
+      <WhatsAppPendingBatches canManage={canManage} templates={templates} />
 
       {!status.connected ? (
         <>

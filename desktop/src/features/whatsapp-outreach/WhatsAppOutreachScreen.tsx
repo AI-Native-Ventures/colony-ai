@@ -19,6 +19,7 @@ import {
   type WhatsAppContact,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
+import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import {
   formatWhatsAppDateTime,
   whatsappInitials,
@@ -45,6 +46,7 @@ function contactStatus(contact: WhatsAppContact): string {
   if (contact.optedOut) return "Opted out";
   if (contact.unanswered) return "Replied";
   if (contact.lastInboundAt) return "Replied";
+  if (contact.awaitingApproval) return "Waiting for your approval";
   return "Sent";
 }
 
@@ -89,6 +91,7 @@ function StatusChip({ contact }: { contact: WhatsAppContact }) {
         "c3wa-contact-chip",
         status === "Opted out" && "is-opted",
         status === "Replied" && "is-replied",
+        status === "Waiting for your approval" && "is-awaiting",
       )}
     >
       {status}
@@ -300,7 +303,9 @@ export function WhatsAppOutreachScreen({
     if (activeFilter === "replied")
       return Boolean(contact.lastInboundAt) && !contact.optedOut;
     if (activeFilter === "sent")
-      return !contact.optedOut && !contact.lastInboundAt;
+      return (
+        !contact.optedOut && !contact.lastInboundAt && !contact.awaitingApproval
+      );
     if (activeFilter === "opted-out") return contact.optedOut;
     return true;
   });
@@ -535,6 +540,11 @@ export function WhatsAppOutreachScreen({
         aria-label="WhatsApp contacts"
       >
         <header className="c3wa-contact-panel-head">
+          <WhatsAppPendingBatches
+            canManage={canManage}
+            placement="outreach"
+            templates={templates}
+          />
           <div className="c3wa-outreach-title-row">
             <div>
               <h1>Outreach</h1>

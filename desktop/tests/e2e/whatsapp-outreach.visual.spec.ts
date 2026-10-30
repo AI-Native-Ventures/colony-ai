@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  JACARANDA_WA_ID,
   PLANE_TREE_LEAD_ID,
   OUTREACH_CHANNEL_ID,
   WHATSAPP_BATCH_ID,
@@ -198,6 +199,23 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
                 (element) => element.getBoundingClientRect().width,
               ),
             ).toBeGreaterThan(160);
+            await target
+              .getByRole("button", { name: "Back to WhatsApp contacts" })
+              .click();
+            const pendingBatches = target.getByTestId(
+              "whatsapp-pending-batches",
+            );
+            await expect(pendingBatches).toBeVisible();
+            await expect(
+              pendingBatches.getByRole("button", { name: "Review" }),
+            ).toHaveCount(2);
+            const heldContact = target.getByTestId(
+              `whatsapp-contact-${JACARANDA_WA_ID}`,
+            );
+            await expect(heldContact).toContainText(
+              "Waiting for your approval",
+            );
+            await expect(heldContact).not.toContainText("Sent");
           }
           if (width === 390 && screen.name === "LeadWhatsApp") {
             const whatsAppCard = target.getByRole("heading", {

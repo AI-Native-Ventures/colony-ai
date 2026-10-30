@@ -177,7 +177,9 @@ test.describe("WhatsApp outreach settings", () => {
     ).toBe(1);
 
     await expect(
-      settings.getByText("Built a site for you", { exact: true }),
+      settings
+        .getByTestId("whatsapp-template-hl_vb")
+        .getByText("Built a site for you", { exact: true }),
     ).toBeVisible();
     await expect(settings.getByText("hl_vb", { exact: true })).toBeVisible();
     await expect(settings.getByText("hl_hs_v1", { exact: true })).toHaveCount(
