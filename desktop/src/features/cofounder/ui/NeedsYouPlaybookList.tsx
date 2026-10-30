@@ -113,9 +113,7 @@ export function NeedsYouPlaybookList() {
       ) : null}
 
       {query.isPending ? (
-        <p className="ct-state" role="status">
-          Loading playbook items…
-        </p>
+        <p className="ct-state">Loading playbook items…</p>
       ) : null}
 
       {actionError ? (
@@ -168,9 +166,7 @@ export function NeedsYouPlaybookList() {
       ) : null}
 
       {items.length === 0 && !query.isPending && !query.error ? (
-        <p className="ct-state" role="status">
-          No playbook items are waiting for you.
-        </p>
+        <p className="ct-state">No playbook items are waiting for you.</p>
       ) : null}
     </section>
   );
