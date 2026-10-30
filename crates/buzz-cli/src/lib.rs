@@ -316,6 +316,9 @@ enum Cmd {
     /// Design co-founder playbooks with the owner and run one copy per client job
     #[command(subcommand)]
     Playbooks(PlaybooksCmd),
+    /// Read the scorecard per function, propose goals and write the Friday weekly review
+    #[command(subcommand)]
+    Numbers(NumbersCmd),
     /// Read and record employee AI allowances and AI spend evidence
     #[command(subcommand)]
     Spend(SpendCmd),
@@ -2227,6 +2230,122 @@ pub enum PlansCmd {
         /// Only this plan
         #[arg(long)]
         plan: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum NumbersCmd {
+    /// Print the scorecard of every function: what moved this week against the week before.
+    /// The relay counts the company's own records; nobody writes a number
+    Scorecard {
+        /// Only this function: sales, operations, customer_success, finance or brand
+        #[arg(long)]
+        function: Option<String>,
+        /// Read the last stored scorecard instead of asking the relay to recompute it
+        #[arg(long)]
+        no_refresh: bool,
+    },
+    /// Goals of a function: Scout proposes, the owner approves
+    #[command(subcommand)]
+    Goals(NumbersGoalsCmd),
+    /// The Friday weekly review: the relay's numbers, Scout's words and the owner's decisions
+    #[command(subcommand)]
+    Review(NumbersReviewCmd),
+}
+
+#[derive(Subcommand)]
+pub enum NumbersGoalsCmd {
+    /// List goals, newest first
+    List {
+        /// Only goals in this status: proposed, approved, rejected or retired
+        #[arg(long)]
+        status: Option<String>,
+        /// Only this function
+        #[arg(long)]
+        function: Option<String>,
+    },
+    /// Propose a goal for a function. A goal measures a number of its own function,
+    /// for example sales/won or finance/cash_in. Only works while co-founder mode is on
+    Propose {
+        /// Function: sales, operations, customer_success, finance or brand
+        #[arg(long)]
+        function: String,
+        /// Number: leads_found, contacted, replied, quotes, won, workers_started, workers_done,
+        /// workers_failed, plans_approved, active_clients, cash_in, invoiced, owed, worker_cost
+        /// or cost_per_win
+        #[arg(long)]
+        metric: String,
+        /// Where the number should get to (money in cents)
+        #[arg(long)]
+        target: i64,
+        /// Over which period: week (the latest seven days) or month (the month so far)
+        #[arg(long)]
+        period: String,
+        /// What the owner reads, for example "5 new clients a month"
+        #[arg(long)]
+        title: String,
+        /// Why you propose it
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Approve a proposed goal (owner or admin only; agents are refused)
+    Approve {
+        /// Goal UUID
+        goal_id: String,
+        /// Note kept with the decision
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Reject a proposed goal (owner or admin only)
+    Reject {
+        /// Goal UUID
+        goal_id: String,
+        /// Reason kept with the decision
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Stop a goal (its proposer, the owner or an admin)
+    Retire {
+        /// Goal UUID
+        goal_id: String,
+        /// Reason
+        #[arg(long)]
+        note: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum NumbersReviewCmd {
+    /// List weekly reviews, newest first
+    List,
+    /// Show one review in full: the week's numbers, wins, misses and decisions.
+    /// Prints the latest when no Friday is given
+    Show {
+        /// The Friday, YYYY-MM-DD
+        date: Option<String>,
+    },
+    /// Write the wins, misses and decisions of a review. The file is JSON with
+    /// `wins`, `misses` (up to 5 lines each) and `decisions` (up to 5, each with
+    /// decisionId, title, detail and function). The numbers are the relay's and never change
+    Write {
+        /// The Friday, YYYY-MM-DD
+        date: String,
+        /// Path to the review JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+    },
+    /// Answer one decision of a review (owner or admin only; agents are refused)
+    Decide {
+        /// The Friday, YYYY-MM-DD
+        date: String,
+        /// Decision id
+        decision_id: String,
+        /// Answer: approved, declined or deferred
+        #[arg(long)]
+        choice: String,
+        /// Note kept with the answer
+        #[arg(long)]
+        note: Option<String>,
     },
 }
 
@@ -4143,6 +4262,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Access(sub) => commands::access::dispatch(sub, &client).await,
         Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
         Cmd::Playbooks(sub) => commands::playbooks::dispatch(sub, &client).await,
+        Cmd::Numbers(sub) => commands::numbers::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
@@ -4339,6 +4459,7 @@ mod tests {
             "moderation",
             "money",
             "notes",
+            "numbers",
             "onboarding",
             "pack",
             "patches",

@@ -243,6 +243,8 @@ export const KIND_PLAN_HEAD = 30673;
 export const KIND_PLAN_ACTION = 47063;
 export const KIND_PLAYBOOK_HEAD = 30677;
 export const KIND_PLAYBOOK_ACTION = 47067;
+export const KIND_NUMBERS_HEAD = 30678;
+export const KIND_NUMBERS_ACTION = 47068;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,

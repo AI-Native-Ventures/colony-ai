@@ -11,6 +11,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 
 import { useCofounderSettingsQuery } from "./hooks";
 import { buildNeedsYou } from "./needsYou";
+import { useNumbersQuery } from "./numbersHooks";
 import { usePlansQuery } from "./planHooks";
 import { usePlaybooksQuery } from "./playbookHooks";
 
@@ -29,6 +30,7 @@ export function useNeedsYouQuery() {
   const cofounderOn = cofounder.data?.settings.enabled === true;
   const plans = usePlansQuery(cofounder.data?.exists === true);
   const playbooks = usePlaybooksQuery(cofounder.data?.exists === true);
+  const numbers = useNumbersQuery(cofounderOn && canApprove);
   const whatsappStatus = useWhatsAppStatusQuery(canApprove);
   const outreachConnected = whatsappStatus.data?.connected === true;
   const batches = useWhatsAppBatchesQuery(
@@ -52,6 +54,8 @@ export function useNeedsYouQuery() {
         playbookJobs: playbooks.data?.jobs ?? [],
         whatsappBatches: batches.data ?? [],
         whatsappDrafts: drafts.data ?? [],
+        goals: cofounderOn ? (numbers.data?.goals ?? []) : [],
+        reviews: cofounderOn ? (numbers.data?.reviews ?? []) : [],
       }),
     [
       canApprove,
@@ -61,6 +65,7 @@ export function useNeedsYouQuery() {
       playbooks.data,
       batches.data,
       drafts.data,
+      numbers.data,
     ],
   );
 

@@ -9,6 +9,8 @@ import type {
 } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 
 import { FUNCTION_DETAILS } from "./functions";
+import { METRIC_DETAILS, formatMetricValue } from "./numbersRecords";
+import type { GoalView, ReviewView } from "./numbersRecords";
 import {
   openHumanSteps,
   planTotals,
@@ -33,6 +35,8 @@ export type NeedsYouSection = "approve" | "do" | "decide";
 export type NeedsYouCategory =
   | "plan"
   | "plan_step"
+  | "goal"
+  | "review_decision"
   | "outreach"
   | "spend"
   | "taste"
@@ -63,6 +67,8 @@ export type NeedsYouSource =
   | { kind: "plan"; planId: string; stepId: string | null }
   | { kind: "playbook"; playbookId: string }
   | { kind: "playbook_job"; jobId: string; stepId: string }
+  | { kind: "goal"; goalId: string }
+  | { kind: "review_decision"; reviewDate: string; decisionId: string }
   | { kind: "ask"; askId: string; channelId: string }
   | { kind: "whatsapp_batch"; batchId: string }
   | { kind: "whatsapp_drafts"; senderPubkey: string | null };
@@ -112,6 +118,10 @@ export type NeedsYouSources = {
   whatsappBatches: readonly WhatsAppBatchSummary[];
   /** Agent drafts waiting for the owner. */
   whatsappDrafts: readonly WhatsAppDraft[];
+  /** Goals Scout proposed for the functions. Leave out for a viewer who cannot see them. */
+  goals?: readonly GoalView[];
+  /** Weekly reviews; each decision still open is a decide item. */
+  reviews?: readonly ReviewView[];
 };
 
 const APPROVE_ACTIONS: NeedsYouAction[] = [
@@ -180,6 +190,15 @@ function planSubtitle(plan: PlanView): string {
   const totals = planTotals(plan);
   if (totals.timingLabel) parts.push(totals.timingLabel);
   return parts.join(" · ");
+}
+
+const GOAL_PERIOD_LABEL = { week: "a week", month: "a month" } as const;
+
+function goalSubtitle(goal: GoalView): string {
+  const detail = METRIC_DETAILS[goal.metric];
+  const target =
+    formatMetricValue(goal.target, detail.unit, "ZAR") ?? String(goal.target);
+  return `${FUNCTION_DETAILS[goal.functionId].name} · ${detail.label} ${target} ${GOAL_PERIOD_LABEL[goal.period]}`;
 }
 
 function stepCategory(kind: PlanApprovalKind): NeedsYouCategory {
@@ -369,6 +388,57 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
             stepId: step.stepId,
           },
           actions: [{ id: "done", label: "Done", tone: "primary" }],
+        });
+      }
+    }
+    for (const goal of sources.goals ?? []) {
+      if (goal.status !== "proposed") continue;
+      items.push({
+        id: `goal:${goal.goalId}`,
+        section: "approve",
+        category: "goal",
+        title: goal.title,
+        subtitle: goalSubtitle(goal),
+        fromPubkey: goal.proposedByPubkey,
+        createdAt: goal.proposedAt,
+        decideBy: null,
+        approvalKind: null,
+        count: null,
+        details: goal.reason
+          ? [{ id: "reason", label: "Why", text: goal.reason }]
+          : [],
+        source: { kind: "goal", goalId: goal.goalId },
+        actions: [
+          { id: "approve", label: "Approve", tone: "primary" },
+          { id: "reject", label: "Reject", tone: "danger" },
+        ],
+      });
+    }
+    for (const review of sources.reviews ?? []) {
+      for (const decision of review.decisions) {
+        if (decision.state !== "open") continue;
+        items.push({
+          id: `review-decision:${review.reviewDate}:${decision.decisionId}`,
+          section: "decide",
+          category: "review_decision",
+          title: decision.title,
+          subtitle: decision.detail.trim() ? decision.detail.trim() : null,
+          fromPubkey: review.annotatedByPubkey,
+          createdAt: review.annotatedAt ?? review.createdAt,
+          decideBy: null,
+          approvalKind: null,
+          count: null,
+          details: [],
+          source: {
+            kind: "review_decision",
+            reviewDate: review.reviewDate,
+            decisionId: decision.decisionId,
+          },
+          actions: [
+            { id: "approve", label: "Yes", tone: "primary" },
+            { id: "reject", label: "No", tone: "secondary" },
+            { id: "answer", label: "Later", tone: "secondary" },
+          ],
         });
       }
     }
