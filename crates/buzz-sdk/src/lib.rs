@@ -28,8 +28,9 @@ pub mod company_initiative;
 pub mod company_lessons;
 /// Typed event builders for Colony company member positions.
 pub mod company_members;
-/// Typed event builder for co-founder plan actions.
+/// Typed event builder for co-founder numbers actions (goals, scorecard refresh, weekly review).
 pub mod company_numbers;
+/// Typed event builder for co-founder plan actions.
 pub mod company_plans;
 /// Typed event builders for Colony company records.
 pub mod company_records;
