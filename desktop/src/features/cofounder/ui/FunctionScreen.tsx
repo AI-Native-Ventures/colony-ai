@@ -356,6 +356,37 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
       ? (leadName ?? FUNCTION_DETAILS[functionId].name)
       : "Scout";
   const detail = FUNCTION_DETAILS[functionId];
+  const scorecard = (
+    <FunctionScorecard
+      card={numbers.card}
+      functionId={functionId}
+      isLoading={numbers.isLoading || numbers.isFetching}
+      currency={numbers.scorecard?.currency ?? "ZAR"}
+      loadError={numbers.isError}
+      refreshError={
+        numbersAction.isError &&
+        numbersAction.variables?.op === "scorecard_refresh"
+      }
+      onRetryLoad={() => void numbers.refetch()}
+      onRetryRefresh={() => refreshScorecard(numbers.scorecard?.eventId)}
+      isRefreshing={numbersAction.isPending}
+    />
+  );
+  const goals = (
+    <FunctionGoals
+      canApprove={canApprove}
+      currency={numbers.scorecard?.currency ?? "ZAR"}
+      functionId={functionId}
+      goals={numbers.goals}
+      progress={numbers.scorecard?.goals ?? []}
+      goalOwnerName={
+        slot.state === "filled" ? (leadName ?? detail.name) : "Scout"
+      }
+      profiles={profiles}
+      numbersAction={numbersAction}
+      key={functionId}
+    />
+  );
 
   if (settingsQuery.isPending) {
     return (
@@ -412,7 +443,18 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   }
 
   if (functionId === "operations") {
-    return <OperationsPlaybookScreen />;
+    return (
+      <div data-testid="cofounder-function-screen">
+        <OperationsPlaybookScreen
+          scorecardAndGoals={
+            <div className="space-y-5">
+              {scorecard}
+              {goals}
+            </div>
+          }
+        />
+      </div>
+    );
   }
 
   return (
@@ -432,20 +474,7 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
         <div className="space-y-5">
-          <FunctionScorecard
-            card={numbers.card}
-            functionId={functionId}
-            isLoading={numbers.isLoading || numbers.isFetching}
-            currency={numbers.scorecard?.currency ?? "ZAR"}
-            loadError={numbers.isError}
-            refreshError={
-              numbersAction.isError &&
-              numbersAction.variables?.op === "scorecard_refresh"
-            }
-            onRetryLoad={() => void numbers.refetch()}
-            onRetryRefresh={() => refreshScorecard(numbers.scorecard?.eventId)}
-            isRefreshing={numbersAction.isPending}
-          />
+          {scorecard}
           {slot.state === "empty" ? (
             <EmptySlotSuggestion functionId={functionId} />
           ) : null}
@@ -453,19 +482,7 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
             parentName={parentName}
             parentPubkey={parent?.pubkey ?? null}
           />
-          <FunctionGoals
-            canApprove={canApprove}
-            currency={numbers.scorecard?.currency ?? "ZAR"}
-            functionId={functionId}
-            goals={numbers.goals}
-            progress={numbers.scorecard?.goals ?? []}
-            goalOwnerName={
-              slot.state === "filled" ? (leadName ?? detail.name) : "Scout"
-            }
-            profiles={profiles}
-            numbersAction={numbersAction}
-            key={functionId}
-          />
+          {goals}
         </div>
         <div className="space-y-5">
           <LeadCard

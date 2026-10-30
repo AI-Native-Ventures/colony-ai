@@ -390,6 +390,11 @@ test.describe("co-founder mode desktop", () => {
       await expect(page.getByTestId("cofounder-function-screen")).toBeVisible();
       await expect(page.getByTestId("cofounder-scorecard")).toBeVisible();
       await expect(page.getByTestId("cofounder-goals")).toBeVisible();
+      if (functionId === "operations") {
+        await expect(
+          page.getByTestId("cofounder-playbook-screen"),
+        ).toBeVisible();
+      }
     }
   });
 
@@ -600,7 +605,7 @@ test.describe("co-founder mode desktop", () => {
     });
   });
 
-  test("captures weekly review and Sales goals at 1440 and 390 in light and dark", async ({
+  test("captures weekly review and function pages at 1440 and 390 in light and dark", async ({
     browser,
     page,
   }) => {
@@ -628,6 +633,11 @@ test.describe("co-founder mode desktop", () => {
           {
             name: "function-sales",
             path: "/#/company/function/sales",
+            testId: "cofounder-scorecard",
+          },
+          {
+            name: "function-operations",
+            path: "/#/company/function/operations",
             testId: "cofounder-scorecard",
           },
         ]) {
@@ -673,7 +683,7 @@ test.describe("co-founder mode desktop", () => {
                 height: viewport.height,
               });
             }
-          } else {
+          } else if (screen.name === "function-sales") {
             await capturePage.getByTestId("cofounder-goals").screenshot({
               animations: "disabled",
               path: join(
