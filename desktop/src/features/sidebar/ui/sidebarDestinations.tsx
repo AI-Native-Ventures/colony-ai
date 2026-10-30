@@ -74,6 +74,8 @@ export type SidebarDestination =
       defaultExpanded: boolean;
       /** The group opens by itself while any of its destinations is open. */
       isActive: (context: SidebarDestinationContext) => boolean;
+      /** The group heading stays selected when a nested route is current. */
+      isCurrent?: (context: SidebarDestinationContext) => boolean;
       items: readonly SidebarDestinationItem[];
     })
   | (EntryBase & {
@@ -145,12 +147,18 @@ const company: SidebarDestination = {
   defaultExpanded: false,
   isActive: ({ pathname, selectedView }) =>
     COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
+  isCurrent: ({ pathname, selectedView }) =>
+    COMPANY_VIEWS.includes(selectedView) ||
+    isCompanyMapPath(pathname) ||
+    isCompanyAccessPath(pathname),
   rail: {
     testId: "sidebar-collapsed-company",
     label: "Company",
     Icon: CompanyIcon,
     isActive: ({ pathname, selectedView }) =>
-      COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
+      COMPANY_VIEWS.includes(selectedView) ||
+      isCompanyMapPath(pathname) ||
+      isCompanyAccessPath(pathname),
     onSelect: ({ handlers }) => handlers.onSelectTeam(),
   },
   items: [

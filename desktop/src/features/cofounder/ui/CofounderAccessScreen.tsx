@@ -41,7 +41,7 @@ function PendingAccessCard({
         <span>
           <span className="cf2-chip cf2-chip-warm">Pending</span>
           <small>Asked today</small>
-          <strong>{request.title}</strong>
+          <strong>Scout asks to {request.title}</strong>
         </span>
       </div>
       <p>{request.description}</p>

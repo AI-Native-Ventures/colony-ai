@@ -346,6 +346,13 @@
   background: var(--colony-sidebar-glass);
 }
 
+.app-sidebar-full-shell
+  .sidebar-navigation-group-toggle[data-current="true"] {
+  background: var(--colony-sidebar-active);
+  box-shadow: var(--colony-sidebar-active-shadow);
+  font-weight: 800;
+}
+
 .app-sidebar-full-shell .sidebar-navigation-group-toggle > svg {
   width: 1.1875rem;
   height: 1.1875rem;

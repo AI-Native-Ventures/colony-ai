@@ -53,6 +53,7 @@ type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
   onSelectToday: () => void;
   onSelectHome: () => void;
+  suppressActivitySelection?: boolean;
   suppressTodaySelection?: boolean;
   selectedView: SidebarSelectedView;
 };
@@ -143,6 +144,7 @@ export function AppSidebarPrimaryMenu({
   homeBadgeCount,
   onSelectToday,
   onSelectHome,
+  suppressActivitySelection = false,
   suppressTodaySelection = false,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
@@ -173,7 +175,7 @@ export function AppSidebarPrimaryMenu({
         <SidebarMenuItem data-testid="sidebar-activity-item">
           <SidebarMenuButton
             data-testid="sidebar-activity-button"
-            isActive={selectedView === "home"}
+            isActive={selectedView === "home" && !suppressActivitySelection}
             onClick={() => {
               onSelectHome();
               window.requestAnimationFrame(() => {

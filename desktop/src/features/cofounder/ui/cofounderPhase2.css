@@ -91,7 +91,7 @@
 .cf2-page {
   box-sizing: border-box;
   display: flex;
-  width: min(100%, 66rem);
+  width: min(100%, 75rem);
   flex-direction: column;
   gap: 1.5rem;
   margin: 0 auto;
@@ -258,8 +258,8 @@
 }
 
 .cf2-button-danger {
-  border-color: hsl(var(--colony-need) / 0.25);
-  color: hsl(var(--colony-need));
+  border-color: hsl(var(--colony-danger) / 0.25);
+  color: hsl(var(--colony-danger));
 }
 
 .cf2-onboarding {
@@ -762,6 +762,10 @@
   color: hsl(var(--colony-fg-secondary));
   font-size: 0.875rem;
   line-height: 1.45;
+}
+
+.cf2-access-request .cf2-chip {
+  align-self: flex-start;
 }
 
 .cf2-access-table-wrap {

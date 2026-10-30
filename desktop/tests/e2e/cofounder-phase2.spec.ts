@@ -484,6 +484,19 @@ test.describe("Co-founder mode Phase 2", () => {
     await boot(page);
     await page.goto("/#/company/access");
     await expect(page.getByTestId("cofounder-access-screen")).toBeVisible();
+    await expect(page.getByTestId("sidebar-nav-company-content")).toBeHidden();
+    await expect(
+      page.getByTestId("sidebar-nav-company-toggle"),
+    ).toHaveAttribute("data-current", "true");
+    await expect(page.getByTestId("sidebar-activity-button")).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+    await page.getByTestId("sidebar-nav-company-toggle").click();
+    await expect(page.getByTestId("sidebar-company-access")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await expect(page.getByTestId("cofounder-access-pending")).toContainText(
       "Connect a payment link account",
     );
