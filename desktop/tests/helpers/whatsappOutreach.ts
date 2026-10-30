@@ -37,6 +37,11 @@ export const OAKLEAF_WA_ID = "27655551175";
 const E2E_SELF_PUBKEY = "deadbeef".repeat(8);
 
 export type WhatsAppProofTheme = "light" | "dark";
+type WhatsAppMockActor = {
+  relayRole?: "owner" | "admin" | "member" | null;
+  profileIsAgent?: boolean;
+  profileOwnerPubkey?: string | null;
+};
 
 export async function setWhatsAppProofTheme(
   page: Page,
@@ -579,6 +584,7 @@ const secondPendingBatch = {
 export async function installWhatsAppMockBridge(
   page: Page,
   theme: WhatsAppProofTheme = "light",
+  actor: WhatsAppMockActor = {},
 ) {
   await page.emulateMedia({ colorScheme: theme });
   await installMockBridge(page, {
@@ -587,13 +593,14 @@ export async function installWhatsAppMockBridge(
     whatsappGuesthouses: true,
     referenceWorkspaceRole: "owner",
     relayRequiresMembership: true,
-    relayRole: "owner",
+    relayRole: actor.relayRole ?? "owner",
     colony3Extras: {
       profiles: [
         {
           pubkey: E2E_SELF_PUBKEY,
           displayName: "Basheer Phiri",
-          isAgent: false,
+          isAgent: actor.profileIsAgent ?? false,
+          ownerPubkey: actor.profileOwnerPubkey ?? null,
         },
       ],
       channels: [
@@ -644,19 +651,26 @@ export async function installWhatsAppMockBridge(
         routeSearch.get("batch");
       const disconnected = routeSearch.get("whatsapp") === "disconnected";
       const approvedBatch = batchVariant === "approved";
+      const sendNowBatch = batchVariant === "send-now";
       const leadsBatch = batchVariant === "leads";
       const heldBatch = batchVariant === "held";
       const identityFallback = batchVariant === "identity";
-      const missingJacarandaIdentity = heldBatch || identityFallback;
+      const missingJacarandaIdentity =
+        heldBatch || identityFallback || sendNowBatch;
       const visualBatchScreen = approvedBatch || batchVariant === "visual";
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
-      state.batch.status = approvedBatch || leadsBatch ? "approved" : "pending";
+      state.batch.status =
+        approvedBatch || sendNowBatch || leadsBatch ? "approved" : "pending";
       state.secondPendingBatch.status = state.batch.status;
       state.batch.decidedBy =
-        approvedBatch || leadsBatch ? "deadbeef".repeat(8) : null;
+        approvedBatch || sendNowBatch || leadsBatch
+          ? "deadbeef".repeat(8)
+          : null;
       state.batch.decidedAt =
-        approvedBatch || leadsBatch ? "2026-10-29T10:52:00+02:00" : null;
+        approvedBatch || sendNowBatch || leadsBatch
+          ? "2026-10-29T10:52:00+02:00"
+          : null;
       const baseContacts = clone(seed.contacts);
       if (visualBatchScreen) {
         state.status.newChatsSentToday = 16;
@@ -734,6 +748,23 @@ export async function installWhatsAppMockBridge(
           dropped: 0,
         };
       }
+      if (sendNowBatch) {
+        const sendsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        state.status.newChatsSentToday = 4;
+        state.batch.nextSendAt = sendsAt;
+        state.batch.rows = state.batch.rows.map((row) => ({
+          ...row,
+          state: "ready",
+          sendsAt,
+        }));
+        state.batch.counts = {
+          total: state.batch.rows.length,
+          ready: state.batch.rows.length,
+          sent: 0,
+          failed: 0,
+          dropped: 0,
+        };
+      }
       const planeTreeWaId = baseContacts[0].waId;
       state.threads[planeTreeWaId].contact = clone(seed.contacts[0]);
       for (const contact of baseContacts.slice(1)) {
@@ -788,7 +819,7 @@ export async function installWhatsAppMockBridge(
             createdAt: "2026-10-29T09:40:00+02:00",
           },
         ];
-        if (heldBatch) {
+        if (heldBatch || sendNowBatch) {
           jacarandaThread.messages.push({
             id: "e2e-wa-jacaranda-held-template",
             waId: "27821234410",
@@ -802,6 +833,9 @@ export async function installWhatsAppMockBridge(
             eventId: "e2e-wa-jacaranda-held-template-event",
             senderPubkey: scoutPubkey,
             createdAt: "2026-10-30T09:40:00+02:00",
+            ...(sendNowBatch && heldBatchRow?.sendsAt
+              ? { sendsAt: heldBatchRow.sendsAt }
+              : {}),
           });
         }
       }
@@ -912,6 +946,7 @@ export async function installWhatsAppMockBridge(
           }
         }
         if (kind === 47049 && body.batchId === state.batch.batchId) {
+          if (body.decision === "send_now") return {};
           const dropRows = Array.isArray(body.dropRows)
             ? (body.dropRows as number[])
             : [];

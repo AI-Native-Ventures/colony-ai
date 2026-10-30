@@ -2,9 +2,11 @@ import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
@@ -23,8 +25,10 @@ import {
 import {
   contactStatus,
   pendingBatchRowsForContact,
+  sendNowBatchIdForQueuedMessage,
   uniquePendingBatchRowForContact,
 } from "./whatsappOutreachContactState";
+import { canUseWhatsAppSendNow } from "./whatsappSendNowEligibility";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import {
   formatWhatsAppDateTime,
@@ -33,6 +37,7 @@ import {
 } from "./WhatsAppThreadMessage";
 import {
   useWhatsAppCommand,
+  useWhatsAppApprovedBatchDetailsQuery,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
   useWhatsAppPendingBatchDetailsQuery,
@@ -245,7 +250,13 @@ export function WhatsAppOutreachScreen({
   );
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
+  const currentPubkey = identityQuery.data?.pubkey;
+  const currentUserProfilesQuery = useUsersBatchQuery(
+    currentPubkey ? [currentPubkey] : [],
+    { enabled: Boolean(currentPubkey) },
+  );
   const membershipQuery = useMyRelayMembershipLookupQuery();
+  const knownAgentPubkeys = useKnownAgentPubkeys();
   const command = useWhatsAppCommand();
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null);
   const [activeFilter, setActiveFilter] = React.useState<ContactFilter>("all");
@@ -294,12 +305,25 @@ export function WhatsAppOutreachScreen({
     };
   };
   const templates = templatesQuery.data ?? statusQuery.data?.templates ?? [];
-  const currentPubkey = identityQuery.data?.pubkey;
+  const currentUserProfile = currentPubkey
+    ? currentUserProfilesQuery.data?.profiles[normalizePubkey(currentPubkey)]
+    : undefined;
   const role = membershipQuery.data?.membership?.role;
   const canManage =
     membershipQuery.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
+  const canSendNow = canUseWhatsAppSendNow({
+    role,
+    pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
+    isAgent: currentPubkey
+      ? knownAgentPubkeys.has(normalizePubkey(currentPubkey)) ||
+        currentUserProfile?.isAgent === true
+      : false,
+    ownerPubkey:
+      profileQuery.data?.ownerPubkey ?? currentUserProfile?.ownerPubkey,
+    knownAgentPubkeys,
+  });
   const status = statusQuery.data;
   const progress = status
     ? getWhatsAppDailyCapProgress(
@@ -342,6 +366,13 @@ export function WhatsAppOutreachScreen({
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
   const threadQuery = useWhatsAppThreadQuery(selectedContact?.waId ?? null);
   const thread = threadQuery.data;
+  const approvedBatchDetailsQuery = useWhatsAppApprovedBatchDetailsQuery(
+    status?.connected === true &&
+      thread?.messages.some(
+        (message) => message.direction === "out" && message.state === "queued",
+      ) === true,
+  );
+  const approvedBatches = approvedBatchDetailsQuery.data ?? [];
   const pendingBatches = pendingBatchesQuery.data ?? [];
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
@@ -923,10 +954,21 @@ export function WhatsAppOutreachScreen({
                     }
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
+                    canSendNow={canSendNow}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}
                     onRejectDraft={rejectDraft}
+                    sendNowBatchId={
+                      selectedContact
+                        ? sendNowBatchIdForQueuedMessage(
+                            selectedContact,
+                            message.text,
+                            approvedBatches,
+                            message.sendsAt,
+                          )
+                        : null
+                    }
                     templates={templates}
                     waitingForApproval={
                       message.direction === "out" &&
