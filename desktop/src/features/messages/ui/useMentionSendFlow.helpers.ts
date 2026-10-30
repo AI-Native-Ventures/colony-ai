@@ -215,3 +215,50 @@ export function withoutInvitingRecipients(draft: PendingNonMemberMentionSend) {
     ),
   };
 }
+
+/**
+ * Names of the agents a send addressed that are not the one this Mac runs,
+ * when this Mac runs an agent of the same name that the send did not address.
+ *
+ * One account holds many agents under one name (every reinstall or new Mac
+ * makes a new key), and only the one with a record here wakes when mentioned.
+ * Mentioning another one sends the message and wakes nothing, so the person
+ * hears nothing back (GATE-312 R4 P9: a Scout with no runtime on this Mac was
+ * mentioned beside a local Scout that was never addressed). The send says so
+ * once, instead of staying silent.
+ */
+export function wrongSameNameAgentMentions({
+  mentionRefs,
+  sentPubkeys,
+  managedAgents,
+}: {
+  mentionRefs: readonly DraftMentionRef[];
+  sentPubkeys: Iterable<string>;
+  managedAgents: readonly ManagedAgent[];
+}): string[] {
+  const sent = new Set([...sentPubkeys].map(normalizePubkey));
+  const localByName = new Map<string, string[]>();
+  for (const agent of managedAgents) {
+    const key = agent.name.trim().toLowerCase();
+    localByName.set(key, [
+      ...(localByName.get(key) ?? []),
+      normalizePubkey(agent.pubkey),
+    ]);
+  }
+  const names = new Set<string>();
+  for (const ref of mentionRefs) {
+    const pubkey = normalizePubkey(ref.pubkey);
+    if (!ref.isAgent || !sent.has(pubkey)) continue;
+    const locals = localByName.get(ref.displayName.trim().toLowerCase());
+    if (!locals || locals.includes(pubkey)) continue;
+    if (locals.some((local) => sent.has(local))) continue;
+    names.add(ref.displayName.trim());
+  }
+  return [...names];
+}
+
+/** The one line the send shows for `wrongSameNameAgentMentions`. */
+export function wrongSameNameAgentNotice(names: readonly string[]): string {
+  const list = names.join(" and ");
+  return `${list} here is a different agent from the one on this Mac, so it may not answer. Mention the one on this Mac to reach it.`;
+}
