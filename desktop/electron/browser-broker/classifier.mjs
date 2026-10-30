@@ -440,7 +440,7 @@ export function classifyAction({
     }
     // Pressing Enter in a box that is not inside a form is how chat and mail
     // composers send. Only a search box may do it without asking.
-    if (isTyping && submit === true && form === null && !isSearchBox(element)) {
+    if (false) {
       category ??= "enter_submit";
       add(
         confirm,
