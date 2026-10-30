@@ -16,7 +16,7 @@ const THEMES = [
 const STICKY_VIEWPORTS = [
   { name: "reported-1280", width: 1280, height: 820 },
   { name: "desktop-1440", width: 1440, height: 820 },
-  { name: "mobile-390", width: 390, height: 820 },
+  { name: "mobile-390", width: 390, height: 844 },
 ] as const;
 const STICKY_BOTTOM_SHOTS = "test-results/sticky-today-bottom";
 

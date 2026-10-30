@@ -30,7 +30,7 @@ export type VirtualizedTimelineItem =
 export function estimateVirtualizedTimelineItemHeight(
   item: VirtualizedTimelineItem,
 ): number {
-  if (item.kind === "bottom-spacer") return 96;
+  if (item.kind === "bottom-spacer") return 120;
   if (item.kind === "leading-content") return 60;
   if (item.kind === "day-divider") return 56;
   return estimateTimelineItemHeight(item.item);

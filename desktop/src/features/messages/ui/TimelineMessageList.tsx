@@ -785,7 +785,7 @@ function VirtualizedTimelineRows({
               return (
                 <div
                   aria-hidden
-                  className="h-[var(--composer-overlay-height,6rem)]"
+                  className="c3c-timeline-bottom-spacer"
                   key={virtualizedItemKey(item)}
                 />
               );

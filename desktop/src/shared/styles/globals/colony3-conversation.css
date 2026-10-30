@@ -273,6 +273,10 @@
   );
 }
 
+.c3c-timeline-bottom-spacer {
+  height: calc(var(--composer-overlay-height, 6rem) + 24 * var(--colony-px));
+}
+
 .c3c-timeline-column {
   box-sizing: content-box;
   max-width: calc(var(--c3c-content-max) * var(--colony-px));
