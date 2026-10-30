@@ -212,7 +212,6 @@ pub(crate) async fn deliver_one(
     community: Uuid,
     now: DateTime<Utc>,
 ) -> Result<(), String> {
-    let community_id = CommunityId::from_uuid(community);
     // One deliverer per company at a time, across relay instances.
     let mut lock = state
         .db
@@ -229,6 +228,23 @@ pub(crate) async fn deliver_one(
         return Ok(());
     }
 
+    let outcome = deliver_locked(state, community, now).await;
+    // End the lock transaction here. A transaction that is only dropped frees
+    // its advisory lock when sqlx's deferred rollback has run, which can lag
+    // behind the next pass and turn that pass into a silent no-op.
+    lock.rollback()
+        .await
+        .map_err(|error| format!("could not release the delivery lock: {error}"))?;
+    outcome
+}
+
+/// The delivery pass itself, run while this process holds the company's lock.
+async fn deliver_locked(
+    state: &Arc<AppState>,
+    community: Uuid,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
+    let community_id = CommunityId::from_uuid(community);
     let pending = state
         .db
         .cofounder_pending_wakes(community, now, MAX_WAKES_PER_MESSAGE)
