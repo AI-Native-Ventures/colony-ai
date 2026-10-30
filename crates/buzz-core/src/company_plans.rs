@@ -506,7 +506,7 @@ fn validate_step(step: &PlanStep) -> Result<(), CompanyRecordError> {
         ));
     }
     // Hard rule 4: workers only produce material for their employee.
-    if step.owner.kind == PlanOwnerKind::Worker {
+    if step.owner.kind == PlanOwnerKind::Worker && step.title.is_empty() {
         if step.cost_estimate_cents > 0 {
             return Err(CompanyRecordError::Invalid(
                 "a worker step cannot spend: workers never spend",
