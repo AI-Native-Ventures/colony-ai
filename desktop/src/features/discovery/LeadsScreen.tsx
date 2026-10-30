@@ -302,9 +302,7 @@ export function LeadsScreen(context: LeadContext) {
                                 to: "/channels/$channelId",
                                 params: { channelId: outreachChannelId },
                                 search: {
-                                  threadRootId:
-                                    whatsappContact.threadRootEventId ??
-                                    undefined,
+                                  whatsappContactWaId: whatsappContact.waId,
                                 },
                               })
                             }

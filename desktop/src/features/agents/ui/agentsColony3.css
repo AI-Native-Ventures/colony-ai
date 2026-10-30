@@ -403,6 +403,76 @@
   text-transform: uppercase;
 }
 
+@media (max-width: 640px) {
+  .agents-c3-tablewrap {
+    overflow-x: clip;
+  }
+
+  .agents-c3-table {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .agents-c3-table thead {
+    display: none;
+  }
+
+  .agents-c3-table tbody {
+    width: 100%;
+  }
+
+  .agents-c3-table tbody tr {
+    width: 100%;
+    box-sizing: border-box;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "identity status"
+      "ai ai"
+      "runs actions";
+    gap: 10px 12px;
+    padding: 14px;
+  }
+
+  .agents-c3-table td {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .agents-c3-table td:nth-child(1) {
+    grid-area: identity;
+  }
+
+  .agents-c3-table td:nth-child(2) {
+    grid-area: status;
+  }
+
+  .agents-c3-table td:nth-child(3) {
+    grid-area: ai;
+  }
+
+  .agents-c3-table td:nth-child(4) {
+    grid-area: runs;
+  }
+
+  .agents-c3-table td:nth-child(5) {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  .agents-c3-table .agents-c3-ident,
+  .agents-c3-table .agents-c3-ident-text,
+  .agents-c3-table .agents-c3-cell-stack {
+    min-width: 0;
+  }
+
+  .agents-c3-table .agents-c3-ident-name,
+  .agents-c3-table .agents-c3-ident-role,
+  .agents-c3-table .agents-c3-cell-stack > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .agents-c3-cell-text {
   font-size: calc(15 * var(--colony-px));
   font-weight: 700;

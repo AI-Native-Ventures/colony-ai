@@ -19,6 +19,8 @@ export type ChannelScreenProps = {
   autoSendDraftKey: string | null;
   currentIdentity?: Identity;
   currentProfile?: Profile;
+  /** Opens the WhatsApp work area on this contact after route navigation. */
+  initialWhatsAppContactWaId?: string | null;
   /** Hides the Colony workspace top bar. */
   hideWorkspaceTopBar?: boolean;
   idleAuxiliaryPanel?: ReactNode;

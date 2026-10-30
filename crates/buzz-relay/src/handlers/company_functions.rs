@@ -9,11 +9,14 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use nostr::Event;
+use sqlx::{Postgres, Transaction};
+use uuid::Uuid;
 
 use buzz_core::company_functions::{
     function_d_tag, validate_function_action, validate_function_d_tag, validate_function_head,
     CompanyFunction, FunctionAction, FunctionActionKind, FunctionHead, SlotState,
 };
+use buzz_core::company_members::MemberStatus;
 use buzz_core::company_records::{
     parse_company_command, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
 };
@@ -254,7 +257,7 @@ fn next_function_head(action: &FunctionAction, actor_pubkey: &str) -> FunctionHe
     }
 }
 
-async fn current_function_head(
+pub(super) async fn current_function_head(
     state: &AppState,
     community_id: CommunityId,
     function: CompanyFunction,
@@ -286,6 +289,320 @@ async fn current_function_head(
         verify_stored_head(stored, KIND_COMPANY_FUNCTION_HEAD, &d_tag, state)?;
     }
     Ok(stored)
+}
+
+/// The state of one function slot, `None` while it has no head.
+pub(super) async fn current_function_state(
+    state: &AppState,
+    community_id: CommunityId,
+    function: CompanyFunction,
+) -> Result<Option<SlotState>, IngestError> {
+    let Some(stored) = current_function_head(state, community_id, function).await? else {
+        return Ok(None);
+    };
+    let head = serde_json::from_str::<FunctionHead>(&stored.event.content)
+        .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
+    Ok(Some(head.state))
+}
+
+/// Whether `lead` can still run a function: not paused, terminated or archived,
+/// and still a member or a managed agent of this company.
+async fn lead_is_active(
+    state: &AppState,
+    community_id: CommunityId,
+    lead: &str,
+) -> Result<bool, IngestError> {
+    if matches!(
+        super::company_member_records::member_position_status(state, community_id, lead).await?,
+        Some(MemberStatus::Paused | MemberStatus::Terminated)
+    ) {
+        return Ok(false);
+    }
+    if state
+        .db
+        .is_archived(community_id, lead)
+        .await
+        .map_err(internal)?
+    {
+        return Ok(false);
+    }
+    let is_member = state
+        .db
+        .get_relay_member(community_id, lead)
+        .await
+        .map_err(internal)?
+        .is_some();
+    if is_member {
+        return Ok(true);
+    }
+    super::company_member_records::is_registered_employee(state, community_id, lead).await
+}
+
+/// Takes the per-function write lock the slot broker uses.
+async fn lock_function_slot(
+    tx: &mut Transaction<'_, Postgres>,
+    community_id: CommunityId,
+    function: CompanyFunction,
+) -> Result<(), IngestError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!(
+            "company-function:{}:{}",
+            community_id.as_uuid(),
+            function.id()
+        ))
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+    Ok(())
+}
+
+/// Empties one slot inside `tx` when its head is still `expected_head_id`.
+///
+/// Returns the new head, or `None` when the slot changed since it was read so
+/// the caller can decide whether to retry.
+async fn empty_slot_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    state: &AppState,
+    community_id: CommunityId,
+    function: CompanyFunction,
+    expected_head_id: &[u8],
+    actor_pubkey: &str,
+) -> Result<Option<StoredEvent>, IngestError> {
+    lock_function_slot(tx, community_id, function).await?;
+    let d_tag = function_d_tag(function);
+    let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        tx,
+        community_id,
+        KIND_COMPANY_FUNCTION_HEAD,
+        &state.relay_keypair.public_key().to_bytes(),
+        &d_tag,
+    )
+    .await
+    .map_err(internal)?;
+    if current_head_id.as_deref() != Some(expected_head_id) {
+        return Ok(None);
+    }
+    let current_stored = current_function_head(state, community_id, function).await?;
+    let head = FunctionHead {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        function,
+        state: SlotState::Empty,
+        lead_pubkey: None,
+        updated_by_pubkey: actor_pubkey.to_owned(),
+        updated_at: Utc::now().timestamp(),
+    };
+    let head_event = relay_head_event(
+        state,
+        KIND_COMPANY_FUNCTION_HEAD,
+        &d_tag,
+        serde_json::to_string(&head).map_err(internal)?,
+        current_stored.as_ref(),
+    )?;
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            tx,
+            community_id,
+            &head_event,
+            &d_tag,
+            None,
+            ParameterizedReplacePrecondition::ExpectedRevision(expected_head_id),
+        )
+        .await
+        .map_err(internal)?;
+    if replaced.status != ParameterizedReplaceStatus::Inserted {
+        return Ok(None);
+    }
+    Ok(Some(replaced.event))
+}
+
+/// Empties every slot led by `lead` inside `tx`, so a pause, termination or
+/// removal commits together with the cleared slots or not at all.
+///
+/// Returns the new heads for the caller to dispatch after commit.
+pub(super) async fn clear_slots_led_by_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    state: &AppState,
+    community_id: CommunityId,
+    lead: &str,
+    actor_pubkey: &str,
+) -> Result<Vec<StoredEvent>, IngestError> {
+    let mut cleared = Vec::new();
+    for function in CompanyFunction::ALL {
+        let Some(stored) = current_function_head(state, community_id, function).await? else {
+            continue;
+        };
+        let head = serde_json::from_str::<FunctionHead>(&stored.event.content)
+            .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
+        if head.state != SlotState::Filled || head.lead_pubkey.as_deref() != Some(lead) {
+            continue;
+        }
+        match empty_slot_in_tx(
+            tx,
+            state,
+            community_id,
+            function,
+            &stored.event.id.to_bytes(),
+            actor_pubkey,
+        )
+        .await?
+        {
+            Some(event) => cleared.push(event),
+            None => {
+                return Err(conflict(
+                    "function slot changed while clearing it; refresh and retry",
+                ))
+            }
+        }
+    }
+    Ok(cleared)
+}
+
+/// Empties every slot whose lead is no longer active (paused, terminated,
+/// archived, removed or left).
+///
+/// Called after every path that can end an employee's or member's work and
+/// before a slot is judged, so a stale lead never stays on the map. A failure
+/// is returned to the caller, never swallowed: the slot stays stale and the
+/// next call retries it.
+pub(crate) async fn reconcile_function_slots(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    actor_pubkey: &str,
+) -> Result<(), IngestError> {
+    let community_id = tenant.community();
+    for function in CompanyFunction::ALL {
+        let Some(stored) = current_function_head(state, community_id, function).await? else {
+            continue;
+        };
+        let head = serde_json::from_str::<FunctionHead>(&stored.event.content)
+            .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
+        let Some(lead) = head.lead_pubkey.as_deref() else {
+            continue;
+        };
+        if head.state != SlotState::Filled || lead_is_active(state, community_id, lead).await? {
+            continue;
+        }
+        let mut tx = state
+            .db
+            .begin_event_write_transaction()
+            .await
+            .map_err(internal)?;
+        buzz_deletion::store(&state.db)
+            .guard_transaction(&mut tx, community_id)
+            .await
+            .map_err(|error| {
+                IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
+            })?;
+        let cleared = empty_slot_in_tx(
+            &mut tx,
+            state,
+            community_id,
+            function,
+            &stored.event.id.to_bytes(),
+            actor_pubkey,
+        )
+        .await?;
+        match cleared {
+            Some(event) => {
+                tx.commit().await.map_err(internal)?;
+                super::event::dispatch_persistent_event(
+                    tenant,
+                    state,
+                    &event,
+                    KIND_COMPANY_FUNCTION_HEAD,
+                    &state.relay_keypair.public_key().to_hex(),
+                    None,
+                )
+                .await;
+            }
+            // Someone else changed the slot first; the next call looks again.
+            None => tx.rollback().await.map_err(internal)?,
+        }
+    }
+    Ok(())
+}
+
+/// Puts a newly hired employee into the slot their hire proposal named.
+///
+/// Runs inside the hire completion transaction, so the slot fills together
+/// with the hired head or not at all. A hire with no slot intent changes
+/// nothing. A slot that has meanwhile gained another active lead keeps that
+/// lead: the hire still completes and the slot is not taken over.
+pub(super) async fn assign_slot_for_hire_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    state: &AppState,
+    community_id: CommunityId,
+    hire_id: Uuid,
+    employee_pubkey: &str,
+    actor_pubkey: &str,
+) -> Result<Option<StoredEvent>, IngestError> {
+    let Some(intent) =
+        super::company_access::current_slot_hire(state, community_id, hire_id).await?
+    else {
+        return Ok(None);
+    };
+    let function = intent.function;
+    lock_function_slot(tx, community_id, function).await?;
+    let d_tag = function_d_tag(function);
+    let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        tx,
+        community_id,
+        KIND_COMPANY_FUNCTION_HEAD,
+        &state.relay_keypair.public_key().to_bytes(),
+        &d_tag,
+    )
+    .await
+    .map_err(internal)?;
+    let current_stored = current_function_head(state, community_id, function).await?;
+    if let Some(stored) = &current_stored {
+        let head = serde_json::from_str::<FunctionHead>(&stored.event.content)
+            .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
+        if let (SlotState::Filled, Some(lead)) = (head.state, head.lead_pubkey.as_deref()) {
+            if lead != employee_pubkey && lead_is_active(state, community_id, lead).await? {
+                return Ok(None);
+            }
+        }
+    }
+    let head = FunctionHead {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        function,
+        state: SlotState::Filled,
+        lead_pubkey: Some(employee_pubkey.to_owned()),
+        updated_by_pubkey: actor_pubkey.to_owned(),
+        updated_at: Utc::now().timestamp(),
+    };
+    validate_function_head(&head)
+        .map_err(|error| internal(format!("function head for the hired lead: {error}")))?;
+    let head_event = relay_head_event(
+        state,
+        KIND_COMPANY_FUNCTION_HEAD,
+        &d_tag,
+        serde_json::to_string(&head).map_err(internal)?,
+        current_stored.as_ref(),
+    )?;
+    let precondition = current_head_id.as_deref().map_or(
+        ParameterizedReplacePrecondition::CreateOnly,
+        ParameterizedReplacePrecondition::ExpectedRevision,
+    );
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            tx,
+            community_id,
+            &head_event,
+            &d_tag,
+            None,
+            precondition,
+        )
+        .await
+        .map_err(internal)?;
+    if replaced.status != ParameterizedReplaceStatus::Inserted {
+        return Err(conflict(
+            "function slot changed before the hire could fill it; refresh and retry",
+        ));
+    }
+    Ok(Some(replaced.event))
 }
 
 #[cfg(test)]

@@ -47,6 +47,39 @@ fn nest_skill_contains_safe_mention_workflow() {
 }
 
 #[test]
+fn nest_skill_carries_the_cofounder_initiative_section() {
+    let skill = COLONY_CLI_SKILL_MD;
+    let start = skill
+        .find("## Co-founder initiative")
+        .expect("the co-founder initiative section exists");
+    let section = &skill[start..];
+    let end = section.find("\n## Discovery Search").expect("section ends");
+    let section = &section[..end];
+    // Only while co-founder mode is on, and only for Scout.
+    assert!(section.contains("only when `colony cofounder get` shows `settings.enabled: true`"));
+    assert!(section.contains("ignore it and work as you always did"));
+    // The onboarding commands it teaches all exist in the CLI.
+    for command in [
+        "colony onboarding get",
+        "colony onboarding start",
+        "colony brief propose",
+        "colony onboarding ask --step brief",
+        "colony onboarding withdraw",
+        "colony onboarding propose-map",
+        "colony onboarding complete",
+    ] {
+        assert!(section.contains(command), "{command}");
+    }
+    // Approvals stay with the owner.
+    assert!(section.contains("You cannot confirm it yourself"));
+    assert!(section.contains("never hire without approval"));
+    assert!(section.contains("Never publish"));
+    // Short replies and no em dashes in agent-facing copy.
+    assert!(section.contains("under 60 words"));
+    assert!(!section.contains('\u{2014}'), "no em dash in the section");
+}
+
+#[test]
 fn nest_agents_template_separates_commit_attribution_claims() {
     assert_eq!(AGENTS_MD.matches("## Git Commit Attribution").count(), 1);
     assert!(AGENTS_MD.contains(
@@ -799,10 +832,10 @@ fn legacy_skill_entries_recreated_by_an_older_build_are_retired_again() {
 
 #[test]
 fn skill_teaches_playbooks_and_keeps_the_owner_in_charge_of_approvals() {
-    // Version 17 added the Playbooks section; an older nest must regenerate it.
+    // Version 19 added the Playbooks section; an older nest must regenerate it.
     const {
         assert!(
-            NEST_SKILL_VERSION >= 17,
+            NEST_SKILL_VERSION >= 19,
             "adding the Playbooks section must bump NEST_SKILL_VERSION so existing nests pick it up"
         );
     }

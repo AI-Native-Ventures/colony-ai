@@ -13,6 +13,8 @@ Enforcement is split. Anything Colony runs (WhatsApp, Discovery, credits, paymen
 
 **A plan approval is never a send authorization.** Approving a co-founder plan (kind 47063) records the owner's intent in the plan head. The plan code in `crates/buzz-core/src/company_plans.rs` has no sender, no payment call and no network access. Every outward step of an approved plan still passes through the gates below, and a plan step that sends or spends must carry an approval point that the owner approves before the step can start.
 
+**A playbook approval is never a send authorization either.** Approving a playbook version or a change (kind 47067) records the owner's intent. `crates/buzz-core/src/company_playbooks.rs` has no sender, no payment call and no network access. A step of a running copy that sends, spends or publishes carries an approval point that the owner approves before the step can start (`job_transition_allowed` refuses `pending` to `in_progress` for a gated step; the owner approves with `approve_step`, which a managed agent can never do). A worker step never carries an outreach or spend approval point (`validate_owner_and_gate`), also when a step is handed to a worker. Tests: `an_approval_point_blocks_the_step_until_the_owner_approves`, `a_hand_off_keeps_the_hard_rules` (unit) and `a_job_runs_through_two_steps_with_an_approval_point_in_between` (PG, `handlers/company_playbooks.rs`).
+
 This audit was read from the code. "Test" names the test that fails if the guard is removed. "Lane" says where CI runs it: **unit** (`just test-unit`), **PG** (the Postgres lane, `postgres_tests` modules), **desktop** (`pnpm test` and the browser broker workflow).
 
 ## Summary
@@ -24,6 +26,7 @@ This audit was read from the code. "Test" names the test that fails if the guard
 | WhatsApp new chat opened by an agent outside a batch | 1 | relay | yes (PG), added in this PR |
 | A managed agent holding an admin role row | 1 | relay | yes (PG), guard and test added in this PR |
 | Plan approval, step approval points | 1, 2, 3 | relay | yes (unit and PG), new in this PR |
+| Playbook versions, running copy approval points | 1, 2, 3 | relay | yes (unit and PG), C3-COF3-PLAYBOOKS |
 | Discovery search and save | 2 | relay, monthly company cap only | cap yes (PG); no approval step by design |
 | Credits gateway inference | 2 | relay, owner pays, no per-call approval | session and balance yes (PG); allowances not enforced (open) |
 | Payments (credit checkout) | 2 | relay, account holder on the provider page | partly (open: agent key refusal untested) |

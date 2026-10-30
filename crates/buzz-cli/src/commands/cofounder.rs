@@ -120,7 +120,9 @@ pub(crate) fn map_write_error(error: CliError) -> CliError {
     }
 }
 
-async fn current_head(client: &BuzzClient) -> Result<Option<(Event, CofounderHead)>, CliError> {
+pub(crate) async fn current_head(
+    client: &BuzzClient,
+) -> Result<Option<(Event, CofounderHead)>, CliError> {
     let events =
         query_company_heads(client, KIND_COFOUNDER_HEAD, &[COFOUNDER_D_TAG.to_owned()]).await?;
     let Some(event) = events.into_iter().next() else {

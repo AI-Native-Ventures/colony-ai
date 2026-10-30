@@ -50,6 +50,9 @@ struct BatchRow {
     to: String,
     #[serde(default)]
     lead_id: Option<String>,
+    /// Optional name for the contact, used only when WhatsApp has not reported one.
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     params: Vec<String>,
 }
@@ -197,6 +200,22 @@ pub async fn handle(
         .await
         .map_err(internal)?;
     let kind = u32::from(event.kind.as_u16());
+    // A revoked WhatsApp entry stops everyone but the owner and admins from
+    // preparing batches or sending, so a revoke takes effect on agents at once.
+    if matches!(kind, KIND_WHATSAPP_BATCH | KIND_WHATSAPP_SEND_REQUEST)
+        && !access.is_owner_admin()
+        && crate::handlers::company_access::access_revoked(
+            state,
+            tenant.community(),
+            buzz_core::company_access::AccessCategory::Whatsapp,
+        )
+        .await
+        .map_err(internal)?
+    {
+        return Err(restricted(
+            "WhatsApp access was revoked by the owner; ask the owner to grant it again",
+        ));
+    }
     match kind {
         KIND_WHATSAPP_BATCH => handle_batch(tenant, state, &event, access).await,
         KIND_WHATSAPP_BATCH_DECISION => handle_decision(tenant, state, &event, access).await,
@@ -302,6 +321,7 @@ async fn handle_batch(
     let mut seen: HashSet<String> = HashSet::new();
     let mut rows: Vec<NewOutboundMessage> = Vec::with_capacity(command.rows.len());
     let mut leads: Vec<(String, String)> = Vec::new();
+    let mut names: Vec<(String, String)> = Vec::new();
     for (index, row) in command.rows.iter().enumerate() {
         let label = format!("row {index} ({})", row.to.trim());
         let Some(wa_id) = normalize_wa_id(&row.to) else {
@@ -338,6 +358,9 @@ async fn handle_batch(
         let new_chat = !window_open(contact.as_ref().and_then(|c| c.last_inbound_at), now);
         if let Some(lead) = row.lead_id.as_ref().filter(|lead| !lead.trim().is_empty()) {
             leads.push((wa_id.clone(), lead.trim().to_string()));
+        }
+        if let Some(name) = row.name.as_ref().filter(|name| !name.trim().is_empty()) {
+            names.push((wa_id.clone(), name.trim().to_string()));
         }
         rows.push(NewOutboundMessage {
             id: Uuid::new_v4(),
@@ -383,6 +406,13 @@ async fn handle_batch(
         state
             .db
             .whatsapp_set_owner_if_unowned(community, &row.wa_id, &sender)
+            .await
+            .map_err(internal)?;
+    }
+    for (wa_id, name) in &names {
+        state
+            .db
+            .whatsapp_set_name_if_blank(community, wa_id, name)
             .await
             .map_err(internal)?;
     }
@@ -461,6 +491,9 @@ async fn handle_decision(
         .await
         .map_err(internal)?
         .ok_or_else(|| invalid("no such batch"))?;
+    if approve {
+        ensure_batch_template(tenant, state, &batch).await?;
+    }
     let mut edits = Vec::with_capacity(command.edit_rows.len());
     if !command.edit_rows.is_empty() {
         let template = state
@@ -524,6 +557,45 @@ async fn handle_decision(
             Ok(ok(event, "rejected"))
         }
     }
+}
+
+/// Approving a batch sends real messages, so its template must still be approved on Meta.
+/// The list is refreshed first (a failure falls back to the last sync); a template that is
+/// gone or no longer approved leaves the batch pending and says so, instead of sending blind.
+async fn ensure_batch_template(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    batch: &WhatsappBatch,
+) -> Result<(), IngestError> {
+    if let Err(error) = sync_templates(state, tenant).await {
+        tracing::warn!("template refresh before batch approval failed: {error}");
+    }
+    let template = state
+        .db
+        .whatsapp_get_template(tenant.community(), &batch.template_name, &batch.language)
+        .await
+        .map_err(internal)?;
+    if template
+        .as_ref()
+        .is_some_and(|template| template.status.eq_ignore_ascii_case("APPROVED"))
+    {
+        return Ok(());
+    }
+    let short = batch.id.simple().to_string()[..8].to_string();
+    channel::post_notice(
+        state,
+        tenant,
+        "template_missing",
+        &format!(
+            "Batch {short} was not approved: template {} ({}) is no longer approved on Meta.",
+            batch.template_name, batch.language
+        ),
+    )
+    .await;
+    Err(invalid(format!(
+        "template_missing: template {} ({}) is no longer approved on Meta; the batch stays pending, reject it and prepare a new one",
+        batch.template_name, batch.language
+    )))
 }
 
 /// Decide one agent draft: approve (optionally with edited text or parameters) or reject.

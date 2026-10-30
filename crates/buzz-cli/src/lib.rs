@@ -298,9 +298,18 @@ enum Cmd {
     /// Read and change the company's co-founder mode settings
     #[command(subcommand)]
     Cofounder(CofounderCmd),
+    /// Read, propose and confirm the business brief
+    #[command(subcommand)]
+    Brief(BriefCmd),
+    /// Run co-founder onboarding: questions, answers and the company map
+    #[command(subcommand)]
+    Onboarding(OnboardingCmd),
     /// Read and change who covers each company function
     #[command(subcommand)]
     Functions(FunctionsCmd),
+    /// List and revoke the tools and accounts agents can use, and record capability gaps
+    #[command(subcommand)]
+    Access(AccessCmd),
     /// Propose co-founder plans for the owner to approve, and run approved plans
     #[command(subcommand)]
     Plans(PlansCmd),
@@ -1178,6 +1187,9 @@ pub enum AsksCmd {
         /// HireProposal JSON with the selected real role and runtime values, or '-' for stdin
         #[arg(long)]
         proposal: String,
+        /// Function slot the new employee will lead (sales, operations, customer_success, finance, brand)
+        #[arg(long, value_parser = commands::functions::parse_function)]
+        function: Option<buzz_core::company_functions::CompanyFunction>,
     },
     /// Cancel an open ask at its exact current head
     Cancel {
@@ -1831,6 +1843,135 @@ pub enum CofounderCmd {
     },
 }
 
+#[derive(Subcommand)]
+pub enum BriefCmd {
+    /// Print the business brief and any proposal waiting for the owner
+    Get,
+    /// Offer a brief (or a revision) for the owner to confirm; changes nothing until then
+    Propose(BriefFields),
+    /// Confirm the proposed brief (owner or admin only)
+    Confirm,
+    /// Replace the confirmed brief with new text (owner or admin only)
+    Edit(BriefFields),
+    /// Drop the proposed brief (owner or admin only)
+    Discard,
+}
+
+/// The words of a business brief.
+#[derive(clap::Args)]
+pub struct BriefFields {
+    /// What the company sells
+    #[arg(long)]
+    pub what_you_sell: String,
+    /// Who buys it
+    #[arg(long)]
+    pub who_buys: String,
+    /// How the company talks to customers
+    #[arg(long)]
+    pub how_you_talk: String,
+    /// Prices; leave out when none were found
+    #[arg(long)]
+    pub prices: Option<String>,
+    /// Where this was read (repeat the flag, at most 8)
+    #[arg(long = "source")]
+    pub sources: Vec<String>,
+}
+
+#[derive(Subcommand)]
+pub enum OnboardingCmd {
+    /// Print where onboarding stands: steps, the open question, the proposed map
+    Get,
+    /// Start onboarding, or resume it without losing progress
+    Start {
+        /// The agent that leads co-founder work; required when an owner or admin starts it
+        #[arg(long)]
+        lead: Option<String>,
+    },
+    /// Ask the owner ONE question (only while none is open)
+    Ask {
+        /// Which step this question belongs to
+        #[arg(long, value_enum)]
+        step: OnboardingStepArg,
+        /// The question, at most 200 characters
+        #[arg(long)]
+        text: String,
+        /// For the accounts step: a short slug such as pinterest
+        #[arg(long)]
+        account_id: Option<String>,
+        /// For the accounts step: the name shown to the owner
+        #[arg(long)]
+        account_label: Option<String>,
+        /// For the accounts step: the https login page to open in the browser
+        #[arg(long)]
+        account_url: Option<String>,
+    },
+    /// Take the open question back
+    Withdraw,
+    /// Propose the company map: one placement per function (scout, empty or agent:<public key>)
+    ProposeMap {
+        /// The function to fill first
+        #[arg(long, value_parser = commands::functions::parse_function)]
+        first: buzz_core::company_functions::CompanyFunction,
+        /// Sales: scout, empty or agent:<public key>
+        #[arg(long, value_parser = commands::initiative::parse_placement)]
+        sales: PlacementSpec,
+        /// Operations: scout, empty or agent:<public key>
+        #[arg(long, value_parser = commands::initiative::parse_placement)]
+        operations: PlacementSpec,
+        /// Customer Success: scout, empty or agent:<public key>
+        #[arg(long, value_parser = commands::initiative::parse_placement)]
+        customer_success: PlacementSpec,
+        /// Finance: scout, empty or agent:<public key>
+        #[arg(long, value_parser = commands::initiative::parse_placement)]
+        finance: PlacementSpec,
+        /// Brand: scout, empty or agent:<public key>
+        #[arg(long, value_parser = commands::initiative::parse_placement)]
+        brand: PlacementSpec,
+    },
+    /// Answer the open question (owner or admin only); money and approvals name the SAVED settings
+    Answer {
+        /// The step of the open question
+        #[arg(long, value_enum)]
+        step: OnboardingStepArg,
+        /// Skip the question
+        #[arg(long)]
+        skipped: bool,
+        /// Money step: must equal the saved setting (defaults to it)
+        #[arg(long, value_enum)]
+        money: Option<MoneyArg>,
+        /// Approvals step: must equal the saved switch (defaults to it)
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_hire: Option<bool>,
+        /// Approvals step: must equal the saved switch (defaults to it)
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_playbook_changes: Option<bool>,
+        /// Approvals step: must equal the saved switch (defaults to it)
+        #[arg(long, action = clap::ArgAction::Set)]
+        approve_every_discovery_campaign: Option<bool>,
+    },
+    /// Approve the proposed company map (owner or admin only)
+    ApproveMap,
+    /// Turn the proposed company map down (owner or admin only)
+    RejectMap,
+    /// Finish onboarding once the brief, money, approvals and map are settled
+    Complete,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum OnboardingStepArg {
+    Brief,
+    Money,
+    Approvals,
+    Accounts,
+}
+
+/// How one function is covered in a proposed map.
+#[derive(Clone, Debug)]
+pub struct PlacementSpec {
+    pub placement: buzz_core::company_onboarding::MapPlacement,
+    pub lead_pubkey: Option<String>,
+}
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum MoneyArg {
     #[value(name = "cheapest-first")]
@@ -1869,6 +2010,94 @@ pub enum FunctionsCmd {
         /// Function id
         #[arg(value_parser = commands::functions::parse_function)]
         function: buzz_core::company_functions::CompanyFunction,
+    },
+    /// Record which function slot an open hire proposal is for; completing the
+    /// hire puts the new employee in that slot
+    HireSlot {
+        /// Hire UUID from the hire proposal
+        hire_id: String,
+        /// Function id
+        #[arg(value_parser = commands::functions::parse_function)]
+        function: buzz_core::company_functions::CompanyFunction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AccessCmd {
+    /// List every tool and account agents can use; revoked entries show as revoked
+    List,
+    /// Add an access entry (owner or admin only). Agents get new access only
+    /// through `access gap propose`
+    Grant {
+        /// Access id: a-z, 0-9 and dashes; whatsapp, discovery and credits use their own id
+        #[arg(long)]
+        id: String,
+        /// Name shown to people
+        #[arg(long)]
+        name: String,
+        /// whatsapp, discovery, credits, browser-login, connected-account, calendar, esign, payment-link or other
+        #[arg(long)]
+        category: String,
+        /// What it is used for
+        #[arg(long)]
+        used_for: String,
+        /// What it costs, in plain words
+        #[arg(long)]
+        cost: String,
+        /// Agent public key that uses it (repeat for more; none means every agent)
+        #[arg(long = "agent")]
+        agents: Vec<String>,
+    },
+    /// Revoke an access entry; it takes effect at once (owner or admin only)
+    Revoke {
+        /// Access id
+        id: String,
+        /// Why it was revoked
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Record a capability gap and follow it to a finished setup
+    #[command(subcommand)]
+    Gap(GapCmd),
+}
+
+#[derive(Subcommand)]
+pub enum GapCmd {
+    /// Record a capability gap: the options, the cheapest that works, the cost and the one human step
+    Propose {
+        /// CapabilityGap JSON, or '-' for stdin
+        #[arg(long)]
+        gap: String,
+    },
+    /// List capability gaps, newest first
+    List,
+    /// Show one capability gap
+    Show {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Approve the stated cost (owner or admin only)
+    Approve {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Decline the gap (owner or admin only)
+    Decline {
+        /// Gap UUID
+        gap_id: String,
+        /// Why
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Mark the human step done (owner or admin only)
+    Done {
+        /// Gap UUID
+        gap_id: String,
+    },
+    /// Finish the setup after the owner said done; creates the access entry
+    Complete {
+        /// Gap UUID
+        gap_id: String,
     },
 }
 
@@ -3908,7 +4137,10 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
         Cmd::Cofounder(sub) => commands::cofounder::dispatch(sub, &client).await,
+        Cmd::Brief(sub) => commands::initiative::dispatch_brief(sub, &client).await,
+        Cmd::Onboarding(sub) => commands::initiative::dispatch_onboarding(sub, &client).await,
         Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
+        Cmd::Access(sub) => commands::access::dispatch(sub, &client).await,
         Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
         Cmd::Playbooks(sub) => commands::playbooks::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
@@ -4081,8 +4313,10 @@ mod tests {
     #[test]
     fn command_inventory_is_stable() {
         let expected_groups: Vec<&str> = vec![
+            "access",
             "agents",
             "asks",
+            "brief",
             "canvas",
             "channels",
             "cofounder",
@@ -4105,6 +4339,7 @@ mod tests {
             "moderation",
             "money",
             "notes",
+            "onboarding",
             "pack",
             "patches",
             "permissions",

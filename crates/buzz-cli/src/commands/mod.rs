@@ -1,3 +1,4 @@
+pub mod access;
 pub mod agents;
 pub mod asks;
 pub mod channel_templates;
@@ -14,6 +15,7 @@ pub mod feed;
 pub mod functions;
 pub mod gifs;
 pub mod goals;
+pub mod initiative;
 pub mod issues;
 pub mod leads;
 pub mod mem;

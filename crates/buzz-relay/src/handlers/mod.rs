@@ -12,8 +12,12 @@ pub mod close;
 pub mod command_executor;
 /// Relay-operator community provisioning HTTP support.
 pub mod community_provisioning;
+/// Nostr-first broker for the company access list, capability gaps and slot hires.
+pub mod company_access;
 /// Nostr-first broker for channel-scoped company asks.
 pub mod company_asks;
+/// Nostr-first broker for the business brief record.
+pub mod company_brief;
 /// Nostr-first broker for the per-company co-founder settings record.
 pub mod company_cofounder;
 pub mod company_duties;
@@ -24,9 +28,13 @@ pub mod company_factory;
 /// Nostr-first broker for company function slot records.
 pub mod company_functions;
 pub mod company_hires;
+/// Shared helpers for the business brief and onboarding brokers.
+pub(crate) mod company_initiative;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;
+/// Nostr-first broker for co-founder onboarding progress.
+pub mod company_onboarding;
 /// Nostr-first broker for community-wide standing tool permissions.
 pub mod company_permissions;
 /// Nostr-first broker for co-founder plan records.

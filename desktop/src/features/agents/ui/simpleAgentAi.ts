@@ -1,5 +1,7 @@
 import { formatAgentModelLabel } from "../lib/formatAgentModelLabel";
+import type { RuntimeConfigSurface } from "@/shared/api/types";
 import { providerName } from "./agentPageModel";
+import { getProviderEffortConfig } from "./buzzAgentConfig";
 
 const FULL_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "nvidia/nemotron-3-ultra-550b-a55b:free": "Nemotron 3 Ultra 550B A55B",
@@ -102,13 +104,69 @@ export function simpleModelLabel(
   );
 }
 
-/** Return only a value the running ACP adapter advertised for this effort field. */
+/** Resolve model and provider with the same live-config precedence on both AI summaries. */
+export function resolveSimpleAgentAi({
+  runtimeId,
+  config,
+  agentModel,
+  agentProvider,
+  inheritedModel,
+  inheritedProvider,
+}: {
+  runtimeId: string | null | undefined;
+  config:
+    | Pick<RuntimeConfigSurface, "runtimeId" | "isPreSpawn" | "normalized">
+    | undefined;
+  agentModel?: string | null;
+  agentProvider?: string | null;
+  inheritedModel?: string | null;
+  inheritedProvider?: string | null;
+}) {
+  const observed =
+    config !== undefined &&
+    !config.isPreSpawn &&
+    (!runtimeId || config.runtimeId === runtimeId);
+  const model =
+    (observed ? config.normalized.model?.value : null)?.trim() ||
+    agentModel?.trim() ||
+    inheritedModel?.trim() ||
+    null;
+  const provider =
+    (observed ? config.normalized.provider?.value : null)?.trim() ||
+    agentProvider?.trim() ||
+    inheritedProvider?.trim() ||
+    null;
+
+  return { observed, model, provider };
+}
+
+/** Return a configured effort accepted by the adapter or the shared model manifest. */
 export function acceptedEffortLabel(
   effort: string | null | undefined,
   options: readonly { value: string; displayName?: string }[] | undefined,
+  fallback?: {
+    runtimeId: string | null | undefined;
+    provider: string | null | undefined;
+    model: string | null | undefined;
+  },
 ) {
   const value = effort?.trim();
-  if (!value || !options) return null;
-  const option = options.find((candidate) => candidate.value === value);
-  return option?.displayName?.trim() || option?.value || null;
+  if (!value) return null;
+
+  if (options && options.length > 0) {
+    const option = options.find((candidate) => candidate.value === value);
+    return option?.displayName?.trim() || option?.value || null;
+  }
+
+  if (fallback?.runtimeId === "buzz-agent") {
+    const validValues = getProviderEffortConfig(
+      fallback.provider ?? "",
+      fallback.model ?? undefined,
+    ).validValues;
+    return validValues.includes(value as (typeof validValues)[number])
+      ? value
+      : null;
+  }
+
+  return null;
 }

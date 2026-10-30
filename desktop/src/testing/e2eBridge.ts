@@ -18,6 +18,10 @@ import {
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
 import {
+  KIND_COMPANY_ACCESS_ACTION,
+  KIND_COMPANY_ACCESS_HEAD,
+} from "@/features/cofounder/accessRecords";
+import {
   KIND_PLAN_ACTION,
   KIND_PLAN_HEAD,
 } from "@/features/cofounder/planRecords";
@@ -42,6 +46,9 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import { applyMockAccessAction } from "./mockCompanyAccess.ts";
+import type { MockCompanyAccessRecord } from "./mockCompanyAccess.ts";
+
 import {
   applyMockPlaybookAction,
   applyMockPlaybookJobAction,
@@ -254,6 +261,15 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+};
+
+/** Narrow live-config values that a mock runtime reports for one agent. */
+export type MockAgentConfigSurfaceOverride = {
+  runtimeId?: string | null;
+  runtimeLabel?: string | null;
+  model?: string;
+  provider?: string;
+  thinkingEffort?: string;
 };
 
 export type MockFactoryProjectSeed = {
@@ -769,6 +785,11 @@ type E2eConfig = {
     agentSubscriptionUsage?:
       | import("@/shared/api/tauriArchive").AgentSubscriptionUsage
       | null;
+    /** Live runtime values returned for specific managed agents. */
+    agentConfigSurfaceOverrides?: Record<
+      string,
+      MockAgentConfigSurfaceOverride
+    >;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -1067,6 +1088,8 @@ type E2eConfig = {
     cofounderSettings?: MockCofounderSettings;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
+    /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
+    companyAccessRecords?: MockCompanyAccessRecord[];
     /** Co-founder plans served as relay-signed plan heads (kind 30673). */
     companyPlans?: MockPlan[];
     /** Co-founder playbooks served as relay-signed heads (kind 30677, d tag `company:playbook:<id>`). */
@@ -3337,6 +3360,42 @@ function buildMockConfigSurface(pubkey: string): {
     default:
       return gooseSurface;
   }
+}
+
+function applyMockAgentConfigSurfaceOverride(
+  pubkey: string,
+  override: MockAgentConfigSurfaceOverride | undefined,
+) {
+  const surface = buildMockConfigSurface(pubkey);
+  if (!override) return surface;
+
+  const normalized = { ...surface.normalized };
+  for (const [field, value] of [
+    ["model", override.model],
+    ["provider", override.provider],
+    ["thinkingEffort", override.thinkingEffort],
+  ] as const) {
+    const descriptor = normalized[field];
+    if (
+      value !== undefined &&
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      !Array.isArray(descriptor)
+    ) {
+      normalized[field] = { ...descriptor, value };
+    }
+  }
+
+  return {
+    ...surface,
+    runtimeId:
+      override.runtimeId === undefined ? surface.runtimeId : override.runtimeId,
+    runtimeLabel:
+      override.runtimeLabel === undefined
+        ? surface.runtimeLabel
+        : override.runtimeLabel,
+    normalized,
+  };
 }
 
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
@@ -6884,6 +6943,67 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function filterMockCompanyAccessHeads(filter: MockFilter): RelayEvent[] {
+  const records = getConfig()?.mock?.companyAccessRecords ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return records
+    .map((record) =>
+      createSignedMockCompanyHead(
+        KIND_COMPANY_ACCESS_HEAD,
+        record.content,
+        record.dTag,
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function acceptMockCompanyAccessAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: access action signature is invalid.");
+    return;
+  }
+  const mock = config?.mock;
+  if (!mock) {
+    reject("error: mock relay is not configured.");
+    return;
+  }
+  if (!mock.companyAccessRecords) mock.companyAccessRecords = [];
+  const error = applyMockAccessAction(
+    mock.companyAccessRecords,
+    event.content,
+    event.pubkey,
+    mock.relayRole,
+    Math.floor(Date.now() / 1000),
+  );
+  if (error) {
+    reject(error);
+    return;
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
@@ -18775,6 +18895,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COMPANY_ACCESS_HEAD)) {
+      for (const event of filterMockCompanyAccessHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_WORKER_RUN_HEAD)) {
       for (const event of filterMockCompanyWorkerRuns(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -19059,6 +19187,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_COFOUNDER_ACTION) {
       acceptMockCofounderAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
+      acceptMockCompanyAccessAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_PLAN_ACTION) {
@@ -23021,7 +23153,12 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "get_agent_config_surface": {
         const configArgs = payload as { pubkey: string };
-        return buildMockConfigSurface(configArgs.pubkey);
+        return applyMockAgentConfigSurfaceOverride(
+          configArgs.pubkey,
+          activeConfig?.mock?.agentConfigSurfaceOverrides?.[
+            configArgs.pubkey.toLowerCase()
+          ],
+        );
       }
       case "get_runtime_file_config": {
         const runtimeId = (payload as { runtimeId?: string } | null | undefined)

@@ -77,18 +77,34 @@ function useOverlayMode(layoutRef: React.RefObject<HTMLDivElement | null>) {
 export function WorkAreaLayout({
   channelId,
   channel,
+  initialWhatsAppContactWaId = null,
   children,
 }: {
   channelId: string | null;
   /** Facts about the channel that tabs need (canvas edit rights, archive state). */
   channel?: Omit<WorkAreaChannel, "channelId">;
+  initialWhatsAppContactWaId?: string | null;
   children: React.ReactNode;
 }) {
   const state = useWorkAreaDock(channelId);
   const layoutRef = React.useRef<HTMLDivElement>(null);
   const browserViewOwner = React.useRef<object>({});
+  const lastWhatsAppContactRequestRef = React.useRef<string | null>(null);
   const overlay = useOverlayMode(layoutRef);
   const relayOrigin = useRelayOrigin();
+
+  React.useEffect(() => {
+    if (!channelId || !initialWhatsAppContactWaId) {
+      lastWhatsAppContactRequestRef.current = null;
+      return;
+    }
+    const requestKey = `${channelId}:${initialWhatsAppContactWaId}`;
+    if (lastWhatsAppContactRequestRef.current === requestKey) return;
+    lastWhatsAppContactRequestRef.current = requestKey;
+    openWorkAreaFrom(channelId, "whatsapp", null, undefined, {
+      contactWaId: initialWhatsAppContactWaId,
+    });
+  }, [channelId, initialWhatsAppContactWaId]);
 
   React.useLayoutEffect(() => {
     setAgentBrowserConversationView(
@@ -204,11 +220,17 @@ export function WorkAreaLayout({
   // the first.
   React.useEffect(
     () =>
-      listenForWorkAreaTabRequests((kind) => {
+      listenForWorkAreaTabRequests((kind, options) => {
         if (!channelId) return;
         const definition = getWorkAreaTabDefinition(kind);
         if (!definition.multiple) {
-          openWorkAreaFrom(channelId, kind, document.activeElement);
+          openWorkAreaFrom(
+            channelId,
+            kind,
+            document.activeElement,
+            undefined,
+            options,
+          );
           return;
         }
         const current = getWorkAreaState(channelId);

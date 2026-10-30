@@ -383,6 +383,16 @@ async fn handle_message(
             .ok_or_else(|| "the Outreach channel does not exist yet".to_string())?;
         channel::post_for_message(state, tenant, channel_id, &contact, &stored).await?;
     }
+    // Scout hears about a reply once, whoever answers it. The wake carries the
+    // message id only, never the contact's name or text.
+    crate::cofounder_wake::enqueue(
+        state,
+        community,
+        crate::cofounder_wake::WakeReason::InboundReply,
+        &format!("reply:{}", stored.id),
+        "",
+    )
+    .await;
     if opted_out_now {
         channel::post_notice(
             state,
