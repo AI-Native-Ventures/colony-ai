@@ -2,6 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
+  useCompanyFunctionHeadsQuery,
+  usePublishCompanyFunctionAction,
   useCofounderSettingsQuery,
   useSetCofounderSettings,
 } from "@/features/cofounder/hooks";
@@ -19,6 +21,7 @@ import { usePlansQuery } from "@/features/cofounder/planHooks";
 import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
 import type { Channel } from "@/shared/api/types";
 import type { ApprovalSwitches, MoneyPreference } from "./cofounderRecords";
+import type { OnboardingMap } from "./initiativeRecords";
 
 export function useCofounderPhase2Chat(activeChannel: Channel | null) {
   const navigate = useNavigate();
@@ -30,8 +33,12 @@ export function useCofounderPhase2Chat(activeChannel: Channel | null) {
     settings.data?.settings.enabled === true;
   const briefQuery = useBriefQuery(isCofounderScoutChat);
   const onboardingQuery = useOnboardingQuery(isCofounderScoutChat);
+  const functionHeadsQuery = useCompanyFunctionHeadsQuery(
+    isCofounderScoutChat ? (activeCommunity?.id ?? null) : null,
+  );
   const briefAction = usePublishBriefAction();
   const onboardingAction = usePublishOnboardingAction();
+  const functionAction = usePublishCompanyFunctionAction();
   const saveCofounderSettings = useSetCofounderSettings();
   const onboardingHead = onboardingQuery.data?.head ?? null;
   const briefHead = briefQuery.data?.head ?? null;
@@ -135,18 +142,60 @@ export function useCofounderPhase2Chat(activeChannel: Channel | null) {
     await answerOnboardingQuestion("accounts");
   }
 
+  async function applyApprovedCompanyMap(map: OnboardingMap) {
+    for (const entry of map.entries) {
+      if (entry.placement === "empty") continue;
+      const latest = await functionHeadsQuery.refetch();
+      if (latest.isError) throw latest.error;
+      const head = latest.data?.find(
+        (candidate) => candidate.functionId === entry.function,
+      );
+      const alreadyApplied =
+        (entry.placement === "scout" && head?.state === "covered_by_scout") ||
+        (entry.placement === "existing_agent" &&
+          head?.state === "filled" &&
+          head.leadPubkey === entry.leadPubkey?.toLowerCase());
+      if (alreadyApplied) continue;
+      await functionAction.mutateAsync({
+        functionId: entry.function,
+        kind: entry.placement === "scout" ? "cover_by_scout" : "assign_lead",
+        ...(entry.placement === "existing_agent" && entry.leadPubkey
+          ? { leadPubkey: entry.leadPubkey.toLowerCase() }
+          : {}),
+        expectedHeadEventId: head?.eventId ?? null,
+      });
+      const confirmed = await functionHeadsQuery.refetch();
+      if (confirmed.isError) throw confirmed.error;
+      const updatedHead = confirmed.data?.find(
+        (candidate) => candidate.functionId === entry.function,
+      );
+      const applied =
+        (entry.placement === "scout" &&
+          updatedHead?.state === "covered_by_scout") ||
+        (entry.placement === "existing_agent" &&
+          updatedHead?.state === "filled" &&
+          updatedHead.leadPubkey === entry.leadPubkey?.toLowerCase());
+      if (!applied) {
+        throw new Error(
+          `The ${entry.function.replaceAll("_", " ")} slot has not appeared in the company map yet. Try again.`,
+        );
+      }
+    }
+  }
+
   async function approveCompanyMap() {
     const current = await onboardingQuery.refetch();
     const head = current.data?.head;
-    if (!head?.map || head.map.approved) {
-      throw new Error(
-        "The proposed company map changed. Refresh and try again.",
-      );
+    if (!head?.map) {
+      throw new Error("There is no proposed company map to approve.");
     }
-    await onboardingAction.mutateAsync({
-      kind: "approve_map",
-      expectedHeadEventId: head.eventId,
-    });
+    if (!head.map.approved) {
+      await onboardingAction.mutateAsync({
+        kind: "approve_map",
+        expectedHeadEventId: head.eventId,
+      });
+    }
+    await applyApprovedCompanyMap(head.map);
   }
 
   async function rejectCompanyMap() {
@@ -170,6 +219,7 @@ export function useCofounderPhase2Chat(activeChannel: Channel | null) {
     if (!head?.map?.approved) {
       throw new Error("Approve the proposed company map before finishing.");
     }
+    await applyApprovedCompanyMap(head.map);
     await onboardingAction.mutateAsync({
       kind: "complete",
       expectedHeadEventId: head.eventId,

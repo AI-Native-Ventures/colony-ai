@@ -21,11 +21,51 @@ import { installMockBridge, type RelayBridgeIdentity } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { TEST_IDENTITIES } from "../helpers/bridge";
+import type { MockNumbers } from "../../src/testing/e2eBridge";
 
 const APPROVAL_SWITCHES = {
   approveEveryHire: true,
   approvePlaybookChanges: true,
   approveEveryDiscoveryCampaign: true,
+};
+
+const NEEDS_YOU_NUMBERS: MockNumbers = {
+  reviews: [
+    {
+      schemaVersion: 1,
+      reviewDate: "2026-10-30",
+      asOf: 1_791_273_600,
+      windowStart: 1_790_668_800,
+      previousStart: 1_790_064_000,
+      currency: "ZAR",
+      otherCurrencyFacts: 0,
+      functions: [
+        { function: "sales", metrics: [], notTracked: [] },
+        { function: "operations", metrics: [], notTracked: [] },
+        { function: "customer_success", metrics: [], notTracked: [] },
+        { function: "finance", metrics: [], notTracked: [] },
+        { function: "brand", metrics: [], notTracked: [] },
+      ],
+      wins: [],
+      misses: [],
+      decisions: [
+        {
+          decisionId: "hire-customer-success",
+          title: "Hire a Customer Success lead?",
+          detail:
+            "Two sites go live next week. Someone should look after those clients so Aya can keep selling. Runs on your AI subscription.",
+          function: "customer_success",
+          state: "open",
+          decidedByPubkey: null,
+          decidedAt: null,
+          note: null,
+        },
+      ],
+      annotatedByPubkey: REFERENCE_AGENTS.scout.pubkey,
+      annotatedAt: 1_791_273_600,
+      createdAt: 1_791_273_600,
+    },
+  ],
 };
 
 const CAPABILITY_GAP_ID = "4f60a4ae-70c8-4f7a-a899-338e6b376198";
@@ -139,6 +179,16 @@ function capabilityGapRecord(): MockCompanyAccessRecord {
       updatedAt: now,
     },
   };
+}
+
+function needsYouAccessRecords(): MockCompanyAccessRecord[] {
+  const approvedGap = capabilityGapRecord();
+  approvedGap.content = {
+    ...approvedGap.content,
+    state: "approved",
+    approvedCostCents: 0,
+  };
+  return [...phase2AccessRecords(), approvedGap];
 }
 
 function paymentLinkGapRecord(): MockCompanyAccessRecord {
@@ -261,7 +311,15 @@ function companyInitiativeRecords(step: CofounderOnboardingStep = "brief"): {
     ];
   }
   if (step === "map") {
-    states.accounts = "skipped";
+    states.accounts = "done";
+    accounts = [
+      {
+        id: "pinterest",
+        label: "Pinterest",
+        url: "https://accounts.example.test/pinterest/login",
+        state: "done",
+      },
+    ];
     states.map = "asked";
   }
   if (step === "complete") {
@@ -318,6 +376,8 @@ async function boot(
   page: Page,
   options: {
     companyAccessRecords?: MockCompanyAccessRecord[];
+    companyFunctionActionErrors?: string[];
+    companyNumbers?: MockNumbers;
     enabled?: boolean;
     identity?: RelayBridgeIdentity;
     step?: CofounderOnboardingStep;
@@ -362,6 +422,11 @@ async function boot(
       colony3Sidebar: true,
       relayRequiresMembership: true,
       relayRole: "owner",
+      relayMembers: [
+        { pubkey: TEST_IDENTITIES.tyler.pubkey, role: "owner" },
+        { pubkey: REFERENCE_AGENTS.aya.pubkey, role: "member" },
+        { pubkey: REFERENCE_AGENTS.scout.pubkey, role: "member" },
+      ],
       cofounderSettings: {
         enabled: options.enabled ?? true,
         moneyPreference: "cheapest_first",
@@ -370,6 +435,7 @@ async function boot(
       companyBriefRecord: initiative.brief,
       companyOnboardingRecord: initiative.onboarding,
       companyOnboardingAutoAdvance: true,
+      companyFunctionActionErrors: options.companyFunctionActionErrors,
       companyPlans: [
         novemberPlan({
           scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
@@ -380,6 +446,7 @@ async function boot(
           ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
         }),
       ],
+      companyNumbers: options.companyNumbers,
       companyAccessRecords:
         options.companyAccessRecords ?? phase2AccessRecords(),
     },
@@ -566,6 +633,21 @@ async function capture(
   await page.screenshot({ fullPage, path: file });
 }
 
+async function expectNeedsYouContentLoaded(page: Page) {
+  await expect(
+    page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`cofounder-plan-step-item-${ESIGN_PLAN_ID}-signup`),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Hire a Customer Success lead?", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("WhatsApp batch of 2 messages", { exact: true }),
+  ).toBeVisible();
+}
+
 test.describe("Co-founder mode Phase 2", () => {
   test("enabled co-founder mode opens the Scout direct message from settings", async ({
     page,
@@ -609,6 +691,27 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(
       page.getByRole("button", { name: "Finish onboarding" }),
     ).toBeVisible();
+    await page.goto("/#/company/map");
+    await expect(page.getByTestId("cofounder-map-sales")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    await expect(page.getByTestId("cofounder-map-sales")).toHaveAttribute(
+      "aria-label",
+      /Sales, led by/iu,
+    );
+    await expect(page.getByTestId("cofounder-map-operations")).toHaveAttribute(
+      "data-state",
+      "covered_by_scout",
+    );
+    await expect(page.getByTestId("cofounder-map-operations")).toHaveAttribute(
+      "aria-label",
+      "Operations, covered by Scout",
+    );
+    await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
+    await expect(
+      page.getByRole("button", { name: "Finish onboarding" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Finish onboarding" }).click();
 
     const plan = page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`);
@@ -625,6 +728,35 @@ test.describe("Co-founder mode Phase 2", () => {
       .getByTestId(`cofounder-plan-approve-${NOVEMBER_PLAN_ID}`)
       .click();
     await expect(plan).toContainText("Approved");
+  });
+
+  test("an approved company map retries function slot writes before finishing", async ({
+    page,
+  }) => {
+    await boot(page, {
+      companyFunctionActionErrors: ["Temporary function slot write failure."],
+      identity: TEST_IDENTITIES.tyler,
+      step: "map",
+    });
+    await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
+    await page.getByTestId("cofounder-map-approve").click();
+    await expect(page.getByRole("alert")).toContainText(
+      "Temporary function slot write failure.",
+    );
+
+    await page.getByRole("button", { name: "Finish onboarding" }).click();
+    await expect(
+      page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`),
+    ).toBeVisible();
+    await page.goto("/#/company/map");
+    await expect(page.getByTestId("cofounder-map-sales")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    await expect(page.getByTestId("cofounder-map-operations")).toHaveAttribute(
+      "data-state",
+      "covered_by_scout",
+    );
   });
 
   test("Scout plan can be rejected", async ({ page }) => {
@@ -1001,7 +1133,18 @@ test.describe("Co-founder mode Phase 2", () => {
               width: viewport.width,
               height: captureHeight,
             });
-            await boot(page, { theme, step: item.step });
+            const needsYouPreview = item.surface === "needs-you";
+            await boot(page, {
+              theme,
+              step: item.step,
+              identity: TEST_IDENTITIES.tyler,
+              ...(needsYouPreview
+                ? {
+                    companyNumbers: NEEDS_YOU_NUMBERS,
+                    companyAccessRecords: needsYouAccessRecords(),
+                  }
+                : {}),
+            });
             await page.goto(item.route);
             const expected = (target: Page) =>
               item.surface === "onboarding"
@@ -1014,6 +1157,12 @@ test.describe("Co-founder mode Phase 2", () => {
                       ? target.getByTestId("cofounder-access-screen")
                       : target.getByTestId("cofounder-open-scout");
             await expect(expected(page)).toBeVisible();
+            if (item.surface === "onboarding") {
+              await expect(
+                page.getByText("pinterest login is open in the browser"),
+              ).toBeVisible();
+            }
+            if (needsYouPreview) await expectNeedsYouContentLoaded(page);
             await capture(
               page,
               testInfo,
@@ -1025,9 +1174,28 @@ test.describe("Co-founder mode Phase 2", () => {
               });
               try {
                 const viewportPage = await viewportContext.newPage();
-                await boot(viewportPage, { theme, step: item.step });
+                await boot(viewportPage, {
+                  theme,
+                  step: item.step,
+                  identity: TEST_IDENTITIES.tyler,
+                  ...(needsYouPreview
+                    ? {
+                        companyNumbers: NEEDS_YOU_NUMBERS,
+                        companyAccessRecords: needsYouAccessRecords(),
+                      }
+                    : {}),
+                });
                 await viewportPage.goto(item.route);
                 await expect(expected(viewportPage)).toBeVisible();
+                if (item.surface === "onboarding") {
+                  await expect(
+                    viewportPage.getByText(
+                      "pinterest login is open in the browser",
+                    ),
+                  ).toBeVisible();
+                }
+                if (needsYouPreview)
+                  await expectNeedsYouContentLoaded(viewportPage);
                 await capture(
                   viewportPage,
                   testInfo,

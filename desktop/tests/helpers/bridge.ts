@@ -10,6 +10,7 @@ import type {
   MockFactoryRunSeed,
   MockManagedAgentSeed,
   MockPlan,
+  MockNumbers,
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
@@ -647,6 +648,7 @@ type MockBridgeOptions = {
   /** Access list, capability gap and slot hire records, signed as the relay. */
   companyAccessRecords?: MockCompanyAccessRecord[];
   companyPlans?: MockPlan[];
+  companyNumbers?: MockNumbers;
   companyBriefRecord?: MockCompanyInitiativeRecord | null;
   companyOnboardingRecord?: MockCompanyInitiativeRecord | null;
   companyOnboardingAutoAdvance?: boolean;

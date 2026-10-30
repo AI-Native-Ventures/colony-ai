@@ -14,6 +14,7 @@ import {
 import {
   KIND_COFOUNDER_ACTION,
   KIND_COFOUNDER_HEAD,
+  KIND_COMPANY_FUNCTION_ACTION,
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
@@ -389,6 +390,8 @@ export type MockCompanyFunctionHead = {
   function: "sales" | "operations" | "customer_success" | "finance" | "brand";
   state: "empty" | "covered_by_scout" | "filled";
   leadPubkey?: string | null;
+  updatedByPubkey?: string;
+  updatedAt?: number;
 };
 
 export type MockWorkerRun = {
@@ -1103,6 +1106,8 @@ type E2eConfig = {
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
     companyFunctionHeads?: MockCompanyFunctionHead[];
+    /** Reject function slot writes in order, then accept them. */
+    companyFunctionActionErrors?: string[];
     companyWorkerRuns?: MockWorkerRun[];
     /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
     companyAccessRecords?: MockCompanyAccessRecord[];
@@ -7254,7 +7259,10 @@ function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
   const dTags = filter["#d"];
   return seeds
     .map((seed) => {
-      const updatedAt = Math.floor(Date.now() / 1000);
+      const updatedAt = seed.updatedAt ?? Math.floor(Date.now() / 1000);
+      seed.updatedAt = updatedAt;
+      const updatedByPubkey = seed.updatedByPubkey ?? relayPubkey;
+      seed.updatedByPubkey = updatedByPubkey;
       return createSignedMockCompanyHead(
         KIND_COMPANY_FUNCTION_HEAD,
         {
@@ -7264,7 +7272,7 @@ function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
           ...(seed.state === "filled" && seed.leadPubkey
             ? { leadPubkey: seed.leadPubkey }
             : {}),
-          updatedByPubkey: relayPubkey,
+          updatedByPubkey,
           updatedAt,
         },
         `company:function:${seed.function}`,
@@ -7283,6 +7291,142 @@ function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 200);
+}
+
+function acceptMockCompanyFunctionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const mock = config?.mock;
+  if (!mock || !verifyEvent(event)) {
+    reject("invalid: function action signature or mock relay is invalid.");
+    return;
+  }
+  if (
+    mock.relayRole !== undefined &&
+    mock.relayRole !== "owner" &&
+    mock.relayRole !== "admin"
+  ) {
+    reject("restricted: only the owner or an admin can change function slots.");
+    return;
+  }
+  if (
+    event.tags.length !== 1 ||
+    event.tags[0]?.[0] !== "d" ||
+    !event.tags[0][1]?.startsWith("company:function:")
+  ) {
+    reject("invalid: function action needs its company:function d tag.");
+    return;
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      reject("invalid: function action must be an object.");
+      return;
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    reject("invalid: function action is not JSON.");
+    return;
+  }
+  const allowedKeys = new Set([
+    "schemaVersion",
+    "function",
+    "kind",
+    "leadPubkey",
+    "expectedHeadEventId",
+  ]);
+  if (
+    Object.keys(action).some((key) => !allowedKeys.has(key)) ||
+    action.schemaVersion !== 1
+  ) {
+    reject("invalid: function action has an unsupported shape.");
+    return;
+  }
+  const functionId = action.function;
+  const validFunctions = new Set([
+    "sales",
+    "operations",
+    "customer_success",
+    "finance",
+    "brand",
+  ]);
+  if (
+    typeof functionId !== "string" ||
+    !validFunctions.has(functionId) ||
+    event.tags[0][1] !== `company:function:${functionId}`
+  ) {
+    reject("invalid: function action d tag does not match its function.");
+    return;
+  }
+  const actionKind = action.kind;
+  const leadPubkey = action.leadPubkey;
+  if (
+    (actionKind === "assign_lead" &&
+      (typeof leadPubkey !== "string" ||
+        !/^[0-9a-f]{64}$/iu.test(leadPubkey))) ||
+    ((actionKind === "cover_by_scout" || actionKind === "clear") &&
+      leadPubkey !== undefined) ||
+    (actionKind !== "assign_lead" &&
+      actionKind !== "cover_by_scout" &&
+      actionKind !== "clear")
+  ) {
+    reject("invalid: function action has an invalid kind or leadPubkey.");
+    return;
+  }
+  const expectedHeadEventId = action.expectedHeadEventId;
+  if (
+    expectedHeadEventId !== undefined &&
+    (typeof expectedHeadEventId !== "string" ||
+      !/^[0-9a-f]{64}$/iu.test(expectedHeadEventId))
+  ) {
+    reject("invalid: expectedHeadEventId must be a 64-character event id.");
+    return;
+  }
+
+  const dTag = event.tags[0][1];
+  const currentHead = filterMockCompanyFunctionHeads({ "#d": [dTag] })[0];
+  if (
+    (currentHead && expectedHeadEventId !== currentHead.id) ||
+    (!currentHead && expectedHeadEventId !== undefined)
+  ) {
+    reject("conflict: function slot head changed; refresh and try again.");
+    return;
+  }
+
+  const configuredErrors = mock.companyFunctionActionErrors;
+  const configuredError = configuredErrors?.length
+    ? configuredErrors.shift()
+    : undefined;
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  if (!mock.companyFunctionHeads) mock.companyFunctionHeads = [];
+  const heads = mock.companyFunctionHeads;
+  const existing = heads.find((head) => head.function === functionId);
+  const next: MockCompanyFunctionHead = existing ?? {
+    function: functionId as MockCompanyFunctionHead["function"],
+    state: "empty",
+  };
+  next.state =
+    actionKind === "assign_lead"
+      ? "filled"
+      : actionKind === "cover_by_scout"
+        ? "covered_by_scout"
+        : "empty";
+  if (actionKind === "assign_lead") next.leadPubkey = leadPubkey as string;
+  else delete next.leadPubkey;
+  next.updatedByPubkey = event.pubkey;
+  next.updatedAt = Math.floor(Date.now() / 1000);
+  if (!existing) heads.push(next);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyWorkerRuns(filter: MockFilter): RelayEvent[] {
@@ -19606,6 +19750,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_ONBOARDING_ACTION) {
       acceptMockOnboardingAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COMPANY_FUNCTION_ACTION) {
+      acceptMockCompanyFunctionAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
