@@ -80,6 +80,7 @@ export type WhatsAppContact = Readonly<{
   paused: boolean;
   pauseReason: string | null;
   unanswered: boolean;
+  awaitingApproval: boolean;
 }>;
 
 export type WhatsAppMessage = Readonly<{
@@ -288,6 +289,7 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
     paused: booleanValue(contact.paused, "contact-paused flag"),
     pauseReason: nullableString(contact.pauseReason, "contact pause reason"),
     unanswered: booleanValue(contact.unanswered, "unanswered flag"),
+    awaitingApproval: contact.awaitingApproval === true,
   };
 }
 

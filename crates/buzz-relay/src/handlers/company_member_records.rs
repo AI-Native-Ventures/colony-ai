@@ -237,7 +237,36 @@ pub(super) async fn handle(
         ));
     }
 
+    // A paused or terminated employee leaves every function slot in the same
+    // commit, so a slot never keeps a lead who cannot work.
+    let cleared_slots = if matches!(
+        action.action,
+        MemberPositionActionKind::Pause | MemberPositionActionKind::Terminate
+    ) {
+        super::company_functions::clear_slots_led_by_in_tx(
+            &mut tx,
+            state,
+            community_id,
+            &target_pubkey,
+            &actor_pubkey,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
     tx.commit().await.map_err(internal)?;
+    for slot in &cleared_slots {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            slot,
+            buzz_core::kind::KIND_COMPANY_FUNCTION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
     super::event::dispatch_persistent_event(
         tenant,
         state,
@@ -485,6 +514,21 @@ async fn current_member_head(
             .map_err(|error| internal(format!("stored member d-tag: {error}")))?;
     }
     Ok(head)
+}
+
+/// The lifecycle status of a member position, `None` while it has no position.
+pub(crate) async fn member_position_status(
+    state: &AppState,
+    community_id: CommunityId,
+    pubkey: &str,
+) -> Result<Option<MemberStatus>, IngestError> {
+    let d_tag = member_d_tag(pubkey)
+        .map_err(|error| invalid(format!("member pubkey is invalid: {error}")))?;
+    let stored = current_member_head(state, community_id, &d_tag).await?;
+    stored
+        .as_ref()
+        .map(|stored| parse_member_head(stored).map(|head| head.status))
+        .transpose()
 }
 
 async fn current_member_heads(

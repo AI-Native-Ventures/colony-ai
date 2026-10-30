@@ -4,6 +4,7 @@
 //! goal d-tag and intentionally omit a channel h-tag.
 
 use crate::SdkError;
+use buzz_core::company_access::{validate_access_action, AccessAction};
 use buzz_core::company_cofounder::{
     validate_cofounder_action, CofounderAction, CofounderSettings, COFOUNDER_D_TAG,
 };
@@ -23,8 +24,9 @@ use buzz_core::factory_run_records::{
     factory_run_d_tag, parse_factory_run_action, FactoryRunAction,
 };
 use buzz_core::kind::{
-    KIND_COFOUNDER_ACTION, KIND_COMPANY_FUNCTION_ACTION, KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION,
-    KIND_SECRET_BINDING_ACTION, KIND_TOOL_PERMISSION_ACTION,
+    KIND_COFOUNDER_ACTION, KIND_COMPANY_ACCESS_ACTION, KIND_COMPANY_FUNCTION_ACTION,
+    KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION, KIND_SECRET_BINDING_ACTION,
+    KIND_TOOL_PERMISSION_ACTION,
 };
 use nostr::{EventBuilder, Kind, Tag};
 
@@ -63,6 +65,24 @@ pub fn build_function_action(action: &FunctionAction) -> Result<EventBuilder, Sd
     let tag = Tag::parse(["d", d_tag.as_str()])
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
     Ok(EventBuilder::new(Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16), content).tag(tag))
+}
+
+/// Build a member-signed access list, capability gap or slot hire action.
+///
+/// The d-tag follows the record the write changes: the access entry, the gap
+/// or the hire.
+pub fn build_access_action(action: &AccessAction) -> Result<EventBuilder, SdkError> {
+    validate_access_action(action)
+        .map_err(|error| SdkError::InvalidInput(format!("access action is invalid: {error}")))?;
+    let content = serde_json::to_string(action).map_err(|error| {
+        SdkError::InvalidInput(format!("access action serialization failed: {error}"))
+    })?;
+    let d_tag = action
+        .d_tag()
+        .map_err(|error| SdkError::InvalidInput(format!("access action is invalid: {error}")))?;
+    let tag = Tag::parse(["d", d_tag.as_str()])
+        .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+    Ok(EventBuilder::new(Kind::Custom(KIND_COMPANY_ACCESS_ACTION as u16), content).tag(tag))
 }
 
 /// Build a member-signed Factory run action with its community-wide d-tag.
@@ -298,6 +318,36 @@ mod tests {
         let parsed: FactoryRunAction =
             serde_json::from_str(&event.content).expect("typed Factory action");
         assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn access_action_builder_tags_the_record_it_changes() {
+        use buzz_core::company_access::{gap_d_tag, AccessOp};
+        let gap_id = uuid::Uuid::new_v4();
+        let mut action = AccessAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            op: AccessOp::GapApprove,
+            access_id: None,
+            gap_id: Some(gap_id),
+            hire_id: None,
+            entry: None,
+            gap: None,
+            function: None,
+            reason: None,
+            expected_head_event_id: Some("cd".repeat(32)),
+        };
+        let event = build_access_action(&action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+        assert_eq!(event.kind, Kind::Custom(KIND_COMPANY_ACCESS_ACTION as u16));
+        assert_eq!(event.tags.len(), 1);
+        assert_eq!(
+            event.tags.first().and_then(|tag| tag.content()),
+            Some(gap_d_tag(gap_id).as_str())
+        );
+        action.expected_head_event_id = None;
+        assert!(build_access_action(&action).is_err());
     }
 
     #[test]

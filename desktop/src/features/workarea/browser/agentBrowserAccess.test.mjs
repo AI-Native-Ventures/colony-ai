@@ -69,8 +69,10 @@ const tabState = (id, overrides = {}) => ({
 function fakeHost() {
   const calls = [];
   let counter = 0;
+  let listener = null;
   return {
     calls,
+    emit: (event) => listener?.(event),
     async createTab(options) {
       calls.push(["createTab", options]);
       counter += 1;
@@ -84,7 +86,12 @@ function fakeHost() {
       calls.push(["closeBusiness", id]);
       return { closedTabs: 0 };
     },
-    onEvent: () => () => {},
+    onEvent: (callback) => {
+      listener = callback;
+      return () => {
+        listener = null;
+      };
+    },
   };
 }
 
@@ -527,4 +534,72 @@ test("a late result from an old community never grants", async () => {
   release();
   await settle();
   assert.deepEqual(broker.grants, []);
+});
+
+// GATE-313-R2 P14: the agent's grant was already live, so no access request
+// came, and its second `browser_open` tab joined the strip unselected while the
+// agent drove it. The tab the agent drives must be the one a watching person sees.
+const agentOpensSecondTab = async () => {
+  broker.emit(ask());
+  await settle();
+  host.emit({
+    type: "new-tab",
+    openedFrom: "host-1",
+    background: true,
+    tab: tabState("host-9", { url: "https://colony.global/" }),
+  });
+  await settle();
+};
+
+test("a further tab the agent opens is selected when the person watches the conversation", async () => {
+  watching();
+  await agentOpensSecondTab();
+
+  const state = getWorkAreaState(CHANNEL);
+  assert.equal(state.tabs.length, 2);
+  const opened = state.tabs.find((tab) => tab.id !== browserTabId("page-1"));
+  assert.equal(
+    getBrowserPage(opened.id.replace(/^browser:/u, "")).hostId,
+    "host-9",
+  );
+  assert.equal(state.open, true);
+  assert.equal(
+    state.activeTabId,
+    opened.id,
+    "the visible tab is the driven tab",
+  );
+});
+
+test("a further tab the agent opens stays in the background when the person is not watching", async () => {
+  await agentOpensSecondTab();
+
+  const state = getWorkAreaState(CHANNEL);
+  assert.equal(state.tabs.length, 2);
+  assert.equal(state.open, false);
+});
+
+test("a further tab the agent opens does not pull the person off a tab they are using", async () => {
+  watching();
+  openWorkArea(CHANNEL, "terminal");
+  noteWorkAreaPersonActivity(CHANNEL, "terminal");
+  await agentOpensSecondTab();
+
+  assert.equal(getWorkAreaState(CHANNEL).activeTabId, "terminal");
+  assert.equal(getWorkAreaState(CHANNEL).tabs.length, 3);
+});
+
+test("a further tab the agent opens stays hidden once the person closed the dock during this run", async () => {
+  watching();
+  broker.emit(ask());
+  await settle();
+  closeWorkArea(CHANNEL);
+  host.emit({
+    type: "new-tab",
+    openedFrom: "host-1",
+    background: true,
+    tab: tabState("host-9", { url: "https://colony.global/" }),
+  });
+  await settle();
+
+  assert.equal(getWorkAreaState(CHANNEL).open, false);
 });

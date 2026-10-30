@@ -6,7 +6,11 @@ import {
   openWorkAreaFile,
   toggleWorkArea,
 } from "./workAreaStore";
-import type { WorkAreaFileRef, WorkAreaTabKind } from "./workAreaTypes";
+import type {
+  WorkAreaFileRef,
+  WorkAreaTabKind,
+  WorkAreaTabOptions,
+} from "./workAreaTypes";
 
 /**
  * Focus bookkeeping for the dock. Whatever opened it (the Work area button,
@@ -65,9 +69,10 @@ export function openWorkAreaFrom(
   kind: WorkAreaTabKind | undefined,
   source: Element | null | undefined,
   tabId?: string,
+  options?: WorkAreaTabOptions,
 ) {
   rememberTrigger(source);
-  openWorkArea(channelId, kind, tabId);
+  openWorkArea(channelId, kind, tabId, options);
   focusDockSoon();
 }
 

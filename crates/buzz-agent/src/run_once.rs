@@ -93,9 +93,9 @@ pub(crate) fn parse_args(args: &[String]) -> Result<RunOnceArgs, String> {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct Usage {
-    input: u64,
-    output: u64,
+pub(crate) struct Usage {
+    pub(crate) input: u64,
+    pub(crate) output: u64,
 }
 
 /// The line `run-once` prints.
@@ -213,7 +213,7 @@ fn read_prompt(args: &RunOnceArgs) -> Result<String, String> {
 
 /// Ask the model until it answers in text. Offers no tools; a tool call is
 /// refused with a notice and costs one of the rounds.
-async fn answer(
+pub(crate) async fn answer(
     cfg: &Config,
     llm: &Llm,
     prompt: &str,

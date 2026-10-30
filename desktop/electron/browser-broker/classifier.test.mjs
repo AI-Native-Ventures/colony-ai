@@ -238,6 +238,54 @@ test("typing with submit follows the form rules", () => {
   );
 });
 
+test("pressing Enter in a box with no form needs confirmation, except in a search box", () => {
+  const composer = classifyAction({
+    action: "type",
+    element: { role: "textbox", name: "Message" },
+    form: null,
+    page,
+    submit: true,
+    text: "Hi, the quote is attached",
+  });
+  assert.equal(composer.decision, "confirm");
+  assert.equal(composer.category, "enter_submit");
+  assert.ok(codes(composer).includes("enter_submit_no_form"));
+  // Typing without Enter sends nothing, so it stays allowed.
+  assert.equal(
+    classifyAction({
+      action: "type",
+      element: { role: "textbox", name: "Message" },
+      form: null,
+      page,
+      text: "Hi",
+    }).decision,
+    "allow",
+  );
+  // A search box may press Enter with no form.
+  assert.equal(
+    classifyAction({
+      action: "type",
+      element: { role: "searchbox", name: "Search" },
+      form: null,
+      page,
+      submit: true,
+      text: "kettle",
+    }).decision,
+    "allow",
+  );
+  assert.equal(
+    classifyAction({
+      action: "type",
+      element: { role: "textbox", name: "Search", inputType: "search" },
+      form: null,
+      page,
+      submit: true,
+      text: "kettle",
+    }).decision,
+    "allow",
+  );
+});
+
 test("a form that posts to another origin needs confirmation", () => {
   const form = {
     action: "https://collector.evil.test/steal",

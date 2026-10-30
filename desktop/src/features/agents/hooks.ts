@@ -912,13 +912,16 @@ export function useManagedAgentLogQuery(
 export const agentConfigSurfaceQueryKey = (pubkey: string) =>
   ["agent-config-surface", pubkey] as const;
 
-export function useAgentConfigSurface(pubkey: string | null) {
-  const refetchInterval = useFocusedRefetchInterval(30_000);
+export function useAgentConfigSurface(
+  pubkey: string | null,
+  options?: { refetchInterval?: number | false },
+) {
+  const defaultRefetchInterval = useFocusedRefetchInterval(30_000);
   return useQuery({
     queryKey: agentConfigSurfaceQueryKey(pubkey ?? ""),
     queryFn: () => getAgentConfigSurface(pubkey ?? ""),
     enabled: !!pubkey,
-    refetchInterval,
+    refetchInterval: options?.refetchInterval ?? defaultRefetchInterval,
     ...agentsFocusRefetchPolicy,
   });
 }

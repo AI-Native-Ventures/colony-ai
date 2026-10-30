@@ -22,10 +22,14 @@ pub mod business_records;
 pub mod company_duties;
 /// Typed event builders for employee configuration history.
 pub mod company_employee_history;
+/// Typed event builders for the co-founder business brief and onboarding.
+pub mod company_initiative;
 /// Typed event builder for structured employee lessons.
 pub mod company_lessons;
 /// Typed event builders for Colony company member positions.
 pub mod company_members;
+/// Typed event builder for co-founder plan actions.
+pub mod company_plans;
 /// Typed event builders for Colony company records.
 pub mod company_records;
 /// Typed event builders for Colony AI allowances and spend records.

@@ -17,6 +17,14 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
+import {
+  KIND_COMPANY_ACCESS_ACTION,
+  KIND_COMPANY_ACCESS_HEAD,
+} from "@/features/cofounder/accessRecords";
+import {
+  KIND_PLAN_ACTION,
+  KIND_PLAN_HEAD,
+} from "@/features/cofounder/planRecords";
 
 import type {
   ObservedUnreadProjection,
@@ -34,6 +42,9 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import { applyMockAccessAction } from "./mockCompanyAccess.ts";
+import type { MockCompanyAccessRecord } from "./mockCompanyAccess.ts";
+
 import {
   businessDTag,
   proposalVersionDTag,
@@ -241,6 +252,15 @@ export type MockManagedAgentSeed = {
   envVars?: Record<string, string>;
 };
 
+/** Narrow live-config values that a mock runtime reports for one agent. */
+export type MockAgentConfigSurfaceOverride = {
+  runtimeId?: string | null;
+  runtimeLabel?: string | null;
+  model?: string;
+  provider?: string;
+  thinkingEffort?: string;
+};
+
 export type MockFactoryProjectSeed = {
   dtag: string;
   name: string;
@@ -370,6 +390,66 @@ export type MockWorkerRun = {
   costUsd?: number;
   outputText?: string;
   failureReason?: string;
+};
+
+/** One co-founder plan seed. Keys follow the relay-signed plan head (kind 30673). */
+export type MockPlanStep = {
+  stepId: string;
+  title: string;
+  detail?: string;
+  owner: {
+    kind: "function" | "lead_agent" | "worker" | "owner";
+    function?: string;
+    agentPubkey?: string;
+    workerType?: string;
+  };
+  tools?: string[];
+  costLabel: string;
+  costEstimateCents?: number;
+  whenLabel: string;
+  approvalPoint?: {
+    kind: "outreach" | "spend" | "taste" | "hire" | "other";
+    prompt: string;
+  };
+  status?:
+    | "pending"
+    | "waiting_approval"
+    | "approved"
+    | "in_progress"
+    | "done"
+    | "skipped"
+    | "failed";
+  note?: string;
+};
+
+export type MockPlan = {
+  planId: string;
+  status: "proposed" | "approved" | "completed" | "rejected" | "cancelled";
+  revision?: number;
+  plan: {
+    title: string;
+    summary?: string;
+    function?: string;
+    currency: string;
+    budgetCents?: number;
+    decideBy?: number;
+    targetLabel?: string;
+    timingLabel?: string;
+    steps: MockPlanStep[];
+  };
+  proposedByPubkey: string;
+  proposedAt?: number;
+  updatedAt?: number;
+  approvals?: Array<{
+    scope: "plan" | "step";
+    stepId?: string;
+    decision: "approved" | "rejected" | "edited" | "cancelled";
+    actorPubkey: string;
+    at: number;
+    revision: number;
+    note?: string;
+    actionEventId: string;
+  }>;
 };
 
 /** Exact records used only by the visual comparison mock bridge. */
@@ -694,6 +774,11 @@ type E2eConfig = {
     agentSubscriptionUsage?:
       | import("@/shared/api/tauriArchive").AgentSubscriptionUsage
       | null;
+    /** Live runtime values returned for specific managed agents. */
+    agentConfigSurfaceOverrides?: Record<
+      string,
+      MockAgentConfigSurfaceOverride
+    >;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -992,6 +1077,10 @@ type E2eConfig = {
     cofounderSettings?: MockCofounderSettings;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
+    /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
+    companyAccessRecords?: MockCompanyAccessRecord[];
+    /** Co-founder plans served as relay-signed plan heads (kind 30673). */
+    companyPlans?: MockPlan[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -3256,6 +3345,42 @@ function buildMockConfigSurface(pubkey: string): {
     default:
       return gooseSurface;
   }
+}
+
+function applyMockAgentConfigSurfaceOverride(
+  pubkey: string,
+  override: MockAgentConfigSurfaceOverride | undefined,
+) {
+  const surface = buildMockConfigSurface(pubkey);
+  if (!override) return surface;
+
+  const normalized = { ...surface.normalized };
+  for (const [field, value] of [
+    ["model", override.model],
+    ["provider", override.provider],
+    ["thinkingEffort", override.thinkingEffort],
+  ] as const) {
+    const descriptor = normalized[field];
+    if (
+      value !== undefined &&
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      !Array.isArray(descriptor)
+    ) {
+      normalized[field] = { ...descriptor, value };
+    }
+  }
+
+  return {
+    ...surface,
+    runtimeId:
+      override.runtimeId === undefined ? surface.runtimeId : override.runtimeId,
+    runtimeLabel:
+      override.runtimeLabel === undefined
+        ? surface.runtimeLabel
+        : override.runtimeLabel,
+    normalized,
+  };
 }
 
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
@@ -6805,6 +6930,67 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 20);
 }
 
+function filterMockCompanyAccessHeads(filter: MockFilter): RelayEvent[] {
+  const records = getConfig()?.mock?.companyAccessRecords ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return records
+    .map((record) =>
+      createSignedMockCompanyHead(
+        KIND_COMPANY_ACCESS_HEAD,
+        record.content,
+        record.dTag,
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function acceptMockCompanyAccessAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: access action signature is invalid.");
+    return;
+  }
+  const mock = config?.mock;
+  if (!mock) {
+    reject("error: mock relay is not configured.");
+    return;
+  }
+  if (!mock.companyAccessRecords) mock.companyAccessRecords = [];
+  const error = applyMockAccessAction(
+    mock.companyAccessRecords,
+    event.content,
+    event.pubkey,
+    mock.relayRole,
+    Math.floor(Date.now() / 1000),
+  );
+  if (error) {
+    reject(error);
+    return;
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
   const seeds = getConfig()?.mock?.companyFunctionHeads ?? [];
   const relayPubkey = mockCompanyRecordSigner().pubkey;
@@ -6885,6 +7071,254 @@ function filterMockCompanyWorkerRuns(filter: MockFilter): RelayEvent[] {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 1_000);
+}
+
+function mockPlanHeadContent(plan: MockPlan): Record<string, unknown> {
+  const proposedAt = plan.proposedAt ?? 1_793_000_000;
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  return {
+    schemaVersion: 1,
+    planId: plan.planId,
+    status: plan.status,
+    revision: plan.revision ?? 1,
+    plan: {
+      ...plan.plan,
+      steps: plan.plan.steps.map((step) => ({
+        ...step,
+        status: step.status ?? "pending",
+      })),
+    },
+    proposedByPubkey: plan.proposedByPubkey,
+    proposedAt,
+    updatedByPubkey: relayPubkey,
+    updatedAt: plan.updatedAt ?? proposedAt,
+    approvals: plan.approvals ?? [],
+    sourceActionEventId: "a".repeat(64),
+  };
+}
+
+function filterMockCompanyPlans(filter: MockFilter): RelayEvent[] {
+  const plans = getConfig()?.mock?.companyPlans ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return plans
+    .map((plan) =>
+      createSignedMockCompanyHead(
+        KIND_PLAN_HEAD,
+        mockPlanHeadContent(plan),
+        `company:plan:${plan.planId}`,
+        plan.updatedAt ?? plan.proposedAt ?? 1_793_000_000,
+      ),
+    )
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+/**
+ * A small stand-in for the relay's plan state machine, enough for UI specs:
+ * the same authority and approval-point rules, none of the signature work.
+ */
+function acceptMockPlanAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  let action: {
+    schemaVersion?: number;
+    planId?: string;
+    kind?: string;
+    plan?: MockPlan["plan"];
+    revision?: number;
+    stepId?: string;
+    stepStatus?: NonNullable<MockPlanStep["status"]>;
+    note?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: plan action is not JSON.");
+    return;
+  }
+  if (!config?.mock || action.schemaVersion !== 1 || !action.planId) {
+    reject("invalid: plan action has an unsupported shape.");
+    return;
+  }
+  const mock = config.mock;
+  const plans = mock.companyPlans ?? [];
+  mock.companyPlans = plans;
+  const isAdmin =
+    !mock.relayRole || ["owner", "admin"].includes(mock.relayRole);
+  const now = Math.floor(Date.now() / 1000);
+  const existing = plans.find((plan) => plan.planId === action.planId);
+  const record = (
+    plan: MockPlan,
+    decision: "approved" | "rejected" | "edited" | "cancelled",
+    stepId?: string,
+  ) => {
+    plan.approvals = [
+      ...(plan.approvals ?? []),
+      {
+        scope: stepId ? "step" : "plan",
+        ...(stepId ? { stepId } : {}),
+        decision,
+        actorPubkey: MOCK_IDENTITY_PUBKEY,
+        at: now,
+        revision: plan.revision ?? 1,
+        ...(action.note ? { note: action.note } : {}),
+        actionEventId: event.id,
+      },
+    ];
+  };
+  if (action.kind === "propose") {
+    if (!mock.cofounderSettings?.enabled) {
+      reject(
+        "restricted: co-founder mode is off for this company, so plans cannot be proposed",
+      );
+      return;
+    }
+    if (existing || !action.plan) {
+      reject("conflict: a plan with this id already exists");
+      return;
+    }
+    plans.push({
+      planId: action.planId,
+      status: "proposed",
+      revision: 1,
+      plan: action.plan,
+      proposedByPubkey: MOCK_IDENTITY_PUBKEY,
+      proposedAt: now,
+      updatedAt: now,
+      approvals: [],
+    });
+    sendWsText(socket.handler, ["OK", event.id, true, ""]);
+    return;
+  }
+  if (!existing) {
+    reject("conflict: this plan does not exist");
+    return;
+  }
+  const plan = existing;
+  if (plan.status !== "proposed" && plan.status !== "approved") {
+    reject("conflict: this plan has already ended");
+    return;
+  }
+  const step = plan.plan.steps.find(
+    (candidate) => candidate.stepId === action.stepId,
+  );
+  const needAdmin = (what: string) => {
+    if (isAdmin) return true;
+    reject(`restricted: only the owner or an admin can ${what}`);
+    return false;
+  };
+  switch (action.kind) {
+    case "revise":
+      if (plan.status !== "proposed" || !action.plan) {
+        reject("conflict: only a proposed plan can be revised");
+        return;
+      }
+      plan.plan = action.plan;
+      plan.revision = (plan.revision ?? 1) + 1;
+      if (isAdmin) record(plan, "edited");
+      break;
+    case "approve":
+    case "reject":
+      if (!needAdmin(`${action.kind} a plan`)) return;
+      if (plan.status !== "proposed") {
+        reject("conflict: only a proposed plan can be decided");
+        return;
+      }
+      if (action.revision !== (plan.revision ?? 1)) {
+        reject(
+          `conflict: the plan changed since you looked: it is now revision ${plan.revision ?? 1}`,
+        );
+        return;
+      }
+      plan.status = action.kind === "approve" ? "approved" : "rejected";
+      record(plan, action.kind === "approve" ? "approved" : "rejected");
+      break;
+    case "cancel":
+      plan.status = "cancelled";
+      record(plan, "cancelled");
+      break;
+    case "request_step_approval":
+    case "approve_step":
+    case "reject_step":
+    case "update_step": {
+      if (plan.status !== "approved" || !step) {
+        reject("conflict: the plan is not approved yet");
+        return;
+      }
+      const current = step.status ?? "pending";
+      if (action.kind === "request_step_approval") {
+        if (!step.approvalPoint || current !== "pending") {
+          reject("conflict: this step cannot ask for approval");
+          return;
+        }
+        step.status = "waiting_approval";
+      } else if (action.kind === "update_step") {
+        const to = action.stepStatus;
+        if (
+          to === "in_progress" &&
+          step.approvalPoint &&
+          current !== "approved"
+        ) {
+          reject(
+            "conflict: this step waits for the owner's approval before it can run",
+          );
+          return;
+        }
+        if (step.owner.kind === "owner" && !isAdmin) {
+          reject("restricted: you are not the doer of this step");
+          return;
+        }
+        step.status = to;
+        if (action.note) step.note = action.note;
+      } else {
+        if (
+          !needAdmin(
+            action.kind === "approve_step" ? "approve a step" : "reject a step",
+          )
+        )
+          return;
+        if (!step.approvalPoint) {
+          reject("conflict: this step has no approval point");
+          return;
+        }
+        step.status = action.kind === "approve_step" ? "approved" : "skipped";
+        record(
+          plan,
+          action.kind === "approve_step" ? "approved" : "rejected",
+          step.stepId,
+        );
+      }
+      if (
+        plan.plan.steps.every((candidate) =>
+          ["done", "skipped", "failed"].includes(candidate.status ?? "pending"),
+        )
+      ) {
+        plan.status = "completed";
+      }
+      break;
+    }
+    default:
+      reject("invalid: unknown plan action kind");
+      return;
+  }
+  plan.updatedAt = now;
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
@@ -18365,8 +18799,24 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COMPANY_ACCESS_HEAD)) {
+      for (const event of filterMockCompanyAccessHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_WORKER_RUN_HEAD)) {
       for (const event of filterMockCompanyWorkerRuns(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_PLAN_HEAD)) {
+      for (const event of filterMockCompanyPlans(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);
@@ -18633,6 +19083,14 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_COFOUNDER_ACTION) {
       acceptMockCofounderAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
+      acceptMockCompanyAccessAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_PLAN_ACTION) {
+      acceptMockPlanAction(socket, event, getConfig());
       return;
     }
     if (
@@ -22587,7 +23045,12 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "get_agent_config_surface": {
         const configArgs = payload as { pubkey: string };
-        return buildMockConfigSurface(configArgs.pubkey);
+        return applyMockAgentConfigSurfaceOverride(
+          configArgs.pubkey,
+          activeConfig?.mock?.agentConfigSurfaceOverrides?.[
+            configArgs.pubkey.toLowerCase()
+          ],
+        );
       }
       case "get_runtime_file_config": {
         const runtimeId = (payload as { runtimeId?: string } | null | undefined)

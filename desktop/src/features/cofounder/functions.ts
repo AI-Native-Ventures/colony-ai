@@ -127,7 +127,8 @@ export function buildFunctionSlotViews(
         : emptySlot(functionId);
     }
     const member = memberByPubkey.get(head.leadPubkey.toLowerCase());
-    if (!member || member.position?.head.status === "terminated") {
+    const status = member?.position?.head.status;
+    if (!member || status === "terminated" || status === "paused") {
       return emptySlot(functionId);
     }
     return { functionId, state: "filled", leadPubkey: member.pubkey };

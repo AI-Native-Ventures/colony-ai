@@ -67,6 +67,54 @@ test("buildMainTimelineEntries includes broadcast replies", () => {
   );
 });
 
+test("WhatsApp thread summaries retain the newest inbound reply for the channel card", () => {
+  const root = message({ id: "wa-root", createdAt: 1 });
+  const earlierInbound = message({
+    id: "wa-inbound-earlier",
+    createdAt: 2,
+    parentId: "wa-root",
+    rootId: "wa-root",
+    depth: 1,
+    tags: [
+      ["e", "wa-root", "", "reply"],
+      ["wa", "27821237135"],
+      ["wa-dir", "in"],
+    ],
+  });
+  const ownerReply = message({
+    id: "wa-outbound",
+    createdAt: 3,
+    parentId: "wa-root",
+    rootId: "wa-root",
+    depth: 1,
+    tags: [
+      ["e", "wa-root", "", "reply"],
+      ["wa", "27821237135"],
+      ["wa-dir", "out"],
+    ],
+  });
+  const latestInbound = message({
+    id: "wa-inbound-latest",
+    createdAt: 4,
+    parentId: "wa-root",
+    rootId: "wa-root",
+    depth: 1,
+    tags: [
+      ["e", "wa-root", "", "reply"],
+      ["wa", "27821237135"],
+      ["wa-dir", "in"],
+    ],
+  });
+
+  const rootEntry = buildMainTimelineEntries([
+    root,
+    earlierInbound,
+    ownerReply,
+    latestInbound,
+  ])[0];
+  assert.equal(rootEntry.summary?.latestWhatsAppReply?.id, "wa-inbound-latest");
+});
+
 test("buildMainTimelineEntries keeps huddle thread replies out of the parent timeline summary", () => {
   const huddleRoot = message({
     id: "huddle-root",

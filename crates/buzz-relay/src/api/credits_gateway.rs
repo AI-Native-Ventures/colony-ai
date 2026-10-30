@@ -358,6 +358,23 @@ async fn start_inference(
         body,
     )
     .await?;
+    // Every caller here is an agent, so a revoked credits entry cuts off agent AI at once.
+    match crate::handlers::company_access::access_revoked(
+        &gateway.relay,
+        tenant.community(),
+        buzz_core::company_access::AccessCategory::Credits,
+    )
+    .await
+    {
+        Ok(false) => {}
+        Ok(true) => {
+            return Err(api_error(
+                StatusCode::FORBIDDEN,
+                "Colony credits access was revoked by the owner.",
+            ))
+        }
+        Err(_) => return Err(unavailable()),
+    }
     let request: ManagedRequest = serde_json::from_slice(body).map_err(|error| {
         tracing::warn!(
             check = "request_parse",

@@ -101,6 +101,16 @@ pub async fn handle_identity_archive_event(
         return Ok(());
     }
 
+    // An archived identity cannot keep leading a function slot. A failure is
+    // reported, not swallowed; the next slot write or removal retries it.
+    if kind == KIND_IA_ARCHIVE_REQUEST {
+        crate::handlers::company_functions::reconcile_function_slots(tenant, state, &actor_hex)
+            .await
+            .map_err(|error| {
+                format!("identity archived but its function slots could not be cleared: {error:?}")
+            })?;
+    }
+
     let publish_delta = if kind == KIND_IA_ARCHIVE_REQUEST {
         publish_nipia_archived(
             tenant,

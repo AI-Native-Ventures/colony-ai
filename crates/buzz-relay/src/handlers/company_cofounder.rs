@@ -139,6 +139,10 @@ pub(super) async fn handle(
         return Err(error);
     }
 
+    let was_enabled = current_stored
+        .as_ref()
+        .and_then(|stored| serde_json::from_str::<CofounderHead>(&stored.event.content).ok())
+        .is_some_and(|head| head.settings.enabled);
     let head = CofounderHead {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
         settings: action.settings,
@@ -202,6 +206,17 @@ pub(super) async fn handle(
         None,
     )
     .await;
+    if action.settings.enabled && !was_enabled {
+        // Scout starts (or resumes) onboarding as soon as the mode goes on.
+        crate::cofounder_wake::enqueue(
+            state,
+            community_id,
+            crate::cofounder_wake::WakeReason::ModeOn,
+            &format!("mode_on:{}", replaced.event.event.id.to_hex()),
+            "",
+        )
+        .await;
+    }
     Ok(IngestResult {
         event_id: event.id.to_hex(),
         accepted: true,
@@ -209,7 +224,20 @@ pub(super) async fn handle(
     })
 }
 
-async fn current_cofounder_head(
+/// Whether co-founder mode is on for this company. A company with no head is off.
+pub(super) async fn cofounder_enabled(
+    state: &AppState,
+    community_id: CommunityId,
+) -> Result<bool, IngestError> {
+    let Some(stored) = current_cofounder_head(state, community_id, COFOUNDER_D_TAG).await? else {
+        return Ok(false);
+    };
+    let head = serde_json::from_str::<CofounderHead>(&stored.event.content)
+        .map_err(|error| internal(format!("stored co-founder head is invalid: {error}")))?;
+    Ok(head.settings.enabled)
+}
+
+pub(super) async fn current_cofounder_head(
     state: &AppState,
     community_id: CommunityId,
     d_tag: &str,

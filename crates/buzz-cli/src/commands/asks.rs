@@ -1,3 +1,4 @@
+use buzz_core::company_functions::CompanyFunction;
 use buzz_core::company_records::{
     ask_d_tag, AskAction, AskActionKind, AskCategory, AskHead, AskOutcome, AskRecord, AskResponse,
     AskSubject, AskSubjectKind, AskType, HireProposal, COMPANY_RECORD_SCHEMA_VERSION,
@@ -20,7 +21,8 @@ pub async fn dispatch(command: AsksCmd, client: &BuzzClient) -> Result<(), CliEr
             channel,
             thread_root,
             proposal,
-        } => propose_hire(client, &channel, &thread_root, &proposal).await,
+            function,
+        } => propose_hire(client, &channel, &thread_root, &proposal, function).await,
         AsksCmd::Cancel {
             channel,
             ask,
@@ -58,6 +60,7 @@ async fn propose_hire(
     channel: &str,
     thread_root: &str,
     proposal_json: &str,
+    function: Option<CompanyFunction>,
 ) -> Result<(), CliError> {
     let channel_id = parse_uuid(channel)?;
     let thread_root = parse_event_id(thread_root)?.to_hex();
@@ -110,6 +113,20 @@ async fn propose_hire(
             &ask_id.to_string(),
         )
     );
+    // The slot is its own record so older desktops keep parsing the hire. If it
+    // cannot be recorded the error says how to retry; the proposal itself stands.
+    if let Some(function) = function {
+        super::access::set_slot_hire(client, proposal.hire_id, function)
+            .await
+            .map_err(|error| {
+                CliError::Other(format!(
+                    "the hire proposal was created but its slot was not recorded ({error}); \
+                     retry with: colony functions hire-slot {} {}",
+                    proposal.hire_id,
+                    function.id()
+                ))
+            })?;
+    }
     Ok(())
 }
 

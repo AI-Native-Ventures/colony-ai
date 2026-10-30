@@ -120,7 +120,9 @@ pub(crate) fn map_write_error(error: CliError) -> CliError {
     }
 }
 
-async fn current_head(client: &BuzzClient) -> Result<Option<(Event, CofounderHead)>, CliError> {
+pub(crate) async fn current_head(
+    client: &BuzzClient,
+) -> Result<Option<(Event, CofounderHead)>, CliError> {
     let events =
         query_company_heads(client, KIND_COFOUNDER_HEAD, &[COFOUNDER_D_TAG.to_owned()]).await?;
     let Some(event) = events.into_iter().next() else {
@@ -201,7 +203,7 @@ fn verify_head(
     Ok(())
 }
 
-async fn relay_self(client: &BuzzClient) -> Result<String, CliError> {
+pub(crate) async fn relay_self(client: &BuzzClient) -> Result<String, CliError> {
     let raw = client.get_public("/").await?;
     let nip11: Value = serde_json::from_str(&raw)
         .map_err(|error| CliError::Other(format!("relay info is not valid JSON: {error}")))?;
