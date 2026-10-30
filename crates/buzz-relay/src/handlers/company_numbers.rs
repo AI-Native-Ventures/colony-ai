@@ -596,7 +596,13 @@ mod tests {
             let mut stale_edit = edit;
             stale_edit.title = Some("9 new clients a month".into());
             let stale = rejection(send(&fixture, &owner, &stale_edit).await);
-            assert!(stale.contains("does not match the latest"), "{stale}");
+            assert!(
+                stale.contains(&format!(
+                    "goal changed; current head is {}",
+                    after.event.id.to_hex()
+                )),
+                "{stale}"
+            );
             assert_eq!(
                 head_of(&fixture, &d_tag).await.unwrap().event.id,
                 after.event.id,
