@@ -116,7 +116,12 @@ export async function setup({ lifecycle = false, ...startup } = {}) {
   const stubs = {
     react: React,
     "@/features/messages/lib/useDrafts": draftStore,
-    sonner: { toast: { error: (error) => calls.push(["error", error]) } },
+    sonner: {
+      toast: {
+        error: (error) => calls.push(["error", error]),
+        warning: (message) => calls.push(["warning", message]),
+      },
+    },
     "@/features/agents/hooks": new Proxy(
       {},
       {
