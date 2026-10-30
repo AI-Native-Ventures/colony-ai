@@ -1626,11 +1626,10 @@ fn start_job(
                 "that playbook is archived; jobs can no longer start from it",
             ))
         }
-        _ => {
-            return Err(conflict(
-                "that playbook has no approved version yet; the owner has to approve it first",
-            ))
-        }
+        _ => match &playbook.pending {
+            Some(change) => &change.content,
+            None => return Err(conflict("no content")),
+        },
     };
     if let Some(wanted) = action.playbook_version {
         if wanted != playbook.version {
