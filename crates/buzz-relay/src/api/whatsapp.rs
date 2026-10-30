@@ -146,7 +146,13 @@ fn contact_view(contact: &WhatsappContact, now: chrono::DateTime<Utc>) -> Value 
     json!({
         "waId": contact.wa_id,
         "e164": e164(&contact.wa_id),
-        "displayName": contact.display_name,
+        // A contact with no name yet (outbound only, no profile name) shows its number rather
+        // than an empty string.
+        "displayName": if contact.display_name.trim().is_empty() {
+            e164(&contact.wa_id)
+        } else {
+            contact.display_name.clone()
+        },
         "leadId": contact.lead_id,
         "ownerPubkey": contact.owner_pubkey.as_ref().map(hex::encode),
         "threadRootEventId": contact.thread_root_event_id.as_ref().map(hex::encode),
@@ -163,21 +169,68 @@ fn contact_view(contact: &WhatsappContact, now: chrono::DateTime<Utc>) -> Value 
     })
 }
 
+/// The delivery state the app understands. Rows of a pending batch are `held` and approved
+/// rows waiting for the send window are `ready`; both read as queued (the app has no other
+/// word for "will go out"), with `awaitingApproval` telling them apart. A `skipped` row is a
+/// failure with its reason.
+fn client_state(state: &str) -> &str {
+    match state {
+        "held" | "ready" => "queued",
+        "skipped" => "failed",
+        other => other,
+    }
+}
+
 fn message_view(message: &WhatsappMessage) -> Value {
+    let error_text = message.error_text.clone().or_else(|| {
+        message
+            .skip_reason
+            .clone()
+            .filter(|_| message.state == "skipped")
+    });
     json!({
         "id": message.id.to_string(),
         "direction": message.direction,
         "kind": message.kind,
         "text": message.body,
         "templateName": message.template_name,
-        "state": message.state,
+        "state": client_state(&message.state),
+        "awaitingApproval": message.state == "held",
         "errorCode": message.error_code,
-        "errorText": message.error_text,
+        "errorText": error_text,
         "eventId": message.event_id.as_ref().map(hex::encode),
         "senderPubkey": message.sender_pubkey.as_ref().map(hex::encode),
         "waId": message.wa_id,
         "createdAt": message.created_at.to_rfc3339(),
     })
+}
+
+/// The `thread` answer: the contact and every message of the conversation, oldest first,
+/// including rows still waiting for a batch approval.
+pub(crate) async fn thread_view(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    wa_id: &str,
+    limit: i64,
+    now: chrono::DateTime<Utc>,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
+    let contact = state
+        .db
+        .whatsapp_get_contact(community, wa_id)
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "no such contact"))?;
+    let mut messages = state
+        .db
+        .whatsapp_list_thread(community, wa_id, limit)
+        .await
+        .map_err(db_error)?;
+    messages.reverse();
+    Ok(json!({
+        "contact": contact_view(&contact, now),
+        "messages": messages.iter().map(message_view).collect::<Vec<_>>(),
+    }))
 }
 
 fn row_counts(rows: &[WhatsappMessage]) -> Value {
@@ -381,22 +434,9 @@ pub async fn query(
                 .as_deref()
                 .and_then(normalize_wa_id)
                 .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "waId must be a phone number"))?;
-            let contact = state
-                .db
-                .whatsapp_get_contact(community, &wa_id)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "no such contact"))?;
-            let mut messages = state
-                .db
-                .whatsapp_list_thread(community, &wa_id, limit_of(&request))
-                .await
-                .map_err(db_error)?;
-            messages.reverse();
-            Ok(Json(json!({
-                "contact": contact_view(&contact, now),
-                "messages": messages.iter().map(message_view).collect::<Vec<_>>(),
-            })))
+            Ok(Json(
+                thread_view(&state, community, &wa_id, limit_of(&request), now).await?,
+            ))
         }
         _ => Err(api_error(
             StatusCode::BAD_REQUEST,
@@ -524,6 +564,44 @@ pub async fn webhook_receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_stored_state_reads_as_a_state_the_app_parses() {
+        // The app's parser accepts exactly these; anything else turns the whole thread into an error.
+        const APP_STATES: [&str; 9] = [
+            "draft",
+            "rejected",
+            "queued",
+            "sending",
+            "sent",
+            "delivered",
+            "read",
+            "failed",
+            "unconfirmed",
+        ];
+        for stored in [
+            "held",
+            "ready",
+            "skipped",
+            "draft",
+            "rejected",
+            "queued",
+            "sending",
+            "sent",
+            "delivered",
+            "read",
+            "failed",
+            "unconfirmed",
+        ] {
+            assert!(
+                APP_STATES.contains(&client_state(stored)),
+                "{stored} -> {}",
+                client_state(stored)
+            );
+        }
+        assert_eq!(client_state("held"), "queued");
+        assert_eq!(client_state("skipped"), "failed");
+    }
 
     fn message(state: &str, idx: i32) -> WhatsappMessage {
         WhatsappMessage {

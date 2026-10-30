@@ -50,6 +50,9 @@ struct BatchRow {
     to: String,
     #[serde(default)]
     lead_id: Option<String>,
+    /// Optional name for the contact, used only when WhatsApp has not reported one.
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     params: Vec<String>,
 }
@@ -302,6 +305,7 @@ async fn handle_batch(
     let mut seen: HashSet<String> = HashSet::new();
     let mut rows: Vec<NewOutboundMessage> = Vec::with_capacity(command.rows.len());
     let mut leads: Vec<(String, String)> = Vec::new();
+    let mut names: Vec<(String, String)> = Vec::new();
     for (index, row) in command.rows.iter().enumerate() {
         let label = format!("row {index} ({})", row.to.trim());
         let Some(wa_id) = normalize_wa_id(&row.to) else {
@@ -338,6 +342,9 @@ async fn handle_batch(
         let new_chat = !window_open(contact.as_ref().and_then(|c| c.last_inbound_at), now);
         if let Some(lead) = row.lead_id.as_ref().filter(|lead| !lead.trim().is_empty()) {
             leads.push((wa_id.clone(), lead.trim().to_string()));
+        }
+        if let Some(name) = row.name.as_ref().filter(|name| !name.trim().is_empty()) {
+            names.push((wa_id.clone(), name.trim().to_string()));
         }
         rows.push(NewOutboundMessage {
             id: Uuid::new_v4(),
@@ -383,6 +390,13 @@ async fn handle_batch(
         state
             .db
             .whatsapp_set_owner_if_unowned(community, &row.wa_id, &sender)
+            .await
+            .map_err(internal)?;
+    }
+    for (wa_id, name) in &names {
+        state
+            .db
+            .whatsapp_set_name_if_blank(community, wa_id, name)
             .await
             .map_err(internal)?;
     }

@@ -78,6 +78,13 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
 | `thread` | `waId`, `limit` | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
 
+`thread` lists every message of the conversation except dropped rows, including rows of a batch that
+is still pending. A `held` or `ready` row reads `state: "queued"` (with `awaitingApproval: true` for
+rows of a pending batch) and a `skipped` row reads `failed` with its reason in `errorText`, so the
+state is always one of `draft rejected queued sending sent delivered read failed unconfirmed`.
+`Contact.displayName` is the WhatsApp profile name, else the name given on the batch row
+(`rows[].name`, only when the contact has none), else the number in E.164 form.
+
 Status object:
 
 ```json
@@ -167,7 +174,7 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
   "template": "intro_offer",
   "language": "en",
   "rows": [
-    { "to": "+27821234567", "leadId": "uuid or null", "params": ["Thabo", "Horizon Labs"] }
+    { "to": "+27821234567", "leadId": "uuid or null", "name": "optional contact name", "params": ["Thabo", "Horizon Labs"] }
   ],
   "materialLinks": ["https://..."],
   "note": "optional text for the approver"

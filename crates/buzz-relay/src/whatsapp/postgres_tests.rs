@@ -1364,3 +1364,97 @@ async fn agents_not_owned_by_an_owner_or_admin_stay_refused_whatever_they_are_ca
         .expect("demote");
     refused("an agent whose owner was demoted", admins_agent).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_contact_has_a_name()
+{
+    // GUARD: `whatsapp_list_thread` hides only 'dropped' rows. It used to hide 'held' too, so a
+    // contact created by a batch showed "No messages yet" until the owner approved the batch.
+    // GUARD: `client_state` maps held/ready/skipped to states the app can parse.
+    // GUARD: `contact_view` falls back to the number, and a row `name` seeds a blank name.
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    own_agent(&fx, &agent, &fx.owner).await;
+    let thread = |wa: &'static str| {
+        let fx = &fx;
+        async move {
+            crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, Utc::now())
+                .await
+                .expect("thread answer")
+        }
+    };
+
+    // A bare number with no lead and no name, and a second row that carries a name.
+    let batch_id = Uuid::new_v4();
+    let content = json!({
+        "v": 1,
+        "batchId": batch_id.to_string(),
+        "template": "intro",
+        "language": "en",
+        "rows": [
+            {"to": "+27683735905", "params": ["Thabo"]},
+            {"to": "+27683735906", "name": "Lerato Dlamini", "params": ["Lerato"]},
+        ],
+    });
+    fx.command(&agent, KIND_WHATSAPP_BATCH, content)
+        .await
+        .expect("agent prepares the batch");
+
+    // Batch just created, nothing approved: the conversation already holds the message.
+    let view = thread("27683735905").await;
+    let messages = view["messages"].as_array().expect("messages");
+    assert_eq!(
+        messages.len(),
+        1,
+        "the pending row is in the thread: {view}"
+    );
+    assert_eq!(messages[0]["direction"], "out");
+    assert_eq!(messages[0]["state"], "queued");
+    assert_eq!(messages[0]["awaitingApproval"], true);
+    assert!(messages[0]["text"]
+        .as_str()
+        .expect("text")
+        .contains("Thabo"));
+    // No name anywhere: the contact shows its number, never an empty string.
+    assert_eq!(view["contact"]["displayName"], "+27683735905");
+    // A row name seeds the blank name.
+    let named = thread("27683735906").await;
+    assert_eq!(named["contact"]["displayName"], "Lerato Dlamini");
+
+    // A WhatsApp profile name is never overwritten by a later row name.
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), "27683735906", Some("Lerato D"))
+        .await
+        .expect("profile name");
+    fx.state
+        .db
+        .whatsapp_set_name_if_blank(fx.community(), "27683735906", "Someone Else")
+        .await
+        .expect("set if blank");
+    assert_eq!(
+        thread("27683735906").await["contact"]["displayName"],
+        "Lerato D"
+    );
+
+    // Approved, outside the window (05:00 in Johannesburg): the row is ready, shown as queued.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves");
+    fx.run_sender(base() - Duration::hours(7)).await;
+    let view = thread("27683735905").await;
+    assert_eq!(view["messages"][0]["state"], "queued");
+    assert_eq!(view["messages"][0]["awaitingApproval"], false);
+
+    // Sent: the same row now reads sent.
+    fx.run_sender(base()).await;
+    assert!(fx.graph.send_count() >= 1, "the fake Graph took the sends");
+    let view = thread("27683735905").await;
+    assert_eq!(view["messages"].as_array().expect("messages").len(), 1);
+    assert_eq!(view["messages"][0]["state"], "sent");
+}
