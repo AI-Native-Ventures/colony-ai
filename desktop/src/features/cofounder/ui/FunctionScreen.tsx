@@ -4,13 +4,17 @@ import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
 
+import { getCofounderNumbersFixture } from "../cofounderNumbers";
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
+import { FunctionGoals } from "./FunctionGoals";
+import { FunctionScorecard } from "./FunctionScorecard";
 import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
 
@@ -268,8 +272,12 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
 export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
+  const membership = useMyRelayMembershipQuery();
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
+  const numbersFixture = getCofounderNumbersFixture();
+  const canApprove =
+    membership.data?.role === "owner" || membership.data?.role === "admin";
   const slot = slots.find(
     (candidate) => candidate.functionId === functionId,
   ) ?? {
@@ -391,13 +399,11 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
         <div className="space-y-5">
-          <LeadCard
+          <FunctionScorecard
+            fixtureAvailable={numbersFixture !== null}
             functionId={functionId}
-            lead={lead}
-            leadAvatarUrl={leadAvatarUrl}
-            leadName={leadName}
-            managerName={managerName}
-            slot={slot}
+            metrics={numbersFixture?.scorecards[functionId]}
+            note={numbersFixture?.scorecardNotes[functionId]}
           />
           {slot.state === "empty" ? (
             <EmptySlotSuggestion functionId={functionId} />
@@ -406,25 +412,23 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
             parentName={parentName}
             parentPubkey={parent?.pubkey ?? null}
           />
-          {slot.state === "filled" ? (
-            <section
-              aria-labelledby="function-scorecard-title"
-              className="team-card p-5 sm:p-6"
-            >
-              <h2
-                className="text-base font-extrabold"
-                id="function-scorecard-title"
-              >
-                Scorecard
-              </h2>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Scorecard details will appear here when this function has
-                tracked results.
-              </p>
-            </section>
-          ) : null}
+          <FunctionGoals
+            canApprove={canApprove}
+            fixtureAvailable={numbersFixture !== null}
+            functionId={functionId}
+            goals={numbersFixture?.goals[functionId]}
+            key={functionId}
+          />
         </div>
         <div className="space-y-5">
+          <LeadCard
+            functionId={functionId}
+            lead={lead}
+            leadAvatarUrl={leadAvatarUrl}
+            leadName={leadName}
+            managerName={managerName}
+            slot={slot}
+          />
           {slot.state === "empty" ? (
             <section
               aria-labelledby="function-filled-title"

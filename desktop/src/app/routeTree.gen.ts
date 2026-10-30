@@ -29,6 +29,7 @@ import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
 import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
+import { Route as companyDotweeklyReviewRouteImport } from "./routes/company.weekly-review";
 import { Route as companyDotmapRouteImport } from "./routes/company.map";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
@@ -166,6 +167,11 @@ const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
   path: "/hire/configure",
   getParentRoute: () => rootRouteImport,
 } as any);
+const companyDotweeklyReviewRoute = companyDotweeklyReviewRouteImport.update({
+  id: "/company/weekly-review",
+  path: "/company/weekly-review",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const companyDotmapRoute = companyDotmapRouteImport.update({
   id: "/company/map",
   path: "/company/map",
@@ -277,6 +283,7 @@ export interface FileRoutesByFullPath {
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -319,6 +326,7 @@ export interface FileRoutesByTo {
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -362,6 +370,7 @@ export interface FileRoutesById {
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -406,6 +415,7 @@ export interface FileRouteTypes {
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -448,6 +458,7 @@ export interface FileRouteTypes {
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -490,6 +501,7 @@ export interface FileRouteTypes {
     | "/channels/$channelId"
     | "/clients/$clientId"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -533,6 +545,7 @@ export interface RootRouteChildren {
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   companyDotmapRoute: typeof companyDotmapRoute;
+  companyDotweeklyReviewRoute: typeof companyDotweeklyReviewRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
   hireDotrolesRoute: typeof hireDotrolesRoute;
@@ -728,6 +741,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof hireDotconfigureRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/company/weekly-review": {
+      id: "/company/weekly-review";
+      path: "/company/weekly-review";
+      fullPath: "/company/weekly-review";
+      preLoaderRoute: typeof companyDotweeklyReviewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/company/map": {
       id: "/company/map";
       path: "/company/map";
@@ -861,6 +881,7 @@ const rootRouteChildren: RootRouteChildren = {
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
   companyDotmapRoute: companyDotmapRoute,
+  companyDotweeklyReviewRoute: companyDotweeklyReviewRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
   hireDotrolesRoute: hireDotrolesRoute,

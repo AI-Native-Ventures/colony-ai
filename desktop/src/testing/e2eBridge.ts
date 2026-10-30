@@ -17,6 +17,7 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
+import type { CofounderNumbersFixture } from "@/features/cofounder/cofounderNumbers";
 import {
   KIND_COMPANY_ACCESS_ACTION,
   KIND_COMPANY_ACCESS_HEAD,
@@ -1114,6 +1115,8 @@ type E2eConfig = {
     companyPlaybookJobs?: MockPlaybookJob[];
     /** Scorecard, goals and weekly reviews served as relay-signed numbers heads (kind 30678). */
     companyNumbers?: MockNumbers;
+    /** Phase 5 scorecard and review values used only by the UI mock fixture. */
+    cofounderNumbers?: CofounderNumbersFixture;
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */

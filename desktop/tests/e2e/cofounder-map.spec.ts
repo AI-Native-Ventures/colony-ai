@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
@@ -8,6 +10,8 @@ import type {
   MockCompanyFunctionHead,
   MockWorkerRun,
 } from "../../src/testing/e2eBridge";
+import { COFOUNDER_NUMBERS_FIXTURE } from "../../src/testing/cofounderNumbersFixtures";
+import type { CofounderNumbersFixture } from "../../src/features/cofounder/cofounderNumbers";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const AYA_PUBKEY = TEST_IDENTITIES.alice.pubkey;
@@ -64,6 +68,7 @@ function fixture({
   enabled = true,
   includeAya = true,
   includeScout = false,
+  numbers = COFOUNDER_NUMBERS_FIXTURE,
   functionHeads = [
     functionHead("sales", "filled", AYA_PUBKEY),
     functionHead("operations", "covered_by_scout"),
@@ -74,6 +79,7 @@ function fixture({
   enabled?: boolean;
   includeAya?: boolean;
   includeScout?: boolean;
+  numbers?: CofounderNumbersFixture;
   functionHeads?: MockCompanyFunctionHead[];
   workerRuns?: MockWorkerRun[];
 } = {}) {
@@ -95,6 +101,7 @@ function fixture({
       moneyPreference: "cheapest_first" as const,
       approvalSwitches: EMPTY_APPROVAL_SWITCHES,
     },
+    cofounderNumbers: numbers,
     companyFunctionHeads: functionHeads,
     companyWorkerRuns: workerRuns,
     searchProfiles: [
@@ -152,6 +159,34 @@ function fixture({
         : []),
     ],
   };
+}
+
+async function seedCofounderTheme(
+  page: import("@playwright/test").Page,
+  theme: "light" | "dark",
+) {
+  await page.addInitScript(
+    ({ name, pubkey, relayUrl }) => {
+      const preference = {
+        version: 1,
+        theme: name,
+        accent: "#5B45BE",
+        followSystem: false,
+      };
+      localStorage.setItem("buzz-theme", name);
+      localStorage.setItem("buzz-follow-system", "false");
+      localStorage.setItem("buzz-accent-color", "#5B45BE");
+      localStorage.setItem(
+        `buzz-community-theme.v1:${pubkey}:${encodeURIComponent(relayUrl)}`,
+        JSON.stringify(preference),
+      );
+    },
+    {
+      name: theme === "dark" ? "buzz-dark" : "buzz",
+      pubkey: OWNER_PUBKEY,
+      relayUrl: "ws://localhost:3000",
+    },
+  );
 }
 
 test.describe("co-founder mode desktop", () => {
@@ -328,6 +363,162 @@ test.describe("co-founder mode desktop", () => {
     ).toContainText("Idea 1. Idea 2. Idea 3.");
   });
 
+  test("all five function pages show scorecards and goals when enabled", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    for (const functionId of [
+      "sales",
+      "operations",
+      "customer_success",
+      "finance",
+      "brand",
+    ]) {
+      await page.goto(`/#/company/function/${functionId}`);
+      await expect(page.getByTestId("cofounder-function-screen")).toBeVisible();
+      await expect(page.getByTestId("cofounder-scorecard")).toBeVisible();
+      await expect(page.getByTestId("cofounder-goals")).toBeVisible();
+    }
+  });
+
+  test("the owner can edit, approve, and reject a proposed goal", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.goto("/#/company/function/sales");
+
+    const goals = page.getByTestId("cofounder-goals");
+    const propose = goals.getByTestId("cofounder-propose-goal");
+    await propose.focus();
+    await page.keyboard.press("Enter");
+    const proposal = goals.getByTestId(
+      "cofounder-goal-proposal-sales-follow-up-goal",
+    );
+    await expect(proposal).toBeVisible();
+    await proposal.getByRole("button", { name: "Edit goal" }).click();
+    await page
+      .getByLabel("Goal", { exact: true })
+      .fill("Follow up with 8 new leads in November");
+    await page.getByLabel("Target", { exact: true }).fill("8");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(proposal).toContainText(
+      "Follow up with 8 new leads in November",
+    );
+    await proposal.getByRole("button", { name: "Approve goal" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(goals.getByRole("status")).toHaveText("Goal approved.");
+    await expect(goals).toContainText("Follow up with 8 new leads in November");
+
+    await goals.getByTestId("cofounder-propose-goal").click();
+    await goals
+      .getByTestId("cofounder-goal-proposal-sales-follow-up-goal")
+      .getByRole("button", { name: "Reject goal" })
+      .click();
+    await expect(goals.getByRole("status")).toHaveText(
+      "Goal proposal rejected.",
+    );
+    await expect(
+      goals.getByTestId("cofounder-goal-proposal-sales-follow-up-goal"),
+    ).toHaveCount(0);
+  });
+
+  test("non-owners can review a proposed goal but cannot decide it", async ({
+    page,
+  }) => {
+    const salesGoals = COFOUNDER_NUMBERS_FIXTURE.goals.sales;
+    if (!salesGoals?.suggested)
+      throw new Error("Sales goal fixture is missing.");
+    const numbers: CofounderNumbersFixture = {
+      ...COFOUNDER_NUMBERS_FIXTURE,
+      goals: {
+        ...COFOUNDER_NUMBERS_FIXTURE.goals,
+        sales: {
+          ...salesGoals,
+          proposed: [salesGoals.suggested],
+          suggested: null,
+        },
+      },
+    };
+    await installMockBridge(page, fixture({ role: "member", numbers }));
+    await page.goto("/#/company/function/sales");
+
+    const goals = page.getByTestId("cofounder-goals");
+    const proposal = goals.getByTestId(
+      "cofounder-goal-proposal-sales-follow-up-goal",
+    );
+    await expect(proposal).toBeVisible();
+    await expect(proposal).toContainText("Waiting for the owner to review");
+    await expect(
+      proposal.getByRole("button", { name: "Approve goal" }),
+    ).toHaveCount(0);
+    await expect(
+      proposal.getByRole("button", { name: "Edit goal" }),
+    ).toHaveCount(0);
+    await expect(
+      proposal.getByRole("button", { name: "Reject goal" }),
+    ).toHaveCount(0);
+  });
+
+  test("weekly review presents each function and routes decisions through Needs you", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.goto("/#/company/weekly-review");
+
+    const review = page.getByTestId("cofounder-weekly-review-card");
+    await expect(review).toBeVisible();
+    await expect(page.getByText("Friday 30 October")).toBeVisible();
+    for (const functionName of [
+      "Sales",
+      "Operations",
+      "Customer Success",
+      "Finance",
+      "Brand",
+    ]) {
+      await expect(review).toContainText(functionName);
+    }
+    await expect(review).toContainText("What worked");
+    await expect(review).toContainText("Missed:");
+    await expect(
+      review.getByRole("heading", { name: "Needs you · 2" }),
+    ).toBeVisible();
+    await expect(review.getByTestId("weekly-review-needs-you")).toContainText(
+      "Approve the November plan",
+    );
+
+    const plan = review.getByTestId("weekly-review-decision-november-plan");
+    await plan.getByRole("button", { name: "Open plan" }).click();
+    await expect(plan).toContainText("Get 5 Horizon Labs clients in November");
+    await plan.getByRole("button", { name: "Approve plan" }).last().click();
+    await expect(plan).toContainText("Approved in this preview.");
+    await expect(
+      review.getByRole("heading", { name: "Needs you · 1" }),
+    ).toBeVisible();
+
+    const hire = review.getByTestId(
+      "weekly-review-decision-customer-success-hire",
+    );
+    await hire.getByRole("button", { name: "Yes, hire" }).click();
+    await expect(hire).toContainText("Marked to hire in this preview.");
+  });
+
+  test("weekly review and function data remain hidden when co-founder mode is off", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture({ enabled: false }));
+    await page.goto("/#/company/weekly-review");
+    await expect(page.getByTestId("cofounder-weekly-review")).toContainText(
+      "Co-founder mode is off",
+    );
+    await expect(page.getByTestId("cofounder-weekly-review-card")).toHaveCount(
+      0,
+    );
+
+    await page.goto("/#/company/function/sales");
+    await expect(page.getByTestId("cofounder-scorecard")).toHaveCount(0);
+    await expect(page.getByTestId("cofounder-goals")).toHaveCount(0);
+  });
+
   test("Finance shows the Bookkeeper suggestion and hire route", async ({
     page,
   }) => {
@@ -411,5 +602,60 @@ test.describe("co-founder mode desktop", () => {
       fullPage: true,
       path: `test-results/cofounder-map-${theme}-390.png`,
     });
+  });
+
+  test("captures weekly review and Sales goals at 1440 and 390 in light and dark", async ({
+    browser,
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const screenshotDir = "test-results/cofounder-phase5";
+    mkdirSync(screenshotDir, { recursive: true });
+
+    for (const theme of ["light", "dark"] as const) {
+      const capturePage = theme === "light" ? page : await browser.newPage();
+      await seedCofounderTheme(capturePage, theme);
+      await installMockBridge(capturePage, fixture());
+      await capturePage.emulateMedia({ colorScheme: theme });
+
+      for (const viewport of [
+        { width: 1440, height: 1000 },
+        { width: 390, height: 844 },
+      ]) {
+        await capturePage.setViewportSize(viewport);
+        for (const screen of [
+          {
+            name: "weekly-review",
+            path: "/#/company/weekly-review",
+            testId: "cofounder-weekly-review-card",
+          },
+          {
+            name: "function-sales",
+            path: "/#/company/function/sales",
+            testId: "cofounder-scorecard",
+          },
+        ]) {
+          await capturePage.goto(screen.path);
+          await expect(capturePage.getByTestId(screen.testId)).toBeVisible();
+          await expect
+            .poll(() =>
+              capturePage.evaluate(() =>
+                document.documentElement.classList.contains("dark"),
+              ),
+            )
+            .toBe(theme === "dark");
+          await waitForAnimations(capturePage);
+          await capturePage.screenshot({
+            animations: "disabled",
+            fullPage: true,
+            path: join(
+              screenshotDir,
+              `${screen.name}-${theme}-${viewport.width}.png`,
+            ),
+          });
+        }
+      }
+      if (theme === "dark") await capturePage.close();
+    }
   });
 });

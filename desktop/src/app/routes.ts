@@ -17,6 +17,7 @@ export const routes = rootRoute("root.tsx", [
   route("/work/$workId", "work.$workId.tsx"),
   route("/team", "team.tsx"),
   route("/company/map", "company.map.tsx"),
+  route("/company/weekly-review", "company.weekly-review.tsx"),
   route("/company/function/$function", "company.function.$function.tsx"),
   route("/team/detail/$memberPubkey", "team.detail.$memberPubkey.tsx"),
   route("/team/edit/$memberPubkey", "team.edit.$memberPubkey.tsx"),
