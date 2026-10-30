@@ -69,8 +69,8 @@ pub async fn access_for(
         .map_err(|error| format!("agent lookup failed: {error}"))?
         .is_some_and(|(_, owner_pubkey)| owner_pubkey.is_some());
     if member
-            .as_ref()
-            .is_some_and(|member| member.role == "owner" || member.role == "admin")
+        .as_ref()
+        .is_some_and(|member| member.role == "owner" || member.role == "admin")
     {
         return Ok(Access::OwnerAdmin);
     }
