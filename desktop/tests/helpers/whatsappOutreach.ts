@@ -22,6 +22,7 @@ declare global {
 
 export const OUTREACH_CHANNEL_ID = "e2e-whatsapp-outreach-channel";
 export const WHATSAPP_BATCH_ID = "e2e-whatsapp-batch";
+export const WHATSAPP_SECOND_BATCH_ID = "e2e-whatsapp-batch-second";
 export const PLANE_TREE_WA_ID = "27821237135";
 export const PLANE_TREE_LEAD_ID = REFERENCE_PROSPECT_IDS["form-field"];
 const PLANE_TREE_REPLY_WINDOW_CLOSES_AT = new Date(
@@ -569,7 +570,7 @@ const fixture = {
 
 const secondPendingBatch = {
   ...fixture.batch,
-  batchId: "e2e-whatsapp-batch-second",
+  batchId: WHATSAPP_SECOND_BATCH_ID,
   createdAt: "2026-10-29T09:46:00+02:00",
   rows: fixture.batch.rows.slice(1, 2).map((row, idx) => ({ ...row, idx })),
   counts: { total: 1, ready: 1, sent: 0, failed: 0, dropped: 0 },

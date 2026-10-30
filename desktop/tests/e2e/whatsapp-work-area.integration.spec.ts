@@ -5,6 +5,7 @@ import {
   OUTREACH_CHANNEL_ID,
   PLANE_TREE_WA_ID,
   WHATSAPP_BATCH_ID,
+  WHATSAPP_SECOND_BATCH_ID,
   installWhatsAppMockBridge,
   gotoWhatsAppScreen,
 } from "../helpers/whatsappOutreach";
@@ -302,7 +303,7 @@ test.describe("WhatsApp work area conversations and approvals", () => {
     page,
   }) => {
     await goToOutreach(page);
-    const batchPrefix = WHATSAPP_BATCH_ID.replaceAll("-", "").slice(0, 8);
+    const batchPrefix = WHATSAPP_SECOND_BATCH_ID.replaceAll("-", "");
     await emitOutreachEvent(
       page,
       `Batch ${batchPrefix} is waiting for approval: 3 message(s), template hl_vb. Nothing is sent until the owner or an admin approves it.`,
@@ -322,7 +323,7 @@ test.describe("WhatsApp work area conversations and approvals", () => {
                 body.batchId === batchId &&
                 body.decision === "approve",
             ) ?? false,
-          WHATSAPP_BATCH_ID,
+          WHATSAPP_SECOND_BATCH_ID,
         ),
       )
       .toBe(true);
@@ -332,7 +333,7 @@ test.describe("WhatsApp work area conversations and approvals", () => {
     page,
   }) => {
     await goToOutreach(page);
-    const batchPrefix = WHATSAPP_BATCH_ID.replaceAll("-", "").slice(0, 8);
+    const batchPrefix = WHATSAPP_SECOND_BATCH_ID.replaceAll("-", "");
     await emitOutreachEvent(
       page,
       `Batch ${batchPrefix} is waiting for approval: 3 message(s), template hl_vb. Nothing is sent until the owner or an admin approves it.`,
@@ -365,7 +366,7 @@ test.describe("WhatsApp work area conversations and approvals", () => {
                 body.batchId === batchId &&
                 body.decision === "reject",
             ) ?? false,
-          WHATSAPP_BATCH_ID,
+          WHATSAPP_SECOND_BATCH_ID,
         ),
       )
       .toBe(true);
