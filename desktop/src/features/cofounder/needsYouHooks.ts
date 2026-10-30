@@ -56,9 +56,15 @@ export function useNeedsYouQuery() {
     ],
   );
 
+  const whatsappError = canApprove
+    ? (whatsappStatus.error ??
+      (outreachConnected ? (batches.error ?? drafts.error) : null))
+    : null;
+
   return {
     model,
     isPending: needsMe.isPending || plans.isPending,
     error: needsMe.asksError ?? plans.error ?? null,
+    whatsappError,
   };
 }

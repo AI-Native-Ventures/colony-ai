@@ -4,10 +4,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
-import type {
-  CofounderOnboardingStep,
-  CofounderPhase2Fixture,
-} from "../../src/features/cofounder/cofounderPhase2Model";
+import type { CofounderOnboardingStep } from "../../src/features/cofounder/cofounderPhase2Model";
 import {
   ESIGN_PLAN_ID,
   esignSetupPlan,
@@ -18,7 +15,9 @@ import {
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
-import { installMockBridge } from "../helpers/bridge";
+import { KIND_WHATSAPP_BATCH_DECISION } from "../../src/shared/constants/kinds";
+import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
+import { installMockBridge, type RelayBridgeIdentity } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { TEST_IDENTITIES } from "../helpers/bridge";
@@ -29,212 +28,298 @@ const APPROVAL_SWITCHES = {
   approveEveryDiscoveryCampaign: true,
 };
 
-function phase2Fixture(step: CofounderOnboardingStep = "brief") {
-  const plan = {
-    id: "sales-plan-1",
-    title: "Get 5 Horizon Labs clients in November",
-    summary: "Goal for Sales. Every message to a lead still waits for your OK.",
-    functionName: "Sales",
-    decideBy: "Monday 2 Nov",
-    steps: [
-      {
-        id: "sales-find",
-        title: "Find 60 guesthouses in Linden, Melville and Parkhurst",
-        owner: "Aya with Discovery",
-        cost: "Covered by subscription",
-        timing: "2 to 4 Nov",
-        status: "planned" as const,
-      },
-      {
-        id: "sales-preview",
-        title: "Build a site preview for the best 30",
-        owner: "Workers under Aya",
-        cost: "Free models",
-        timing: "3 to 6 Nov",
-        status: "planned" as const,
-      },
-      {
-        id: "sales-outreach",
-        title: "Send the Built a site for you opener, 30 a day",
-        owner: "Aya, you approve each batch",
-        cost: "About R0.62 per new chat",
-        timing: "From 4 Nov",
-        status: "waiting" as const,
-      },
-      {
-        id: "sales-calls",
-        title: "Book calls with everyone who replies",
-        owner: "Aya, Google Calendar",
-        cost: "Free",
-        timing: "Ongoing",
-        status: "planned" as const,
-      },
-      {
-        id: "sales-agreements",
-        title: "Quotes and agreements to sign",
-        owner: "Aya drafts, you approve each",
-        cost: "E-sign free plan",
-        timing: "Ongoing",
-        status: "planned" as const,
-      },
-      {
-        id: "sales-deposit",
-        title: "Deposit links and kick-off",
-        owner: "Scout covers Finance",
-        cost: "Fee per payment",
-        timing: "On signing",
-        status: "blocked" as const,
-      },
-    ],
-    costSummary: "About R37",
-    timingSummary: "1 to 30 November",
-    targetSummary: "5 won",
-    status: "proposed" as const,
-  };
+const CAPABILITY_GAP_ID = "4f60a4ae-70c8-4f7a-a899-338e6b376198";
+const PAYMENT_GAP_ID = "b986cc6f-57db-45a7-92b0-238d2855e881";
+const NEEDS_YOU_WA_BATCH_ID = "cofounder-needs-you-batch";
+const NEEDS_YOU_WA_DRAFT_ID = "cofounder-needs-you-draft";
 
+function accessRecord(
+  accessId: string,
+  name: string,
+  category: string,
+  usedFor: string,
+  cost: string,
+): MockCompanyAccessRecord {
+  const now = 1_791_273_600;
   return {
-    onboarding: {
-      step,
-      brief: {
-        companyName: "Lerato Social",
-        whatYouSell: "Social campaigns and brand work",
-        whoBuys: "Local hospitality and retail teams",
-        prices: "",
-        priceNote: "I could not find a public rate card.",
-        howYouTalk: "Warm, direct and never pushy.",
-        sources: ["Website", "Colony history"],
+    dTag: `company:access:${accessId}`,
+    content: {
+      schemaVersion: 1,
+      accessId,
+      entry: {
+        name,
+        category,
+        usedFor,
+        agents: [REFERENCE_AGENTS.aya.pubkey],
+        cost,
       },
-      moneyPreference: "cheapest_first" as const,
-      approvalSwitches: APPROVAL_SWITCHES,
-      accountName: "Pinterest",
-      accountUrl: "https://accounts.example.test/pinterest/login",
-      accountChannelId: REFERENCE_CHANNEL_IDS.scoutDm,
-      accountConnected: false,
+      state: "active",
+      grantedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+      grantedAt: now,
+      viaGapId: null,
+      revokedByPubkey: null,
+      revokedAt: null,
+      revokeReason: null,
+      updatedAt: now,
     },
-    chatPlan: plan,
-    needsYou: {
-      plans: [{ ...plan }],
-      approvals: [
-        {
-          id: "approve-outreach-1",
-          kind: "outreach" as const,
-          title: "First message to Olivia",
-          summary: "A draft for your review before it leaves Colony.",
-          detail:
-            "Hi Olivia, I loved the way Linden Guesthouse brings local makers into the guest experience. Would you be open to a short conversation about your next campaign?",
-        },
-        {
-          id: "reply-drafts-1",
-          kind: "reply_drafts" as const,
-          title: "Two replies are ready",
-          summary: "Scout drafted both replies. Nothing has been sent.",
-          drafts: [
-            {
-              id: "reply-olivia",
-              recipient: "Olivia at Linden",
-              message: "Thursday works well. I will bring a few examples.",
-            },
-            {
-              id: "reply-james",
-              recipient: "James at The Fern",
-              message:
-                "Thanks for the introduction. I would love to hear more.",
-            },
-          ],
-        },
-        {
-          id: "taste-brand-1",
-          kind: "taste" as const,
-          title: "Choose a direction for the welcome card",
-          summary: "Scout picked the quieter layout based on your brand.",
-          options: ["A", "B"],
-          recommendedOption: "A",
-          recommendation: "More space around the message.",
-        },
-      ],
-      doItems: [
-        {
-          id: "signup-pinterest",
-          title: "Create a Pinterest account for inspiration",
-          summary:
-            "Scout prepared the sign-up page. You complete the account step.",
-          browserUrl: "https://accounts.example.test/pinterest/signup",
-          browserChannelId: REFERENCE_CHANNEL_IDS.scoutDm,
-          costLabel: "Free",
-        },
-      ],
-      decisions: [
-        {
-          id: "decide-guesthouse-1",
-          title: "Choose the first three guesthouses to contact",
-          summary: "The short list is ready for your call.",
-          acceptLabel: "Use these three",
-          declineLabel: "Pick different ones",
-        },
-      ],
-    },
-    access: {
-      pendingRequest: {
-        id: "request-payment-link",
-        title: "Connect a payment link account",
-        description:
-          "To send deposit links from Colony and see when they are paid. Free to join, a fee per payment. The sign-up page is ready in the browser.",
-        costLabel: "Fee per payment",
-        browserUrl: "https://accounts.example.test/payment-link/login",
-        browserChannelId: REFERENCE_CHANNEL_IDS.scoutDm,
-      },
-      entries: [
-        {
-          id: "whatsapp",
-          label: "WhatsApp business number",
-          usedFor: "Outreach and replies",
-          usedBy: "Scout, Aya",
-          cost: "About R0.62 per new chat",
-        },
-        {
-          id: "gmail",
-          label: "Gmail, in the browser",
-          usedFor: "Reading client emails",
-          usedBy: "Scout, Aya",
-          cost: "Free",
-        },
-        {
-          id: "pinterest",
-          label: "Pinterest, in the browser",
-          usedFor: "Design ideas",
-          usedBy: "Scout",
-          cost: "Free",
-        },
-        {
-          id: "google-calendar",
-          label: "Google Calendar",
-          usedFor: "Booking calls",
-          usedBy: "Aya",
-          cost: "Free",
-        },
-        {
-          id: "esign",
-          label: "E-sign, free plan",
+  };
+}
+
+function phase2AccessRecords(): MockCompanyAccessRecord[] {
+  return [
+    accessRecord(
+      "esign",
+      "E-sign, free plan",
+      "esign",
+      "Agreements to sign",
+      "Free, 3 a month",
+    ),
+    accessRecord(
+      "gmail",
+      "Gmail",
+      "connected_account",
+      "Replying to customers",
+      "Free",
+    ),
+    accessRecord(
+      "google-calendar",
+      "Google Calendar",
+      "calendar",
+      "Booking calls",
+      "Free",
+    ),
+    accessRecord(
+      "pinterest",
+      "Pinterest",
+      "connected_account",
+      "Posting launch content",
+      "Free",
+    ),
+    paymentLinkGapRecord(),
+  ];
+}
+
+function capabilityGapRecord(): MockCompanyAccessRecord {
+  const now = 1_791_273_600;
+  return {
+    dTag: `company:capgap:${CAPABILITY_GAP_ID}`,
+    content: {
+      schemaVersion: 1,
+      gapId: CAPABILITY_GAP_ID,
+      gap: {
+        title: "Connect the e-sign account",
+        need: "Scout needs a signing account to prepare customer agreements.",
+        options: [
+          {
+            name: "Free e-sign plan",
+            costText: "Free, 3 a month",
+            costCents: 0,
+            recurring: false,
+            works: true,
+            note: null,
+          },
+        ],
+        chosen: 0,
+        chosenReason: null,
+        humanStep: "Sign in to the e-sign account",
+        pageUrl: "https://accounts.example.test/esign/login",
+        accessId: "esign",
+        access: {
+          name: "E-sign, free plan",
+          category: "esign",
           usedFor: "Agreements to sign",
-          usedBy: "Aya",
+          agents: [REFERENCE_AGENTS.aya.pubkey],
           cost: "Free, 3 a month",
         },
-        {
-          id: "discovery",
-          label: "Discovery",
-          usedFor: "Finding leads",
-          usedBy: "Aya",
-          cost: "Covered by subscription",
-        },
-      ],
+      },
+      state: "proposed",
+      proposedByPubkey: REFERENCE_AGENTS.scout.pubkey,
+      proposedAt: now,
+      approvedCostCents: null,
+      updatedAt: now,
     },
-  } satisfies CofounderPhase2Fixture;
+  };
+}
+
+function paymentLinkGapRecord(): MockCompanyAccessRecord {
+  const now = 1_791_273_600;
+  return {
+    dTag: `company:capgap:${PAYMENT_GAP_ID}`,
+    content: {
+      schemaVersion: 1,
+      gapId: PAYMENT_GAP_ID,
+      gap: {
+        title: "Connect a payment link account",
+        need: "To send deposit links from Colony and see when they are paid.",
+        options: [
+          {
+            name: "Payment links",
+            costText: "Free to join, a fee per payment",
+            costCents: 0,
+            recurring: false,
+            works: true,
+            note: null,
+          },
+        ],
+        chosen: 0,
+        chosenReason: null,
+        humanStep: "Sign in to the payment link account",
+        pageUrl: "https://accounts.example.test/payment-link/login",
+        accessId: "payment-links",
+        access: {
+          name: "Payment link account",
+          category: "payment_link",
+          usedFor: "Sending deposit links",
+          agents: [REFERENCE_AGENTS.scout.pubkey],
+          cost: "Fee per payment",
+        },
+      },
+      state: "proposed",
+      proposedByPubkey: REFERENCE_AGENTS.scout.pubkey,
+      proposedAt: now,
+      approvedCostCents: null,
+      updatedAt: now,
+    },
+  };
+}
+
+function companyInitiativeRecords(step: CofounderOnboardingStep = "brief"): {
+  brief: MockCompanyInitiativeRecord;
+  onboarding: MockCompanyInitiativeRecord;
+} {
+  const now = 1_791_273_600;
+  const confirmed = step !== "brief";
+  const content = {
+    whatYouSell: "Social campaigns and brand work",
+    whoBuys: "Local hospitality and retail teams",
+    howYouTalk: "Warm, direct and never pushy.",
+    sources: ["Website", "Colony history"],
+  };
+  const briefContent = {
+    schemaVersion: 1,
+    revision: confirmed ? 2 : 1,
+    ...(confirmed
+      ? {
+          confirmed: content,
+          confirmedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+          confirmedAt: now,
+        }
+      : { pending: content }),
+    updatedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+    updatedAt: now,
+  };
+  const states = {
+    brief: "todo",
+    money: "todo",
+    approvals: "todo",
+    accounts: "todo",
+    map: "todo",
+  };
+  let question: Record<string, unknown> | undefined;
+  let accounts: Array<Record<string, unknown>> = [];
+  let map: Record<string, unknown> | undefined;
+  let status = "in_progress";
+  if (step === "brief") {
+    states.brief = "asked";
+    question = { step: "brief", text: "Does this business brief sound right?" };
+  } else {
+    states.brief = "done";
+  }
+  if (["approvals", "account", "map", "complete"].includes(step)) {
+    states.money = "done";
+  } else if (step === "money") {
+    states.money = "asked";
+    question = { step: "money", text: "How should I spend money?" };
+  }
+  if (["account", "map", "complete"].includes(step)) {
+    states.approvals = "done";
+  } else if (step === "approvals") {
+    states.approvals = "asked";
+    question = {
+      step: "approvals",
+      text: "What else should wait for your OK?",
+    };
+  }
+  if (step === "account") {
+    states.accounts = "asked";
+    question = {
+      step: "accounts",
+      text: "Please sign in to Pinterest.",
+      account: {
+        id: "pinterest",
+        label: "Pinterest",
+        url: "https://accounts.example.test/pinterest/login",
+      },
+    };
+    accounts = [
+      {
+        id: "pinterest",
+        label: "Pinterest",
+        url: "https://accounts.example.test/pinterest/login",
+        state: "asked",
+      },
+    ];
+  }
+  if (step === "map") {
+    states.accounts = "skipped";
+    states.map = "asked";
+  }
+  if (step === "complete") {
+    states.accounts = "skipped";
+    states.map = "done";
+    status = "complete";
+  }
+  if (step === "map" || step === "complete") {
+    map = {
+      entries: [
+        {
+          function: "sales",
+          placement: "existing_agent",
+          leadPubkey: REFERENCE_AGENTS.aya.pubkey,
+        },
+        { function: "operations", placement: "scout" },
+        { function: "customer_success", placement: "empty" },
+        { function: "finance", placement: "empty" },
+        { function: "brand", placement: "empty" },
+      ],
+      firstFunction: "sales",
+      approved: step === "complete",
+    };
+  }
+  return {
+    brief: { content: briefContent },
+    onboarding: {
+      content: {
+        schemaVersion: 1,
+        revision: 1,
+        status,
+        leadPubkey: REFERENCE_AGENTS.scout.pubkey,
+        steps: [
+          { step: "brief", state: states.brief },
+          { step: "money", state: states.money },
+          { step: "approvals", state: states.approvals },
+          { step: "accounts", state: states.accounts },
+          { step: "map", state: states.map },
+        ],
+        ...(question ? { question } : {}),
+        accounts,
+        ...(map ? { map } : {}),
+        startedAt: now,
+        resumeCount: 0,
+        ...(status === "complete" ? { completedAt: now } : {}),
+        updatedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+        updatedAt: now,
+      },
+    },
+  };
 }
 
 async function boot(
   page: Page,
   options: {
+    companyAccessRecords?: MockCompanyAccessRecord[];
     enabled?: boolean;
+    identity?: RelayBridgeIdentity;
     step?: CofounderOnboardingStep;
     theme?: "light" | "dark";
   } = {},
@@ -267,30 +352,189 @@ async function boot(
     { selectedTheme: theme, relayUrl: "ws://localhost:3000" },
   );
   const relaySecret = generateSecretKey();
-  await installMockBridge(page, {
-    relaySelf: getPublicKey(relaySecret),
-    companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
-    referenceWorkspace: true,
-    colony3Sidebar: true,
-    relayRequiresMembership: true,
-    relayRole: "owner",
-    cofounderSettings: {
-      enabled: options.enabled ?? true,
-      moneyPreference: "cheapest_first",
-      approvalSwitches: APPROVAL_SWITCHES,
+  const initiative = companyInitiativeRecords(options.step);
+  await installMockBridge(
+    page,
+    {
+      relaySelf: getPublicKey(relaySecret),
+      companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+      referenceWorkspace: true,
+      colony3Sidebar: true,
+      relayRequiresMembership: true,
+      relayRole: "owner",
+      cofounderSettings: {
+        enabled: options.enabled ?? true,
+        moneyPreference: "cheapest_first",
+        approvalSwitches: APPROVAL_SWITCHES,
+      },
+      companyBriefRecord: initiative.brief,
+      companyOnboardingRecord: initiative.onboarding,
+      companyOnboardingAutoAdvance: true,
+      companyPlans: [
+        novemberPlan({
+          scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
+          ayaPubkey: REFERENCE_AGENTS.aya.pubkey,
+        }),
+        esignSetupPlan({
+          scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
+          ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
+        }),
+      ],
+      companyAccessRecords:
+        options.companyAccessRecords ?? phase2AccessRecords(),
     },
-    cofounderPhase2: phase2Fixture(options.step),
-    companyPlans: [
-      novemberPlan({
-        scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
-        ayaPubkey: REFERENCE_AGENTS.aya.pubkey,
-      }),
-      esignSetupPlan({
-        scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
-        ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
-      }),
-    ],
-  });
+    { identity: options.identity },
+  );
+  await page.addInitScript((batchDecisionKind) => {
+    type WhatsAppMockState = {
+      batchStatus: "pending" | "approved" | "rejected" | "completed";
+      draftState: "draft" | "rejected" | "queued";
+      commands: Array<{ kind: number; body: Record<string, unknown> }>;
+    };
+    type WhatsAppMockWindow = Window & {
+      __BUZZ_E2E_WHATSAPP__?: (request: {
+        action: "post" | "command";
+        path?: string;
+        body?: Record<string, unknown>;
+        kind?: number;
+      }) => Promise<unknown>;
+      __BUZZ_E2E_WHATSAPP_STATE__?: {
+        commands: Array<{ kind: number; body: Record<string, unknown> }>;
+        connectCalls: number;
+      };
+    };
+    const state: WhatsAppMockState = {
+      batchStatus: "pending",
+      draftState: "draft",
+      commands: [],
+    };
+    const self = window as WhatsAppMockWindow;
+    self.__BUZZ_E2E_WHATSAPP_STATE__ = {
+      commands: state.commands,
+      connectCalls: 0,
+    };
+    self.__BUZZ_E2E_WHATSAPP__ = async (request) => {
+      if (request.action === "command") {
+        const body = request.body ?? {};
+        state.commands.push({ kind: request.kind ?? 0, body });
+        if (request.kind === batchDecisionKind) {
+          if (body.draftId === "cofounder-needs-you-draft") {
+            state.draftState =
+              body.decision === "reject" ? "rejected" : "queued";
+          }
+          if (body.batchId === "cofounder-needs-you-batch") {
+            state.batchStatus =
+              body.decision === "reject" ? "rejected" : "approved";
+          }
+        }
+        return {};
+      }
+
+      const body = request.body ?? {};
+      if (request.path !== "/api/whatsapp/query") return {};
+      if (body.what === "status") {
+        return {
+          connected: true,
+          connectionId: "e2e-cofounder",
+          displayPhoneNumber: "+27 61 534 0627",
+          verifiedName: "Horizon Labs",
+          quality: "green",
+          phoneStatus: "connected",
+          dailyNewChatCap: 36,
+          newChatsSentToday: 12,
+          sendingPaused: false,
+          pauseReason: null,
+          issues: [],
+          outreachChannelId: "e2e-whatsapp-outreach-channel",
+          templatesSyncedAt: "2026-10-30T08:45:00+02:00",
+          templates: [],
+          webhookUrl: null,
+        };
+      }
+      if (body.what === "batches") {
+        const batches =
+          state.batchStatus === "pending" ||
+          body.state === undefined ||
+          body.state === state.batchStatus
+            ? [
+                {
+                  batchId: "cofounder-needs-you-batch",
+                  status: state.batchStatus,
+                  createdBy:
+                    "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
+                  template: "hl_vb",
+                  language: "en",
+                  rows: { total: 2, ready: 2, sent: 0, failed: 0, dropped: 0 },
+                  createdAt: "2026-10-30T08:46:00+02:00",
+                },
+              ]
+            : [];
+        return { batches };
+      }
+      if (body.what === "drafts") {
+        const drafts =
+          state.draftState === "draft"
+            ? [
+                {
+                  id: "cofounder-needs-you-draft",
+                  waId: "27821237135",
+                  direction: "out",
+                  kind: "text",
+                  text: "I have a few ideas for your November campaign. Would you like to see them?",
+                  templateName: null,
+                  state: state.draftState,
+                  errorCode: null,
+                  errorText: null,
+                  eventId: null,
+                  senderPubkey:
+                    "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
+                  createdAt: "2026-10-30T08:47:00+02:00",
+                  to: "+27 82 123 7135",
+                  params: [],
+                },
+              ]
+            : [];
+        return { drafts };
+      }
+      if (body.what === "batch") {
+        return {
+          batchId: "cofounder-needs-you-batch",
+          status: state.batchStatus,
+          createdBy:
+            "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
+          template: "hl_vb",
+          language: "en",
+          note: "November campaign introductions",
+          materialLinks: [],
+          decidedBy: null,
+          decidedAt: null,
+          createdAt: "2026-10-30T08:46:00+02:00",
+          rows: [
+            {
+              idx: 0,
+              to: "+27 82 123 7135",
+              leadId: null,
+              params: [],
+              preview: "Hello from Horizon Labs",
+              state: "ready",
+              skipReason: null,
+            },
+            {
+              idx: 1,
+              to: "+27 82 987 6543",
+              leadId: null,
+              params: [],
+              preview: "A note from Horizon Labs",
+              state: "ready",
+              skipReason: null,
+            },
+          ],
+          counts: { total: 2, ready: 2, sent: 0, failed: 0, dropped: 0 },
+        };
+      }
+      return {};
+    };
+  }, KIND_WHATSAPP_BATCH_DECISION);
 }
 
 async function capture(
@@ -341,7 +585,7 @@ test.describe("Co-founder mode Phase 2", () => {
   test("Scout guides onboarding one step at a time and then shows a plan in chat", async ({
     page,
   }) => {
-    await boot(page);
+    await boot(page, { identity: TEST_IDENTITIES.tyler });
     await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
     await expect(page.getByTestId("cofounder-chat-surface")).toBeVisible();
     await expect(page.getByTestId("cofounder-onboarding")).toBeVisible();
@@ -362,6 +606,10 @@ test.describe("Co-founder mode Phase 2", () => {
     await page.getByTestId("cofounder-account-connected").click();
     await expect(page.getByTestId("cofounder-map-approve")).toBeVisible();
     await page.getByTestId("cofounder-map-approve").click();
+    await expect(
+      page.getByRole("button", { name: "Finish onboarding" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Finish onboarding" }).click();
 
     const plan = page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`);
     await expect(plan).toBeVisible();
@@ -380,7 +628,10 @@ test.describe("Co-founder mode Phase 2", () => {
   });
 
   test("Scout plan can be rejected", async ({ page }) => {
-    await boot(page, { step: "complete" });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "complete",
+    });
     await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
     const plan = page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`);
     await expect(plan).toBeVisible();
@@ -444,7 +695,7 @@ test.describe("Co-founder mode Phase 2", () => {
     page,
   }) => {
     await installBrowserHostFake(page);
-    await boot(page);
+    await boot(page, { identity: TEST_IDENTITIES.tyler });
     await page.goto("/#/today/needs-you");
     await expect(page.getByTestId("cofounder-needs-you-screen")).toBeVisible();
     await expect(
@@ -471,40 +722,77 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(
       page.getByTestId(`cofounder-plan-step-item-${ESIGN_PLAN_ID}-template`),
     ).toHaveCount(0);
-    await page.getByTestId("cofounder-reject-approve-outreach-1").click();
-    await expect(
-      page.getByTestId("cofounder-reject-approve-outreach-1"),
-    ).toHaveCount(0);
-
-    const replyDraft = page.getByTestId("cofounder-draft-reply-olivia");
-    await replyDraft
-      .getByRole("button", { name: "Edit draft to Olivia at Linden" })
-      .click();
-    const editedMessage = page.getByRole("textbox", {
-      name: "Message to Olivia at Linden",
-    });
-    await editedMessage.fill("Updated draft after review.");
-    const saveChanges = replyDraft.getByTestId(
-      "cofounder-save-draft-reply-olivia",
+    const paymentGap = page.getByTestId(
+      `cofounder-capability-gap-${PAYMENT_GAP_ID}`,
     );
-    await saveChanges.focus();
-    await saveChanges.press("Enter");
-    await expect(replyDraft).toContainText("Updated draft after review.");
-
-    await page.getByRole("button", { name: "Ask for changes" }).click();
-    await expect(
-      page.getByText("You asked Scout for a different direction."),
-    ).toBeVisible();
-
-    await page.getByTestId("cofounder-open-gap-signup-pinterest").click();
+    await expect(paymentGap).toContainText("Connect a payment link account");
+    await page.getByTestId(`cofounder-gap-approve-${PAYMENT_GAP_ID}`).click();
     await expect(page.getByTestId("work-area-browser")).toBeVisible();
     await expect(page.getByTestId("browser-address")).toHaveValue(
-      "https://accounts.example.test/pinterest/signup",
+      "https://accounts.example.test/payment-link/login",
     );
   });
 
-  test("Needs you completes human steps and decisions", async ({ page }) => {
-    await boot(page);
+  test("Needs you reads WhatsApp batches and drafts and submits draft decisions", async ({
+    page,
+  }) => {
+    await boot(page, { identity: TEST_IDENTITIES.tyler });
+    await page.goto("/#/today/needs-you");
+
+    const batch = page.getByTestId(
+      `cofounder-live-needs-you-wa-batch:${NEEDS_YOU_WA_BATCH_ID}`,
+    );
+    const draft = page.getByTestId(`cofounder-draft-${NEEDS_YOU_WA_DRAFT_ID}`);
+    await expect(batch).toContainText("WhatsApp batch of 2 messages");
+    await expect(draft).toContainText(
+      "I have a few ideas for your November campaign.",
+    );
+    await page
+      .getByTestId(`cofounder-discard-draft-${NEEDS_YOU_WA_DRAFT_ID}`)
+      .click();
+    await expect(draft).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const testWindow = window as Window & {
+            __BUZZ_E2E_WHATSAPP_STATE__?: {
+              commands: Array<{
+                kind: number;
+                body: Record<string, unknown>;
+              }>;
+            };
+          };
+          return (
+            testWindow.__BUZZ_E2E_WHATSAPP_STATE__?.commands.at(-1) ?? null
+          );
+        }),
+      )
+      .toEqual({
+        kind: KIND_WHATSAPP_BATCH_DECISION,
+        body: { v: 1, draftId: NEEDS_YOU_WA_DRAFT_ID, decision: "reject" },
+      });
+
+    await batch.getByRole("button", { name: /Review batch/u }).click();
+    await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
+    await expect(page.getByTestId("whatsapp-batch-page")).toContainText(
+      "2 guesthouses in Melville",
+    );
+  });
+
+  test("Needs you completes real plan and capability-gap steps", async ({
+    page,
+  }) => {
+    await installBrowserHostFake(page);
+    const approvedGap = capabilityGapRecord();
+    approvedGap.content = {
+      ...approvedGap.content,
+      state: "approved",
+      approvedCostCents: 0,
+    };
+    await boot(page, {
+      companyAccessRecords: [approvedGap],
+      identity: TEST_IDENTITIES.tyler,
+    });
     await page.goto("/#/today/needs-you");
     await page
       .getByTestId(`cofounder-plan-step-action-done-${ESIGN_PLAN_ID}-signup`)
@@ -512,23 +800,29 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(
       page.getByTestId(`cofounder-plan-step-item-${ESIGN_PLAN_ID}-signup`),
     ).toHaveCount(0);
-    await page.getByTestId("cofounder-done-signup-pinterest").click();
-    await expect(
-      page.getByTestId("cofounder-done-signup-pinterest"),
-    ).toHaveCount(0);
     await page
-      .getByTestId("cofounder-decision-accept-decide-guesthouse-1")
+      .getByTestId(`cofounder-gap-open-browser-${CAPABILITY_GAP_ID}`)
       .click();
+    await expect(page.getByTestId("work-area-browser")).toBeVisible();
+    await expect(page.getByTestId("browser-address")).toHaveValue(
+      "https://accounts.example.test/esign/login",
+    );
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await page.getByTestId("today-needs-you-link").click();
     await expect(
-      page.getByTestId("cofounder-decision-accept-decide-guesthouse-1"),
+      page.getByTestId(`cofounder-gap-open-browser-${CAPABILITY_GAP_ID}`),
+    ).toBeVisible();
+    await page.getByTestId(`cofounder-gap-done-${CAPABILITY_GAP_ID}`).click();
+    await expect(
+      page.getByTestId(`cofounder-capability-gap-${CAPABILITY_GAP_ID}`),
     ).toHaveCount(0);
   });
 
-  test("Access shows pending requests and revoke removes only the selected account", async ({
+  test("Access shows pending requests and persists revocation for the selected tool", async ({
     page,
   }) => {
     await installBrowserHostFake(page);
-    await boot(page);
+    await boot(page, { identity: TEST_IDENTITIES.tyler });
     await page.goto("/#/company/access");
     await expect(page.getByTestId("cofounder-access-screen")).toBeVisible();
     await expect(page.getByTestId("sidebar-nav-company-content")).toBeHidden();
@@ -544,22 +838,102 @@ test.describe("Co-founder mode Phase 2", () => {
       "aria-current",
       "page",
     );
-    await expect(page.getByTestId("cofounder-access-pending")).toContainText(
+    const pendingPaymentGap = page.getByTestId(
+      `cofounder-access-pending-${PAYMENT_GAP_ID}`,
+    );
+    await expect(pendingPaymentGap).toContainText(
       "Connect a payment link account",
+    );
+    await expect(pendingPaymentGap).toContainText(
+      "Free to join, a fee per payment",
     );
 
     await page.getByTestId("cofounder-access-revoke-whatsapp").click();
-    await expect(page.getByTestId("cofounder-access-whatsapp")).toHaveCount(0);
+    await expect(page.getByTestId("cofounder-access-whatsapp")).toContainText(
+      "Revoked",
+    );
+    await expect(
+      page.getByTestId("cofounder-access-revoke-whatsapp"),
+    ).toHaveCount(0);
     await expect(page.getByTestId("cofounder-access-gmail")).toBeVisible();
 
     await page.goto("/#/company/access");
     await page
-      .getByTestId("cofounder-access-approve-request-payment-link")
+      .getByTestId(`cofounder-access-approve-${PAYMENT_GAP_ID}`)
       .click();
     await expect(page.getByTestId("work-area-browser")).toBeVisible();
     await expect(page.getByTestId("browser-address")).toHaveValue(
       "https://accounts.example.test/payment-link/login",
     );
+    await page.goto("/#/today/needs-you");
+    await expect(
+      page.getByTestId(`cofounder-gap-open-browser-${PAYMENT_GAP_ID}`),
+    ).toBeVisible();
+  });
+
+  test("capability gaps move from approval to the built-in browser step", async ({
+    page,
+  }) => {
+    await installBrowserHostFake(page);
+    await boot(page, {
+      companyAccessRecords: [capabilityGapRecord()],
+      identity: TEST_IDENTITIES.tyler,
+    });
+    await page.goto("/#/today/needs-you");
+
+    const gap = page.getByTestId(
+      `cofounder-capability-gap-${CAPABILITY_GAP_ID}`,
+    );
+    await expect(gap).toContainText("Connect the e-sign account");
+    await page
+      .getByTestId(`cofounder-gap-approve-${CAPABILITY_GAP_ID}`)
+      .click();
+    const browserTab = page.getByRole("tabpanel", {
+      name: /accounts\.example\.test\/esign/u,
+    });
+    await expect(browserTab).toBeVisible();
+    await expect(browserTab.getByTestId("browser-address")).toHaveValue(
+      "https://accounts.example.test/esign/login",
+    );
+
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await page.getByTestId("today-needs-you-link").click();
+    await expect(
+      page.getByTestId(`cofounder-gap-open-browser-${CAPABILITY_GAP_ID}`),
+    ).toBeVisible();
+    await page
+      .getByTestId(`cofounder-gap-open-browser-${CAPABILITY_GAP_ID}`)
+      .click();
+    await expect(browserTab).toBeVisible();
+    await expect(browserTab.getByTestId("browser-address")).toHaveValue(
+      "https://accounts.example.test/esign/login",
+    );
+
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await page.getByTestId("today-needs-you-link").click();
+    await page.getByTestId(`cofounder-gap-done-${CAPABILITY_GAP_ID}`).click();
+    await expect(gap).toHaveCount(0);
+  });
+
+  test("declining a capability gap removes it from both approval surfaces", async ({
+    page,
+  }) => {
+    await boot(page, {
+      companyAccessRecords: [capabilityGapRecord()],
+      identity: TEST_IDENTITIES.tyler,
+    });
+    await page.goto("/#/today/needs-you");
+    await page
+      .getByTestId(`cofounder-gap-decline-${CAPABILITY_GAP_ID}`)
+      .click();
+
+    await expect(
+      page.getByTestId(`cofounder-capability-gap-${CAPABILITY_GAP_ID}`),
+    ).toHaveCount(0);
+    await page.goto("/#/company/access");
+    await expect(
+      page.getByTestId(`cofounder-access-pending-${CAPABILITY_GAP_ID}`),
+    ).toHaveCount(0);
   });
 
   test("Phase 2 surfaces disappear when co-founder mode is off", async ({
@@ -629,38 +1003,40 @@ test.describe("Co-founder mode Phase 2", () => {
             });
             await boot(page, { theme, step: item.step });
             await page.goto(item.route);
-            const expected =
+            const expected = (target: Page) =>
               item.surface === "onboarding"
-                ? page.getByTestId("cofounder-onboarding")
+                ? target.getByTestId("cofounder-onboarding")
                 : item.surface === "plan"
-                  ? page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`)
+                  ? target.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`)
                   : item.surface === "needs-you"
-                    ? page.getByTestId("cofounder-needs-you-screen")
+                    ? target.getByTestId("cofounder-needs-you-screen")
                     : item.surface === "access"
-                      ? page.getByTestId("cofounder-access-screen")
-                      : page.getByTestId("cofounder-open-scout");
-            await expect(expected).toBeVisible();
+                      ? target.getByTestId("cofounder-access-screen")
+                      : target.getByTestId("cofounder-open-scout");
+            await expect(expected(page)).toBeVisible();
             await capture(
               page,
               testInfo,
               `cofounder-phase2-${item.surface}-${viewport.name}-${theme}.png`,
             );
             if (viewport.name === "390" && item.surface !== "settings") {
-              await page.setViewportSize({ width: 390, height: 844 });
-              await page.evaluate(() => {
-                window.scrollTo(0, 0);
-                for (const element of document.querySelectorAll<HTMLElement>(
-                  "*",
-                )) {
-                  if (element.scrollTop > 0) element.scrollTop = 0;
-                }
+              const viewportContext = await browser.newContext({
+                viewport: { width: 390, height: 844 },
               });
-              await capture(
-                page,
-                testInfo,
-                `cofounder-phase2-${item.surface}-390-${theme}-viewport.png`,
-                false,
-              );
+              try {
+                const viewportPage = await viewportContext.newPage();
+                await boot(viewportPage, { theme, step: item.step });
+                await viewportPage.goto(item.route);
+                await expect(expected(viewportPage)).toBeVisible();
+                await capture(
+                  viewportPage,
+                  testInfo,
+                  `cofounder-phase2-${item.surface}-390-${theme}-viewport.png`,
+                  false,
+                );
+              } finally {
+                await viewportContext.close();
+              }
             }
           } finally {
             await screenshotContext.close();

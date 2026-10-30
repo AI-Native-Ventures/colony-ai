@@ -4,10 +4,20 @@ import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
+import {
+  useCofounderSettingsQuery,
+  useSetCofounderSettings,
+} from "@/features/cofounder/hooks";
 import { usePlansQuery } from "@/features/cofounder/planHooks";
 import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
-import { useCofounderPhase2Fixture } from "@/features/cofounder/useCofounderPhase2Fixture";
+import {
+  useBriefQuery,
+  useOnboardingQuery,
+  usePublishBriefAction,
+  usePublishOnboardingAction,
+} from "@/features/cofounder/initiativeHooks";
+import { buildCofounderOnboardingModel } from "@/features/cofounder/cofounderPhase2Model";
+import type { CofounderBusinessBrief } from "@/features/cofounder/cofounderPhase2Model";
 import { CofounderOnboardingFlow } from "@/features/cofounder/ui/CofounderOnboardingFlow";
 import { CofounderRelayPlanCard } from "@/features/cofounder/ui/CofounderRelayPlanCard";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
@@ -179,14 +189,32 @@ export const ChannelPane = React.memo(function ChannelPane({
   const cofounderSettings = useCofounderSettingsQuery(
     activeCommunity?.id ?? null,
   );
-  const cofounderPhase2 = useCofounderPhase2Fixture();
   const isCofounderScoutChat =
     activeChannel?.channelType === "dm" &&
     activeChannel.name.trim().toLocaleLowerCase() === "scout" &&
     cofounderSettings.data?.settings.enabled === true;
-  const cofounderChatModel = isCofounderScoutChat
-    ? cofounderPhase2.model
-    : null;
+  const briefQuery = useBriefQuery(isCofounderScoutChat);
+  const onboardingQuery = useOnboardingQuery(isCofounderScoutChat);
+  const briefAction = usePublishBriefAction();
+  const onboardingAction = usePublishOnboardingAction();
+  const saveCofounderSettings = useSetCofounderSettings();
+  const onboardingHead = onboardingQuery.data?.head ?? null;
+  const briefHead = briefQuery.data?.head ?? null;
+  const cofounderChatModel =
+    onboardingHead && cofounderSettings.data
+      ? buildCofounderOnboardingModel({
+          head: onboardingHead,
+          brief: briefHead,
+          companyName: activeCommunity?.name ?? "your company",
+          accountChannelId: activeChannel?.id ?? "",
+          moneyPreference: cofounderSettings.data.settings.moneyPreference,
+          approvalSwitches: cofounderSettings.data.settings.approvalSwitches,
+        })
+      : null;
+  const showCofounderChatSurface = Boolean(
+    isCofounderScoutChat &&
+      (onboardingQuery.isPending || onboardingQuery.isError || onboardingHead),
+  );
   const cofounderPlans = usePlansQuery(isCofounderScoutChat);
   const chatPlan =
     cofounderPlans.data?.find((plan) => plan.status === "proposed") ??
@@ -218,6 +246,142 @@ export const ChannelPane = React.memo(function ChannelPane({
   const hasMainComposerOverlay = !isNonMemberView;
   const activeChannelId = activeChannel?.id ?? null;
   const activeChannelIdRef = React.useRef(activeChannelId);
+
+  async function answerOnboardingQuestion(
+    step: "brief" | "money" | "approvals" | "accounts",
+    fields: {
+      moneyPreference?: "cheapest_first" | "best_option";
+      approvalSwitches?: {
+        approveEveryHire: boolean;
+        approvePlaybookChanges: boolean;
+        approveEveryDiscoveryCampaign: boolean;
+      };
+    } = {},
+  ) {
+    const current = await onboardingQuery.refetch();
+    const head = current.data?.head;
+    if (!head || head.question?.step !== step) {
+      throw new Error(
+        "Scout’s onboarding question changed. Refresh and try again.",
+      );
+    }
+    await onboardingAction.mutateAsync({
+      kind: "answer",
+      step,
+      ...fields,
+      expectedHeadEventId: head.eventId,
+    });
+  }
+
+  async function confirmBrief() {
+    if (onboardingHead?.question?.step !== "brief") {
+      throw new Error("There is no open brief question to answer.");
+    }
+    if (briefHead?.pending) {
+      await briefAction.mutateAsync({
+        kind: "confirm",
+        expectedHeadEventId: briefHead.eventId,
+      });
+    } else if (!briefHead?.confirmed) {
+      throw new Error("Scout has not proposed a business brief yet.");
+    }
+    await answerOnboardingQuestion("brief");
+  }
+
+  async function correctBrief(changes: CofounderBusinessBrief) {
+    const content = {
+      whatYouSell: changes.whatYouSell.trim(),
+      whoBuys: changes.whoBuys.trim(),
+      ...(changes.prices.trim() ? { prices: changes.prices.trim() } : {}),
+      howYouTalk: changes.howYouTalk.trim(),
+      sources: changes.sources,
+    };
+    await briefAction.mutateAsync({
+      kind: "edit",
+      content,
+      expectedHeadEventId: briefHead?.eventId,
+    });
+    if (onboardingHead?.question?.step === "brief") {
+      await answerOnboardingQuestion("brief");
+    }
+  }
+
+  async function saveMoneyPreference(
+    preference: "cheapest_first" | "best_option",
+  ) {
+    const current = cofounderSettings.data;
+    if (!current) throw new Error("Company settings are still loading.");
+    await saveCofounderSettings.mutateAsync({
+      settings: { ...current.settings, moneyPreference: preference },
+      expectedHeadEventId: current.eventId,
+    });
+    await answerOnboardingQuestion("money", { moneyPreference: preference });
+  }
+
+  async function saveApprovalSwitches(switches: {
+    approveEveryHire: boolean;
+    approvePlaybookChanges: boolean;
+    approveEveryDiscoveryCampaign: boolean;
+  }) {
+    const current = cofounderSettings.data;
+    if (!current) throw new Error("Company settings are still loading.");
+    await saveCofounderSettings.mutateAsync({
+      settings: { ...current.settings, approvalSwitches: switches },
+      expectedHeadEventId: current.eventId,
+    });
+    await answerOnboardingQuestion("approvals", { approvalSwitches: switches });
+  }
+
+  async function answerAccountQuestion() {
+    await answerOnboardingQuestion("accounts");
+  }
+
+  async function approveCompanyMap() {
+    const current = await onboardingQuery.refetch();
+    const head = current.data?.head;
+    if (!head?.map || head.map.approved) {
+      throw new Error(
+        "The proposed company map changed. Refresh and try again.",
+      );
+    }
+    await onboardingAction.mutateAsync({
+      kind: "approve_map",
+      expectedHeadEventId: head.eventId,
+    });
+  }
+
+  async function rejectCompanyMap() {
+    const current = await onboardingQuery.refetch();
+    const head = current.data?.head;
+    if (!head?.map || head.map.approved) {
+      throw new Error(
+        "The proposed company map changed. Refresh and try again.",
+      );
+    }
+    await onboardingAction.mutateAsync({
+      kind: "reject_map",
+      expectedHeadEventId: head.eventId,
+    });
+    await navigate({ to: "/company/map" });
+  }
+
+  async function completeOnboarding() {
+    const current = await onboardingQuery.refetch();
+    const head = current.data?.head;
+    if (!head?.map?.approved) {
+      throw new Error("Approve the proposed company map before finishing.");
+    }
+    await onboardingAction.mutateAsync({
+      kind: "complete",
+      expectedHeadEventId: head.eventId,
+    });
+  }
+
+  function openOnboardingAccount(url: string, channelId: string) {
+    if (!channelId || !openCapabilityGapBrowser(url, channelId)) {
+      throw new Error("The browser page could not be opened.");
+    }
+  }
   const channelPaneMountedRef = React.useRef(false);
   activeChannelIdRef.current = activeChannelId;
   React.useEffect(() => {
@@ -677,12 +841,20 @@ export const ChannelPane = React.memo(function ChannelPane({
           >
             {header}
             <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-              {cofounderChatModel ? (
+              {showCofounderChatSurface ? (
                 <div
                   className="cf2-chat-embedded min-h-0 flex-1 overflow-y-auto"
                   data-testid="cofounder-chat-surface"
                 >
-                  {cofounderChatModel.onboarding.step === "complete" ? (
+                  {onboardingQuery.isPending || briefQuery.isPending ? (
+                    <p className="cf2-empty-note" role="status">
+                      Loading co-founder onboarding…
+                    </p>
+                  ) : onboardingQuery.error || briefQuery.error ? (
+                    <p className="cf2-error-note" role="alert">
+                      Co-founder onboarding could not be loaded. Try again.
+                    </p>
+                  ) : onboardingHead?.status === "complete" ? (
                     chatPlan ? (
                       <div className="cf2-chat-plan-wrap">
                         <CofounderRelayPlanCard plan={chatPlan} />
@@ -694,21 +866,20 @@ export const ChannelPane = React.memo(function ChannelPane({
                           : "Scout has not shared a plan yet."}
                       </p>
                     )
-                  ) : (
+                  ) : cofounderChatModel ? (
                     <CofounderOnboardingFlow
-                      model={cofounderChatModel.onboarding}
-                      onAccountConnected={cofounderPhase2.accountConnected}
-                      onApproveMap={cofounderPhase2.approveMap}
-                      onChangeMap={() => void navigate({ to: "/company/map" })}
-                      onChooseMoney={cofounderPhase2.chooseMoney}
-                      onConfirmBrief={cofounderPhase2.confirmBrief}
-                      onCorrectBrief={cofounderPhase2.correctBrief}
-                      onOpenAccount={openCapabilityGapBrowser}
-                      onSaveApprovalSwitches={
-                        cofounderPhase2.saveApprovalSwitches
-                      }
+                      model={cofounderChatModel}
+                      onAccountConnected={answerAccountQuestion}
+                      onApproveMap={approveCompanyMap}
+                      onChangeMap={rejectCompanyMap}
+                      onChooseMoney={saveMoneyPreference}
+                      onComplete={completeOnboarding}
+                      onConfirmBrief={confirmBrief}
+                      onCorrectBrief={correctBrief}
+                      onOpenAccount={openOnboardingAccount}
+                      onSaveApprovalSwitches={saveApprovalSwitches}
                     />
-                  )}
+                  ) : null}
                 </div>
               ) : chatPlan ? (
                 <div

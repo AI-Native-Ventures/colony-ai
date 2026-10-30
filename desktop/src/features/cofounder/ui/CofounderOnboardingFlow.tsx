@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { FUNCTION_ORDER } from "../functions";
 import type {
   CofounderBusinessBrief,
@@ -38,6 +39,8 @@ const APPROVAL_FIELDS: Array<{
   },
 ];
 
+const STEP_ORDER = ["brief", "money", "approvals", "account", "map"] as const;
+
 export function CofounderOnboardingFlow({
   model,
   onConfirmBrief,
@@ -48,35 +51,77 @@ export function CofounderOnboardingFlow({
   onAccountConnected,
   onApproveMap,
   onChangeMap,
+  onComplete,
 }: {
   model: CofounderOnboardingModel;
-  onConfirmBrief: () => void;
-  onCorrectBrief: (changes: CofounderBusinessBrief) => void;
-  onChooseMoney: (preference: MoneyPreference) => void;
-  onSaveApprovalSwitches: (switches: ApprovalSwitches) => void;
-  onOpenAccount: (url: string, channelId: string) => void;
-  onAccountConnected: () => void;
-  onApproveMap: () => void;
-  onChangeMap: () => void;
+  onConfirmBrief: () => void | Promise<void>;
+  onCorrectBrief: (changes: CofounderBusinessBrief) => void | Promise<void>;
+  onChooseMoney: (preference: MoneyPreference) => void | Promise<void>;
+  onSaveApprovalSwitches: (switches: ApprovalSwitches) => void | Promise<void>;
+  onOpenAccount: (url: string, channelId: string) => void | Promise<void>;
+  onAccountConnected: () => void | Promise<void>;
+  onApproveMap: () => void | Promise<void>;
+  onChangeMap: () => void | Promise<void>;
+  onComplete: () => void | Promise<void>;
 }) {
   const [editingBrief, setEditingBrief] = useState(false);
-  const [briefDraft, setBriefDraft] = useState(model.brief);
+  const [briefDraft, setBriefDraft] = useState<CofounderBusinessBrief | null>(
+    model.brief,
+  );
   const [switches, setSwitches] = useState(model.approvalSwitches);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const firstBriefInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (editingBrief) firstBriefInputRef.current?.focus();
   }, [editingBrief]);
-  const stepOrder = [
-    "brief",
-    "money",
-    "approvals",
-    "account",
-    "map",
-    "complete",
-  ];
-  const currentStepIndex = stepOrder.indexOf(model.step);
-  const hasReached = (step: string) =>
-    currentStepIndex >= stepOrder.indexOf(step);
+  useEffect(() => {
+    if (!editingBrief) setBriefDraft(model.brief);
+  }, [editingBrief, model.brief]);
+  useEffect(
+    () => setSwitches(model.approvalSwitches),
+    [model.approvalSwitches],
+  );
+
+  const visibleStepIndex = STEP_ORDER.indexOf(model.visibleThrough);
+  const hasReached = (step: (typeof STEP_ORDER)[number]) =>
+    visibleStepIndex >= STEP_ORDER.indexOf(step);
+  const leadPubkeys = (model.map?.entries ?? []).flatMap((entry) =>
+    entry.leadPubkey ? [entry.leadPubkey] : [],
+  );
+  const profiles = useUsersBatchQuery(leadPubkeys, {
+    enabled: leadPubkeys.length > 0,
+  });
+  const actionDisabled = pendingAction !== null;
+
+  async function runAction(action: string, run: () => void | Promise<void>) {
+    setPendingAction(action);
+    setActionError(null);
+    try {
+      await run();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not save onboarding.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function mapEntryLabel(functionId: (typeof FUNCTION_ORDER)[number]) {
+    const entry = model.map?.entries.find(
+      (candidate) => candidate.function === functionId,
+    );
+    if (!entry) return "Not assigned";
+    if (entry.placement === "scout") return "Covered by Scout";
+    if (entry.placement === "empty") return "Empty";
+    const name = entry.leadPubkey
+      ? profiles.data?.profiles[
+          entry.leadPubkey.toLowerCase()
+        ]?.displayName?.trim()
+      : null;
+    return name ? `${name} moves here` : "Existing agent";
+  }
 
   return (
     <section
@@ -98,13 +143,12 @@ export function CofounderOnboardingFlow({
           <span className="cf2-muted">Stays editable under Company</span>
         </div>
         <h2 id="cf2-brief-title">
-          Here’s what I know about {model.brief.companyName}
+          Here’s what I know about {model.brief?.companyName ?? "your company"}
         </h2>
-        {editingBrief ? (
+        {editingBrief && briefDraft ? (
           <div className="cf2-brief-edit-grid">
             {(
               [
-                ["companyName", "Company name"],
                 ["whatYouSell", "What you sell"],
                 ["whoBuys", "Who buys"],
                 ["prices", "Prices"],
@@ -116,18 +160,18 @@ export function CofounderOnboardingFlow({
                 <input
                   ref={index === 0 ? firstBriefInputRef : undefined}
                   data-testid={`cofounder-brief-${field}`}
-                  onChange={(event) =>
-                    setBriefDraft((current) => ({
-                      ...current,
-                      [field]: event.currentTarget.value,
-                    }))
-                  }
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setBriefDraft((current) =>
+                      current ? { ...current, [field]: value } : current,
+                    );
+                  }}
                   value={briefDraft[field]}
                 />
               </label>
             ))}
           </div>
-        ) : (
+        ) : model.brief ? (
           <dl className="cf2-brief-list">
             <dt>What you sell</dt>
             <dd>{model.brief.whatYouSell}</dd>
@@ -138,9 +182,6 @@ export function CofounderOnboardingFlow({
               {model.brief.prices || (
                 <span className="cf2-chip cf2-chip-warm">Not found</span>
               )}
-              {model.brief.priceNote ? (
-                <span className="cf2-price-note">{model.brief.priceNote}</span>
-              ) : null}
             </dd>
             <dt>How you talk</dt>
             <dd>{model.brief.howYouTalk}</dd>
@@ -153,24 +194,35 @@ export function CofounderOnboardingFlow({
               ))}
             </dd>
           </dl>
+        ) : (
+          <p className="cf2-empty-note" role="status">
+            Scout is preparing the business brief.
+          </p>
         )}
+        {model.step === "brief" && model.questionText ? (
+          <p className="cf2-onboarding-copy">{model.questionText}</p>
+        ) : null}
         {model.step === "brief" ? (
           <div className="cf2-actions">
-            {editingBrief ? (
+            {editingBrief && briefDraft ? (
               <>
                 <button
                   className="cf2-button cf2-button-primary"
                   data-testid="cofounder-brief-save"
-                  onClick={() => {
-                    onCorrectBrief(briefDraft);
-                    setEditingBrief(false);
-                  }}
+                  disabled={actionDisabled}
+                  onClick={() =>
+                    void runAction("brief-edit", async () => {
+                      await onCorrectBrief(briefDraft);
+                      setEditingBrief(false);
+                    })
+                  }
                   type="button"
                 >
-                  Save brief
+                  {pendingAction === "brief-edit" ? "Saving…" : "Save brief"}
                 </button>
                 <button
                   className="cf2-button"
+                  disabled={actionDisabled}
                   onClick={() => {
                     setBriefDraft(model.brief);
                     setEditingBrief(false);
@@ -185,15 +237,25 @@ export function CofounderOnboardingFlow({
                 <button
                   className="cf2-button cf2-button-primary"
                   data-testid="cofounder-brief-confirm"
-                  onClick={onConfirmBrief}
+                  disabled={actionDisabled || !model.brief}
+                  onClick={() =>
+                    void runAction("brief-confirm", onConfirmBrief)
+                  }
                   type="button"
                 >
-                  Confirm
+                  {pendingAction === "brief-confirm"
+                    ? "Saving…"
+                    : model.briefConfirmed && !model.briefPending
+                      ? "Continue"
+                      : "Confirm"}
                 </button>
                 <button
                   className="cf2-button"
-                  data-testid="cofounder-brief-correct"
-                  onClick={() => setEditingBrief(true)}
+                  disabled={actionDisabled || !model.brief}
+                  onClick={() => {
+                    setBriefDraft(model.brief);
+                    setEditingBrief(true);
+                  }}
                   type="button"
                 >
                   Correct
@@ -203,9 +265,9 @@ export function CofounderOnboardingFlow({
           </div>
         ) : (
           <p className="cf2-completed-note" role="status">
-            {model.step === "complete"
-              ? "Brief confirmed"
-              : "You confirmed this brief"}
+            {model.briefConfirmed
+              ? "You confirmed this brief"
+              : "This brief is waiting for Scout"}
           </p>
         )}
       </section>
@@ -217,13 +279,18 @@ export function CofounderOnboardingFlow({
         >
           <p className="cf2-question-count">Question 1 of 3</p>
           <h2 id="cf2-money-title">How should I spend money?</h2>
+          {model.step === "money" && model.questionText ? (
+            <p className="cf2-onboarding-copy">{model.questionText}</p>
+          ) : null}
           <fieldset aria-label="Money preference" className="cf2-choice-grid">
             <button
               aria-pressed={model.moneyPreference === "cheapest_first"}
               className="cf2-choice"
               data-testid="cofounder-money-cheapest"
-              disabled={model.step !== "money"}
-              onClick={() => onChooseMoney("cheapest_first")}
+              disabled={model.step !== "money" || actionDisabled}
+              onClick={() =>
+                void runAction("money", () => onChooseMoney("cheapest_first"))
+              }
               type="button"
             >
               <strong>Cheapest first</strong>
@@ -238,8 +305,10 @@ export function CofounderOnboardingFlow({
               aria-pressed={model.moneyPreference === "best_option"}
               className="cf2-choice"
               data-testid="cofounder-money-best"
-              disabled={model.step !== "money"}
-              onClick={() => onChooseMoney("best_option")}
+              disabled={model.step !== "money" || actionDisabled}
+              onClick={() =>
+                void runAction("money", () => onChooseMoney("best_option"))
+              }
               type="button"
             >
               <strong>Best option</strong>
@@ -260,6 +329,9 @@ export function CofounderOnboardingFlow({
         >
           <p className="cf2-question-count">Question 2 of 3</p>
           <h2 id="cf2-approvals-title">What else should wait for your OK?</h2>
+          {model.step === "approvals" && model.questionText ? (
+            <p className="cf2-onboarding-copy">{model.questionText}</p>
+          ) : null}
           <p className="cf2-onboarding-copy">
             Outreach, spending and anything with your brand on it always wait.
             Every follow-up message an agent writes is a draft for you.
@@ -276,13 +348,14 @@ export function CofounderOnboardingFlow({
                   aria-checked={switches[field.key]}
                   checked={switches[field.key]}
                   data-testid={`cofounder-approval-${field.key}`}
-                  disabled={model.step !== "approvals"}
-                  onChange={(event) =>
+                  disabled={model.step !== "approvals" || actionDisabled}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
                     setSwitches((current) => ({
                       ...current,
-                      [field.key]: event.currentTarget.checked,
-                    }))
-                  }
+                      [field.key]: checked,
+                    }));
+                  }}
                   role="switch"
                   type="checkbox"
                 />
@@ -294,10 +367,15 @@ export function CofounderOnboardingFlow({
               <button
                 className="cf2-button cf2-button-primary"
                 data-testid="cofounder-approval-save"
-                onClick={() => onSaveApprovalSwitches(switches)}
+                disabled={actionDisabled}
+                onClick={() =>
+                  void runAction("approvals", () =>
+                    onSaveApprovalSwitches(switches),
+                  )
+                }
                 type="button"
               >
-                Save
+                {pendingAction === "approvals" ? "Saving…" : "Save"}
               </button>
             </div>
           ) : (
@@ -315,48 +393,76 @@ export function CofounderOnboardingFlow({
         >
           <p className="cf2-question-count">Question 3 of 3</p>
           <h2 id="cf2-account-title">
-            Connect {model.accountName} for design ideas
+            {model.accountName
+              ? `Connect ${model.accountName} for your company`
+              : "Account setup"}
           </h2>
-          <div className="cf2-browser-ready">
-            <span aria-hidden="true" className="cf2-browser-glyph">
-              ◎
-            </span>
-            <span>
-              <strong>
-                {model.accountName.toLowerCase()} login is open in the browser
-              </strong>
-              <small>Free. I only browse boards for ideas, never post.</small>
-            </span>
-            <span className="cf2-chip cf2-chip-warm">
-              {model.accountConnected ? "Connected" : "Waiting for you"}
-            </span>
-          </div>
+          {model.accountName ? (
+            <div className="cf2-browser-ready">
+              <span aria-hidden="true" className="cf2-browser-glyph">
+                ◎
+              </span>
+              <span>
+                <strong>
+                  {model.accountName.toLowerCase()} login is open in the browser
+                </strong>
+                <small>
+                  Complete the login yourself in the built-in browser.
+                </small>
+              </span>
+              <span className="cf2-chip cf2-chip-warm">
+                {model.accountConnected ? "Connected" : "Waiting for you"}
+              </span>
+            </div>
+          ) : (
+            <p className="cf2-empty-note" role="status">
+              No account connection is waiting.
+            </p>
+          )}
+          {model.step === "account" && model.questionText ? (
+            <p className="cf2-onboarding-copy">{model.questionText}</p>
+          ) : null}
           <div className="cf2-actions">
-            <button
-              className="cf2-button"
-              data-testid="cofounder-account-open-browser"
-              disabled={model.step !== "account"}
-              onClick={() =>
-                onOpenAccount(model.accountUrl, model.accountChannelId)
-              }
-              type="button"
-            >
-              Open browser
-            </button>
-            <button
-              className="cf2-button cf2-button-primary"
-              data-testid="cofounder-account-connected"
-              disabled={model.step !== "account"}
-              onClick={onAccountConnected}
-              type="button"
-            >
-              I’m logged in
-            </button>
+            {model.accountUrl ? (
+              <button
+                className="cf2-button"
+                data-testid="cofounder-account-open-browser"
+                disabled={model.step !== "account" || actionDisabled}
+                onClick={() =>
+                  void runAction("account-browser", () =>
+                    onOpenAccount(
+                      model.accountUrl ?? "",
+                      model.accountChannelId,
+                    ),
+                  )
+                }
+                type="button"
+              >
+                {pendingAction === "account-browser"
+                  ? "Opening…"
+                  : "Open browser"}
+              </button>
+            ) : null}
+            {model.accountName ? (
+              <button
+                className="cf2-button cf2-button-primary"
+                data-testid="cofounder-account-connected"
+                disabled={model.step !== "account" || actionDisabled}
+                onClick={() =>
+                  void runAction("account-answer", onAccountConnected)
+                }
+                type="button"
+              >
+                {pendingAction === "account-answer"
+                  ? "Saving…"
+                  : "I’m logged in"}
+              </button>
+            ) : null}
           </div>
         </section>
       ) : null}
 
-      {hasReached("map") ? (
+      {hasReached("map") && model.map ? (
         <section
           aria-labelledby="cf2-map-title"
           className="cf2-card cf2-onboarding-card"
@@ -366,26 +472,23 @@ export function CofounderOnboardingFlow({
             <span className="cf2-chip">Company map</span>
           </div>
           <h2 id="cf2-map-title">
-            The company I suggest for {model.brief.companyName}
+            The company I suggest for{" "}
+            {model.brief?.companyName ?? "your company"}
           </h2>
           <p className="cf2-onboarding-copy">
             Scout is Chief of Staff and runs the company with you. We fill one
-            slot at a time, starting with Sales.
+            slot at a time, starting where the map recommends.
           </p>
           <ol className="cf2-function-list">
             {FUNCTION_ORDER.map((functionId, index) => (
               <li key={functionId}>
                 <span className="cf2-function-index">{index + 1}</span>
                 <strong>{FUNCTION_LABELS[functionId]}</strong>
-                <span className="cf2-muted">
-                  {index === 0
-                    ? "Aya moves here"
-                    : index === 1
-                      ? "I cover it for now"
-                      : "Empty"}
-                </span>
+                <span className="cf2-muted">{mapEntryLabel(functionId)}</span>
                 <span className="cf2-chip">
-                  {index === 0 ? "Fill first" : index === 1 ? "Next" : "Later"}
+                  {functionId === model.map?.firstFunction
+                    ? "Fill first"
+                    : "Later"}
                 </span>
               </li>
             ))}
@@ -394,23 +497,47 @@ export function CofounderOnboardingFlow({
             <button
               className="cf2-button cf2-button-primary"
               data-testid="cofounder-map-approve"
-              disabled={model.step !== "map"}
-              onClick={onApproveMap}
+              disabled={model.step !== "map" || actionDisabled}
+              onClick={() =>
+                void runAction(
+                  model.map?.approved ? "complete" : "map-approve",
+                  model.map?.approved ? onComplete : onApproveMap,
+                )
+              }
               type="button"
             >
-              Approve the map
+              {pendingAction === "complete"
+                ? "Finishing…"
+                : pendingAction === "map-approve"
+                  ? "Saving…"
+                  : model.map.approved
+                    ? "Finish onboarding"
+                    : "Approve the map"}
             </button>
             <button
               className="cf2-button"
               data-testid="cofounder-map-change"
-              disabled={model.step !== "map"}
-              onClick={onChangeMap}
+              disabled={
+                model.step !== "map" || actionDisabled || model.map.approved
+              }
+              onClick={() => void runAction("map-reject", onChangeMap)}
               type="button"
             >
               Change it
             </button>
           </div>
         </section>
+      ) : null}
+
+      {model.step === "waiting" ? (
+        <p className="cf2-empty-note" role="status">
+          Waiting for Scout to ask the next question.
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="cf2-error-note" role="alert">
+          {actionError}
+        </p>
       ) : null}
     </section>
   );

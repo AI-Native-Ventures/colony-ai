@@ -2,32 +2,14 @@ import { useState } from "react";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import "./cofounderPhase2.css";
-import type {
-  CofounderApprovalItem,
-  CofounderDecisionItem,
-  CofounderDoItem,
-  CofounderNeedsYouModel,
-  CofounderPlan,
-} from "../cofounderPhase2Model";
+import type { GapNeedsYouItem } from "../accessRecords";
 import type {
   NeedsYouActionId,
   NeedsYouItem,
   NeedsYouModel,
 } from "../needsYou";
 import type { PlanView } from "../planRecords";
-import { CofounderPlanCard } from "./CofounderPlanCard";
 import { CofounderRelayPlanCard } from "./CofounderRelayPlanCard";
-
-export type NeedsYouAction =
-  | "approve"
-  | "reject"
-  | "send"
-  | "discard"
-  | "approve_recommended"
-  | "ask_for_changes"
-  | "done"
-  | "accept"
-  | "decline";
 
 function PlanStepNeedsYouCard({
   item,
@@ -106,354 +88,412 @@ function PlanStepNeedsYouCard({
   );
 }
 
-function ApprovalCard({
+function LiveNeedsYouItemCard({
+  item,
+  onOpen,
+}: {
+  item: NeedsYouItem;
+  onOpen: (item: NeedsYouItem) => void | Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const label =
+    item.source.kind === "whatsapp_batch"
+      ? "Review batch"
+      : item.section === "approve"
+        ? "Review ask"
+        : item.section === "do"
+          ? "Open task"
+          : "Answer";
+  return (
+    <article
+      className="cf2-card cf2-needs-card"
+      data-testid={`cofounder-live-needs-you-${item.id}`}
+    >
+      <div className="cf2-card-title-row">
+        <span aria-hidden="true" className="cf2-scout-tile">
+          S
+        </span>
+        <span>
+          <strong>{item.title}</strong>
+          {item.subtitle ? <small>{item.subtitle}</small> : null}
+        </span>
+      </div>
+      <div className="cf2-actions">
+        <button
+          aria-label={`${label}: ${item.title}`}
+          className="cf2-button cf2-button-primary"
+          data-testid={`cofounder-open-live-needs-you-${item.id}`}
+          disabled={pending}
+          onClick={() => {
+            setPending(true);
+            setError(null);
+            void Promise.resolve(onOpen(item))
+              .catch((actionError: unknown) =>
+                setError(
+                  actionError instanceof Error
+                    ? actionError.message
+                    : "Could not open this item.",
+                ),
+              )
+              .finally(() => setPending(false));
+          }}
+          type="button"
+        >
+          {pending ? "Opening…" : label}
+        </button>
+      </div>
+      {error ? (
+        <p className="cf2-error-note" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function WhatsAppDraftNeedsYouCard({
   item,
   onAction,
-  onEditDraft,
 }: {
-  item: CofounderApprovalItem;
-  onAction: (itemId: string, action: NeedsYouAction) => void;
-  onEditDraft: (draftId: string, message: string) => void;
+  item: NeedsYouItem;
+  onAction: (
+    draftId: string,
+    decision: "approve" | "reject",
+    text?: string,
+  ) => void | Promise<void>;
 }) {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [editedMessage, setEditedMessage] = useState("");
+  const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  if (item.kind === "reply_drafts") {
-    return (
-      <article className="cf2-card cf2-needs-card">
-        <div className="cf2-card-title-row">
-          <span aria-hidden="true" className="cf2-person-tile">
-            A
-          </span>
-          <span>
-            <strong>{item.title}</strong>
-            <small>{item.summary}</small>
-          </span>
-        </div>
-        <div className="cf2-draft-list">
-          {item.drafts.map((draft) => (
-            <div
-              className="cf2-draft-row"
-              data-testid={`cofounder-draft-${draft.id}`}
-              key={draft.id}
-            >
-              <span
-                aria-hidden="true"
-                className="cf2-person-tile cf2-person-tile-small"
-              >
-                {draft.recipient.slice(0, 2).toUpperCase()}
-              </span>
-              <span className="cf2-draft-copy">
-                <strong>{draft.recipient}</strong>
-                {editingDraftId === draft.id ? (
-                  <label className="cf2-draft-edit">
-                    Message to {draft.recipient}
-                    <textarea
-                      aria-label={`Message to ${draft.recipient}`}
-                      className="cf2-draft-input"
-                      onChange={(event) =>
-                        setEditedMessage(event.currentTarget.value)
-                      }
-                      rows={3}
-                      value={editedMessage}
-                    />
-                  </label>
-                ) : (
-                  <span>{draft.message}</span>
-                )}
-              </span>
-              <div className="cf2-actions cf2-draft-actions">
-                {editingDraftId === draft.id ? (
-                  <>
-                    <button
-                      className="cf2-button cf2-button-primary"
-                      data-testid={`cofounder-save-draft-${draft.id}`}
-                      disabled={!editedMessage.trim()}
-                      onClick={() => {
-                        const message = editedMessage.trim();
-                        if (!message) return;
-                        onEditDraft(draft.id, message);
-                        setEditingDraftId(null);
-                      }}
-                      type="button"
-                    >
-                      Save changes
-                    </button>
-                    <button
-                      className="cf2-button"
-                      onClick={() => setEditingDraftId(null)}
-                      type="button"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      aria-label={`Send draft to ${draft.recipient}`}
-                      className="cf2-button cf2-button-primary"
-                      data-testid={`cofounder-send-draft-${draft.id}`}
-                      onClick={() => onAction(draft.id, "send")}
-                      type="button"
-                    >
-                      Send
-                    </button>
-                    <button
-                      aria-label={`Edit draft to ${draft.recipient}`}
-                      className="cf2-button"
-                      onClick={() => {
-                        setEditedMessage(draft.message);
-                        setEditingDraftId(draft.id);
-                      }}
-                      type="button"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      aria-label={`Discard draft to ${draft.recipient}`}
-                      className="cf2-button cf2-button-danger"
-                      onClick={() => onAction(draft.id, "discard")}
-                      type="button"
-                    >
-                      Discard
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </article>
-    );
+  async function decide(
+    draftId: string,
+    decision: "approve" | "reject",
+    text?: string,
+  ) {
+    setPendingDraftId(draftId);
+    setError(null);
+    try {
+      await onAction(draftId, decision, text);
+      if (editingDraftId === draftId) setEditingDraftId(null);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Could not update this reply draft.",
+      );
+    } finally {
+      setPendingDraftId(null);
+    }
   }
 
-  if (item.kind === "taste") {
-    return (
-      <article className="cf2-card cf2-needs-card">
-        <div className="cf2-card-title-row">
-          <span aria-hidden="true" className="cf2-scout-tile">
-            S
-          </span>
-          <span>
-            <strong>{item.title}</strong>
-            <small>{item.summary}</small>
-          </span>
-        </div>
-        <fieldset className="cf2-option-list" aria-label="Design options">
-          {item.options.map((option) => {
-            const selected = item.recommendedOption === option;
-            return (
+  return (
+    <article
+      className="cf2-card cf2-needs-card"
+      data-testid={`cofounder-live-needs-you-${item.id}`}
+    >
+      <div className="cf2-card-title-row">
+        <span aria-hidden="true" className="cf2-scout-tile">
+          S
+        </span>
+        <span>
+          <strong>{item.title}</strong>
+          {item.subtitle ? <small>{item.subtitle}</small> : null}
+        </span>
+      </div>
+      <div className="cf2-draft-list">
+        {item.details.map((draft) => (
+          <div
+            className="cf2-draft-row"
+            data-testid={`cofounder-draft-${draft.id}`}
+            key={draft.id}
+          >
+            <span
+              aria-hidden="true"
+              className="cf2-person-tile cf2-person-tile-small"
+            >
+              {draft.label.slice(0, 2).toUpperCase()}
+            </span>
+            <span className="cf2-draft-copy">
+              <strong>{draft.label}</strong>
+              {editingDraftId === draft.id ? (
+                <label className="cf2-draft-edit">
+                  Message to {draft.label}
+                  <textarea
+                    aria-label={`Message to ${draft.label}`}
+                    className="cf2-draft-input"
+                    onChange={(event) =>
+                      setEditedMessage(event.currentTarget.value)
+                    }
+                    rows={3}
+                    value={editedMessage}
+                  />
+                </label>
+              ) : (
+                <span>{draft.text}</span>
+              )}
+            </span>
+            <div className="cf2-actions cf2-draft-actions">
+              {editingDraftId === draft.id ? (
+                <>
+                  <button
+                    className="cf2-button cf2-button-primary"
+                    data-testid={`cofounder-save-draft-${draft.id}`}
+                    disabled={!editedMessage.trim() || pendingDraftId !== null}
+                    onClick={() =>
+                      void decide(draft.id, "approve", editedMessage.trim())
+                    }
+                    type="button"
+                  >
+                    {pendingDraftId === draft.id ? "Saving…" : "Save changes"}
+                  </button>
+                  <button
+                    className="cf2-button"
+                    disabled={pendingDraftId !== null}
+                    onClick={() => setEditingDraftId(null)}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    aria-label={`Send draft to ${draft.label}`}
+                    className="cf2-button cf2-button-primary"
+                    data-testid={`cofounder-send-draft-${draft.id}`}
+                    disabled={pendingDraftId !== null}
+                    onClick={() => void decide(draft.id, "approve")}
+                    type="button"
+                  >
+                    {pendingDraftId === draft.id ? "Sending…" : "Send"}
+                  </button>
+                  <button
+                    aria-label={`Edit draft to ${draft.label}`}
+                    className="cf2-button"
+                    disabled={pendingDraftId !== null}
+                    onClick={() => {
+                      setEditedMessage(draft.text);
+                      setEditingDraftId(draft.id);
+                    }}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    aria-label={`Discard draft to ${draft.label}`}
+                    className="cf2-button cf2-button-danger"
+                    data-testid={`cofounder-discard-draft-${draft.id}`}
+                    disabled={pendingDraftId !== null}
+                    onClick={() => void decide(draft.id, "reject")}
+                    type="button"
+                  >
+                    Discard
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {error ? (
+        <p className="cf2-error-note" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function CapabilityGapCard({
+  item,
+  onAction,
+  onOpenBrowser,
+}: {
+  item: GapNeedsYouItem;
+  onAction: (
+    item: GapNeedsYouItem,
+    action: "gap_approve" | "gap_decline" | "gap_done",
+  ) => void | Promise<void>;
+  onOpenBrowser: (url: string) => void | Promise<void>;
+}) {
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runAction(action: "gap_approve" | "gap_decline" | "gap_done") {
+    setPendingAction(action);
+    setError(null);
+    try {
+      await onAction(item, action);
+      if (action === "gap_approve" && item.pageUrl) {
+        await onOpenBrowser(item.pageUrl);
+      }
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Could not update this capability gap.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function openBrowser() {
+    if (!item.pageUrl) return;
+    setPendingAction("open-browser");
+    setError(null);
+    try {
+      await onOpenBrowser(item.pageUrl);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Could not open the browser page.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <article
+      className="cf2-card cf2-needs-card"
+      data-testid={`cofounder-capability-gap-${item.gapId}`}
+    >
+      <div className="cf2-card-title-row">
+        <span aria-hidden="true" className="cf2-scout-tile">
+          S
+        </span>
+        <span>
+          <strong>{item.title}</strong>
+          <small>{item.detail}</small>
+        </span>
+      </div>
+      {item.group === "approve" ? (
+        <>
+          <p>{item.costText ? `Chosen option: ${item.costText}` : "No cost"}</p>
+          <div className="cf2-actions">
+            <button
+              aria-label={`Approve ${item.title} for ${item.costText || "no cost"}`}
+              className="cf2-button cf2-button-primary"
+              data-testid={`cofounder-gap-approve-${item.gapId}`}
+              disabled={pendingAction !== null}
+              onClick={() => void runAction("gap_approve")}
+              type="button"
+            >
+              {pendingAction === "gap_approve"
+                ? "Approving…"
+                : item.pageUrl
+                  ? "Approve and open browser"
+                  : "Approve cost"}
+            </button>
+            <button
+              aria-label={`Decline ${item.title}`}
+              className="cf2-button"
+              data-testid={`cofounder-gap-decline-${item.gapId}`}
+              disabled={pendingAction !== null}
+              onClick={() => void runAction("gap_decline")}
+              type="button"
+            >
+              Not now
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="cf2-browser-ready">
+            <span aria-hidden="true" className="cf2-browser-glyph">
+              ◎
+            </span>
+            <span>
+              <strong>{item.humanStep}</strong>
+              <small>
+                {item.costText
+                  ? `Approved cost: ${item.costText}`
+                  : "Approved with no cost"}
+              </small>
+            </span>
+          </div>
+          <div className="cf2-actions">
+            {item.pageUrl ? (
               <button
-                aria-label={`Pick option ${option}`}
-                aria-pressed={selected}
-                className="cf2-option"
-                key={option}
-                onClick={() => onAction(`${item.id}:${option}`, "approve")}
+                aria-label={`Open browser for ${item.title}`}
+                className="cf2-button cf2-button-primary"
+                data-testid={`cofounder-gap-open-browser-${item.gapId}`}
+                disabled={pendingAction !== null}
+                onClick={() => void openBrowser()}
                 type="button"
               >
-                <span aria-hidden="true" className="cf2-option-preview" />
-                <span>
-                  Option {option}
-                  {selected ? (
-                    <span className="cf2-recommended">Scout’s pick</span>
-                  ) : null}
-                </span>
+                {pendingAction === "open-browser" ? "Opening…" : "Open browser"}
               </button>
-            );
-          })}
-        </fieldset>
-        <div className="cf2-actions">
-          <button
-            className="cf2-button cf2-button-primary"
-            data-testid={`cofounder-approve-option-${item.id}`}
-            onClick={() => onAction(item.id, "approve_recommended")}
-            type="button"
-          >
-            Approve {item.recommendedOption}
-          </button>
-          <button
-            className="cf2-button"
-            onClick={() => onAction(item.id, "ask_for_changes")}
-            type="button"
-          >
-            Ask for changes
-          </button>
-        </div>
-      </article>
-    );
-  }
-
-  return (
-    <article className="cf2-card cf2-needs-card">
-      <div className="cf2-card-title-row">
-        <span aria-hidden="true" className="cf2-scout-tile">
-          S
-        </span>
-        <span>
-          <strong>{item.title}</strong>
-          <small>{item.summary}</small>
-        </span>
-      </div>
-      <p className="cf2-card-detail">{item.detail}</p>
-      <div className="cf2-actions">
-        <button
-          className="cf2-button cf2-button-primary"
-          data-testid={`cofounder-approve-${item.id}`}
-          onClick={() => onAction(item.id, "approve")}
-          type="button"
-        >
-          Review and approve
-        </button>
-        <button
-          className="cf2-button cf2-button-danger"
-          data-testid={`cofounder-reject-${item.id}`}
-          onClick={() => onAction(item.id, "reject")}
-          type="button"
-        >
-          Reject
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function DoCard({
-  item,
-  onOpenBrowser,
-  onAction,
-}: {
-  item: CofounderDoItem;
-  onOpenBrowser: (url: string, channelId: string) => void;
-  onAction: (itemId: string, action: NeedsYouAction) => void;
-}) {
-  return (
-    <article className="cf2-card cf2-needs-card">
-      <div className="cf2-card-title-row">
-        <span aria-hidden="true" className="cf2-scout-tile">
-          S
-        </span>
-        <span>
-          <strong>{item.title}</strong>
-          <small>{item.summary}</small>
-        </span>
-      </div>
-      <div className="cf2-browser-ready">
-        <span aria-hidden="true" className="cf2-browser-glyph">
-          ◎
-        </span>
-        <span>
-          <strong>Sign-up page is open in the browser</strong>
-          <small>
-            I prepared the page. Complete the human step, then tell me.
-          </small>
-        </span>
-        <span className="cf2-chip cf2-chip-ok">{item.costLabel}</span>
-      </div>
-      <div className="cf2-actions">
-        <button
-          className="cf2-button cf2-button-primary"
-          data-testid={`cofounder-open-gap-${item.id}`}
-          onClick={() => onOpenBrowser(item.browserUrl, item.browserChannelId)}
-          type="button"
-        >
-          Open browser
-        </button>
-        <button
-          className="cf2-button"
-          data-testid={`cofounder-done-${item.id}`}
-          onClick={() => onAction(item.id, "done")}
-          type="button"
-        >
-          Done
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function DecisionCard({
-  item,
-  onAction,
-}: {
-  item: CofounderDecisionItem;
-  onAction: (itemId: string, action: NeedsYouAction) => void;
-}) {
-  return (
-    <article className="cf2-card cf2-needs-card">
-      <div className="cf2-card-title-row">
-        <span aria-hidden="true" className="cf2-scout-tile">
-          S
-        </span>
-        <span>
-          <strong>{item.title}</strong>
-          <small>{item.summary}</small>
-        </span>
-      </div>
-      <div className="cf2-actions">
-        <button
-          className="cf2-button cf2-button-primary"
-          data-testid={`cofounder-decision-accept-${item.id}`}
-          onClick={() => onAction(item.id, "accept")}
-          type="button"
-        >
-          {item.acceptLabel}
-        </button>
-        <button
-          className="cf2-button"
-          data-testid={`cofounder-decision-decline-${item.id}`}
-          onClick={() => onAction(item.id, "decline")}
-          type="button"
-        >
-          {item.declineLabel}
-        </button>
-      </div>
+            ) : null}
+            <button
+              aria-label={`Done: ${item.humanStep}`}
+              className="cf2-button"
+              data-testid={`cofounder-gap-done-${item.gapId}`}
+              disabled={pendingAction !== null}
+              onClick={() => void runAction("gap_done")}
+              type="button"
+            >
+              {pendingAction === "gap_done" ? "Saving…" : "Done"}
+            </button>
+          </div>
+        </>
+      )}
+      {error ? (
+        <p className="cf2-error-note" role="alert">
+          {error}
+        </p>
+      ) : null}
     </article>
   );
 }
 
 export function CofounderNeedsYouScreen({
-  model,
   liveNeedsYou,
   livePlans,
+  liveCapabilityGaps,
+  whatsappError,
   onPlanStepAction,
-  onPlanApprove,
-  onPlanEdit,
-  onPlanReject,
-  onAction,
-  onEditDraft,
-  onOpenBrowser,
+  onCapabilityGapAction,
+  onOpenItem,
+  onWhatsAppDraftAction,
+  onOpenCapabilityGapBrowser,
 }: {
-  model: CofounderNeedsYouModel;
   liveNeedsYou: NeedsYouModel;
   livePlans: readonly PlanView[];
+  liveCapabilityGaps: readonly GapNeedsYouItem[];
+  whatsappError: Error | null;
   onPlanStepAction: (
     item: NeedsYouItem,
     action: NeedsYouActionId,
   ) => void | Promise<void>;
-  onPlanApprove: (planId: string) => void;
-  onPlanEdit: (planId: string, changes: { title: string }) => void;
-  onPlanReject: (planId: string) => void;
-  onAction: (itemId: string, action: NeedsYouAction) => void;
-  onEditDraft: (draftId: string, message: string) => void;
-  onOpenBrowser: (url: string, channelId: string) => void;
+  onCapabilityGapAction: (
+    item: GapNeedsYouItem,
+    action: "gap_approve" | "gap_decline" | "gap_done",
+  ) => void | Promise<void>;
+  onOpenItem: (item: NeedsYouItem) => void | Promise<void>;
+  onWhatsAppDraftAction: (
+    draftId: string,
+    decision: "approve" | "reject",
+    text?: string,
+  ) => void | Promise<void>;
+  onOpenCapabilityGapBrowser: (url: string) => void | Promise<void>;
 }) {
-  const livePlanProposals = liveNeedsYou.approve.filter(
-    (item) => item.source.kind === "plan" && item.source.stepId === null,
+  const liveCapabilityGapApprovals = liveCapabilityGaps.filter(
+    (item) => item.group === "approve",
   );
-  const livePlanApprovals = liveNeedsYou.approve.filter(
-    (item) => item.source.kind === "plan" && item.source.stepId !== null,
+  const liveCapabilityGapDoItems = liveCapabilityGaps.filter(
+    (item) => item.group === "do",
   );
-  const livePlanDoItems = liveNeedsYou.do.filter(
-    (item) => item.source.kind === "plan" && item.source.stepId !== null,
-  );
-  const fixturePlans = livePlans.length === 0 ? model.plans : [];
   const approvalCount =
-    model.approvals.length +
-    fixturePlans.length +
-    livePlanProposals.length +
-    livePlanApprovals.length;
-  const doCount = model.doItems.length + livePlanDoItems.length;
-  const total = approvalCount + doCount + model.decisions.length;
+    liveNeedsYou.approve.length + liveCapabilityGapApprovals.length;
+  const doCount = liveNeedsYou.do.length + liveCapabilityGapDoItems.length;
+  const decideCount = liveNeedsYou.decide.length;
+  const total = approvalCount + doCount + decideCount;
 
   return (
     <div className="cf2-screen" data-testid="cofounder-needs-you-screen">
@@ -469,41 +509,56 @@ export function CofounderNeedsYouScreen({
           <h1>Needs you</h1>
           <p>{total} things, each one step. Scout prepared everything else.</p>
         </header>
+        {whatsappError ? (
+          <p className="cf2-error-note" role="status">
+            Some WhatsApp items could not be loaded. Refresh to try again.
+          </p>
+        ) : null}
 
         <section aria-label="Approve" className="cf2-needs-group">
           <h2>Approve · {approvalCount}</h2>
-          {model.approvals.map((item) => (
-            <ApprovalCard
-              item={item}
-              key={item.id}
-              onAction={onAction}
-              onEditDraft={onEditDraft}
-            />
-          ))}
-          {fixturePlans.map((plan: CofounderPlan) => (
-            <CofounderPlanCard
-              key={plan.id}
-              onApprove={onPlanApprove}
-              onEdit={onPlanEdit}
-              onReject={onPlanReject}
-              plan={plan}
-            />
-          ))}
-          {livePlanProposals.map((item) => {
-            if (item.source.kind !== "plan") return null;
-            const source = item.source;
-            const plan = livePlans.find(
-              (candidate) => candidate.planId === source.planId,
+          {liveNeedsYou.approve.map((item) => {
+            if (item.source.kind === "plan") {
+              if (item.source.stepId !== null) {
+                return (
+                  <PlanStepNeedsYouCard
+                    item={item}
+                    key={item.id}
+                    onAction={onPlanStepAction}
+                  />
+                );
+              }
+              const planId = item.source.planId;
+              const plan = livePlans.find(
+                (candidate) => candidate.planId === planId,
+              );
+              return plan ? (
+                <CofounderRelayPlanCard key={plan.planId} plan={plan} />
+              ) : null;
+            }
+            if (item.source.kind === "whatsapp_drafts") {
+              return (
+                <WhatsAppDraftNeedsYouCard
+                  item={item}
+                  key={item.id}
+                  onAction={onWhatsAppDraftAction}
+                />
+              );
+            }
+            return (
+              <LiveNeedsYouItemCard
+                item={item}
+                key={item.id}
+                onOpen={onOpenItem}
+              />
             );
-            return plan ? (
-              <CofounderRelayPlanCard key={plan.planId} plan={plan} />
-            ) : null;
           })}
-          {livePlanApprovals.map((item) => (
-            <PlanStepNeedsYouCard
+          {liveCapabilityGapApprovals.map((item) => (
+            <CapabilityGapCard
               item={item}
-              key={item.id}
-              onAction={onPlanStepAction}
+              key={item.gapId}
+              onAction={onCapabilityGapAction}
+              onOpenBrowser={onOpenCapabilityGapBrowser}
             />
           ))}
           {approvalCount === 0 ? (
@@ -513,19 +568,27 @@ export function CofounderNeedsYouScreen({
 
         <section aria-label="Do" className="cf2-needs-group">
           <h2>Do · {doCount}</h2>
-          {model.doItems.map((item) => (
-            <DoCard
+          {liveNeedsYou.do.map((item) =>
+            item.source.kind === "plan" ? (
+              <PlanStepNeedsYouCard
+                item={item}
+                key={item.id}
+                onAction={onPlanStepAction}
+              />
+            ) : (
+              <LiveNeedsYouItemCard
+                item={item}
+                key={item.id}
+                onOpen={onOpenItem}
+              />
+            ),
+          )}
+          {liveCapabilityGapDoItems.map((item) => (
+            <CapabilityGapCard
               item={item}
-              key={item.id}
-              onAction={onAction}
-              onOpenBrowser={onOpenBrowser}
-            />
-          ))}
-          {livePlanDoItems.map((item) => (
-            <PlanStepNeedsYouCard
-              item={item}
-              key={item.id}
-              onAction={onPlanStepAction}
+              key={item.gapId}
+              onAction={onCapabilityGapAction}
+              onOpenBrowser={onOpenCapabilityGapBrowser}
             />
           ))}
           {doCount === 0 ? (
@@ -534,11 +597,15 @@ export function CofounderNeedsYouScreen({
         </section>
 
         <section aria-label="Decide" className="cf2-needs-group">
-          <h2>Decide · {model.decisions.length}</h2>
-          {model.decisions.map((item) => (
-            <DecisionCard item={item} key={item.id} onAction={onAction} />
+          <h2>Decide · {decideCount}</h2>
+          {liveNeedsYou.decide.map((item) => (
+            <LiveNeedsYouItemCard
+              item={item}
+              key={item.id}
+              onOpen={onOpenItem}
+            />
           ))}
-          {model.decisions.length === 0 ? (
+          {decideCount === 0 ? (
             <p className="cf2-empty-note">No decisions are waiting.</p>
           ) : null}
         </section>

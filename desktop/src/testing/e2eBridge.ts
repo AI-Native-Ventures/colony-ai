@@ -25,7 +25,17 @@ import {
   KIND_PLAN_ACTION,
   KIND_PLAN_HEAD,
 } from "@/features/cofounder/planRecords";
-import type { CofounderPhase2Fixture } from "@/features/cofounder/cofounderPhase2Model";
+import {
+  KIND_BRIEF_ACTION,
+  KIND_BRIEF_HEAD,
+  KIND_ONBOARDING_ACTION,
+  KIND_ONBOARDING_HEAD,
+} from "@/features/cofounder/initiativeRecords";
+import {
+  applyMockBriefAction,
+  applyMockOnboardingAction,
+} from "./mockCompanyInitiative.ts";
+import type { MockCompanyInitiativeRecord } from "./mockCompanyInitiative.ts";
 
 import type {
   ObservedUnreadProjection,
@@ -1076,14 +1086,18 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
-    /** Mock-only Phase 2 view models used before backend record shapes land. */
-    cofounderPhase2?: CofounderPhase2Fixture;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     companyWorkerRuns?: MockWorkerRun[];
     /** Access list, capability gap and slot hire records (kind 30676), signed as the relay. */
     companyAccessRecords?: MockCompanyAccessRecord[];
     /** Co-founder plans served as relay-signed plan heads (kind 30673). */
     companyPlans?: MockPlan[];
+    /** Relay-signed business brief head used by onboarding UI E2E coverage. */
+    companyBriefRecord?: MockCompanyInitiativeRecord | null;
+    /** Relay-signed onboarding head used by onboarding UI E2E coverage. */
+    companyOnboardingRecord?: MockCompanyInitiativeRecord | null;
+    /** Let onboarding UI smoke tests model Scout asking the next step. */
+    companyOnboardingAutoAdvance?: boolean;
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -6931,6 +6945,227 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function filterMockInitiativeHead(
+  filter: MockFilter,
+  kind: number,
+  dTag: string,
+  record: MockCompanyInitiativeRecord | null | undefined,
+): RelayEvent[] {
+  if (!record) return [];
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  const updatedAt = record.content.updatedAt;
+  const head = createSignedMockCompanyHead(
+    kind,
+    record.content,
+    dTag,
+    typeof updatedAt === "number" ? updatedAt : Math.floor(Date.now() / 1000),
+  );
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return [head]
+    .filter((event) => event.pubkey.toLowerCase() === relayPubkey.toLowerCase())
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .slice(0, filter.limit ?? 1);
+}
+
+function acceptMockBriefAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const mock = config?.mock;
+  if (!mock || !verifyEvent(event)) {
+    reject("invalid: brief action signature or mock relay is invalid.");
+    return;
+  }
+  if (
+    event.tags.length !== 1 ||
+    event.tags[0]?.[0] !== "d" ||
+    event.tags[0]?.[1] !== "company:brief"
+  ) {
+    reject("invalid: brief action needs the company:brief d tag.");
+    return;
+  }
+  let kind: unknown;
+  try {
+    kind = (JSON.parse(event.content) as { kind?: unknown }).kind;
+  } catch {
+    reject("invalid: brief action is not JSON.");
+    return;
+  }
+  if (
+    kind !== "propose" &&
+    mock.relayRole !== undefined &&
+    mock.relayRole !== "owner" &&
+    mock.relayRole !== "admin"
+  ) {
+    reject(
+      "restricted: only the owner or an admin can change the business brief.",
+    );
+    return;
+  }
+  const record = mock.companyBriefRecord ?? null;
+  const currentHead = record
+    ? createSignedMockCompanyHead(
+        KIND_BRIEF_HEAD,
+        record.content,
+        "company:brief",
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      )
+    : null;
+  const result = applyMockBriefAction({
+    record,
+    currentHeadEventId: currentHead?.id ?? null,
+    rawContent: event.content,
+    actorPubkey: event.pubkey,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  if (result.error) {
+    reject(result.error);
+    return;
+  }
+  mock.companyBriefRecord = result.record;
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockOnboardingAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const mock = config?.mock;
+  if (!mock || !verifyEvent(event)) {
+    reject("invalid: onboarding action signature or mock relay is invalid.");
+    return;
+  }
+  if (
+    event.tags.length !== 1 ||
+    event.tags[0]?.[0] !== "d" ||
+    event.tags[0]?.[1] !== "company:onboarding"
+  ) {
+    reject("invalid: onboarding action needs the company:onboarding d tag.");
+    return;
+  }
+  const record = mock.companyOnboardingRecord ?? null;
+  const currentHead = record
+    ? createSignedMockCompanyHead(
+        KIND_ONBOARDING_HEAD,
+        record.content,
+        "company:onboarding",
+        typeof record.content.updatedAt === "number"
+          ? record.content.updatedAt
+          : Math.floor(Date.now() / 1000),
+      )
+    : null;
+  const result = applyMockOnboardingAction({
+    record,
+    currentHeadEventId: currentHead?.id ?? null,
+    rawContent: event.content,
+    actorPubkey: event.pubkey,
+    role: mock.relayRole,
+    brief: mock.companyBriefRecord ?? null,
+    settings: mock.cofounderSettings,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  if (result.error) {
+    reject(result.error);
+    return;
+  }
+  if (mock.companyOnboardingAutoAdvance && result.record) {
+    let answeredStep: unknown;
+    let actionKind: unknown;
+    try {
+      const action = JSON.parse(event.content) as {
+        kind?: unknown;
+        step?: unknown;
+      };
+      actionKind = action.kind;
+      answeredStep = action.step;
+    } catch {
+      answeredStep = null;
+    }
+    if (actionKind === "answer" && typeof answeredStep === "string") {
+      const next = result.record.content;
+      const nextStep =
+        answeredStep === "brief"
+          ? "money"
+          : answeredStep === "money"
+            ? "approvals"
+            : answeredStep === "approvals"
+              ? "accounts"
+              : null;
+      if (nextStep) {
+        const state = next.steps as Array<{ step: string; state: string }>;
+        const nextStepRecord = state.find((item) => item.step === nextStep);
+        if (nextStepRecord) nextStepRecord.state = "asked";
+        if (nextStep === "accounts") {
+          const account = {
+            id: "pinterest",
+            label: "Pinterest",
+            url: "https://accounts.example.test/pinterest/login",
+          };
+          next.accounts = [{ ...account, state: "asked" }];
+          next.question = {
+            step: "accounts",
+            text: "Please sign in to Pinterest.",
+            account,
+          };
+        } else {
+          const text =
+            nextStep === "money"
+              ? "How should I spend money?"
+              : "What else should wait for your OK?";
+          next.question = { step: nextStep, text };
+        }
+        next.revision = Number(next.revision ?? 0) + 1;
+        next.updatedByPubkey = REFERENCE_AGENTS.scout.pubkey;
+        next.updatedAt = Math.max(
+          Math.floor(Date.now() / 1000),
+          Number(next.updatedAt ?? 0) + 1,
+        );
+      } else if (answeredStep === "accounts") {
+        next.steps = (next.steps as Array<{ step: string; state: string }>).map(
+          (item) => (item.step === "map" ? { ...item, state: "asked" } : item),
+        );
+        next.map = {
+          entries: [
+            {
+              function: "sales",
+              placement: "existing_agent",
+              leadPubkey: REFERENCE_AGENTS.aya.pubkey,
+            },
+            { function: "operations", placement: "scout" },
+            { function: "customer_success", placement: "empty" },
+            { function: "finance", placement: "empty" },
+            { function: "brand", placement: "empty" },
+          ],
+          firstFunction: "sales",
+          approved: false,
+        };
+        next.revision = Number(next.revision ?? 0) + 1;
+        next.updatedByPubkey = REFERENCE_AGENTS.scout.pubkey;
+        next.updatedAt = Math.max(
+          Math.floor(Date.now() / 1000),
+          Number(next.updatedAt ?? 0) + 1,
+        );
+      }
+    }
+  }
+  mock.companyOnboardingRecord = result.record;
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyAccessHeads(filter: MockFilter): RelayEvent[] {
@@ -18794,6 +19029,32 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_BRIEF_HEAD)) {
+      for (const event of filterMockInitiativeHead(
+        filter,
+        KIND_BRIEF_HEAD,
+        "company:brief",
+        getConfig()?.mock?.companyBriefRecord,
+      )) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_ONBOARDING_HEAD)) {
+      for (const event of filterMockInitiativeHead(
+        filter,
+        KIND_ONBOARDING_HEAD,
+        "company:onboarding",
+        getConfig()?.mock?.companyOnboardingRecord,
+      )) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_COMPANY_FUNCTION_HEAD)) {
       for (const event of filterMockCompanyFunctionHeads(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -19086,6 +19347,14 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_COFOUNDER_ACTION) {
       acceptMockCofounderAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_BRIEF_ACTION) {
+      acceptMockBriefAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_ONBOARDING_ACTION) {
+      acceptMockOnboardingAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_COMPANY_ACCESS_ACTION) {

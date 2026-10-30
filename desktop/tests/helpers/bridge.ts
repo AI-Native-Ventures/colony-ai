@@ -13,7 +13,7 @@ import type {
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
-import type { CofounderPhase2Fixture } from "../../src/features/cofounder/cofounderPhase2Model";
+import type { MockCompanyInitiativeRecord } from "../../src/testing/mockCompanyInitiative";
 import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
@@ -642,13 +642,14 @@ type MockBridgeOptions = {
   }>;
   /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
   cofounderSettings?: MockCofounderSettings;
-  /** Mock-only Phase 2 view models used before backend record shapes land. */
-  cofounderPhase2?: CofounderPhase2Fixture;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
   /** Access list, capability gap and slot hire records, signed as the relay. */
   companyAccessRecords?: MockCompanyAccessRecord[];
   companyPlans?: MockPlan[];
+  companyBriefRecord?: MockCompanyInitiativeRecord | null;
+  companyOnboardingRecord?: MockCompanyInitiativeRecord | null;
+  companyOnboardingAutoAdvance?: boolean;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
@@ -1054,9 +1055,10 @@ async function installMockTenantDirectory(
 
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
-    options.mode === "relay"
-      ? (options.identity ?? TEST_IDENTITIES[options.user ?? "tyler"])
-      : undefined;
+    options.identity ??
+    (options.mode === "relay"
+      ? TEST_IDENTITIES[options.user ?? "tyler"]
+      : undefined);
 
   // Most specs seed a community so useCommunityInit doesn't show WelcomeSetup.
   // skipOnboardingSeed only controls the onboarding-completion flag.
@@ -1163,6 +1165,12 @@ export async function installBridge(page: Page, options: BridgeOptions) {
         autoConnectDefaultRelay:
           autoConnectDefaultRelay ?? currentConfig.autoConnectDefaultRelay,
       };
+      if (mode === "mock" && bridgeIdentity) {
+        window.localStorage.setItem(
+          "buzz:e2e-identity-override.v1",
+          JSON.stringify(bridgeIdentity),
+        );
+      }
       testWindow.__BUZZ_E2E_APP_BADGE_COUNT__ = 0;
       testWindow.__BUZZ_E2E_APP_BADGE_STATE__ = "none";
       testWindow.__BUZZ_E2E_CLICK_NOTIFICATION__ = (index: number) => {
@@ -1201,6 +1209,7 @@ export async function installMockBridge(
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
     forceRelayPacing?: boolean;
+    identity?: RelayBridgeIdentity;
   },
 ) {
   const proofTheme = process.env.COLONY3_PROOF_THEME;
@@ -1242,6 +1251,7 @@ export async function installMockBridge(
     mock,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,
+    identity: options?.identity,
     skipOnboardingSeed: options?.skipOnboardingSeed,
     skipCommunitySeed: options?.skipCommunitySeed,
     seedPreviewFeatures: options?.seedPreviewFeatures,

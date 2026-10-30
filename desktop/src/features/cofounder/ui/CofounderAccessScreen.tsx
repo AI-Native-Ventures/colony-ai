@@ -1,10 +1,10 @@
+import { useState } from "react";
+
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 
 import "./cofounderPhase2.css";
-import type {
-  CofounderAccessModel,
-  CofounderAccessRequest,
-} from "../cofounderPhase2Model";
+import type { GapNeedsYouItem } from "../accessRecords";
+import type { AccessRow } from "../accessRecords";
 
 const ACCESS_GLYPHS: Record<string, string> = {
   whatsapp: "◉",
@@ -20,19 +20,40 @@ function accessGlyph(entryId: string) {
 }
 
 function PendingAccessCard({
-  request,
+  item,
   onApprove,
   onDecline,
 }: {
-  request: CofounderAccessRequest;
-  onApprove: (request: CofounderAccessRequest) => void;
-  onDecline: (requestId: string) => void;
+  item: GapNeedsYouItem;
+  onApprove: (item: GapNeedsYouItem) => void | Promise<void>;
+  onDecline: (item: GapNeedsYouItem) => void | Promise<void>;
 }) {
+  const [pendingAction, setPendingAction] = useState<
+    "approve" | "decline" | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runAction(action: "approve" | "decline") {
+    setPendingAction(action);
+    setError(null);
+    try {
+      await (action === "approve" ? onApprove(item) : onDecline(item));
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Could not update this access request.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   return (
     <section
       aria-label="Pending access request"
       className="cf2-card cf2-access-request"
-      data-testid="cofounder-access-pending"
+      data-testid={`cofounder-access-pending-${item.gapId}`}
     >
       <div className="cf2-card-title-row">
         <span aria-hidden="true" className="cf2-scout-tile">
@@ -41,43 +62,74 @@ function PendingAccessCard({
         <span>
           <span className="cf2-chip cf2-chip-warm">Pending</span>
           <small>Asked today</small>
-          <strong>Scout asks to {request.title}</strong>
+          <strong>Scout asks to {item.title}</strong>
         </span>
       </div>
-      <p>{request.description}</p>
+      <p>{item.detail}</p>
+      <p>{item.costText ? `Chosen option: ${item.costText}` : "No cost"}</p>
       <div className="cf2-actions">
         <button
           className="cf2-button cf2-button-primary"
-          data-testid={`cofounder-access-approve-${request.id}`}
-          onClick={() => onApprove(request)}
+          data-testid={`cofounder-access-approve-${item.gapId}`}
+          disabled={pendingAction !== null}
+          onClick={() => void runAction("approve")}
           type="button"
         >
-          Approve and open browser
+          {pendingAction === "approve"
+            ? "Approving…"
+            : item.pageUrl
+              ? "Approve and open browser"
+              : "Approve cost"}
         </button>
         <button
           className="cf2-button"
-          data-testid={`cofounder-access-decline-${request.id}`}
-          onClick={() => onDecline(request.id)}
+          data-testid={`cofounder-access-decline-${item.gapId}`}
+          disabled={pendingAction !== null}
+          onClick={() => void runAction("decline")}
           type="button"
         >
-          Not now
+          {pendingAction === "decline" ? "Saving…" : "Not now"}
         </button>
       </div>
+      {error ? (
+        <p className="cf2-error-note" role="alert">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
 
 export function CofounderAccessScreen({
-  model,
+  pendingGaps,
+  entries,
   onRevoke,
-  onApproveRequest,
-  onDeclineRequest,
+  onApproveGap,
+  onDeclineGap,
 }: {
-  model: CofounderAccessModel;
-  onRevoke: (entryId: string) => void;
-  onApproveRequest: (request: CofounderAccessRequest) => void;
-  onDeclineRequest: (requestId: string) => void;
+  pendingGaps: readonly GapNeedsYouItem[];
+  entries: readonly AccessRow[];
+  onRevoke: (entry: AccessRow) => void | Promise<void>;
+  onApproveGap: (item: GapNeedsYouItem) => void | Promise<void>;
+  onDeclineGap: (item: GapNeedsYouItem) => void | Promise<void>;
 }) {
+  const [pendingAccessId, setPendingAccessId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function revoke(entry: AccessRow) {
+    setPendingAccessId(entry.accessId);
+    setActionError(null);
+    try {
+      await onRevoke(entry);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not revoke access.",
+      );
+    } finally {
+      setPendingAccessId(null);
+    }
+  }
+
   return (
     <div className="cf2-screen" data-testid="cofounder-access-screen">
       <AppTopChromePortal>
@@ -96,13 +148,14 @@ export function CofounderAccessScreen({
           </p>
         </header>
 
-        {model.pendingRequest ? (
+        {pendingGaps.map((item) => (
           <PendingAccessCard
-            onApprove={onApproveRequest}
-            onDecline={onDeclineRequest}
-            request={model.pendingRequest}
+            item={item}
+            key={item.gapId}
+            onApprove={onApproveGap}
+            onDecline={onDeclineGap}
           />
-        ) : null}
+        ))}
 
         <div className="cf2-access-table-wrap">
           <table className="cf2-access-table">
@@ -118,68 +171,89 @@ export function CofounderAccessScreen({
               </tr>
             </thead>
             <tbody>
-              {model.entries.map((entry) => (
-                <tr data-testid={`cofounder-access-${entry.id}`} key={entry.id}>
+              {entries.map((row) => (
+                <tr
+                  data-testid={`cofounder-access-${row.accessId}`}
+                  key={row.accessId}
+                >
                   <th scope="row">
                     <span aria-hidden="true" className="cf2-access-glyph">
-                      {accessGlyph(entry.id)}
+                      {accessGlyph(row.accessId)}
                     </span>
-                    {entry.label}
+                    {row.entry.name}
+                    {row.state === "revoked" ? <small>Revoked</small> : null}
                   </th>
-                  <td>{entry.usedFor}</td>
-                  <td>{entry.usedBy}</td>
-                  <td>{entry.cost}</td>
+                  <td>{row.entry.usedFor}</td>
                   <td>
-                    <button
-                      aria-label={`Revoke access to ${entry.label}`}
-                      className="cf2-button cf2-button-danger"
-                      data-testid={`cofounder-access-revoke-${entry.id}`}
-                      onClick={() => onRevoke(entry.id)}
-                      type="button"
-                    >
-                      Revoke
-                    </button>
+                    {row.entry.agents.length === 0
+                      ? "All agents"
+                      : `${row.entry.agents.length} selected ${row.entry.agents.length === 1 ? "agent" : "agents"}`}
+                  </td>
+                  <td>{row.entry.cost}</td>
+                  <td>
+                    {row.state === "active" ? (
+                      <button
+                        aria-label={`Revoke access to ${row.entry.name}`}
+                        className="cf2-button cf2-button-danger"
+                        data-testid={`cofounder-access-revoke-${row.accessId}`}
+                        disabled={pendingAccessId === row.accessId}
+                        onClick={() => void revoke(row)}
+                        type="button"
+                      >
+                        {pendingAccessId === row.accessId
+                          ? "Revoking…"
+                          : "Revoke"}
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <section aria-label="Tools and accounts" className="cf2-access-cards">
-            {model.entries.map((entry) => (
+            {entries.map((row) => (
               <article
                 className="cf2-card cf2-access-row"
-                data-testid={`cofounder-access-mobile-${entry.id}`}
-                key={entry.id}
+                data-testid={`cofounder-access-mobile-${row.accessId}`}
+                key={row.accessId}
               >
                 <div className="cf2-access-row-heading">
                   <span aria-hidden="true" className="cf2-access-glyph">
-                    {accessGlyph(entry.id)}
+                    {accessGlyph(row.accessId)}
                   </span>
-                  <strong>{entry.label}</strong>
+                  <strong>{row.entry.name}</strong>
+                  {row.state === "revoked" ? <small>Revoked</small> : null}
                 </div>
                 <dl>
                   <dt>Used for</dt>
-                  <dd>{entry.usedFor}</dd>
+                  <dd>{row.entry.usedFor}</dd>
                   <dt>Who</dt>
-                  <dd>{entry.usedBy}</dd>
+                  <dd>
+                    {row.entry.agents.length === 0
+                      ? "All agents"
+                      : `${row.entry.agents.length} selected ${row.entry.agents.length === 1 ? "agent" : "agents"}`}
+                  </dd>
                   <dt>Cost</dt>
-                  <dd>{entry.cost}</dd>
+                  <dd>{row.entry.cost}</dd>
                 </dl>
-                <button
-                  aria-label={`Revoke access to ${entry.label}`}
-                  className="cf2-button cf2-button-danger"
-                  onClick={() => onRevoke(entry.id)}
-                  type="button"
-                >
-                  Revoke
-                </button>
+                {row.state === "active" ? (
+                  <button
+                    aria-label={`Revoke access to ${row.entry.name}`}
+                    className="cf2-button cf2-button-danger"
+                    disabled={pendingAccessId === row.accessId}
+                    onClick={() => void revoke(row)}
+                    type="button"
+                  >
+                    {pendingAccessId === row.accessId ? "Revoking…" : "Revoke"}
+                  </button>
+                ) : null}
               </article>
             ))}
           </section>
         </div>
-        {model.entries.length === 0 ? (
-          <p className="cf2-empty-note" role="status">
-            No tools or accounts are connected.
+        {actionError ? (
+          <p className="cf2-error-note" role="alert">
+            {actionError}
           </p>
         ) : null}
         <p className="cf2-worker-access-note">
