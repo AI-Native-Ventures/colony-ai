@@ -5,6 +5,7 @@ import { selectionOnRuntimeChange } from "./runtimeModelProviderSelection.ts";
 import {
   acceptedEffortLabel,
   isClaudeSubscription,
+  resolveSimpleAgentAi,
   simpleModelLabel,
   simpleProviderLabel,
 } from "./simpleAgentAi.ts";
@@ -108,6 +109,43 @@ test("approved aliases and the provider-aware model registry produce full names"
   assert.equal(
     simpleModelLabel("model:custom-provider", "custom-provider"),
     "model:custom-provider",
+  );
+});
+
+test("profile and directory use the same observed model and provider precedence", () => {
+  const config = {
+    runtimeId: "buzz-agent",
+    isPreSpawn: false,
+    normalized: {
+      model: { value: "nvidia/nemotron-3-ultra-550b-a55b:free" },
+      provider: { value: "colony-credits" },
+    },
+  };
+  assert.deepEqual(
+    resolveSimpleAgentAi({
+      runtimeId: "buzz-agent",
+      config,
+      agentModel: "[MODEL]",
+      agentProvider: "anthropic",
+      inheritedModel: "gpt-4o",
+      inheritedProvider: "openai",
+    }),
+    {
+      observed: true,
+      model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+      provider: "colony-credits",
+    },
+  );
+  assert.deepEqual(
+    resolveSimpleAgentAi({
+      runtimeId: "claude",
+      config,
+      agentModel: "opus",
+      agentProvider: "anthropic",
+      inheritedModel: "gpt-4o",
+      inheritedProvider: "openai",
+    }),
+    { observed: false, model: "opus", provider: "anthropic" },
   );
 });
 

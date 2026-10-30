@@ -255,6 +255,16 @@ with a TypeScript lookup table or an id comparison in a component.
    ordering feeds both facts. Do not add a second effort write path or restate
    the two-facts logic in a component.
 
+   The compact AI summary on the agent profile and in the Agents directory
+   shares `resolveSimpleAgentAi` (`ui/simpleAgentAi.ts`). A non-pre-spawn config
+   surface replaces saved and inherited model/provider values only when its
+   runtime matches the selected harness. The directory reads that surface for
+   visible rows without its own polling interval; keep both views on the shared
+   resolver so they cannot report different models for the same agent. Colony
+   Agent does not advertise ACP effort options, so its configured effort may be
+   shown only when it is accepted by `getProviderEffortConfig` from the shared
+   model-capability manifest. Do not synthesize an effort tier or a default.
+
    **Cut invariant — live mid-conversation effort machinery was deliberately
    removed.** Effort is spawn-scoped only: the worker holds one `startup_effort`
    read from `BUZZ_ACP_EFFORT_LEVEL` and applies it once at session creation
