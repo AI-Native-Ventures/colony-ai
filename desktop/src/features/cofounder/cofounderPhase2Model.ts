@@ -3,10 +3,13 @@ import type { ApprovalSwitches, MoneyPreference } from "./cofounderRecords";
 /** UI view models for Phase 2. Relay fields are mapped after the shared contract lands. */
 export type CofounderPlanStepStatus =
   | "planned"
+  | "approved"
   | "in_progress"
   | "waiting"
   | "done"
-  | "blocked";
+  | "blocked"
+  | "skipped"
+  | "failed";
 
 export type CofounderPlanStep = {
   id: string;
@@ -22,12 +25,18 @@ export type CofounderPlan = {
   title: string;
   summary: string;
   functionName: string;
-  decideBy: string;
+  decideBy: string | null;
   steps: CofounderPlanStep[];
   costSummary: string;
   timingSummary: string;
   targetSummary: string;
-  status: "proposed" | "approved" | "rejected" | "in_progress" | "done";
+  status:
+    | "proposed"
+    | "approved"
+    | "rejected"
+    | "in_progress"
+    | "done"
+    | "cancelled";
 };
 
 export type CofounderApprovalItem =

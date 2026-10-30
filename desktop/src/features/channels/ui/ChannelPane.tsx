@@ -5,10 +5,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
+import { usePlansQuery } from "@/features/cofounder/planHooks";
 import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
 import { useCofounderPhase2Fixture } from "@/features/cofounder/useCofounderPhase2Fixture";
 import { CofounderOnboardingFlow } from "@/features/cofounder/ui/CofounderOnboardingFlow";
-import { CofounderPlanCard } from "@/features/cofounder/ui/CofounderPlanCard";
+import { CofounderRelayPlanCard } from "@/features/cofounder/ui/CofounderRelayPlanCard";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/businessRecords";
 import { WorkItemReferenceContext } from "@/features/clients/ui/WorkItemReferenceContext";
@@ -179,12 +180,18 @@ export const ChannelPane = React.memo(function ChannelPane({
     activeCommunity?.id ?? null,
   );
   const cofounderPhase2 = useCofounderPhase2Fixture();
-  const cofounderChatModel =
+  const isCofounderScoutChat =
     activeChannel?.channelType === "dm" &&
     activeChannel.name.trim().toLocaleLowerCase() === "scout" &&
-    cofounderSettings.data?.settings.enabled === true
-      ? cofounderPhase2.model
-      : null;
+    cofounderSettings.data?.settings.enabled === true;
+  const cofounderChatModel = isCofounderScoutChat
+    ? cofounderPhase2.model
+    : null;
+  const cofounderPlans = usePlansQuery(isCofounderScoutChat);
+  const chatPlan =
+    cofounderPlans.data?.find((plan) => plan.status === "proposed") ??
+    cofounderPlans.data?.[0] ??
+    null;
   const timelineScrollRef = React.useRef<HTMLDivElement>(null);
   const messageTimelineRef = React.useRef<MessageTimelineHandle>(null);
   const composerWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -676,18 +683,17 @@ export const ChannelPane = React.memo(function ChannelPane({
                   data-testid="cofounder-chat-surface"
                 >
                   {cofounderChatModel.onboarding.step === "complete" ? (
-                    <div className="cf2-chat-plan-wrap">
-                      <CofounderPlanCard
-                        onApprove={(planId) =>
-                          cofounderPhase2.resolvePlan(planId, "approved")
-                        }
-                        onEdit={cofounderPhase2.editPlan}
-                        onReject={(planId) =>
-                          cofounderPhase2.resolvePlan(planId, "rejected")
-                        }
-                        plan={cofounderChatModel.chatPlan}
-                      />
-                    </div>
+                    chatPlan ? (
+                      <div className="cf2-chat-plan-wrap">
+                        <CofounderRelayPlanCard plan={chatPlan} />
+                      </div>
+                    ) : (
+                      <p className="cf2-empty-note" role="status">
+                        {cofounderPlans.isPending
+                          ? "Loading Scout’s plan…"
+                          : "Scout has not shared a plan yet."}
+                      </p>
+                    )
                   ) : (
                     <CofounderOnboardingFlow
                       model={cofounderChatModel.onboarding}
@@ -703,6 +709,15 @@ export const ChannelPane = React.memo(function ChannelPane({
                       }
                     />
                   )}
+                </div>
+              ) : chatPlan ? (
+                <div
+                  className="cf2-chat-embedded min-h-0 flex-1 overflow-y-auto"
+                  data-testid="cofounder-chat-surface"
+                >
+                  <div className="cf2-chat-plan-wrap">
+                    <CofounderRelayPlanCard plan={chatPlan} />
+                  </div>
                 </div>
               ) : (
                 <MessageTimeline

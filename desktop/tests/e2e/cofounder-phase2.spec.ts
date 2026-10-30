@@ -8,10 +8,20 @@ import type {
   CofounderOnboardingStep,
   CofounderPhase2Fixture,
 } from "../../src/features/cofounder/cofounderPhase2Model";
-import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
+import {
+  ESIGN_PLAN_ID,
+  esignSetupPlan,
+  NOVEMBER_PLAN_ID,
+  novemberPlan,
+} from "../../src/testing/cofounderPlanFixtures";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
+} from "../../src/testing/e2eReferenceWorkspace";
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { installBrowserHostFake } from "./helpers/browserHostFake";
+import { TEST_IDENTITIES } from "../helpers/bridge";
 
 const APPROVAL_SWITCHES = {
   approveEveryHire: true,
@@ -270,6 +280,16 @@ async function boot(
       approvalSwitches: APPROVAL_SWITCHES,
     },
     cofounderPhase2: phase2Fixture(options.step),
+    companyPlans: [
+      novemberPlan({
+        scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
+        ayaPubkey: REFERENCE_AGENTS.aya.pubkey,
+      }),
+      esignSetupPlan({
+        scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
+        ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
+      }),
+    ],
   });
 }
 
@@ -343,25 +363,28 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(page.getByTestId("cofounder-map-approve")).toBeVisible();
     await page.getByTestId("cofounder-map-approve").click();
 
-    const plan = page.getByTestId("cofounder-plan-sales-plan-1");
+    const plan = page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`);
     await expect(plan).toBeVisible();
     await expect(plan).toContainText("5 won");
-    await plan.getByTestId("cofounder-plan-edit-sales-plan-1").click();
+    await plan.getByTestId(`cofounder-plan-edit-${NOVEMBER_PLAN_ID}`).click();
     await page
-      .getByTestId("cofounder-plan-title-sales-plan-1")
+      .getByTestId(`cofounder-plan-title-${NOVEMBER_PLAN_ID}`)
       .fill("A revised guesthouse plan");
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(plan).toContainText("A revised guesthouse plan");
-    await plan.getByTestId("cofounder-plan-approve-sales-plan-1").click();
+    await expect(plan).toContainText("Find 60 guesthouses");
+    await plan
+      .getByTestId(`cofounder-plan-approve-${NOVEMBER_PLAN_ID}`)
+      .click();
     await expect(plan).toContainText("Approved");
   });
 
   test("Scout plan can be rejected", async ({ page }) => {
     await boot(page, { step: "complete" });
     await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
-    const plan = page.getByTestId("cofounder-plan-sales-plan-1");
+    const plan = page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`);
     await expect(plan).toBeVisible();
-    await plan.getByTestId("cofounder-plan-reject-sales-plan-1").click();
+    await plan.getByTestId(`cofounder-plan-reject-${NOVEMBER_PLAN_ID}`).click();
     await expect(plan).toContainText("Rejected");
   });
 
@@ -371,7 +394,9 @@ test.describe("Co-founder mode Phase 2", () => {
     for (const theme of ["light", "dark"] as const) {
       await boot(page, { step: "complete", theme });
       await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
-      const approve = page.getByTestId("cofounder-plan-approve-sales-plan-1");
+      const approve = page.getByTestId(
+        `cofounder-plan-approve-${NOVEMBER_PLAN_ID}`,
+      );
       await expect(approve).toBeVisible();
       const ratio = await approve.evaluate((button) => {
         const parse = (value: string) =>
@@ -425,11 +450,27 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(
       page.getByRole("heading", { name: "Needs you", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Get 5 Horizon Labs clients in November",
+        exact: true,
+      }),
+    ).toHaveCount(1);
 
-    await page.getByTestId("cofounder-plan-approve-sales-plan-1").click();
-    await expect(page.getByTestId("cofounder-plan-sales-plan-1")).toHaveCount(
-      0,
-    );
+    await page
+      .getByTestId(`cofounder-plan-approve-${NOVEMBER_PLAN_ID}`)
+      .click();
+    await expect(
+      page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`),
+    ).toHaveCount(0);
+    await page
+      .getByTestId(
+        `cofounder-plan-step-action-approve-${ESIGN_PLAN_ID}-template`,
+      )
+      .click();
+    await expect(
+      page.getByTestId(`cofounder-plan-step-item-${ESIGN_PLAN_ID}-template`),
+    ).toHaveCount(0);
     await page.getByTestId("cofounder-reject-approve-outreach-1").click();
     await expect(
       page.getByTestId("cofounder-reject-approve-outreach-1"),
@@ -465,6 +506,12 @@ test.describe("Co-founder mode Phase 2", () => {
   test("Needs you completes human steps and decisions", async ({ page }) => {
     await boot(page);
     await page.goto("/#/today/needs-you");
+    await page
+      .getByTestId(`cofounder-plan-step-action-done-${ESIGN_PLAN_ID}-signup`)
+      .click();
+    await expect(
+      page.getByTestId(`cofounder-plan-step-item-${ESIGN_PLAN_ID}-signup`),
+    ).toHaveCount(0);
     await page.getByTestId("cofounder-done-signup-pinterest").click();
     await expect(
       page.getByTestId("cofounder-done-signup-pinterest"),
@@ -586,7 +633,7 @@ test.describe("Co-founder mode Phase 2", () => {
               item.surface === "onboarding"
                 ? page.getByTestId("cofounder-onboarding")
                 : item.surface === "plan"
-                  ? page.getByTestId("cofounder-plan-sales-plan-1")
+                  ? page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`)
                   : item.surface === "needs-you"
                     ? page.getByTestId("cofounder-needs-you-screen")
                     : item.surface === "access"

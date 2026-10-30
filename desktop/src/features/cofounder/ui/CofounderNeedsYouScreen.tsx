@@ -9,7 +9,14 @@ import type {
   CofounderNeedsYouModel,
   CofounderPlan,
 } from "../cofounderPhase2Model";
+import type {
+  NeedsYouActionId,
+  NeedsYouItem,
+  NeedsYouModel,
+} from "../needsYou";
+import type { PlanView } from "../planRecords";
 import { CofounderPlanCard } from "./CofounderPlanCard";
+import { CofounderRelayPlanCard } from "./CofounderRelayPlanCard";
 
 export type NeedsYouAction =
   | "approve"
@@ -21,6 +28,83 @@ export type NeedsYouAction =
   | "done"
   | "accept"
   | "decline";
+
+function PlanStepNeedsYouCard({
+  item,
+  onAction,
+}: {
+  item: NeedsYouItem;
+  onAction: (
+    item: NeedsYouItem,
+    action: NeedsYouActionId,
+  ) => void | Promise<void>;
+}) {
+  const [pendingAction, setPendingAction] = useState<NeedsYouActionId | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  if (item.source.kind !== "plan" || !item.source.stepId) return null;
+  const source = item.source;
+
+  async function runAction(action: NeedsYouActionId) {
+    setPendingAction(action);
+    setError(null);
+    try {
+      await onAction(item, action);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Could not update this plan step.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  return (
+    <article
+      className="cf2-card cf2-needs-card"
+      data-testid={`cofounder-plan-step-item-${source.planId}-${source.stepId}`}
+    >
+      <div className="cf2-card-title-row">
+        <span aria-hidden="true" className="cf2-scout-tile">
+          S
+        </span>
+        <span>
+          <strong>{item.title}</strong>
+          {item.subtitle ? <small>{item.subtitle}</small> : null}
+        </span>
+      </div>
+      <div className="cf2-actions">
+        {item.actions.map((action) => (
+          <button
+            aria-label={`${action.label}: ${item.title}`}
+            className={`cf2-button${
+              action.tone === "primary"
+                ? " cf2-button-primary"
+                : action.tone === "danger"
+                  ? " cf2-button-danger"
+                  : ""
+            }`}
+            data-testid={`cofounder-plan-step-action-${action.id}-${source.planId}-${source.stepId}`}
+            disabled={pendingAction !== null}
+            key={action.id}
+            onClick={() => void runAction(action.id)}
+            type="button"
+          >
+            {pendingAction === action.id ? `${action.label}…` : action.label}
+          </button>
+        ))}
+      </div>
+      {error ? (
+        <p className="cf2-error-note" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
+  );
+}
 
 function ApprovalCard({
   item,
@@ -329,6 +413,9 @@ function DecisionCard({
 
 export function CofounderNeedsYouScreen({
   model,
+  liveNeedsYou,
+  livePlans,
+  onPlanStepAction,
   onPlanApprove,
   onPlanEdit,
   onPlanReject,
@@ -337,6 +424,12 @@ export function CofounderNeedsYouScreen({
   onOpenBrowser,
 }: {
   model: CofounderNeedsYouModel;
+  liveNeedsYou: NeedsYouModel;
+  livePlans: readonly PlanView[];
+  onPlanStepAction: (
+    item: NeedsYouItem,
+    action: NeedsYouActionId,
+  ) => void | Promise<void>;
   onPlanApprove: (planId: string) => void;
   onPlanEdit: (planId: string, changes: { title: string }) => void;
   onPlanReject: (planId: string) => void;
@@ -344,11 +437,23 @@ export function CofounderNeedsYouScreen({
   onEditDraft: (draftId: string, message: string) => void;
   onOpenBrowser: (url: string, channelId: string) => void;
 }) {
-  const total =
-    model.plans.length +
+  const livePlanProposals = liveNeedsYou.approve.filter(
+    (item) => item.source.kind === "plan" && item.source.stepId === null,
+  );
+  const livePlanApprovals = liveNeedsYou.approve.filter(
+    (item) => item.source.kind === "plan" && item.source.stepId !== null,
+  );
+  const livePlanDoItems = liveNeedsYou.do.filter(
+    (item) => item.source.kind === "plan" && item.source.stepId !== null,
+  );
+  const fixturePlans = livePlans.length === 0 ? model.plans : [];
+  const approvalCount =
     model.approvals.length +
-    model.doItems.length +
-    model.decisions.length;
+    fixturePlans.length +
+    livePlanProposals.length +
+    livePlanApprovals.length;
+  const doCount = model.doItems.length + livePlanDoItems.length;
+  const total = approvalCount + doCount + model.decisions.length;
 
   return (
     <div className="cf2-screen" data-testid="cofounder-needs-you-screen">
@@ -366,7 +471,7 @@ export function CofounderNeedsYouScreen({
         </header>
 
         <section aria-label="Approve" className="cf2-needs-group">
-          <h2>Approve · {model.approvals.length + model.plans.length}</h2>
+          <h2>Approve · {approvalCount}</h2>
           {model.approvals.map((item) => (
             <ApprovalCard
               item={item}
@@ -375,7 +480,7 @@ export function CofounderNeedsYouScreen({
               onEditDraft={onEditDraft}
             />
           ))}
-          {model.plans.map((plan: CofounderPlan) => (
+          {fixturePlans.map((plan: CofounderPlan) => (
             <CofounderPlanCard
               key={plan.id}
               onApprove={onPlanApprove}
@@ -384,13 +489,30 @@ export function CofounderNeedsYouScreen({
               plan={plan}
             />
           ))}
-          {model.plans.length + model.approvals.length === 0 ? (
+          {livePlanProposals.map((item) => {
+            if (item.source.kind !== "plan") return null;
+            const source = item.source;
+            const plan = livePlans.find(
+              (candidate) => candidate.planId === source.planId,
+            );
+            return plan ? (
+              <CofounderRelayPlanCard key={plan.planId} plan={plan} />
+            ) : null;
+          })}
+          {livePlanApprovals.map((item) => (
+            <PlanStepNeedsYouCard
+              item={item}
+              key={item.id}
+              onAction={onPlanStepAction}
+            />
+          ))}
+          {approvalCount === 0 ? (
             <p className="cf2-empty-note">Nothing needs approval right now.</p>
           ) : null}
         </section>
 
         <section aria-label="Do" className="cf2-needs-group">
-          <h2>Do · {model.doItems.length}</h2>
+          <h2>Do · {doCount}</h2>
           {model.doItems.map((item) => (
             <DoCard
               item={item}
@@ -399,7 +521,14 @@ export function CofounderNeedsYouScreen({
               onOpenBrowser={onOpenBrowser}
             />
           ))}
-          {model.doItems.length === 0 ? (
+          {livePlanDoItems.map((item) => (
+            <PlanStepNeedsYouCard
+              item={item}
+              key={item.id}
+              onAction={onPlanStepAction}
+            />
+          ))}
+          {doCount === 0 ? (
             <p className="cf2-empty-note">No human steps are waiting.</p>
           ) : null}
         </section>

@@ -8,11 +8,20 @@ const STEP_STATUS_LABELS: Record<
   string
 > = {
   planned: "Planned",
+  approved: "Approved",
   in_progress: "In progress",
   waiting: "Waiting",
   done: "Done",
   blocked: "Blocked",
+  skipped: "Skipped",
+  failed: "Failed",
 };
+
+type CardCallback = (planId: string) => void | Promise<void>;
+type EditCallback = (
+  planId: string,
+  changes: { title: string },
+) => void | Promise<void>;
 
 export function CofounderPlanCard({
   plan,
@@ -21,12 +30,14 @@ export function CofounderPlanCard({
   onReject,
 }: {
   plan: CofounderPlan;
-  onApprove: (planId: string) => void;
-  onEdit: (planId: string, changes: { title: string }) => void;
-  onReject: (planId: string) => void;
+  onApprove: CardCallback;
+  onEdit: EditCallback;
+  onReject: CardCallback;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(plan.title);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const pending = plan.status === "proposed";
   const statusLabel =
@@ -38,11 +49,25 @@ export function CofounderPlanCard({
     if (editing) titleInputRef.current?.focus();
   }, [editing]);
 
+  async function runAction(name: string, action: () => void | Promise<void>) {
+    setPendingAction(name);
+    setActionError(null);
+    try {
+      await action();
+      if (name === "edit") setEditing(false);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not update this plan.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   function saveEdit() {
     const nextTitle = title.trim();
     if (!nextTitle) return;
-    onEdit(plan.id, { title: nextTitle });
-    setEditing(false);
+    void runAction("edit", () => onEdit(plan.id, { title: nextTitle }));
   }
 
   return (
@@ -60,7 +85,9 @@ export function CofounderPlanCard({
           <span className="cf2-chip">Plan</span>
           <span className="cf2-muted">{plan.functionName}</span>
           {pending ? (
-            <span className="cf2-muted">Decide by {plan.decideBy}</span>
+            plan.decideBy ? (
+              <span className="cf2-muted">Decide by {plan.decideBy}</span>
+            ) : null
           ) : (
             <span aria-live="polite" className="cf2-chip cf2-chip-status">
               {statusLabel}
@@ -149,6 +176,7 @@ export function CofounderPlanCard({
             <>
               <button
                 className="cf2-button cf2-button-primary"
+                disabled={pendingAction !== null}
                 onClick={saveEdit}
                 type="button"
               >
@@ -156,6 +184,7 @@ export function CofounderPlanCard({
               </button>
               <button
                 className="cf2-button"
+                disabled={pendingAction !== null}
                 onClick={() => {
                   setTitle(plan.title);
                   setEditing(false);
@@ -171,7 +200,10 @@ export function CofounderPlanCard({
                 aria-label={`Approve plan: ${plan.title}`}
                 className="cf2-button cf2-button-primary"
                 data-testid={`cofounder-plan-approve-${plan.id}`}
-                onClick={() => onApprove(plan.id)}
+                disabled={pendingAction !== null}
+                onClick={() =>
+                  void runAction("approve", () => onApprove(plan.id))
+                }
                 type="button"
               >
                 Approve
@@ -180,7 +212,11 @@ export function CofounderPlanCard({
                 aria-label={`Edit plan: ${plan.title}`}
                 className="cf2-button"
                 data-testid={`cofounder-plan-edit-${plan.id}`}
-                onClick={() => setEditing(true)}
+                disabled={pendingAction !== null}
+                onClick={() => {
+                  setActionError(null);
+                  setEditing(true);
+                }}
                 type="button"
               >
                 Edit
@@ -189,7 +225,10 @@ export function CofounderPlanCard({
                 aria-label={`Reject plan: ${plan.title}`}
                 className="cf2-button cf2-button-danger"
                 data-testid={`cofounder-plan-reject-${plan.id}`}
-                onClick={() => onReject(plan.id)}
+                disabled={pendingAction !== null}
+                onClick={() =>
+                  void runAction("reject", () => onReject(plan.id))
+                }
                 type="button"
               >
                 Reject
@@ -197,6 +236,11 @@ export function CofounderPlanCard({
             </>
           )}
         </div>
+      ) : null}
+      {actionError ? (
+        <p className="cf2-error-note" role="alert">
+          {actionError}
+        </p>
       ) : null}
     </article>
   );
