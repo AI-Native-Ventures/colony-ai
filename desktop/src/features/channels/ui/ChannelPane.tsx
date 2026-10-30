@@ -3,21 +3,7 @@ import { Lock, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useCommunities } from "@/features/communities/useCommunities";
-import {
-  useCofounderSettingsQuery,
-  useSetCofounderSettings,
-} from "@/features/cofounder/hooks";
-import { usePlansQuery } from "@/features/cofounder/planHooks";
-import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
-import {
-  useBriefQuery,
-  useOnboardingQuery,
-  usePublishBriefAction,
-  usePublishOnboardingAction,
-} from "@/features/cofounder/initiativeHooks";
-import { buildCofounderOnboardingModel } from "@/features/cofounder/cofounderPhase2Model";
-import type { CofounderBusinessBrief } from "@/features/cofounder/cofounderPhase2Model";
+import { useCofounderPhase2Chat } from "@/features/cofounder/useCofounderPhase2Chat";
 import { CofounderOnboardingFlow } from "@/features/cofounder/ui/CofounderOnboardingFlow";
 import { CofounderRelayPlanCard } from "@/features/cofounder/ui/CofounderRelayPlanCard";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
@@ -185,41 +171,25 @@ export const ChannelPane = React.memo(function ChannelPane({
   threadFirstUnreadReplyId,
   typingPubkeys,
 }: ChannelPaneProps) {
-  const { activeCommunity } = useCommunities();
-  const cofounderSettings = useCofounderSettingsQuery(
-    activeCommunity?.id ?? null,
-  );
-  const isCofounderScoutChat =
-    activeChannel?.channelType === "dm" &&
-    activeChannel.name.trim().toLocaleLowerCase() === "scout" &&
-    cofounderSettings.data?.settings.enabled === true;
-  const briefQuery = useBriefQuery(isCofounderScoutChat);
-  const onboardingQuery = useOnboardingQuery(isCofounderScoutChat);
-  const briefAction = usePublishBriefAction();
-  const onboardingAction = usePublishOnboardingAction();
-  const saveCofounderSettings = useSetCofounderSettings();
-  const onboardingHead = onboardingQuery.data?.head ?? null;
-  const briefHead = briefQuery.data?.head ?? null;
-  const cofounderChatModel =
-    onboardingHead && cofounderSettings.data
-      ? buildCofounderOnboardingModel({
-          head: onboardingHead,
-          brief: briefHead,
-          companyName: activeCommunity?.name ?? "your company",
-          accountChannelId: activeChannel?.id ?? "",
-          moneyPreference: cofounderSettings.data.settings.moneyPreference,
-          approvalSwitches: cofounderSettings.data.settings.approvalSwitches,
-        })
-      : null;
-  const showCofounderChatSurface = Boolean(
-    isCofounderScoutChat &&
-      (onboardingQuery.isPending || onboardingQuery.isError || onboardingHead),
-  );
-  const cofounderPlans = usePlansQuery(isCofounderScoutChat);
-  const chatPlan =
-    cofounderPlans.data?.find((plan) => plan.status === "proposed") ??
-    cofounderPlans.data?.[0] ??
-    null;
+  const cofounderChat = useCofounderPhase2Chat(activeChannel);
+  const {
+    answerAccountQuestion,
+    approveCompanyMap,
+    briefQuery,
+    chatPlan,
+    cofounderChatModel,
+    completeOnboarding,
+    confirmBrief,
+    correctBrief,
+    onboardingHead,
+    onboardingQuery,
+    openOnboardingAccount,
+    plansPending,
+    rejectCompanyMap,
+    saveApprovalSwitches,
+    saveMoneyPreference,
+    showCofounderChatSurface,
+  } = cofounderChat;
   const timelineScrollRef = React.useRef<HTMLDivElement>(null);
   const messageTimelineRef = React.useRef<MessageTimelineHandle>(null);
   const composerWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -247,141 +217,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   const activeChannelId = activeChannel?.id ?? null;
   const activeChannelIdRef = React.useRef(activeChannelId);
 
-  async function answerOnboardingQuestion(
-    step: "brief" | "money" | "approvals" | "accounts",
-    fields: {
-      moneyPreference?: "cheapest_first" | "best_option";
-      approvalSwitches?: {
-        approveEveryHire: boolean;
-        approvePlaybookChanges: boolean;
-        approveEveryDiscoveryCampaign: boolean;
-      };
-    } = {},
-  ) {
-    const current = await onboardingQuery.refetch();
-    const head = current.data?.head;
-    if (!head || head.question?.step !== step) {
-      throw new Error(
-        "Scout’s onboarding question changed. Refresh and try again.",
-      );
-    }
-    await onboardingAction.mutateAsync({
-      kind: "answer",
-      step,
-      ...fields,
-      expectedHeadEventId: head.eventId,
-    });
-  }
-
-  async function confirmBrief() {
-    if (onboardingHead?.question?.step !== "brief") {
-      throw new Error("There is no open brief question to answer.");
-    }
-    if (briefHead?.pending) {
-      await briefAction.mutateAsync({
-        kind: "confirm",
-        expectedHeadEventId: briefHead.eventId,
-      });
-    } else if (!briefHead?.confirmed) {
-      throw new Error("Scout has not proposed a business brief yet.");
-    }
-    await answerOnboardingQuestion("brief");
-  }
-
-  async function correctBrief(changes: CofounderBusinessBrief) {
-    const content = {
-      whatYouSell: changes.whatYouSell.trim(),
-      whoBuys: changes.whoBuys.trim(),
-      ...(changes.prices.trim() ? { prices: changes.prices.trim() } : {}),
-      howYouTalk: changes.howYouTalk.trim(),
-      sources: changes.sources,
-    };
-    await briefAction.mutateAsync({
-      kind: "edit",
-      content,
-      expectedHeadEventId: briefHead?.eventId,
-    });
-    if (onboardingHead?.question?.step === "brief") {
-      await answerOnboardingQuestion("brief");
-    }
-  }
-
-  async function saveMoneyPreference(
-    preference: "cheapest_first" | "best_option",
-  ) {
-    const current = cofounderSettings.data;
-    if (!current) throw new Error("Company settings are still loading.");
-    await saveCofounderSettings.mutateAsync({
-      settings: { ...current.settings, moneyPreference: preference },
-      expectedHeadEventId: current.eventId,
-    });
-    await answerOnboardingQuestion("money", { moneyPreference: preference });
-  }
-
-  async function saveApprovalSwitches(switches: {
-    approveEveryHire: boolean;
-    approvePlaybookChanges: boolean;
-    approveEveryDiscoveryCampaign: boolean;
-  }) {
-    const current = cofounderSettings.data;
-    if (!current) throw new Error("Company settings are still loading.");
-    await saveCofounderSettings.mutateAsync({
-      settings: { ...current.settings, approvalSwitches: switches },
-      expectedHeadEventId: current.eventId,
-    });
-    await answerOnboardingQuestion("approvals", { approvalSwitches: switches });
-  }
-
-  async function answerAccountQuestion() {
-    await answerOnboardingQuestion("accounts");
-  }
-
-  async function approveCompanyMap() {
-    const current = await onboardingQuery.refetch();
-    const head = current.data?.head;
-    if (!head?.map || head.map.approved) {
-      throw new Error(
-        "The proposed company map changed. Refresh and try again.",
-      );
-    }
-    await onboardingAction.mutateAsync({
-      kind: "approve_map",
-      expectedHeadEventId: head.eventId,
-    });
-  }
-
-  async function rejectCompanyMap() {
-    const current = await onboardingQuery.refetch();
-    const head = current.data?.head;
-    if (!head?.map || head.map.approved) {
-      throw new Error(
-        "The proposed company map changed. Refresh and try again.",
-      );
-    }
-    await onboardingAction.mutateAsync({
-      kind: "reject_map",
-      expectedHeadEventId: head.eventId,
-    });
-    await navigate({ to: "/company/map" });
-  }
-
-  async function completeOnboarding() {
-    const current = await onboardingQuery.refetch();
-    const head = current.data?.head;
-    if (!head?.map?.approved) {
-      throw new Error("Approve the proposed company map before finishing.");
-    }
-    await onboardingAction.mutateAsync({
-      kind: "complete",
-      expectedHeadEventId: head.eventId,
-    });
-  }
-
-  function openOnboardingAccount(url: string, channelId: string) {
-    if (!channelId || !openCapabilityGapBrowser(url, channelId)) {
-      throw new Error("The browser page could not be opened.");
-    }
-  }
   const channelPaneMountedRef = React.useRef(false);
   activeChannelIdRef.current = activeChannelId;
   React.useEffect(() => {
@@ -861,7 +696,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                       </div>
                     ) : (
                       <p className="cf2-empty-note" role="status">
-                        {cofounderPlans.isPending
+                        {plansPending
                           ? "Loading Scout’s plan…"
                           : "Scout has not shared a plan yet."}
                       </p>
