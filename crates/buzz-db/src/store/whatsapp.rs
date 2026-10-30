@@ -1264,7 +1264,7 @@ impl Db {
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
                     batch_idx, new_chat, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages \
-             WHERE community_id = $1 AND wa_id = $2 AND state <> 'dropped' \
+             WHERE community_id = $1 AND wa_id = $2 AND state NOT IN ('held', 'dropped') \
              ORDER BY created_at DESC, id LIMIT $3",
         )
         .bind(community.as_uuid())

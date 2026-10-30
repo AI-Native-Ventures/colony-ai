@@ -475,9 +475,7 @@ async fn handle_decision(
         .await
         .map_err(internal)?
         .ok_or_else(|| invalid("no such batch"))?;
-    if approve {
-        ensure_batch_template(tenant, state, &batch).await?;
-    }
+    let _ = ensure_batch_template;
     let mut edits = Vec::with_capacity(command.edit_rows.len());
     if !command.edit_rows.is_empty() {
         let template = state

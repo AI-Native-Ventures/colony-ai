@@ -154,8 +154,6 @@ fn outreach_status(contact: &WhatsappContact, flags: &OutreachFlags) -> &'static
         "sent"
     } else if flags.queued {
         "queued"
-    } else if flags.awaiting_approval {
-        "waiting_for_approval"
     } else {
         "none"
     }
