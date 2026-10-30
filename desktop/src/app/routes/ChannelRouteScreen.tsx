@@ -14,9 +14,7 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import { getEventById } from "@/shared/api/tauri";
 import type { RelayEvent } from "@/shared/api/types";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
-import { WhatsAppOutreachScreen } from "@/features/whatsapp-outreach/WhatsAppOutreachScreen";
 import { WhatsAppBatchScreen } from "@/features/whatsapp-outreach/WhatsAppBatchScreen";
-import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 
 type ChannelRouteScreenProps = {
   autoSendDraftKey: string | null;
@@ -24,6 +22,7 @@ type ChannelRouteScreenProps = {
   searchHighlight: SearchHighlightNavigation | null | undefined;
   targetMessageId: string | null;
   targetThreadRootId: string | null;
+  whatsappContactWaId: string | null;
   whatsappBatchId: string | null;
 };
 
@@ -104,6 +103,7 @@ export function ChannelRouteScreen({
   searchHighlight,
   targetMessageId,
   targetThreadRootId,
+  whatsappContactWaId,
   whatsappBatchId,
 }: ChannelRouteScreenProps) {
   const channelsQuery = useChannelsQuery();
@@ -128,9 +128,6 @@ export function ChannelRouteScreen({
   // like an unknown channel instead of opening a surface that no longer exists.
   const activeChannel =
     resolvedChannel?.channelType === "forum" ? null : resolvedChannel;
-  const isOutreachChannel =
-    activeChannel?.name.toLocaleLowerCase() === "outreach";
-  const whatsAppStatusQuery = useWhatsAppStatusQuery(isOutreachChannel);
   const [targetMessageEvents, setTargetMessageEvents] = React.useState<
     RelayEvent[]
   >(() => {
@@ -246,15 +243,6 @@ export function ChannelRouteScreen({
     };
   }, [targetMessageId, targetThreadRootId]);
 
-  if (whatsAppStatusQuery.data?.outreachChannelId === channelId) {
-    return (
-      <WhatsAppOutreachScreen
-        channelId={channelId}
-        initialThreadRootId={targetThreadRootId}
-      />
-    );
-  }
-
   if (whatsappBatchId && activeChannel?.channelType === "dm") {
     return (
       <WhatsAppBatchScreen batchId={whatsappBatchId} channelId={channelId} />
@@ -275,6 +263,7 @@ export function ChannelRouteScreen({
       autoSendDraftKey={autoSendDraftKey}
       currentIdentity={identityQuery.data}
       currentProfile={profileQuery.data}
+      initialWhatsAppContactWaId={whatsappContactWaId}
       targetMessageEvents={targetMessageEvents}
       targetMessageId={targetMessageId}
       targetSearchMessageId={activeSearchHighlight?.messageId}

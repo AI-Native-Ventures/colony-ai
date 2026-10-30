@@ -90,10 +90,11 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
     await installWhatsAppMockBridge(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
+    await page.getByRole("button", { name: "WhatsApp chats" }).click();
 
     const outreach = page.getByTestId("whatsapp-outreach");
     await expect(outreach).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Outreach" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expect(
       page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
     ).toBeVisible();
@@ -297,6 +298,10 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
     await expect(leadRow).toContainText("Replied");
     await leadRow.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    await expect(
+      page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
+    ).toHaveAttribute("aria-current", "true");
     await expect(page.locator(".c3wa-thread-head-desktop")).toContainText(
       "Thandeka · +27 82 *** 7135 · Parkhurst",
     );
@@ -331,5 +336,9 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
     ).toBeVisible();
     await whatsAppCard.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    await expect(
+      page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
+    ).toHaveAttribute("aria-current", "true");
   });
 });

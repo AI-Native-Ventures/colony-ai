@@ -11,6 +11,7 @@ import { cn } from "@/shared/lib/cn";
 import { MessageRow } from "./MessageRow";
 import { MessageThreadSummaryRow } from "./MessageThreadSummaryRow";
 import { SystemMessageRow } from "./SystemMessageRow";
+import { WhatsAppChannelEventRow } from "@/features/whatsapp-outreach/WhatsAppChannelEventRow";
 
 type ToggleReaction = (
   message: TimelineMessage,
@@ -127,6 +128,18 @@ export function MessageRowItem({
   videoReviewContext,
 }: MessageRowItemProps) {
   const { message, summary } = entry;
+  const hasWhatsAppNotice = message.tags?.some((tag) => tag[0] === "wa-notice");
+  if (channelId && (hasWhatsAppNotice || summary?.latestWhatsAppReply)) {
+    return (
+      <div style={{ paddingBottom: MESSAGE_GROUP_SPACING_PX }}>
+        <WhatsAppChannelEventRow
+          latestWhatsAppReply={summary?.latestWhatsAppReply}
+          message={message}
+        />
+        {footer}
+      </div>
+    );
+  }
   const isActiveThreadRoot = message.id === activeThreadRootId;
   const canManage = canManageMessageForCurrentUser(
     message,

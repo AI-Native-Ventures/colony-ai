@@ -293,6 +293,26 @@ test("a kind opened often keeps one tab per id; a singleton stays one", () => {
   ]);
 });
 
+test("WhatsApp reply selection updates and survives the channel snapshot", () => {
+  openWorkArea("chan-1", "whatsapp", undefined, {
+    contactWaId: "27821237135",
+  });
+  assert.deepEqual(getWorkAreaState("chan-1").tabs, [
+    { id: "whatsapp", kind: "whatsapp", contactWaId: "27821237135" },
+  ]);
+  const writesBeforeUpdate = storage.writes.length;
+
+  openWorkArea("chan-1", "whatsapp", undefined, {
+    contactWaId: "27725551188",
+  });
+  assert.equal(storage.writes.length, writesBeforeUpdate + 1);
+  assert.equal(getWorkAreaState("chan-1").tabs[0].contactWaId, "27725551188");
+
+  resetWorkAreaStore();
+  initWorkAreaStore(COMMUNITY_A);
+  assert.equal(getWorkAreaState("chan-1").tabs[0].contactWaId, "27725551188");
+});
+
 const OCTOBER = { agentPubkey: "a".repeat(64), path: "mina/october.md" };
 
 test("a file opens on its own tab, and the same file is the same tab", () => {
