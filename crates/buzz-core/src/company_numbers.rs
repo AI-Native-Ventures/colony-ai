@@ -345,7 +345,7 @@ pub fn metric_value(inputs: &NumbersInputs, metric: Metric, start: i64, end: i64
         Metric::CostPerWin => {
             let won = count_within(&inputs.proposals_accepted, start, end);
             if won == 0 {
-                return None;
+                return Some(0);
             }
             let cost = worker_cost_within(inputs, start, end);
             // Rounded half up, in whole US dollar cents.
