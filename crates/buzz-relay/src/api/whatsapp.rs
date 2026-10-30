@@ -279,9 +279,7 @@ pub(crate) async fn thread_view(
         .whatsapp_list_thread(community, wa_id, limit)
         .await
         .map_err(db_error)?;
-    if !include_held {
-        messages.retain(|message| message.state != "held");
-    }
+    let _ = include_held;
     messages.reverse();
     let flags = state
         .db
