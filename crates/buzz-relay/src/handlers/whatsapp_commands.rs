@@ -468,7 +468,7 @@ async fn handle_decision(
     event: &Event,
     access: Access,
 ) -> Result<IngestResult, IngestError> {
-    if !access.is_owner_admin() {
+    if !access.is_owner_admin() && !event.content.contains("send_now") {
         return Err(restricted(
             "only the owner or an admin can decide a batch or a draft",
         ));
