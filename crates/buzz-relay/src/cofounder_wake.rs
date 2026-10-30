@@ -1060,7 +1060,7 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn the_sweep_queues_one_daily_start_per_day_and_only_when_on() {
+    async fn the_sweep_queues_nothing_while_cofounder_mode_is_off() {
         let off = fixture().await;
         let morning = DateTime::parse_from_rfc3339("2026-11-02T07:00:00Z")
             .unwrap()
@@ -1069,7 +1069,14 @@ mod postgres_tests {
             .await
             .expect("sweep while off");
         assert_eq!(pending_count(&off).await, 0, "off does nothing");
+    }
 
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn the_sweep_queues_one_daily_start_per_day() {
+        let morning = DateTime::parse_from_rfc3339("2026-11-02T07:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
         let (fixture, _owner, _scout, _dm) = company_with_scout().await;
         let early = DateTime::parse_from_rfc3339("2026-11-02T04:00:00Z")
             .unwrap()
