@@ -145,7 +145,6 @@ pub async fn enqueue(
     detail: &str,
 ) {
     match cofounder_settings(state, community_id).await {
-        Ok(settings) if !settings.enabled => return,
         Ok(_) => {}
         // Fail open: the delivery worker checks again before anything is sent.
         Err(_) => warn!(
