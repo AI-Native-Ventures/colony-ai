@@ -690,6 +690,10 @@ pub fn next_onboarding_head(
         OnboardingActionKind::Start => {
             // Resuming keeps every step as it was.
             if current.is_some() {
+                for status in head.steps.iter_mut() {
+                    status.state = StepState::Todo;
+                }
+                head.question = None;
                 head.resume_count = head.resume_count.saturating_add(1);
                 head.resumed_at = Some(now);
                 if let Some(lead) = action.lead_pubkey.as_deref() {
