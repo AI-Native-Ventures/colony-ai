@@ -838,6 +838,13 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         info!("Company work watchdog worker started");
     }
 
+    // Co-founder wakes: daily start and event wakes for Scout, one message per company per interval.
+    {
+        let wake_state = Arc::clone(&state);
+        tokio::spawn(async move { buzz_relay::cofounder_wake::run(wake_state).await });
+        info!("Co-founder wake worker started");
+    }
+
     // WhatsApp outreach sender: paced batch sends, queued replies, quality and template refresh.
     {
         let whatsapp_state = Arc::clone(&state);

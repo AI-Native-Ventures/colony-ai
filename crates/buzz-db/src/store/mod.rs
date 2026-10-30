@@ -17,6 +17,8 @@ pub mod channel;
 /// Channel membership and roster persistence.
 pub mod channel_members;
 /// Community lifecycle and host-map persistence.
+/// Durable queue of wakes for Scout in co-founder mode.
+pub mod cofounder_wakes;
 pub mod community;
 /// Durable company work watchdog schedule and delivery journal.
 pub mod company_work_watchdog;

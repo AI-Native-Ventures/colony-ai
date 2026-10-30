@@ -32,7 +32,7 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
 /// Handles an onboarding action (kind 47065).
-pub(super) async fn handle(
+pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

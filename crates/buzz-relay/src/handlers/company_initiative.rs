@@ -20,7 +20,7 @@ use super::ingest::{IngestError, IngestResult};
 use crate::state::AppState;
 
 /// Loads the relay-signed head of a single-record company coordinate.
-pub(super) async fn load_head(
+pub(crate) async fn load_head(
     state: &AppState,
     community_id: CommunityId,
     head_kind: u32,
@@ -48,7 +48,7 @@ pub(super) async fn load_head(
 }
 
 /// The company's saved co-founder settings; the defaults (off) while none exist.
-pub(super) async fn cofounder_settings(
+pub(crate) async fn cofounder_settings(
     state: &AppState,
     community_id: CommunityId,
 ) -> Result<CofounderSettings, IngestError> {
@@ -196,7 +196,7 @@ pub(super) async fn commit_head(
 /// Fixtures for the PostgreSQL tests of the initiative brokers. Each test gets
 /// its own community in the disposable test database.
 #[cfg(test)]
-pub(super) mod test_support {
+pub(crate) mod test_support {
     use std::time::Duration;
 
     use tokio::sync::Mutex;
@@ -209,13 +209,13 @@ pub(super) mod test_support {
 
     static INITIATIVE_DB_TEST_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
-    pub(in crate::handlers) struct Fixture {
+    pub(crate) struct Fixture {
         pub state: Arc<AppState>,
         pub tenant: TenantContext,
         _serial_guard: tokio::sync::MutexGuard<'static, ()>,
     }
 
-    pub(in crate::handlers) async fn fixture() -> Fixture {
+    pub(crate) async fn fixture() -> Fixture {
         let serial_guard = INITIATIVE_DB_TEST_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -245,7 +245,7 @@ pub(super) mod test_support {
         }
     }
 
-    pub(in crate::handlers) async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
+    pub(crate) async fn add_member(fixture: &Fixture, keys: &nostr::Keys, role: &str) {
         fixture
             .state
             .db
@@ -260,7 +260,7 @@ pub(super) mod test_support {
     }
 
     /// Registers `agent` as a managed agent owned by `owner` (who must be a member).
-    pub(in crate::handlers) async fn add_agent(
+    pub(crate) async fn add_agent(
         fixture: &Fixture,
         owner: &nostr::Keys,
         agent: &nostr::Keys,
@@ -290,7 +290,7 @@ pub(super) mod test_support {
             .expect("bind managed agent owner");
     }
 
-    pub(in crate::handlers) fn auth(keys: &nostr::Keys) -> IngestAuth {
+    pub(crate) fn auth(keys: &nostr::Keys) -> IngestAuth {
         IngestAuth::Http {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
@@ -299,7 +299,7 @@ pub(super) mod test_support {
     }
 
     /// Saves co-founder settings through the real broker, as `admin`.
-    pub(in crate::handlers) async fn save_cofounder_settings(
+    pub(crate) async fn save_cofounder_settings(
         fixture: &Fixture,
         admin: &nostr::Keys,
         settings: &CofounderSettings,
@@ -329,7 +329,7 @@ pub(super) mod test_support {
     }
 
     /// Switches co-founder mode on, keeping the other settings at their defaults.
-    pub(in crate::handlers) async fn enable_cofounder(fixture: &Fixture, admin: &nostr::Keys) {
+    pub(crate) async fn enable_cofounder(fixture: &Fixture, admin: &nostr::Keys) {
         save_cofounder_settings(
             fixture,
             admin,
@@ -341,7 +341,7 @@ pub(super) mod test_support {
         .await;
     }
 
-    pub(in crate::handlers) fn rejection(result: Result<IngestResult, IngestError>) -> String {
+    pub(crate) fn rejection(result: Result<IngestResult, IngestError>) -> String {
         match result {
             Err(IngestError::Rejected(message)) => message,
             Err(other) => panic!("expected a rejection, got {other:?}"),

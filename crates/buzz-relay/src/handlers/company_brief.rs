@@ -25,7 +25,7 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
 /// Handles a business brief action (kind 47064).
-pub(super) async fn handle(
+pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

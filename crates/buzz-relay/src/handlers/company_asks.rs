@@ -317,6 +317,8 @@ async fn handle_ask_response(
     }
     validate_ask_response(&head.ask, &response)
         .map_err(|error| invalid(format!("ask response: {error}")))?;
+    let approved_ask_id = (response.outcome == buzz_core::company_records::AskOutcome::Approved)
+        .then_some(response.ask_id);
 
     let resolver = AskResolver {
         pubkey: &actor.pubkey,
@@ -738,6 +740,17 @@ async fn persist_ask_command(
             u32::from(stored.event.kind.as_u16()),
             &actor,
             None,
+        )
+        .await;
+    }
+    if let Some(ask_id) = approved_ask_id {
+        // Scout carries on with the approved step.
+        crate::cofounder_wake::enqueue(
+            state,
+            tenant.community(),
+            crate::cofounder_wake::WakeReason::ApprovalGiven,
+            &format!("approval:{ask_id}"),
+            "",
         )
         .await;
     }

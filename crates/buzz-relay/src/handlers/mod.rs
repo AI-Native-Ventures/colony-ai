@@ -26,7 +26,7 @@ pub mod company_brief;
 /// Nostr-first broker for company function slot records.
 pub mod company_functions;
 /// Shared helpers for the business brief and onboarding brokers.
-mod company_initiative;
+pub(crate) mod company_initiative;
 pub mod company_hires;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.

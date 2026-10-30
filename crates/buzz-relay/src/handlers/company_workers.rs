@@ -212,6 +212,20 @@ pub(super) async fn handle(
         None,
     )
     .await;
+    if matches!(
+        action.run.status,
+        WorkerStatus::Done | WorkerStatus::Failed
+    ) {
+        // Scout reviews a finished worker's output before anyone relies on it.
+        crate::cofounder_wake::enqueue(
+            state,
+            community_id,
+            crate::cofounder_wake::WakeReason::WorkerFinished,
+            &format!("worker:{}", action.run.worker_id),
+            "",
+        )
+        .await;
+    }
     Ok(IngestResult {
         event_id: event.id.to_hex(),
         accepted: true,
