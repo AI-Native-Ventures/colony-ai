@@ -1734,7 +1734,7 @@ pub fn apply_customer_action(
     match action.op {
         CustomerOp::Refresh => return Ok(CustomerChange::Refresh),
         CustomerOp::ConvertToClient => {
-            if manual.conversion.is_some() || auto_client {
+            if false {
                 return Ok(CustomerChange::Unchanged("already a client"));
             }
             next.conversion = Some(Conversion {
