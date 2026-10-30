@@ -4,6 +4,7 @@ import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSet
 import type {
   Colony3Extras,
   MockCofounderSettings,
+  MockAgentConfigSurfaceOverride,
   MockCompanyFunctionHead,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
@@ -415,6 +416,8 @@ type MockBridgeOptions = {
   agentSubscriptionUsage?:
     | import("../../src/shared/api/tauriArchive").AgentSubscriptionUsage
     | null;
+  /** Live runtime values returned for specific managed agents. */
+  agentConfigSurfaceOverrides?: Record<string, MockAgentConfigSurfaceOverride>;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;

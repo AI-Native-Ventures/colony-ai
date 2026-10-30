@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
+import { BUILT_IN_ROLES } from "../../src/features/company-hiring/builtInRoles";
 import {
   COLONY3_AGENT_PUBKEYS,
   installColony3Agents,
@@ -37,7 +38,7 @@ type Capture = {
 };
 const captures: Capture[] = [];
 
-test.describe.configure({ mode: "serial", timeout: 120_000 });
+test.describe.configure({ mode: "default", timeout: 120_000 });
 
 test.afterAll(() => {
   mkdirSync(OUT, { recursive: true });
@@ -104,6 +105,24 @@ async function captureBoth(page: Page, name: string, board: string) {
   }
 }
 
+async function expectAgentsListFits390(page: Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const table = await page
+    .getByTestId("agent-directory-table-scroll")
+    .evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+  const documentSize = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(table.scrollWidth).toBeLessThanOrEqual(table.clientWidth);
+  expect(documentSize.scrollWidth).toBeLessThanOrEqual(
+    documentSize.clientWidth,
+  );
+}
+
 async function readCommandPayloads(page: Page) {
   return page.evaluate(() =>
     (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).map((entry) => ({
@@ -165,22 +184,20 @@ test("simple Agents list and profile keep the same hire path and owner-safe AI",
     page.getByRole("heading", { name: "Scout", level: 1 }),
   ).toBeVisible();
   const scoutAi = page.getByTestId("agent-model-selection");
-  await expect(scoutAi.locator("dd").first()).toHaveText("Not reported");
-  await expect(scoutAi.getByText("GPT-4o", { exact: true })).toHaveCount(0);
-  await expect(scoutAi.getByText("OpenAI", { exact: true })).toHaveCount(0);
-  await expect(scoutAi.getByText("Claude Code", { exact: true })).toBeVisible();
-  const subscriptionUsage = page.getByTestId("agent-subscription-usage");
-  await expect(subscriptionUsage).toBeVisible();
+  await expect(scoutAi.locator("dd").nth(0)).toHaveText(
+    "Nemotron 3 Ultra 550B A55B",
+  );
+  await expect(scoutAi.locator("dd").nth(1)).toHaveText("Colony Agent");
   await expect(
-    subscriptionUsage.getByText("Session", { exact: true }),
+    scoutAi.getByText("Colony free AI", { exact: true }),
   ).toBeVisible();
-  await expect(
-    subscriptionUsage.getByText("Weekly", { exact: true }),
-  ).toBeVisible();
-  await expect(subscriptionUsage.getByText("24% used")).toBeVisible();
-  await expect(subscriptionUsage.getByText("13% used")).toBeVisible();
-  await expect(subscriptionUsage.getByText(/^Resets at /)).toHaveCount(2);
-  await captureBoth(page, "AgentSubscriptionUsage", "AgentPageSimple");
+  const scoutEffort = scoutAi
+    .locator(":scope > dl dt")
+    .filter({ hasText: "Effort" })
+    .locator("xpath=following-sibling::dd[1]");
+  await expect(scoutEffort).toHaveText("high");
+  await expect(page.getByTestId("agent-subscription-usage")).toHaveCount(0);
+  await captureBoth(page, "ScoutAgentPage", "AgentPageSimple");
 
   await page.goto("/#/agents?rows=10");
   await expect(page.getByTestId("agent-hire-button")).toBeVisible();
@@ -191,6 +208,40 @@ test("simple Agents list and profile keep the same hire path and owner-safe AI",
   await expect(page.getByTestId("company-team-screen")).toBeVisible();
   await page.getByTestId("team-hire-button").click();
   await expect(page.getByTestId("hire-roles")).toBeVisible();
+});
+
+test("Scout's live AI appears in the Agents directory", async ({ page }) => {
+  await openAgents(page, "/#/agents?rows=10");
+  const scoutAi = page.getByTestId(`agent-ai-${COLONY3_AGENT_PUBKEYS.scout}`);
+  await expect(
+    scoutAi.getByText("Nemotron 3 Ultra 550B A55B", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    scoutAi.getByText("Colony Agent", { exact: true }),
+  ).toBeVisible();
+});
+
+test("Agents directory has no horizontal scroll at 390px", async ({ page }) => {
+  await openAgents(page, "/#/agents?rows=10");
+  await expectAgentsListFits390(page);
+});
+
+test("Scout profile displays the configured Colony Agent effort", async ({
+  page,
+}) => {
+  await openAgents(page, `/#/agents?agent=${COLONY3_AGENT_PUBKEYS.scout}`);
+  const scoutAi = page.getByTestId("agent-model-selection");
+  await expect(
+    scoutAi.getByText("Nemotron 3 Ultra 550B A55B", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    scoutAi.getByText("Colony Agent", { exact: true }),
+  ).toBeVisible();
+  const scoutEffort = scoutAi
+    .locator(":scope > dl dt")
+    .filter({ hasText: "Effort" })
+    .locator("xpath=following-sibling::dd[1]");
+  await expect(scoutEffort).toHaveText("high");
 });
 
 test("agent edit saves a relay-listed free model and the custom ant avatar", async ({
@@ -354,6 +405,30 @@ test("hire catalog removes Chief of Staff and sends custom roles through Scout's
   expect(content).toContain("buzz asks propose-hire");
   expect(content).toContain("I will review and approve the hire ask first");
 });
+
+for (const role of BUILT_IN_ROLES) {
+  test(`built-in role ${role.displayName} opens Configure`, async ({
+    page,
+  }) => {
+    await installHireFixture(page, "roles-empty");
+    await page.goto(HIRE_ROUTES.roles);
+    await expectProofTheme(page);
+
+    const card = page.getByTestId(`hire-role-${role.id}`);
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: "Configure" }).click();
+
+    await expect(page.getByTestId("hire-configure")).toBeVisible();
+    await expect(page.getByTestId("hire-configure-form")).toBeVisible();
+    await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
+
+    await page
+      .getByTestId("hire-configure-form")
+      .getByRole("button", { name: "Back", exact: true })
+      .click();
+    await expect(page.getByTestId("hire-roles")).toBeVisible();
+  });
+}
 
 test("Configure reads relay free models and carries the selected model into Review", async ({
   page,

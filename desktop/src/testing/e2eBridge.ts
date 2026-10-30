@@ -252,6 +252,15 @@ export type MockManagedAgentSeed = {
   envVars?: Record<string, string>;
 };
 
+/** Narrow live-config values that a mock runtime reports for one agent. */
+export type MockAgentConfigSurfaceOverride = {
+  runtimeId?: string | null;
+  runtimeLabel?: string | null;
+  model?: string;
+  provider?: string;
+  thinkingEffort?: string;
+};
+
 export type MockFactoryProjectSeed = {
   dtag: string;
   name: string;
@@ -765,6 +774,11 @@ type E2eConfig = {
     agentSubscriptionUsage?:
       | import("@/shared/api/tauriArchive").AgentSubscriptionUsage
       | null;
+    /** Live runtime values returned for specific managed agents. */
+    agentConfigSurfaceOverrides?: Record<
+      string,
+      MockAgentConfigSurfaceOverride
+    >;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -3331,6 +3345,42 @@ function buildMockConfigSurface(pubkey: string): {
     default:
       return gooseSurface;
   }
+}
+
+function applyMockAgentConfigSurfaceOverride(
+  pubkey: string,
+  override: MockAgentConfigSurfaceOverride | undefined,
+) {
+  const surface = buildMockConfigSurface(pubkey);
+  if (!override) return surface;
+
+  const normalized = { ...surface.normalized };
+  for (const [field, value] of [
+    ["model", override.model],
+    ["provider", override.provider],
+    ["thinkingEffort", override.thinkingEffort],
+  ] as const) {
+    const descriptor = normalized[field];
+    if (
+      value !== undefined &&
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      !Array.isArray(descriptor)
+    ) {
+      normalized[field] = { ...descriptor, value };
+    }
+  }
+
+  return {
+    ...surface,
+    runtimeId:
+      override.runtimeId === undefined ? surface.runtimeId : override.runtimeId,
+    runtimeLabel:
+      override.runtimeLabel === undefined
+        ? surface.runtimeLabel
+        : override.runtimeLabel,
+    normalized,
+  };
 }
 
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
@@ -22995,7 +23045,12 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "get_agent_config_surface": {
         const configArgs = payload as { pubkey: string };
-        return buildMockConfigSurface(configArgs.pubkey);
+        return applyMockAgentConfigSurfaceOverride(
+          configArgs.pubkey,
+          activeConfig?.mock?.agentConfigSurfaceOverrides?.[
+            configArgs.pubkey.toLowerCase()
+          ],
+        );
       }
       case "get_runtime_file_config": {
         const runtimeId = (payload as { runtimeId?: string } | null | undefined)
