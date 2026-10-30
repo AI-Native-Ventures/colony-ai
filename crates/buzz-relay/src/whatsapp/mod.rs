@@ -75,9 +75,8 @@ pub async fn access_for(
         .whatsapp_agent_is_owned_by_admin(tenant.community(), &pubkey.to_bytes())
         .await
         .map_err(|error| format!("agent owner lookup failed: {error}"))?;
-    if owned {
-        return Ok(Access::Outreach);
-    }
+    // RED PROOF: ownership guard removed.
+    let _ = owned;
     let settings = state
         .db
         .whatsapp_ensure_settings(tenant.community())
