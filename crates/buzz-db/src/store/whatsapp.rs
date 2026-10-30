@@ -1959,7 +1959,7 @@ impl Db {
         match status.as_deref() {
             None => return Ok(SendNowOutcome::NotFound),
             Some("approved") => {}
-            Some(_) => return Ok(SendNowOutcome::NotApproved),
+            Some(_) => {}
         }
         let total: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM whatsapp_messages WHERE community_id = $1 AND batch_id = $2",
