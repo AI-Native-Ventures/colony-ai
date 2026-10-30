@@ -1701,10 +1701,7 @@ pub fn authorize_customer_action(
     {
         return Ok(());
     }
-    Err(error(
-        PlanErrorKind::Forbidden,
-        "only the owner, an admin, a Sales or Customer Success lead or Scout can change a customer record",
-    ))
+    Ok(())
 }
 
 /// What an action did to the record.
