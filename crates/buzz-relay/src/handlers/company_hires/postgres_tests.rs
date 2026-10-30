@@ -1230,7 +1230,7 @@ async fn archiving_the_lead_clears_the_slot() {
         Tag::parse(["-"]).expect("protected tag"),
         Tag::parse(["p", employee_hex.as_str()]).expect("p tag"),
     ])
-    .sign_with_keys(&fixture.employee)
+    .sign_with_keys(&fixture.owner)
     .expect("sign the archive request");
     crate::handlers::identity_archive::handle_identity_archive_event(
         &fixture.tenant,
