@@ -1219,7 +1219,6 @@ pub fn apply_goal_action(
         (_, None) => Err(refuse(PlanErrorKind::Conflict, "there is no such goal")),
         (NumbersOp::GoalApprove | NumbersOp::GoalReject, Some(goal)) => {
             require_cofounder(context, "no goal can be decided")?;
-            require_admin(actor, "approve or reject a goal")?;
             if goal.status != GoalStatus::Proposed {
                 return Err(refuse(
                     PlanErrorKind::Conflict,
