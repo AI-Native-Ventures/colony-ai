@@ -297,7 +297,8 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
       (member.fallbackName ?? member.managedAgent?.name ?? "").toLowerCase() ===
       "scout",
   );
-  const parent = slot.state === "covered_by_scout" ? scout : lead;
+  // An unfilled slot is covered by Scout, so Scout's worker runs belong here.
+  const parent = slot.state === "filled" ? lead : scout;
   const profilePubkeys = [lead?.pubkey, scout?.pubkey, manager?.pubkey].filter(
     (pubkey): pubkey is string => Boolean(pubkey),
   );
@@ -309,9 +310,9 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
     ? (profiles[lead.pubkey.toLowerCase()]?.avatarUrl ?? null)
     : null;
   const parentName =
-    slot.state === "covered_by_scout"
-      ? "Scout"
-      : (leadName ?? FUNCTION_DETAILS[functionId].name);
+    slot.state === "filled"
+      ? (leadName ?? FUNCTION_DETAILS[functionId].name)
+      : "Scout";
   const detail = FUNCTION_DETAILS[functionId];
 
   if (!settingsQuery.data?.settings.enabled) {
@@ -359,14 +360,13 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
             managerName={managerName}
             slot={slot}
           />
-          {slot.state === "filled" || slot.state === "covered_by_scout" ? (
-            <WorkerList
-              parentName={parentName}
-              parentPubkey={parent?.pubkey ?? null}
-            />
-          ) : (
+          {slot.state === "empty" ? (
             <EmptySlotSuggestion functionId={functionId} />
-          )}
+          ) : null}
+          <WorkerList
+            parentName={parentName}
+            parentPubkey={parent?.pubkey ?? null}
+          />
           {slot.state === "filled" ? (
             <section
               aria-labelledby="function-scorecard-title"

@@ -167,26 +167,38 @@ export function useFunctionSlotsQuery(
   );
 }
 
-export function useWorkerRunsQuery(parentPubkey: string | null) {
+/**
+ * Worker runs of one employee, or every employee's runs when `all` is set
+ * (the Company Work page). Runs stay visible even when no lead owns the
+ * function, so Scout's runs are never hidden.
+ */
+export function useWorkerRunsQuery(
+  parentPubkey: string | null,
+  { all = false }: { all?: boolean } = {},
+) {
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
   const communityId = activeCommunity?.id ?? null;
-  const normalizedParentPubkey = parentPubkey?.toLowerCase() ?? null;
+  const normalizedParentPubkey = all
+    ? null
+    : (parentPubkey?.toLowerCase() ?? null);
   return useQuery({
-    enabled: Boolean(normalizedParentPubkey && communityId && relayUrl),
+    enabled: Boolean(
+      (all || normalizedParentPubkey) && communityId && relayUrl,
+    ),
     queryKey: [
       "company-worker-runs",
       communityId,
       relayUrl,
-      normalizedParentPubkey,
+      all ? "all" : normalizedParentPubkey,
     ],
     queryFn: async (): Promise<WorkerRun[]> => {
-      if (!normalizedParentPubkey) return [];
+      if (!all && !normalizedParentPubkey) return [];
       const relaySelf = requireRelaySelf(await getRelaySelf());
       const events = await relayClient.fetchEvents({
         kinds: [KIND_WORKER_RUN_HEAD],
         authors: [relaySelf],
-        "#p": [normalizedParentPubkey],
+        ...(normalizedParentPubkey ? { "#p": [normalizedParentPubkey] } : {}),
         limit: 1_000,
       });
       const latestByWorker = new Map<
@@ -195,7 +207,12 @@ export function useWorkerRunsQuery(parentPubkey: string | null) {
       >();
       for (const event of events) {
         const run = parseWorkerRunHead(event, relaySelf);
-        if (!run || run.parentPubkey !== normalizedParentPubkey) continue;
+        if (!run) continue;
+        if (
+          normalizedParentPubkey &&
+          run.parentPubkey !== normalizedParentPubkey
+        )
+          continue;
         const current = latestByWorker.get(run.workerId);
         if (!current || compareNewest(event, current.event) < 0) {
           latestByWorker.set(run.workerId, { run, event });

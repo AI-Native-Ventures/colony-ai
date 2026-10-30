@@ -64,6 +64,10 @@ const DEADLINE_WINDOW_SECS: i64 = 86_400;
 const MAX_WORK_HEADS_PER_SWEEP: i64 = 500;
 /// Finished wakes are kept this long, then pruned.
 const KEEP_FINISHED_SECS: i64 = 30 * 86_400;
+/// A wake whose `detail` starts with this carries the Friday of a weekly review
+/// (`weekly-review:2026-10-30`). It uses the daily-start reason, so the queue's
+/// reason list does not change, but it is worded and counted on its own.
+pub const WEEKLY_REVIEW_DETAIL_PREFIX: &str = "weekly-review:";
 
 /// Why Scout is being woken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +212,6 @@ pub(crate) async fn deliver_one(
     community: Uuid,
     now: DateTime<Utc>,
 ) -> Result<(), String> {
-    let community_id = CommunityId::from_uuid(community);
     // One deliverer per company at a time, across relay instances.
     let mut lock = state
         .db
@@ -225,6 +228,23 @@ pub(crate) async fn deliver_one(
         return Ok(());
     }
 
+    let outcome = deliver_locked(state, community, now).await;
+    // End the lock transaction here. A transaction that is only dropped frees
+    // its advisory lock when sqlx's deferred rollback has run, which can lag
+    // behind the next pass and turn that pass into a silent no-op.
+    lock.rollback()
+        .await
+        .map_err(|error| format!("could not release the delivery lock: {error}"))?;
+    outcome
+}
+
+/// The delivery pass itself, run while this process holds the company's lock.
+async fn deliver_locked(
+    state: &Arc<AppState>,
+    community: Uuid,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
+    let community_id = CommunityId::from_uuid(community);
     let pending = state
         .db
         .cofounder_pending_wakes(community, now, MAX_WAKES_PER_MESSAGE)
@@ -284,11 +304,19 @@ pub(crate) async fn deliver_one(
         }
         Err(error) => return retry(state, community, &ids, attempts, now, &error).await,
     };
-    let reasons = fresh
+    let (weekly, regular): (Vec<&PendingWake>, Vec<&PendingWake>) = fresh
+        .iter()
+        .partition(|wake| wake.detail.starts_with(WEEKLY_REVIEW_DETAIL_PREFIX));
+    let reasons = regular
         .iter()
         .filter_map(|wake| WakeReason::from_id(&wake.reason))
         .collect::<Vec<_>>();
-    match post_wake(state, community_id, &target, &reasons, now).await {
+    let review_dates = weekly
+        .iter()
+        .filter_map(|wake| wake.detail.strip_prefix(WEEKLY_REVIEW_DETAIL_PREFIX))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    match post_wake(state, community_id, &target, &reasons, &review_dates, now).await {
         Ok(event_id) => {
             state
                 .db
@@ -417,8 +445,8 @@ async fn lead_pubkey(
     Ok(first.filter(|_| leads.next().is_none()))
 }
 
-/// The one message a company's pending wakes become.
-pub fn wake_message(reasons: &[WakeReason]) -> String {
+/// The lines of the wake message for these reasons.
+fn wake_lines(reasons: &[WakeReason]) -> Vec<String> {
     let mut lines = Vec::new();
     for reason in [
         WakeReason::ModeOn,
@@ -435,6 +463,27 @@ pub fn wake_message(reasons: &[WakeReason]) -> String {
             n => lines.push(format!("- {} ({n} times)", reason.instruction())),
         }
     }
+    lines
+}
+
+/// The one message a company's pending wakes become.
+pub fn wake_message(reasons: &[WakeReason]) -> String {
+    wake_message_with_reviews(reasons, &[])
+}
+
+/// What Scout is asked to do for the weekly review of a Friday, in one short line.
+fn weekly_review_instruction(review_date: &str) -> String {
+    format!(
+        "The weekly review for Friday {review_date} is ready. Read it with `colony numbers review show {review_date}`, write the wins, misses and decisions the owner must make with `colony numbers review write {review_date}`, then post one short message to the owner linking colony://numbers/review/{review_date}."
+    )
+}
+
+/// The wake message, with a line for each weekly review that is ready.
+pub fn wake_message_with_reviews(reasons: &[WakeReason], review_dates: &[String]) -> String {
+    let mut lines = wake_lines(reasons);
+    for review_date in review_dates {
+        lines.push(format!("- {}", weekly_review_instruction(review_date)));
+    }
     format!(
         "Wake from the relay (co-founder mode):\n{}",
         lines.join("\n")
@@ -446,6 +495,7 @@ async fn post_wake(
     community_id: CommunityId,
     target: &Target,
     reasons: &[WakeReason],
+    review_dates: &[String],
     now: DateTime<Utc>,
 ) -> Result<Vec<u8>, String> {
     let host = state
@@ -457,6 +507,9 @@ async fn post_wake(
     let tenant = TenantContext::resolved(community_id, host);
     let mut wake_tag = vec!["buzz:cofounder-wake".to_string()];
     wake_tag.extend(reasons.iter().map(|reason| reason.id().to_string()));
+    if !review_dates.is_empty() {
+        wake_tag.push("weekly_review".to_string());
+    }
     // Same provenance as a scheduled duty: the relay speaks for the owner's
     // standing choice to run co-founder mode, and the message names the agent.
     let tags = vec![
@@ -475,7 +528,7 @@ async fn post_wake(
         &tenant,
         target.dm_channel,
         None,
-        wake_message(reasons),
+        wake_message_with_reviews(reasons, review_dates),
         tags,
         now,
     )
@@ -534,6 +587,34 @@ pub(crate) async fn sweep_one(
             "",
         )
         .await;
+    }
+    // The Friday review: the relay writes the week's numbers once, then wakes
+    // Scout for the words. The wake is queued on every sweep while the review is
+    // due (its key makes that idempotent), so a wake lost to a database error is
+    // retried by the next sweep.
+    if let Some(window) = buzz_core::company_numbers::review_due(now.timestamp()) {
+        match crate::handlers::company_numbers::ensure_weekly_review(
+            state,
+            community_id,
+            now.timestamp(),
+        )
+        .await
+        {
+            Ok(_) => {
+                enqueue(
+                    state,
+                    community_id,
+                    WakeReason::DailyStart,
+                    &format!("weekly:{}", window.review_date),
+                    &format!("{WEEKLY_REVIEW_DETAIL_PREFIX}{}", window.review_date),
+                )
+                .await;
+            }
+            Err(error) => warn!(
+                community = %community_id.as_uuid(),
+                "weekly review could not be written: {error}"
+            ),
+        }
     }
     for due in work_items_due_soon(state, community_id, now).await? {
         enqueue(
@@ -676,6 +757,32 @@ mod tests {
         let due = due_soon(&heads, now);
         let ids = due.iter().map(|d| d.work_item_id).collect::<Vec<_>>();
         assert_eq!(ids, vec![Uuid::from_u128(1), Uuid::from_u128(2)]);
+    }
+
+    #[test]
+    fn the_weekly_review_wake_names_the_friday_the_commands_and_the_link() {
+        let message =
+            wake_message_with_reviews(&[WakeReason::DailyStart], &["2026-10-30".to_owned()]);
+        assert_eq!(message.lines().count(), 3, "{message}");
+        assert!(message.contains("Friday 2026-10-30"), "{message}");
+        assert!(
+            message.contains("colony numbers review show 2026-10-30"),
+            "{message}"
+        );
+        assert!(
+            message.contains("colony numbers review write 2026-10-30"),
+            "{message}"
+        );
+        assert!(
+            message.contains("colony://numbers/review/2026-10-30"),
+            "{message}"
+        );
+        assert!(!message.contains('\u{2014}'), "no em dash in copy");
+        // Without a review the message is the plain wake message.
+        assert_eq!(
+            wake_message_with_reviews(&[WakeReason::DailyStart], &[]),
+            wake_message(&[WakeReason::DailyStart])
+        );
     }
 
     #[test]
@@ -1055,7 +1162,17 @@ mod postgres_tests {
             .await
             .expect("attempt");
         }
-        assert_eq!(pending_count(&fixture).await, 0, "the wake ended");
+        let left = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(
+                community(&fixture),
+                Utc::now() + chrono::Duration::days(30),
+                100,
+            )
+            .await
+            .expect("pending wakes");
+        assert!(left.is_empty(), "the wake ended, still pending: {left:?}");
     }
 
     #[tokio::test]
@@ -1074,11 +1191,11 @@ mod postgres_tests {
     #[tokio::test]
     #[ignore = "requires Postgres"]
     async fn the_sweep_queues_one_daily_start_per_day() {
-        let morning = DateTime::parse_from_rfc3339("2026-11-02T07:00:00Z")
+        let morning = DateTime::parse_from_rfc3339("2026-11-04T07:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
         let (fixture, _owner, _scout, _dm) = company_with_scout().await;
-        let early = DateTime::parse_from_rfc3339("2026-11-02T04:00:00Z")
+        let early = DateTime::parse_from_rfc3339("2026-11-04T04:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
         sweep_one(&fixture.state, fixture.tenant.community(), early)

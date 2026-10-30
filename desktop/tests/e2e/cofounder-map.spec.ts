@@ -11,6 +11,7 @@ import type {
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const AYA_PUBKEY = TEST_IDENTITIES.alice.pubkey;
+const SCOUT_PUBKEY = TEST_IDENTITIES.bob.pubkey;
 const WORKER_ID = "11111111-1111-4111-8111-111111111111";
 
 const EMPTY_APPROVAL_SWITCHES = {
@@ -62,6 +63,7 @@ function fixture({
   role = "owner",
   enabled = true,
   includeAya = true,
+  includeScout = false,
   functionHeads = [
     functionHead("sales", "filled", AYA_PUBKEY),
     functionHead("operations", "covered_by_scout"),
@@ -71,6 +73,7 @@ function fixture({
   role?: "owner" | "admin" | "member";
   enabled?: boolean;
   includeAya?: boolean;
+  includeScout?: boolean;
   functionHeads?: MockCompanyFunctionHead[];
   workerRuns?: MockWorkerRun[];
 } = {}) {
@@ -83,6 +86,9 @@ function fixture({
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role },
       ...(includeAya ? [{ pubkey: AYA_PUBKEY, role: "member" as const }] : []),
+      ...(includeScout
+        ? [{ pubkey: SCOUT_PUBKEY, role: "member" as const }]
+        : []),
     ],
     cofounderSettings: {
       enabled,
@@ -91,30 +97,60 @@ function fixture({
     },
     companyFunctionHeads: functionHeads,
     companyWorkerRuns: workerRuns,
-    searchProfiles: includeAya
-      ? [{ pubkey: AYA_PUBKEY, displayName: "Aya", isAgent: true }]
-      : [],
-    relayAgents: includeAya
-      ? [
-          {
-            pubkey: AYA_PUBKEY,
-            ownerPubkey: OWNER_PUBKEY,
-            name: "Aya",
-            agentType: "agent",
-            status: "online" as const,
-          },
-        ]
-      : [],
-    managedAgents: includeAya
-      ? [
-          {
-            pubkey: AYA_PUBKEY,
-            name: "Aya",
-            status: "running" as const,
-            channelNames: ["general"],
-          },
-        ]
-      : [],
+    searchProfiles: [
+      ...(includeAya
+        ? [{ pubkey: AYA_PUBKEY, displayName: "Aya", isAgent: true }]
+        : []),
+      ...(includeScout
+        ? [{ pubkey: SCOUT_PUBKEY, displayName: "Scout", isAgent: true }]
+        : []),
+    ],
+    relayAgents: [
+      ...(includeAya
+        ? [
+            {
+              pubkey: AYA_PUBKEY,
+              ownerPubkey: OWNER_PUBKEY,
+              name: "Aya",
+              agentType: "agent",
+              status: "online" as const,
+            },
+          ]
+        : []),
+      ...(includeScout
+        ? [
+            {
+              pubkey: SCOUT_PUBKEY,
+              ownerPubkey: OWNER_PUBKEY,
+              name: "Scout",
+              agentType: "agent",
+              status: "online" as const,
+            },
+          ]
+        : []),
+    ],
+    managedAgents: [
+      ...(includeAya
+        ? [
+            {
+              pubkey: AYA_PUBKEY,
+              name: "Aya",
+              status: "running" as const,
+              channelNames: ["general"],
+            },
+          ]
+        : []),
+      ...(includeScout
+        ? [
+            {
+              pubkey: SCOUT_PUBKEY,
+              name: "Scout",
+              status: "running" as const,
+              channelNames: ["general"],
+            },
+          ]
+        : []),
+    ],
   };
 }
 
@@ -214,6 +250,82 @@ test.describe("co-founder mode desktop", () => {
     await expect(
       page.getByTestId(`cofounder-worker-output-${WORKER_ID}`),
     ).toContainText("Three guesthouses match the brief.");
+  });
+
+  test("an empty Sales slot shows Scout's worker run with output and Free cost", async ({
+    page,
+  }) => {
+    await installMockBridge(
+      page,
+      fixture({
+        includeAya: false,
+        includeScout: true,
+        functionHeads: [],
+        workerRuns: [
+          workerRun({
+            parentPubkey: SCOUT_PUBKEY,
+            label: "Research: 3 guesthouse marketing ideas",
+            model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+            costUsd: undefined,
+            outputText: "Idea 1. Idea 2. Idea 3.",
+          }),
+        ],
+      }),
+    );
+    await page.goto("/#/company/map");
+
+    await page.getByTestId("cofounder-map-sales").click();
+    await expect(page.getByTestId("cofounder-worker-list")).toContainText(
+      "Workers under Scout",
+    );
+    const runs = page.getByTestId("cofounder-worker-runs");
+    await expect(runs).toContainText("Research: 3 guesthouse marketing ideas");
+    await expect(
+      page.getByTestId(`cofounder-worker-status-${WORKER_ID}`),
+    ).toHaveText("Done");
+    await expect(runs).toContainText("Free");
+    await expect(runs).not.toContainText("Cost unavailable");
+    await page.getByRole("button", { name: "Open output" }).click();
+    await expect(
+      page.getByTestId(`cofounder-worker-output-${WORKER_ID}`),
+    ).toContainText("Idea 1. Idea 2. Idea 3.");
+  });
+
+  test("Company Work lists worker runs with status, output and cost", async ({
+    page,
+  }) => {
+    await installMockBridge(
+      page,
+      fixture({
+        includeAya: false,
+        includeScout: true,
+        functionHeads: [],
+        workerRuns: [
+          workerRun({
+            parentPubkey: SCOUT_PUBKEY,
+            label: "Research: 3 guesthouse marketing ideas",
+            model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+            costUsd: 0,
+            outputText: "Idea 1. Idea 2. Idea 3.",
+          }),
+        ],
+      }),
+    );
+    await page.goto("/#/work");
+
+    const list = page.getByTestId("cofounder-worker-list");
+    await expect(list).toContainText("Worker runs");
+    await expect(page.getByTestId("cofounder-worker-runs")).toContainText(
+      "Research: 3 guesthouse marketing ideas",
+    );
+    await expect(
+      page.getByTestId(`cofounder-worker-status-${WORKER_ID}`),
+    ).toHaveText("Done");
+    await expect(list).toContainText("Free");
+    await page.getByRole("button", { name: "Open output" }).click();
+    await expect(
+      page.getByTestId(`cofounder-worker-output-${WORKER_ID}`),
+    ).toContainText("Idea 1. Idea 2. Idea 3.");
   });
 
   test("Finance shows the Bookkeeper suggestion and hire route", async ({
