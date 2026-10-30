@@ -271,10 +271,18 @@ impl CustomerReads {
         self.facts.party_ids()
     }
 
-    /// What the records say about one business, with its WhatsApp chat, or `None`
-    /// when the party has neither a prospect nor a client record.
+    /// What the records say about one business, with its WhatsApp chat when it
+    /// has one, or `None` when the party has neither a prospect nor a client record.
     pub fn source_for(&self, party_id: &str) -> Option<CustomerSource> {
         let mut source = self.facts.source_for(party_id)?;
+        source.whatsapp = self.whatsapp_for(&source);
+        Some(source)
+    }
+
+    /// The WhatsApp chat of a business: the contact linked to its prospect, else
+    /// the contact whose number is the prospect's phone. A linked contact wins.
+    /// `None` when the business has no prospect or no chat.
+    fn whatsapp_for(&self, source: &CustomerSource) -> Option<SourceWhatsapp> {
         let prospect = source.prospect.as_ref()?;
         let lead_id = prospect.head.prospect_id.hyphenated().to_string();
         let phone_wa_id = prospect
@@ -283,7 +291,6 @@ impl CustomerReads {
             .phone
             .as_deref()
             .and_then(normalize_wa_id);
-        // A contact linked to the lead wins over one that only has its number.
         let contact = self
             .contacts
             .iter()
@@ -304,11 +311,10 @@ impl CustomerReads {
             .filter(|message| message.wa_id == contact.wa_id)
             .map(|message| whatsapp_row(message, &batches, &self.template_titles))
             .collect::<Vec<_>>();
-        source.whatsapp = Some(SourceWhatsapp {
+        Some(SourceWhatsapp {
             wa_id: contact.wa_id.clone(),
             opted_out: contact.opted_out_at.is_some(),
             rows,
-        });
-        Some(source)
+        })
     }
 }
