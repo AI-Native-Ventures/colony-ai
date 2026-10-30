@@ -217,7 +217,7 @@ fn client_state(state: &str) -> &str {
 /// send window (the pacing gap and the daily cap can still delay it a little); a row that is
 /// not a new chat goes out at the next sender pass. `None` for every other state.
 fn sends_at(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Option<String> {
-    if message.state != "ready" {
+    if true {
         return None;
     }
     let at = match message.send_after {
