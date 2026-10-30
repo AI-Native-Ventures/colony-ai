@@ -53,6 +53,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30676 | Access, capability gap and slot hire head | Relay signed, replaceable | Co-founder mode |
 | 30674 | Business brief head | Relay signed, replaceable | Co-founder onboarding |
 | 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
+| 30678 | Scorecard, function goal and weekly review head | Relay signed, replaceable | Co-founder numbers |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -75,6 +76,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47066 | Access, capability gap and slot hire action | Brokered | Co-founder mode |
 | 47064 | Business brief action | Brokered | Co-founder onboarding |
 | 47065 | Co-founder onboarding action | Brokered | Co-founder onboarding |
+| 47068 | Scorecard refresh, goal and weekly review action | Brokered | Co-founder numbers |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1199,6 +1201,10 @@ approval given (`approval_given`) and a work item due within a day
   and ends after eight attempts. A wake older than a day is closed as stale.
 - **Safe text.** A wake carries a reason and ids only, never a contact's name or
   message, so a stranger cannot put instructions in front of Scout through it.
+- **The Friday review** uses the `daily_start` reason with the key
+  `weekly:<Friday date>` and the detail `weekly-review:<Friday date>`, so the
+  reason list of the table did not change. The delivery worker words it on its
+  own line (see Numbers) and tags the message `weekly_review`.
 
 Scout is the `leadPubkey` of the onboarding record, or the one active Chief of
 Staff on the team while onboarding has not started. The message tags `p` for the
@@ -1352,6 +1358,92 @@ CLI: `colony access list`, `grant`, `revoke <id>`, and
 `colony access gap propose|list|show|approve|decline|done|complete`;
 `colony asks propose-hire ... --function <function>` and
 `colony functions hire-slot <hire-id> <function>` record the slot.
+
+## Numbers: scorecard, goals and the weekly review
+
+One relay-signed head kind (30678) and one member action kind (47068) carry
+three community-wide record families (no `h` or `p` tag), told apart by d-tag.
+They are new records, so a desktop that predates them keeps loading every older
+list. No key was added to an existing record.
+
+| d-tag | Record | Head content |
+| --- | --- | --- |
+| `company:scorecard` | The live scorecard of the five functions and the approved goals' progress | `ScorecardHead` |
+| `company:fngoal:<uuid>` | One goal of one function | `GoalHead` |
+| `company:review:<YYYY-MM-DD>` | The weekly review of the week that ended that Friday | `ReviewHead` |
+
+**The relay counts every number.** No caller writes a figure. A scorecard and a
+review get theirs from `buzz_relay::numbers_inputs`, which reads the company's
+own records, and `buzz_core::company_numbers::compute_scorecard` turns them into
+numbers. An agent writes words only: a goal proposal, the wins and misses of a
+review and the decisions the owner must make.
+
+A scorecard looks at the seven days before `asOf` and compares them with the seven
+days before that, so a change is always between two equally long periods. Windows
+are half open, `[start, end)`, in Unix seconds.
+
+| Function | Number (`metric`) | What is counted |
+| --- | --- | --- |
+| Sales | `leads_found` | prospects whose first accepted `create` action (kind 47034) is in the window |
+| Sales | `contacted` | WhatsApp new chats whose first message the provider accepted in the window |
+| Sales | `replied` | contacts whose first inbound message after their new chat arrived in the window |
+| Sales | `quotes` | proposals whose first version (revision 1, kind 47003) was written in the window |
+| Sales | `won` | proposals accepted (kind 47004) in the window, once per proposal |
+| Operations | `workers_started` | worker runs started in the window |
+| Operations | `workers_done` / `workers_failed` | runs that ended well, or failed or ran past their deadline, in the window |
+| Operations | `plans_approved` | whole-plan approvals in the window |
+| Customer Success | `active_clients` | clients that are active now (no previous value) |
+| Finance | `cash_in` | payment evidence (kind 47027) received in the window; refunds are not netted off |
+| Finance | `invoiced` | issued invoices (not drafts, not void) issued in the window |
+| Finance | `owed` | what issued invoices still owe now (no previous value) |
+| Finance | `worker_cost` | cost of worker runs started in the window, in US dollar cents |
+| Brand | `cost_per_win` | worker cost of the window divided by the proposals won in it, rounded half up; `null` when nothing was won |
+
+A number that cannot be stated is `null`, never zero. Numbers the spec names that
+Colony has no record of yet (`calls`, `jobs_in_progress`, `days_to_deliver`,
+`revisions`, `renewals`, `referrals`, `recurring`) are listed in the function's
+`notTracked` and shown as "not tracked yet". Money is stated in one currency, the
+one most of the company's payments and invoices use (`ZAR` when there are none);
+facts in another currency are left out and counted in `otherCurrencyFacts`.
+
+A kind 47068 action carries `schemaVersion`, `op` and only the fields that op
+takes (anything else is refused), plus `expectedHeadEventId` where the op changes
+an existing head. The d-tag is the record the op changes.
+
+| `op` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `goal_propose` | any member or agent, co-founder mode on | `goalId`, `function`, `title`, `metric`, `target`, `period`, `reason` | new goal, `proposed` |
+| `goal_approve` / `goal_reject` | owner or admin | `goalId`, `note`, expected head | goal `approved` or `rejected`; recorded |
+| `goal_retire` | the proposer, owner or admin | `goalId`, `note`, expected head | goal `retired` |
+| `scorecard_refresh` | any member or agent, co-founder mode on | nothing | the relay recounts and replaces `company:scorecard`; a scorecard younger than a minute is not recounted |
+| `review_annotate` | owner, admin or an agent | `reviewDate`, `wins`, `misses`, `decisions`, expected head | words replace the review's words; numbers never change; final once the owner answered a decision |
+| `review_decide` | owner or admin | `reviewDate`, `decisionId`, `choice` (`approved`, `declined`, `deferred`), `note`, expected head | the decision is answered once |
+
+Rules enforced by the relay (`buzz_core::company_numbers`):
+
+- A managed agent never approves or rejects a goal or answers a decision, whatever
+  role row it has. A person who is not an owner or admin does not either.
+- A goal measures a number of its own function (Sales: `won`, Finance: `cash_in`).
+  Its `period` is `week` (the latest seven days) or `month` (the calendar month so
+  far, in Johannesburg). A company keeps at most 50 open goals.
+- Only approved goals are tracked in `company:scorecard`'s `goals` with `current`
+  and `percent` (at most 1000).
+- Switching co-founder mode off stops new goals, approvals, refreshes and review
+  words; nothing already written changes.
+
+**The Friday review.** The relay wake sweep writes `company:review:<Friday>` once,
+after Friday 14:00 UTC (16:00 in Johannesburg) and until Monday 14:00 UTC, with the
+numbers of the seven days up to that Friday cut and the seven days before it. It
+then queues the wake `weekly:<Friday>`; Scout reads the review with
+`colony numbers review show <Friday>`, writes the wins, misses and up to five
+decisions with `colony numbers review write <Friday> --file -`, and posts one short
+message linking `colony://numbers/review/<Friday>`. Each open decision shows in
+Needs you (decide); the owner answers with `review_decide`. The review head is
+`createdAt` at the time the relay wrote it and is never rewritten by the relay.
+
+CLI: `colony numbers scorecard [--function <function>] [--no-refresh]`,
+`colony numbers goals list|propose|approve|reject|retire` and
+`colony numbers review list|show|write|decide`.
 
 ## Proof boundaries
 
