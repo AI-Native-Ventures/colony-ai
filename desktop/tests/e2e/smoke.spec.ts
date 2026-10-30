@@ -5,11 +5,19 @@ import { installMockBridge, openCreateChannelDialog } from "../helpers/bridge";
 async function getTimelineMetrics(page: import("@playwright/test").Page) {
   return page.getByTestId("message-timeline").evaluate((element) => {
     const timeline = element as HTMLDivElement;
+    const composerClearance =
+      Number.parseFloat(
+        getComputedStyle(timeline).getPropertyValue(
+          "--composer-overlay-height",
+        ),
+      ) || 0;
 
     return {
       clientHeight: timeline.clientHeight,
       scrollHeight: timeline.scrollHeight,
       scrollTop: timeline.scrollTop,
+      messageBackedScrollRange:
+        timeline.scrollHeight - timeline.clientHeight - composerClearance,
       distanceFromBottom:
         timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop,
     };
@@ -25,7 +33,7 @@ async function ensureTimelineScrollable(
 
   for (let index = 0; index < 24; index += 1) {
     const metrics = await getTimelineMetrics(page);
-    if (metrics.scrollHeight > metrics.clientHeight + 160) {
+    if (metrics.messageBackedScrollRange > 160) {
       return;
     }
 
@@ -37,7 +45,7 @@ async function ensureTimelineScrollable(
   }
 
   const metrics = await getTimelineMetrics(page);
-  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 160);
+  expect(metrics.messageBackedScrollRange).toBeGreaterThan(160);
 }
 
 async function focusSidebarSearchWithShortcut(

@@ -231,6 +231,7 @@ colony messages send --channel <UUID> \
 - `workers get <id>` returns status, output and tokens. `workers list --mine` lists yours. `workers cancel <id>` stops a running one.
 - A worker that crashes, times out or runs past its deadline shows as `failed` with a reason. Output over 16384 bytes is cut and says where the full text is.
 - The owner sees every worker's label, status and cost. Workers are not team members and never appear in the team list.
+- When the owner asks you to start a worker or to hand research or drafts to a helper, run `workers spawn`. Never do the work yourself and call it a worker's, and never save it to a file instead. The run keeps the full output, status and cost, so do not paste the output into chat or cut it to fit the chat word limit: post one short line that the worker started or is done and where the owner can open it (the function page, or Company Work).
 
 ## Forum Posts
 

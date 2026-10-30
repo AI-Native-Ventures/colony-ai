@@ -356,7 +356,13 @@ export async function publishWhatsAppCommand(
     content: JSON.stringify(payload),
     tags: [],
   });
-  await (dependencies.publisher ?? relayClient.publishEvent)(
+  // Call through the client: passing relayClient.publishEvent bare drops `this`,
+  // so every approve, reject and send failed on "reading 'pendingEvents'".
+  const publish =
+    dependencies.publisher ??
+    ((relayEvent, timeoutMessage, sendErrorMessage) =>
+      relayClient.publishEvent(relayEvent, timeoutMessage, sendErrorMessage));
+  await publish(
     event,
     "Timed out sending the WhatsApp request.",
     "The WhatsApp relay refused the request.",

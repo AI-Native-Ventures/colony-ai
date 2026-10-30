@@ -17,12 +17,16 @@ const STATUS_LABELS = {
 export function WorkerList({
   parentPubkey,
   parentName,
+  all = false,
 }: {
   parentPubkey: string | null;
   parentName: string;
+  /** List every employee's runs and render nothing while there are none. */
+  all?: boolean;
 }) {
-  const runsQuery = useWorkerRunsQuery(parentPubkey);
+  const runsQuery = useWorkerRunsQuery(parentPubkey, { all });
   const runs = runsQuery.data ?? [];
+  const heading = all ? "Worker runs" : `Workers under ${parentName}`;
   const [nowSeconds, setNowSeconds] = React.useState(() =>
     Math.floor(Date.now() / 1000),
   );
@@ -40,7 +44,11 @@ export function WorkerList({
     return () => window.clearInterval(interval);
   }, [hasRunningRun]);
 
-  if (!parentPubkey) {
+  if (all && !runsQuery.isError && (runsQuery.isLoading || runs.length === 0)) {
+    return null;
+  }
+
+  if (!all && !parentPubkey) {
     return (
       <section
         aria-labelledby="function-workers-title"
@@ -48,7 +56,7 @@ export function WorkerList({
         data-testid="cofounder-worker-list"
       >
         <h2 className="text-base font-extrabold" id="function-workers-title">
-          Workers under {parentName}
+          {heading}
         </h2>
         <p className="text-sm text-muted-foreground">
           Workers appear here when this lead starts a job.
@@ -66,7 +74,7 @@ export function WorkerList({
         data-testid="cofounder-worker-list"
       >
         <h2 className="text-base font-extrabold" id="function-workers-title">
-          Workers under {parentName}
+          {heading}
         </h2>
         <p className="text-sm text-muted-foreground">Loading workers</p>
       </section>
@@ -81,7 +89,7 @@ export function WorkerList({
         data-testid="cofounder-worker-list"
       >
         <h2 className="text-base font-extrabold" id="function-workers-title">
-          Workers under {parentName}
+          {heading}
         </h2>
         <div role="alert">
           <p className="text-sm text-destructive">Workers could not load.</p>
@@ -106,7 +114,7 @@ export function WorkerList({
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border p-5 sm:p-6">
         <div>
           <h2 className="text-base font-extrabold" id="function-workers-title">
-            Workers under {parentName}
+            {heading}
           </h2>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">
             Nameless helpers for one job each. Not on your team, never send or
@@ -169,7 +177,7 @@ export function WorkerList({
                     {STATUS_LABELS[status]}
                   </span>
                   <span className="min-w-20 text-right text-sm font-semibold text-muted-foreground">
-                    {formatWorkerCost(run.costUsd)}
+                    {formatWorkerCost(run.costUsd, run.model)}
                   </span>
                   <button
                     aria-controls={`cofounder-worker-output-${run.workerId}`}
