@@ -263,6 +263,7 @@
     24 *
     var(--colony-px)
   );
+  padding-bottom: calc(24 * var(--colony-px));
   clip-path: inset(
     calc(
         var(--buzz-channel-content-top-padding, 5.75rem) +
@@ -271,10 +272,6 @@
       )
       0 0
   );
-}
-
-.c3c-timeline-bottom-spacer {
-  height: calc(var(--composer-overlay-height, 6rem) + 24 * var(--colony-px));
 }
 
 .c3c-timeline-column {
