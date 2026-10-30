@@ -545,8 +545,19 @@ mod tests {
         assert!(parse(&["numbers", "scorecard", "--no-refresh"]).is_ok());
         assert!(parse(&["numbers", "goals", "list", "--status", "approved"]).is_ok());
         assert!(parse(&[
-            "numbers", "goals", "propose", "--function", "sales", "--metric", "won", "--target",
-            "5", "--period", "month", "--title", "5 new clients a month",
+            "numbers",
+            "goals",
+            "propose",
+            "--function",
+            "sales",
+            "--metric",
+            "won",
+            "--target",
+            "5",
+            "--period",
+            "month",
+            "--title",
+            "5 new clients a month",
         ])
         .is_ok());
         assert!(
@@ -559,7 +570,13 @@ mod tests {
         assert!(parse(&["numbers", "review", "write", "2026-10-30", "--file", "-"]).is_ok());
         assert!(parse(&["numbers", "review", "write", "2026-10-30"]).is_err());
         assert!(parse(&[
-            "numbers", "review", "decide", "2026-10-30", "hire-cs", "--choice", "approved",
+            "numbers",
+            "review",
+            "decide",
+            "2026-10-30",
+            "hire-cs",
+            "--choice",
+            "approved",
         ])
         .is_ok());
     }
@@ -643,11 +660,7 @@ mod tests {
     #[test]
     fn a_foreign_head_is_refused() {
         let relay = Keys::generate();
-        let head = signed(
-            KIND_NUMBERS_HEAD,
-            SCORECARD_D_TAG,
-            "{}".to_owned(),
-        );
+        let head = signed(KIND_NUMBERS_HEAD, SCORECARD_D_TAG, "{}".to_owned());
         // Signed by somebody other than the relay.
         assert!(verify_numbers_head(head, &relay.public_key().to_hex()).is_err());
     }
@@ -680,8 +693,16 @@ mod tests {
             (event, head)
         };
         let goals = vec![
-            wrap(goal(CompanyFunction::Sales, Metric::Won, GoalStatus::Approved)),
-            wrap(goal(CompanyFunction::Finance, Metric::CashIn, GoalStatus::Proposed)),
+            wrap(goal(
+                CompanyFunction::Sales,
+                Metric::Won,
+                GoalStatus::Approved,
+            )),
+            wrap(goal(
+                CompanyFunction::Finance,
+                Metric::CashIn,
+                GoalStatus::Proposed,
+            )),
         ];
         assert_eq!(goal_rows(&goals, None, None).len(), 2);
         assert_eq!(goal_rows(&goals, Some(GoalStatus::Approved), None).len(), 1);

@@ -28,9 +28,7 @@ use buzz_core::business_records::{
     ClientHead, InvoiceHead, InvoiceStatus, PaymentEvidence, ProposalAcceptance, ProposalVersion,
     ProspectAction, RecordAction,
 };
-use buzz_core::company_numbers::{
-    MoneyFact, NumbersInputs, WorkerFact, WorkerOutcome, WEEK_SECS,
-};
+use buzz_core::company_numbers::{MoneyFact, NumbersInputs, WorkerFact, WorkerOutcome, WEEK_SECS};
 use buzz_core::company_plans::{PlanApprovalScope, PlanDecision, PlanHead};
 use buzz_core::company_workers::{worker_effective_status, WorkerRunHead, WorkerStatus};
 use buzz_core::kind::{
@@ -278,7 +276,8 @@ pub async fn gather_inputs(
     now: i64,
 ) -> Result<NumbersInputs, String> {
     let since_secs = as_of - 2 * WEEK_SECS;
-    let since = DateTime::from_timestamp(since_secs, 0).ok_or("scorecard window is out of range")?;
+    let since =
+        DateTime::from_timestamp(since_secs, 0).ok_or("scorecard window is out of range")?;
     let until = DateTime::from_timestamp(as_of, 0).ok_or("scorecard end is out of range")?;
     let mut raw = RawRecords::default();
 
@@ -474,14 +473,23 @@ mod tests {
         assert_eq!(
             inputs.payments,
             vec![
-                MoneyFact { at: 100, amount_minor: 100_000 },
-                MoneyFact { at: 200, amount_minor: 50_000 },
+                MoneyFact {
+                    at: 100,
+                    amount_minor: 100_000
+                },
+                MoneyFact {
+                    at: 200,
+                    amount_minor: 50_000
+                },
             ]
         );
         // Drafts and voided invoices count for nothing.
         assert_eq!(
             inputs.invoices_issued,
-            vec![MoneyFact { at: 5_000, amount_minor: 300_000 }]
+            vec![MoneyFact {
+                at: 5_000,
+                amount_minor: 300_000
+            }]
         );
         assert_eq!(inputs.owed_minor, 200_000);
         // One USD payment and one USD invoice were left out.
@@ -495,7 +503,13 @@ mod tests {
         assert_eq!(inputs.owed_minor, 0);
     }
 
-    fn run_head(status: &str, started: i64, deadline: i64, finished: Option<i64>, cost: Option<f64>) -> WorkerRunHead {
+    fn run_head(
+        status: &str,
+        started: i64,
+        deadline: i64,
+        finished: Option<i64>,
+        cost: Option<f64>,
+    ) -> WorkerRunHead {
         serde_json::from_value(serde_json::json!({
             "schemaVersion": 1,
             "run": {
@@ -582,5 +596,196 @@ mod tests {
             1_000,
         );
         assert_eq!(inputs.plan_approvals, vec![40]);
+    }
+}
+
+#[cfg(test)]
+mod postgres_tests {
+    // The `postgres_tests` path puts these in the PostgreSQL CI lane, which gives
+    // each test its own database.
+    use chrono::Duration;
+    use sqlx::PgPool;
+
+    use super::*;
+    use crate::handlers::company_initiative::test_support::fixture;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn message(
+        pool: &PgPool,
+        community: Uuid,
+        wa_id: &str,
+        direction: &str,
+        state: &str,
+        new_chat: bool,
+        sent_at: Option<DateTime<Utc>>,
+        created_at: DateTime<Utc>,
+    ) {
+        sqlx::query(
+            "INSERT INTO whatsapp_messages \
+             (community_id, id, wa_id, direction, state, new_chat, sent_at, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(community)
+        .bind(Uuid::new_v4())
+        .bind(wa_id)
+        .bind(direction)
+        .bind(state)
+        .bind(new_chat)
+        .bind(sent_at)
+        .bind(created_at)
+        .execute(pool)
+        .await
+        .expect("insert message");
+    }
+
+    /// The scorecard's `contacted` and `replied` come from these two queries,
+    /// so a chat counts only when it is a new chat the provider accepted, and a
+    /// reply only when it is the first inbound message after our own new chat.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn chats_started_and_first_replies_are_counted_from_the_outreach_tables() {
+        let fixture = fixture().await;
+        let community = *fixture.tenant.community().as_uuid();
+        let pool = PgPool::connect(
+            &std::env::var("BUZZ_TEST_DATABASE_URL").expect("BUZZ_TEST_DATABASE_URL"),
+        )
+        .await
+        .expect("connect");
+        let now = DateTime::from_timestamp(1_793_368_800, 0).unwrap();
+        let ago = |days: i64| now - Duration::days(days);
+        for wa_id in [
+            "27820000001",
+            "27820000002",
+            "27820000003",
+            "27820000004",
+            "27820000005",
+        ] {
+            sqlx::query("INSERT INTO whatsapp_contacts (community_id, wa_id) VALUES ($1, $2)")
+                .bind(community)
+                .bind(wa_id)
+                .execute(&pool)
+                .await
+                .expect("insert contact");
+        }
+        // A: new chat 2 days ago, replied twice. Only the first reply counts.
+        message(
+            &pool,
+            community,
+            "27820000001",
+            "out",
+            "sent",
+            true,
+            Some(ago(2)),
+            ago(2),
+        )
+        .await;
+        message(
+            &pool,
+            community,
+            "27820000001",
+            "in",
+            "received",
+            false,
+            None,
+            ago(1),
+        )
+        .await;
+        message(
+            &pool,
+            community,
+            "27820000001",
+            "in",
+            "received",
+            false,
+            None,
+            now - Duration::hours(12),
+        )
+        .await;
+        // B: new chat delivered 3 days ago, no reply.
+        message(
+            &pool,
+            community,
+            "27820000002",
+            "out",
+            "delivered",
+            true,
+            Some(ago(3)),
+            ago(3),
+        )
+        .await;
+        // C: wrote to us first and we answered. Not outreach, so neither counts.
+        message(
+            &pool,
+            community,
+            "27820000003",
+            "in",
+            "received",
+            false,
+            None,
+            ago(5),
+        )
+        .await;
+        message(
+            &pool,
+            community,
+            "27820000003",
+            "out",
+            "sent",
+            false,
+            Some(ago(4)),
+            ago(4),
+        )
+        .await;
+        // D: a new chat that failed never went out.
+        message(
+            &pool,
+            community,
+            "27820000004",
+            "out",
+            "failed",
+            true,
+            None,
+            ago(2),
+        )
+        .await;
+        // E: a new chat and its reply from before the window.
+        message(
+            &pool,
+            community,
+            "27820000005",
+            "out",
+            "sent",
+            true,
+            Some(ago(20)),
+            ago(20),
+        )
+        .await;
+        message(
+            &pool,
+            community,
+            "27820000005",
+            "in",
+            "received",
+            false,
+            None,
+            ago(19),
+        )
+        .await;
+
+        let since = ago(14);
+        let started = fixture
+            .state
+            .db
+            .whatsapp_numbers_chats_started(fixture.tenant.community(), since)
+            .await
+            .expect("chats started");
+        assert_eq!(started, vec![ago(3), ago(2)]);
+        let replies = fixture
+            .state
+            .db
+            .whatsapp_numbers_first_replies(fixture.tenant.community(), since)
+            .await
+            .expect("first replies");
+        assert_eq!(replies, vec![ago(1)]);
     }
 }

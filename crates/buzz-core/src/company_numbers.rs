@@ -280,7 +280,10 @@ pub struct NumbersInputs {
 }
 
 fn count_within(times: &[i64], start: i64, end: i64) -> i64 {
-    times.iter().filter(|at| **at >= start && **at < end).count() as i64
+    times
+        .iter()
+        .filter(|at| **at >= start && **at < end)
+        .count() as i64
 }
 
 fn sum_within(facts: &[MoneyFact], start: i64, end: i64) -> i64 {
@@ -302,12 +305,7 @@ fn worker_cost_within(inputs: &NumbersInputs, start: i64, end: i64) -> i64 {
 
 /// The value of one metric over `[start, end)`, or `None` when it cannot be
 /// stated (a cost per win with nothing won).
-pub fn metric_value(
-    inputs: &NumbersInputs,
-    metric: Metric,
-    start: i64,
-    end: i64,
-) -> Option<i64> {
+pub fn metric_value(inputs: &NumbersInputs, metric: Metric, start: i64, end: i64) -> Option<i64> {
     let ended_within = |run: &&WorkerFact, outcome: WorkerOutcome| {
         run.outcome == outcome && run.ended_at.is_some_and(|at| at >= start && at < end)
     };
@@ -703,10 +701,17 @@ pub fn review_due(now: i64) -> Option<ReviewWindow> {
     let days_since_friday = i64::from((at.weekday().num_days_from_monday() + 3) % 7);
     let friday = at.date_naive() - Duration::days(days_since_friday);
     let mut cut = Utc
-        .with_ymd_and_hms(friday.year(), friday.month(), friday.day(), REVIEW_HOUR_UTC, 0, 0)
+        .with_ymd_and_hms(
+            friday.year(),
+            friday.month(),
+            friday.day(),
+            REVIEW_HOUR_UTC,
+            0,
+            0,
+        )
         .single()?;
     if cut.timestamp() > now {
-        cut -= Duration::days(7);
+        cut = cut - Duration::days(7);
     }
     let as_of = cut.timestamp();
     if now - as_of > REVIEW_CATCH_UP_SECS {
@@ -719,11 +724,7 @@ pub fn review_due(now: i64) -> Option<ReviewWindow> {
 }
 
 /// A fresh review: the relay's numbers and no words yet.
-pub fn build_review(
-    window: &ReviewWindow,
-    inputs: &NumbersInputs,
-    created_at: i64,
-) -> ReviewHead {
+pub fn build_review(window: &ReviewWindow, inputs: &NumbersInputs, created_at: i64) -> ReviewHead {
     ReviewHead {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
         review_date: window.review_date.clone(),
@@ -838,7 +839,9 @@ impl NumbersAction {
 /// d-tag of a goal.
 pub fn goal_d_tag(goal_id: &str) -> Result<String, CompanyRecordError> {
     if !is_canonical_uuid(goal_id) {
-        return Err(CompanyRecordError::Invalid("goalId must be a lowercase UUID"));
+        return Err(CompanyRecordError::Invalid(
+            "goalId must be a lowercase UUID",
+        ));
     }
     Ok(format!("{GOAL_D_TAG_PREFIX}{goal_id}"))
 }
@@ -888,7 +891,10 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 fn is_review_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map(|date| date.format("%Y-%m-%d").to_string() == value && date.weekday().num_days_from_monday() == 4)
+        .map(|date| {
+            date.format("%Y-%m-%d").to_string() == value
+                && date.weekday().num_days_from_monday() == 4
+        })
         .unwrap_or(false)
 }
 
@@ -925,7 +931,10 @@ fn present_fields(action: &NumbersAction) -> Vec<&'static str> {
     note(action.decision_id.is_some(), "decisionId");
     note(action.choice.is_some(), "choice");
     note(action.note.is_some(), "note");
-    note(action.expected_head_event_id.is_some(), "expectedHeadEventId");
+    note(
+        action.expected_head_event_id.is_some(),
+        "expectedHeadEventId",
+    );
     fields
 }
 
@@ -988,7 +997,9 @@ pub fn validate_numbers_action(action: &NumbersAction) -> Result<(), CompanyReco
     action.d_tag()?;
     if let Some(title) = action.title.as_deref() {
         if !text_within(title, MAX_NUMBERS_TITLE_CHARS) {
-            return Err(CompanyRecordError::Invalid("a title is 1 to 120 characters"));
+            return Err(CompanyRecordError::Invalid(
+                "a title is 1 to 120 characters",
+            ));
         }
     }
     for text in [action.reason.as_deref(), action.note.as_deref()]
@@ -1014,8 +1025,14 @@ pub fn validate_numbers_action(action: &NumbersAction) -> Result<(), CompanyReco
             ));
         }
     }
-    if action.wins.as_deref().is_some_and(|lines| !lines_valid(lines))
-        || action.misses.as_deref().is_some_and(|lines| !lines_valid(lines))
+    if action
+        .wins
+        .as_deref()
+        .is_some_and(|lines| !lines_valid(lines))
+        || action
+            .misses
+            .as_deref()
+            .is_some_and(|lines| !lines_valid(lines))
     {
         return Err(CompanyRecordError::Invalid(
             "a review carries at most 5 wins and 5 misses of 1 to 200 characters",
@@ -1084,7 +1101,11 @@ pub fn validate_goal_head(head: &GoalHead) -> Result<(), CompanyRecordError> {
             "goal head needs a title, a target, a metric of its function and valid ids",
         ));
     }
-    if head.decided_by_pubkey.as_deref().is_some_and(|key| !is_hex_id(key)) {
+    if head
+        .decided_by_pubkey
+        .as_deref()
+        .is_some_and(|key| !is_hex_id(key))
+    {
         return Err(CompanyRecordError::Invalid(
             "goal head decider must be a 64-character pubkey",
         ));
@@ -1178,7 +1199,10 @@ pub fn apply_goal_action(
                 schema_version: COMPANY_RECORD_SCHEMA_VERSION,
                 goal_id,
                 function: action.function.ok_or_else(|| bad("function is required"))?,
-                title: action.title.clone().ok_or_else(|| bad("title is required"))?,
+                title: action
+                    .title
+                    .clone()
+                    .ok_or_else(|| bad("title is required"))?,
                 metric: action.metric.ok_or_else(|| bad("metric is required"))?,
                 target: action.target.ok_or_else(|| bad("target is required"))?,
                 period: action.period.ok_or_else(|| bad("period is required"))?,
@@ -1337,7 +1361,9 @@ mod tests {
 
     /// Friday 30 October 2026, 14:00 UTC.
     fn friday() -> i64 {
-        Utc.with_ymd_and_hms(2026, 10, 30, 14, 0, 0).unwrap().timestamp()
+        Utc.with_ymd_and_hms(2026, 10, 30, 14, 0, 0)
+            .unwrap()
+            .timestamp()
     }
 
     const HOUR: i64 = 3_600;
@@ -1404,13 +1430,28 @@ mod tests {
             ],
             plan_approvals: vec![now - DAY, now - 9 * DAY],
             payments: vec![
-                MoneyFact { at: now - DAY, amount_minor: 150_000 },
-                MoneyFact { at: now - 3 * DAY, amount_minor: 25_050 },
-                MoneyFact { at: now - 10 * DAY, amount_minor: 80_000 },
+                MoneyFact {
+                    at: now - DAY,
+                    amount_minor: 150_000,
+                },
+                MoneyFact {
+                    at: now - 3 * DAY,
+                    amount_minor: 25_050,
+                },
+                MoneyFact {
+                    at: now - 10 * DAY,
+                    amount_minor: 80_000,
+                },
             ],
             invoices_issued: vec![
-                MoneyFact { at: now - 2 * DAY, amount_minor: 300_000 },
-                MoneyFact { at: now - 12 * DAY, amount_minor: 120_000 },
+                MoneyFact {
+                    at: now - 2 * DAY,
+                    amount_minor: 300_000,
+                },
+                MoneyFact {
+                    at: now - 12 * DAY,
+                    amount_minor: 120_000,
+                },
             ],
             owed_minor: 144_950,
             active_clients: 4,
@@ -1464,8 +1505,20 @@ mod tests {
         assert_reading(&cards, Metric::PlansApproved, Some(1), Some(1), Some(0));
         // Customer Success and Finance
         assert_reading(&cards, Metric::ActiveClients, Some(4), None, None);
-        assert_reading(&cards, Metric::CashIn, Some(175_050), Some(80_000), Some(95_050));
-        assert_reading(&cards, Metric::Invoiced, Some(300_000), Some(120_000), Some(180_000));
+        assert_reading(
+            &cards,
+            Metric::CashIn,
+            Some(175_050),
+            Some(80_000),
+            Some(95_050),
+        );
+        assert_reading(
+            &cards,
+            Metric::Invoiced,
+            Some(300_000),
+            Some(120_000),
+            Some(180_000),
+        );
         assert_reading(&cards, Metric::Owed, Some(144_950), None, None);
         assert_reading(&cards, Metric::WorkerCost, Some(45), Some(100), Some(-55));
         // Brand: 45 cents of worker cost over 2 wins is 22.5, rounded half up to 23.
@@ -1480,7 +1533,10 @@ mod tests {
             ..NumbersInputs::default()
         };
         // now - 7d is inside the latest window, `now` itself is not.
-        assert_eq!(metric_value(&inputs, Metric::LeadsFound, now - WEEK_SECS, now), Some(2));
+        assert_eq!(
+            metric_value(&inputs, Metric::LeadsFound, now - WEEK_SECS, now),
+            Some(2)
+        );
     }
 
     #[test]
@@ -1560,14 +1616,21 @@ mod tests {
     #[test]
     fn a_month_starts_at_midnight_in_johannesburg() {
         // 1 November 00:00 in Johannesburg is 31 October 22:00 UTC.
-        let late_october = Utc.with_ymd_and_hms(2026, 10, 31, 23, 0, 0).unwrap().timestamp();
+        let late_october = Utc
+            .with_ymd_and_hms(2026, 10, 31, 23, 0, 0)
+            .unwrap()
+            .timestamp();
         assert_eq!(
             month_start_sast(late_october),
-            Utc.with_ymd_and_hms(2026, 10, 31, 22, 0, 0).unwrap().timestamp()
+            Utc.with_ymd_and_hms(2026, 10, 31, 22, 0, 0)
+                .unwrap()
+                .timestamp()
         );
         assert_eq!(
             month_start_sast(friday()),
-            Utc.with_ymd_and_hms(2026, 9, 30, 22, 0, 0).unwrap().timestamp()
+            Utc.with_ymd_and_hms(2026, 9, 30, 22, 0, 0)
+                .unwrap()
+                .timestamp()
         );
     }
 
@@ -1598,7 +1661,9 @@ mod tests {
     }
 
     fn ts(year: i32, month: u32, day: u32, hour: u32) -> i64 {
-        Utc.with_ymd_and_hms(year, month, day, hour, 0, 0).unwrap().timestamp()
+        Utc.with_ymd_and_hms(year, month, day, hour, 0, 0)
+            .unwrap()
+            .timestamp()
     }
 
     #[test]
@@ -1609,12 +1674,21 @@ mod tests {
         assert_eq!(due.review_date, "2026-10-30");
         assert_eq!(due.as_of, ts(2026, 10, 30, 14));
         // Sunday and Monday morning still write the Friday review.
-        assert_eq!(review_due(ts(2026, 11, 1, 9)).unwrap().review_date, "2026-10-30");
-        assert_eq!(review_due(ts(2026, 11, 2, 9)).unwrap().review_date, "2026-10-30");
+        assert_eq!(
+            review_due(ts(2026, 11, 1, 9)).unwrap().review_date,
+            "2026-10-30"
+        );
+        assert_eq!(
+            review_due(ts(2026, 11, 2, 9)).unwrap().review_date,
+            "2026-10-30"
+        );
         // A quiet Wednesday has nothing due.
         assert_eq!(review_due(ts(2026, 11, 4, 9)), None);
         // The next Friday starts the next review.
-        assert_eq!(review_due(ts(2026, 11, 6, 15)).unwrap().review_date, "2026-11-06");
+        assert_eq!(
+            review_due(ts(2026, 11, 6, 15)).unwrap().review_date,
+            "2026-11-06"
+        );
     }
 
     #[test]
@@ -1680,7 +1754,10 @@ mod tests {
         let refused = apply_goal_action(Some(&proposed), &approve, &scout, &context(true))
             .expect_err("an agent never approves");
         assert_eq!(refused.kind, PlanErrorKind::Forbidden);
-        let member = actor(PlanActorRole::Member, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+        let member = actor(
+            PlanActorRole::Member,
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        );
         assert_eq!(
             apply_goal_action(Some(&proposed), &approve, &member, &context(true))
                 .expect_err("a plain member never approves")
@@ -1688,7 +1765,8 @@ mod tests {
             PlanErrorKind::Forbidden
         );
 
-        let approved = apply_goal_action(Some(&proposed), &approve, &owner, &context(true)).unwrap();
+        let approved =
+            apply_goal_action(Some(&proposed), &approve, &owner, &context(true)).unwrap();
         assert_eq!(approved.status, GoalStatus::Approved);
         assert_eq!(approved.decided_by_pubkey.as_deref(), Some(OWNER));
         assert_eq!(approved.decided_at, Some(friday()));
@@ -1728,7 +1806,10 @@ mod tests {
     #[test]
     fn a_proposer_or_the_owner_retires_a_goal_and_nobody_else() {
         let scout = actor(PlanActorRole::ManagedAgent, SCOUT);
-        let other = actor(PlanActorRole::ManagedAgent, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+        let other = actor(
+            PlanActorRole::ManagedAgent,
+            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        );
         let owner = actor(PlanActorRole::Admin, OWNER);
         let proposed = apply_goal_action(None, &propose_action(), &scout, &context(true)).unwrap();
         let retire = decide_action(NumbersOp::GoalRetire);
@@ -1762,7 +1843,10 @@ mod tests {
         assert!(validate_numbers_action(&propose_action()).is_ok());
         let mut extra = propose_action();
         extra.choice = Some(DecisionState::Approved);
-        assert!(validate_numbers_action(&extra).is_err(), "choice is not a goal field");
+        assert!(
+            validate_numbers_action(&extra).is_err(),
+            "choice is not a goal field"
+        );
         let mut missing = propose_action();
         missing.target = None;
         assert!(validate_numbers_action(&missing).is_err());
@@ -1787,14 +1871,20 @@ mod tests {
     #[test]
     fn d_tags_round_trip_and_reject_other_shapes() {
         let goal_tag = goal_d_tag(GOAL).unwrap();
-        assert_eq!(parse_numbers_d_tag(&goal_tag), Ok(NumbersRecord::Goal(GOAL.into())));
+        assert_eq!(
+            parse_numbers_d_tag(&goal_tag),
+            Ok(NumbersRecord::Goal(GOAL.into()))
+        );
         let review_tag = review_d_tag("2026-10-30").unwrap();
         assert_eq!(review_tag, "company:review:2026-10-30");
         assert_eq!(
             parse_numbers_d_tag(&review_tag),
             Ok(NumbersRecord::Review("2026-10-30".into()))
         );
-        assert_eq!(parse_numbers_d_tag(SCORECARD_D_TAG), Ok(NumbersRecord::Scorecard));
+        assert_eq!(
+            parse_numbers_d_tag(SCORECARD_D_TAG),
+            Ok(NumbersRecord::Scorecard)
+        );
         // A Saturday, a bad date, an upper-case id and a stranger are all refused.
         assert!(review_d_tag("2026-10-31").is_err());
         assert!(review_d_tag("2026-13-01").is_err());
@@ -1847,12 +1937,23 @@ mod tests {
         assert_eq!(written.decisions[0].state, DecisionState::Open);
         assert_eq!(written.annotated_by_pubkey.as_deref(), Some(SCOUT));
         // Scout may rewrite the words while nothing is answered.
-        let again = apply_review_annotate(&written, &annotate_action(vec![input("other")]), &scout, &context(true)).unwrap();
+        let again = apply_review_annotate(
+            &written,
+            &annotate_action(vec![input("other")]),
+            &scout,
+            &context(true),
+        )
+        .unwrap();
         assert_eq!(again.decisions[0].decision_id, "other");
         // A plain member cannot write a review.
-        let member = actor(PlanActorRole::Member, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+        let member = actor(
+            PlanActorRole::Member,
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        );
         assert_eq!(
-            apply_review_annotate(&review, &action, &member, &context(true)).expect_err("member").kind,
+            apply_review_annotate(&review, &action, &member, &context(true))
+                .expect_err("member")
+                .kind,
             PlanErrorKind::Forbidden
         );
     }
@@ -1881,22 +1982,34 @@ mod tests {
         };
         validate_numbers_action(&answer).unwrap();
         assert_eq!(
-            apply_review_decide(&review, &answer, &scout, &context(true)).expect_err("agent").kind,
+            apply_review_decide(&review, &answer, &scout, &context(true))
+                .expect_err("agent")
+                .kind,
             PlanErrorKind::Forbidden
         );
         let decided = apply_review_decide(&review, &answer, &owner, &context(true)).unwrap();
         assert_eq!(decided.decisions[0].state, DecisionState::Approved);
-        assert_eq!(decided.decisions[0].decided_by_pubkey.as_deref(), Some(OWNER));
+        assert_eq!(
+            decided.decisions[0].decided_by_pubkey.as_deref(),
+            Some(OWNER)
+        );
         assert_eq!(decided.decisions[0].note.as_deref(), Some("Go ahead"));
         assert_eq!(
-            apply_review_decide(&decided, &answer, &owner, &context(true)).expect_err("twice").kind,
+            apply_review_decide(&decided, &answer, &owner, &context(true))
+                .expect_err("twice")
+                .kind,
             PlanErrorKind::Conflict
         );
         // Once answered, the words are final.
         assert_eq!(
-            apply_review_annotate(&decided, &annotate_action(vec![input("x")]), &scout, &context(true))
-                .expect_err("final")
-                .kind,
+            apply_review_annotate(
+                &decided,
+                &annotate_action(vec![input("x")]),
+                &scout,
+                &context(true)
+            )
+            .expect_err("final")
+            .kind,
             PlanErrorKind::Conflict
         );
         // An unknown decision is a conflict, not a crash.
@@ -1905,7 +2018,9 @@ mod tests {
             ..answer
         };
         assert_eq!(
-            apply_review_decide(&review, &unknown, &owner, &context(true)).expect_err("unknown").kind,
+            apply_review_decide(&review, &unknown, &owner, &context(true))
+                .expect_err("unknown")
+                .kind,
             PlanErrorKind::Conflict
         );
     }
@@ -1928,7 +2043,10 @@ mod tests {
         open_choice.decisions = None;
         open_choice.decision_id = Some("a".into());
         open_choice.choice = Some(DecisionState::Open);
-        assert!(validate_numbers_action(&open_choice).is_err(), "open is not an answer");
+        assert!(
+            validate_numbers_action(&open_choice).is_err(),
+            "open is not an answer"
+        );
     }
 
     #[test]

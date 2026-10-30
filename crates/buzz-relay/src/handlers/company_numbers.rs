@@ -18,8 +18,8 @@ use nostr::Event;
 use buzz_core::company_numbers::{
     apply_goal_action, apply_review_annotate, apply_review_decide, build_review, compute_scorecard,
     parse_numbers_d_tag, review_d_tag, review_due, validate_goal_head, validate_numbers_action,
-    validate_review_head, validate_scorecard_head, GoalHead, NumbersOp, NumbersRecord,
-    ReviewHead, ReviewWindow, ScorecardHead, MAX_OPEN_GOALS,
+    validate_review_head, validate_scorecard_head, GoalHead, NumbersOp, NumbersRecord, ReviewHead,
+    ReviewWindow, ScorecardHead, MAX_OPEN_GOALS,
 };
 use buzz_core::company_plans::{PlanActor, PlanActorRole, PlanContext, PlanError, PlanErrorKind};
 use buzz_core::kind::{KIND_NUMBERS_ACTION, KIND_NUMBERS_HEAD};
@@ -250,10 +250,7 @@ pub(super) async fn handle(
     )
     .await?;
 
-    if matches!(
-        action.op,
-        NumbersOp::GoalApprove | NumbersOp::ReviewDecide
-    ) {
+    if matches!(action.op, NumbersOp::GoalApprove | NumbersOp::ReviewDecide) {
         // Scout carries on with the approved goal or the answered decision.
         crate::cofounder_wake::enqueue(
             state,
@@ -367,8 +364,8 @@ pub(crate) async fn ensure_weekly_review(
     {
         return Ok(None);
     }
-    let inputs = crate::numbers_inputs::gather_inputs(state, community_id, window.as_of, now)
-        .await?;
+    let inputs =
+        crate::numbers_inputs::gather_inputs(state, community_id, window.as_of, now).await?;
     let review = build_review(&window, &inputs, now);
     validate_review_head(&review).map_err(|error| error.to_string())?;
     let head_json = serde_json::to_string(&review).map_err(|error| error.to_string())?;
@@ -555,10 +552,9 @@ mod tests {
             send(&fixture, &owner, &approve)
                 .await
                 .expect("the owner approves");
-            let goal: GoalHead = serde_json::from_str(
-                &head_of(&fixture, &d_tag).await.unwrap().event.content,
-            )
-            .unwrap();
+            let goal: GoalHead =
+                serde_json::from_str(&head_of(&fixture, &d_tag).await.unwrap().event.content)
+                    .unwrap();
             assert_eq!(goal.status, GoalStatus::Approved);
         }
 
@@ -667,10 +663,9 @@ mod tests {
             send(&fixture, &owner, &answer)
                 .await
                 .expect("the owner answers");
-            let decided: ReviewHead = serde_json::from_str(
-                &head_of(&fixture, &d_tag).await.unwrap().event.content,
-            )
-            .unwrap();
+            let decided: ReviewHead =
+                serde_json::from_str(&head_of(&fixture, &d_tag).await.unwrap().event.content)
+                    .unwrap();
             assert_eq!(decided.decisions[0].state, DecisionState::Approved);
         }
     }
