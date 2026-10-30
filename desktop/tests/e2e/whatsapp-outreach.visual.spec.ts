@@ -12,7 +12,8 @@ import {
 } from "../helpers/whatsappOutreach";
 import { waitForAnimations } from "../helpers/animations";
 
-const proofDirectory = "/private/tmp/colony-whatsapp-outreach-proof";
+const proofDirectory =
+  process.env.WA_PROOF_DIR ?? "/private/tmp/colony-whatsapp-outreach-proof";
 const screens = [
   {
     name: "Main",
@@ -40,6 +41,12 @@ const screens = [
   {
     name: "Outreach",
     route: `/channels/${OUTREACH_CHANNEL_ID}`,
+    testId: "whatsapp-outreach",
+  },
+  {
+    name: "WhatsAppDock",
+    route: "/channels/e2e-whatsapp-general-channel",
+    query: "batch=held",
     testId: "whatsapp-outreach",
   },
   {
@@ -88,14 +95,34 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
                     ? 1480
                     : screen.name === "OutreachBatchSent"
                       ? 1510
-                      : screen.name === "LeadWhatsApp" ||
-                          screen.name === "LeadsWhatsApp"
-                        ? 1240
-                        : 1040;
+                      : screen.name === "WhatsAppDock"
+                        ? 1040
+                        : screen.name === "LeadWhatsApp" ||
+                            screen.name === "LeadsWhatsApp"
+                          ? 1240
+                          : 1040;
           await page.setViewportSize({ width, height });
           await page.emulateMedia({ colorScheme: theme });
           await gotoWhatsAppScreen(page, screen.route, screen.query);
           const target = page.getByTestId(screen.testId);
+          if (screen.name === "WhatsAppDock") {
+            await page.getByTestId("channel-whatsapp-chats-trigger").click();
+            await expect(page.getByTestId("work-area-panel")).toBeVisible();
+            if (width === 390) {
+              await page
+                .getByRole("button", { name: "Back to WhatsApp contacts" })
+                .click();
+            }
+            await page
+              .getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`)
+              .click();
+            await expect(
+              page.getByTestId("whatsapp-thread-held-batch"),
+            ).toBeVisible();
+            await expect(
+              page.getByTestId("whatsapp-thread-held-batch"),
+            ).not.toContainText(/\bSent\b/u);
+          }
           await expect(target).toBeVisible({ timeout: 15_000 });
           await expect
             .poll(

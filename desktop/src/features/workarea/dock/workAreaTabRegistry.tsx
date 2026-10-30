@@ -1,4 +1,4 @@
-import { BookOpen, Folder, Globe } from "lucide-react";
+import { BookOpen, Folder, Globe, MessageCircle } from "lucide-react";
 import type * as React from "react";
 
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
@@ -22,6 +22,10 @@ import { WorkAreaFileTab } from "./tabs/WorkAreaFileTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
+import {
+  WorkAreaWhatsAppTab,
+  WhatsAppUnreadBadge,
+} from "./tabs/WorkAreaWhatsAppTab";
 import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -30,6 +34,7 @@ export type WorkAreaTabPanelProps = {
   tabId: string;
   /** True while this tab is the one on screen. Panels stay mounted when not. */
   active: boolean;
+  tab: WorkAreaTab;
 };
 
 export type WorkAreaTabDefinition = {
@@ -133,6 +138,14 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: BookOpen,
     available: true,
     Panel: WorkAreaKnowledgeTab,
+  },
+  whatsapp: {
+    kind: "whatsapp",
+    label: "WhatsApp chats",
+    icon: MessageCircle,
+    available: true,
+    Badge: WhatsAppUnreadBadge,
+    Panel: WorkAreaWhatsAppTab,
   },
 };
 

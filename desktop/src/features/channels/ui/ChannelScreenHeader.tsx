@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { MessageCircle } from "lucide-react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
@@ -23,6 +24,8 @@ import { ChannelBrowserActivityButton } from "@/features/workarea/browser/Browse
 import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
 import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
+import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
+import { useWhatsAppContactsQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { requestChannelSearch } from "@/shared/lib/channelSearchRequest";
 import type {
   Channel,
@@ -113,6 +116,13 @@ export function ChannelScreenHeader({
     !activeChannel.archivedAt &&
     onJoinChannel;
   const workArea = useWorkAreaDock(activeChannel?.id ?? null);
+  const whatsAppTabOpen = workArea.tabs.some((tab) => tab.kind === "whatsapp");
+  const whatsAppContactsQuery = useWhatsAppContactsQuery(
+    workArea.open && whatsAppTabOpen,
+  );
+  const unansweredWhatsAppCount = (whatsAppContactsQuery.data ?? []).filter(
+    (contact) => contact.unanswered,
+  ).length;
   const memberCount = members.length || (activeChannel?.memberCount ?? 0);
 
   if (!showHeaderContent) {
@@ -156,6 +166,29 @@ export function ChannelScreenHeader({
       {showJoinButton || !workArea ? null : (
         <ChannelBrowserActivityButton channelId={activeChannel.id} />
       )}
+      <HeaderTip label="WhatsApp chats">
+        <button
+          aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+          aria-expanded={workArea.open && workArea.activeTabId === "whatsapp"}
+          aria-label="WhatsApp chats"
+          className="c3c-icon-button relative inline-flex items-center gap-2 px-2.5"
+          data-testid="channel-whatsapp-chats-trigger"
+          onClick={() => requestWorkAreaTab("whatsapp")}
+          type="button"
+        >
+          <MessageCircle aria-hidden="true" size={17} />
+          <span className="hidden text-sm xl:inline">WhatsApp chats</span>
+          {unansweredWhatsAppCount > 0 ? (
+            <span
+              aria-hidden="true"
+              className="inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
+              data-testid="channel-whatsapp-unread-count"
+            >
+              {unansweredWhatsAppCount}
+            </span>
+          ) : null}
+        </button>
+      </HeaderTip>
       {showJoinButton || !workArea ? null : (
         <HeaderTip label="Work area">
           <button

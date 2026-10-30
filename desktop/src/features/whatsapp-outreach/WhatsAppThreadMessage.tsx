@@ -189,6 +189,7 @@ export function WhatsAppThreadMessage({
   message,
   templates,
   contactName,
+  waitingForApproval = false,
   mobileHistory,
   onApproveDraft,
   onRejectDraft,
@@ -199,6 +200,7 @@ export function WhatsAppThreadMessage({
   message: WhatsAppMessage;
   templates: readonly WhatsAppTemplate[];
   contactName: string;
+  waitingForApproval?: boolean;
   mobileHistory: boolean;
   onApproveDraft: (draftId: string, text?: string) => Promise<void>;
   onRejectDraft: (draftId: string) => Promise<void>;
@@ -217,7 +219,9 @@ export function WhatsAppThreadMessage({
     );
   }
   const inbound = message.direction === "in";
-  const statusLabel = whatsappDeliveryLabel(message.state, message.errorText);
+  const statusLabel = waitingForApproval
+    ? "Waiting for your approval"
+    : whatsappDeliveryLabel(message.state, message.errorText);
   const template =
     templates.find((item) => item.name === message.templateName) ?? null;
   const mediaParts =
@@ -306,10 +310,12 @@ export function WhatsAppThreadMessage({
             {agentWritten ? (
               <>
                 <span>{statusLabel}</span>
-                <span className="c3wa-approved-mark">
-                  Approved by {currentUserName}
-                  {message.kind === "template" ? " in a batch" : ""}
-                </span>
+                {waitingForApproval ? null : (
+                  <span className="c3wa-approved-mark">
+                    Approved by {currentUserName}
+                    {message.kind === "template" ? " in a batch" : ""}
+                  </span>
+                )}
               </>
             ) : (
               <span>{statusLabel} · you, as Horizon Labs</span>
