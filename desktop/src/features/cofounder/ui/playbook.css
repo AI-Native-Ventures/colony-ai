@@ -1,0 +1,632 @@
+.cf3-playbook-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.cf3-playbook-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem 1.5rem;
+}
+
+.cf3-playbook-header > div:first-child {
+  min-width: 0;
+}
+
+.cf3-playbook-summary {
+  margin: 0.5rem 0 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cf3-propose-button {
+  grid-column: 2;
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+.cf3-playbook-meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cf3-playbook-meta span:first-child,
+.cf3-playbook-meta span:nth-child(2) {
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.cf3-playbook-meta span:nth-child(2) {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.cf3-playbook-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(17rem, 0.9fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.cf3-flow-list,
+.cf3-job-list,
+.cf3-job-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf3-flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cf3-flow-step {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.875rem;
+}
+
+.cf3-flow-step:not(:last-child)::after {
+  position: absolute;
+  top: 2.5rem;
+  bottom: -0.875rem;
+  left: 1rem;
+  width: 2px;
+  background: hsl(var(--colony-border-strong));
+  content: "";
+}
+
+.cf3-step-number {
+  z-index: 1;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-step-number.is-approval,
+.cf3-step-number.is-owner {
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+}
+
+.cf3-step-card,
+.cf3-side-card {
+  min-width: 0;
+  border-radius: 1.125rem;
+  background: var(--colony-overlay);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.cf3-step-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1rem 1.125rem;
+}
+
+.cf3-step-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.cf3-step-toggle {
+  min-width: 0;
+  flex: 1 1 12rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 800;
+  text-align: left;
+}
+
+.cf3-step-toggle:focus-visible,
+.cf3-job-row:focus-visible,
+.cf3-version-history summary:focus-visible,
+.cf3-version-history-toggle:focus-visible,
+.cf3-action-primary:focus-visible,
+.cf3-action-secondary:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 3px;
+}
+
+.cf3-owner-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cf3-owner-avatar {
+  display: grid;
+  width: 1.625rem;
+  height: 1.625rem;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(10 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-owner-avatar.is-owner {
+  border-radius: 50%;
+  background: var(--colony-person);
+}
+
+.cf3-owner-avatar.is-worker {
+  border-radius: 0.625rem;
+}
+
+.cf3-step-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.375rem 1rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cf3-step-approval,
+.cf3-job-approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cf3-step-approval > span,
+.cf3-job-approval > strong {
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-step-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid hsl(var(--colony-border));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  line-height: 1.45;
+}
+
+.cf3-step-details[hidden] {
+  display: none;
+}
+
+.cf3-step-details p {
+  margin: 0;
+}
+
+.cf3-step-details strong {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cf3-approval-prompt {
+  color: hsl(var(--colony-need));
+}
+
+.cf3-playbook-aside {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.cf3-side-card {
+  overflow: hidden;
+  padding: 1.125rem;
+}
+
+.cf3-side-heading h2,
+.cf3-side-card h2 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-side-heading p {
+  margin: 0.25rem 0 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+}
+
+.cf3-job-list {
+  margin: 0.75rem -1.125rem -1.125rem;
+}
+
+.cf3-job-list li + li {
+  border-top: 1px solid hsl(var(--colony-border));
+}
+
+.cf3-job-row {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem 1.125rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.cf3-job-row:hover {
+  background: hsl(var(--colony-surface-raised));
+}
+
+.cf3-job-client {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cf3-job-client strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf3-job-client > span,
+.cf3-job-started {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cf3-job-progress {
+  display: flex;
+  width: 100%;
+  gap: 0.1875rem;
+}
+
+.cf3-job-progress > span {
+  height: 0.375rem;
+  flex: 1;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+}
+
+.cf3-job-progress > .is-done {
+  background: hsl(var(--colony-accent));
+}
+
+.cf3-job-progress > .is-current {
+  background: hsl(var(--colony-accent-soft));
+}
+
+.cf3-job-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cf3-need-pill,
+.cf3-round-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.625rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-round-pill {
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.cf3-job-started {
+  font-weight: 600;
+}
+
+.cf3-side-empty,
+.cf3-owner-only {
+  margin: 0.875rem 0 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  line-height: 1.45;
+}
+
+.cf3-change-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cf3-change-card > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  line-height: 1.5;
+}
+
+.cf3-change-card > .cf3-change-by {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+}
+
+.cf3-change-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cf3-action-primary,
+.cf3-action-secondary {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cf3-action-primary:hover {
+  background: hsl(var(--colony-fg) / 0.9);
+}
+
+.cf3-action-primary:disabled,
+.cf3-action-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cf3-action-secondary {
+  border: 1px solid hsl(var(--colony-border-strong));
+  background: transparent;
+  color: hsl(var(--colony-fg));
+}
+
+.cf3-action-secondary:hover {
+  background: hsl(var(--colony-track));
+}
+
+.cf3-error {
+  margin: 0;
+  color: hsl(var(--destructive));
+  font-size: calc(14 * var(--colony-px));
+}
+
+.cf3-version-history {
+  padding: 0;
+}
+
+.cf3-version-history summary {
+  padding: 1rem 1.125rem;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-version-history ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0 1.125rem 1.125rem;
+  list-style: none;
+}
+
+.cf3-version-history ol > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+}
+
+.cf3-version-history li strong {
+  color: hsl(var(--colony-fg));
+}
+
+.cf3-version-history li small {
+  color: hsl(var(--colony-muted));
+  font-size: calc(12 * var(--colony-px));
+}
+
+.cf3-job-dialog {
+  max-height: min(85vh, 52rem);
+  overflow-y: auto;
+}
+
+.cf3-dialog-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-right: 2rem;
+}
+
+.cf3-job-live-status {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cf3-job-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cf3-job-step {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-track) / 0.45);
+}
+
+.cf3-job-step.is-current {
+  background: hsl(var(--colony-accent-soft) / 0.55);
+  box-shadow: 0 0 0 1px hsl(var(--colony-accent) / 0.45);
+}
+
+.cf3-job-step-state {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--colony-border));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf3-job-step[data-status="done"] .cf3-job-step-state,
+.cf3-job-step[data-status="approved"] .cf3-job-step-state {
+  background: hsl(var(--colony-accent));
+  color: white;
+}
+
+.cf3-job-step-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cf3-job-step-copy > p {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+}
+
+.cf3-job-step-copy .cf3-step-details {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.cf3-job-step-status {
+  color: hsl(var(--colony-muted));
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+@media (max-width: 58rem) {
+  .cf3-playbook-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cf3-job-list {
+    max-height: 20rem;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 40rem) {
+  .cf3-playbook-header .team-page-title {
+    font-size: calc(32 * var(--colony-px));
+  }
+
+  .cf3-playbook-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cf3-propose-button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+
+  .cf3-playbook-meta {
+    gap: 0.375rem;
+  }
+
+  .cf3-playbook-meta span:last-child {
+    flex-basis: 100%;
+  }
+
+  .cf3-step-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cf3-step-toggle {
+    flex: 0 1 auto;
+  }
+
+  .cf3-step-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cf3-change-actions > button {
+    flex: 1;
+  }
+}

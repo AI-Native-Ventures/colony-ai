@@ -30,6 +30,7 @@ import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
 import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
+import { Route as companyDotweeklyReviewRouteImport } from "./routes/company.weekly-review";
 import { Route as companyDotmapRouteImport } from "./routes/company.map";
 import { Route as companyDotaccessRouteImport } from "./routes/company.access";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
@@ -173,6 +174,11 @@ const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
   path: "/hire/configure",
   getParentRoute: () => rootRouteImport,
 } as any);
+const companyDotweeklyReviewRoute = companyDotweeklyReviewRouteImport.update({
+  id: "/company/weekly-review",
+  path: "/company/weekly-review",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const companyDotmapRoute = companyDotmapRouteImport.update({
   id: "/company/map",
   path: "/company/map",
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -334,6 +341,7 @@ export interface FileRoutesByTo {
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   "/clients/$clientId": typeof clientsDotclientIdRoute;
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
+  "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/roles": typeof hireDotrolesRoute;
@@ -425,6 +434,7 @@ export interface FileRouteTypes {
     | "/clients/$clientId"
     | "/company/access"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -469,6 +479,7 @@ export interface FileRouteTypes {
     | "/clients/$clientId"
     | "/company/access"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -513,6 +524,7 @@ export interface FileRouteTypes {
     | "/clients/$clientId"
     | "/company/access"
     | "/company/map"
+    | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/roles"
@@ -558,6 +570,7 @@ export interface RootRouteChildren {
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
   companyDotaccessRoute: typeof companyDotaccessRoute;
   companyDotmapRoute: typeof companyDotmapRoute;
+  companyDotweeklyReviewRoute: typeof companyDotweeklyReviewRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
   hireDotrolesRoute: typeof hireDotrolesRoute;
@@ -761,6 +774,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof hireDotconfigureRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/company/weekly-review": {
+      id: "/company/weekly-review";
+      path: "/company/weekly-review";
+      fullPath: "/company/weekly-review";
+      preLoaderRoute: typeof companyDotweeklyReviewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/company/map": {
       id: "/company/map";
       path: "/company/map";
@@ -902,6 +922,7 @@ const rootRouteChildren: RootRouteChildren = {
   clientsDotclientIdRoute: clientsDotclientIdRoute,
   companyDotaccessRoute: companyDotaccessRoute,
   companyDotmapRoute: companyDotmapRoute,
+  companyDotweeklyReviewRoute: companyDotweeklyReviewRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
   hireDotrolesRoute: hireDotrolesRoute,

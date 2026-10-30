@@ -239,7 +239,7 @@ pub(super) async fn handle(
     })
 }
 
-fn map_error(error: PlanError) -> IngestError {
+pub(super) fn map_error(error: PlanError) -> IngestError {
     match error.kind {
         PlanErrorKind::Invalid => invalid(error.message),
         PlanErrorKind::Forbidden => forbidden(error.message),
@@ -247,7 +247,7 @@ fn map_error(error: PlanError) -> IngestError {
     }
 }
 
-async fn is_managed_agent(
+pub(super) async fn is_managed_agent(
     state: &AppState,
     community_id: CommunityId,
     pubkey: &[u8; 32],
@@ -261,7 +261,7 @@ async fn is_managed_agent(
 }
 
 /// Whether co-founder mode is on right now. No head means off.
-async fn cofounder_enabled(
+pub(super) async fn cofounder_enabled(
     state: &AppState,
     community_id: CommunityId,
 ) -> Result<bool, IngestError> {
@@ -276,7 +276,7 @@ async fn cofounder_enabled(
 
 /// The functions whose slot this pubkey leads. A head that does not parse
 /// grants nothing.
-async fn led_functions(
+pub(super) async fn led_functions(
     state: &AppState,
     community_id: CommunityId,
     pubkey: &str,

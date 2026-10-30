@@ -96,6 +96,7 @@ export type WhatsAppMessage = Readonly<{
   eventId: string | null;
   senderPubkey: string | null;
   createdAt: string;
+  sendsAt?: string | null;
 }>;
 
 export type WhatsAppThread = Readonly<{
@@ -129,6 +130,7 @@ export type WhatsAppBatchRow = Readonly<{
   preview: string;
   state: string;
   skipReason: string | null;
+  sendsAt?: string | null;
 }>;
 
 export type WhatsAppBatchDetail = Readonly<{
@@ -341,6 +343,9 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     eventId: nullableString(message.eventId, "message event id"),
     senderPubkey: nullableString(message.senderPubkey, "message sender"),
     createdAt: stringValue(message.createdAt, "message time"),
+    ...(message.sendsAt === undefined
+      ? {}
+      : { sendsAt: nullableString(message.sendsAt, "message send time") }),
   };
 }
 
@@ -419,6 +424,9 @@ export function parseWhatsAppBatchDetail(value: unknown): WhatsAppBatchDetail {
       preview: stringValue(row.preview, "batch row preview"),
       state: stringValue(row.state, "batch row state"),
       skipReason: nullableString(row.skipReason, "batch row skip reason"),
+      ...(row.sendsAt === undefined
+        ? {}
+        : { sendsAt: nullableString(row.sendsAt, "batch row send time") }),
     };
   });
   return {
@@ -546,6 +554,8 @@ export function whatsappLeadStatusLabel(status: WhatsAppLeadStatus): string {
 export function whatsappDeliveryLabel(
   state: WhatsAppMessageState,
   failureReason?: string | null,
+  sendsAt?: string | null,
+  nowMs = Date.now(),
 ): string {
   if (state === "failed") {
     const reason = failureReason?.trim();
@@ -563,12 +573,43 @@ export function whatsappDeliveryLabel(
     case "rejected":
       return "Rejected";
     case "queued":
-      return "Queued to send";
+      return whatsappQueuedScheduleLabel(sendsAt, nowMs);
     case "sending":
       return "Sending";
     case "unconfirmed":
       return "Unconfirmed, check before retrying";
   }
+}
+
+const JOHANNESBURG_DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: "Africa/Johannesburg",
+});
+
+export function whatsappQueuedScheduleLabel(
+  sendsAt: string | null | undefined,
+  nowMs = Date.now(),
+): string {
+  if (!sendsAt) return "Queued to send";
+  const sendMs = Date.parse(sendsAt);
+  if (!Number.isFinite(sendMs) || sendMs <= nowMs) return "Queued to send";
+
+  const sendDay = JOHANNESBURG_DAY_FORMAT.format(new Date(sendMs));
+  const today = JOHANNESBURG_DAY_FORMAT.format(new Date(nowMs));
+  if (sendDay === today) {
+    const time = new Intl.DateTimeFormat("en-ZA", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: "Africa/Johannesburg",
+    }).format(new Date(sendMs));
+    return `Sends today at ${time}`;
+  }
+
+  const tomorrow = JOHANNESBURG_DAY_FORMAT.format(new Date(nowMs + DAY_MS));
+  return sendDay === tomorrow ? "Sends tomorrow at 08:00" : "Queued to send";
 }
 
 export function whatsappQualityLabel(quality: WhatsAppQuality | null): string {

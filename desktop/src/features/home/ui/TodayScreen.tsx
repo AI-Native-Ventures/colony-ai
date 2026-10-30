@@ -27,6 +27,7 @@ import {
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { FeedItem } from "@/shared/api/types";
+import { NeedsYouPlaybookList } from "@/features/cofounder/ui/NeedsYouPlaybookList";
 import {
   ChevronRightIcon,
   SearchIcon,
@@ -558,6 +559,7 @@ export function TodayScreen(_props: { showUpdatesAction?: boolean } = {}) {
                   </button>
                 </div>
               ) : null}
+              <NeedsYouPlaybookList />
             </section>
 
             {forwardItems.length > 0 || feedQuery.error ? (

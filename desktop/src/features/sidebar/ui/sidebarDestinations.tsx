@@ -129,8 +129,14 @@ const COMPANY_VIEWS: readonly AppSidebarProps["selectedView"][] = [
 ];
 
 function isCompanyMapPath(pathname: string): boolean {
+  return pathname === "/company/map";
+}
+
+function isCompanyPath(pathname: string): boolean {
   return (
-    pathname === "/company/map" || pathname.startsWith("/company/function/")
+    isCompanyMapPath(pathname) ||
+    pathname === "/company/weekly-review" ||
+    pathname.startsWith("/company/function/")
   );
 }
 
@@ -146,10 +152,12 @@ const company: SidebarDestination = {
   Icon: CompanyIcon,
   defaultExpanded: false,
   isActive: ({ pathname, selectedView }) =>
-    COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
+    COMPANY_VIEWS.includes(selectedView) ||
+    isCompanyPath(pathname) ||
+    isCompanyAccessPath(pathname),
   isCurrent: ({ pathname, selectedView }) =>
     COMPANY_VIEWS.includes(selectedView) ||
-    isCompanyMapPath(pathname) ||
+    isCompanyPath(pathname) ||
     isCompanyAccessPath(pathname),
   rail: {
     testId: "sidebar-collapsed-company",
@@ -157,7 +165,7 @@ const company: SidebarDestination = {
     Icon: CompanyIcon,
     isActive: ({ pathname, selectedView }) =>
       COMPANY_VIEWS.includes(selectedView) ||
-      isCompanyMapPath(pathname) ||
+      isCompanyPath(pathname) ||
       isCompanyAccessPath(pathname),
     onSelect: ({ handlers }) => handlers.onSelectTeam(),
   },

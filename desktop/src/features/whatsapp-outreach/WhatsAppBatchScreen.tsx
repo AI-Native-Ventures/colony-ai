@@ -4,20 +4,25 @@ import { useChannelsQuery } from "@/features/channels/hooks";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { MessageComposer } from "@/features/messages/ui/MessageComposer";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { useProfileQuery } from "@/features/profile/hooks";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 import {
   maskWhatsAppNumber,
   renderWhatsAppTemplate,
+  whatsappQueuedScheduleLabel,
   whatsappTemplateDisplayTitle,
   type WhatsAppBatchRow,
   type WhatsAppContact,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
+import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
+import { canUseWhatsAppSendNow } from "./whatsappSendNowEligibility";
 import {
   useWhatsAppBatchQuery,
   useWhatsAppCommand,
@@ -220,6 +225,14 @@ function BatchRow({
         {row.state === "failed" ? (
           <span className="c3wa-batch-row-state is-failed">Failed</span>
         ) : null}
+        {row.state === "ready" || row.state === "queued" ? (
+          <span
+            className="c3wa-batch-row-state"
+            data-testid={`whatsapp-batch-row-schedule-${row.idx}`}
+          >
+            {whatsappQueuedScheduleLabel(row.sendsAt)}
+          </span>
+        ) : null}
         {isNext ? (
           <span className="c3wa-batch-row-state is-next">Up next</span>
         ) : null}
@@ -304,8 +317,14 @@ export function WhatsAppBatchScreen({
   );
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
+  const currentPubkey = identityQuery.data?.pubkey;
+  const currentUserProfilesQuery = useUsersBatchQuery(
+    currentPubkey ? [currentPubkey] : [],
+    { enabled: Boolean(currentPubkey) },
+  );
   const channelsQuery = useChannelsQuery();
   const membershipQuery = useMyRelayMembershipLookupQuery();
+  const knownAgentPubkeys = useKnownAgentPubkeys();
   const command = useWhatsAppCommand();
   const [removedRows, setRemovedRows] = React.useState<number[]>([]);
   const [editedRows, setEditedRows] = React.useState<
@@ -329,7 +348,20 @@ export function WhatsAppBatchScreen({
     membershipQuery.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
-  const currentPubkey = identityQuery.data?.pubkey;
+  const currentUserProfile = currentPubkey
+    ? currentUserProfilesQuery.data?.profiles[normalizePubkey(currentPubkey)]
+    : undefined;
+  const canSendNow = canUseWhatsAppSendNow({
+    role,
+    pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
+    isAgent: currentPubkey
+      ? knownAgentPubkeys.has(normalizePubkey(currentPubkey)) ||
+        currentUserProfile?.isAgent === true
+      : false,
+    ownerPubkey:
+      profileQuery.data?.ownerPubkey ?? currentUserProfile?.ownerPubkey,
+    knownAgentPubkeys,
+  });
   const scoutChannel = React.useMemo(() => {
     if (!batch) return null;
     return findWhatsAppBatchCreatorChannel(
@@ -377,6 +409,11 @@ export function WhatsAppBatchScreen({
   const remainingToday = pending
     ? Math.min(rows.length, capAvailable)
     : readyToday;
+  const canSendNowBatch =
+    batch?.status === "approved" &&
+    rows.length <= 3 &&
+    rows.some((row) => row.state === "ready") &&
+    canSendNow;
 
   function updateRowParams(idx: number, params: readonly string[]) {
     setEditedRows((current) => ({ ...current, [idx]: params }));
@@ -669,6 +706,11 @@ export function WhatsAppBatchScreen({
                   tomorrow by the daily cap.
                 </p>
               ) : null}
+              {canSendNowBatch ? (
+                <div className="c3wa-send-now-action">
+                  <WhatsAppSendNowAction batchId={batch.batchId} />
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="c3wa-batch-rejected-note">
@@ -909,6 +951,11 @@ export function WhatsAppBatchScreen({
                             spaced about 8 minutes apart to keep the number’s
                             quality Green.
                           </p>
+                          {canSendNowBatch ? (
+                            <div className="c3wa-send-now-action">
+                              <WhatsAppSendNowAction batchId={batch.batchId} />
+                            </div>
+                          ) : null}
                         </div>
                       </>
                     ) : (

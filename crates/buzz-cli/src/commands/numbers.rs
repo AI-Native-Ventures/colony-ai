@@ -11,7 +11,7 @@
 use buzz_core::company_functions::CompanyFunction;
 use buzz_core::company_numbers::{
     goal_d_tag, parse_numbers_d_tag, review_d_tag, validate_goal_head, validate_review_head,
-    validate_scorecard_head, DecisionState, GoalHead, GoalStatus, NumbersAction, NumbersOp,
+    validate_scorecard_head, DecisionState, GoalHead, GoalStatus, Metric, NumbersAction, NumbersOp,
     NumbersRecord, ReviewDecisionInput, ReviewHead, ScorecardHead, SCORECARD_D_TAG,
 };
 use buzz_core::company_records::COMPANY_RECORD_SCHEMA_VERSION;
@@ -101,6 +101,34 @@ async fn dispatch_goals(command: NumbersGoalsCmd, client: &BuzzClient) -> Result
                 object.insert("goalId".into(), json!(goal_id));
             }
             println!("{output}");
+            Ok(())
+        }
+        NumbersGoalsCmd::Edit {
+            goal_id,
+            title,
+            metric,
+            target,
+            period,
+            reason,
+        } => {
+            let (event, goal) = load_goal(client, &goal_id).await?;
+            let metric = parse_name::<Metric>(&metric, "metric")?;
+            if metric.function() != goal.function {
+                return Err(CliError::Usage(
+                    "a goal measures a number of its own function".into(),
+                ));
+            }
+            let action = NumbersAction {
+                goal_id: Some(goal_id),
+                title: Some(title),
+                metric: Some(metric),
+                target: Some(target),
+                period: Some(parse_name(&period, "period")?),
+                reason,
+                expected_head_event_id: Some(event.id.to_hex()),
+                ..base(NumbersOp::GoalEdit)
+            };
+            println!("{}", submit(client, &action).await?);
             Ok(())
         }
         NumbersGoalsCmd::Approve { goal_id, note } => {
@@ -558,6 +586,21 @@ mod tests {
             "month",
             "--title",
             "5 new clients a month",
+        ])
+        .is_ok());
+        assert!(parse(&[
+            "numbers",
+            "goals",
+            "edit",
+            GOAL_ID,
+            "--title",
+            "8 new clients a month",
+            "--metric",
+            "won",
+            "--target",
+            "8",
+            "--period",
+            "month",
         ])
         .is_ok());
         assert!(

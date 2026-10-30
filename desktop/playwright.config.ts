@@ -324,6 +324,7 @@ export default defineConfig({
         "**/money.spec.ts",
         "**/cofounder-map.spec.ts",
         "**/cofounder-phase2.spec.ts",
+        "**/cofounder-playbooks.spec.ts",
         "**/whatsapp-outreach.spec.ts",
         "**/whatsapp-outreach.visual.spec.ts",
       ],
@@ -434,6 +435,7 @@ export default defineConfig({
         "**/colony3-scout-dupes.spec.ts",
         "**/cofounder-map.spec.ts",
         "**/cofounder-phase2.spec.ts",
+        "**/cofounder-playbooks.spec.ts",
         "**/whatsapp-outreach.integration.spec.ts",
       ],
       use: {

@@ -178,15 +178,17 @@ test("a command without an injected publisher publishes through the relay client
   const original = relayClient.publishEvent;
   let receiver = null;
   let publishedKind = null;
+  let publishedContent = null;
   relayClient.publishEvent = function (event) {
     receiver = this;
     publishedKind = event.kind;
+    publishedContent = event.content;
     return Promise.resolve();
   };
   try {
     await publishWhatsAppCommand(
       whatsappCommandKinds.decision,
-      { v: 1, batchId: "batch-id", decision: "approve" },
+      { v: 1, batchId: "batch-id", decision: "send_now" },
       {
         signer: async (event) => ({
           id: "id",
@@ -202,4 +204,9 @@ test("a command without an injected publisher publishes through the relay client
   }
   assert.equal(receiver, relayClient);
   assert.equal(publishedKind, 47049);
+  assert.deepEqual(JSON.parse(publishedContent), {
+    v: 1,
+    batchId: "batch-id",
+    decision: "send_now",
+  });
 });

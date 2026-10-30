@@ -5,6 +5,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import {
   loadWhatsAppBatch,
   loadWhatsAppBatches,
+  loadWhatsAppApprovedBatchDetails,
   loadWhatsAppContacts,
   loadWhatsAppDrafts,
   loadWhatsAppPendingBatchDetails,
@@ -118,6 +119,25 @@ export function useWhatsAppPendingBatchDetailsQuery(enabled = true) {
     },
     staleTime: 10_000,
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useWhatsAppApprovedBatchDetailsQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: [
+      ...whatsappOutreachQueryKeys.batches(relayUrl, "approved"),
+      "small-details",
+    ],
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppApprovedBatchDetails(relayUrl);
+    },
+    staleTime: 5_000,
+    refetchInterval: STATUS_REFETCH_MS,
     refetchOnWindowFocus: true,
     retry: 1,
   });

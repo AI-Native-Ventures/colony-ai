@@ -313,6 +313,9 @@ enum Cmd {
     /// Propose co-founder plans for the owner to approve, and run approved plans
     #[command(subcommand)]
     Plans(PlansCmd),
+    /// Design co-founder playbooks with the owner and run one copy per client job
+    #[command(subcommand)]
+    Playbooks(PlaybooksCmd),
     /// Read the scorecard per function, propose goals and write the Friday weekly review
     #[command(subcommand)]
     Numbers(NumbersCmd),
@@ -2285,6 +2288,26 @@ pub enum NumbersGoalsCmd {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Edit a proposed goal (owner or admin only; co-founder mode must be on)
+    Edit {
+        /// Goal UUID
+        goal_id: String,
+        /// New goal title
+        #[arg(long)]
+        title: String,
+        /// Number measured by the goal
+        #[arg(long)]
+        metric: String,
+        /// New target (money in minor units)
+        #[arg(long)]
+        target: i64,
+        /// New period: week or month
+        #[arg(long)]
+        period: String,
+        /// Updated reason for the proposal
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Approve a proposed goal (owner or admin only; agents are refused)
     Approve {
         /// Goal UUID
@@ -2341,6 +2364,229 @@ pub enum NumbersReviewCmd {
         #[arg(long)]
         choice: String,
         /// Note kept with the answer
+        #[arg(long)]
+        note: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum PlaybookStatusArg {
+    Proposed,
+    Active,
+    Archived,
+    Rejected,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum JobStatusArg {
+    Running,
+    Completed,
+    Cancelled,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum JobStepStatusArg {
+    #[value(name = "in_progress", alias = "in-progress")]
+    InProgress,
+    Done,
+    Blocked,
+    Skipped,
+}
+
+#[derive(Subcommand)]
+pub enum PlaybooksCmd {
+    /// Propose a playbook for the owner to approve. The playbook is JSON (title,
+    /// summary, function, ordered steps with owner, inputs, outputs, tools and an
+    /// optional approval point). With --playbook it proposes a change to an
+    /// approved playbook instead, and --summary says what the change does. Only
+    /// works while co-founder mode is on. A new playbook prints its playbookId
+    Propose {
+        /// Path to the playbook JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+        /// Propose a change to this approved playbook (UUID) instead of a new one
+        #[arg(long)]
+        playbook: Option<String>,
+        /// One line saying what the change does; required with --playbook
+        #[arg(long)]
+        summary: Option<String>,
+    },
+    /// List playbooks, newest first, with their version and whether a change waits
+    List {
+        /// Only playbooks in this status
+        #[arg(long, value_enum)]
+        status: Option<PlaybookStatusArg>,
+    },
+    /// Show one playbook in full: approved version, waiting change, decision record and its jobs
+    Show {
+        /// Playbook UUID
+        playbook_id: String,
+    },
+    /// Replace the content of the waiting proposal (the proposer, the owner or an admin)
+    Revise {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Path to the playbook JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+        /// One line saying what the change does
+        #[arg(long)]
+        summary: Option<String>,
+    },
+    /// Take back the waiting proposal (the proposer, the owner or an admin)
+    Withdraw {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Reason
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Approve the waiting proposal; it becomes the next version (owner or admin only; agents are refused)
+    Approve {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Proposal revision being approved; defaults to the waiting one
+        #[arg(long)]
+        revision: Option<u32>,
+        /// Note kept in the decision record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Reject the waiting proposal (owner or admin only)
+    Reject {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Proposal revision being rejected; defaults to the waiting one
+        #[arg(long)]
+        revision: Option<u32>,
+        /// Reason kept in the decision record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Write the next version directly (owner or admin only)
+    Edit {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Path to the playbook JSON file; use - to read stdin
+        #[arg(long)]
+        file: String,
+        /// One line saying what changed
+        #[arg(long)]
+        summary: Option<String>,
+    },
+    /// Retire a playbook; running jobs finish, no new jobs start (owner or admin only)
+    Archive {
+        /// Playbook UUID
+        playbook_id: String,
+        /// Reason
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Print the decision record: who approved what, and when, on playbooks and job steps
+    Approvals {
+        /// Only this playbook
+        #[arg(long)]
+        playbook: Option<String>,
+    },
+    /// Start a running copy of an approved playbook for one client job. Prints its jobId
+    Start {
+        /// Playbook UUID
+        playbook_id: String,
+        /// The job, for example the client's name
+        #[arg(long)]
+        title: String,
+        /// The version you expect; refused when the playbook moved on
+        #[arg(long)]
+        version: Option<u32>,
+    },
+    /// List running copies with their current step, newest first
+    Jobs {
+        /// Only jobs of this playbook
+        #[arg(long)]
+        playbook: Option<String>,
+        /// Only jobs in this status
+        #[arg(long, value_enum)]
+        status: Option<JobStatusArg>,
+    },
+    /// Show one running copy in full, including its approvals and hand-offs
+    Job {
+        /// Job UUID
+        job_id: String,
+    },
+    /// Move the current step of a job along. A step with an approval point
+    /// cannot start until the owner approved it
+    Step {
+        /// Job UUID
+        job_id: String,
+        /// Step id
+        step_id: String,
+        /// New status: in_progress, done, blocked or skipped
+        #[arg(long, value_enum)]
+        status: JobStepStatusArg,
+        /// Note; required when the step is blocked
+        #[arg(long)]
+        note: Option<String>,
+        /// Short progress line, for example "Round 1 of 2"
+        #[arg(long)]
+        progress: Option<String>,
+    },
+    /// Ask the owner to approve the current step's approval point
+    RequestApproval {
+        /// Job UUID
+        job_id: String,
+        /// Step id
+        step_id: String,
+        /// Note for the owner
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Approve a step's approval point (owner or admin only; agents are refused)
+    ApproveStep {
+        /// Job UUID
+        job_id: String,
+        /// Step id
+        step_id: String,
+        /// Note kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Reject a step's approval point; the step is skipped (owner or admin only)
+    RejectStep {
+        /// Job UUID
+        job_id: String,
+        /// Step id
+        step_id: String,
+        /// Reason kept in the approval record
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Hand a step to another function, agent, worker type or the founder
+    HandOff {
+        /// Job UUID
+        job_id: String,
+        /// Step id
+        step_id: String,
+        /// Hand it to a function: sales, operations, customer_success, finance or brand
+        #[arg(long, value_parser = commands::functions::parse_function)]
+        function: Option<buzz_core::company_functions::CompanyFunction>,
+        /// Hand it to a named employee (public key in hex)
+        #[arg(long)]
+        agent: Option<String>,
+        /// Hand it to a worker type, for example research
+        #[arg(long)]
+        worker: Option<String>,
+        /// Hand it to the founder
+        #[arg(long)]
+        founder: bool,
+        /// Why
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Stop a job (whoever started it, the owner or an admin)
+    Cancel {
+        /// Job UUID
+        job_id: String,
+        /// Reason
         #[arg(long)]
         note: Option<String>,
     },
@@ -4035,6 +4281,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Functions(sub) => commands::functions::dispatch(sub, &client).await,
         Cmd::Access(sub) => commands::access::dispatch(sub, &client).await,
         Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
+        Cmd::Playbooks(sub) => commands::playbooks::dispatch(sub, &client).await,
         Cmd::Numbers(sub) => commands::numbers::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
@@ -4238,6 +4485,7 @@ mod tests {
             "patches",
             "permissions",
             "plans",
+            "playbooks",
             "pr",
             "projects",
             "reactions",

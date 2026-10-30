@@ -25,6 +25,10 @@ import {
   pendingBatchRowsForContact,
   uniquePendingBatchRowForContact,
 } from "./whatsappOutreachContactState";
+import {
+  useWhatsAppSendNowAccess,
+  useWhatsAppSendNowBatchIds,
+} from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import {
   formatWhatsAppDateTime,
@@ -245,6 +249,7 @@ export function WhatsAppOutreachScreen({
   );
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
+  const currentPubkey = identityQuery.data?.pubkey;
   const membershipQuery = useMyRelayMembershipLookupQuery();
   const command = useWhatsAppCommand();
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null);
@@ -294,12 +299,16 @@ export function WhatsAppOutreachScreen({
     };
   };
   const templates = templatesQuery.data ?? statusQuery.data?.templates ?? [];
-  const currentPubkey = identityQuery.data?.pubkey;
   const role = membershipQuery.data?.membership?.role;
   const canManage =
     membershipQuery.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
+  const canSendNow = useWhatsAppSendNowAccess({
+    role,
+    pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
+    ownerPubkey: profileQuery.data?.ownerPubkey,
+  });
   const status = statusQuery.data;
   const progress = status
     ? getWhatsAppDailyCapProgress(
@@ -342,6 +351,11 @@ export function WhatsAppOutreachScreen({
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
   const threadQuery = useWhatsAppThreadQuery(selectedContact?.waId ?? null);
   const thread = threadQuery.data;
+  const sendNowBatchIds = useWhatsAppSendNowBatchIds(
+    selectedContact,
+    status?.connected === true,
+    thread?.messages ?? [],
+  );
   const pendingBatches = pendingBatchesQuery.data ?? [];
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
@@ -923,10 +937,12 @@ export function WhatsAppOutreachScreen({
                     }
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
+                    canSendNow={canSendNow}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}
                     onRejectDraft={rejectDraft}
+                    sendNowBatchId={sendNowBatchIds.get(message.id) ?? null}
                     templates={templates}
                     waitingForApproval={
                       message.direction === "out" &&

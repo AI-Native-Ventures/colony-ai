@@ -212,9 +212,17 @@ export function CompanyMapScreen() {
   const slotByFunction = new Map(slots.map((slot) => [slot.functionId, slot]));
   return (
     <TeamPage testId="cofounder-company-map" title="Company map">
-      <header className="space-y-2">
-        <TeamPageTitle>Company map</TeamPageTitle>
-        <p className="team-subtitle">How {companyName} is run.</p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="team-head-copy">
+          <TeamPageTitle>Company map</TeamPageTitle>
+          <p className="team-subtitle">How {companyName} is run.</p>
+        </div>
+        <Link
+          className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          to="/company/weekly-review"
+        >
+          Weekly review
+        </Link>
       </header>
       <section
         aria-label={`${companyName} company map`}

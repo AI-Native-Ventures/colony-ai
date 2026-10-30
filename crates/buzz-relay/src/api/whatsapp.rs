@@ -26,8 +26,8 @@ use crate::state::AppState;
 use crate::whatsapp::connect::{self, ConnectError};
 use crate::whatsapp::inbound::process_payload;
 use crate::whatsapp::policy::{
-    e164, normalize_wa_id, verify_signature, verify_token_matches, window_closes_at, window_open,
-    MAX_WEBHOOK_BODY_BYTES,
+    e164, next_window_start, normalize_wa_id, verify_signature, verify_token_matches,
+    window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
 };
 use crate::whatsapp::{access_for, Access};
 
@@ -212,7 +212,23 @@ fn client_state(state: &str) -> &str {
     }
 }
 
-fn message_view(message: &WhatsappMessage) -> Value {
+/// When an approved (`ready`) row is expected to go out, so the app can say so. A row the
+/// owner released with `send_now` reports that moment; any other new chat waits for the next
+/// send window (the pacing gap and the daily cap can still delay it a little); a row that is
+/// not a new chat goes out at the next sender pass. `None` for every other state.
+fn sends_at(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Option<String> {
+    if message.state != "ready" {
+        return None;
+    }
+    let at = match message.send_after {
+        Some(released) => released,
+        None if message.new_chat => next_window_start(now),
+        None => now,
+    };
+    Some(at.to_rfc3339())
+}
+
+fn message_view(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Value {
     let error_text = message.error_text.clone().or_else(|| {
         message
             .skip_reason
@@ -233,6 +249,7 @@ fn message_view(message: &WhatsappMessage) -> Value {
         "senderPubkey": message.sender_pubkey.as_ref().map(hex::encode),
         "waId": message.wa_id,
         "createdAt": message.created_at.to_rfc3339(),
+        "sendsAt": sends_at(message, now),
     })
 }
 
@@ -291,7 +308,10 @@ pub(crate) async fn thread_view(
     let flags = flags.get(&contact.wa_id).copied().unwrap_or_default();
     Ok(json!({
         "contact": contact_view(&contact, now, &flags),
-        "messages": messages.iter().map(message_view).collect::<Vec<_>>(),
+        "messages": messages
+            .iter()
+            .map(|message| message_view(message, now))
+            .collect::<Vec<_>>(),
     }))
 }
 
@@ -442,6 +462,7 @@ pub async fn query(
                     "preview": row.body,
                     "state": row.state,
                     "skipReason": row.skip_reason,
+                    "sendsAt": sends_at(row, now),
                 }));
             }
             detail["rows"] = Value::Array(row_views);
@@ -459,7 +480,7 @@ pub async fn query(
                 "drafts": drafts
                     .iter()
                     .map(|draft| {
-                        let mut view = message_view(draft);
+                        let mut view = message_view(draft, now);
                         view["to"] = json!(e164(&draft.wa_id));
                         view["params"] = draft.params.clone();
                         view
@@ -688,9 +709,40 @@ mod tests {
             batch_id: None,
             batch_idx: Some(idx),
             new_chat: true,
+            send_after: None,
             sender_pubkey: None,
             sent_at: None,
             created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn only_ready_rows_say_when_they_go_out() {
+        use chrono::TimeZone;
+        // 03:00 UTC is 05:00 in Johannesburg: the next window opens at 06:00 UTC.
+        let night = Utc
+            .with_ymd_and_hms(2026, 10, 29, 3, 0, 0)
+            .single()
+            .expect("time");
+        let mut ready = message("ready", 0);
+        assert_eq!(
+            sends_at(&ready, night).as_deref(),
+            Some("2026-10-29T06:00:00+00:00")
+        );
+        ready.new_chat = false;
+        assert_eq!(
+            sends_at(&ready, night).as_deref(),
+            Some("2026-10-29T03:00:00+00:00")
+        );
+        // Released by the owner: the release moment, not the window.
+        ready.new_chat = true;
+        ready.send_after = Some(night + chrono::Duration::minutes(1));
+        assert_eq!(
+            sends_at(&ready, night).as_deref(),
+            Some("2026-10-29T03:01:00+00:00")
+        );
+        for state in ["held", "queued", "sending", "sent", "failed", "draft"] {
+            assert_eq!(sends_at(&message(state, 1), night), None, "{state}");
         }
     }
 

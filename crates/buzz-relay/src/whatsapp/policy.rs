@@ -23,6 +23,8 @@ const SECS_PER_DAY: i64 = 86_400;
 pub const MIN_GAP_SECS: i64 = 180;
 /// Largest gap between two paced new-chat sends.
 pub const MAX_GAP_SECS: i64 = 360;
+/// Most rows a batch may have for the owner's `send_now` decision: a test, not a blast.
+pub const SEND_NOW_MAX_ROWS: i64 = 3;
 /// Country code applied to numbers written with a leading zero.
 pub const DEFAULT_COUNTRY_CODE: &str = "27";
 /// Largest request body the webhook accepts.
@@ -191,6 +193,18 @@ pub fn decide_new_chat(
         if now < due {
             return NewChatDecision::WaitUntil(due);
         }
+    }
+    NewChatDecision::SendNow
+}
+
+/// Like [`decide_new_chat`] for a row the owner released with `send_now`: the send window and
+/// the gap since the last send are skipped, the daily cap still holds (the row counts to it).
+pub fn decide_owner_send_now(now: DateTime<Utc>, sent_today: i64, cap: i32) -> NewChatDecision {
+    if sent_today >= i64::from(cap) {
+        let tomorrow = sast_day_start(now) + Duration::seconds(SECS_PER_DAY);
+        return NewChatDecision::CapReached {
+            resume_at: next_window_start(tomorrow),
+        };
     }
     NewChatDecision::SendNow
 }
@@ -519,6 +533,23 @@ mod tests {
             );
             assert_eq!(gap, row_gap(&id));
         }
+    }
+
+    #[test]
+    fn owner_send_now_skips_window_and_gap_but_not_the_cap() {
+        // 03:00 UTC is 05:00 SAST, outside the window; the gap would not have passed either.
+        assert_eq!(
+            decide_owner_send_now(at(3, 0, 0), 0, 30),
+            NewChatDecision::SendNow
+        );
+        assert!(matches!(
+            decide_owner_send_now(at(3, 0, 0), 30, 30),
+            NewChatDecision::CapReached { .. }
+        ));
+        assert!(matches!(
+            decide_owner_send_now(at(3, 0, 0), 0, 0),
+            NewChatDecision::CapReached { .. }
+        ));
     }
 
     #[test]

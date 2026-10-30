@@ -224,6 +224,9 @@ pub struct WhatsappMessage {
     pub batch_idx: Option<i32>,
     /// Counts to the daily cap.
     pub new_chat: bool,
+    /// Set only by the owner's `send_now` decision: the moment it was given. The sender
+    /// treats a set value as "skip the send window and the pacing gap".
+    pub send_after: Option<DateTime<Utc>>,
     /// Who asked for the send.
     pub sender_pubkey: Option<Vec<u8>>,
     /// Attempt time.
@@ -303,6 +306,21 @@ pub enum BatchDecisionOutcome {
     Rejected,
 }
 
+/// Result of an owner `send_now` decision on an approved batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SendNowOutcome {
+    /// No such batch in this company.
+    NotFound,
+    /// The batch is not approved (pending, rejected or completed).
+    NotApproved,
+    /// The batch has more rows than a test may have; carries its row count.
+    TooManyRows(i64),
+    /// No row is waiting to be sent (all sent, dropped or failed already).
+    NothingWaiting,
+    /// This many waiting rows now skip the send window and the pacing gap.
+    Flagged(i64),
+}
+
 /// Result of an owner decision on one agent draft.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DraftDecisionOutcome {
@@ -346,6 +364,7 @@ fn row_to_message(row: &PgRow) -> Result<WhatsappMessage> {
         batch_id: row.try_get("batch_id")?,
         batch_idx: row.try_get("batch_idx")?,
         new_chat: row.try_get("new_chat")?,
+        send_after: row.try_get("send_after")?,
         sender_pubkey: row.try_get("sender_pubkey")?,
         sent_at: row.try_get("sent_at")?,
         created_at: row.try_get("created_at")?,
@@ -1293,7 +1312,7 @@ impl Db {
         let row = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages WHERE community_id = $1 AND id = $2",
         )
         .bind(community.as_uuid())
@@ -1313,7 +1332,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages \
              WHERE community_id = $1 AND wa_id = $2 AND state <> 'dropped' \
              ORDER BY created_at DESC, id LIMIT $3",
@@ -1336,10 +1355,11 @@ impl Db {
             "SELECT m.id, m.wa_id, m.direction, m.kind, m.body, m.template_name, \
                     m.template_language, m.params, m.state, m.skip_reason, m.wamid, \
                     m.error_code, m.error_text, m.event_id, m.batch_id, m.batch_idx, \
-                    m.new_chat, m.sender_pubkey, m.sent_at, m.created_at \
+                    m.new_chat, m.send_after, m.sender_pubkey, m.sent_at, m.created_at \
              FROM whatsapp_messages m \
              WHERE m.community_id = $1 AND m.state IN ('queued', 'ready') \
-             ORDER BY (m.state = 'queued') DESC, m.created_at, m.batch_idx NULLS FIRST, m.id \
+             ORDER BY (m.state = 'queued') DESC, (m.send_after IS NOT NULL) DESC, \
+                      m.created_at, m.batch_idx NULLS FIRST, m.id \
              LIMIT $2",
         )
         .bind(community.as_uuid())
@@ -1468,7 +1488,7 @@ impl Db {
              WHERE state = 'sending' AND lease_until <= $1 \
              RETURNING community_id, id, wa_id, direction, kind, body, template_name, \
                  template_language, params, state, skip_reason, wamid, error_code, error_text, \
-                 event_id, batch_id, batch_idx, new_chat, sender_pubkey, sent_at, created_at",
+                 event_id, batch_id, batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at",
         )
         .bind(now)
         .fetch_all(&self.pool)
@@ -1506,7 +1526,7 @@ impl Db {
                AND state NOT IN ('failed') \
              RETURNING id, wa_id, direction, kind, body, template_name, template_language, params, \
                  state, skip_reason, wamid, error_code, error_text, event_id, batch_id, batch_idx, \
-                 new_chat, sender_pubkey, sent_at, created_at",
+                 new_chat, send_after, sender_pubkey, sent_at, created_at",
         )
         .bind(community.as_uuid())
         .bind(wamid)
@@ -1527,7 +1547,7 @@ impl Db {
         let row = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages WHERE community_id = $1 AND wamid = $2",
         )
         .bind(community.as_uuid())
@@ -1598,7 +1618,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages \
              WHERE community_id = $1 AND event_id IS NULL AND wamid IS NOT NULL \
                AND state IN ('received', 'sent', 'delivered', 'read') \
@@ -1620,7 +1640,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages \
              WHERE community_id = $1 AND direction = 'out' AND state = 'draft' \
              ORDER BY created_at LIMIT $2",
@@ -1641,7 +1661,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages \
              WHERE community_id = $1 AND direction = 'out' AND state = 'draft' \
                AND event_id IS NULL \
@@ -1811,7 +1831,7 @@ impl Db {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
                     state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
-                    batch_idx, new_chat, sender_pubkey, sent_at, created_at \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
              FROM whatsapp_messages WHERE community_id = $1 AND batch_id = $2 \
              ORDER BY batch_idx",
         )
@@ -1913,6 +1933,61 @@ impl Db {
         .await?;
         tx.commit().await?;
         Ok(outcome)
+    }
+
+    /// Let the waiting rows of an approved batch skip the send window and the pacing gap.
+    ///
+    /// One transaction under the batch row lock: the batch must be `approved` and have at
+    /// most `max_rows` rows in total (dropped rows count, so a blast cannot be pruned into a
+    /// "test" afterwards). Only `ready` rows are flagged; sending, the daily cap, opt-outs and
+    /// the quality stop are untouched. A repeat keeps the first moment.
+    pub async fn whatsapp_send_now_batch(
+        &self,
+        community: CommunityId,
+        batch_id: Uuid,
+        max_rows: i64,
+        now: DateTime<Utc>,
+    ) -> Result<SendNowOutcome> {
+        let mut tx = begin(&self.pool).await?;
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM whatsapp_batches WHERE community_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(batch_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        match status.as_deref() {
+            None => return Ok(SendNowOutcome::NotFound),
+            Some("approved") => {}
+            Some(_) => return Ok(SendNowOutcome::NotApproved),
+        }
+        let total: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM whatsapp_messages WHERE community_id = $1 AND batch_id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(batch_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if total > max_rows {
+            return Ok(SendNowOutcome::TooManyRows(total));
+        }
+        let flagged = sqlx::query(
+            "UPDATE whatsapp_messages SET send_after = COALESCE(send_after, $3), \
+                    updated_at = now() \
+             WHERE community_id = $1 AND batch_id = $2 AND state = 'ready'",
+        )
+        .bind(community.as_uuid())
+        .bind(batch_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        tx.commit().await?;
+        Ok(if flagged == 0 {
+            SendNowOutcome::NothingWaiting
+        } else {
+            SendNowOutcome::Flagged(flagged as i64)
+        })
     }
 
     /// Mark approved batches with nothing left to send as completed. Returns their ids.

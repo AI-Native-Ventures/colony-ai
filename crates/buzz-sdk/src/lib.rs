@@ -32,6 +32,8 @@ pub mod company_members;
 pub mod company_numbers;
 /// Typed event builder for co-founder plan actions.
 pub mod company_plans;
+/// Typed event builders for co-founder playbook and running-copy actions.
+pub mod company_playbooks;
 /// Typed event builders for Colony company records.
 pub mod company_records;
 /// Typed event builders for Colony AI allowances and spend records.

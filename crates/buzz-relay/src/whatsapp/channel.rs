@@ -446,6 +446,7 @@ mod tests {
             batch_id: None,
             batch_idx: None,
             new_chat: false,
+            send_after: None,
             sender_pubkey: Some(vec![7; 32]),
             sent_at: None,
             created_at: DateTime::from_timestamp(1_800_000_000, 0).expect("time"),

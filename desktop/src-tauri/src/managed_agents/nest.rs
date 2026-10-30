@@ -82,7 +82,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 19 added the rule to start a real worker run when asked to.
 /// Version 20 combines the co-founder Phase 2 integration and initiative sections
 /// with the worker-start rule.
-const NEST_SKILL_VERSION: u32 = 20;
+/// Version 21 adds the Playbooks section (`colony playbooks`) to that skill.
+const NEST_SKILL_VERSION: u32 = 21;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
