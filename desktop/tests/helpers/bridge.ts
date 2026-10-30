@@ -8,6 +8,7 @@ import type {
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
+  MockPlan,
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
@@ -638,6 +639,7 @@ type MockBridgeOptions = {
   cofounderSettings?: MockCofounderSettings;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
+  companyPlans?: MockPlan[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
