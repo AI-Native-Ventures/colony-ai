@@ -250,7 +250,7 @@
 .cf2-button-primary {
   border-color: hsl(var(--colony-fg));
   background: hsl(var(--colony-fg));
-  color: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
 }
 
 .cf2-button-primary:hover {
