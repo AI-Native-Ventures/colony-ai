@@ -6,7 +6,7 @@
 -- The queue holds reasons and ids only, never message text from outside the
 -- company.
 CREATE TABLE cofounder_wakes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     community_id UUID NOT NULL REFERENCES communities(id),
     reason TEXT NOT NULL
         CHECK (reason IN ('mode_on', 'daily_start', 'inbound_reply', 'worker_finished',
@@ -20,6 +20,7 @@ CREATE TABLE cofounder_wakes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     delivered_at TIMESTAMPTZ,
     message_event_id BYTEA,
+    PRIMARY KEY (community_id, id),
     UNIQUE (community_id, dedupe_key)
 );
 
