@@ -29,6 +29,8 @@ pub mod company_lessons;
 pub mod company_members;
 /// Co-founder onboarding progress (questions, answers, company map proposal).
 pub mod company_onboarding;
+/// Co-founder plans: typed proposals, step state and approval records.
+pub mod company_plans;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
 /// Typed content and validation for employee allowances and AI spend.

@@ -814,6 +814,10 @@ pub const KIND_ONBOARDING_HEAD: u32 = 30675;
 pub const KIND_BRIEF_ACTION: u32 = 47064;
 /// Co-founder onboarding question, answer or map decision, brokered and community-wide.
 pub const KIND_ONBOARDING_ACTION: u32 = 47065;
+/// Relay-authored company plan head (co-founder block, community-wide, one per plan).
+pub const KIND_PLAN_HEAD: u32 = 30673;
+/// Member plan proposal, decision or step update, brokered and community-wide (co-founder block).
+pub const KIND_PLAN_ACTION: u32 = 47063;
 
 // WhatsApp outreach (official Cloud API). Member-authored commands handled by
 // `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
@@ -887,6 +891,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_BRIEF_ACTION,
     KIND_ONBOARDING_HEAD,
     KIND_ONBOARDING_ACTION,
+    KIND_PLAN_HEAD,
+    KIND_PLAN_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -911,6 +917,7 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_WORKER_RUN_ACTION
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_ACTION
+            | KIND_PLAN_ACTION
     )
 }
 
@@ -950,6 +957,8 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_HEAD
             | KIND_ONBOARDING_ACTION
+            | KIND_PLAN_HEAD
+            | KIND_PLAN_ACTION
     )
 }
 
@@ -1270,6 +1279,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_BRIEF_ACTION,
     KIND_ONBOARDING_HEAD,
     KIND_ONBOARDING_ACTION,
+    KIND_PLAN_HEAD,
+    KIND_PLAN_ACTION,
     KIND_WHATSAPP_BATCH,
     KIND_WHATSAPP_BATCH_DECISION,
     KIND_WHATSAPP_SEND_REQUEST,
@@ -1366,6 +1377,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_WORKER_RUN_ACTION
             | KIND_BRIEF_ACTION
             | KIND_ONBOARDING_ACTION
+            | KIND_PLAN_ACTION
             | KIND_WHATSAPP_BATCH
             | KIND_WHATSAPP_BATCH_DECISION
             | KIND_WHATSAPP_SEND_REQUEST
@@ -1417,6 +1429,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_WORKER_RUN_HEAD
             | KIND_BRIEF_HEAD
             | KIND_ONBOARDING_HEAD
+            | KIND_PLAN_HEAD
     )
 }
 
@@ -1467,6 +1480,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); 
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_BRIEF_HEAD)); // 30674 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_ONBOARDING_HEAD)); // 30675 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 ∈ 30000–39999
 
 // Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
 const _: () = assert!(
@@ -1588,6 +1602,21 @@ mod tests {
         assert!(is_command_kind(KIND_WORKER_RUN_ACTION));
         assert!(!is_relay_only_kind(KIND_WORKER_RUN_ACTION));
         assert!(!is_company_command_kind(KIND_WORKER_RUN_HEAD));
+    }
+
+    #[test]
+    fn plan_kinds_have_expected_write_authority() {
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_PLAN_HEAD));
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_PLAN_ACTION));
+        assert!(is_company_global_kind(KIND_PLAN_HEAD));
+        assert!(is_company_global_kind(KIND_PLAN_ACTION));
+        assert!(is_relay_only_kind(KIND_PLAN_HEAD));
+        assert!(is_company_command_kind(KIND_PLAN_ACTION));
+        assert!(is_command_kind(KIND_PLAN_ACTION));
+        assert!(!is_relay_only_kind(KIND_PLAN_ACTION));
+        assert!(!is_company_command_kind(KIND_PLAN_HEAD));
+        assert!((30670..=30679).contains(&KIND_PLAN_HEAD));
+        assert!((47060..=47069).contains(&KIND_PLAN_ACTION));
     }
 
     #[test]

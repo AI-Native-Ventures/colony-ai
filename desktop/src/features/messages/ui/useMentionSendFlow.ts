@@ -44,6 +44,8 @@ import {
   type SendMessageWithMentionFlowInput,
   resolvePreviewTags,
   uniqueNormalizedPubkeys,
+  wrongSameNameAgentMentions,
+  wrongSameNameAgentNotice,
 } from "./useMentionSendFlow.helpers";
 import { buildAgentAddressMentionTags } from "@/features/messages/lib/agentAddressMention.mjs";
 import { AgentMentionAuthorizationError } from "@/features/messages/lib/agentMentionRevalidation";
@@ -588,6 +590,16 @@ export function useMentionSendFlow({
           // after whether each mentioned local agent touched the message, and
           // an agent that did not is started (GATE-303).
           noteMentionSentToAgents(revalidatedMentionPubkeys);
+          // A same-name agent that is not the one this Mac runs wakes nothing
+          // and answers nobody: say so, so the silence is never unexplained.
+          const wrongAgentNames = wrongSameNameAgentMentions({
+            mentionRefs: draft.savedMentionRefs,
+            sentPubkeys: revalidatedMentionPubkeys,
+            managedAgents: [...managedAgentsByPubkey.values()],
+          });
+          if (wrongAgentNames.length > 0) {
+            toast.warning(wrongSameNameAgentNotice(wrongAgentNames));
+          }
           if (signal?.aborted || isSendCancelled()) return;
           const sentMentionPubkeys = new Set(
             revalidatedMentionPubkeys.map(normalizePubkey),

@@ -461,7 +461,7 @@ test("hard-caps audio work and cancels active and queued loads on unmount", asyn
       originalRevoke(url);
     };
   });
-  await page.setViewportSize({ width: 1280, height: 400 });
+  await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await waitForMockLiveSubscription(page, "general");

@@ -237,6 +237,8 @@ export const KIND_BRIEF_HEAD = 30674;
 export const KIND_ONBOARDING_HEAD = 30675;
 export const KIND_BRIEF_ACTION = 47064;
 export const KIND_ONBOARDING_ACTION = 47065;
+export const KIND_PLAN_HEAD = 30673;
+export const KIND_PLAN_ACTION = 47063;
 
 export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_GOAL_HEAD,
@@ -274,6 +276,8 @@ export const COMPANY_RECORD_EVENT_KINDS = [
   KIND_BRIEF_ACTION,
   KIND_ONBOARDING_HEAD,
   KIND_ONBOARDING_ACTION,
+  KIND_PLAN_HEAD,
+  KIND_PLAN_ACTION,
 ] as const;
 
 // Human-visible "new content" message kinds. Used as the unread trigger set

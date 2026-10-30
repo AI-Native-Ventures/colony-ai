@@ -12,7 +12,7 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 
 ## Who may do what
 
-| Action | Owner/admin | Outreach channel member (agent) | Other members |
+| Action | Owner/admin | Agent (owned by owner/admin, or Outreach channel member) | Other members |
 | --- | --- | --- | --- |
 | connect, disconnect | yes | no | no |
 | change daily cap, sync templates | yes | no | no |
@@ -24,9 +24,18 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 | read status and templates | yes | yes | yes (no secrets, no numbers) |
 | read contacts, inbox, batches, drafts, threads | yes | yes | no |
 
-"Outreach channel member" means an active member of the company's private `Outreach`
-channel. The relay creates it on connect (private, owner and admins added). The owner
-adds agents to it with the normal channel member flow.
+The agent column covers two kinds of caller, and neither can approve or send on its own:
+
+- **An agent owned by the owner or an admin.** The relay reads `users.agent_owner_pubkey`,
+  which it records from the verified NIP-OA auth tag when the agent authenticates, and checks
+  that this owner is a current owner or admin of the company. No channel membership is
+  needed, so it does not matter where the owner asks from (a DM with Scout works). Display
+  names are never used. It works for already connected numbers with no reconnect. An agent
+  owned by a plain member, by someone outside the company, or by nobody is refused, and an
+  agent loses access when its owner is demoted.
+- **An active member of the company's private `Outreach` channel.** The relay creates the
+  channel on connect (private, owner and admins added). Adding an agent with the normal
+  channel member flow still works and is the only way for an agent that has no recorded owner.
 
 ## HTTP (NIP-98 authed, same as `/discovery/search`)
 

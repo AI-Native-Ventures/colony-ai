@@ -136,6 +136,28 @@ let now: () => number = () => Date.now();
 let newKey: () => string = () => crypto.randomUUID();
 const listeners = new Set<() => void>();
 const shortcutListeners = new Set<(request: BrowserShortcutRequest) => void>();
+export type AgentTabOpened = {
+  channelId: string;
+  /** The new page. */
+  pageKey: string;
+  /** The page whose host tab the agent opened it from. */
+  openerKey: string;
+};
+const agentTabListeners = new Set<(opened: AgentTabOpened) => void>();
+
+/**
+ * A tab an AI employee opened itself (`browser_open` while its first page is
+ * in use) joins the strip quietly; the listener decides whether the person,
+ * who may be watching, is shown it.
+ */
+export function onAgentTabOpened(
+  listener: (opened: AgentTabOpened) => void,
+): () => void {
+  agentTabListeners.add(listener);
+  return () => {
+    agentTabListeners.delete(listener);
+  };
+}
 
 function notify() {
   for (const listener of listeners) listener();
@@ -590,7 +612,11 @@ function handleHostEvent(event: BrowserHostEvent) {
         closeHostTab(event.tab.id);
         return;
       }
-      adoptPopup(opener.channelId, event.tab, event.background === true);
+      adoptPopup(
+        opener.channelId,
+        event.tab,
+        event.background === true ? opener.key : null,
+      );
       return;
     }
     case "closed": {
@@ -657,13 +683,14 @@ function handleHostEvent(event: BrowserHostEvent) {
 
 /**
  * A window a page opened: a new page and dock tab beside it, in front. A page
- * an AI employee opened (`background`) is added to the tab strip and nothing
- * else: the dock does not open and the person's selected tab does not change.
+ * an AI employee opened (`openerKey` set) is added to the tab strip and nothing
+ * else here: the dock does not open and the person's selected tab does not
+ * change until `onAgentTabOpened` listeners decide the person is watching.
  */
 function adoptPopup(
   channelId: string,
   tab: BrowserTabState,
-  background = false,
+  openerKey: string | null = null,
 ) {
   if (getWorkAreaState(channelId).tabs.length >= MAX_TABS_PER_CHANNEL) {
     closeHostTab(tab.id);
@@ -675,8 +702,13 @@ function adoptPopup(
   const page = applyTabState(blankPage(key, channelId), latest);
   hostIndex.set(tab.id, key);
   setPage(page, { persist: true });
-  if (background) addWorkAreaTab(channelId, "browser", browserTabId(key));
-  else openWorkArea(channelId, "browser", browserTabId(key));
+  if (openerKey === null) {
+    openWorkArea(channelId, "browser", browserTabId(key));
+    return;
+  }
+  addWorkAreaTab(channelId, "browser", browserTabId(key));
+  for (const listener of [...agentTabListeners])
+    listener({ channelId, pageKey: key, openerKey });
 }
 
 /**

@@ -49,6 +49,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30670 | Co-founder settings head | Relay signed, replaceable | Co-founder mode |
 | 30671 | Function slot head | Relay signed, replaceable | Co-founder mode |
 | 30672 | Worker run head | Relay signed, replaceable | Worker runs |
+| 30673 | Plan head | Relay signed, replaceable | Co-founder plans |
 | 30674 | Business brief head | Relay signed, replaceable | Co-founder onboarding |
 | 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
 | 47006 | Shared work item action | Brokered | Company work |
@@ -69,6 +70,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47060 | Co-founder settings action | Brokered | Co-founder mode |
 | 47061 | Function slot action | Brokered | Co-founder mode |
 | 47062 | Worker run action | Brokered | Worker runs |
+| 47063 | Plan action | Brokered | Co-founder plans |
 | 47064 | Business brief action | Brokered | Co-founder onboarding |
 | 47065 | Co-founder onboarding action | Brokered | Co-founder onboarding |
 
@@ -1229,6 +1231,63 @@ one `p` tag naming the employee that started the run. Action kind 47062 carries
 - **Not in `CompanyCommand`.** The record carries a floating point cost, which
   `CompanyCommand` (an `Eq` type) cannot hold, so the relay decodes
   `WorkerRunAction` directly.
+
+## Plans
+
+A plan is a typed proposal the owner approves, edits or rejects. It is its own
+record, not an ask category: a desktop that predates co-founder mode fails a
+whole ask list on an unknown category, so plans use kinds 30673 and 47063.
+Records are community-wide (no `h`, no `p` tag), d-tag `company:plan:<uuid>`.
+Plans only exist while co-founder mode is on; switching it off stops new
+proposals, revisions and approvals, while approved work in flight finishes.
+
+The relay-signed head (kind 30673) carries `schemaVersion`, `planId`,
+`status` (`proposed`, `approved`, `completed`, `rejected`, `cancelled`),
+`revision`, the `plan`, `proposedByPubkey`, `proposedAt`, `updatedByPubkey`,
+`updatedAt`, `approvals` and `sourceActionEventId`. `plan` holds `title`,
+`summary`, `function`, `currency`, `budgetCents`, `decideBy`, `targetLabel`,
+`timingLabel` and 1 to 24 `steps`. A step holds `stepId`, `title`, `detail`,
+`owner` (`function`, `lead_agent`, `worker` or `owner`, the last being a
+prepared human-only step), `tools`, `costLabel`, `costEstimateCents`,
+`whenLabel`, an optional `approvalPoint` (`outreach`, `spend`, `taste`, `hire`
+or `other`, with a one-line prompt), `status` and `note`.
+
+A member-signed kind 47063 action carries `schemaVersion`, `planId`, `kind`,
+and the fields that kind needs:
+
+| `kind` | Who | Carries | Effect |
+| --- | --- | --- | --- |
+| `propose` | any member or agent | `plan`, no expected head | new plan, `proposed`, revision 1 |
+| `revise` | proposer, owner or admin | `plan`, expected head | replaces a proposed plan, revision + 1; an owner or admin edit is recorded |
+| `approve` | owner or admin | `revision`, expected head | `approved`; recorded |
+| `reject` | owner or admin | `revision`, `note` | `rejected`; recorded |
+| `cancel` | proposer, owner or admin | `note` | `cancelled`; recorded |
+| `request_step_approval` | step doer | `stepId` | step waits at its approval point |
+| `approve_step` / `reject_step` | owner or admin | `stepId`, `note` | step `approved`, or `skipped`; recorded |
+| `update_step` | step doer, owner or admin | `stepId`, `stepStatus`, `note` | step moves along; plan becomes `completed` when every step ended |
+
+Rules enforced by the relay (`buzz_core::company_plans::apply_plan_action`):
+
+- A managed agent never approves or rejects, whatever role row it has. A person
+  who is not an owner or admin does not either.
+- Approve and reject name the `revision` the person looked at; an edited plan
+  makes an older approval conflict.
+- A step with an approval point cannot start until the owner approved that
+  point. Approving a plan records the owner's intent. It never sends or pays:
+  outreach and spending stay gated where Colony runs them (see
+  `docs/cofounder-hard-rules-audit.md`).
+- A step that spends needs an approval point or fits inside `budgetCents`. A
+  worker step can never spend or carry an outreach or spend approval point.
+- The doers of a step are the proposer, the step's agent, the lead of the
+  step's function and owners or admins. A step for a person is only moved by an
+  owner or admin.
+
+The head keeps an append-only approval record (`approvals`, at most 200):
+`scope` (`plan` or `step`), `stepId`, `decision` (`approved`, `rejected`,
+`edited` or `cancelled`), `actorPubkey`, `at`, `revision`, `note` and
+`actionEventId`. It answers who approved what, and when.
+
+CLI: `colony plans propose|list|show|revise|step|request-approval|approve|reject|cancel|approve-step|reject-step|approvals`.
 
 ## Proof boundaries
 

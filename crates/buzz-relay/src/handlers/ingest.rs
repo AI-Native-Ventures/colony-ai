@@ -779,6 +779,9 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | buzz_core::kind::KIND_BRIEF_ACTION
             | buzz_core::kind::KIND_ONBOARDING_HEAD
             | buzz_core::kind::KIND_ONBOARDING_ACTION
+            // Plan records are community-wide company records.
+            | buzz_core::kind::KIND_PLAN_HEAD
+            | buzz_core::kind::KIND_PLAN_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT
@@ -4010,6 +4013,8 @@ mod postgres_tests {
             buzz_core::kind::KIND_BRIEF_ACTION,
             buzz_core::kind::KIND_ONBOARDING_HEAD,
             buzz_core::kind::KIND_ONBOARDING_ACTION,
+            buzz_core::kind::KIND_PLAN_HEAD,
+            buzz_core::kind::KIND_PLAN_ACTION,
         ] {
             assert_eq!(
                 required_scope_for_kind(kind, &event),

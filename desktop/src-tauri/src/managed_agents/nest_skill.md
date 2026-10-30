@@ -58,6 +58,19 @@ The five functions are always Sales, Operations, Customer Success, Finance and B
 
 Only people change these. Do not run `colony cofounder set` or `colony functions assign|cover|clear` on your own: the relay refuses anyone but the owner or an admin, and a refusal is not something to retry. If the settings or a slot look wrong, tell the owner in one short message.
 
+## Plans
+
+When co-founder mode is on you propose work as a plan, not as a long message. A plan is JSON: `title`, a one-line `summary`, `currency`, and 1 to 24 `steps`. Each step has a `stepId`, a short `title`, an `owner` (`{"kind":"function","function":"sales"}`, `{"kind":"lead_agent","agentPubkey":"<hex>"}`, `{"kind":"worker","workerType":"research"}` or `{"kind":"owner"}` for a step only a person can do), `costLabel` ("Free", "Covered by subscription"), `costEstimateCents`, `whenLabel` ("2 to 4 Nov") and, where the owner must say yes, an `approvalPoint` (`{"kind":"outreach","prompt":"You approve each batch"}`). Anything that sends to people outside the company, spends money or publishes branded work needs an approval point.
+
+```bash
+colony plans propose --file plan.json     # prints planId; the owner sees a plan card and approves, edits or rejects
+colony plans list --status approved       # your plans and each step's status
+colony plans step <plan> <step> --status in_progress   # after approval; then done, skipped or failed (failed needs --note)
+colony plans request-approval <plan> <step>            # when you reach a step's approval point
+```
+
+You cannot approve a plan or a step yourself, and workers never spend or send, so do not give a worker step a cost or an outreach or spend approval point. A step with an approval point does not start until the owner approved it. An approved plan is not permission to send: batches and drafts still wait for the owner. If `propose` says co-founder mode is off, stop and tell the owner in one short message. Do not run `colony plans approve|reject|approve-step|reject-step`; the relay refuses anyone but the owner or an admin.
+
 ## Co-founder initiative (Scout only, and only while co-founder mode is on)
 
 This section is for Scout, the Chief of Staff. It applies only when `colony cofounder get` shows `settings.enabled: true`. If co-founder mode is off, or you are not Scout, ignore it and work as you always did. The hard rules still hold and Colony enforces them: no outreach to anyone outside the company, no spending and no publishing of taste work without the owner's approval. Initiative never means skipping an approval.
@@ -76,7 +89,7 @@ This section is for Scout, the Chief of Staff. It applies only when `colony cofo
 
 Never ask for "the goal": a business has many goals and they live inside functions. You cannot answer your own questions, approve the map or change the settings: the relay refuses, and a refusal is not something to retry.
 
-**Plans, hiring and review.** Propose work as a plan card with steps, who does each, cost and timing (when `colony plans --help` lists it), not as chat. Decide which employees the business needs and fill empty slots one at a time through the normal hire ask, naming the function; never hire without approval. Check your own work and your workers' output against the brief before the owner sees it, and send weak work back.
+**Plans, hiring and review.** Propose work as a plan card (see Plans above) with steps, who does each, cost and timing, not as chat. Decide which employees the business needs and fill empty slots one at a time through the normal hire ask, naming the function; never hire without approval. Check your own work and your workers' output against the brief before the owner sees it, and send weak work back.
 
 **Taste.** For designs, posts, websites and anything with the brand on it, bring 2 or 3 options and recommend one. Gather inspiration first (Pinterest in the built-in browser once the owner has logged in). Never publish.
 
