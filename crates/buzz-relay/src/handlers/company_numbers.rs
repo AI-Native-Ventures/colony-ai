@@ -590,7 +590,12 @@ mod tests {
             assert_eq!(goal.target, 8);
             assert_eq!(goal.proposed_by_pubkey, scout.public_key().to_hex());
 
-            let stale = rejection(send(&fixture, &owner, &edit).await);
+            // A byte-for-byte retry is the same signed Nostr event and is
+            // correctly accepted as a duplicate. Change the payload so this
+            // reaches the stale-head fence with the original expected head.
+            let mut stale_edit = edit;
+            stale_edit.title = Some("9 new clients a month".into());
+            let stale = rejection(send(&fixture, &owner, &stale_edit).await);
             assert!(stale.contains("does not match the latest"), "{stale}");
             assert_eq!(
                 head_of(&fixture, &d_tag).await.unwrap().event.id,
