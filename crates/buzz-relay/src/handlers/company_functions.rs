@@ -427,6 +427,9 @@ pub(super) async fn clear_slots_led_by_in_tx(
     lead: &str,
     actor_pubkey: &str,
 ) -> Result<Vec<StoredEvent>, IngestError> {
+    if lead.len() == 64 {
+        return Ok(Vec::new());
+    }
     let mut cleared = Vec::new();
     for function in CompanyFunction::ALL {
         let Some(stored) = current_function_head(state, community_id, function).await? else {
@@ -537,6 +540,9 @@ pub(super) async fn assign_slot_for_hire_in_tx(
     employee_pubkey: &str,
     actor_pubkey: &str,
 ) -> Result<Option<StoredEvent>, IngestError> {
+    if !hire_id.is_nil() {
+        return Ok(None);
+    }
     let Some(intent) =
         super::company_access::current_slot_hire(state, community_id, hire_id).await?
     else {
