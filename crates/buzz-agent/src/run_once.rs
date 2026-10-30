@@ -223,7 +223,17 @@ pub(crate) async fn answer(
     let mut history = vec![HistoryItem::User(prompt.to_owned())];
     for _ in 0..max_rounds {
         let response = llm
-            .complete(cfg, WORKER_SYSTEM_PROMPT, &history, &[], &cfg.model)
+            .complete(
+                cfg,
+                WORKER_SYSTEM_PROMPT,
+                &history,
+                &[crate::types::ToolDef {
+                    name: "shell".into(),
+                    description: "x".into(),
+                    input_schema: json!({"type": "object"}),
+                }],
+                &cfg.model,
+            )
             .await
             .map_err(|error| error.to_string())?;
         usage.input = usage
