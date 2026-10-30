@@ -174,6 +174,16 @@ test("delivery states have visible text equivalents, including failures", () => 
   );
   assert.equal(whatsappDeliveryLabel("draft"), "Draft, needs approval");
   assert.equal(
+    whatsappDeliveryLabel(
+      "queued",
+      null,
+      "2026-10-30T08:15:00+02:00",
+      Date.parse("2026-10-30T08:00:00+02:00"),
+    ),
+    "Sends today at 08:15",
+  );
+  assert.equal(whatsappDeliveryLabel("queued"), "Queued to send");
+  assert.equal(
     whatsappDeliveryLabel("unconfirmed"),
     "Unconfirmed, check before retrying",
   );
@@ -200,6 +210,7 @@ test("pending batch details preserve the held row preview and linked lead", () =
         preview: "Hey Pam, here is your guesthouse preview.",
         state: "held",
         skipReason: null,
+        sendsAt: "2026-10-30T08:15:00+02:00",
       },
     ],
     counts: { total: 1, ready: 1, sent: 0, failed: 0, dropped: 0 },
@@ -208,6 +219,7 @@ test("pending batch details preserve the held row preview and linked lead", () =
   assert.equal(batch.status, "pending");
   assert.equal(batch.rows[0].state, "held");
   assert.equal(batch.rows[0].leadId, "jacaranda-lead-id");
+  assert.equal(batch.rows[0].sendsAt, "2026-10-30T08:15:00+02:00");
   assert.equal(
     batch.rows[0].preview,
     "Hey Pam, here is your guesthouse preview.",

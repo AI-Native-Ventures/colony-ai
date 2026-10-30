@@ -1,11 +1,131 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  WHATSAPP_BATCH_ID,
   installWhatsAppMockBridge,
   gotoWhatsAppScreen,
 } from "../helpers/whatsappOutreach";
 
 test.describe("WhatsApp outreach settings", () => {
+  test("owner sends a small approved batch now after confirming the test warning", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(
+      page,
+      `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+      "batch=send-now",
+    );
+
+    const batchPage = page.getByTestId("whatsapp-batch-page");
+    await expect(batchPage).toBeVisible();
+    const sendNowButton = batchPage.getByRole("button", {
+      name: "Send now (test)",
+    });
+    await expect(sendNowButton).toBeVisible();
+    await expect(
+      batchPage.getByTestId("whatsapp-batch-row-schedule-0").first(),
+    ).toContainText(/Sends (today at \d{2}:\d{2}|tomorrow at 08:00)/u);
+    await sendNowButton.click();
+
+    const dialog = page.getByRole("alertdialog");
+    await expect(
+      dialog.getByRole("heading", {
+        name: "Send now, outside 08:00 to 18:00?",
+      }),
+    ).toBeVisible();
+    await expect(dialog).toContainText(
+      "Use this for tests to your own number.",
+    );
+    await dialog.getByRole("button", { name: "Send now", exact: true }).click();
+
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+            ({ kind, body }) =>
+              kind === 47049 &&
+              body.batchId === "e2e-whatsapp-batch" &&
+              body.decision === "send_now",
+          ),
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("does not offer send now to relay members", async ({ page }) => {
+    await installWhatsAppMockBridge(page, "light", { relayRole: "member" });
+    await gotoWhatsAppScreen(
+      page,
+      `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+      "batch=send-now",
+    );
+
+    await expect(
+      page.getByTestId("whatsapp-batch-page").getByRole("button", {
+        name: "Send now (test)",
+      }),
+    ).toHaveCount(0);
+  });
+
+  test("does not offer send now to profile-flagged agents", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      relayRole: "owner",
+      profileIsAgent: true,
+    });
+    await gotoWhatsAppScreen(
+      page,
+      `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+      "batch=send-now",
+    );
+
+    await expect(
+      page.getByTestId("whatsapp-batch-page").getByRole("button", {
+        name: "Send now (test)",
+      }),
+    ).toHaveCount(0);
+  });
+
+  test("does not offer send now to an owned agent with the owner role", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      relayRole: "owner",
+      profileIsAgent: false,
+      profileOwnerPubkey: "self",
+    });
+    await gotoWhatsAppScreen(
+      page,
+      `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+      "batch=send-now",
+    );
+
+    await expect(
+      page.getByTestId("whatsapp-batch-page").getByRole("button", {
+        name: "Send now (test)",
+      }),
+    ).toHaveCount(0);
+  });
+
+  test("does not offer send now for an approved batch over three rows", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(
+      page,
+      `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+      "batch=approved",
+    );
+
+    await expect(
+      page.getByTestId("whatsapp-batch-page").getByRole("button", {
+        name: "Send now (test)",
+      }),
+    ).toHaveCount(0);
+  });
+
   test("labels a held-only contact as waiting, never sent", async ({
     page,
   }) => {

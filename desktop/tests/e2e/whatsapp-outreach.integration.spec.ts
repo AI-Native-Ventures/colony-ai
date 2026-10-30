@@ -12,6 +12,57 @@ import {
 } from "../helpers/whatsappOutreach";
 
 test.describe("WhatsApp outreach conversations and approvals", () => {
+  test("sends a queued message now from the WhatsApp chats tab after confirmation", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoWhatsAppScreen(
+      page,
+      `/channels/${OUTREACH_CHANNEL_ID}`,
+      "batch=send-now",
+    );
+    await page.getByTestId("channel-whatsapp-chats-trigger").click();
+
+    const outreach = page.getByTestId("whatsapp-outreach");
+    await expect(outreach).toBeVisible();
+    await outreach.getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`).click();
+    const queuedMessage = page.getByTestId(
+      "whatsapp-message-e2e-wa-jacaranda-held-template",
+    );
+    await expect(queuedMessage).toContainText(
+      /Sends (today at \d{2}:\d{2}|tomorrow at 08:00)/u,
+    );
+    await queuedMessage
+      .getByRole("button", { name: "Send now (test)" })
+      .click();
+
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("Send now, outside 08:00 to 18:00?");
+    await expect(dialog).toContainText(
+      "Use this for tests to your own number.",
+    );
+    await dialog.getByRole("button", { name: "Send now", exact: true }).click();
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__BUZZ_E2E_WHATSAPP_STATE__?.commands.find(
+              ({ kind, body }) =>
+                kind === 47049 &&
+                body.batchId === "e2e-whatsapp-batch" &&
+                body.decision === "send_now",
+            )?.body,
+        ),
+      )
+      .toEqual({
+        v: 1,
+        batchId: "e2e-whatsapp-batch",
+        decision: "send_now",
+      });
+  });
+
   test("reviews a pending batch from WhatsApp settings", async ({ page }) => {
     await installWhatsAppMockBridge(page);
     await gotoWhatsAppScreen(page, "/settings?section=whatsapp");
