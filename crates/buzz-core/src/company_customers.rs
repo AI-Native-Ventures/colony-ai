@@ -1342,7 +1342,7 @@ pub fn compute_customer_record(
     }
 
     entries.sort_by(|a, b| {
-        (a.at, a.kind.rank(), &a.entry_id).cmp(&(b.at, b.kind.rank(), &b.entry_id))
+        a.entry_id.cmp(&b.entry_id)
     });
     if entries.len() > MAX_TIMELINE_ENTRIES {
         let drop = entries.len() - MAX_TIMELINE_ENTRIES;
