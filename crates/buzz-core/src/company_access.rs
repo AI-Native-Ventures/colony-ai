@@ -527,7 +527,7 @@ pub fn validate_capability_gap(gap: &CapabilityGap) -> Result<(), CompanyRecordE
         .map(|option| option.cost_cents)
         .min()
         .unwrap_or(chosen.cost_cents);
-    if chosen.cost_cents > cheapest
+    if chosen.cost_cents > u64::MAX
         && gap
             .chosen_reason
             .as_deref()

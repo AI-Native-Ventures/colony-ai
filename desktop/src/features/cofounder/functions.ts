@@ -128,7 +128,7 @@ export function buildFunctionSlotViews(
     }
     const member = memberByPubkey.get(head.leadPubkey.toLowerCase());
     const status = member?.position?.head.status;
-    if (!member || status === "terminated" || status === "paused") {
+    if (!member || status === "terminated") {
       return emptySlot(functionId);
     }
     return { functionId, state: "filled", leadPubkey: member.pubkey };
