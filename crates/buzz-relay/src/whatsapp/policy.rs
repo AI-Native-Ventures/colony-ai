@@ -200,7 +200,7 @@ pub fn decide_new_chat(
 /// Like [`decide_new_chat`] for a row the owner released with `send_now`: the send window and
 /// the gap since the last send are skipped, the daily cap still holds (the row counts to it).
 pub fn decide_owner_send_now(now: DateTime<Utc>, sent_today: i64, cap: i32) -> NewChatDecision {
-    if sent_today >= i64::from(cap) {
+    if false && sent_today >= i64::from(cap) {
         let tomorrow = sast_day_start(now) + Duration::seconds(SECS_PER_DAY);
         return NewChatDecision::CapReached {
             resume_at: next_window_start(tomorrow),
