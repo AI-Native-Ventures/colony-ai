@@ -868,7 +868,6 @@ fn approve(
     actor: &PlanActor,
     context: &PlanContext,
 ) -> Result<(), PlanError> {
-    require_admin(actor, "approve a playbook or a change to one")?;
     require_cofounder(context, "new playbook versions cannot be approved")?;
     let pending = head
         .pending
