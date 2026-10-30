@@ -6,7 +6,20 @@ import {
 } from "../helpers/whatsappOutreach";
 
 test.describe("WhatsApp outreach settings", () => {
-  test("shows pending batches and held contact status in Outreach", async ({
+  test("labels a held-only contact as waiting, never sent", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+
+    const heldContact = page
+      .getByTestId("whatsapp-outreach")
+      .getByTestId("whatsapp-contact-27821234410");
+    await expect(heldContact).toContainText("Waiting for your approval");
+    await expect(heldContact).not.toContainText("Sent");
+  });
+
+  test("shows pending batches and opens the review from Outreach", async ({
     page,
   }) => {
     await installWhatsAppMockBridge(page);
@@ -30,10 +43,6 @@ test.describe("WhatsApp outreach settings", () => {
     await expect(firstBatch).toContainText("3 rows");
     await expect(firstBatch).toContainText("Created by Scout");
     await expect(firstBatch).toContainText("10:46");
-
-    const heldContact = outreach.getByTestId("whatsapp-contact-27821234410");
-    await expect(heldContact).toContainText("Waiting for your approval");
-    await expect(heldContact).not.toContainText("Sent");
 
     await firstBatch.getByRole("button", { name: "Review" }).click();
     await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
