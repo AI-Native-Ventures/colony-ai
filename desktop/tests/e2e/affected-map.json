@@ -74,6 +74,14 @@
   },
   "features": [
     {
+      "paths": ["desktop/src/features/cofounder/**"],
+      "specs": ["cofounder-playbooks.spec.ts", "cofounder-map.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/home/**"],
+      "specs": ["cofounder-playbooks.spec.ts"]
+    },
+    {
       "paths": [
         "desktop/src/features/account/**",
         "desktop/src/features/auth/**"
