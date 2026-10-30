@@ -79,8 +79,9 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 17 carries the co-founder Phase 2 integration update.
 /// Version 17 added hiring into a function slot and the Access and capability gaps
 /// section (`colony access`).
-/// Version 18 combines the two version 17 feature updates.
-const NEST_SKILL_VERSION: u32 = 18;
+/// Version 18 combines the Access and capability-gap section with Phase 2 changes.
+/// Version 19 adds the initiative section (onboarding, wakes, brief) to that update.
+const NEST_SKILL_VERSION: u32 = 19;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

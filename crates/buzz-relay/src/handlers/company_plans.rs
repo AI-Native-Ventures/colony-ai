@@ -15,7 +15,8 @@ use buzz_core::company_cofounder::{CofounderHead, COFOUNDER_D_TAG};
 use buzz_core::company_functions::{CompanyFunction, FunctionHead, SlotState};
 use buzz_core::company_plans::{
     apply_plan_action, plan_d_tag, validate_plan_action, validate_plan_d_tag, validate_plan_head,
-    PlanAction, PlanActor, PlanActorRole, PlanContext, PlanError, PlanErrorKind, PlanHead,
+    PlanAction, PlanActionKind, PlanActor, PlanActorRole, PlanContext, PlanError, PlanErrorKind,
+    PlanHead,
 };
 use buzz_core::kind::{KIND_COMPANY_FUNCTION_HEAD, KIND_PLAN_ACTION, KIND_PLAN_HEAD};
 use buzz_core::tenant::{CommunityId, TenantContext};
@@ -197,6 +198,21 @@ pub(super) async fn handle(
         ));
     }
     tx.commit().await.map_err(internal)?;
+
+    if matches!(
+        action.kind,
+        PlanActionKind::Approve | PlanActionKind::ApproveStep
+    ) {
+        // Scout carries on with the approved plan or step.
+        crate::cofounder_wake::enqueue(
+            state,
+            tenant.community(),
+            crate::cofounder_wake::WakeReason::ApprovalGiven,
+            &format!("plan-approval:{}", event.id.to_hex()),
+            "",
+        )
+        .await;
+    }
 
     super::event::dispatch_persistent_event(
         tenant,
@@ -573,6 +589,45 @@ mod tests {
                 approved.approvals[0].actor_pubkey,
                 owner.public_key().to_hex()
             );
+        }
+
+        #[tokio::test]
+        #[ignore = "requires Postgres"]
+        async fn approving_a_plan_wakes_scout_once() {
+            let fixture = fixture().await;
+            let owner = nostr::Keys::generate();
+            add_member(&fixture, &owner, "owner").await;
+            let agent = add_managed_agent(&fixture, &owner).await;
+            set_cofounder(&fixture, &owner, true).await;
+            let community = *fixture.tenant.community().as_uuid();
+            let until = chrono::Utc::now() + chrono::Duration::days(30);
+            let approval_wakes = || async {
+                fixture
+                    .state
+                    .db
+                    .cofounder_pending_wakes(community, until, 100)
+                    .await
+                    .expect("pending wakes")
+                    .into_iter()
+                    .filter(|wake| wake.reason == "approval_given")
+                    .count()
+            };
+
+            let plan_id = Uuid::new_v4().to_string();
+            send(&fixture, &agent, &propose_action(&plan_id))
+                .await
+                .expect("agent proposes");
+            assert_eq!(approval_wakes().await, 0, "a proposal is not an approval");
+
+            let (head_id, _) = head_of(&fixture, &plan_id).await;
+            let approve = PlanAction {
+                revision: Some(1),
+                ..base_action(&plan_id, PlanActionKind::Approve, Some(&head_id))
+            };
+            send(&fixture, &owner, &approve)
+                .await
+                .expect("owner approves");
+            assert_eq!(approval_wakes().await, 1, "the approval wakes Scout");
         }
 
         #[tokio::test]

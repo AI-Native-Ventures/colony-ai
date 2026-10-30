@@ -777,6 +777,11 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             // Access list, capability gap and slot hire records are community-wide company records.
             | buzz_core::kind::KIND_COMPANY_ACCESS_HEAD
             | buzz_core::kind::KIND_COMPANY_ACCESS_ACTION
+            // The business brief and onboarding progress are community-wide company records.
+            | buzz_core::kind::KIND_BRIEF_HEAD
+            | buzz_core::kind::KIND_BRIEF_ACTION
+            | buzz_core::kind::KIND_ONBOARDING_HEAD
+            | buzz_core::kind::KIND_ONBOARDING_ACTION
             // Plan records are community-wide company records.
             | buzz_core::kind::KIND_PLAN_HEAD
             | buzz_core::kind::KIND_PLAN_ACTION
@@ -4024,6 +4029,10 @@ mod postgres_tests {
             buzz_core::kind::KIND_WORKER_RUN_ACTION,
             buzz_core::kind::KIND_COMPANY_ACCESS_HEAD,
             buzz_core::kind::KIND_COMPANY_ACCESS_ACTION,
+            buzz_core::kind::KIND_BRIEF_HEAD,
+            buzz_core::kind::KIND_BRIEF_ACTION,
+            buzz_core::kind::KIND_ONBOARDING_HEAD,
+            buzz_core::kind::KIND_ONBOARDING_ACTION,
             buzz_core::kind::KIND_PLAN_HEAD,
             buzz_core::kind::KIND_PLAN_ACTION,
         ] {

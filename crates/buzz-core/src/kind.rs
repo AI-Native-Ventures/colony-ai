@@ -810,6 +810,14 @@ pub const KIND_WORKER_RUN_ACTION: u32 = 47062;
 pub const KIND_COMPANY_ACCESS_HEAD: u32 = 30676;
 /// Member access, capability gap and slot hire write, brokered and community-wide (co-founder block).
 pub const KIND_COMPANY_ACCESS_ACTION: u32 = 47066;
+/// Relay-authored business brief head (co-founder block, community-wide).
+pub const KIND_BRIEF_HEAD: u32 = 30674;
+/// Relay-authored co-founder onboarding progress head (community-wide).
+pub const KIND_ONBOARDING_HEAD: u32 = 30675;
+/// Business brief proposal, confirmation or edit, brokered and community-wide.
+pub const KIND_BRIEF_ACTION: u32 = 47064;
+/// Co-founder onboarding question, answer or map decision, brokered and community-wide.
+pub const KIND_ONBOARDING_ACTION: u32 = 47065;
 /// Relay-authored company plan head (co-founder block, community-wide, one per plan).
 pub const KIND_PLAN_HEAD: u32 = 30673;
 /// Member plan proposal, decision or step update, brokered and community-wide (co-founder block).
@@ -885,6 +893,10 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_WORKER_RUN_ACTION,
     KIND_COMPANY_ACCESS_HEAD,
     KIND_COMPANY_ACCESS_ACTION,
+    KIND_BRIEF_HEAD,
+    KIND_BRIEF_ACTION,
+    KIND_ONBOARDING_HEAD,
+    KIND_ONBOARDING_ACTION,
     KIND_PLAN_HEAD,
     KIND_PLAN_ACTION,
 ];
@@ -910,6 +922,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
             | KIND_COMPANY_ACCESS_ACTION
+            | KIND_BRIEF_ACTION
+            | KIND_ONBOARDING_ACTION
             | KIND_PLAN_ACTION
     )
 }
@@ -948,6 +962,10 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_WORKER_RUN_ACTION
             | KIND_COMPANY_ACCESS_HEAD
             | KIND_COMPANY_ACCESS_ACTION
+            | KIND_BRIEF_HEAD
+            | KIND_BRIEF_ACTION
+            | KIND_ONBOARDING_HEAD
+            | KIND_ONBOARDING_ACTION
             | KIND_PLAN_HEAD
             | KIND_PLAN_ACTION
     )
@@ -1268,6 +1286,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_WORKER_RUN_ACTION,
     KIND_COMPANY_ACCESS_HEAD,
     KIND_COMPANY_ACCESS_ACTION,
+    KIND_BRIEF_HEAD,
+    KIND_BRIEF_ACTION,
+    KIND_ONBOARDING_HEAD,
+    KIND_ONBOARDING_ACTION,
     KIND_PLAN_HEAD,
     KIND_PLAN_ACTION,
     KIND_WHATSAPP_BATCH,
@@ -1365,6 +1387,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
             | KIND_COMPANY_ACCESS_ACTION
+            | KIND_BRIEF_ACTION
+            | KIND_ONBOARDING_ACTION
             | KIND_PLAN_ACTION
             | KIND_WHATSAPP_BATCH
             | KIND_WHATSAPP_BATCH_DECISION
@@ -1416,6 +1440,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_AI_SPEND_RECORD_HEAD
             | KIND_WORKER_RUN_HEAD
             | KIND_COMPANY_ACCESS_HEAD
+            | KIND_BRIEF_HEAD
+            | KIND_ONBOARDING_HEAD
             | KIND_PLAN_HEAD
     )
 }
@@ -1466,6 +1492,8 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 3064
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_ACCESS_HEAD)); // 30676 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_BRIEF_HEAD)); // 30674 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_ONBOARDING_HEAD)); // 30675 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 ∈ 30000–39999
 
 // Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
@@ -1564,6 +1592,8 @@ mod tests {
             (KIND_COFOUNDER_HEAD, KIND_COFOUNDER_ACTION),
             (KIND_COMPANY_FUNCTION_HEAD, KIND_COMPANY_FUNCTION_ACTION),
             (KIND_COMPANY_ACCESS_HEAD, KIND_COMPANY_ACCESS_ACTION),
+            (KIND_BRIEF_HEAD, KIND_BRIEF_ACTION),
+            (KIND_ONBOARDING_HEAD, KIND_ONBOARDING_ACTION),
         ] {
             assert!(COMPANY_RECORD_KINDS.contains(&head));
             assert!(COMPANY_RECORD_KINDS.contains(&action));
