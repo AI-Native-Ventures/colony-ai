@@ -195,7 +195,6 @@ export function useCofounderPhase2Chat(activeChannel: Channel | null) {
         expectedHeadEventId: head.eventId,
       });
     }
-    await applyApprovedCompanyMap(head.map);
   }
 
   async function rejectCompanyMap() {
