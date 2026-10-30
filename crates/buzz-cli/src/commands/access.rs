@@ -394,7 +394,7 @@ fn access_row(event: Option<&Event>, head: &AccessHead) -> Value {
 /// One JSON row per capability gap, newest first.
 pub(crate) fn gap_rows(heads: &[(Event, CapabilityGapHead)]) -> Vec<Value> {
     let mut ordered: Vec<&(Event, CapabilityGapHead)> = heads.iter().collect();
-    ordered.sort_by(|a, b| b.1.proposed_at.cmp(&a.1.proposed_at));
+    ordered.sort_by_key(|entry| std::cmp::Reverse(entry.1.proposed_at));
     ordered
         .into_iter()
         .map(|(event, head)| gap_row(event, head))
