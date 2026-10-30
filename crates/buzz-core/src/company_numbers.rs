@@ -1293,6 +1293,7 @@ pub fn apply_review_annotate(
         ));
     }
     let mut next = current.clone();
+    next.functions.reverse();
     next.wins = action.wins.clone().unwrap_or_default();
     next.misses = action.misses.clone().unwrap_or_default();
     next.decisions = action
