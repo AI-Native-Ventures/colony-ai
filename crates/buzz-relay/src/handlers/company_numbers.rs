@@ -149,6 +149,7 @@ pub(super) async fn handle(
 
     let (head_json, label) = match action.op {
         NumbersOp::GoalPropose
+        | NumbersOp::GoalEdit
         | NumbersOp::GoalApprove
         | NumbersOp::GoalReject
         | NumbersOp::GoalRetire => {
@@ -556,6 +557,46 @@ mod tests {
                 serde_json::from_str(&head_of(&fixture, &d_tag).await.unwrap().event.content)
                     .unwrap();
             assert_eq!(goal.status, GoalStatus::Approved);
+        }
+
+        #[tokio::test]
+        #[ignore = "requires Postgres"]
+        async fn goal_edit_replaces_the_proposed_head_once_and_fences_stale_edits() {
+            let (fixture, owner, scout) = company_with_scout().await;
+            send(&fixture, &scout, &propose())
+                .await
+                .expect("Scout proposes the goal");
+            let d_tag = format!("company:fngoal:{GOAL_ID}");
+            let before = head_of(&fixture, &d_tag).await.expect("goal head");
+            let edit = NumbersAction {
+                op: NumbersOp::GoalEdit,
+                goal_id: Some(GOAL_ID.into()),
+                title: Some("8 new clients a month".into()),
+                metric: Some(Metric::Won),
+                target: Some(8),
+                period: Some(GoalPeriod::Month),
+                expected_head_event_id: Some(before.event.id.to_hex()),
+                ..base(NumbersOp::GoalEdit)
+            };
+
+            send(&fixture, &owner, &edit)
+                .await
+                .expect("owner edits the proposed goal");
+            let after = head_of(&fixture, &d_tag).await.expect("edited goal head");
+            assert_ne!(after.event.id, before.event.id);
+            let goal: GoalHead = serde_json::from_str(&after.event.content).unwrap();
+            assert_eq!(goal.status, GoalStatus::Proposed);
+            assert_eq!(goal.title, "8 new clients a month");
+            assert_eq!(goal.target, 8);
+            assert_eq!(goal.proposed_by_pubkey, scout.public_key().to_hex());
+
+            let stale = rejection(send(&fixture, &owner, &edit).await);
+            assert!(stale.contains("does not match the latest"), "{stale}");
+            assert_eq!(
+                head_of(&fixture, &d_tag).await.unwrap().event.id,
+                after.event.id,
+                "a stale edit leaves the latest goal untouched"
+            );
         }
 
         #[tokio::test]

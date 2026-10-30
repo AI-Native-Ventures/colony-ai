@@ -8,15 +8,27 @@ import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
 import type {
   MockCompanyFunctionHead,
+  MockNumbers,
   MockWorkerRun,
 } from "../../src/testing/e2eBridge";
-import { COFOUNDER_NUMBERS_FIXTURE } from "../../src/testing/cofounderNumbersFixtures";
-import type { CofounderNumbersFixture } from "../../src/features/cofounder/cofounderNumbers";
+import {
+  makeCofounderNumbersFixture,
+  PROPOSED_COFOUNDER_GOAL_ID,
+} from "../../src/testing/cofounderNumbersFixtures";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const AYA_PUBKEY = TEST_IDENTITIES.alice.pubkey;
 const SCOUT_PUBKEY = TEST_IDENTITIES.bob.pubkey;
 const WORKER_ID = "11111111-1111-4111-8111-111111111111";
+
+function numbersFixture(includeProposal = false): MockNumbers {
+  return makeCofounderNumbersFixture({
+    ownerPubkey: OWNER_PUBKEY,
+    scoutPubkey: SCOUT_PUBKEY,
+    salesLeadPubkey: AYA_PUBKEY,
+    includeProposal,
+  });
+}
 
 const EMPTY_APPROVAL_SWITCHES = {
   approveEveryHire: false,
@@ -68,7 +80,7 @@ function fixture({
   enabled = true,
   includeAya = true,
   includeScout = false,
-  numbers = COFOUNDER_NUMBERS_FIXTURE,
+  numbers = numbersFixture(),
   functionHeads = [
     functionHead("sales", "filled", AYA_PUBKEY),
     functionHead("operations", "covered_by_scout"),
@@ -79,7 +91,7 @@ function fixture({
   enabled?: boolean;
   includeAya?: boolean;
   includeScout?: boolean;
-  numbers?: CofounderNumbersFixture;
+  numbers?: MockNumbers;
   functionHeads?: MockCompanyFunctionHead[];
   workerRuns?: MockWorkerRun[];
 } = {}) {
@@ -101,7 +113,7 @@ function fixture({
       moneyPreference: "cheapest_first" as const,
       approvalSwitches: EMPTY_APPROVAL_SWITCHES,
     },
-    cofounderNumbers: numbers,
+    companyNumbers: numbers,
     companyFunctionHeads: functionHeads,
     companyWorkerRuns: workerRuns,
     searchProfiles: [
@@ -384,67 +396,57 @@ test.describe("co-founder mode desktop", () => {
   test("the owner can edit, approve, and reject a proposed goal", async ({
     page,
   }) => {
-    await installMockBridge(page, fixture());
+    await installMockBridge(page, fixture({ numbers: numbersFixture(true) }));
     await page.goto("/#/company/function/sales");
 
     const goals = page.getByTestId("cofounder-goals");
-    const propose = goals.getByTestId("cofounder-propose-goal");
-    await propose.focus();
-    await page.keyboard.press("Enter");
     const proposal = goals.getByTestId(
-      "cofounder-goal-proposal-sales-follow-up-goal",
+      `cofounder-goal-proposal-${PROPOSED_COFOUNDER_GOAL_ID}`,
     );
     await expect(proposal).toBeVisible();
     await proposal.getByRole("button", { name: "Edit goal" }).click();
-    await page
-      .getByLabel("Goal", { exact: true })
-      .fill("Follow up with 8 new leads in November");
-    await page.getByLabel("Target", { exact: true }).fill("8");
+    await page.getByLabel("Goal title").fill("Follow up with 8 new leads");
+    await page.getByLabel("Target (whole number)").fill("8");
     await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(proposal).toContainText(
-      "Follow up with 8 new leads in November",
-    );
+    await expect(goals.getByRole("status")).toHaveText("Goal updated.");
+    await expect(proposal).toContainText("Follow up with 8 new leads");
     await proposal.getByRole("button", { name: "Approve goal" }).focus();
     await page.keyboard.press("Enter");
     await expect(goals.getByRole("status")).toHaveText("Goal approved.");
-    await expect(goals).toContainText("Follow up with 8 new leads in November");
+    await expect(goals).toContainText("Follow up with 8 new leads");
 
-    await goals.getByTestId("cofounder-propose-goal").click();
-    await goals
-      .getByTestId("cofounder-goal-proposal-sales-follow-up-goal")
+    const propose = goals.getByTestId("cofounder-propose-goal");
+    await propose.focus();
+    await page.keyboard.press("Enter");
+    await page.getByLabel("Goal title").fill("Close one more client");
+    await page.getByLabel("Target (whole number)").fill("1");
+    await page.getByRole("button", { name: "Create proposal" }).click();
+    const rejectedProposal = goals.getByText("Close one more client", {
+      exact: true,
+    });
+    await expect(rejectedProposal).toBeVisible();
+    await rejectedProposal
+      .locator("xpath=ancestor::article")
       .getByRole("button", { name: "Reject goal" })
       .click();
     await expect(goals.getByRole("status")).toHaveText(
       "Goal proposal rejected.",
     );
-    await expect(
-      goals.getByTestId("cofounder-goal-proposal-sales-follow-up-goal"),
-    ).toHaveCount(0);
+    await expect(rejectedProposal).toHaveCount(0);
   });
 
   test("non-owners can review a proposed goal but cannot decide it", async ({
     page,
   }) => {
-    const salesGoals = COFOUNDER_NUMBERS_FIXTURE.goals.sales;
-    if (!salesGoals?.suggested)
-      throw new Error("Sales goal fixture is missing.");
-    const numbers: CofounderNumbersFixture = {
-      ...COFOUNDER_NUMBERS_FIXTURE,
-      goals: {
-        ...COFOUNDER_NUMBERS_FIXTURE.goals,
-        sales: {
-          ...salesGoals,
-          proposed: [salesGoals.suggested],
-          suggested: null,
-        },
-      },
-    };
-    await installMockBridge(page, fixture({ role: "member", numbers }));
+    await installMockBridge(
+      page,
+      fixture({ role: "member", numbers: numbersFixture(true) }),
+    );
     await page.goto("/#/company/function/sales");
 
     const goals = page.getByTestId("cofounder-goals");
     const proposal = goals.getByTestId(
-      "cofounder-goal-proposal-sales-follow-up-goal",
+      `cofounder-goal-proposal-${PROPOSED_COFOUNDER_GOAL_ID}`,
     );
     await expect(proposal).toBeVisible();
     await expect(proposal).toContainText("Waiting for the owner to review");
@@ -457,6 +459,7 @@ test.describe("co-founder mode desktop", () => {
     await expect(
       proposal.getByRole("button", { name: "Reject goal" }),
     ).toHaveCount(0);
+    await expect(goals.getByTestId("cofounder-propose-goal")).toHaveCount(0);
   });
 
   test("weekly review presents each function and routes decisions through Needs you", async ({
@@ -477,29 +480,22 @@ test.describe("co-founder mode desktop", () => {
     ]) {
       await expect(review).toContainText(functionName);
     }
+    await expect(review).toContainText("Leads found: 3");
     await expect(review).toContainText("What worked");
-    await expect(review).toContainText("Missed:");
-    await expect(
-      review.getByRole("heading", { name: "Needs you · 2" }),
-    ).toBeVisible();
-    await expect(review.getByTestId("weekly-review-needs-you")).toContainText(
-      "Approve the November plan",
-    );
-
-    const plan = review.getByTestId("weekly-review-decision-november-plan");
-    await plan.getByRole("button", { name: "Open plan" }).click();
-    await expect(plan).toContainText("Get 5 Horizon Labs clients in November");
-    await plan.getByRole("button", { name: "Approve plan" }).last().click();
-    await expect(plan).toContainText("Approved in this preview.");
+    await expect(review).toContainText("What missed");
     await expect(
       review.getByRole("heading", { name: "Needs you · 1" }),
     ).toBeVisible();
-
-    const hire = review.getByTestId(
-      "weekly-review-decision-customer-success-hire",
+    await expect(review.getByTestId("weekly-review-needs-you")).toContainText(
+      "Hire a Customer Success lead?",
     );
-    await hire.getByRole("button", { name: "Yes, hire" }).click();
-    await expect(hire).toContainText("Marked to hire in this preview.");
+
+    const hire = review.getByTestId("weekly-review-decision-hire-cs");
+    await hire.getByRole("button", { name: "Yes" }).click();
+    await expect(hire).toContainText("Approved");
+    await expect(
+      review.getByRole("heading", { name: "Needs you · 0" }),
+    ).toBeVisible();
   });
 
   test("weekly review and function data remain hidden when co-founder mode is off", async ({

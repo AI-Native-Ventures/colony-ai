@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
@@ -9,10 +10,11 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
 
-import { getCofounderNumbersFixture } from "../cofounderNumbers";
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
+import { numbersActions } from "../numbersActions";
+import { useFunctionNumbers, useNumbersAction } from "../numbersHooks";
 import { FunctionGoals } from "./FunctionGoals";
 import { FunctionScorecard } from "./FunctionScorecard";
 import { WorkerList } from "./WorkerList";
@@ -275,7 +277,32 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   const membership = useMyRelayMembershipQuery();
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
-  const numbersFixture = getCofounderNumbersFixture();
+  const enabled = settingsQuery.data?.settings.enabled === true;
+  const numbers = useFunctionNumbers(functionId, enabled);
+  const numbersAction = useNumbersAction();
+  const refreshRequested = useRef(false);
+  const refreshScorecard = useCallback(
+    (expectedHeadEventId?: string) =>
+      numbersAction.mutate(
+        numbersActions.refreshScorecard(expectedHeadEventId),
+      ),
+    [numbersAction.mutate],
+  );
+  useEffect(() => {
+    if (!enabled) {
+      refreshRequested.current = false;
+      return;
+    }
+    if (numbers.isSuccess && !refreshRequested.current) {
+      refreshRequested.current = true;
+      refreshScorecard(numbers.scorecard?.eventId);
+    }
+  }, [
+    enabled,
+    numbers.isSuccess,
+    numbers.scorecard?.eventId,
+    refreshScorecard,
+  ]);
   const canApprove =
     membership.data?.role === "owner" || membership.data?.role === "admin";
   const slot = slots.find(
@@ -308,9 +335,15 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
   );
   // An unfilled slot is covered by Scout, so Scout's worker runs belong here.
   const parent = slot.state === "filled" ? lead : scout;
-  const profilePubkeys = [lead?.pubkey, scout?.pubkey, manager?.pubkey].filter(
-    (pubkey): pubkey is string => Boolean(pubkey),
-  );
+  const profilePubkeys = [
+    lead?.pubkey,
+    scout?.pubkey,
+    manager?.pubkey,
+    ...numbers.goals.flatMap((goal) => [
+      goal.proposedByPubkey,
+      goal.decidedByPubkey,
+    ]),
+  ].filter((pubkey): pubkey is string => Boolean(pubkey));
   const profilesQuery = useUsersBatchQuery(profilePubkeys);
   const profiles: ProfileLookup = profilesQuery.data?.profiles ?? {};
   const leadName = lead ? memberName(lead, profiles) : null;
@@ -358,7 +391,7 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
     );
   }
 
-  if (!settingsQuery.data?.settings.enabled) {
+  if (!enabled) {
     return (
       <TeamPage testId="cofounder-function-screen" title={detail.name}>
         <div className="space-y-3">
@@ -400,10 +433,18 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
         <div className="space-y-5">
           <FunctionScorecard
-            fixtureAvailable={numbersFixture !== null}
+            card={numbers.card}
             functionId={functionId}
-            metrics={numbersFixture?.scorecards[functionId]}
-            note={numbersFixture?.scorecardNotes[functionId]}
+            isLoading={numbers.isLoading || numbers.isFetching}
+            currency={numbers.scorecard?.currency ?? "ZAR"}
+            loadError={numbers.isError}
+            refreshError={
+              numbersAction.isError &&
+              numbersAction.variables?.op === "scorecard_refresh"
+            }
+            onRetryLoad={() => void numbers.refetch()}
+            onRetryRefresh={() => refreshScorecard(numbers.scorecard?.eventId)}
+            isRefreshing={numbersAction.isPending}
           />
           {slot.state === "empty" ? (
             <EmptySlotSuggestion functionId={functionId} />
@@ -414,9 +455,15 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
           />
           <FunctionGoals
             canApprove={canApprove}
-            fixtureAvailable={numbersFixture !== null}
+            currency={numbers.scorecard?.currency ?? "ZAR"}
             functionId={functionId}
-            goals={numbersFixture?.goals[functionId]}
+            goals={numbers.goals}
+            progress={numbers.scorecard?.goals ?? []}
+            goalOwnerName={
+              slot.state === "filled" ? (leadName ?? detail.name) : "Scout"
+            }
+            profiles={profiles}
+            numbersAction={numbersAction}
             key={functionId}
           />
         </div>

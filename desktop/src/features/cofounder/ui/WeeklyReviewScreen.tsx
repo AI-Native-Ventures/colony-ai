@@ -6,152 +6,312 @@ import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 
-import {
-  getCofounderNumbersFixture,
-  type WeeklyReviewDecision,
-} from "../cofounderNumbers";
 import { FUNCTION_DETAILS } from "../functions";
 import { useCofounderSettingsQuery } from "../hooks";
+import { numbersActions } from "../numbersActions";
+import { useNumbersAction, useNumbersQuery } from "../numbersHooks";
+import {
+  METRIC_DETAILS,
+  isImprovement,
+  openDecisions,
+  formatMetricValue,
+} from "../numbersRecords";
+import type {
+  FunctionScorecardView,
+  MetricReadingView,
+  ReviewDecisionView,
+  ReviewView,
+} from "../numbersRecords";
 
-type DecisionState = "approved" | "hired" | "deferred" | "rejected";
+type DecisionChoice = "approved" | "declined" | "deferred";
+
+function formatDate(epochSeconds: number, options: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat("en-GB", {
+    ...options,
+    timeZone: "UTC",
+  }).format(new Date(epochSeconds * 1_000));
+}
+
+function reviewDateLabel(date: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`));
+}
+
+function reviewRangeLabel(review: ReviewView): string {
+  const start = new Date(review.windowStart * 1_000);
+  const end = new Date(review.asOf * 1_000);
+  const endMonth = formatDate(review.asOf, { month: "long" });
+  if (
+    start.getUTCFullYear() === end.getUTCFullYear() &&
+    start.getUTCMonth() === end.getUTCMonth()
+  ) {
+    return `${start.getUTCDate()} to ${end.getUTCDate()} ${endMonth}`;
+  }
+  return `${formatDate(review.windowStart, { day: "numeric", month: "short" })} to ${formatDate(review.asOf, { day: "numeric", month: "short" })}`;
+}
+
+function currentNumbers(card: FunctionScorecardView, currency: string) {
+  const metrics = card.metrics.map((reading) => {
+    const detail = METRIC_DETAILS[reading.metric];
+    const value = formatMetricValue(reading.value, detail.unit, currency);
+    return `${detail.label}: ${value ?? "not stated"}`;
+  });
+  const notTracked = card.notTracked.map((item) => item.replaceAll("_", " "));
+  if (notTracked.length > 0) {
+    metrics.push(`Not tracked yet: ${notTracked.join(", ")}`);
+  }
+  return metrics.length > 0 ? metrics.join(" · ") : "No tracked measures";
+}
+
+function changeText(reading: MetricReadingView, currency: string): string {
+  const detail = METRIC_DETAILS[reading.metric];
+  if (reading.change === null) return `${detail.label}: no earlier figure`;
+  if (reading.change === 0) return `${detail.label}: no change`;
+  const amount = formatMetricValue(
+    Math.abs(reading.change),
+    detail.unit,
+    currency,
+  );
+  const sign = reading.change > 0 ? "+" : "−";
+  const result = isImprovement(reading);
+  const movement =
+    result === null ? "changed" : result ? "improved" : "worsened";
+  return `${detail.label}: ${movement} ${sign}${amount ?? "not stated"}`;
+}
+
+function functionChanges(card: FunctionScorecardView, currency: string) {
+  const changes = card.metrics.map((reading) => changeText(reading, currency));
+  return changes.length > 0
+    ? changes.join(" · ")
+    : "No tracked changes to compare";
+}
+
+function FunctionRowContent({
+  card,
+  currency,
+}: {
+  card: FunctionScorecardView;
+  currency: string;
+}) {
+  const name = FUNCTION_DETAILS[card.functionId].name;
+  const current = currentNumbers(card, currency);
+  const change = functionChanges(card, currency);
+  return { name, current, change };
+}
+
+function MobileFunctionRow({
+  card,
+  currency,
+}: {
+  card: FunctionScorecardView;
+  currency: string;
+}) {
+  const { name, current, change } = FunctionRowContent({ card, currency });
+  return (
+    <li className="border-b border-border pb-3 last:border-0 last:pb-0">
+      <h3 className="text-sm font-extrabold">{name}</h3>
+      <p className="mt-1 text-sm font-semibold text-muted-foreground">
+        {current}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-muted-foreground">
+        <span className="font-extrabold">Change: </span>
+        {change}
+      </p>
+    </li>
+  );
+}
+
+function TableFunctionRow({
+  card,
+  currency,
+}: {
+  card: FunctionScorecardView;
+  currency: string;
+}) {
+  const { name, current, change } = FunctionRowContent({ card, currency });
+  return (
+    <tr className="border-b border-border last:border-0">
+      <th className="py-2.5 pr-2 text-sm font-extrabold" scope="row">
+        {name}
+      </th>
+      <td className="py-2.5 pr-2 text-sm font-semibold text-muted-foreground">
+        {current}
+      </td>
+      <td className="py-2.5 text-sm font-semibold text-muted-foreground">
+        {change}
+      </td>
+    </tr>
+  );
+}
 
 function DecisionRow({
-  canApprove,
+  canDecide,
   decision,
-  onResolve,
-  resolution,
+  isPending,
+  onChoose,
 }: {
-  canApprove: boolean;
-  decision: WeeklyReviewDecision;
-  onResolve: (decision: WeeklyReviewDecision, state: DecisionState) => void;
-  resolution: DecisionState | null;
+  canDecide: boolean;
+  decision: ReviewDecisionView;
+  isPending: boolean;
+  onChoose: (decision: ReviewDecisionView, choice: DecisionChoice) => void;
 }) {
-  const [planOpen, setPlanOpen] = useState(false);
-  const panelId = `weekly-review-decision-${decision.id}`;
-
-  function resolve(state: DecisionState) {
-    onResolve(decision, state);
-  }
+  const stateLabel = {
+    approved: "Approved",
+    declined: "Declined",
+    deferred: "Deferred",
+    open: "Waiting for a decision",
+  }[decision.state];
 
   return (
     <li
       className="flex flex-wrap items-center gap-3 border-t border-border py-3 first:border-0 first:pt-0 last:pb-0"
-      data-testid={`weekly-review-decision-${decision.id}`}
+      data-testid={`weekly-review-decision-${decision.decisionId}`}
     >
       <div className="min-w-0 flex-1 basis-56">
         <p className="text-sm font-bold">{decision.title}</p>
-        {resolution ? (
+        {decision.detail ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {decision.detail}
+          </p>
+        ) : null}
+        {decision.state !== "open" ? (
           <p className="mt-1 text-sm text-muted-foreground" role="status">
-            {resolution === "approved"
-              ? "Approved in this preview."
-              : resolution === "hired"
-                ? "Marked to hire in this preview."
-                : resolution === "deferred"
-                  ? "Marked not yet in this preview."
-                  : "Rejected in this preview."}
+            {stateLabel}
+            {decision.note ? ` · ${decision.note}` : ""}
           </p>
         ) : null}
       </div>
-
-      {!resolution && canApprove && decision.kind === "plan" ? (
+      {decision.state === "open" && canDecide ? (
         <div className="flex flex-wrap gap-2">
           <button
-            aria-controls={panelId}
-            aria-expanded={planOpen}
-            className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-            onClick={() => setPlanOpen((open) => !open)}
+            className="rounded-xl bg-foreground px-4 py-2 text-sm font-bold text-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+            disabled={isPending}
+            onClick={() => onChoose(decision, "approved")}
             type="button"
           >
-            {planOpen ? "Close plan" : (decision.secondaryLabel ?? "Open plan")}
+            Yes
           </button>
           <button
-            className="rounded-xl bg-foreground px-4 py-2 text-sm font-bold text-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-            onClick={() => resolve("approved")}
+            className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+            disabled={isPending}
+            onClick={() => onChoose(decision, "declined")}
             type="button"
           >
-            {decision.primaryLabel}
+            No
+          </button>
+          <button
+            className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+            disabled={isPending}
+            onClick={() => onChoose(decision, "deferred")}
+            type="button"
+          >
+            Later
           </button>
         </div>
       ) : null}
-
-      {!resolution && canApprove && decision.kind === "hire" ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            className="rounded-xl bg-foreground px-4 py-2 text-sm font-bold text-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-            onClick={() => resolve("hired")}
-            type="button"
-          >
-            {decision.primaryLabel}
-          </button>
-          <button
-            className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-            onClick={() => resolve("deferred")}
-            type="button"
-          >
-            {decision.secondaryLabel ?? "Not yet"}
-          </button>
-        </div>
-      ) : null}
-
-      {!resolution && !canApprove ? (
+      {decision.state === "open" && !canDecide ? (
         <span className="text-sm text-muted-foreground">
           Waiting for the owner to decide
         </span>
-      ) : null}
-
-      {decision.kind === "plan" && planOpen && !resolution ? (
-        <div
-          className="basis-full rounded-xl bg-muted/60 p-3 text-sm text-muted-foreground"
-          id={panelId}
-        >
-          {decision.detail}
-          {canApprove ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                className="rounded-xl bg-foreground px-4 py-2 text-sm font-bold text-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-                onClick={() => resolve("approved")}
-                type="button"
-              >
-                Approve plan
-              </button>
-              <button
-                className="rounded-xl border border-border px-4 py-2 text-sm font-bold text-destructive hover:bg-destructive/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-                onClick={() => resolve("rejected")}
-                type="button"
-              >
-                Reject plan
-              </button>
-            </div>
-          ) : null}
-        </div>
       ) : null}
     </li>
   );
 }
 
+function ReviewLines({
+  id,
+  title,
+  lines,
+  emptyLabel,
+  tone,
+}: {
+  id: string;
+  title: string;
+  lines: string[];
+  emptyLabel: string;
+  tone: "worked" | "missed";
+}) {
+  const titleClass =
+    tone === "worked"
+      ? "text-emerald-800 dark:text-emerald-300"
+      : "text-destructive";
+  const cardClass = tone === "worked" ? "bg-emerald-500/10" : "bg-muted/70";
+  return (
+    <section
+      aria-labelledby={id}
+      className={`space-y-2 rounded-2xl p-4 ${cardClass}`}
+    >
+      <h3
+        className={`text-2xs font-extrabold uppercase tracking-[0.12em] ${titleClass}`}
+        id={id}
+      >
+        {title}
+      </h3>
+      {lines.length > 0 ? (
+        <ul className="space-y-1">
+          {(() => {
+            const seen = new Map<string, number>();
+            return lines.map((line) => {
+              const occurrence = seen.get(line) ?? 0;
+              seen.set(line, occurrence + 1);
+              return (
+                <li className="text-sm font-bold" key={`${line}-${occurrence}`}>
+                  {line}
+                </li>
+              );
+            });
+          })()}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+      )}
+    </section>
+  );
+}
+
+function messageFor(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "The decision could not be saved.";
+}
+
 export function WeeklyReviewScreen() {
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
+  const enabled = settingsQuery.data?.settings.enabled === true;
+  const numbers = useNumbersQuery(enabled);
   const membership = useMyRelayMembershipQuery();
-  const canApprove =
+  const canDecide =
     membership.data?.role === "owner" || membership.data?.role === "admin";
-  const fixture = getCofounderNumbersFixture();
-  const [resolutions, setResolutions] = useState<
-    Partial<Record<string, DecisionState>>
-  >({});
+  const action = useNumbersAction();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const review = numbers.data?.reviews[0] ?? null;
+  const openCount = review ? openDecisions(review).length : 0;
 
-  function recordResolution(
-    decision: WeeklyReviewDecision,
-    state: DecisionState,
+  async function chooseDecision(
+    decision: ReviewDecisionView,
+    choice: DecisionChoice,
   ) {
-    setResolutions((current) => ({ ...current, [decision.id]: state }));
+    if (!review || !canDecide) return;
+    setActionError(null);
+    try {
+      await action.mutateAsync(
+        numbersActions.decide(review, decision.decisionId, choice),
+      );
+    } catch (error) {
+      setActionError(messageFor(error));
+    }
   }
 
   if (settingsQuery.isLoading) {
     return (
       <TeamPage testId="cofounder-weekly-review" title="Weekly review">
         <p aria-live="polite" className="text-sm text-muted-foreground">
-          Loading the weekly review
+          Loading company settings
         </p>
       </TeamPage>
     );
@@ -159,7 +319,7 @@ export function WeeklyReviewScreen() {
   if (settingsQuery.isError) {
     return (
       <TeamPage testId="cofounder-weekly-review" title="Weekly review">
-        <div role="alert" className="space-y-3">
+        <div className="space-y-3" role="alert">
           <TeamPageTitle>Weekly review</TeamPageTitle>
           <p className="text-sm text-destructive">
             The weekly review could not load.
@@ -175,7 +335,7 @@ export function WeeklyReviewScreen() {
       </TeamPage>
     );
   }
-  if (!settingsQuery.data?.settings.enabled) {
+  if (!enabled) {
     return (
       <TeamPage testId="cofounder-weekly-review" title="Weekly review">
         <div className="space-y-3">
@@ -210,7 +370,24 @@ export function WeeklyReviewScreen() {
         </Link>
       </header>
 
-      {!fixture ? (
+      {numbers.isLoading ? (
+        <p aria-live="polite" className="text-sm text-muted-foreground">
+          Loading the weekly review
+        </p>
+      ) : numbers.isError ? (
+        <div className="space-y-3" role="alert">
+          <p className="text-sm text-destructive">
+            The weekly review could not load.
+          </p>
+          <button
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={() => void numbers.refetch()}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      ) : !review ? (
         <section className="team-card max-w-3xl p-5 sm:p-6">
           <div className="flex items-center gap-3">
             <EmployeeAvatar className="size-11 rounded-xl" name="Scout" />
@@ -220,15 +397,15 @@ export function WeeklyReviewScreen() {
             </div>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            No Friday review is available yet. It will appear here when
-            scorecard numbers are connected.
+            No Friday review is available yet. Scout will post one after the
+            next Friday review window.
           </p>
         </section>
       ) : (
         <div className="mx-auto w-full max-w-5xl space-y-5">
           <div className="flex items-center gap-3 py-2 text-center text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
             <span aria-hidden="true" className="h-px flex-1 bg-border" />
-            <span>{fixture.dateLabel}</span>
+            <span>{reviewDateLabel(review.reviewDate)}</span>
             <span aria-hidden="true" className="h-px flex-1 bg-border" />
           </div>
 
@@ -243,14 +420,17 @@ export function WeeklyReviewScreen() {
                 <span className="text-sm text-muted-foreground">
                   Chief of Staff
                 </span>
-                <span className="text-sm text-muted-foreground">16:00</span>
+                <span className="text-sm text-muted-foreground">
+                  {formatDate(review.annotatedAt ?? review.createdAt, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
               </div>
-              <p className="mt-2 text-base">
-                Your week in one card. Two decisions at the bottom.
-              </p>
+              <p className="mt-2 text-base">Your week in one card.</p>
 
               <article
-                aria-label={`Weekly review for ${fixture.rangeLabel}`}
+                aria-label={`Weekly review ending ${review.reviewDate}`}
                 className="team-card mt-3 space-y-4 p-4 sm:p-5"
                 data-testid="cofounder-weekly-review-card"
               >
@@ -258,8 +438,11 @@ export function WeeklyReviewScreen() {
                   <span className="rounded-full bg-muted px-3 py-1 font-bold">
                     Weekly review
                   </span>
-                  <span className="text-muted-foreground">
-                    {fixture.rangeLabel}
+                  <span
+                    className="text-muted-foreground"
+                    data-testid="weekly-review-window"
+                  >
+                    {reviewRangeLabel(review)}
                   </span>
                 </div>
 
@@ -267,29 +450,12 @@ export function WeeklyReviewScreen() {
                   aria-label="Numbers by function"
                   className="space-y-3 sm:hidden"
                 >
-                  {fixture.rows.map((row) => (
-                    <li
-                      className="border-b border-border pb-3 last:border-0 last:pb-0"
-                      key={row.functionId}
-                    >
-                      <h3 className="text-sm font-extrabold">
-                        {FUNCTION_DETAILS[row.functionId].name}
-                      </h3>
-                      <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                        {row.current}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                        <span className="sr-only">
-                          {row.direction === "down"
-                            ? "Lower: "
-                            : row.direction === "flat"
-                              ? "No change: "
-                              : "Higher: "}
-                        </span>
-                        <span className="font-extrabold">Change: </span>
-                        {row.change}
-                      </p>
-                    </li>
+                  {review.functions.map((card) => (
+                    <MobileFunctionRow
+                      card={card}
+                      currency={review.currency}
+                      key={card.functionId}
+                    />
                   ))}
                 </ul>
                 <div className="hidden sm:block">
@@ -311,63 +477,31 @@ export function WeeklyReviewScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {fixture.rows.map((row) => (
-                        <tr
-                          className="border-b border-border last:border-0"
-                          key={row.functionId}
-                        >
-                          <th
-                            className="py-2.5 pr-2 text-sm font-extrabold"
-                            scope="row"
-                          >
-                            {FUNCTION_DETAILS[row.functionId].name}
-                          </th>
-                          <td className="py-2.5 pr-2 text-sm font-semibold text-muted-foreground">
-                            {row.current}
-                          </td>
-                          <td
-                            aria-label={`${row.direction === "down" ? "Lower" : row.direction === "flat" ? "No change" : "Higher"}: ${row.change}`}
-                            className="py-2.5 text-sm font-semibold text-muted-foreground"
-                          >
-                            {row.change}
-                          </td>
-                        </tr>
+                      {review.functions.map((card) => (
+                        <TableFunctionRow
+                          card={card}
+                          currency={review.currency}
+                          key={card.functionId}
+                        />
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                <section
-                  aria-labelledby="weekly-review-worked-title"
-                  className="space-y-1 rounded-2xl bg-emerald-500/10 p-4"
-                >
-                  <h3
-                    className="text-2xs font-extrabold uppercase tracking-[0.12em] text-emerald-800 dark:text-emerald-300"
-                    id="weekly-review-worked-title"
-                  >
-                    What worked
-                  </h3>
-                  <p className="text-sm font-bold">{fixture.worked}</p>
-                </section>
-
-                <section
-                  aria-labelledby="weekly-review-change-title"
-                  className="space-y-2 rounded-2xl bg-muted/70 p-4"
-                >
-                  <h3
-                    className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground"
-                    id="weekly-review-change-title"
-                  >
-                    What I’ll change
-                  </h3>
-                  <p className="text-sm">
-                    <span className="font-bold">Missed: </span>
-                    {fixture.missed}
-                  </p>
-                  <p className="text-sm font-semibold">
-                    {fixture.proposedChange}
-                  </p>
-                </section>
+                <ReviewLines
+                  emptyLabel="No wins have been added to this review yet."
+                  id="weekly-review-worked-title"
+                  lines={review.wins}
+                  title="What worked"
+                  tone="worked"
+                />
+                <ReviewLines
+                  emptyLabel="No misses have been added to this review yet."
+                  id="weekly-review-missed-title"
+                  lines={review.misses}
+                  title="What missed"
+                  tone="missed"
+                />
 
                 <section
                   aria-labelledby="weekly-review-needs-you-title"
@@ -377,27 +511,33 @@ export function WeeklyReviewScreen() {
                     className="pb-1 text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground"
                     id="weekly-review-needs-you-title"
                   >
-                    Needs you ·{" "}
-                    {
-                      fixture.decisions.filter(
-                        (decision) => !resolutions[decision.id],
-                      ).length
-                    }
+                    Needs you · {openCount}
                   </h3>
-                  <ul
-                    className="space-y-0"
-                    data-testid="weekly-review-needs-you"
-                  >
-                    {fixture.decisions.map((decision) => (
-                      <DecisionRow
-                        canApprove={canApprove}
-                        decision={decision}
-                        key={decision.id}
-                        onResolve={recordResolution}
-                        resolution={resolutions[decision.id] ?? null}
-                      />
-                    ))}
-                  </ul>
+                  {actionError ? (
+                    <p className="text-sm text-destructive" role="alert">
+                      {actionError}
+                    </p>
+                  ) : null}
+                  {review.decisions.length > 0 ? (
+                    <ul
+                      className="space-y-0"
+                      data-testid="weekly-review-needs-you"
+                    >
+                      {review.decisions.map((decision) => (
+                        <DecisionRow
+                          canDecide={canDecide}
+                          decision={decision}
+                          isPending={action.isPending}
+                          key={decision.decisionId}
+                          onChoose={chooseDecision}
+                        />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No decisions need you today.
+                    </p>
+                  )}
                 </section>
               </article>
             </div>

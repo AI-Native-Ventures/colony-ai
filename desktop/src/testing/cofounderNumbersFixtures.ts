@@ -1,195 +1,168 @@
-import type { CofounderNumbersFixture } from "@/features/cofounder/cofounderNumbers";
+import type { MockNumbers } from "./e2eBridge";
 
-/** Horizon Labs sample values from the approved Phase 5 review boards. */
-export const COFOUNDER_NUMBERS_FIXTURE: CofounderNumbersFixture = {
-  dateLabel: "Friday 30 October",
-  rangeLabel: "26 to 30 October",
-  rows: [
+const AS_OF = 1_793_368_800;
+const WEEK = 7 * 86_400;
+const GOAL_ID = "7f0c3c1e-5b1e-4d52-9a55-3d1f2b6a8c10";
+const PROPOSED_GOAL_ID = "9a0e411d-92ed-4fc0-a6e0-0e75312d8221";
+
+function functionCards() {
+  return [
     {
-      functionId: "sales",
-      current: "24 contacted · 7 replied · 3 calls · 1 won",
-      change: "+4 contacted · +2 replied · +1 won",
-      direction: "up",
+      function: "sales",
+      metrics: [
+        { metric: "leads_found", value: 3, previous: 2, change: 1 },
+        { metric: "contacted", value: 3, previous: 1, change: 2 },
+        { metric: "replied", value: 1, previous: 2, change: -1 },
+        { metric: "quotes", value: 1, previous: 0, change: 1 },
+        { metric: "won", value: 2, previous: 0, change: 2 },
+      ],
+      notTracked: ["calls"],
     },
     {
-      functionId: "operations",
-      current: "3 jobs · 6 days to deliver · 2 revisions",
-      change: "+1 job · 2 days faster",
-      direction: "up",
+      function: "operations",
+      metrics: [
+        { metric: "workers_started", value: 3, previous: 1, change: 2 },
+        { metric: "workers_done", value: 1, previous: 1, change: 0 },
+        { metric: "workers_failed", value: 1, previous: 0, change: 1 },
+        { metric: "plans_approved", value: 1, previous: 1, change: 0 },
+      ],
+      notTracked: ["jobs_in_progress", "days_to_deliver", "revisions"],
     },
     {
-      functionId: "customer_success",
-      current: "2 live clients · no lead yet",
-      change: "+1 live client",
-      direction: "up",
+      function: "customer_success",
+      metrics: [
+        { metric: "active_clients", value: 4, previous: null, change: null },
+      ],
+      notTracked: ["renewals", "referrals"],
     },
     {
-      functionId: "finance",
-      current: "1 deposit paid · 1 invoice waiting",
-      change: "+1 deposit paid",
-      direction: "up",
-    },
-    {
-      functionId: "brand",
-      current: "About R37 per new client",
-      change: "R12 less per client",
-      direction: "down",
-    },
-  ],
-  worked: "Built a site for you gets 3x the replies of the other openers.",
-  missed: "Has a website: refresh did not get a reply this week.",
-  proposedChange:
-    "Use Built a site for you for every new guesthouse. Pause Has a website: refresh on your radar?",
-  decisions: [
-    {
-      id: "november-plan",
-      kind: "plan",
-      title: "Approve the November plan",
-      detail: "Get 5 Horizon Labs clients in November.",
-      primaryLabel: "Approve plan",
-      secondaryLabel: "Open plan",
-    },
-    {
-      id: "customer-success-hire",
-      kind: "hire",
-      title: "Hire a Customer Success lead?",
-      detail: "Two clients are active and renewals need an owner.",
-      primaryLabel: "Yes, hire",
-      secondaryLabel: "Not yet",
-    },
-  ],
-  scorecards: {
-    sales: [
-      { value: "64", label: "Leads" },
-      { value: "41", label: "Contacted" },
-      { value: "12", label: "Replied" },
-      { value: "5", label: "Calls" },
-      { value: "3", label: "Quotes" },
-      { value: "2", label: "Won" },
-    ],
-    operations: [
-      { value: "3", label: "Jobs in progress" },
-      { value: "6 days", label: "Days to deliver" },
-      { value: "2", label: "Revisions" },
-    ],
-    customer_success: [
-      { value: "2", label: "Active clients" },
-      { value: "1", label: "Renewals" },
-      { value: "1", label: "Referrals" },
-    ],
-    finance: [
-      { value: "R15k", label: "Cash in" },
-      { value: "R4k", label: "Owed" },
-      { value: "R30k", label: "Recurring" },
-      { value: "R3k", label: "Costs" },
-    ],
-    brand: [
-      { value: "R37", label: "Cost per client" },
-      { value: "7", label: "Replies from best opener" },
-    ],
-  },
-  scorecardNotes: {
-    sales: "November so far. Replies come mostly from Built a site for you.",
-    operations: "Three client jobs are moving through delivery this week.",
-    customer_success: "Two clients are active. One renewal is coming up.",
-    finance: "One deposit has been paid. One invoice is waiting.",
-    brand: "Built a site for you is bringing in the most replies.",
-  },
-  goals: {
-    sales: {
-      approved: [
+      function: "finance",
+      metrics: [
+        { metric: "cash_in", value: 175_050, previous: 80_000, change: 95_050 },
         {
-          id: "sales-november-clients",
+          metric: "invoiced",
+          value: 300_000,
+          previous: 120_000,
+          change: 180_000,
+        },
+        { metric: "owed", value: 144_950, previous: null, change: null },
+        { metric: "worker_cost", value: 45, previous: 100, change: -55 },
+      ],
+      notTracked: ["recurring"],
+    },
+    {
+      function: "brand",
+      metrics: [
+        { metric: "cost_per_win", value: 23, previous: null, change: null },
+      ],
+      notTracked: [],
+    },
+  ];
+}
+
+/** Creates relay-shaped company numbers records for mock bridge UI tests. */
+export function makeCofounderNumbersFixture({
+  ownerPubkey,
+  scoutPubkey,
+  salesLeadPubkey,
+  includeProposal = false,
+}: {
+  ownerPubkey: string;
+  scoutPubkey: string;
+  salesLeadPubkey: string;
+  includeProposal?: boolean;
+}): MockNumbers {
+  const functions = functionCards();
+  return {
+    scorecard: {
+      schemaVersion: 1,
+      asOf: AS_OF,
+      windowStart: AS_OF - WEEK,
+      previousStart: AS_OF - 2 * WEEK,
+      currency: "ZAR",
+      otherCurrencyFacts: 0,
+      functions,
+      goals: [
+        {
+          goalId: GOAL_ID,
+          function: "sales",
           title: "5 new clients in November",
-          current: 2,
+          metric: "won",
           target: 5,
-          owner: "Aya",
-          approvedBy: "you",
-          approvedOn: "30 Oct",
+          period: "month",
+          current: 3,
+          percent: 60,
         },
       ],
-      proposed: [],
-      suggested: {
-        id: "sales-follow-up-goal",
-        title: "Follow up with 5 new leads in November",
-        current: 0,
+    },
+    goals: [
+      {
+        schemaVersion: 1,
+        goalId: GOAL_ID,
+        function: "sales",
+        title: "5 new clients in November",
+        metric: "won",
         target: 5,
-        owner: "Aya",
+        period: "month",
+        status: "approved",
+        reason: "Last month closed 3.",
+        proposedByPubkey: salesLeadPubkey,
+        proposedAt: AS_OF - 3_600,
+        decidedByPubkey: ownerPubkey,
+        decidedAt: AS_OF + 1_200,
+        note: null,
+        sourceActionEventId: "c".repeat(64),
       },
-    },
-    operations: {
-      approved: [
-        {
-          id: "operations-launch-window",
-          title: "Launch each job within 7 days",
-          current: 1,
-          target: 1,
-          owner: "Scout",
-          approvedBy: "you",
-          approvedOn: "30 Oct",
-        },
-      ],
-      proposed: [],
-      suggested: {
-        id: "operations-revisions-goal",
-        title: "Keep revisions to 2 rounds per job",
-        current: 0,
-        target: 2,
-        owner: "Scout",
+      ...(includeProposal
+        ? [
+            {
+              schemaVersion: 1,
+              goalId: PROPOSED_GOAL_ID,
+              function: "sales",
+              title: "Follow up with five new leads this week",
+              metric: "leads_found",
+              target: 5,
+              period: "week",
+              status: "proposed",
+              reason: "The pipeline needs more first conversations.",
+              proposedByPubkey: scoutPubkey,
+              proposedAt: AS_OF - 3_600,
+              decidedByPubkey: null,
+              decidedAt: null,
+              note: null,
+              sourceActionEventId: "e".repeat(64),
+            },
+          ]
+        : []),
+    ],
+    reviews: [
+      {
+        schemaVersion: 1,
+        reviewDate: "2026-10-30",
+        asOf: AS_OF,
+        windowStart: AS_OF - WEEK,
+        previousStart: AS_OF - 2 * WEEK,
+        currency: "ZAR",
+        otherCurrencyFacts: 0,
+        functions,
+        wins: ["Two proposals accepted"],
+        misses: ["Replies fell from 2 to 1"],
+        decisions: [
+          {
+            decisionId: "hire-cs",
+            title: "Hire a Customer Success lead?",
+            detail: "Four active clients now.",
+            function: "customer_success",
+            state: "open",
+          },
+        ],
+        annotatedByPubkey: scoutPubkey,
+        annotatedAt: AS_OF + 3_600,
+        createdAt: AS_OF + 600,
+        sourceActionEventId: "d".repeat(64),
       },
-    },
-    customer_success: {
-      approved: [
-        {
-          id: "customer-success-referrals",
-          title: "Earn 5 client referrals in November",
-          current: 1,
-          target: 5,
-          owner: "Scout",
-          approvedBy: "you",
-          approvedOn: "30 Oct",
-        },
-      ],
-      proposed: [],
-      suggested: {
-        id: "customer-success-renewals-goal",
-        title: "Renew both active client agreements",
-        current: 0,
-        target: 2,
-        owner: "Scout",
-      },
-    },
-    finance: {
-      approved: [
-        {
-          id: "finance-recurring-goal",
-          title: "Reach R30k recurring a month",
-          current: 18,
-          target: 30,
-          owner: "Scout",
-          approvedBy: "you",
-          approvedOn: "30 Oct",
-        },
-      ],
-      proposed: [],
-      suggested: {
-        id: "finance-invoice-goal",
-        title: "Clear the invoice waiting for payment",
-        current: 0,
-        target: 1,
-        owner: "Scout",
-      },
-    },
-    brand: {
-      approved: [],
-      proposed: [],
-      suggested: {
-        id: "brand-replies-goal",
-        title: "Get 10 replies from the best opener",
-        current: 7,
-        target: 10,
-        owner: "Scout",
-      },
-    },
-  },
-};
+    ],
+  };
+}
+
+export const PROPOSED_COFOUNDER_GOAL_ID = PROPOSED_GOAL_ID;

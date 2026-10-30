@@ -2288,6 +2288,26 @@ pub enum NumbersGoalsCmd {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// Edit a proposed goal (owner or admin only; co-founder mode must be on)
+    Edit {
+        /// Goal UUID
+        goal_id: String,
+        /// New goal title
+        #[arg(long)]
+        title: String,
+        /// Number measured by the goal
+        #[arg(long)]
+        metric: String,
+        /// New target (money in minor units)
+        #[arg(long)]
+        target: i64,
+        /// New period: week or month
+        #[arg(long)]
+        period: String,
+        /// Updated reason for the proposal
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Approve a proposed goal (owner or admin only; agents are refused)
     Approve {
         /// Goal UUID
