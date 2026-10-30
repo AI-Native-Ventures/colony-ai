@@ -237,7 +237,7 @@ pub async fn query(
         } else {
             Err(api_error(
                 StatusCode::FORBIDDEN,
-                "only the owner, admins and Outreach members can read this",
+                "only the owner, admins, their agents and Outreach members can read this",
             ))
         }
     };
