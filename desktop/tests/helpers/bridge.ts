@@ -12,6 +12,7 @@ import type {
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import type { CofounderPhase2Fixture } from "../../src/features/cofounder/cofounderPhase2Model";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
@@ -637,6 +638,8 @@ type MockBridgeOptions = {
   }>;
   /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
   cofounderSettings?: MockCofounderSettings;
+  /** Mock-only Phase 2 view models used before backend record shapes land. */
+  cofounderPhase2?: CofounderPhase2Fixture;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
   companyPlans?: MockPlan[];

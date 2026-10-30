@@ -322,6 +322,7 @@ export default defineConfig({
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
         "**/cofounder-map.spec.ts",
+        "**/cofounder-phase2.spec.ts",
         "**/whatsapp-outreach.spec.ts",
         "**/whatsapp-outreach.visual.spec.ts",
       ],
@@ -430,6 +431,7 @@ export default defineConfig({
         "**/colony3-sales-setup.spec.ts",
         "**/colony3-scout-dupes.spec.ts",
         "**/cofounder-map.spec.ts",
+        "**/cofounder-phase2.spec.ts",
         "**/whatsapp-outreach.integration.spec.ts",
       ],
       use: {

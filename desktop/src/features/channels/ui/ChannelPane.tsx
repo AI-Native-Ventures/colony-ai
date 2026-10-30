@@ -3,6 +3,12 @@ import { Lock, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
+import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
+import { useCofounderPhase2Fixture } from "@/features/cofounder/useCofounderPhase2Fixture";
+import { CofounderOnboardingFlow } from "@/features/cofounder/ui/CofounderOnboardingFlow";
+import { CofounderPlanCard } from "@/features/cofounder/ui/CofounderPlanCard";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/businessRecords";
 import { WorkItemReferenceContext } from "@/features/clients/ui/WorkItemReferenceContext";
@@ -168,6 +174,17 @@ export const ChannelPane = React.memo(function ChannelPane({
   threadFirstUnreadReplyId,
   typingPubkeys,
 }: ChannelPaneProps) {
+  const { activeCommunity } = useCommunities();
+  const cofounderSettings = useCofounderSettingsQuery(
+    activeCommunity?.id ?? null,
+  );
+  const cofounderPhase2 = useCofounderPhase2Fixture();
+  const cofounderChatModel =
+    activeChannel?.channelType === "dm" &&
+    activeChannel.name.trim().toLocaleLowerCase() === "scout" &&
+    cofounderSettings.data?.settings.enabled === true
+      ? cofounderPhase2.model
+      : null;
   const timelineScrollRef = React.useRef<HTMLDivElement>(null);
   const messageTimelineRef = React.useRef<MessageTimelineHandle>(null);
   const composerWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -653,66 +670,102 @@ export const ChannelPane = React.memo(function ChannelPane({
           >
             {header}
             <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-              <MessageTimeline
-                ref={messageTimelineRef}
-                channelId={activeChannel?.id}
-                activeThreadRootId={activeThreadRootId}
-                scrollContainerRef={timelineScrollRef}
-                currentPubkey={currentPubkey}
-                fetchOlder={fetchOlder}
-                followThreadById={followThreadById}
-                hasComposerOverlay={hasMainComposerOverlay}
-                hasOlderMessages={hasOlderMessages}
-                historyExhausted={historyExhausted}
-                alwaysShowMessageIdentity={
-                  workspaceChrome && hasOpenMessageThread
-                }
-                compactThreadSummaryAvatars
-                isFetchingOlder={isFetchingOlder}
-                isFollowingThreadById={isFollowingThreadById}
-                isMessageUnreadById={isMessageUnreadById}
-                personaLookup={personaLookup}
-                profiles={profiles}
-                ownerProfiles={ownerProfiles}
-                unfollowThreadById={unfollowThreadById}
-                emptyTitle={
-                  activeChannel ? "No messages yet" : "No channel selected"
-                }
-                isError={isTimelineError}
-                isLoading={isTimelineLoading}
-                onRetry={onRetryTimeline}
-                entranceMessageId={entranceMessageId}
-                onEntranceMessageComplete={onEntranceMessageComplete}
-                mainEntries={mainTimelineEntries}
-                threadSummaries={threadSummaries}
-                messages={visibleMessages}
-                firstUnreadMessageId={firstUnreadMessageId}
-                unreadCount={unreadCount}
-                onDelete={onDelete}
-                onEdit={handleRoutedEdit}
-                onMarkUnread={onMarkUnread}
-                onMarkRead={onMarkRead}
-                onReply={timelineReplyHandler}
-                onOpenThread={onOpenThread}
-                channelName={activeChannel?.name}
-                channelType={activeChannel?.channelType ?? null}
-                isSendingVideoReviewComment={isSending}
-                onSendVideoReviewComment={
-                  activeChannel?.archivedAt
-                    ? undefined
-                    : onSendVideoReviewComment
-                }
-                onTargetReached={onTargetReached}
-                onToggleReaction={onToggleReaction}
-                {...searchHighlightProps.timeline}
-                targetMessageId={targetMessageId}
-                splitThreadPanelOpen={
-                  useSplitAuxiliaryPane &&
-                  !useFocusThreadDrawer &&
-                  Boolean(openThreadHeadId)
-                }
-                threadUnreadCounts={threadUnreadCounts}
-              />
+              {cofounderChatModel ? (
+                <div
+                  className="cf2-chat-embedded min-h-0 flex-1 overflow-y-auto"
+                  data-testid="cofounder-chat-surface"
+                >
+                  {cofounderChatModel.onboarding.step === "complete" ? (
+                    <div className="cf2-chat-plan-wrap">
+                      <CofounderPlanCard
+                        onApprove={(planId) =>
+                          cofounderPhase2.resolvePlan(planId, "approved")
+                        }
+                        onEdit={cofounderPhase2.editPlan}
+                        onReject={(planId) =>
+                          cofounderPhase2.resolvePlan(planId, "rejected")
+                        }
+                        plan={cofounderChatModel.chatPlan}
+                      />
+                    </div>
+                  ) : (
+                    <CofounderOnboardingFlow
+                      model={cofounderChatModel.onboarding}
+                      onAccountConnected={cofounderPhase2.accountConnected}
+                      onApproveMap={cofounderPhase2.approveMap}
+                      onChangeMap={() => void navigate({ to: "/company/map" })}
+                      onChooseMoney={cofounderPhase2.chooseMoney}
+                      onConfirmBrief={cofounderPhase2.confirmBrief}
+                      onCorrectBrief={cofounderPhase2.correctBrief}
+                      onOpenAccount={openCapabilityGapBrowser}
+                      onSaveApprovalSwitches={
+                        cofounderPhase2.saveApprovalSwitches
+                      }
+                    />
+                  )}
+                </div>
+              ) : (
+                <MessageTimeline
+                  ref={messageTimelineRef}
+                  channelId={activeChannel?.id}
+                  activeThreadRootId={activeThreadRootId}
+                  scrollContainerRef={timelineScrollRef}
+                  currentPubkey={currentPubkey}
+                  fetchOlder={fetchOlder}
+                  followThreadById={followThreadById}
+                  hasComposerOverlay={hasMainComposerOverlay}
+                  hasOlderMessages={hasOlderMessages}
+                  historyExhausted={historyExhausted}
+                  alwaysShowMessageIdentity={
+                    workspaceChrome && hasOpenMessageThread
+                  }
+                  compactThreadSummaryAvatars
+                  isFetchingOlder={isFetchingOlder}
+                  isFollowingThreadById={isFollowingThreadById}
+                  isMessageUnreadById={isMessageUnreadById}
+                  personaLookup={personaLookup}
+                  profiles={profiles}
+                  ownerProfiles={ownerProfiles}
+                  unfollowThreadById={unfollowThreadById}
+                  emptyTitle={
+                    activeChannel ? "No messages yet" : "No channel selected"
+                  }
+                  isError={isTimelineError}
+                  isLoading={isTimelineLoading}
+                  onRetry={onRetryTimeline}
+                  entranceMessageId={entranceMessageId}
+                  onEntranceMessageComplete={onEntranceMessageComplete}
+                  mainEntries={mainTimelineEntries}
+                  threadSummaries={threadSummaries}
+                  messages={visibleMessages}
+                  firstUnreadMessageId={firstUnreadMessageId}
+                  unreadCount={unreadCount}
+                  onDelete={onDelete}
+                  onEdit={handleRoutedEdit}
+                  onMarkUnread={onMarkUnread}
+                  onMarkRead={onMarkRead}
+                  onReply={timelineReplyHandler}
+                  onOpenThread={onOpenThread}
+                  channelName={activeChannel?.name}
+                  channelType={activeChannel?.channelType ?? null}
+                  isSendingVideoReviewComment={isSending}
+                  onSendVideoReviewComment={
+                    activeChannel?.archivedAt
+                      ? undefined
+                      : onSendVideoReviewComment
+                  }
+                  onTargetReached={onTargetReached}
+                  onToggleReaction={onToggleReaction}
+                  {...searchHighlightProps.timeline}
+                  targetMessageId={targetMessageId}
+                  splitThreadPanelOpen={
+                    useSplitAuxiliaryPane &&
+                    !useFocusThreadDrawer &&
+                    Boolean(openThreadHeadId)
+                  }
+                  threadUnreadCounts={threadUnreadCounts}
+                />
+              )}
               {isNonMemberView ? (
                 <div
                   data-testid="join-banner"

@@ -20,6 +20,7 @@ import { Route as workRouteImport } from "./routes/work";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
 import { Route as todayDotreviewsEmptyRouteImport } from "./routes/today.reviews-empty";
+import { Route as todayDotneedsYouRouteImport } from "./routes/today.needs-you";
 import { Route as navigationDotstartRouteImport } from "./routes/navigation.start";
 import { Route as navigationDothistoryRouteImport } from "./routes/navigation.history";
 import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
@@ -30,6 +31,7 @@ import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
 import { Route as companyDotmapRouteImport } from "./routes/company.map";
+import { Route as companyDotaccessRouteImport } from "./routes/company.access";
 import { Route as clientsDotclientIdRouteImport } from "./routes/clients.$clientId";
 import { Route as channelsDotchannelIdRouteImport } from "./routes/channels.$channelId";
 import { Route as asksDotnewRouteImport } from "./routes/asks.new";
@@ -121,6 +123,11 @@ const todayDotreviewsEmptyRoute = todayDotreviewsEmptyRouteImport.update({
   path: "/today/reviews-empty",
   getParentRoute: () => rootRouteImport,
 } as any);
+const todayDotneedsYouRoute = todayDotneedsYouRouteImport.update({
+  id: "/today/needs-you",
+  path: "/today/needs-you",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const navigationDotstartRoute = navigationDotstartRouteImport.update({
   id: "/navigation/start",
   path: "/navigation/start",
@@ -169,6 +176,11 @@ const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
 const companyDotmapRoute = companyDotmapRouteImport.update({
   id: "/company/map",
   path: "/company/map",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const companyDotaccessRoute = companyDotaccessRouteImport.update({
+  id: "/company/access",
+  path: "/company/access",
   getParentRoute: () => rootRouteImport,
 } as any);
 const clientsDotclientIdRoute = clientsDotclientIdRouteImport.update({
@@ -276,6 +288,7 @@ export interface FileRoutesByFullPath {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
@@ -286,6 +299,7 @@ export interface FileRoutesByFullPath {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/today/needs-you": typeof todayDotneedsYouRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
@@ -318,6 +332,7 @@ export interface FileRoutesByTo {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
@@ -328,6 +343,7 @@ export interface FileRoutesByTo {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/today/needs-you": typeof todayDotneedsYouRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
@@ -361,6 +377,7 @@ export interface FileRoutesById {
   "/asks/new": typeof asksDotnewRoute;
   "/channels/$channelId": typeof channelsDotchannelIdRoute;
   "/clients/$clientId": typeof clientsDotclientIdRoute;
+  "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
@@ -371,6 +388,7 @@ export interface FileRoutesById {
   "/money/revenue": typeof moneyDotrevenueRoute;
   "/navigation/history": typeof navigationDothistoryRoute;
   "/navigation/start": typeof navigationDotstartRoute;
+  "/today/needs-you": typeof todayDotneedsYouRoute;
   "/today/reviews-empty": typeof todayDotreviewsEmptyRoute;
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
@@ -405,6 +423,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/access"
     | "/company/map"
     | "/hire/configure"
     | "/hire/review"
@@ -415,6 +434,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/today/needs-you"
     | "/today/reviews-empty"
     | "/work/$workId"
     | "/asks/$channelId/$askId"
@@ -447,6 +467,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/access"
     | "/company/map"
     | "/hire/configure"
     | "/hire/review"
@@ -457,6 +478,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/today/needs-you"
     | "/today/reviews-empty"
     | "/work/$workId"
     | "/asks/$channelId/$askId"
@@ -489,6 +511,7 @@ export interface FileRouteTypes {
     | "/asks/new"
     | "/channels/$channelId"
     | "/clients/$clientId"
+    | "/company/access"
     | "/company/map"
     | "/hire/configure"
     | "/hire/review"
@@ -499,6 +522,7 @@ export interface FileRouteTypes {
     | "/money/revenue"
     | "/navigation/history"
     | "/navigation/start"
+    | "/today/needs-you"
     | "/today/reviews-empty"
     | "/work/$workId"
     | "/asks/$channelId/$askId"
@@ -532,6 +556,7 @@ export interface RootRouteChildren {
   asksDotnewRoute: typeof asksDotnewRoute;
   channelsDotchannelIdRoute: typeof channelsDotchannelIdRoute;
   clientsDotclientIdRoute: typeof clientsDotclientIdRoute;
+  companyDotaccessRoute: typeof companyDotaccessRoute;
   companyDotmapRoute: typeof companyDotmapRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
@@ -542,6 +567,7 @@ export interface RootRouteChildren {
   moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
   navigationDothistoryRoute: typeof navigationDothistoryRoute;
   navigationDotstartRoute: typeof navigationDotstartRoute;
+  todayDotneedsYouRoute: typeof todayDotneedsYouRoute;
   todayDotreviewsEmptyRoute: typeof todayDotreviewsEmptyRoute;
   workDotworkIdRoute: typeof workDotworkIdRoute;
   asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
@@ -665,6 +691,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof todayDotreviewsEmptyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/today/needs-you": {
+      id: "/today/needs-you";
+      path: "/today/needs-you";
+      fullPath: "/today/needs-you";
+      preLoaderRoute: typeof todayDotneedsYouRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/navigation/start": {
       id: "/navigation/start";
       path: "/navigation/start";
@@ -733,6 +766,13 @@ declare module "@tanstack/react-router" {
       path: "/company/map";
       fullPath: "/company/map";
       preLoaderRoute: typeof companyDotmapRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/company/access": {
+      id: "/company/access";
+      path: "/company/access";
+      fullPath: "/company/access";
+      preLoaderRoute: typeof companyDotaccessRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/clients/$clientId": {
@@ -860,6 +900,7 @@ const rootRouteChildren: RootRouteChildren = {
   asksDotnewRoute: asksDotnewRoute,
   channelsDotchannelIdRoute: channelsDotchannelIdRoute,
   clientsDotclientIdRoute: clientsDotclientIdRoute,
+  companyDotaccessRoute: companyDotaccessRoute,
   companyDotmapRoute: companyDotmapRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
@@ -870,6 +911,7 @@ const rootRouteChildren: RootRouteChildren = {
   moneyDotrevenueRoute: moneyDotrevenueRoute,
   navigationDothistoryRoute: navigationDothistoryRoute,
   navigationDotstartRoute: navigationDotstartRoute,
+  todayDotneedsYouRoute: todayDotneedsYouRoute,
   todayDotreviewsEmptyRoute: todayDotreviewsEmptyRoute,
   workDotworkIdRoute: workDotworkIdRoute,
   asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,

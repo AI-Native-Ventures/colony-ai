@@ -1,10 +1,13 @@
 import * as React from "react";
+import { Link } from "@tanstack/react-router";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
 import { needsMeAskLabel } from "@/features/company-asks/askCardMapping";
 import type { AskHeadRecord } from "@/features/company-asks/askRecords";
+import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
 import { useHomeFeedQuery } from "@/features/home/hooks";
 import { useNeedsMeQuery } from "@/features/home/needsMeHooks";
 import {
@@ -305,6 +308,10 @@ export function TodayScreen(_props: { showUpdatesAction?: boolean } = {}) {
   const needsMe = useNeedsMeQuery();
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
+  const { activeCommunity } = useCommunities();
+  const cofounderSettings = useCofounderSettingsQuery(
+    activeCommunity?.id ?? null,
+  );
   const [needsMeGrouping, setNeedsMeGrouping] =
     React.useState<NeedsMeGrouping>("deadline");
   const [showOverdueOnly, setShowOverdueOnly] = React.useState(false);
@@ -409,7 +416,18 @@ export function TodayScreen(_props: { showUpdatesAction?: boolean } = {}) {
         <div className="ct-page">
           <div className="ct-heading">
             <h1>Today</h1>
-            <span>{todayLabel(now)}</span>
+            <div className="ct-heading-meta">
+              <span>{todayLabel(now)}</span>
+              {cofounderSettings.data?.settings.enabled ? (
+                <Link
+                  className="ct-needs-you-link"
+                  data-testid="today-needs-you-link"
+                  to="/today/needs-you"
+                >
+                  Needs you
+                </Link>
+              ) : null}
+            </div>
           </div>
 
           <div className="ct-columns">

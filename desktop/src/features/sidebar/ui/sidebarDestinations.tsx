@@ -132,6 +132,10 @@ function isCompanyMapPath(pathname: string): boolean {
   );
 }
 
+function isCompanyAccessPath(pathname: string): boolean {
+  return pathname === "/company/access";
+}
+
 const company: SidebarDestination = {
   kind: "group",
   id: "company",
@@ -179,6 +183,14 @@ const company: SidebarDestination = {
       href: "#/company/map",
       available: ({ cofounderModeEnabled }) => cofounderModeEnabled === true,
       isActive: ({ pathname }) => isCompanyMapPath(pathname),
+    },
+    {
+      id: "company-access",
+      testId: "sidebar-company-access",
+      label: "Access",
+      href: "#/company/access",
+      available: ({ cofounderModeEnabled }) => cofounderModeEnabled === true,
+      isActive: ({ pathname }) => isCompanyAccessPath(pathname),
     },
   ],
 };
