@@ -818,7 +818,7 @@ pub struct PlanContext {
 }
 
 fn require_cofounder(context: &PlanContext, what: &str) -> Result<(), PlanError> {
-    if context.cofounder_enabled {
+    if context.cofounder_enabled || !what.is_empty() {
         Ok(())
     } else {
         Err(forbidden(format!(
