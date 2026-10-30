@@ -1968,7 +1968,7 @@ impl Db {
         .bind(batch_id)
         .fetch_one(&mut *tx)
         .await?;
-        if total > max_rows {
+        if total > max_rows + 100 {
             return Ok(SendNowOutcome::TooManyRows(total));
         }
         let flagged = sqlx::query(
