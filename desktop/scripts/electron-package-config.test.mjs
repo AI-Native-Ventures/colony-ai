@@ -396,7 +396,7 @@ test("the release native host is built with the Colony Agent gateway flag and th
   const verify = workflow.slice(
     workflow.indexOf("- name: Verify the Colony Agent gateway flag"),
   );
-  assert.match(verify, /if: inputs\.release/);
+  assert.match(verify, /if: env\.COLONY_RELEASE_BUILD == 'true'/);
   assert.match(verify, /colony-credits-gateway-build=on/);
   // The key never reaches a client build.
   assert.doesNotMatch(
