@@ -6,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import {
   installWhatsAppMockBridge,
+  PLANE_TREE_WA_ID,
   WHATSAPP_DECIDED_BATCH_ID,
 } from "../helpers/whatsappOutreach";
 import { REFERENCE_AGENTS } from "../../src/testing/e2eReferenceWorkspace";
@@ -27,6 +28,12 @@ type WhatsAppEventWindow = Window & {
     createdAt?: number;
   }) => unknown;
   __BUZZ_E2E_WHATSAPP_STATE__?: WhatsAppMockState;
+};
+
+type WhatsAppThreadSeedWindow = Window & {
+  __BUZZ_E2E_WHATSAPP_STATE__?: {
+    threads?: Record<string, { messages: unknown[] }>;
+  };
 };
 
 const variants = {
@@ -120,6 +127,98 @@ async function openApprovedCardFromHome(
 }
 
 test.describe("WhatsApp decided batch channel card", () => {
+  test("unknown relay message states keep the WhatsApp chat visible", async ({
+    page,
+  }) => {
+    const stateWarnings: string[] = [];
+    page.on("console", (message) => {
+      if (
+        message.type() === "warning" &&
+        message.text().includes("unknown WhatsApp message state")
+      ) {
+        stateWarnings.push(message.text());
+      }
+    });
+    await installWhatsAppMockBridge(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("home-inbox")).toBeVisible();
+    await page.evaluate((waId) => {
+      const state = (window as WhatsAppThreadSeedWindow)
+        .__BUZZ_E2E_WHATSAPP_STATE__;
+      const thread = state?.threads?.[waId];
+      if (!thread) throw new Error("Mock WhatsApp thread is unavailable");
+      thread.messages = [
+        {
+          id: "e2e-wa-unknown-state",
+          waId,
+          direction: "out",
+          kind: "text",
+          text: "Unknown state must not hide this message.",
+          templateName: null,
+          state: "received_by_carrier",
+          errorCode: null,
+          errorText: null,
+          eventId: null,
+          senderPubkey: null,
+          createdAt: "2026-10-31T09:01:00+02:00",
+        },
+        {
+          id: "e2e-wa-unknown-state-repeat",
+          waId,
+          direction: "out",
+          kind: "text",
+          text: "A repeated unknown state is still visible.",
+          templateName: null,
+          state: "received_by_carrier",
+          errorCode: null,
+          errorText: null,
+          eventId: null,
+          senderPubkey: null,
+          createdAt: "2026-10-31T09:02:00+02:00",
+        },
+        {
+          id: "e2e-wa-inbound-received-state",
+          waId,
+          direction: "in",
+          kind: "text",
+          text: "Inbound received state remains visible.",
+          templateName: null,
+          state: "received",
+          errorCode: null,
+          errorText: null,
+          eventId: null,
+          senderPubkey: null,
+          createdAt: "2026-10-31T09:00:00+02:00",
+        },
+      ];
+    }, PLANE_TREE_WA_ID);
+
+    await page.getByTestId("channel-general").click();
+    await page.getByRole("button", { name: "Open work area" }).click();
+    await expect(page.getByTestId("work-area-empty")).toBeVisible();
+    await page.getByRole("button", { name: "Add work area tab" }).click();
+    await page.getByRole("menuitem", { name: "WhatsApp chats" }).click();
+    await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+    await page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`).click();
+
+    const unknownMessage = page.getByTestId(
+      "whatsapp-message-e2e-wa-unknown-state",
+    );
+    await expect(unknownMessage).toContainText(
+      "Unknown state must not hide this message.",
+    );
+    await expect(
+      page.getByTestId("whatsapp-message-e2e-wa-unknown-state-repeat"),
+    ).toContainText("A repeated unknown state is still visible.");
+    await expect(unknownMessage.locator(".c3wa-message-receipt")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByTestId("whatsapp-message-e2e-wa-inbound-received-state"),
+    ).toContainText("Inbound received state remains visible.");
+    await expect.poll(() => stateWarnings.length).toBe(1);
+  });
+
   test("Outreach approved card sends the exact batch after confirmation", async ({
     page,
   }) => {
