@@ -1,0 +1,1129 @@
+.cf2-screen {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  font-family: var(--colony-font-sans);
+}
+
+.cf-setting-cofounder-scout {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 0.25rem 1.25rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-track));
+}
+
+.cf-setting-cofounder-scout-mark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-accent) / 0.14);
+  color: hsl(var(--colony-accent));
+  font-weight: 800;
+}
+
+.cf-setting-cofounder-scout p {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.cf-setting-cofounder-scout strong {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cf-setting-cofounder-scout-button {
+  min-height: 2.5rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 0.75rem;
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.cf-setting-cofounder-scout-button:hover:not(:disabled) {
+  background: hsl(var(--colony-track));
+}
+
+.cf-setting-cofounder-scout-button:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.cf-setting-cofounder-scout-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 40rem) {
+  .cf-setting-cofounder-scout {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-inline: 0;
+  }
+
+  .cf-setting-cofounder-scout p {
+    flex-basis: calc(100% - 3.5rem);
+  }
+
+  .cf-setting-cofounder-scout-button {
+    width: 100%;
+  }
+}
+
+.cf2-page {
+  box-sizing: border-box;
+  display: flex;
+  width: min(100%, 75rem);
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 3rem;
+}
+
+.cf2-page-heading h1 {
+  margin: 0;
+  font-size: 2.75rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.cf2-page-heading p {
+  max-width: 48rem;
+  margin: 0.35rem 0 0;
+  color: hsl(var(--colony-muted));
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.cf2-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: hsl(var(--colony-muted));
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cf2-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cf2-breadcrumb a:hover {
+  color: hsl(var(--colony-fg));
+  text-decoration: underline;
+}
+
+.cf2-breadcrumb [aria-current="page"] {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cf2-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 1.25rem;
+  background: var(--colony-overlay);
+  box-shadow: 0 0.4rem 1.25rem rgb(47 34 59 / 5%);
+}
+
+.cf2-card h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.cf2-card p {
+  margin: 0;
+}
+
+.cf2-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.cf2-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cf2-chip {
+  display: inline-flex;
+  min-height: 1.5rem;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.cf2-chip-warm {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.cf2-chip-status {
+  background: hsl(var(--colony-accent) / 0.13);
+  color: hsl(var(--colony-accent));
+}
+
+.cf2-chip-ok {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.cf2-muted {
+  color: hsl(var(--colony-muted));
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cf2-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cf2-button {
+  display: inline-flex;
+  min-height: 2.625rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.6875rem;
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.cf2-button:hover {
+  background: hsl(var(--colony-track));
+}
+
+.cf2-button:focus-visible,
+.cf2-choice:focus-visible,
+.cf2-option:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.cf2-button-primary {
+  border-color: hsl(var(--colony-fg));
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+}
+
+.cf2-button-primary:hover {
+  background: hsl(var(--colony-fg) / 0.88);
+}
+
+.cf2-button-danger {
+  border-color: hsl(var(--colony-danger) / 0.25);
+  color: hsl(var(--colony-danger));
+}
+
+.cf2-onboarding {
+  display: flex;
+  width: min(100%, 52rem);
+  flex-direction: column;
+  gap: 1.25rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.cf2-chat-embedded {
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  font-family: var(--colony-font-sans);
+  padding-bottom: 9rem;
+}
+
+.cf2-chat-plan-wrap {
+  width: min(100%, 52rem);
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.cf2-chat-intro {
+  margin: 0;
+  color: hsl(var(--colony-fg));
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.cf2-onboarding-card {
+  gap: 1rem;
+}
+
+.cf2-brief-list {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.25fr) minmax(0, 1fr);
+  gap: 0.625rem 1rem;
+  margin: 0;
+}
+
+.cf2-brief-list dt {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.cf2-brief-list dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.cf2-source-list {
+  gap: 0.375rem;
+}
+
+.cf2-price-note {
+  color: hsl(var(--colony-muted));
+  font-weight: 500;
+}
+
+.cf2-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.cf2-edit-field input {
+  min-height: 2.625rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.625rem;
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+}
+
+.cf2-brief-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.cf2-brief-edit-grid .cf2-edit-field:nth-child(2),
+.cf2-brief-edit-grid .cf2-edit-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.cf2-completed-note,
+.cf2-help {
+  color: hsl(var(--colony-muted));
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.cf2-question-count {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.cf2-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cf2-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.375rem 0.5rem;
+  min-height: 5rem;
+  padding: 0.875rem;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 0.875rem;
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf2-choice[aria-pressed="true"] {
+  border-color: hsl(var(--colony-accent));
+  background: hsl(var(--colony-accent) / 0.1);
+  box-shadow: 0 0 0 1px hsl(var(--colony-accent) / 0.35);
+}
+
+.cf2-choice:disabled {
+  cursor: default;
+}
+
+.cf2-choice:disabled:not([aria-pressed="true"]) {
+  opacity: 0.7;
+}
+
+.cf2-switch-row input:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.cf2-choice strong {
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.cf2-choice > span:last-child {
+  grid-column: 1 / -1;
+  color: hsl(var(--colony-muted));
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.cf2-recommended {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-accent) / 0.13);
+  color: hsl(var(--colony-accent));
+  font-size: 0.6875rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cf2-onboarding-copy {
+  color: hsl(var(--colony-muted));
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.cf2-switch-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cf2-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  cursor: pointer;
+}
+
+.cf2-switch-row:last-child {
+  border-bottom: 0;
+}
+
+.cf2-switch-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.cf2-switch-row strong {
+  font-size: 0.8125rem;
+  font-weight: 750;
+}
+
+.cf2-switch-row small {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.cf2-switch-row input {
+  width: 2.5rem;
+  height: 1.375rem;
+  flex: none;
+  accent-color: hsl(var(--colony-accent));
+}
+
+.cf2-browser-ready {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-track));
+}
+
+.cf2-browser-ready > span:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 15rem;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.cf2-browser-ready strong {
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.cf2-browser-ready small {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.cf2-browser-glyph,
+.cf2-access-glyph {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: var(--colony-overlay);
+  font-size: 1.25rem;
+}
+
+.cf2-function-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf2-function-list li {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(8rem, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.875rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  font-size: 0.875rem;
+}
+
+.cf2-function-list li:last-child {
+  border-bottom: 0;
+}
+
+.cf2-function-index {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.cf2-function-list strong {
+  font-weight: 750;
+}
+
+.cf2-needs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.cf2-needs-group > h2 {
+  margin: 0.25rem 0;
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.cf2-needs-card {
+  gap: 0.875rem;
+}
+
+.cf2-card-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.cf2-card-title-row > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cf2-card-title-row strong {
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.cf2-card-title-row small {
+  color: hsl(var(--colony-muted));
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.cf2-scout-tile,
+.cf2-person-tile {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-accent) / 0.14);
+  color: hsl(var(--colony-accent));
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.cf2-person-tile {
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.cf2-person-tile-small {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 0.6875rem;
+}
+
+.cf2-card-detail {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.cf2-draft-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cf2-draft-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid hsl(var(--colony-border));
+}
+
+.cf2-draft-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.cf2-draft-copy strong {
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.cf2-draft-copy > span {
+  overflow: hidden;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf2-draft-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.cf2-draft-input {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.cf2-draft-actions .cf2-button {
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+}
+
+.cf2-option-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cf2-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 0.875rem;
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf2-option[aria-pressed="true"] {
+  border-color: hsl(var(--colony-accent));
+  box-shadow: 0 0 0 1px hsl(var(--colony-accent));
+}
+
+.cf2-option-preview {
+  height: 5rem;
+  border-radius: 0.625rem;
+  background: linear-gradient(
+    145deg,
+    hsl(var(--colony-accent) / 0.18),
+    hsl(var(--colony-need-bg))
+  );
+}
+
+.cf2-empty-note,
+.cf2-worker-access-note {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.cf2-access-request > p {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.cf2-access-request .cf2-chip {
+  align-self: flex-start;
+}
+
+.cf2-access-table-wrap {
+  overflow: hidden;
+  border: 1px solid hsl(var(--colony-border));
+  border-radius: 1.25rem;
+  background: var(--colony-overlay);
+}
+
+.cf2-access-table,
+.cf2-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.cf2-access-table th,
+.cf2-access-table td,
+.cf2-plan-table th,
+.cf2-plan-table td {
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.cf2-access-table thead th,
+.cf2-plan-table thead th {
+  color: hsl(var(--colony-muted));
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.cf2-access-table tbody th {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.cf2-access-table td {
+  color: hsl(var(--colony-fg-secondary));
+  font-weight: 600;
+}
+
+.cf2-access-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.cf2-access-table tbody th:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.cf2-access-glyph {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+}
+
+.cf2-access-cards {
+  display: none;
+}
+
+.cf2-access-row {
+  gap: 0.75rem;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.cf2-access-row-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.cf2-access-row-heading strong {
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.cf2-access-row dl {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.375rem 0.5rem;
+  margin: 0;
+}
+
+.cf2-access-row dt {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.cf2-access-row dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cf2-plan-card {
+  gap: 1.25rem;
+}
+
+.cf2-plan-card h2 {
+  font-size: 1.25rem;
+}
+
+.cf2-plan-summary {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.cf2-plan-table-wrap {
+  overflow-x: auto;
+}
+
+.cf2-plan-table {
+  min-width: 44rem;
+}
+
+.cf2-plan-table th,
+.cf2-plan-table td {
+  vertical-align: middle;
+}
+
+.cf2-plan-table tbody th {
+  min-width: 19rem;
+  font-weight: 700;
+}
+
+.cf2-step-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.cf2-step-number {
+  display: grid;
+  width: 1.375rem;
+  height: 1.375rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--colony-accent) / 0.12);
+  color: hsl(var(--colony-accent));
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.cf2-step-owner {
+  display: block;
+  margin: 0.25rem 0 0 2rem;
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cf2-step-mobile-meta {
+  display: none;
+}
+
+.cf2-step-status {
+  display: inline-flex;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.6875rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cf2-step-status[data-status="done"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.cf2-step-status[data-status="blocked"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.cf2-plan-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.cf2-plan-totals > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 0.875rem;
+  background: hsl(var(--colony-track));
+}
+
+.cf2-plan-totals span {
+  color: hsl(var(--colony-muted));
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.cf2-plan-totals strong {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+@media (max-width: 48rem) {
+  .cf2-page {
+    gap: 1.25rem;
+    padding: 1.5rem 1rem 2rem;
+  }
+
+  .cf2-page-heading h1 {
+    font-size: 2rem;
+  }
+
+  .cf2-onboarding {
+    padding: 1rem;
+  }
+
+  .cf2-brief-list {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .cf2-brief-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cf2-brief-edit-grid .cf2-edit-field {
+    grid-column: auto;
+  }
+
+  .cf2-brief-list dd {
+    margin-bottom: 0.5rem;
+  }
+
+  .cf2-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cf2-function-list li {
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  }
+
+  .cf2-function-list .cf2-muted {
+    grid-column: 2 / -1;
+  }
+
+  .cf2-function-list .cf2-chip {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .cf2-option-list {
+    grid-template-columns: 1fr;
+  }
+
+  .cf2-option {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .cf2-option-preview {
+    width: 5rem;
+    flex: none;
+  }
+
+  .cf2-draft-row {
+    flex-wrap: wrap;
+  }
+
+  .cf2-draft-copy {
+    flex-basis: calc(100% - 4rem);
+  }
+
+  .cf2-draft-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .cf2-plan-totals {
+    grid-template-columns: 1fr;
+    order: 1;
+  }
+
+  .cf2-plan-table-wrap {
+    order: 2;
+  }
+
+  .cf2-plan-table {
+    min-width: 0;
+  }
+
+  .cf2-plan-table thead {
+    display: none;
+  }
+
+  .cf2-plan-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .cf2-plan-table tbody tr {
+    display: block;
+    overflow: hidden;
+    border: 1px solid hsl(var(--colony-border));
+    border-radius: 0.875rem;
+  }
+
+  .cf2-plan-table tbody th {
+    display: block;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 0;
+  }
+
+  .cf2-plan-table tbody td {
+    display: none;
+  }
+
+  .cf2-step-owner {
+    margin-left: 2rem;
+  }
+
+  .cf2-step-mobile-meta {
+    display: block;
+    margin: 0.125rem 0 0 2rem;
+    color: hsl(var(--colony-muted));
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .cf2-plan-card > .cf2-card-head {
+    order: 0;
+  }
+
+  .cf2-plan-card > .cf2-actions {
+    order: 3;
+  }
+
+  .cf2-access-table {
+    display: none;
+  }
+
+  .cf2-access-cards {
+    display: block;
+  }
+}

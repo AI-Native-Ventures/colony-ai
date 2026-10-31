@@ -17,6 +17,7 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 | connect, disconnect | yes | no | no |
 | change daily cap, sync templates | yes | no | no |
 | approve, reject, edit or drop batch rows | yes | no | no |
+| `send_now` on an approved test batch (at most 3 rows) | yes | no, never | no |
 | create batch | yes | yes | no |
 | send a message (free text in the window, follow-up template) | yes, sent at once | yes, but only as a DRAFT | no |
 | approve, edit or reject an agent draft | yes | no | no |
@@ -136,12 +137,16 @@ windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered }`.
 
 Message: `{ id, waId, direction: "in"|"out", kind: "text"|"template"|"media"|"button", text,
 templateName, state: "draft"|"rejected"|"queued"|"sending"|"sent"|"delivered"|"read"|"failed"|"unconfirmed",
-errorCode, errorText, eventId, senderPubkey, createdAt }`. `text` is the current text (after an owner edit).
+errorCode, errorText, eventId, senderPubkey, createdAt, sendsAt }`. `text` is the current text (after an owner edit).
+`sendsAt` is an ISO time, set only for an approved row waiting to go out (otherwise `null`): the
+moment the owner released it with `send_now`, else the start of the next send window for a new
+chat (the pacing gap and the daily cap can still delay it a little), else the next sender pass.
+Older apps ignore it.
 
 BatchSummary: `{ batchId, status: "pending"|"approved"|"rejected"|"completed",
 createdBy, template, language, rows: {total, ready, sent, failed, dropped}, createdAt }`.
-BatchDetail adds `rows: [{ idx, to, leadId, params, preview, state, skipReason }]` and
-`materialLinks`.
+BatchDetail adds `rows: [{ idx, to, leadId, params, preview, state, skipReason, sendsAt }]`
+(`sendsAt` as on Message) and `materialLinks`.
 
 Polling the `thread` query is how the UI sees delivery state; the Colony message event
 for an outbound message is immutable.
@@ -197,7 +202,7 @@ Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 {
   "v": 1,
   "batchId": "uuid",
-  "decision": "approve" | "reject",
+  "decision": "approve" | "reject" | "send_now",
   "dropRows": [3, 7],
   "editRows": [{ "idx": 2, "params": ["Naledi", "Horizon Labs"] }]
 }
@@ -209,6 +214,19 @@ Before approving, the relay refreshes the template list from Meta (falling back 
 Meta does not answer). If the batch's template is gone or no longer approved the approval is refused
 with `template_missing: ...`, the batch stays `pending`, nothing is sent, and the Outreach channel
 gets a `template_missing` notice. Reject the batch and prepare a new one.
+
+`send_now` (owner/admin only, never an agent, owned or not) releases an ALREADY APPROVED batch
+that has at most 3 rows in total (dropped rows count): a test, not a blast. Its `ready` rows skip
+the 08:00 to 18:00 Africa/Johannesburg window and the pacing gap and are sent at the next sender
+pass (every 5 seconds), all of them in one pass. Nothing else relaxes: each row is still at most
+one Graph send (at-most-once), still counts to the daily new-chat cap (and waits when the cap is
+used up), is still skipped for an opted-out or paused contact, and nothing goes while sending is
+stopped (quality RED). It takes no `dropRows` or `editRows`. Refused with the plain reason for a
+batch that is pending, rejected or completed, unknown, larger than 3 rows, or with no row left
+waiting. A repeat keeps the first release moment. The relay marks released rows durably in
+`whatsapp_messages.send_after` (the release time); the sender treats a set value as the release
+flag. The Outreach channel gets a `batch_send_now` notice. Older apps never send it and ignore
+`sendsAt`.
 
 To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 
@@ -268,7 +286,8 @@ changes until an owner or admin renames. A `template_title_proposed` notice is p
 * Approved batch rows send between 08:00 and 18:00 Africa/Johannesburg, one every 3 to 6
   minutes (deterministic jitter per row), never past the daily cap of NEW chats
   (a new chat is a template send to a contact with no open window). Unsent rows roll to
-  the next day automatically.
+  the next day automatically. The owner's `send_now` on an approved batch of at most 3 rows
+  skips the window and the gap (see `47049`); the cap still holds.
 * Replies and follow-ups inside an open window are not capped and are not paced, but an agent's
   reply or follow-up waits for its own owner/admin approval (draft) before it is sent.
 * One row = at most one Graph send. A row moves `ready -> sending -> sent`. A crash between

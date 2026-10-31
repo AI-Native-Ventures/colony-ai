@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
+import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
   whatsappDeliveryLabel,
   type WhatsAppMessage,
@@ -190,6 +191,8 @@ export function WhatsAppThreadMessage({
   templates,
   contactName,
   waitingForApproval = false,
+  canSendNow = false,
+  sendNowBatchId = null,
   mobileHistory,
   onApproveDraft,
   onRejectDraft,
@@ -201,6 +204,8 @@ export function WhatsAppThreadMessage({
   templates: readonly WhatsAppTemplate[];
   contactName: string;
   waitingForApproval?: boolean;
+  canSendNow?: boolean;
+  sendNowBatchId?: string | null;
   mobileHistory: boolean;
   onApproveDraft: (draftId: string, text?: string) => Promise<void>;
   onRejectDraft: (draftId: string) => Promise<void>;
@@ -221,7 +226,7 @@ export function WhatsAppThreadMessage({
   const inbound = message.direction === "in";
   const statusLabel = waitingForApproval
     ? "Waiting for your approval"
-    : whatsappDeliveryLabel(message.state, message.errorText);
+    : whatsappDeliveryLabel(message.state, message.errorText, message.sendsAt);
   const template =
     templates.find((item) => item.name === message.templateName) ?? null;
   const mediaParts =
@@ -320,6 +325,9 @@ export function WhatsAppThreadMessage({
             ) : (
               <span>{statusLabel} · you, as Horizon Labs</span>
             )}
+            {canSendNow && message.state === "queued" && sendNowBatchId ? (
+              <WhatsAppSendNowAction batchId={sendNowBatchId} size="xs" />
+            ) : null}
           </div>
         ) : null}
       </div>

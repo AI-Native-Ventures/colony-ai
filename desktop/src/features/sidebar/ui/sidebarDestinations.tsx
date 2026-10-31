@@ -74,6 +74,8 @@ export type SidebarDestination =
       defaultExpanded: boolean;
       /** The group opens by itself while any of its destinations is open. */
       isActive: (context: SidebarDestinationContext) => boolean;
+      /** The group heading stays selected when a nested route is current. */
+      isCurrent?: (context: SidebarDestinationContext) => boolean;
       items: readonly SidebarDestinationItem[];
     })
   | (EntryBase & {
@@ -127,9 +129,19 @@ const COMPANY_VIEWS: readonly AppSidebarProps["selectedView"][] = [
 ];
 
 function isCompanyMapPath(pathname: string): boolean {
+  return pathname === "/company/map";
+}
+
+function isCompanyPath(pathname: string): boolean {
   return (
-    pathname === "/company/map" || pathname.startsWith("/company/function/")
+    isCompanyMapPath(pathname) ||
+    pathname === "/company/weekly-review" ||
+    pathname.startsWith("/company/function/")
   );
+}
+
+function isCompanyAccessPath(pathname: string): boolean {
+  return pathname === "/company/access";
 }
 
 const company: SidebarDestination = {
@@ -140,13 +152,19 @@ const company: SidebarDestination = {
   Icon: CompanyIcon,
   defaultExpanded: false,
   isActive: ({ pathname, selectedView }) =>
-    COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
+    COMPANY_VIEWS.includes(selectedView) || isCompanyPath(pathname),
+  isCurrent: ({ pathname, selectedView }) =>
+    COMPANY_VIEWS.includes(selectedView) ||
+    isCompanyPath(pathname) ||
+    isCompanyAccessPath(pathname),
   rail: {
     testId: "sidebar-collapsed-company",
     label: "Company",
     Icon: CompanyIcon,
     isActive: ({ pathname, selectedView }) =>
-      COMPANY_VIEWS.includes(selectedView) || isCompanyMapPath(pathname),
+      COMPANY_VIEWS.includes(selectedView) ||
+      isCompanyPath(pathname) ||
+      isCompanyAccessPath(pathname),
     onSelect: ({ handlers }) => handlers.onSelectTeam(),
   },
   items: [
@@ -179,6 +197,14 @@ const company: SidebarDestination = {
       href: "#/company/map",
       available: ({ cofounderModeEnabled }) => cofounderModeEnabled === true,
       isActive: ({ pathname }) => isCompanyMapPath(pathname),
+    },
+    {
+      id: "company-access",
+      testId: "sidebar-company-access",
+      label: "Access",
+      href: "#/company/access",
+      available: ({ cofounderModeEnabled }) => cofounderModeEnabled === true,
+      isActive: ({ pathname }) => isCompanyAccessPath(pathname),
     },
   ],
 };

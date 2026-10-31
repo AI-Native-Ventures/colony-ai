@@ -1582,6 +1582,7 @@ an existing head. The d-tag is the record the op changes.
 | `op` | Who | Carries | Effect |
 | --- | --- | --- | --- |
 | `goal_propose` | any member or agent, co-founder mode on | `goalId`, `function`, `title`, `metric`, `target`, `period`, `reason` | new goal, `proposed` |
+| `goal_edit` | owner or admin, co-founder mode on | `goalId`, `title`, `metric`, `target`, `period`, `reason`, expected head | replaces the content of a proposed goal in one write; proposer and proposal time stay unchanged |
 | `goal_approve` / `goal_reject` | owner or admin | `goalId`, `note`, expected head | goal `approved` or `rejected`; recorded |
 | `goal_retire` | the proposer, owner or admin | `goalId`, `note`, expected head | goal `retired` |
 | `scorecard_refresh` | any member or agent, co-founder mode on | nothing | the relay recounts and replaces `company:scorecard`; a scorecard younger than a minute is not recounted |
@@ -1595,10 +1596,12 @@ Rules enforced by the relay (`buzz_core::company_numbers`):
 - A goal measures a number of its own function (Sales: `won`, Finance: `cash_in`).
   Its `period` is `week` (the latest seven days) or `month` (the calendar month so
   far, in Johannesburg). A company keeps at most 50 open goals.
+- Only an owner or admin can edit a proposed goal, and the action must name the
+  exact head they saw. Approved, rejected and retired goals cannot be edited.
 - Only approved goals are tracked in `company:scorecard`'s `goals` with `current`
   and `percent` (at most 1000).
-- Switching co-founder mode off stops new goals, approvals, refreshes and review
-  words; nothing already written changes.
+- Switching co-founder mode off stops new goals, goal edits and approvals,
+  refreshes and review words; nothing already written changes.
 
 **The Friday review.** The relay wake sweep writes `company:review:<Friday>` once,
 after Friday 14:00 UTC (16:00 in Johannesburg) and until Monday 14:00 UTC, with the
@@ -1611,7 +1614,7 @@ Needs you (decide); the owner answers with `review_decide`. The review head is
 `createdAt` at the time the relay wrote it and is never rewritten by the relay.
 
 CLI: `colony numbers scorecard [--function <function>] [--no-refresh]`,
-`colony numbers goals list|propose|approve|reject|retire` and
+`colony numbers goals list|propose|edit|approve|reject|retire` and
 `colony numbers review list|show|write|decide`.
 
 ## Proof boundaries

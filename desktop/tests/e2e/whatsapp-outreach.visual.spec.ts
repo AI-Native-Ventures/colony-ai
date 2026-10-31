@@ -39,6 +39,12 @@ const screens = [
     testId: "whatsapp-batch-page",
   },
   {
+    name: "SendNowBatch",
+    route: `/whatsapp/batches/${WHATSAPP_BATCH_ID}`,
+    query: "batch=send-now",
+    testId: "whatsapp-batch-page",
+  },
+  {
     name: "Outreach",
     route: `/channels/${OUTREACH_CHANNEL_ID}`,
     testId: "whatsapp-outreach",
@@ -47,6 +53,12 @@ const screens = [
     name: "WhatsAppDock",
     route: "/channels/e2e-whatsapp-general-channel",
     query: "batch=held",
+    testId: "whatsapp-outreach",
+  },
+  {
+    name: "WhatsAppDockSendNow",
+    route: "/channels/e2e-whatsapp-general-channel",
+    query: "batch=send-now",
     testId: "whatsapp-outreach",
   },
   {
@@ -95,7 +107,8 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
                     ? 1480
                     : screen.name === "OutreachBatchSent"
                       ? 1510
-                      : screen.name === "WhatsAppDock"
+                      : screen.name === "WhatsAppDock" ||
+                          screen.name === "WhatsAppDockSendNow"
                         ? 1040
                         : screen.name === "LeadWhatsApp" ||
                             screen.name === "LeadsWhatsApp"
@@ -105,7 +118,10 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
           await page.emulateMedia({ colorScheme: theme });
           await gotoWhatsAppScreen(page, screen.route, screen.query);
           const target = page.getByTestId(screen.testId);
-          if (screen.name === "WhatsAppDock") {
+          if (
+            screen.name === "WhatsAppDock" ||
+            screen.name === "WhatsAppDockSendNow"
+          ) {
             await page.getByTestId("channel-whatsapp-chats-trigger").click();
             await expect(page.getByTestId("work-area-panel")).toBeVisible();
             if (width === 390) {
@@ -116,12 +132,27 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
             await page
               .getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`)
               .click();
-            await expect(
-              page.getByTestId("whatsapp-thread-held-batch"),
-            ).toBeVisible();
-            await expect(
-              page.getByTestId("whatsapp-thread-held-batch"),
-            ).not.toContainText(/\bSent\b/u);
+            if (screen.name === "WhatsAppDockSendNow") {
+              const queued = page.getByTestId(
+                "whatsapp-message-e2e-wa-jacaranda-held-template",
+              );
+              await expect(queued).toContainText(
+                /Sends (today at \d{2}:\d{2}|tomorrow at 08:00)/u,
+              );
+              const sendNowButton = queued.getByRole("button", {
+                name: "Send now (test)",
+              });
+              await expect(sendNowButton).toBeVisible();
+              await sendNowButton.scrollIntoViewIfNeeded();
+              await expect(sendNowButton).toBeInViewport();
+            } else {
+              await expect(
+                page.getByTestId("whatsapp-thread-held-batch"),
+              ).toBeVisible();
+              await expect(
+                page.getByTestId("whatsapp-thread-held-batch"),
+              ).not.toContainText(/\bSent\b/u);
+            }
           }
           await expect(target).toBeVisible({ timeout: 15_000 });
           await expect
@@ -197,6 +228,17 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
               ),
             ).toBeVisible();
           }
+          if (screen.name === "SendNowBatch") {
+            const sendNowButton = target
+              .getByRole("button", { name: "Send now (test)" })
+              .first();
+            await expect(sendNowButton).toBeVisible();
+            await sendNowButton.scrollIntoViewIfNeeded();
+            await expect(sendNowButton).toBeInViewport();
+            await expect(
+              target.getByTestId("whatsapp-batch-row-schedule-0").first(),
+            ).toContainText(/Sends (today at \d{2}:\d{2}|tomorrow at 08:00)/u);
+          }
           if (screen.name === "Outreach") {
             const threadHeader = target.locator(".c3wa-thread-head");
             await expect(threadHeader.locator("strong")).toHaveText(
@@ -260,6 +302,7 @@ test("captures WhatsApp screens at phone and desktop widths in light and dark th
               target.getByTestId("whatsapp-lead-detail-card"),
             ).toContainText("This looks great! What would it cost?");
           }
+          await page.mouse.move(width - 1, height - 1);
           await waitForAnimations(page);
           await page.screenshot({
             path: path.join(

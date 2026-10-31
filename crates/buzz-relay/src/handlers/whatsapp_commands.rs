@@ -23,8 +23,8 @@ use buzz_core::kind::{
 };
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
-    BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, WhatsappBatch,
-    MAX_DAILY_NEW_CHAT_CAP,
+    BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
+    WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -32,6 +32,7 @@ use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
 use crate::whatsapp::policy::{
     clean_title, e164, normalize_wa_id, render_template, template_slot_count, window_open,
+    SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
     check_send, enqueue_send, Enqueued, SendCommand, SendContext, TemplateRef,
@@ -480,10 +481,13 @@ async fn handle_decision(
     let community = tenant.community();
     let batch_id =
         parse_uuid(command.batch_id.as_deref().unwrap_or(""), "batchId").map_err(invalid)?;
+    if command.decision == "send_now" {
+        return handle_send_now(tenant, state, event, &command, batch_id).await;
+    }
     let approve = match command.decision.as_str() {
         "approve" => true,
         "reject" => false,
-        _ => return Err(invalid("decision must be approve or reject")),
+        _ => return Err(invalid("decision must be approve, reject or send_now")),
     };
     let batch = state
         .db
@@ -555,6 +559,50 @@ async fn handle_decision(
             )
             .await;
             Ok(ok(event, "rejected"))
+        }
+    }
+}
+
+/// Owner or admin releases the waiting rows of an already approved test batch (at most
+/// [`SEND_NOW_MAX_ROWS`] rows): they skip the 08:00 to 18:00 window and the pacing gap and go
+/// out at the next sender pass. The caller was already checked as owner or admin, which never
+/// includes a managed agent. The cap, opt-outs, the quality stop and at-most-once stay.
+async fn handle_send_now(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    command: &DecisionCommand,
+    batch_id: Uuid,
+) -> Result<IngestResult, IngestError> {
+    if !command.drop_rows.is_empty() || !command.edit_rows.is_empty() {
+        return Err(invalid("send_now takes no dropRows or editRows"));
+    }
+    let outcome = state
+        .db
+        .whatsapp_send_now_batch(tenant.community(), batch_id, SEND_NOW_MAX_ROWS, Utc::now())
+        .await
+        .map_err(internal)?;
+    let short = batch_id.simple().to_string()[..8].to_string();
+    match outcome {
+        SendNowOutcome::NotFound => Err(invalid("no such batch")),
+        SendNowOutcome::NotApproved => Err(invalid(
+            "send_now needs an approved batch; approve it first",
+        )),
+        SendNowOutcome::TooManyRows(total) => Err(invalid(format!(
+            "send_now is for tests of at most {SEND_NOW_MAX_ROWS} rows; this batch has {total}"
+        ))),
+        SendNowOutcome::NothingWaiting => Err(invalid("no row of this batch is waiting to send")),
+        SendNowOutcome::Flagged(rows) => {
+            channel::post_notice(
+                state,
+                tenant,
+                "batch_send_now",
+                &format!(
+                    "Batch {short}: {rows} message(s) go out now, outside the 08:00 to 18:00 window. The daily cap still applies."
+                ),
+            )
+            .await;
+            Ok(ok(event, format!("send_now: {rows} row(s) released")))
         }
     }
 }

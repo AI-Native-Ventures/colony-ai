@@ -10,9 +10,11 @@ import type {
   MockFactoryRunSeed,
   MockManagedAgentSeed,
   MockPlan,
+  MockNumbers,
   MockWorkerRun,
   VisualFixtureSeed,
 } from "../../src/testing/e2eBridge";
+import type { MockCompanyInitiativeRecord } from "../../src/testing/mockCompanyInitiative";
 import type {
   MockPlaybook,
   MockPlaybookJob,
@@ -650,6 +652,10 @@ type MockBridgeOptions = {
   /** Access list, capability gap and slot hire records, signed as the relay. */
   companyAccessRecords?: MockCompanyAccessRecord[];
   companyPlans?: MockPlan[];
+  companyNumbers?: MockNumbers;
+  companyBriefRecord?: MockCompanyInitiativeRecord | null;
+  companyOnboardingRecord?: MockCompanyInitiativeRecord | null;
+  companyOnboardingAutoAdvance?: boolean;
   companyPlaybooks?: MockPlaybook[];
   companyPlaybookJobs?: MockPlaybookJob[];
   /**
@@ -1057,9 +1063,10 @@ async function installMockTenantDirectory(
 
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
-    options.mode === "relay"
-      ? (options.identity ?? TEST_IDENTITIES[options.user ?? "tyler"])
-      : undefined;
+    options.identity ??
+    (options.mode === "relay"
+      ? TEST_IDENTITIES[options.user ?? "tyler"]
+      : undefined);
 
   // Most specs seed a community so useCommunityInit doesn't show WelcomeSetup.
   // skipOnboardingSeed only controls the onboarding-completion flag.
@@ -1166,6 +1173,12 @@ export async function installBridge(page: Page, options: BridgeOptions) {
         autoConnectDefaultRelay:
           autoConnectDefaultRelay ?? currentConfig.autoConnectDefaultRelay,
       };
+      if (mode === "mock" && bridgeIdentity) {
+        window.localStorage.setItem(
+          "buzz:e2e-identity-override.v1",
+          JSON.stringify(bridgeIdentity),
+        );
+      }
       testWindow.__BUZZ_E2E_APP_BADGE_COUNT__ = 0;
       testWindow.__BUZZ_E2E_APP_BADGE_STATE__ = "none";
       testWindow.__BUZZ_E2E_CLICK_NOTIFICATION__ = (index: number) => {
@@ -1204,6 +1217,7 @@ export async function installMockBridge(
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
     forceRelayPacing?: boolean;
+    identity?: RelayBridgeIdentity;
   },
 ) {
   const proofTheme = process.env.COLONY3_PROOF_THEME;
@@ -1245,6 +1259,7 @@ export async function installMockBridge(
     mock,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,
+    identity: options?.identity,
     skipOnboardingSeed: options?.skipOnboardingSeed,
     skipCommunitySeed: options?.skipCommunitySeed,
     seedPreviewFeatures: options?.seedPreviewFeatures,

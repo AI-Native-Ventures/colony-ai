@@ -2,6 +2,7 @@ import { verifyEvent } from "nostr-tools/pure";
 
 import {
   KIND_COFOUNDER_HEAD,
+  KIND_COMPANY_FUNCTION_ACTION,
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/shared/constants/kinds";
@@ -61,6 +62,13 @@ export type CompanyFunctionHead = {
   state: SlotState;
   leadPubkey: string | null;
   eventId: string;
+};
+
+export type CompanyFunctionActionInput = {
+  functionId: FunctionId;
+  kind: "assign_lead" | "cover_by_scout" | "clear";
+  leadPubkey?: string;
+  expectedHeadEventId: string | null;
 };
 
 export type FunctionSlotView = {
@@ -240,6 +248,27 @@ export function parseCofounderSettingsHead(
 export function companyFunctionDTag(functionId: FunctionId): string {
   return `${COMPANY_FUNCTION_D_TAG_PREFIX}${functionId}`;
 }
+
+/** Build the member-signed function slot action (kind 47061). */
+export function buildCompanyFunctionActionEvent(
+  input: CompanyFunctionActionInput,
+): { content: string; tags: string[][] } {
+  const content: Record<string, unknown> = {
+    schemaVersion: COMPANY_RECORD_SCHEMA_VERSION,
+    function: input.functionId,
+    kind: input.kind,
+    ...(input.leadPubkey ? { leadPubkey: input.leadPubkey } : {}),
+    ...(input.expectedHeadEventId
+      ? { expectedHeadEventId: input.expectedHeadEventId }
+      : {}),
+  };
+  return {
+    content: JSON.stringify(content),
+    tags: [["d", companyFunctionDTag(input.functionId)]],
+  };
+}
+
+export { KIND_COMPANY_FUNCTION_ACTION };
 
 export function parseCompanyFunctionHead(
   event: RelayEvent,

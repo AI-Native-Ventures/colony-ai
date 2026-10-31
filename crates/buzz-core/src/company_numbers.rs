@@ -750,6 +750,8 @@ pub fn build_review(window: &ReviewWindow, inputs: &NumbersInputs, created_at: i
 pub enum NumbersOp {
     /// Propose a goal for a function.
     GoalPropose,
+    /// Edit a proposed goal (owner or admin).
+    GoalEdit,
     /// Approve a proposed goal (owner or admin).
     GoalApprove,
     /// Reject a proposed goal (owner or admin).
@@ -779,19 +781,19 @@ pub struct NumbersAction {
     /// The goal's function, for `goal_propose`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub function: Option<CompanyFunction>,
-    /// The goal's title, for `goal_propose`.
+    /// The goal's title, for `goal_propose` and `goal_edit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// The goal's number, for `goal_propose`.
+    /// The goal's number, for `goal_propose` and `goal_edit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metric: Option<Metric>,
-    /// The goal's target, for `goal_propose`.
+    /// The goal's target, for `goal_propose` and `goal_edit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<i64>,
-    /// The goal's period, for `goal_propose`.
+    /// The goal's period, for `goal_propose` and `goal_edit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub period: Option<GoalPeriod>,
-    /// Why the goal is proposed, for `goal_propose`.
+    /// Why the goal is proposed or edited, for `goal_propose` and `goal_edit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// The review's Friday, for review ops.
@@ -826,6 +828,7 @@ impl NumbersAction {
         match self.op {
             NumbersOp::ScorecardRefresh => Ok(SCORECARD_D_TAG.to_owned()),
             NumbersOp::GoalPropose
+            | NumbersOp::GoalEdit
             | NumbersOp::GoalApprove
             | NumbersOp::GoalReject
             | NumbersOp::GoalRetire => goal_d_tag(self.goal_id.as_deref().unwrap_or_default()),
@@ -943,6 +946,17 @@ fn op_fields(op: NumbersOp) -> (&'static [&'static str], &'static [&'static str]
     match op {
         NumbersOp::GoalPropose => (
             &["goalId", "function", "title", "metric", "target", "period"],
+            &["reason"],
+        ),
+        NumbersOp::GoalEdit => (
+            &[
+                "goalId",
+                "title",
+                "metric",
+                "target",
+                "period",
+                "expectedHeadEventId",
+            ],
             &["reason"],
         ),
         NumbersOp::GoalApprove | NumbersOp::GoalReject | NumbersOp::GoalRetire => {
@@ -1215,6 +1229,33 @@ pub fn apply_goal_action(
                 note: None,
                 source_action_event_id: context.action_event_id.clone(),
             })
+        }
+        (NumbersOp::GoalEdit, Some(goal)) => {
+            require_cofounder(context, "no goal can be edited")?;
+            require_admin(actor, "edit a goal")?;
+            if goal.status != GoalStatus::Proposed {
+                return Err(refuse(
+                    PlanErrorKind::Conflict,
+                    "only a proposed goal can be edited",
+                ));
+            }
+            let metric = action.metric.ok_or_else(|| bad("metric is required"))?;
+            if metric.function() != goal.function {
+                return Err(bad("a goal measures a number of its own function"));
+            }
+            let mut next = goal.clone();
+            next.title = action
+                .title
+                .clone()
+                .ok_or_else(|| bad("title is required"))?;
+            next.metric = metric;
+            next.target = action.target.ok_or_else(|| bad("target is required"))?;
+            next.period = action.period.ok_or_else(|| bad("period is required"))?;
+            if let Some(reason) = action.reason.clone() {
+                next.reason = Some(reason);
+            }
+            next.source_action_event_id = context.action_event_id.clone();
+            Ok(next)
         }
         (_, None) => Err(refuse(PlanErrorKind::Conflict, "there is no such goal")),
         (NumbersOp::GoalApprove | NumbersOp::GoalReject, Some(goal)) => {
@@ -1742,6 +1783,20 @@ mod tests {
         }
     }
 
+    fn edit_action() -> NumbersAction {
+        NumbersAction {
+            op: NumbersOp::GoalEdit,
+            function: None,
+            title: Some("Follow up with 8 new leads".into()),
+            metric: Some(Metric::LeadsFound),
+            target: Some(8),
+            period: Some(GoalPeriod::Week),
+            reason: Some("The first target was too low.".into()),
+            expected_head_event_id: Some(EVENT.into()),
+            ..propose_action()
+        }
+    }
+
     #[test]
     fn an_agent_proposes_a_goal_and_only_the_owner_approves_it() {
         let scout = actor(PlanActorRole::ManagedAgent, SCOUT);
@@ -1776,6 +1831,71 @@ mod tests {
                 .expect_err("already decided")
                 .kind,
             PlanErrorKind::Conflict
+        );
+    }
+
+    #[test]
+    fn only_an_owner_or_admin_edits_an_open_goal_and_the_write_is_atomic() {
+        let scout = actor(PlanActorRole::ManagedAgent, SCOUT);
+        let owner = actor(PlanActorRole::Admin, OWNER);
+        let proposed = apply_goal_action(None, &propose_action(), &scout, &context(true)).unwrap();
+        let edited =
+            apply_goal_action(Some(&proposed), &edit_action(), &owner, &context(true)).unwrap();
+
+        assert_eq!(edited.status, GoalStatus::Proposed);
+        assert_eq!(edited.title, "Follow up with 8 new leads");
+        assert_eq!(edited.function, CompanyFunction::Sales);
+        assert_eq!(edited.metric, Metric::LeadsFound);
+        assert_eq!(edited.target, 8);
+        assert_eq!(edited.period, GoalPeriod::Week);
+        assert_eq!(
+            edited.reason.as_deref(),
+            Some("The first target was too low.")
+        );
+        assert_eq!(edited.proposed_by_pubkey, SCOUT);
+        assert_eq!(edited.proposed_at, proposed.proposed_at);
+        assert_eq!(edited.source_action_event_id, context(true).action_event_id);
+
+        let agent_result =
+            apply_goal_action(Some(&proposed), &edit_action(), &scout, &context(true))
+                .expect_err("an agent cannot edit a goal");
+        assert_eq!(agent_result.kind, PlanErrorKind::Forbidden);
+        let member = actor(
+            PlanActorRole::Member,
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        );
+        let member_result =
+            apply_goal_action(Some(&proposed), &edit_action(), &member, &context(true))
+                .expect_err("a member cannot edit a goal");
+        assert_eq!(member_result.kind, PlanErrorKind::Forbidden);
+        assert_eq!(
+            apply_goal_action(Some(&proposed), &edit_action(), &owner, &context(false),)
+                .expect_err("co-founder mode must be on")
+                .kind,
+            PlanErrorKind::Forbidden
+        );
+
+        let approved = apply_goal_action(
+            Some(&proposed),
+            &decide_action(NumbersOp::GoalApprove),
+            &owner,
+            &context(true),
+        )
+        .unwrap();
+        assert_eq!(
+            apply_goal_action(Some(&approved), &edit_action(), &owner, &context(true))
+                .expect_err("an approved goal is immutable")
+                .kind,
+            PlanErrorKind::Conflict
+        );
+
+        let mut wrong_metric = edit_action();
+        wrong_metric.metric = Some(Metric::CashIn);
+        assert_eq!(
+            apply_goal_action(Some(&proposed), &wrong_metric, &owner, &context(true))
+                .expect_err("the metric must belong to the goal function")
+                .kind,
+            PlanErrorKind::Invalid
         );
     }
 
@@ -1841,6 +1961,10 @@ mod tests {
     #[test]
     fn each_op_takes_only_its_own_fields() {
         assert!(validate_numbers_action(&propose_action()).is_ok());
+        assert!(validate_numbers_action(&edit_action()).is_ok());
+        let mut edit_missing_head = edit_action();
+        edit_missing_head.expected_head_event_id = None;
+        assert!(validate_numbers_action(&edit_missing_head).is_err());
         let mut extra = propose_action();
         extra.choice = Some(DecisionState::Approved);
         assert!(

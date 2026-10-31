@@ -1978,6 +1978,7 @@
 
 .c3wa-message-receipt {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.375rem;
@@ -3411,6 +3412,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+}
+
+.c3wa-send-now-action {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .c3wa-batch-progress-copy {
