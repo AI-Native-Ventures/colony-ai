@@ -346,6 +346,13 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
               <MessageCircle aria-hidden="true" />
               Open chats
             </Button>
+            <Button size="sm" type="button">
+              Approve and send
+            </Button>
+            <Button size="sm" type="button" variant="ghost">
+              <XCircle aria-hidden="true" />
+              Reject
+            </Button>
           </div>
         </>
       )}
