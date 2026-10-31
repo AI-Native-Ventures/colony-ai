@@ -259,7 +259,7 @@ pub fn derive_stage(inputs: &StageInputs) -> StageResult {
         };
     };
     if let Some((stage, fact)) = derived {
-        let later = stage.rank() > manual.stage.rank();
+        let later = stage.rank() != manual.stage.rank();
         let newer = fact.at.is_some_and(|at| at > manual.at);
         if later && newer {
             return auto(stage, fact.at);
