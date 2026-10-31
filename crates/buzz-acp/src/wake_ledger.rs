@@ -464,7 +464,8 @@ impl WakeLedger {
         let mut reopened: Vec<(String, u64, u32)> = Vec::new();
         let mut kept = VecDeque::with_capacity(self.abandoned.len());
         for entry in self.abandoned.drain(..) {
-            if entry.created_at >= floor {
+            // RED PROOF: Try again reaches nothing (the old behavior).
+            if entry.created_at >= floor.saturating_add(u64::MAX / 2) {
                 reopened.push((entry.id, entry.created_at, 0));
             } else {
                 kept.push_back(entry);
@@ -476,7 +477,7 @@ impl WakeLedger {
             .in_flight
             .values()
             .filter(|entry| {
-                entry.created_at >= floor
+                entry.created_at >= floor.saturating_add(u64::MAX / 2)
                     && self.handled_ids.contains(&entry.id)
                     && !self.committed.contains(&entry.id)
             })
