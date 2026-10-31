@@ -10,6 +10,16 @@ on:
         description: Existing desktop-v tag version to release
         required: true
         type: string
+      dry_run:
+        description: Rehearse the release from the selected branch. Builds or reuses the installers and checks them, but never creates or edits a GitHub Release.
+        required: false
+        type: boolean
+        default: false
+      reuse_candidate:
+        description: Reuse the release candidate pull request's installers when its source tree is identical to this commit.
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: colony-desktop-release-${{ github.ref }}
@@ -36,6 +46,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
           INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: |
           set -euo pipefail
           package_version="$(node -p 'require("./desktop/package.json").version')"
@@ -51,8 +62,13 @@ jobs:
           fi
           expected_ref="refs/tags/desktop-v$version"
           if [ "$EVENT_REF" != "$expected_ref" ]; then
-            echo "Select the existing desktop-v$version tag when using workflow_dispatch." >&2
-            exit 1
+            # Only a dry run may start from a branch, and it can never publish.
+            if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run from $EVENT_REF: nothing will be published."
+            else
+              echo "Select the existing desktop-v$version tag when using workflow_dispatch." >&2
+              exit 1
+            fi
           fi
           if [ "$package_version" != "$version" ] || [ "$tauri_version" != "$version" ]; then
             echo "The tag, desktop/package.json, and desktop/src-tauri/tauri.conf.json versions must match." >&2
@@ -63,9 +79,190 @@ jobs:
             echo "tag=desktop-v$version"
           } >> "$GITHUB_OUTPUT"
 
+  select-build:
+    name: Reuse the release candidate build when it is identical
+    needs: release-info
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reuse: ${{ steps.decide.outputs.reuse }}
+      reason: ${{ steps.decide.outputs.reason }}
+      run_id: ${{ steps.lookup.outputs.run_id }}
+      run_url: ${{ steps.lookup.outputs.run_url }}
+      head_sha: ${{ steps.lookup.outputs.head_sha }}
+      tree: ${{ steps.lookup.outputs.tree }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # Candidate builds are unsigned. If any signing secret is configured the
+      # release signs, so it always builds and never reuses an unsigned build.
+      - name: Check whether release signing is configured
+        id: signing
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERT_P12_B64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_B64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_NOTARY_API_KEY_P8_B64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_B64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_B64 }}
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          configured=false
+          for value in \
+            "$APPLE_DEVELOPER_ID_CERT_P12_B64" \
+            "$APPLE_DEVELOPER_ID_CERT_PASSWORD" \
+            "$APPLE_NOTARY_API_KEY_P8_B64" \
+            "$APPLE_NOTARY_KEY_ID" \
+            "$APPLE_NOTARY_ISSUER_ID" \
+            "$WINDOWS_SIGNING_CERT_PFX_B64" \
+            "$WINDOWS_SIGNING_CERT_PASSWORD"; do
+            if [ -n "$value" ]; then configured=true; fi
+          done
+          echo "configured=$configured" >> "$GITHUB_OUTPUT"
+
+      - name: Look for a release candidate build with the same source tree
+        id: lookup
+        if: steps.signing.outputs.configured != 'true' && (github.event_name != 'workflow_dispatch' || inputs.reuse_candidate)
+        continue-on-error: true
+        timeout-minutes: 4
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG_TREE="$(git rev-parse "$GITHUB_SHA^{tree}")"
+          export TAG_TREE
+          node desktop/scripts/select-release-candidate.mjs
+
+      - name: Download the candidate installers
+        id: download
+        if: steps.lookup.outputs.reuse == 'true'
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: colony-electron-release-*-*
+          path: candidate-assets
+          merge-multiple: true
+          run-id: ${{ steps.lookup.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Set up Node and pnpm
+        id: node
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        id: pnpm
+        if: steps.node.outcome == 'success'
+        continue-on-error: true
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.4.0
+
+      - name: Install metadata generator dependency
+        id: install
+        if: steps.pnpm.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: pnpm install --frozen-lockfile --filter buzz
+
+      # The same gate the publish job runs: one DMG, update archive and
+      # installer named for the tag version, update feeds that match the files,
+      # and labels that say UNSIGNED. A copy is checked so nothing extra is
+      # written next to the assets that get published.
+      - name: Check the candidate installers against the tag version
+        id: verify
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.release-info.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(find candidate-assets -type f -size 0)" ]; then
+            echo "A candidate file is empty." >&2
+            exit 1
+          fi
+          rm -rf candidate-check
+          cp -R candidate-assets candidate-check
+          node desktop/scripts/release-metadata.mjs \
+            --assets-dir=candidate-check \
+            --version="$RELEASE_VERSION" \
+            --mac-signed=false \
+            --windows-signed=false
+          ls -l candidate-assets
+
+      - name: Hand the checked installers to the publish job
+        id: handoff
+        if: steps.verify.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colony-electron-release-reused
+          path: candidate-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Decide whether the release reuses the candidate build
+        id: decide
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SIGNING_CONFIGURED: ${{ steps.signing.outputs.configured }}
+          LOOKUP_REUSE: ${{ steps.lookup.outputs.reuse }}
+          LOOKUP_REASON: ${{ steps.lookup.outputs.reason }}
+          HANDOFF_OUTCOME: ${{ steps.handoff.outcome }}
+          RUN_URL: ${{ steps.lookup.outputs.run_url }}
+          HEAD_SHA: ${{ steps.lookup.outputs.head_sha }}
+          TREE: ${{ steps.lookup.outputs.tree }}
+        run: |
+          set -euo pipefail
+          if [ "$HANDOFF_OUTCOME" = "success" ]; then
+            reuse=true
+            reason="Reusing the release candidate build: $RUN_URL (commit $HEAD_SHA, source tree $TREE)."
+          elif [ "$SIGNING_CONFIGURED" = "true" ]; then
+            reuse=false
+            reason="Release signing is configured, so the installers are built and signed from this tag."
+          elif [ "$LOOKUP_REUSE" = "true" ]; then
+            reuse=false
+            reason="A candidate build was found but could not be downloaded or verified, so the installers are built from this tag."
+          else
+            reuse=false
+            reason="${LOOKUP_REASON:-No candidate lookup result.} The installers are built from this tag."
+          fi
+          {
+            echo "reuse=$reuse"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Installer source"
+            echo
+            echo "$reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$reason"
+
   package:
     name: Build signed or unsigned installers
-    needs: release-info
+    needs:
+      - release-info
+      - select-build
+    # Build unless the candidate build was reused. A failed or skipped lookup
+    # leaves the output empty, which also builds.
+    if: ${{ !cancelled() && needs.release-info.result == 'success' && needs.select-build.outputs.reuse != 'true' }}
     uses: ./.github/workflows/electron-package.yml
     with:
       release: true
@@ -84,7 +281,9 @@ jobs:
     name: Publish GitHub Release
     needs:
       - release-info
+      - select-build
       - package
+    if: ${{ !cancelled() && needs.release-info.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && needs.select-build.outputs.reuse == 'true')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:
@@ -108,18 +307,26 @@ jobs:
         run: pnpm install --frozen-lockfile --filter buzz
 
       - name: Download installers and updater feeds
+        if: needs.select-build.outputs.reuse != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: colony-electron-release-*
+          pattern: colony-electron-release-*-*
           path: release-assets
           merge-multiple: true
+
+      - name: Download the reused candidate installers and updater feeds
+        if: needs.select-build.outputs.reuse == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: colony-electron-release-reused
+          path: release-assets
 
       - name: Generate update metadata and checksums
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.release-info.outputs.version }}
-          MAC_SIGNED: ${{ needs.package.outputs.mac_signed }}
-          WINDOWS_SIGNED: ${{ needs.package.outputs.windows_signed }}
+          MAC_SIGNED: ${{ needs.package.outputs.mac_signed || 'false' }}
+          WINDOWS_SIGNED: ${{ needs.package.outputs.windows_signed || 'false' }}
         run: |
           set -euo pipefail
           node desktop/scripts/release-metadata.mjs \
@@ -132,8 +339,12 @@ jobs:
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.release-info.outputs.version }}
-          MAC_SIGNED: ${{ needs.package.outputs.mac_signed }}
-          WINDOWS_SIGNED: ${{ needs.package.outputs.windows_signed }}
+          MAC_SIGNED: ${{ needs.package.outputs.mac_signed || 'false' }}
+          WINDOWS_SIGNED: ${{ needs.package.outputs.windows_signed || 'false' }}
+          REUSE: ${{ needs.select-build.outputs.reuse }}
+          REUSE_RUN_URL: ${{ needs.select-build.outputs.run_url }}
+          REUSE_HEAD_SHA: ${{ needs.select-build.outputs.head_sha }}
+          REUSE_TREE: ${{ needs.select-build.outputs.tree }}
         run: |
           set -euo pipefail
           if [ "$MAC_SIGNED" = "true" ]; then mac_status="signed and notarized"; else mac_status="UNSIGNED"; fi
@@ -159,8 +370,18 @@ jobs:
               printf '%s' "$first_launch" | sed 's/^ *//'
             } >> release-notes.md
           fi
+          {
+            echo
+            if [ "$REUSE" = "true" ]; then
+              echo "Build source: installers reused from the release candidate build ($REUSE_RUN_URL), commit $REUSE_HEAD_SHA, source tree $REUSE_TREE, identical to this tag."
+            else
+              echo "Build source: installers built from this tag."
+            fi
+          } >> release-notes.md
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or refresh GitHub Release
+        if: ${{ !inputs.dry_run && startsWith(github.ref, 'refs/tags/desktop-v') }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
