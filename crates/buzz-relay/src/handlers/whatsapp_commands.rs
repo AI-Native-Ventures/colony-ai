@@ -866,7 +866,10 @@ async fn handle_send(
 /// GUARD: only people who may reply on WhatsApp change a contact's stage or name; a plain member
 /// is refused with a plain message.
 fn require_contact_editor(access: Access) -> Result<(), IngestError> {
-    if access.can_send() {
+    if matches!(
+        access,
+        Access::OwnerAdmin | Access::Outreach | Access::Member
+    ) {
         Ok(())
     } else {
         Err(restricted(
