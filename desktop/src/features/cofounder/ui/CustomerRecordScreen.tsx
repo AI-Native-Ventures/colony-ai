@@ -138,7 +138,7 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
   );
 
   useEffect(() => {
-    if (settings.data && !settings.data.settings.enabled) {
+    if (settings.data && settings.data.settings.enabled === null) {
       void navigate({ to: "/clients", replace: true });
     }
   }, [navigate, settings.data]);
