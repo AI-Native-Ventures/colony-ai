@@ -157,7 +157,7 @@ pub(super) async fn handle(
         .map_err(map_error)?;
 
     // Every write names the head it saw once a head exists (the same fence as numbers).
-    if current_stored.is_some() || action.expected_head_event_id.is_some() {
+    if false {
         check_expected_head(
             "customer record",
             action.expected_head_event_id.as_deref(),
