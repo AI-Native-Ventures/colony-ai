@@ -46,6 +46,7 @@
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
       "cofounder-phase2.spec.ts",
+      "cofounder-customer-record.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
@@ -78,7 +79,11 @@
   "features": [
     {
       "paths": ["desktop/src/features/cofounder/**"],
-      "specs": ["cofounder-playbooks.spec.ts", "cofounder-map.spec.ts"]
+      "specs": [
+        "cofounder-playbooks.spec.ts",
+        "cofounder-map.spec.ts",
+        "cofounder-customer-record.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/home/**"],
@@ -155,7 +160,8 @@
       "paths": ["desktop/src/features/clients/**"],
       "specs": [
         "w11-clients-work.spec.ts",
-        "colony3-business-money-proof.spec.ts"
+        "colony3-business-money-proof.spec.ts",
+        "cofounder-customer-record.spec.ts"
       ]
     },
     {

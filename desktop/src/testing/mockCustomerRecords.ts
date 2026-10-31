@@ -1,8 +1,8 @@
 /**
  * Mock bridge model of the co-founder customer record (kind 30679 heads, kind
  * 47069 actions). It applies the same authority and shape rules as the relay
- * (`buzz_core::company_customers`), enough for UI specs: an owner or admin
- * writes, a plain member (a stranger to the record) is refused, a write names
+ * (`buzz_core::company_customers`), enough for UI specs: owners, admins,
+ * function leads and Scout write, while a plain member is refused. A write names
  * the exact head it saw, a refresh younger than a minute changes nothing and
  * converting twice is a no-op. The relay would recompute every other figure
  * from the company's records; the mock keeps the seeded ones. No signature work.
@@ -18,6 +18,8 @@ export type MockCustomerState = {
 
 export type MockCustomerContext = {
   isAdmin: boolean;
+  canWrite?: boolean;
+  canConvert?: boolean;
   cofounderEnabled: boolean;
   now: number;
   actorPubkey: string;
@@ -187,7 +189,7 @@ export function applyMockCustomerAction(
   if (invalid) return invalid;
   if (!context.cofounderEnabled)
     return "restricted: co-founder mode is off for this company, so the customer record is not changed";
-  if (!context.isAdmin)
+  if (!(context.canWrite ?? context.isAdmin))
     return "restricted: only the owner, an admin, a Sales or Customer Success lead or Scout can change a customer record";
   const records = state.companyCustomerRecords ?? [];
   state.companyCustomerRecords = records;
@@ -214,6 +216,8 @@ export function applyMockCustomerAction(
       return null;
     }
     case "convert_to_client": {
+      if (!(context.canConvert ?? context.isAdmin))
+        return "restricted: only the owner, an admin or the Sales lead can convert a lead to a client";
       if (record.conversion !== null && record.conversion !== undefined)
         return null;
       record.conversion = {

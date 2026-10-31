@@ -1,7 +1,8 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCofounderMode } from "@/features/cofounder/customerRecordAccess";
 
 import type { WorkItemHead } from "@/features/clients/lib/businessRecords";
 import { usePeople } from "@/features/clients/lib/usePeople";
@@ -39,6 +40,9 @@ export function sharedWorkForClient(
 export function ClientsScreen() {
   const workQuery = useAllWorkItemHeadsQuery();
   const { goClient } = useAppNavigation();
+  const navigate = useNavigate();
+  const cofounderMode = useCofounderMode();
+  const cofounderOn = cofounderMode.enabled;
   const clientsQuery = workQuery.directoryQuery;
   const records = clientsQuery.data ?? [];
   const work = workQuery.data;
@@ -133,7 +137,14 @@ export function ClientsScreen() {
                     key={event.id}
                     onClick={(clickEvent) => {
                       if (!(clickEvent.target as Element).closest("a")) {
-                        void goClient(value.clientId);
+                        if (cofounderOn) {
+                          void navigate({
+                            to: "/clients/record/$partyId",
+                            params: { partyId: value.partyId },
+                          });
+                        } else {
+                          void goClient(value.clientId);
+                        }
                       }
                     }}
                   >
@@ -143,13 +154,23 @@ export function ClientsScreen() {
                           {clientInitial(value.displayName)}
                         </span>
                         <span className="b3-stack">
-                          <Link
-                            className="b3-name"
-                            params={{ clientId: value.clientId }}
-                            to="/clients/$clientId"
-                          >
-                            {value.displayName}
-                          </Link>
+                          {cofounderOn ? (
+                            <Link
+                              className="b3-name"
+                              params={{ partyId: value.partyId }}
+                              to="/clients/record/$partyId"
+                            >
+                              {value.displayName}
+                            </Link>
+                          ) : (
+                            <Link
+                              className="b3-name"
+                              params={{ clientId: value.clientId }}
+                              to="/clients/$clientId"
+                            >
+                              {value.displayName}
+                            </Link>
+                          )}
                           <span className="b3-meta">
                             #
                             {channelNameById.get(

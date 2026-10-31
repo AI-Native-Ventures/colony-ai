@@ -20,6 +20,7 @@ import type {
   MockPlaybookJob,
 } from "../../src/testing/mockCompanyPlaybooks";
 import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
+import type { MockCustomerRecord } from "../../src/testing/mockCustomerRecords";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
@@ -658,6 +659,10 @@ type MockBridgeOptions = {
   companyOnboardingAutoAdvance?: boolean;
   companyPlaybooks?: MockPlaybook[];
   companyPlaybookJobs?: MockPlaybookJob[];
+  /** Customer record heads used by the co-founder UI E2E fixture. */
+  companyCustomerRecords?: MockCustomerRecord[];
+  /** Refuse successive customer record actions in order, then accept them. */
+  customerActionErrors?: string[];
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
