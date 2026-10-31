@@ -45,8 +45,6 @@ export const KIND_WHATSAPP_BATCH_DECISION = 47049;
 export const KIND_WHATSAPP_SEND_REQUEST = 47050;
 /** Owner/admin WhatsApp cap, template sync, title, and pause settings command. */
 export const KIND_WHATSAPP_SETTINGS = 47051;
-/** Owner/admin/Scout/Outreach member sets a WhatsApp contact stage and/or label. */
-export const KIND_WHATSAPP_CONTACT_UPDATE = 47052;
 export const KIND_APPROVAL_REQUEST = 46010;
 export const KIND_MEMBER_ADDED_NOTIFICATION = 44100;
 export const KIND_MEMBER_REMOVED_NOTIFICATION = 44101;
