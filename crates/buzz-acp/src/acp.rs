@@ -811,9 +811,10 @@ impl AcpClient {
             // merges these with its own disallowed tools, and deny rules win even
             // under bypassPermissions.
             let home = std::env::var("HOME").ok();
-            params["_meta"]["claudeCode"]["options"]["disallowedTools"] = serde_json::json!(
-                crate::private_folders::claude_disallowed_tools(home.as_deref())
-            );
+            let rules = crate::private_folders::claude_disallowed_tools(home.as_deref());
+            // RED PROOF: send no rules at all.
+            params["_meta"]["claudeCode"]["options"]["disallowedTools"] =
+                serde_json::json!(rules.into_iter().take(0).collect::<Vec<_>>());
         }
         let started = std::time::Instant::now();
         let result = self.send_request("session/new", params).await?;
