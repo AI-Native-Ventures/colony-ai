@@ -8,6 +8,12 @@ import {
   validateCommunitySlug,
 } from "@/features/communities/selfProvisioning";
 import {
+  onboardingBusinessProfileDraftKey,
+  onboardingBusinessProfileKey,
+  readOnboardingBusinessProfile,
+  type OnboardingBusinessProfile,
+} from "@/features/communities/businessProfileStorage";
+import {
   checkCommunityAvailability,
   CommunityProvisioningRequestError,
   createSelfServeCommunity,
@@ -23,15 +29,8 @@ import {
   normalizeBusinessWebsite,
 } from "./businessProfile";
 
-const PROFILE_STORAGE_KEY = "colony-business-profile.v1";
-
-export type OnboardingBusinessProfile = {
-  name: string;
-  website: string;
-  description: string;
-  logoDataUrl: string | null;
-  logoUrl: string | null;
-};
+export { readOnboardingBusinessProfile };
+export type { OnboardingBusinessProfile };
 
 type BusinessSetupStepProps = {
   pubkey: string;
@@ -51,41 +50,6 @@ function businessSlug(name: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function profileKey(communityId: string) {
-  return `${PROFILE_STORAGE_KEY}:${communityId}`;
-}
-
-export function readOnboardingBusinessProfile(
-  communityId: string,
-): OnboardingBusinessProfile | null {
-  try {
-    const raw = localStorage.getItem(profileKey(communityId));
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    const profile = parsed as Partial<OnboardingBusinessProfile>;
-    if (
-      typeof profile.name !== "string" ||
-      typeof profile.website !== "string" ||
-      typeof profile.description !== "string" ||
-      (profile.logoDataUrl !== null &&
-        typeof profile.logoDataUrl !== "string") ||
-      (profile.logoUrl != null && typeof profile.logoUrl !== "string")
-    ) {
-      return null;
-    }
-    return {
-      name: profile.name,
-      website: profile.website,
-      description: profile.description,
-      logoDataUrl: profile.logoDataUrl,
-      logoUrl: profile.logoUrl ?? null,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /** Connect details for a business the account already owns, saved here or not. */
@@ -350,7 +314,7 @@ export function BusinessSetupStep({
         }
       };
 
-      if (!saveProfile(`${PROFILE_STORAGE_KEY}:draft:${validation.slug}`))
+      if (!saveProfile(onboardingBusinessProfileDraftKey(validation.slug)))
         return;
       setPending(true);
       setError(null);
@@ -366,7 +330,7 @@ export function BusinessSetupStep({
         ) {
           throw new Error("community_response_identity_mismatch");
         }
-        if (!saveProfile(profileKey(community.id))) return;
+        if (!saveProfile(onboardingBusinessProfileKey(community.id))) return;
         onCreated(community, profile);
       } catch (cause) {
         const code =
@@ -384,7 +348,7 @@ export function BusinessSetupStep({
               community.owner_pubkey.toLowerCase() === pubkey.toLowerCase(),
           );
           if (existing) {
-            if (!saveProfile(profileKey(existing.id))) return;
+            if (!saveProfile(onboardingBusinessProfileKey(existing.id))) return;
             onCreated(existing, profile);
             return;
           }

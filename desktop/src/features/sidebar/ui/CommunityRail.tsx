@@ -20,8 +20,8 @@ import { CheckCheck, Link2, Settings2, Ticket } from "lucide-react";
 import * as React from "react";
 
 import type { Community } from "@/features/communities/types";
+import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import { EditCommunityDialog } from "@/features/communities/ui/EditCommunityDialog";
-import { useCommunityIcons } from "@/features/communities/useCommunityIcons";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import {
   useCommunityUnread,
@@ -94,7 +94,6 @@ function CommunityButton({
   community,
   isActive,
   unread,
-  iconUrl,
   onSwitch,
   menu,
   dragListeners,
@@ -104,7 +103,6 @@ function CommunityButton({
   community: Community;
   isActive: boolean;
   unread: CommunityUnreadState;
-  iconUrl: string | null;
   onSwitch: () => void;
   menu: React.ReactNode;
   dragListeners?: React.HTMLAttributes<HTMLElement>;
@@ -145,20 +143,20 @@ function CommunityButton({
                   data-testid={`community-rail-active-${community.id}`}
                 />
               ) : null}
-              {iconUrl ? (
-                <img
-                  alt=""
-                  data-testid={`community-rail-icon-${community.id}`}
-                  draggable={false}
-                  src={iconUrl}
-                />
-              ) : isActive ? (
-                // The open community reads as its single-letter brand mark,
-                // the same letter the sidebar header shows.
-                (community.name.trim().slice(0, 1).toUpperCase() ?? "C") || "C"
-              ) : (
-                getInitials(community.name) || "C"
-              )}
+              <WorkspaceMark
+                className="colony-rail-mark"
+                communityIconFit="cover"
+                communityId={community.id}
+                fallbackText={
+                  isActive
+                    ? community.name.trim().slice(0, 1).toUpperCase() || "C"
+                    : getInitials(community.name) || "C"
+                }
+                imageFit="contain"
+                imageTestId={`community-rail-icon-${community.id}`}
+                name={community.name}
+                relayUrl={community.relayUrl}
+              />
               {showBadge ? (
                 <span
                   className="colony-rail-badge"
@@ -188,28 +186,21 @@ function CommunityButton({
   );
 }
 
-function CommunityDragOverlay({
-  community,
-  iconUrl,
-}: {
-  community: Community;
-  iconUrl: string | null;
-}) {
+function CommunityDragOverlay({ community }: { community: Community }) {
   return (
     <div
       className="colony-rail-button cursor-grabbing opacity-90 shadow-lg"
       data-buzz-flat
     >
-      {iconUrl ? (
-        <img
-          alt=""
-          className="h-full w-full object-cover"
-          draggable={false}
-          src={iconUrl}
-        />
-      ) : (
-        getInitials(community.name) || "C"
-      )}
+      <WorkspaceMark
+        className="colony-rail-mark"
+        communityIconFit="cover"
+        communityId={community.id}
+        fallbackText={getInitials(community.name) || "C"}
+        imageFit="contain"
+        name={community.name}
+        relayUrl={community.relayUrl}
+      />
     </div>
   );
 }
@@ -217,7 +208,6 @@ function CommunityDragOverlay({
 function SortableCommunityButton({
   community,
   activeCommunityId,
-  iconsByCommunity,
   unreadByCommunity,
   canInvite,
   onInvite,
@@ -227,7 +217,6 @@ function SortableCommunityButton({
 }: {
   community: Community;
   activeCommunityId: string | null;
-  iconsByCommunity: Record<string, string | null | undefined>;
   unreadByCommunity: Record<string, CommunityUnreadState>;
   canInvite: boolean;
   onInvite: () => void;
@@ -255,7 +244,6 @@ function SortableCommunityButton({
         community={community}
         dragAttributes={attributes}
         dragListeners={listeners}
-        iconUrl={iconsByCommunity[community.id] ?? null}
         isActive={community.id === activeCommunityId}
         isDragging={isDragging}
         menu={
@@ -318,7 +306,6 @@ export function CommunityRail({
     communities,
     activeCommunityId,
   );
-  const iconsByCommunity = useCommunityIcons(communities);
   const { markAllChannelsRead, onOpenSettings } = useAppShell();
   const myMembershipQuery = useMyRelayMembershipLookupQuery();
   const activeRole = myMembershipQuery.data?.membership?.role;
@@ -399,7 +386,6 @@ export function CommunityRail({
                 community.id === activeCommunityId && canInviteToActiveCommunity
               }
               community={community}
-              iconsByCommunity={iconsByCommunity}
               unreadByCommunity={unreadByCommunity}
               onInvite={() => onOpenSettings?.("community-members")}
               onMarkAllRead={handleMarkAllRead}
@@ -410,10 +396,7 @@ export function CommunityRail({
         </SortableContext>
         <DragOverlay>
           {draggingCommunity ? (
-            <CommunityDragOverlay
-              community={draggingCommunity}
-              iconUrl={iconsByCommunity[draggingCommunity.id] ?? null}
-            />
+            <CommunityDragOverlay community={draggingCommunity} />
           ) : null}
         </DragOverlay>
       </DndContext>

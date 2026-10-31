@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "@/shared/lib/cn";
+import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import {
   Dialog,
   DialogContent,
@@ -181,6 +182,8 @@ export function AccountHelpChip({ label }: { label: string }) {
 export function BusinessMark({
   name,
   logoUrl,
+  relayUrl,
+  communityId,
   onLogoError,
   size,
   dot = "#ffc2a6",
@@ -188,6 +191,8 @@ export function BusinessMark({
 }: {
   name: string;
   logoUrl?: string | null;
+  relayUrl?: string;
+  communityId?: string;
   onLogoError?: () => void;
   size?: "small" | "compact";
   /** Colour of the dot beside the initial. */
@@ -196,20 +201,19 @@ export function BusinessMark({
 }) {
   const initial = name.trim().slice(0, 1).toUpperCase();
   return (
-    <span
-      aria-hidden="true"
+    <WorkspaceMark
       className="c3fr-mark"
-      data-logo={logoUrl ? "true" : undefined}
-      data-size={size}
-      data-tone={tone}
+      businessLogoUrl={logoUrl}
+      communityId={communityId}
+      dataSize={size}
+      dataTone={tone}
+      fallbackContent={initial || <PlusIcon size={20} />}
+      imageFit="contain"
+      name={name}
+      onLogoError={onLogoError}
+      relayUrl={relayUrl}
       style={{ "--fr-mark-dot": dot } as React.CSSProperties}
-    >
-      {logoUrl ? (
-        <img alt="" onError={onLogoError} src={logoUrl} />
-      ) : (
-        initial || <PlusIcon size={20} />
-      )}
-    </span>
+    />
   );
 }
 
@@ -218,14 +222,18 @@ export function InviteCard({
   invite,
   email,
 }: {
-  invite: { businessName: string; inviter?: string };
+  invite: { businessName: string; inviter?: string; relayUrl?: string };
   /** The account that will join, so it is clear which one is signed in. */
   email?: string;
 }) {
   return (
     <div className="c3fr-card" data-testid="invite-card">
       <div className="c3fr-invite-head" data-testid="invite-brand">
-        <BusinessMark dot="#c6b3f4" name={invite.businessName} />
+        <BusinessMark
+          dot="#c6b3f4"
+          name={invite.businessName}
+          relayUrl={invite.relayUrl}
+        />
         <span className="c3fr-preview-text">
           <span className="c3fr-invite-name">{invite.businessName}</span>
           <span className="c3fr-invite-kind">Company workspace</span>
