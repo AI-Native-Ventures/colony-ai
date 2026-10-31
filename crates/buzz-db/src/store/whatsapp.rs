@@ -987,6 +987,67 @@ impl Db {
         row.as_ref().map(row_to_contact).transpose()
     }
 
+    /// Every contact of the company, oldest first, for the customer records.
+    pub async fn whatsapp_contacts_bulk(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappContact>> {
+        let rows = sqlx::query(
+            "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
+                    last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
+                    opt_out_reason, paused_at, pause_reason, created_at \
+             FROM whatsapp_contacts WHERE community_id = $1 \
+             ORDER BY created_at, wa_id LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 100_000))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_contact).collect()
+    }
+
+    /// Every message of the company that is part of a chat (not dropped, not a
+    /// draft, rejected or skipped), oldest first, for the customer records.
+    pub async fn whatsapp_messages_bulk(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND state NOT IN ('dropped', 'draft', 'rejected', 'skipped') \
+             ORDER BY created_at, id LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 500_000))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_message).collect()
+    }
+
+    /// Every decided batch header of the company, for the customer records.
+    pub async fn whatsapp_batches_bulk(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappBatch>> {
+        let rows = sqlx::query(
+            "SELECT id, created_by, template_name, language, status, note, material_links, \
+                    decided_by, decided_at, created_at \
+             FROM whatsapp_batches WHERE community_id = $1 \
+             ORDER BY created_at, id LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 100_000))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_batch).collect()
+    }
+
     /// Contact whose thread root is `root_event_id`.
     pub async fn whatsapp_get_contact_by_thread(
         &self,

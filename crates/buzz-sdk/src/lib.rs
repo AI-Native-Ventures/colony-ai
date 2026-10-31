@@ -18,6 +18,8 @@ pub mod broker;
 pub mod builders;
 /// Typed event builders for Colony business records.
 pub mod business_records;
+/// Typed event builder for co-founder customer record actions.
+pub mod company_customers;
 /// Typed event builder for employee duty actions.
 pub mod company_duties;
 /// Typed event builders for employee configuration history.

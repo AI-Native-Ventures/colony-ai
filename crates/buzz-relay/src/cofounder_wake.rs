@@ -616,6 +616,21 @@ pub(crate) async fn sweep_one(
             ),
         }
     }
+    // Every business with a prospect or a client record has a customer record,
+    // brought up to date with the company's records. A record that could not be
+    // written is retried by the next sweep.
+    if let Err(error) = crate::handlers::company_customers::ensure_customer_records(
+        state,
+        community_id,
+        now.timestamp(),
+    )
+    .await
+    {
+        warn!(
+            community = %community_id.as_uuid(),
+            "customer records could not be brought up to date: {error}"
+        );
+    }
     for due in work_items_due_soon(state, community_id, now).await? {
         enqueue(
             state,

@@ -23,6 +23,11 @@ import {
   KIND_COMPANY_ACCESS_HEAD,
 } from "@/features/cofounder/accessRecords";
 import {
+  KIND_CUSTOMER_ACTION,
+  KIND_CUSTOMER_HEAD,
+  customerDTag,
+} from "@/features/cofounder/customerRecords";
+import {
   KIND_NUMBERS_ACTION,
   KIND_NUMBERS_HEAD,
   METRIC_DETAILS,
@@ -73,6 +78,11 @@ import {
   mockPlaybookJobHeadContent,
 } from "./mockCompanyPlaybooks.ts";
 import type { MockPlaybook, MockPlaybookJob } from "./mockCompanyPlaybooks.ts";
+import { applyMockCustomerAction } from "./mockCustomerRecords.ts";
+import type {
+  CustomerActionBody,
+  MockCustomerRecord,
+} from "./mockCustomerRecords.ts";
 import {
   businessDTag,
   proposalVersionDTag,
@@ -1137,6 +1147,8 @@ type E2eConfig = {
     companyPlaybookJobs?: MockPlaybookJob[];
     /** Scorecard, goals and weekly reviews served as relay-signed numbers heads (kind 30678). */
     companyNumbers?: MockNumbers;
+    /** Customer records served as relay-signed heads (kind 30679, d tag `customer:<partyId>`); see `cofounderCustomerFixtures.ts`. */
+    companyCustomerRecords?: MockCustomerRecord[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -7816,6 +7828,75 @@ function acceptMockPlaybookAction(
       "invalid: playbook command d tag must name a playbook or a running copy",
     );
   }
+}
+
+function mockCustomerHeadEvent(record: MockCustomerRecord): RelayEvent {
+  return createSignedMockCompanyHead(
+    KIND_CUSTOMER_HEAD,
+    record,
+    customerDTag(String(record.partyId)),
+    Number(record.updatedAt ?? record.computedAt ?? 1_793_000_000),
+  );
+}
+
+function filterMockCompanyCustomers(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return (getConfig()?.mock?.companyCustomerRecords ?? [])
+    .map(mockCustomerHeadEvent)
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+/** Applies a customer record action the way the relay would, then answers the socket. */
+function acceptMockCustomerAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const answer = (refusal: string | null) => {
+    sendWsText(
+      socket.handler,
+      refusal ? ["OK", event.id, false, refusal] : ["OK", event.id, true, ""],
+    );
+  };
+  if (!config?.mock) {
+    answer("invalid: customer action has an unsupported shape.");
+    return;
+  }
+  let body: CustomerActionBody;
+  try {
+    body = JSON.parse(event.content);
+  } catch {
+    answer("invalid: customer action is not JSON.");
+    return;
+  }
+  const dTag = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+  if (!body.partyId || dTag !== customerDTag(body.partyId)) {
+    answer("invalid: customer command d tag must match its record");
+    return;
+  }
+  const mock = config.mock;
+  answer(
+    applyMockCustomerAction(mock, body, {
+      isAdmin: !mock.relayRole || ["owner", "admin"].includes(mock.relayRole),
+      cofounderEnabled: mock.cofounderSettings?.enabled === true,
+      now: Math.floor(Date.now() / 1000),
+      actorPubkey: MOCK_IDENTITY_PUBKEY,
+      eventId: event.id,
+      currentHeadEventId: (record) => mockCustomerHeadEvent(record).id,
+    }),
+  );
 }
 
 function mockNumbersHeads(): Array<{
@@ -19649,6 +19730,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_CUSTOMER_HEAD)) {
+      for (const event of filterMockCompanyCustomers(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
       for (const event of filterMockCompanyMemberPositionActions(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -19937,6 +20026,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_NUMBERS_ACTION) {
       acceptMockNumbersAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_CUSTOMER_ACTION) {
+      acceptMockCustomerAction(socket, event, getConfig());
       return;
     }
     if (

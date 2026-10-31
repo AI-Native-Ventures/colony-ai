@@ -319,6 +319,9 @@ enum Cmd {
     /// Read the scorecard per function, propose goals and write the Friday weekly review
     #[command(subcommand)]
     Numbers(NumbersCmd),
+    /// One record per business from lead to client, project and money: read it, record milestones, copy emails and attach files
+    #[command(subcommand)]
+    Customers(CustomersCmd),
     /// Read and record employee AI allowances and AI spend evidence
     #[command(subcommand)]
     Spend(SpendCmd),
@@ -2230,6 +2233,94 @@ pub enum PlansCmd {
         /// Only this plan
         #[arg(long)]
         plan: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CustomersCmd {
+    /// List customer records, most recently active first. The relay builds each
+    /// from the company's own records; nobody writes a number or a timeline line
+    List {
+        /// Only this stage: lead or client
+        #[arg(long)]
+        stage: Option<String>,
+    },
+    /// Show one customer record: timeline, money, chats, project, milestones and files.
+    /// The party id is the one the prospect and the client share
+    Show {
+        /// Party UUID
+        party_id: String,
+        /// Read the last stored record instead of asking the relay to recompute it
+        #[arg(long)]
+        no_refresh: bool,
+    },
+    /// Record that a lead is a client (owner, admin or the Sales lead; others are refused).
+    /// Converting keeps every timeline entry; converting twice changes nothing
+    Convert {
+        /// Party UUID
+        party_id: String,
+        /// Note kept with the conversion
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Record a milestone: a call booked, an agreement signed or anything else
+    Milestone {
+        /// Party UUID
+        party_id: String,
+        /// call_booked, agreement_signed or other
+        #[arg(long)]
+        kind: String,
+        /// When it happened: Unix seconds or RFC 3339, for example 2026-10-29T10:00:00+02:00
+        #[arg(long)]
+        at: String,
+        /// The line shown on the timeline; required for kind other, refused otherwise
+        #[arg(long)]
+        title: Option<String>,
+        /// A note, for example the call time or who signed
+        #[arg(long)]
+        note: Option<String>,
+        /// A Blossom file reference, for example the signed agreement
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// Copy an email you read in Gmail in the built-in browser onto the record.
+    /// Give a short summary, never the whole email (4 KB at most)
+    AttachEmail {
+        /// Party UUID
+        party_id: String,
+        /// Sender
+        #[arg(long)]
+        from: String,
+        /// Subject
+        #[arg(long)]
+        subject: String,
+        /// When the email was sent: Unix seconds or RFC 3339
+        #[arg(long)]
+        date: String,
+        /// A short summary of the email
+        #[arg(long)]
+        summary: String,
+        /// A Blossom reference of an attachment of the email; repeat for up to 5
+        #[arg(long = "file")]
+        files: Vec<String>,
+    },
+    /// Attach a file stored in Blossom to the record
+    AttachFile {
+        /// Party UUID
+        party_id: String,
+        /// What the file is, for example "Agreement, signed"
+        #[arg(long)]
+        label: String,
+        /// The Blossom file reference
+        #[arg(long)]
+        file: String,
+    },
+    /// Remove an email or file from the record (whoever added it, the owner or an admin)
+    RemoveAttachment {
+        /// Party UUID
+        party_id: String,
+        /// Attachment id from `customers show`
+        attachment_id: String,
     },
 }
 
@@ -4283,6 +4374,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Plans(sub) => commands::plans::dispatch(sub, &client).await,
         Cmd::Playbooks(sub) => commands::playbooks::dispatch(sub, &client).await,
         Cmd::Numbers(sub) => commands::numbers::dispatch(sub, &client).await,
+        Cmd::Customers(sub) => commands::customers::dispatch(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
@@ -4461,6 +4553,7 @@ mod tests {
             "channels",
             "cofounder",
             "credits",
+            "customers",
             "discovery",
             "dms",
             "duties",

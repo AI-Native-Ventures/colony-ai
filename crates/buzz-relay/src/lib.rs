@@ -23,6 +23,8 @@ pub mod conformance;
 pub mod connection;
 /// Server-priced Colony credit packs.
 pub mod credit_packs;
+/// Reads the records a customer record is built from.
+pub mod customer_inputs;
 /// Relay error types.
 pub mod error;
 /// WebSocket message handlers for NIP-01 client commands.

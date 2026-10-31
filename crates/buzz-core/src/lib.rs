@@ -19,6 +19,8 @@ pub mod company_access;
 pub mod company_brief;
 /// Per-company co-founder mode settings.
 pub mod company_cofounder;
+/// Co-founder customer record: one record per business from lead to client, project and money.
+pub mod company_customers;
 /// Typed employee duties and schedule validation.
 pub mod company_duties;
 /// Typed content and validation for employee configuration history.
