@@ -1,5 +1,25 @@
 type RelayRole = "owner" | "admin" | "member" | null | undefined;
 
+type SendNowBatch =
+  | {
+      status: string;
+      rows: readonly { state: string }[];
+    }
+  | null
+  | undefined;
+
+export function canSendNowWhatsAppBatch(
+  batch: SendNowBatch,
+  canUseSendNow: boolean,
+): boolean {
+  return Boolean(
+    canUseSendNow &&
+      batch?.status === "approved" &&
+      batch.rows.length <= 3 &&
+      batch.rows.some((row) => row.state === "ready"),
+  );
+}
+
 export function canUseWhatsAppSendNow(input: {
   role: RelayRole;
   pubkey: string | undefined;

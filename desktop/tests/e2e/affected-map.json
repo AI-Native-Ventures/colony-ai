@@ -388,8 +388,11 @@
       ]
     },
     {
-      "paths": ["desktop/src/features/whatsapp-outreach/**"],
-      "specs": ["whatsapp-work-area.spec.ts"]
+      "paths": [
+        "desktop/src/features/whatsapp-outreach/**",
+        "desktop/tests/helpers/whatsappOutreach.ts"
+      ],
+      "specs": ["whatsapp-work-area.spec.ts", "whatsapp-decided-card.spec.ts"]
     },
     {
       "paths": ["desktop/src/features/terminal/**"],
