@@ -1,0 +1,402 @@
+.cf-customer-head {
+  align-items: flex-end;
+}
+
+.cf-customer-title {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(6 * var(--b3u));
+}
+
+.cf-customer-title .b3-title {
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-head-actions {
+  margin-left: auto;
+}
+
+.cf-customer-status-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(10 * var(--b3u));
+}
+
+.cf-customer-status-row .b3-pill {
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cf-customer-status-row .b3-pill-status[data-status="client"] {
+  background: var(--b3-ok-bg);
+  color: var(--b3-ok);
+}
+
+.cf-customer-status-row .b3-pill-status[data-status="lead"] {
+  background: var(--b3-wash);
+  color: var(--b3-fg2);
+}
+
+.cf-customer-status-row .b3-pill-project {
+  background: var(--b3-accent-soft);
+  color: var(--b3-accent-ink);
+}
+
+.cf-customer-contact {
+  min-width: 0;
+  color: var(--b3-muted);
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-actions,
+.cf-customer-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8 * var(--b3u));
+}
+
+.b3-btn.b3-btn-compact {
+  height: calc(40 * var(--b3u));
+  padding: 0 calc(14 * var(--b3u));
+  border-radius: calc(11 * var(--b3u));
+  font-size: calc(15 * var(--colony-px));
+}
+
+.cf-customer-form {
+  display: grid;
+  gap: calc(12 * var(--b3u));
+  padding: calc(20 * var(--b3u));
+}
+
+.cf-customer-form label {
+  display: grid;
+  min-width: 0;
+  gap: calc(5 * var(--b3u));
+  color: var(--b3-fg2);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cf-customer-form input,
+.cf-customer-form select,
+.cf-customer-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: calc(1 * var(--b3u)) solid var(--b3-line2);
+  border-radius: calc(9 * var(--b3u));
+  background: var(--b3-surface);
+  color: var(--b3-fg);
+  font: inherit;
+  padding: calc(9 * var(--b3u)) calc(11 * var(--b3u));
+}
+
+.cf-customer-form textarea {
+  resize: vertical;
+}
+
+.cf-customer-form input:focus-visible,
+.cf-customer-form select:focus-visible,
+.cf-customer-form textarea:focus-visible,
+.cf-customer-form button:focus-visible,
+.cf-customer-actions button:focus-visible,
+.cf-customer-error-row button:focus-visible,
+.cf-customer-open-link:focus-visible,
+.cf-customer-text-action:focus-visible {
+  outline: 2px solid var(--b3-accent);
+  outline-offset: 2px;
+}
+
+.cf-customer-form-actions {
+  padding-top: calc(4 * var(--b3u));
+}
+
+.cf-customer-error-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(10 * var(--b3u));
+  padding: calc(12 * var(--b3u)) calc(14 * var(--b3u));
+  border-radius: calc(12 * var(--b3u));
+  background: var(--b3-bad-bg);
+  color: var(--b3-bad);
+}
+
+.cf-customer-error-row p {
+  flex: 1 1 calc(260 * var(--b3u));
+  margin: 0;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-error-row .b3-btn {
+  flex: none;
+  color: var(--b3-fg);
+}
+
+.cf-customer-error {
+  margin: 0;
+  color: var(--b3-bad);
+  font-size: calc(14 * var(--colony-px));
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-body {
+  align-items: flex-start;
+}
+
+.cf-customer-timeline-card {
+  gap: calc(18 * var(--b3u));
+}
+
+.cf-customer-timeline {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-customer-timeline-entry {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: calc(36 * var(--b3u)) minmax(0, 1fr) auto;
+  gap: calc(14 * var(--b3u));
+  padding-bottom: calc(18 * var(--b3u));
+}
+
+.cf-customer-timeline-entry:last-child {
+  padding-bottom: 0;
+}
+
+.cf-customer-timeline-line {
+  position: absolute;
+  z-index: 0;
+  top: calc(38 * var(--b3u));
+  bottom: calc(-6 * var(--b3u));
+  left: calc(17 * var(--b3u));
+  width: calc(2 * var(--b3u));
+  background: var(--b3-line);
+}
+
+.cf-customer-timeline-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: calc(36 * var(--b3u));
+  height: calc(36 * var(--b3u));
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--b3-wash);
+  color: var(--b3-fg2);
+}
+
+.cf-customer-timeline-icon[data-kind="project_started"],
+.cf-customer-timeline-icon[data-kind="project_completed"] {
+  background: var(--b3-fg);
+  color: var(--b3-surface);
+}
+
+.cf-customer-timeline-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(2 * var(--b3u));
+  padding-top: calc(2 * var(--b3u));
+}
+
+.cf-customer-timeline-title {
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-timeline-detail {
+  color: var(--b3-muted);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-timeline-date {
+  padding-top: calc(3 * var(--b3u));
+  color: var(--b3-muted);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cf-customer-side {
+  gap: calc(20 * var(--b3u));
+}
+
+.cf-customer-money-card,
+.cf-customer-side-list {
+  gap: calc(12 * var(--b3u));
+  padding: calc(20 * var(--b3u));
+}
+
+.cf-customer-money-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: calc(12 * var(--b3u));
+  row-gap: calc(10 * var(--b3u));
+  margin: 0;
+  font-size: calc(15 * var(--colony-px));
+}
+
+.cf-customer-money-grid dt {
+  min-width: 0;
+  color: var(--b3-muted);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-money-grid dd {
+  margin: 0;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cf-customer-money-grid dd[data-tone="success"] {
+  color: var(--b3-ok);
+}
+
+.cf-customer-other-currency {
+  margin: 0;
+  color: var(--b3-muted);
+  font-size: calc(13.5 * var(--colony-px));
+}
+
+.cf-customer-side-row,
+.cf-customer-email-summary,
+.cf-customer-file-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: calc(12 * var(--b3u));
+  padding: calc(10 * var(--b3u)) 0;
+  border-top: calc(1 * var(--b3u)) solid var(--b3-line);
+}
+
+.cf-customer-side-icon {
+  display: grid;
+  width: calc(36 * var(--b3u));
+  height: calc(36 * var(--b3u));
+  flex: none;
+  place-items: center;
+  border-radius: calc(10 * var(--b3u));
+  background: var(--b3-wash);
+  color: var(--b3-fg2);
+}
+
+.cf-customer-side-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: calc(1 * var(--b3u));
+}
+
+.cf-customer-side-copy strong {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-side-copy span {
+  color: var(--b3-muted);
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cf-customer-open-link,
+.cf-customer-text-action {
+  flex: none;
+  padding: calc(4 * var(--b3u));
+  border: 0;
+  background: transparent;
+  color: var(--b3-accent-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: calc(3 * var(--b3u));
+}
+
+.cf-customer-email-detail {
+  margin-left: calc(48 * var(--b3u));
+  color: var(--b3-fg2);
+  font-size: calc(13.5 * var(--colony-px));
+}
+
+.cf-customer-email-detail summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.cf-customer-email-detail p {
+  margin: calc(6 * var(--b3u)) 0 calc(4 * var(--b3u));
+  color: var(--b3-muted);
+  line-height: 1.4;
+}
+
+.cf-customer-side-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8 * var(--b3u));
+}
+
+.cf-customer-file-row:first-of-type {
+  margin-top: calc(2 * var(--b3u));
+}
+
+@media (max-width: 760px) {
+  .cf-customer-head-actions {
+    margin-left: 0;
+  }
+
+  .cf-customer-status-row {
+    align-items: flex-start;
+  }
+
+  .cf-customer-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cf-customer-timeline-card,
+  .cf-customer-side {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    flex: none;
+  }
+
+  .cf-customer-timeline-card {
+    padding: calc(18 * var(--b3u));
+  }
+
+  .cf-customer-side {
+    gap: calc(16 * var(--b3u));
+  }
+
+  .cf-customer-timeline-entry {
+    grid-template-columns: calc(36 * var(--b3u)) minmax(0, 1fr) auto;
+    gap: calc(10 * var(--b3u));
+  }
+}

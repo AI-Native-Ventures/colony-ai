@@ -1149,6 +1149,8 @@ type E2eConfig = {
     companyNumbers?: MockNumbers;
     /** Customer records served as relay-signed heads (kind 30679, d tag `customer:<partyId>`); see `cofounderCustomerFixtures.ts`. */
     companyCustomerRecords?: MockCustomerRecord[];
+    /** Refuse successive customer record actions in order, then accept them. */
+    customerActionErrors?: string[];
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
     /** Ephemeral test key used to model relay-signed head updates after responses. */
@@ -7887,9 +7889,37 @@ function acceptMockCustomerAction(
     return;
   }
   const mock = config.mock;
+  const simulatedError = mock.customerActionErrors?.shift();
+  if (simulatedError) {
+    answer(simulatedError);
+    return;
+  }
+  const self = MOCK_IDENTITY_PUBKEY.toLowerCase();
+  const ownerOrAdmin =
+    !mock.relayRole || ["owner", "admin"].includes(mock.relayRole);
+  const salesLead =
+    mock.companyFunctionHeads?.some(
+      (head) =>
+        head.function === "sales" && head.leadPubkey?.toLowerCase() === self,
+    ) ?? false;
+  const customerSuccessLead =
+    mock.companyFunctionHeads?.some(
+      (head) =>
+        head.function === "customer_success" &&
+        head.leadPubkey?.toLowerCase() === self,
+    ) ?? false;
+  const scout =
+    mock.managedAgents?.some(
+      (agent) =>
+        agent.pubkey.toLowerCase() === self &&
+        (agent.personaId === "builtin:fizz" ||
+          agent.name.trim().toLocaleLowerCase() === "scout"),
+    ) ?? false;
   answer(
     applyMockCustomerAction(mock, body, {
-      isAdmin: !mock.relayRole || ["owner", "admin"].includes(mock.relayRole),
+      isAdmin: ownerOrAdmin,
+      canWrite: ownerOrAdmin || salesLead || customerSuccessLead || scout,
+      canConvert: ownerOrAdmin || salesLead,
       cofounderEnabled: mock.cofounderSettings?.enabled === true,
       now: Math.floor(Date.now() / 1000),
       actorPubkey: MOCK_IDENTITY_PUBKEY,
