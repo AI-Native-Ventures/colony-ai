@@ -16,9 +16,10 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use buzz_core::kind::{
-    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_SEND_REQUEST,
-    KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
+    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
 };
+use buzz_core::whatsapp_stage::WhatsappStage;
 use nostr::{EventBuilder, Kind};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -105,6 +106,26 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
             query(
                 client,
                 json!({ "what": "thread", "waId": contact, "limit": limit }),
+            )
+            .await
+        }
+        WhatsappCmd::Stage { wa_id, stage } => {
+            publish(
+                client,
+                KIND_WHATSAPP_CONTACT_UPDATE,
+                contact_stage_content(&wa_id, &stage)?,
+            )
+            .await
+        }
+        WhatsappCmd::Rename {
+            wa_id,
+            label,
+            clear,
+        } => {
+            publish(
+                client,
+                KIND_WHATSAPP_CONTACT_UPDATE,
+                contact_rename_content(&wa_id, label.as_deref(), clear)?,
             )
             .await
         }
@@ -196,6 +217,41 @@ async fn query(client: &BuzzClient, body: Value) -> Result<(), CliError> {
     let response = client.post_json_authed(QUERY_PATH, &body).await?;
     println!("{response}");
     Ok(())
+}
+
+/// `47052` content that sets a contact's stage.
+fn contact_stage_content(wa_id: &str, stage: &str) -> Result<Value, CliError> {
+    let wa_id = wa_id.trim();
+    if wa_id.is_empty() {
+        return Err(CliError::Usage("give the contact's phone number".into()));
+    }
+    let Some(stage) = WhatsappStage::parse_manual(stage) else {
+        return Err(CliError::Usage(
+            "stage must be contacted, replied, wants_call, call_booked, quote_sent, client or no_thanks".into(),
+        ));
+    };
+    Ok(json!({ "v": 1, "waId": wa_id, "stage": stage.as_str() }))
+}
+
+/// `47052` content that sets or clears a contact's name.
+fn contact_rename_content(
+    wa_id: &str,
+    label: Option<&str>,
+    clear: bool,
+) -> Result<Value, CliError> {
+    let wa_id = wa_id.trim();
+    if wa_id.is_empty() {
+        return Err(CliError::Usage("give the contact's phone number".into()));
+    }
+    match (label.map(str::trim), clear) {
+        (Some(text), false) if !text.is_empty() => {
+            Ok(json!({ "v": 1, "waId": wa_id, "label": text }))
+        }
+        (None, true) => Ok(json!({ "v": 1, "waId": wa_id, "label": Value::Null })),
+        _ => Err(CliError::Usage(
+            "give a name, or --clear to remove it".into(),
+        )),
+    }
 }
 
 async fn publish(client: &BuzzClient, kind: u32, content: Value) -> Result<(), CliError> {
@@ -596,6 +652,31 @@ mod tests {
         );
         assert!(serde_json::from_str::<Value>(&out).is_ok());
         assert!(render_templates("{}").is_err());
+    }
+
+    #[test]
+    fn stage_and_rename_commands_match_the_contract() {
+        let stage = contact_stage_content(" +27821234567 ", "call_booked").expect("stage");
+        assert_eq!(
+            stage,
+            json!({"v": 1, "waId": "+27821234567", "stage": "call_booked"})
+        );
+        // Facts cannot be set, and neither can a word that is not a stage.
+        for bad in ["stopped", "not_on_whatsapp", "won", ""] {
+            assert!(contact_stage_content("+27821234567", bad).is_err(), "{bad}");
+        }
+        assert!(contact_stage_content("  ", "client").is_err());
+        let rename =
+            contact_rename_content("+27821234567", Some(" Plane Tree "), false).expect("n");
+        assert_eq!(
+            rename,
+            json!({"v": 1, "waId": "+27821234567", "label": "Plane Tree"})
+        );
+        let clear = contact_rename_content("+27821234567", None, true).expect("clear");
+        assert_eq!(clear["label"], Value::Null);
+        assert!(clear.as_object().expect("object").contains_key("label"));
+        assert!(contact_rename_content("+27821234567", None, false).is_err());
+        assert!(contact_rename_content("+27821234567", Some("  "), false).is_err());
     }
 
     #[test]
