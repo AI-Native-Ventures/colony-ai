@@ -7,10 +7,12 @@ import { waitForAnimations } from "../helpers/animations";
 import {
   gotoWhatsAppScreen,
   installWhatsAppMockBridge,
-  OUTREACH_CHANNEL_ID,
   WHATSAPP_DECIDED_BATCH_ID,
 } from "../helpers/whatsappOutreach";
-import { REFERENCE_AGENTS } from "../../src/testing/e2eReferenceWorkspace";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
+} from "../../src/testing/e2eReferenceWorkspace";
 
 type EventWindow = Window & {
   __BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?: (input: {
@@ -32,7 +34,7 @@ const viewportCases = [
   { label: "390x844", width: 390, height: 844 },
 ] as const;
 
-async function openApprovedOutreachWithDock(
+async function openApprovedChannelWithDock(
   page: Page,
   theme: "light" | "dark",
   viewport: { width: number; height: number },
@@ -42,19 +44,19 @@ async function openApprovedOutreachWithDock(
     batchVariant: "decided-card-approved",
   });
   if (viewport.width < 600) {
-    await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
+    await gotoWhatsAppScreen(page, `/channels/${REFERENCE_CHANNEL_IDS.sales}`);
   } else {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("home-inbox")).toBeVisible();
-    await page.getByTestId("channel-Outreach").click();
+    await page.getByTestId("channel-Sales").click();
   }
-  await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
+  await expect(page.getByTestId("chat-title")).toHaveText("Sales");
   await expect
     .poll(() =>
       page.evaluate(
         () =>
           (window as EventWindow).__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
-            channelName: "Outreach",
+            channelName: "Sales",
           }) ?? false,
       ),
     )
@@ -62,7 +64,7 @@ async function openApprovedOutreachWithDock(
   const event = await page.evaluate(
     ({ batchId, scoutPubkey }) =>
       (window as EventWindow).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-        channelName: "Outreach",
+        channelName: "Sales",
         content: `Scout prepared batch ${batchId} using hl_new_site. Nothing is sent until the owner or an admin approves it.`,
         pubkey: scoutPubkey,
         kind: 9,
@@ -115,7 +117,7 @@ async function captureOwnerView(
   });
   try {
     const page = await context.newPage();
-    await openApprovedOutreachWithDock(page, theme, viewport);
+    await openApprovedChannelWithDock(page, theme, viewport);
     await waitForAnimations(page);
     await page.screenshot({
       path: resolve(
@@ -134,7 +136,7 @@ test.describe("WhatsApp dock narrow layout", () => {
   test("channel content and actions stay reachable beside the dock at owner size", async ({
     page,
   }) => {
-    const approvedCard = await openApprovedOutreachWithDock(page, "light", {
+    const approvedCard = await openApprovedChannelWithDock(page, "light", {
       width: 1000,
       height: 650,
     });
@@ -191,7 +193,6 @@ test.describe("WhatsApp dock narrow layout", () => {
     if (!sendBox) throw new Error("Composer send button has no bounds");
     expect(sendBox.x).toBeGreaterThanOrEqual(conversationBox.x);
     expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(dockBox.x);
-    await sendButton.click();
 
     const tabs = page.getByRole("navigation", { name: "Channel views" });
     const tabNames = ["Discussion", "Knowledge", "Canvas", "Files"];
@@ -237,6 +238,10 @@ test.describe("WhatsApp dock narrow layout", () => {
     await whatsAppButton.press("Enter");
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
     await expect(approvedCard).toBeVisible();
+    await sendButton.click();
+    await expect(
+      page.getByText("Dock width proof", { exact: true }),
+    ).toBeVisible();
   });
 
   test("captures the owner view at every requested size and theme", async ({
