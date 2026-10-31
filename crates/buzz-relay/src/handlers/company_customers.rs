@@ -82,9 +82,25 @@ pub(super) async fn handle(
         return Err(invalid("customer command d tag must match its record"));
     }
 
+    apply(tenant, state, &event, auth.pubkey(), action, d_tag, true).await
+}
+
+/// Runs one validated customer action as `actor`: role, authorisation, the record rebuild and
+/// the atomic commit. `event` is stored as the action. `fenced` makes the action name the head
+/// it saw; the Outreach desk's "call booked" passes `false`, because appending a milestone does
+/// not depend on what the head looked like.
+async fn apply(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    actor: &nostr::PublicKey,
+    action: CustomerAction,
+    d_tag: String,
+    fenced: bool,
+) -> Result<IngestResult, IngestError> {
     let community_id = tenant.community();
-    let actor_pubkey = auth.pubkey().to_hex();
-    let actor_managed = is_managed_agent(state, community_id, &auth.pubkey().to_bytes()).await?;
+    let actor_pubkey = actor.to_hex();
+    let actor_managed = is_managed_agent(state, community_id, &actor.to_bytes()).await?;
 
     let mut tx = state
         .db
@@ -127,7 +143,7 @@ pub(super) async fn handle(
     .await
     .map_err(internal)?;
     if already_stored {
-        return Ok(duplicate_result(&event));
+        return Ok(duplicate_result(event));
     }
 
     let (current_head_id, current_stored) = lock_current_head(
@@ -157,7 +173,7 @@ pub(super) async fn handle(
         .map_err(map_error)?;
 
     // Every write names the head it saw once a head exists (the same fence as numbers).
-    if current_stored.is_some() || action.expected_head_event_id.is_some() {
+    if fenced && (current_stored.is_some() || action.expected_head_event_id.is_some()) {
         check_expected_head(
             "customer record",
             action.expected_head_event_id.as_deref(),
@@ -235,7 +251,7 @@ pub(super) async fn handle(
         tenant,
         state,
         tx,
-        &event,
+        event,
         &actor_pubkey,
         HeadWrite {
             head_kind: KIND_CUSTOMER_HEAD,
@@ -248,6 +264,74 @@ pub(super) async fn handle(
         },
     )
     .await
+}
+
+/// What happened when the Outreach desk asked for a "call booked" milestone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CallBookedOutcome {
+    /// The milestone is on the record now (or already was).
+    Recorded,
+    /// The caller may not write the customer record, so only the desk stage changed.
+    NotAllowed,
+}
+
+/// Append a `CallBooked` milestone to the customer record of `party_id` on behalf of `actor`,
+/// the person who marked the call booked on the desk. The caller has already seen that a record
+/// exists. The time is the desk command's own time, so a retry of the same command finds the
+/// milestone already there and changes nothing. Only an authorisation refusal is absorbed
+/// (`NotAllowed`); every other failure is returned so the command can be retried.
+pub(crate) async fn record_call_booked(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    command: &Event,
+    actor: &nostr::PublicKey,
+    party_id: &str,
+) -> Result<CallBookedOutcome, IngestError> {
+    let at = i64::try_from(command.created_at.as_secs()).unwrap_or_default();
+    let action = CustomerAction {
+        schema_version: buzz_core::company_records::COMPANY_RECORD_SCHEMA_VERSION,
+        party_id: party_id.to_owned(),
+        op: CustomerOp::RecordMilestone,
+        milestone_kind: Some(buzz_core::company_customers::MilestoneKind::CallBooked),
+        at: Some(at),
+        title: None,
+        note: Some("Marked as call booked on the Outreach desk".to_owned()),
+        file_ref: None,
+        from: None,
+        subject: None,
+        date: None,
+        summary: None,
+        file_refs: None,
+        label: None,
+        attachment_id: None,
+        expected_head_event_id: None,
+    };
+    validate_customer_action(&action)
+        .map_err(|error| invalid(format!("customer action: {error}")))?;
+    let d_tag = action
+        .d_tag()
+        .map_err(|error| invalid(format!("customer action: {error}")))?;
+    let content = serde_json::to_string(&action).map_err(internal)?;
+    // Relay-signed, and named by the desk command, so the same command always yields the same
+    // action event id: a retry is a duplicate, not a second milestone.
+    let origin = nostr::Tag::parse(["e", &command.id.to_hex()]).map_err(internal)?;
+    let d = nostr::Tag::parse(["d", d_tag.as_str()]).map_err(internal)?;
+    let event = nostr::EventBuilder::new(nostr::Kind::Custom(KIND_CUSTOMER_ACTION as u16), content)
+        .tags([d, origin])
+        .custom_created_at(command.created_at)
+        .sign_with_keys(&state.relay_keypair)
+        .map_err(internal)?;
+    match apply(tenant, state, &event, actor, action, d_tag, false).await {
+        Ok(_) => Ok(CallBookedOutcome::Recorded),
+        // A refusal of the caller (not a member, not a lead of Sales, Scout or an admin). A fenced
+        // community is a failure to retry, not a refusal.
+        Err(IngestError::Rejected(reason))
+            if reason.starts_with("restricted:") && !reason.contains("fenced") =>
+        {
+            Ok(CallBookedOutcome::NotAllowed)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn parse_head(stored: &StoredEvent) -> Result<CustomerRecordHead, IngestError> {
@@ -819,6 +903,194 @@ mod tests {
                 .timeline
                 .iter()
                 .any(|e| e.kind == TimelineKind::Found));
+        }
+
+        const DESK_WA: &str = "27821230100";
+
+        async fn desk_update(
+            fixture: &Fixture,
+            keys: &nostr::Keys,
+            content: serde_json::Value,
+        ) -> Result<IngestResult, IngestError> {
+            let event = nostr::EventBuilder::new(
+                nostr::Kind::Custom(buzz_core::kind::KIND_WHATSAPP_CONTACT_UPDATE as u16),
+                content.to_string(),
+            )
+            .sign_with_keys(keys)
+            .expect("sign desk command");
+            super::super::super::whatsapp_commands::handle(
+                &fixture.tenant,
+                &fixture.state,
+                event,
+                auth(keys),
+            )
+            .await
+        }
+
+        async fn record_head(fixture: &Fixture) -> CustomerRecordHead {
+            serde_json::from_str(&head_of(fixture).await.expect("record").event.content)
+                .expect("customer head")
+        }
+
+        #[tokio::test]
+        #[ignore = "requires Postgres"]
+        async fn marking_call_booked_on_the_desk_adds_one_milestone_and_the_view_agrees() {
+            let (fixture, owner, scout) = company().await;
+            seed_prospect(&fixture).await;
+            send(&fixture, &scout, &base(CustomerOp::Refresh))
+                .await
+                .expect("create the lead's record");
+            let community = fixture.tenant.community();
+            let db = &fixture.state.db;
+            db.whatsapp_ensure_contact(community, DESK_WA, Some("Plane Tree"))
+                .await
+                .expect("contact");
+            db.whatsapp_set_lead(community, DESK_WA, PROSPECT)
+                .await
+                .expect("link the lead");
+            let command =
+                |stage: &str| serde_json::json!({"v": 1, "waId": DESK_WA, "stage": stage});
+
+            // A plain member changes neither the desk nor the record.
+            let member = nostr::Keys::generate();
+            add_member(&fixture, &member, "member").await;
+            let message = rejection(desk_update(&fixture, &member, command("call_booked")).await);
+            assert!(message.contains("only the owner, admins"), "{message}");
+            assert!(record_head(&fixture).await.milestones.is_empty());
+
+            // The owner marks the call booked: the desk stage AND the record agree.
+            let done = desk_update(&fixture, &owner, command("call_booked"))
+                .await
+                .expect("owner marks the call booked");
+            assert!(
+                done.message
+                    .contains("call booked added to the customer record"),
+                "{}",
+                done.message
+            );
+            let head = record_head(&fixture).await;
+            assert_eq!(head.milestones.len(), 1);
+            assert_eq!(head.milestones[0].kind, MilestoneKind::CallBooked);
+            assert_eq!(head.milestones[0].by_pubkey, owner.public_key().to_hex());
+            assert!(head
+                .timeline
+                .iter()
+                .any(|entry| entry.kind == TimelineKind::CallBooked));
+
+            // Marking it again is the same call: still one milestone.
+            let again = desk_update(&fixture, &owner, command("call_booked"))
+                .await
+                .expect("again");
+            assert!(
+                !again.message.contains("added to the customer record"),
+                "{}",
+                again.message
+            );
+            assert_eq!(record_head(&fixture).await.milestones.len(), 1);
+
+            let view = crate::api::whatsapp::thread_view(
+                &fixture.state,
+                community,
+                DESK_WA,
+                50,
+                true,
+                Utc::now(),
+            )
+            .await
+            .expect("thread view");
+            assert_eq!(view["contact"]["stage"], "call_booked");
+            assert_eq!(view["contact"]["businessName"], "Plane Tree Guesthouse");
+        }
+
+        struct SqlCounter(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+        impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for SqlCounter {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _ctx: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                if event.metadata().target().starts_with("sqlx::query") {
+                    self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+
+        #[tokio::test]
+        #[ignore = "requires Postgres"]
+        async fn the_contacts_query_costs_the_same_for_one_contact_and_a_hundred() {
+            use tracing_subscriber::prelude::*;
+            let (fixture, _owner, scout) = company().await;
+            seed_prospect(&fixture).await;
+            send(&fixture, &scout, &base(CustomerOp::Refresh))
+                .await
+                .expect("create the lead's record");
+            let community = fixture.tenant.community();
+            let db = &fixture.state.db;
+            for index in 0..100u32 {
+                let wa = format!("2782123{index:04}");
+                db.whatsapp_ensure_contact(community, &wa, Some("Thabo"))
+                    .await
+                    .expect("contact");
+                // One lead is real; the rest name leads that do not exist.
+                let lead = if index == 0 {
+                    PROSPECT.to_owned()
+                } else {
+                    uuid::Uuid::new_v4().to_string()
+                };
+                db.whatsapp_set_lead(community, &wa, &lead)
+                    .await
+                    .expect("link");
+            }
+            let all = db
+                .whatsapp_list_contacts(community, 200)
+                .await
+                .expect("contacts");
+            assert_eq!(all.len(), 100);
+            let linked = all
+                .iter()
+                .position(|contact| contact.lead_id.as_deref() == Some(PROSPECT))
+                .expect("the real lead is listed");
+
+            let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let _guard = tracing::subscriber::set_default(
+                tracing_subscriber::registry().with(SqlCounter(counter.clone())),
+            );
+            let measure = |contacts: Vec<buzz_db::whatsapp::WhatsappContact>| {
+                let fixture = &fixture;
+                let counter = counter.clone();
+                async move {
+                    let before = counter.load(std::sync::atomic::Ordering::Relaxed);
+                    let view = crate::api::whatsapp::contacts_view(
+                        &fixture.state,
+                        fixture.tenant.community(),
+                        &contacts,
+                        Utc::now(),
+                    )
+                    .await
+                    .expect("contacts view");
+                    let queries = counter.load(std::sync::atomic::Ordering::Relaxed) - before;
+                    (queries, view)
+                }
+            };
+            let (one, view_one) = measure(vec![all[linked].clone()]).await;
+            let (hundred, view_all) = measure(all.clone()).await;
+            assert!(one > 0, "the counter sees the queries");
+            // GUARD: the view gathers its inputs in a fixed number of queries.
+            assert_eq!(
+                one, hundred,
+                "100 contacts must not cost more queries than 1 ({one} vs {hundred})"
+            );
+            assert!(one <= 12, "a bounded number of queries: {one}");
+            assert_eq!(view_one["contacts"].as_array().map(Vec::len), Some(1));
+            assert_eq!(view_all["contacts"].as_array().map(Vec::len), Some(100));
+            let linked_view = view_all["contacts"]
+                .as_array()
+                .expect("array")
+                .iter()
+                .find(|contact| contact["waId"] == all[linked].wa_id.as_str())
+                .expect("linked contact");
+            assert_eq!(linked_view["businessName"], "Plane Tree Guesthouse");
         }
     }
 }

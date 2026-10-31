@@ -28,6 +28,8 @@ pub enum AuditAction {
     RateLimitExceeded,
     /// A media file was uploaded via the Blossom endpoint.
     MediaUploaded,
+    /// A WhatsApp contact's pipeline stage or label was changed by hand.
+    WhatsappContactUpdated,
 }
 
 impl AuditAction {
@@ -45,6 +47,7 @@ impl AuditAction {
             Self::AuthFailure => "auth_failure",
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::MediaUploaded => "media_uploaded",
+            Self::WhatsappContactUpdated => "whatsapp_contact_updated",
         }
     }
 
@@ -60,6 +63,7 @@ impl AuditAction {
         Self::AuthFailure,
         Self::RateLimitExceeded,
         Self::MediaUploaded,
+        Self::WhatsappContactUpdated,
     ];
 }
 

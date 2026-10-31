@@ -158,6 +158,30 @@ pub struct OutreachFlags {
     pub sent: bool,
 }
 
+/// What the Outreach desk reads about one contact beyond the contact row: the owner's label,
+/// a stage set by hand, and facts folded from its messages.
+#[derive(Clone, Debug, Default)]
+pub struct DeskFacts {
+    /// Owner's name for the contact, if set.
+    pub label: Option<String>,
+    /// Stage a person set by hand.
+    pub manual_stage: Option<String>,
+    /// Who set it.
+    pub manual_stage_by: Option<Vec<u8>>,
+    /// When they set it.
+    pub manual_stage_at: Option<DateTime<Utc>>,
+    /// When the latest outbound message reached Meta (`sent`, `delivered` or `read`).
+    pub last_contacted_at: Option<DateTime<Utc>>,
+    /// When the customer last tapped the template's first quick-reply button.
+    pub wants_call_at: Option<DateTime<Utc>>,
+    /// When the latest outbound send outcome happened.
+    pub last_outcome_at: Option<DateTime<Utc>>,
+    /// State of the latest outbound send outcome (`sent`, `delivered`, `read` or `failed`).
+    pub last_outcome_state: Option<String>,
+    /// Meta error code of that outcome when it failed.
+    pub last_outcome_code: Option<String>,
+}
+
 /// A WhatsApp contact (one per wa_id and company).
 #[derive(Clone, Debug)]
 pub struct WhatsappContact {
@@ -948,6 +972,117 @@ impl Db {
                 ))
             })
             .collect()
+    }
+
+    /// Desk facts for a set of contacts in ONE query, whatever their number. Contacts that do
+    /// not exist are absent.
+    pub async fn whatsapp_desk_facts(
+        &self,
+        community: CommunityId,
+        wa_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, DeskFacts>> {
+        if wa_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT c.wa_id, c.label, c.manual_stage, c.manual_stage_by, c.manual_stage_at, \
+                    max(COALESCE(m.sent_at, m.created_at)) FILTER ( \
+                        WHERE m.direction = 'out' AND m.state IN ('sent', 'delivered', 'read') \
+                    ) AS last_contacted_at, \
+                    max(m.created_at) FILTER ( \
+                        WHERE m.direction = 'in' AND m.intent = 'wants_call' \
+                    ) AS wants_call_at, \
+                    max(COALESCE(m.sent_at, m.created_at)) FILTER ( \
+                        WHERE m.direction = 'out' \
+                          AND m.state IN ('sent', 'delivered', 'read', 'failed') \
+                    ) AS last_outcome_at, \
+                    (array_agg(m.state ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.created_at DESC) \
+                        FILTER (WHERE m.direction = 'out' \
+                                AND m.state IN ('sent', 'delivered', 'read', 'failed')))[1] \
+                        AS last_outcome_state, \
+                    (array_agg(m.error_code ORDER BY COALESCE(m.sent_at, m.created_at) DESC, m.created_at DESC) \
+                        FILTER (WHERE m.direction = 'out' \
+                                AND m.state IN ('sent', 'delivered', 'read', 'failed')))[1] \
+                        AS last_outcome_code \
+             FROM whatsapp_contacts c \
+             LEFT JOIN whatsapp_messages m \
+                    ON m.community_id = c.community_id AND m.wa_id = c.wa_id \
+             WHERE c.community_id = $1 AND c.wa_id = ANY($2) \
+             GROUP BY c.community_id, c.wa_id",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok((
+                    row.try_get("wa_id")?,
+                    DeskFacts {
+                        label: row.try_get("label")?,
+                        manual_stage: row.try_get("manual_stage")?,
+                        manual_stage_by: row.try_get("manual_stage_by")?,
+                        manual_stage_at: row.try_get("manual_stage_at")?,
+                        last_contacted_at: row.try_get("last_contacted_at")?,
+                        wants_call_at: row.try_get("wants_call_at")?,
+                        last_outcome_at: row.try_get("last_outcome_at")?,
+                        last_outcome_state: row.try_get("last_outcome_state")?,
+                        last_outcome_code: row.try_get("last_outcome_code")?,
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    /// Set a contact's stage and/or label. `stage` is `Some((stage, by, at))` to set it;
+    /// `label` is `Some(Some(text))` to set, `Some(None)` to clear, `None` to leave alone.
+    /// Returns `false` when the contact does not exist.
+    pub async fn whatsapp_set_contact_desk(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        stage: Option<(&str, &[u8], DateTime<Utc>)>,
+        label: Option<Option<&str>>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_contacts SET \
+                 manual_stage = CASE WHEN $3 THEN $4 ELSE manual_stage END, \
+                 manual_stage_by = CASE WHEN $3 THEN $5 ELSE manual_stage_by END, \
+                 manual_stage_at = CASE WHEN $3 THEN $6 ELSE manual_stage_at END, \
+                 label = CASE WHEN $7 THEN $8 ELSE label END, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND wa_id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .bind(stage.is_some())
+        .bind(stage.map(|(name, _, _)| name))
+        .bind(stage.map(|(_, by, _)| by))
+        .bind(stage.map(|(_, _, at)| at))
+        .bind(label.is_some())
+        .bind(label.flatten())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Record what an inbound message means (`wants_call`). Safe to repeat.
+    pub async fn whatsapp_set_message_intent(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        intent: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE whatsapp_messages SET intent = $3 \
+             WHERE community_id = $1 AND id = $2 AND direction = 'in'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(intent)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Give a contact a name only when it has none, so a name from a batch row never
