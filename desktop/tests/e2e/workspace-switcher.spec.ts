@@ -95,13 +95,20 @@ async function openWorkspaceHeader(page: Page) {
   await expect(switcher.locator(".sidebar-company-name")).toBeVisible();
 }
 
-async function capture(page: Page, filename: string) {
+async function capture(
+  page: Page,
+  filename: string,
+  options: {
+    clip?: { x: number; y: number; width: number; height: number };
+  } = {},
+) {
   if (!CAPTURE_DIR) return;
   mkdirSync(CAPTURE_DIR, { recursive: true });
   await waitForAnimations(page);
   await page.screenshot({
     fullPage: false,
     path: join(CAPTURE_DIR, `${CAPTURE_PHASE}-${filename}.png`),
+    ...options,
   });
 }
 
@@ -116,7 +123,7 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   page,
 }) => {
   await seedWorkspaces(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
   await expect(page.getByTestId("community-rail")).toBeVisible();
@@ -142,7 +149,7 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   await expect(secondWorkspace).toContainText("Lerato Social");
   await expect(secondWorkspace).toContainText("⌘2");
   await expect(secondWorkspace).not.toHaveAttribute("aria-current", "true");
-  await capture(page, "desktop-light-menu");
+  await capture(page, "WSMenuTwo");
 
   await page.keyboard.press("Escape");
   await page.getByTestId("sidebar-business-switcher").focus();
@@ -193,11 +200,9 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   await expect(page.getByTestId("profile-popover-community")).toHaveCount(0);
 });
 
-test("dark header menu preserves workspace rows and shortcut hints", async ({
-  page,
-}) => {
-  await seedWorkspaces(page, { theme: "dark", workspaceCount: 1 });
-  await page.setViewportSize({ width: 1440, height: 900 });
+test("light header menu fits a single workspace", async ({ page }) => {
+  await seedWorkspaces(page, { workspaceCount: 1 });
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
   await expect(page.getByTestId("community-rail")).toHaveCount(0);
@@ -208,14 +213,46 @@ test("dark header menu preserves workspace rows and shortcut hints", async ({
   await expect(
     menu.getByTestId("workspace-menu-item-workspace-two"),
   ).toHaveCount(0);
-  await capture(page, "desktop-dark-menu");
+  await capture(page, "WSMenu");
+});
+
+test("single workspace sidebar keeps the workspace header", async ({
+  page,
+}) => {
+  await seedWorkspaces(page, { workspaceCount: 1 });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-business-switcher")).toBeVisible();
+  await capture(page, "WSSidebar", {
+    clip: { x: 0, y: 0, width: 280, height: 960 },
+  });
+});
+
+test("dark header menu preserves workspace rows and shortcut hints", async ({
+  page,
+}) => {
+  await seedWorkspaces(page, { theme: "dark", workspaceCount: 1 });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toHaveCount(0);
+  const menu = await openWorkspaceMenu(page);
+  await expect(
+    menu.getByTestId("workspace-menu-item-workspace-one"),
+  ).toBeVisible();
+  await expect(
+    menu.getByTestId("workspace-menu-item-workspace-two"),
+  ).toHaveCount(0);
+  await capture(page, "WSMenuDark");
 });
 
 test("workspace create checks the auto address without submitting", async ({
   page,
 }) => {
   await seedWorkspaces(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.route("**/api/communities/config", (route) =>
     route.fulfill({
       json: {
@@ -251,7 +288,7 @@ test("workspace create checks the auto address without submitting", async ({
   await expect(page.getByTestId("community-rail")).toBeVisible();
   const railCreateAction = page.getByTestId("community-rail-add");
   await expect(railCreateAction).toHaveAccessibleName("Create a workspace");
-  await capture(page, "desktop-light-rail");
+  await capture(page, "WSRail");
   await railCreateAction.click();
   const railCreateDialog = page.getByTestId("workspace-action-dialog");
   await expect(railCreateDialog).toBeVisible();
@@ -276,7 +313,7 @@ test("workspace create checks the auto address without submitting", async ({
     .getByTestId("workspace-create-form")
     .getByRole("heading", { name: "Create a workspace" })
     .click();
-  await capture(page, "desktop-light-create");
+  await capture(page, "WSCreate");
   await expect(page.getByTestId("workspace-create-submit")).toBeEnabled();
   expect(createPosts).toEqual([]);
 });
@@ -285,7 +322,7 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   page,
 }) => {
   await seedWorkspaces(page);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
   const menu = await openWorkspaceMenu(page);
@@ -297,7 +334,7 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   await expect(
     page.getByTestId("workspace-settings-advanced-fields"),
   ).toHaveCount(0);
-  await capture(page, "desktop-light-settings");
+  await capture(page, "WSSettings");
   await advanced.click();
   await expect(
     page.getByRole("textbox", { name: "Connection address" }),
@@ -309,7 +346,8 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   await expect(page.getByLabel("API token (optional)")).not.toHaveValue(
     /buzz_/,
   );
-  await capture(page, "desktop-light-settings-advanced");
+  await page.setViewportSize({ width: 1440, height: 1260 });
+  await capture(page, "WSSettingsAdvanced");
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -326,7 +364,7 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   await expect(
     sheet.getByTestId("workspace-menu-item-workspace-one"),
   ).toBeVisible();
-  await capture(page, "mobile-light-menu");
+  await capture(page, "WSMobileMenu");
 });
 
 test("dark mobile workspace menu fits the 390px sheet", async ({ page }) => {
@@ -341,5 +379,5 @@ test("dark mobile workspace menu fits the 390px sheet", async ({ page }) => {
   await expect(
     sheet.getByTestId("workspace-menu-item-workspace-two"),
   ).toBeVisible();
-  await capture(page, "mobile-dark-menu");
+  await capture(page, "WSMobileMenuDark");
 });
