@@ -117,6 +117,8 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
       ? batch.batchId.replaceAll("-", "").toLocaleLowerCase().startsWith(prefix)
       : false,
   );
+  const ambiguousPendingMatches =
+    matches.length > 1 && matches.every((match) => match.status === "pending");
   const batch = matches.length === 1 ? matches[0] : null;
   const initialDisplayStatus =
     decision === "approve"
@@ -204,7 +206,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     }
   }
 
-  if (!batch) {
+  if (!batch && !ambiguousPendingMatches) {
     const missingText = batchesQuery.isPending
       ? "Finding the WhatsApp batch…"
       : batchesQuery.isError
@@ -222,9 +224,13 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     );
   }
 
-  const isPending = displayStatus === "pending";
+  const isPending = displayStatus === "pending" || ambiguousPendingMatches;
   const isRejected = displayStatus === "rejected";
-  const sentCounts = batchDetailsQuery.data?.counts ?? batch.rows;
+  const sentCounts = batchDetailsQuery.data?.counts ??
+    batch?.rows ?? {
+      total: 0,
+      sent: 0,
+    };
   const isSent =
     displayStatus === "completed" ||
     (sentCounts.total > 0 && sentCounts.sent >= sentCounts.total);
@@ -282,6 +288,11 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
             <p className="m-0 text-sm text-colony-danger" role="alert">
               {batchesQuery.error.message}
             </p>
+          ) : ambiguousPendingMatches ? (
+            <p className="m-0 text-sm text-colony-danger" role="alert">
+              This notice matches more than one pending batch. Refresh the
+              channel before deciding.
+            </p>
           ) : null}
           {actionError ? (
             <p className="m-0 text-sm text-colony-danger" role="alert">
@@ -290,7 +301,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              disabled={!canManage || busy || decision !== null}
+              disabled={!batch || !canManage || busy || decision !== null}
               onClick={() => void decide("approve")}
               size="sm"
               type="button"
@@ -298,13 +309,15 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
               Approve and send
             </Button>
             <Button
-              disabled={busy || decision !== null}
-              onClick={() =>
-                void navigate({
-                  to: "/whatsapp/batches/$batchId",
-                  params: { batchId: batch.batchId },
-                })
-              }
+              disabled={!batch || busy || decision !== null}
+              onClick={() => {
+                if (batch) {
+                  void navigate({
+                    to: "/whatsapp/batches/$batchId",
+                    params: { batchId: batch.batchId },
+                  });
+                }
+              }}
               size="sm"
               variant="outline"
               type="button"
@@ -312,7 +325,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
               Review each message
             </Button>
             <Button
-              disabled={!canManage || busy || decision !== null}
+              disabled={!batch || !canManage || busy || decision !== null}
               onClick={() => void decide("reject")}
               size="sm"
               variant="ghost"
@@ -334,7 +347,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
             Approved by {approvedByName}. {scheduleLabel}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            {canSendNow ? (
+            {batch && canSendNow ? (
               <WhatsAppSendNowAction batchId={batch.batchId} />
             ) : null}
             <Button
