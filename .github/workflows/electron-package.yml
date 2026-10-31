@@ -262,7 +262,7 @@ jobs:
           # the Keychain. The marker check below proves which one was built.
           keyring_flags=""
           if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ] && [ "$MAC_SIGNED" != "true" ]; then
-            keyring_flags="--no-default-features"
+            keyring_flags=""  # RED PROOF: unsigned Mac host keeps the keyring
           fi
           # Without a build-time relay the host defaults to ws://localhost:3000, so a
           # release installer would try to sign in against the user's own machine.
