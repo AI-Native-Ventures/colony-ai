@@ -131,6 +131,7 @@ test.describe("WhatsApp outreach settings", () => {
   }) => {
     await installWhatsAppMockBridge(page);
     await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+    await page.getByTestId("channel-whatsapp-chats-trigger").click();
 
     const heldContact = page
       .getByTestId("whatsapp-outreach")
@@ -144,6 +145,7 @@ test.describe("WhatsApp outreach settings", () => {
   }) => {
     await installWhatsAppMockBridge(page);
     await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+    await page.getByTestId("channel-whatsapp-chats-trigger").click();
 
     const outreach = page.getByTestId("whatsapp-outreach");
     await expect(outreach).toBeVisible();
@@ -325,6 +327,7 @@ test.describe("WhatsApp outreach settings", () => {
     ).toBe(true);
 
     await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-outreach-channel");
+    await page.getByTestId("channel-whatsapp-chats-trigger").click();
     await page
       .getByRole("button", { name: "WhatsApp conversation actions" })
       .click();

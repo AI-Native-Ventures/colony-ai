@@ -7,8 +7,8 @@ import { waitForAnimations } from "../helpers/animations";
 import {
   gotoWhatsAppScreen,
   installWhatsAppMockBridge,
-  OUTREACH_CHANNEL_ID,
 } from "../helpers/whatsappOutreach";
+import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
 
 const UNNAMED_WA_ID = "27683735905";
 const UNNAMED_NUMBER = "+27 68 373 5905";
@@ -203,13 +203,13 @@ async function installPolishFixture(
 
 async function openOutreachWithDock(page: Page, width: number) {
   if (width < 600) {
-    await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
+    await gotoWhatsAppScreen(page, `/channels/${REFERENCE_CHANNEL_IDS.sales}`);
   } else {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("home-inbox")).toBeVisible();
-    await page.getByTestId("channel-Outreach").click();
+    await page.getByTestId("channel-Sales").click();
   }
-  await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
+  await expect(page.getByTestId("chat-title")).toHaveText("Sales");
   if (width < 600) {
     const opened = await page.evaluate(() => {
       const trigger = document.querySelector<HTMLButtonElement>(
@@ -235,7 +235,7 @@ async function emitRejectedBatchNotice(page: Page, index: 0 | 1) {
           (
             window as WhatsAppEventWindow
           ).__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({ channelName }) ?? false,
-        "Outreach",
+        "Sales",
       ),
     )
     .toBe(true);
@@ -248,7 +248,7 @@ async function emitRejectedBatchNotice(page: Page, index: 0 | 1) {
     const batch = batchIndex === 0 ? state?.batch : state?.secondPendingBatch;
     if (!batch) throw new Error("Mock WhatsApp batch is missing");
     return (window as WhatsAppEventWindow).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-      channelName: "Outreach",
+      channelName: "Sales",
       content: `Scout prepared batch ${batch.batchId} using ${batch.template}.`,
       pubkey: "deadbeef".repeat(8),
       kind: 9,

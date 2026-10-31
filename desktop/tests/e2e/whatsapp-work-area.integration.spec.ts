@@ -70,9 +70,17 @@ async function emitOutreachEvent(
   return event;
 }
 
-async function goToOutreach(page: Page) {
-  await installWhatsAppMockBridge(page);
+async function goToOutreach(
+  page: Page,
+  options: { deskFixture?: boolean; tab?: "discussion" | "needs-you" } = {},
+) {
+  await installWhatsAppMockBridge(page, "light", {
+    deskFixture: options.deskFixture,
+  });
   await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
+  if ((options.tab ?? "discussion") === "discussion") {
+    await page.getByTestId("channel-view-tab-discussion").click();
+  }
   await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
 }
 
@@ -102,11 +110,15 @@ test.describe("WhatsApp work area conversations and approvals", () => {
       root.id,
     );
 
-    const replyCard = page.getByTestId("whatsapp-channel-reply");
-    await expect(replyCard).toBeVisible();
-    await replyCard.getByRole("button", { name: "Open in WhatsApp" }).click();
-    await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
-    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    const activity = page.getByTestId("whatsapp-discussion-activity");
+    await expect(activity).toContainText("Plane Tree Guesthouse replied");
+    await activity.locator("summary").click();
+    await activity.getByRole("button", { name: "Open chat" }).click();
+    const outreach = page
+      .getByTestId("channel-drop-zone")
+      .getByTestId("whatsapp-outreach");
+    await expect(outreach).toBeVisible();
+    await expect(page.getByTestId("work-area-panel")).toHaveCount(0);
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(
       page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
@@ -299,18 +311,15 @@ test.describe("WhatsApp work area conversations and approvals", () => {
     await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
   });
 
-  test("pending channel batch approval sends one owner decision", async ({
+  test("Needs you batch approval sends one owner decision", async ({
     page,
   }) => {
-    await goToOutreach(page);
-    const batchPrefix = WHATSAPP_SECOND_BATCH_ID.replaceAll("-", "");
-    await emitOutreachEvent(
-      page,
-      `Batch ${batchPrefix} is waiting for approval: 3 message(s), template hl_vb. Nothing is sent until the owner or an admin approves it.`,
-      [["wa-notice", "batch_pending"]],
+    await goToOutreach(page, { deskFixture: true, tab: "needs-you" });
+    const batch = page.getByTestId(
+      `outreach-needs-batch-${WHATSAPP_SECOND_BATCH_ID}`,
     );
-    const card = page.getByTestId("whatsapp-channel-batch-pending");
-    await card.getByRole("button", { name: "Approve and send" }).click();
+    await expect(batch).toBeVisible();
+    await batch.getByRole("button", { name: "Approve and send 3" }).click();
     await expect
       .poll(() =>
         page.evaluate(
@@ -327,32 +336,22 @@ test.describe("WhatsApp work area conversations and approvals", () => {
         ),
       )
       .toBe(true);
+    await expect(batch).toHaveCount(0);
   });
 
-  test("pending channel batch review opens each message and reject records the decision", async ({
+  test("Needs you batch review opens messages and rejection records one decision", async ({
     page,
   }) => {
-    await goToOutreach(page);
-    const batchPrefix = WHATSAPP_SECOND_BATCH_ID.replaceAll("-", "");
-    await emitOutreachEvent(
-      page,
-      `Batch ${batchPrefix} is waiting for approval: 3 message(s), template hl_vb. Nothing is sent until the owner or an admin approves it.`,
-      [["wa-notice", "batch_pending"]],
+    await goToOutreach(page, { deskFixture: true, tab: "needs-you" });
+    const batch = page.getByTestId(
+      `outreach-needs-batch-${WHATSAPP_SECOND_BATCH_ID}`,
     );
-    const card = page.getByTestId("whatsapp-channel-batch-pending");
-    await card.getByRole("button", { name: "Review each message" }).click();
+    await expect(batch).toBeVisible();
+    await batch.getByRole("button", { name: "Review each message" }).click();
     await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
-
-    await installWhatsAppMockBridge(page);
-    await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
-    await emitOutreachEvent(
-      page,
-      `Batch ${batchPrefix} is waiting for approval: 3 messages, template hl_vb.`,
-      [["wa-notice", "batch_pending"]],
-    );
     await page
-      .getByTestId("whatsapp-channel-batch-pending")
-      .getByRole("button", { name: "Reject" })
+      .locator(".c3wa-batch-actions")
+      .getByRole("button", { name: "Reject", exact: true })
       .click();
     await expect
       .poll(() =>
@@ -370,5 +369,6 @@ test.describe("WhatsApp work area conversations and approvals", () => {
         ),
       )
       .toBe(true);
+    await expect(batch).toHaveCount(0);
   });
 });

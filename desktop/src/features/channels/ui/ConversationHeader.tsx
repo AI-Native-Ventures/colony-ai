@@ -17,6 +17,8 @@ type ConversationHeaderProps = {
   subtitle?: React.ReactNode;
   /** Channel views (Discussion, Work, Knowledge, Canvas, Files). */
   tabs?: React.ReactNode;
+  /** Whether the message timeline scrolls under this header. */
+  overlapContent?: boolean;
   title: string;
   titleAdornment?: React.ReactNode;
 };
@@ -35,6 +37,7 @@ export function ConversationHeader({
   statusBadge,
   subtitle,
   tabs,
+  overlapContent = true,
   title,
   titleAdornment,
 }: ConversationHeaderProps) {
@@ -106,7 +109,10 @@ export function ConversationHeader({
 
   return (
     <div
-      className="pointer-events-none relative z-40 -mb-(--buzz-channel-content-top-padding,5.75rem) overflow-visible"
+      className={cn(
+        "pointer-events-none relative z-40 overflow-visible",
+        overlapContent && "-mb-(--buzz-channel-content-top-padding,5.75rem)",
+      )}
       ref={chromeWrapperRef}
     >
       <header
