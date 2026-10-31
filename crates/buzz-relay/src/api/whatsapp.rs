@@ -26,8 +26,8 @@ use crate::state::AppState;
 use crate::whatsapp::connect::{self, ConnectError};
 use crate::whatsapp::inbound::process_payload;
 use crate::whatsapp::policy::{
-    e164, next_window_start, normalize_wa_id, verify_signature, verify_token_matches,
-    window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
+    contact_label, e164, next_window_start, normalize_wa_id, verify_signature,
+    verify_token_matches, window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
 };
 use crate::whatsapp::{access_for, Access};
 
@@ -177,13 +177,9 @@ fn contact_view(
         "outreachStatus": outreach_status(contact, flags),
         "awaitingApproval": flags.awaiting_approval,
         "hasSentOutbound": flags.sent,
-        // A contact with no name yet (outbound only, no profile name) shows its number rather
-        // than an empty string.
-        "displayName": if contact.display_name.trim().is_empty() {
-            e164(&contact.wa_id)
-        } else {
-            contact.display_name.clone()
-        },
+        // A contact with no usable name yet (outbound only, no profile name, or a name such as
+        // ".") shows its number rather than an empty string or punctuation.
+        "displayName": contact_label(&contact.display_name, &contact.wa_id),
         "leadId": contact.lead_id,
         "ownerPubkey": contact.owner_pubkey.as_ref().map(hex::encode),
         "threadRootEventId": contact.thread_root_event_id.as_ref().map(hex::encode),
@@ -208,6 +204,9 @@ fn client_state(state: &str) -> &str {
     match state {
         "held" | "ready" => "queued",
         "skipped" => "failed",
+        // The released app has no `received` state and rejects the whole thread for it. An
+        // inbound message has been seen by definition, which is what `read` means there.
+        "received" => "read",
         other => other,
     }
 }
@@ -679,6 +678,9 @@ mod tests {
             "read",
             "failed",
             "unconfirmed",
+            // GUARD: an inbound reply is stored as `received`; the released 3.0.18 app throws
+            // "invalid WhatsApp message state" for the whole thread unless it reads as `read`.
+            "received",
         ] {
             assert!(
                 APP_STATES.contains(&client_state(stored)),
@@ -688,6 +690,33 @@ mod tests {
         }
         assert_eq!(client_state("held"), "queued");
         assert_eq!(client_state("skipped"), "failed");
+        assert_eq!(client_state("received"), "read");
+    }
+
+    #[test]
+    fn a_dot_profile_name_shows_the_number_in_the_contact_view() {
+        // GUARD: `contact_view` uses `contact_label`, so a name with no letter or digit is
+        // shown as the number.
+        let mut contact = WhatsappContact {
+            wa_id: "27821234567".into(),
+            display_name: ".".into(),
+            lead_id: None,
+            owner_pubkey: None,
+            thread_root_event_id: None,
+            last_inbound_at: None,
+            last_outbound_at: None,
+            outbound_since_inbound: 0,
+            opted_out_at: None,
+            opt_out_reason: None,
+            paused_at: None,
+            pause_reason: None,
+            created_at: Utc::now(),
+        };
+        let view = contact_view(&contact, Utc::now(), &OutreachFlags::default());
+        assert_eq!(view["displayName"], "+27821234567");
+        contact.display_name = "Thabo".into();
+        let view = contact_view(&contact, Utc::now(), &OutreachFlags::default());
+        assert_eq!(view["displayName"], "Thabo");
     }
 
     fn message(state: &str, idx: i32) -> WhatsappMessage {
