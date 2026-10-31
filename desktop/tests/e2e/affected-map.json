@@ -58,7 +58,8 @@
         "mentions.spec.ts",
         "channels.spec.ts",
         "whatsapp-decided-card.spec.ts",
-        "whatsapp-polish.spec.ts"
+        "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts"
       ],
       "titles": [
         "send a message and see it in timeline",
@@ -87,7 +88,8 @@
         "pending card changes to approved after approving without reloading",
         "rejected and fully sent batches have no actions",
         "genuinely missing batch is one plain line with no actions",
-        "cannot use send now on an approved card"
+        "cannot use send now on an approved card",
+        "channel content and actions stay reachable beside the dock at owner size"
       ]
     }
   },
@@ -164,6 +166,7 @@
         "whatsapp-outreach-desk.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts",
         "channel-sort.spec.ts",
         "channel-star.spec.ts",
         "auxiliary-pane-close-visibility.spec.ts",
@@ -422,7 +425,8 @@
         "whatsapp-outreach.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",
-        "whatsapp-polish.spec.ts"
+        "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts"
       ]
     },
     {
@@ -442,6 +446,7 @@
         "work-area-browser-screenshots.spec.ts",
         "work-area-knowledge.spec.ts",
         "work-area-pins.spec.ts",
+        "whatsapp-dock-narrow.spec.ts",
         "workspace-file-links.spec.ts",
         "browser-profile-forget.spec.ts",
         "colony3-conv-workarea-proof.spec.ts"
