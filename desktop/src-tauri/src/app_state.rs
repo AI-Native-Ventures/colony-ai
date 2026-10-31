@@ -385,12 +385,8 @@ fn persist_identity_to_file(
     keys: &Keys,
     profile: &ProfileScope,
 ) -> Result<IdentityStorage, String> {
-    let path = profile.legacy_identity_path();
-    colony_identity_kernel::save_key_file(path, keys)?;
-    let reloaded = colony_identity_kernel::load_key_file(path)?;
-    if reloaded.public_key() != keys.public_key() {
-        return Err("identity.key read-back did not match the saved key".to_string());
-    }
+    // RED PROOF: the restored key is never written to identity.key.
+    let _ = (keys, profile);
     Ok(IdentityStorage::LocalFile)
 }
 
