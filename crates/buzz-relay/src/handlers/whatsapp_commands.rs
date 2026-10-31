@@ -18,9 +18,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use buzz_core::kind::{
-    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_SEND_REQUEST,
-    KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
+    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
 };
+use buzz_core::whatsapp_stage::{derive_stage, WhatsappStage};
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
     BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
@@ -157,6 +158,32 @@ struct TemplateTitleCommand {
     propose: bool,
 }
 
+/// Rename a contact and/or set its pipeline stage (kind 47052).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContactUpdateCommand {
+    v: u8,
+    wa_id: String,
+    /// One of the stages a person may set by hand.
+    #[serde(default)]
+    stage: Option<String>,
+    /// `Some(Some(text))` sets the label, `Some(None)` (JSON `null`) clears it, absent leaves it.
+    #[serde(default, deserialize_with = "present_or_null")]
+    label: Option<Option<String>>,
+}
+
+/// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
+fn present_or_null<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+/// Longest owner label, in characters.
+const MAX_LABEL_CHARS: usize = 120;
+
 fn restricted(reason: impl std::fmt::Display) -> IngestError {
     IngestError::Rejected(format!("restricted: {reason}"))
 }
@@ -203,8 +230,10 @@ pub async fn handle(
     let kind = u32::from(event.kind.as_u16());
     // A revoked WhatsApp entry stops everyone but the owner and admins from
     // preparing batches or sending, so a revoke takes effect on agents at once.
-    if matches!(kind, KIND_WHATSAPP_BATCH | KIND_WHATSAPP_SEND_REQUEST)
-        && !access.is_owner_admin()
+    if matches!(
+        kind,
+        KIND_WHATSAPP_BATCH | KIND_WHATSAPP_SEND_REQUEST | KIND_WHATSAPP_CONTACT_UPDATE
+    ) && !access.is_owner_admin()
         && crate::handlers::company_access::access_revoked(
             state,
             tenant.community(),
@@ -222,6 +251,7 @@ pub async fn handle(
         KIND_WHATSAPP_BATCH_DECISION => handle_decision(tenant, state, &event, access).await,
         KIND_WHATSAPP_SEND_REQUEST => handle_send(tenant, state, &event, access).await,
         KIND_WHATSAPP_SETTINGS => handle_settings(tenant, state, &event, access).await,
+        KIND_WHATSAPP_CONTACT_UPDATE => handle_contact_update(tenant, state, &event, access).await,
         _ => Err(invalid(format!("unknown WhatsApp command kind {kind}"))),
     }
 }
@@ -831,6 +861,177 @@ async fn handle_send(
         )),
         Enqueued::Duplicate => Ok(ok(event, "duplicate: this request was already queued")),
     }
+}
+
+/// Clean an owner label: collapse whitespace, 1 through 120 characters.
+fn clean_label(raw: &str) -> Result<String, IngestError> {
+    let label = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if label.is_empty() {
+        return Err(invalid("label is empty; send null to clear it"));
+    }
+    if label.chars().count() > MAX_LABEL_CHARS {
+        return Err(invalid(format!(
+            "label is longer than {MAX_LABEL_CHARS} characters"
+        )));
+    }
+    Ok(label)
+}
+
+/// Set a contact's pipeline stage and/or label. Same access as replying on WhatsApp (owner,
+/// admins, their agents such as Scout, Outreach members); a plain member is refused. `stopped`
+/// and `not_on_whatsapp` are facts and cannot be set. Every change is audited. Marking a call
+/// booked also puts a `CallBooked` milestone on the customer record when one exists and the
+/// caller may write it.
+async fn handle_contact_update(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    access: Access,
+) -> Result<IngestResult, IngestError> {
+    // GUARD: plain members never change the pipeline.
+    if !access.can_send() {
+        return Err(restricted(
+            "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
+        ));
+    }
+    let command: ContactUpdateCommand = parse(event)?;
+    check_version(command.v)?;
+    let community = tenant.community();
+    let wa_id =
+        normalize_wa_id(&command.wa_id).ok_or_else(|| invalid("waId must be a phone number"))?;
+    let stage = command
+        .stage
+        .as_deref()
+        .map(|value| {
+            WhatsappStage::parse_manual(value).ok_or_else(|| {
+                invalid(
+                    "stage must be contacted, replied, wants_call, call_booked, quote_sent, client or no_thanks",
+                )
+            })
+        })
+        .transpose()?;
+    let label = match &command.label {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(text)) => Some(Some(clean_label(text)?)),
+    };
+    if stage.is_none() && label.is_none() {
+        return Err(invalid("nothing to change: set stage or label"));
+    }
+    let contact = state
+        .db
+        .whatsapp_get_contact(community, &wa_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| invalid("no such contact"))?;
+    let desk = crate::whatsapp::desk::load(state, community, std::slice::from_ref(&contact))
+        .await
+        .map_err(internal)?;
+    let lead = contact.lead_id.as_deref().and_then(|id| desk.leads.get(id));
+    let record = contact
+        .lead_id
+        .as_deref()
+        .and_then(|id| desk.records.get(id));
+    let facts = desk.facts.get(&wa_id).cloned().unwrap_or_default();
+    if stage.is_some() {
+        // A fact would hide the new stage, so say so instead of accepting a change that shows nothing.
+        let current = derive_stage(&crate::whatsapp::desk::stage_inputs(
+            &contact, &facts, lead, record,
+        ));
+        if contact.opted_out_at.is_some()
+            || matches!(
+                current.stage,
+                WhatsappStage::Stopped | WhatsappStage::NotOnWhatsapp
+            )
+        {
+            return Err(restricted(
+                "this business asked not to be messaged or is not on WhatsApp, so its stage cannot be changed",
+            ));
+        }
+    }
+    let now = Utc::now();
+    let by = event.pubkey.to_bytes();
+    let changed = state
+        .db
+        .whatsapp_set_contact_desk(
+            community,
+            &wa_id,
+            stage.map(|stage| (stage.as_str(), by.as_slice(), now)),
+            label.as_ref().map(|label| label.as_deref()),
+        )
+        .await
+        .map_err(internal)?;
+    if !changed {
+        return Err(invalid("no such contact"));
+    }
+    audit_contact_update(state, tenant, event, &wa_id, stage, label.as_ref()).await?;
+
+    let mut notes = Vec::new();
+    if let Some(stage) = stage {
+        notes.push(format!("stage {}", stage.as_str()));
+        if stage == WhatsappStage::CallBooked {
+            // Only while the record does not show a booked call yet: marking it twice is one call.
+            if let Some(party_id) = lead
+                .filter(|_| record.is_some_and(|facts| facts.call_booked.is_none()))
+                .map(|lead| lead.party_id.hyphenated().to_string())
+            {
+                match super::company_customers::record_call_booked(
+                    tenant,
+                    state,
+                    event,
+                    &event.pubkey,
+                    &party_id,
+                )
+                .await?
+                {
+                    super::company_customers::CallBookedOutcome::Recorded => {
+                        notes.push("call booked added to the customer record".to_owned());
+                    }
+                    super::company_customers::CallBookedOutcome::NotAllowed => {
+                        notes.push(
+                            "the customer record was not changed (not allowed for you)".to_owned(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    match &label {
+        Some(Some(label)) => notes.push(format!("name \"{label}\"")),
+        Some(None) => notes.push("name cleared".to_owned()),
+        None => {}
+    }
+    Ok(ok(event, notes.join(", ")))
+}
+
+/// Append the change to the tamper-evident audit log. A failure is returned, not logged away:
+/// the command is safe to retry because setting the same stage or label twice changes nothing.
+async fn audit_contact_update(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    event: &Event,
+    wa_id: &str,
+    stage: Option<WhatsappStage>,
+    label: Option<&Option<String>>,
+) -> Result<(), IngestError> {
+    let Some(audit) = state.audit.as_ref() else {
+        return Ok(());
+    };
+    audit
+        .log(buzz_audit::NewAuditEntry {
+            community_id: tenant.community(),
+            action: buzz_audit::AuditAction::WhatsappContactUpdated,
+            actor_pubkey: Some(event.pubkey.to_bytes().to_vec()),
+            object_id: Some(wa_id.to_owned()),
+            detail: serde_json::json!({
+                "command_event_id": event.id.to_hex(),
+                "stage": stage.map(WhatsappStage::as_str),
+                "label_set": label.map(|label| label.is_some()),
+            }),
+        })
+        .await
+        .map_err(|error| internal(format!("audit log: {error}")))?;
+    Ok(())
 }
 
 async fn handle_settings(

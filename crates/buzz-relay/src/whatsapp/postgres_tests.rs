@@ -23,8 +23,8 @@ use uuid::Uuid;
 
 use buzz_core::channel::MemberRole;
 use buzz_core::kind::{
-    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_SEND_REQUEST,
-    KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
+    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 
@@ -253,7 +253,7 @@ async fn fixture_with_fence(arm_fence: bool) -> Fixture {
         config,
         db,
         redis_pool,
-        None::<buzz_audit::AuditService>,
+        Some(buzz_audit::AuditService::new(pool.clone())),
         pubsub,
         auth,
         search,
@@ -2399,4 +2399,521 @@ async fn a_post_that_keeps_failing_backs_off_then_gives_up_without_starving_othe
     assert!(next
         .iter()
         .all(|m| !first_page.iter().any(|f| f.id == m.id)));
+}
+
+// ── Outreach desk: stage, label, views ─────────────────────────────────────────────────────
+
+/// The contact as the app reads it (`thread` answer), with the desk fields.
+async fn contact_json(fx: &Fixture, wa_id: &str) -> Value {
+    crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa_id, 50, true, Utc::now())
+        .await
+        .expect("thread view")["contact"]
+        .clone()
+}
+
+/// An inbound button tap with an explicit time and the message it answers.
+fn tap_at(
+    from: &str,
+    wamid: &str,
+    title: &str,
+    context: Option<&str>,
+    at: DateTime<Utc>,
+) -> String {
+    let mut message = json!({"from": from, "id": wamid, "timestamp": at.timestamp().to_string(),
+                      "type": "button", "button": {"text": title, "payload": "x"}});
+    if let Some(context) = context {
+        message["context"] = json!({"from": "27820000000", "id": context});
+    }
+    json!({"object": "whatsapp_business_account", "entry": [{"id": WABA_ID, "changes": [{
+    "field": "messages",
+    "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {"display_phone_number": "27820000000", "phone_number_id": PHONE_ID},
+        "contacts": [{"profile": {"name": "Naledi"}, "wa_id": from}],
+        "messages": [message]
+    }}]}]})
+    .to_string()
+}
+
+/// An outbound template row that reached the contact, as a delivered opener does.
+async fn seed_opener(fx: &Fixture, wa_id: &str, wamid: &str, state: &str, code: Option<&str>) {
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, None)
+        .await
+        .expect("contact");
+    sqlx::query(
+        "INSERT INTO whatsapp_messages (community_id, id, wa_id, direction, kind, body, \
+             template_name, template_language, state, wamid, error_code, sent_at, created_at) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Hi', 'intro', 'en', $4, $5, $6, now() - interval '2 hours', now() - interval '2 hours')",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(Uuid::new_v4())
+    .bind(wa_id)
+    .bind(state)
+    .bind(wamid)
+    .bind(code)
+    .execute(&fx.pool)
+    .await
+    .expect("seed opener");
+}
+
+async fn set_template_buttons(fx: &Fixture, buttons: Value) {
+    sqlx::query(
+        "UPDATE whatsapp_templates SET buttons = $2 WHERE community_id = $1 AND name = 'intro'",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(buttons)
+    .execute(&fx.pool)
+    .await
+    .expect("set template buttons");
+}
+
+fn update(wa_id: &str, body: Value) -> Value {
+    let mut content = json!({"v": 1, "waId": wa_id});
+    content
+        .as_object_mut()
+        .expect("object")
+        .extend(body.as_object().expect("object").clone());
+    content
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn only_people_who_may_reply_can_change_a_stage_or_name_and_every_change_is_audited() {
+    // GUARD: `Access::can_send` check in `handle_contact_update`. Without it the plain member
+    // below moves the card.
+    let fx = fixture().await;
+    let wa = "27821230101";
+    seed_opener(&fx, wa, "wamid.OUT-A", "delivered", None).await;
+
+    let member = Keys::generate();
+    let refusal = rejection(
+        fx.command(
+            &member,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(wa, json!({"stage": "client"})),
+        )
+        .await,
+    );
+    assert!(
+        refusal.contains("only the owner, admins, their agents and Outreach members"),
+        "{refusal}"
+    );
+    let refusal = rejection(
+        fx.command(
+            &member,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(wa, json!({"label": "Mine now"})),
+        )
+        .await,
+    );
+    assert!(refusal.contains("only the owner"), "{refusal}");
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(view["stage"], "contacted", "a refused change moves nothing");
+    assert_eq!(view["label"], Value::Null);
+
+    // Owner, admin, Scout (an agent owned by the owner) and an Outreach channel member.
+    let admin = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &admin.public_key().to_hex(),
+            "admin",
+            Some(&fx.owner.public_key().to_hex()),
+        )
+        .await
+        .expect("admin");
+    let scout = Keys::generate();
+    own_agent(&fx, &scout, &fx.owner).await;
+    let outreach = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &outreach.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("outreach member");
+    for (who, keys, stage) in [
+        ("owner", &fx.owner, "replied"),
+        ("admin", &admin, "wants_call"),
+        ("scout", &scout, "quote_sent"),
+        ("outreach member", &outreach, "no_thanks"),
+    ] {
+        fx.command(
+            keys,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(wa, json!({"stage": stage})),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{who} may set a stage: {error:?}"));
+        let view = contact_json(&fx, wa).await;
+        assert_eq!(view["stage"], stage, "{who}");
+        assert_eq!(view["stageSetBy"], keys.public_key().to_hex(), "{who}");
+    }
+
+    // Facts cannot be set; neither can a word that is not a stage.
+    for bad in ["stopped", "not_on_whatsapp", "won", "none"] {
+        let refusal = rejection(
+            fx.command(
+                &fx.owner,
+                KIND_WHATSAPP_CONTACT_UPDATE,
+                update(wa, json!({"stage": bad})),
+            )
+            .await,
+        );
+        assert!(refusal.contains("stage must be"), "{bad}: {refusal}");
+    }
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(wa, json!({})),
+        )
+        .await,
+    );
+    assert!(refusal.contains("nothing to change"), "{refusal}");
+
+    // Label: set shows everywhere, the profile name stays secondary, null clears it.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"label": "  Plane   Tree Hotel "})),
+    )
+    .await
+    .expect("rename");
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(view["label"], "Plane Tree Hotel");
+    assert_eq!(view["displayName"], "Plane Tree Hotel");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"label": null})),
+    )
+    .await
+    .expect("clear");
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(view["label"], Value::Null);
+    assert_eq!(
+        view["displayName"], "+27821230101",
+        "no profile name yet: the number"
+    );
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(wa, json!({"label": "   "})),
+        )
+        .await,
+    );
+    assert!(refusal.contains("label is empty"), "{refusal}");
+    let unknown = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update("27821239999", json!({"stage": "client"})),
+        )
+        .await,
+    );
+    assert!(unknown.contains("no such contact"), "{unknown}");
+
+    // Audit: 4 stage changes + set label + clear label, none for the refused ones.
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_log WHERE community_id = $1 AND action = 'whatsapp_contact_updated'",
+    )
+    .bind(fx.community().as_uuid())
+    .fetch_one(&fx.pool)
+    .await
+    .expect("audit count");
+    assert_eq!(audited, 6, "every accepted change is audited");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_manual_stage_holds_against_older_facts_and_gives_way_to_a_newer_positive_tap() {
+    // GUARD: precedence in `buzz_core::whatsapp_stage::derive_stage`, read through the view.
+    let fx = fixture().await;
+    let wa = "27821230102";
+    seed_opener(&fx, wa, "wamid.OUT-B", "delivered", None).await;
+    set_template_buttons(
+        &fx,
+        json!([{"type": "QUICK_REPLY", "text": "Yes, call me"}, {"type": "QUICK_REPLY", "text": "No thanks"}]),
+    )
+    .await;
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(view["stage"], "contacted");
+    assert_eq!(view["stageSetBy"], "auto");
+    assert!(view["lastContactedAt"].is_string());
+    assert_eq!(view["lastOutboundState"], "delivered");
+
+    // The owner moves it to call_booked; a plain reply later does not pull it back.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"stage": "call_booked"})),
+    )
+    .await
+    .expect("move");
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound(wa, "wamid.IN-B1", "ok thanks"))
+            .await,
+        StatusCode::OK
+    );
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(
+        view["stage"], "call_booked",
+        "never backwards automatically"
+    );
+    assert_eq!(view["stageSetBy"], fx.owner.public_key().to_hex());
+    assert!(view["lastReplyAt"].is_string());
+
+    // Moved down by hand, the owner's word beats the older reply too.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"stage": "contacted"})),
+    )
+    .await
+    .expect("move down");
+    assert_eq!(contact_json(&fx, wa).await["stage"], "contacted");
+
+    // A NEWER tap on the first quick-reply button implies a later stage and wins.
+    let later = Utc::now() + Duration::minutes(5);
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &tap_at(
+                wa,
+                "wamid.IN-B2",
+                "Yes, call me",
+                Some("wamid.OUT-B"),
+                later
+            )
+        )
+        .await,
+        StatusCode::OK
+    );
+    let view = contact_json(&fx, wa).await;
+    assert_eq!(view["stage"], "wants_call");
+    assert_eq!(view["stageSetBy"], "auto");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn no_thanks_and_stop_both_opt_out_but_read_as_different_stages() {
+    // GUARD: `classify_opt_out` stores the reason; `OptOutKind::from_reason` reads it.
+    let fx = fixture().await;
+    let community = fx.community();
+    let reason_of = |wa: &'static str| {
+        let fx = &fx;
+        async move {
+            fx.state
+                .db
+                .whatsapp_get_contact(fx.community(), wa)
+                .await
+                .expect("contact")
+                .expect("exists")
+        }
+    };
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &button_tap("27821230111", "wamid.IN-N1", "No thanks")
+        )
+        .await,
+        StatusCode::OK
+    );
+    let contact = reason_of("27821230111").await;
+    assert!(
+        contact.opted_out_at.is_some(),
+        "No thanks still blocks sending"
+    );
+    assert_eq!(contact.opt_out_reason.as_deref(), Some("no_thanks"));
+    assert_eq!(contact_json(&fx, "27821230111").await["stage"], "no_thanks");
+    assert_eq!(contact_json(&fx, "27821230111").await["optedOut"], true);
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &button_tap("27821230112", "wamid.IN-N2", "Stop messages")
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        reason_of("27821230112").await.opt_out_reason.as_deref(),
+        Some("stop")
+    );
+    assert_eq!(contact_json(&fx, "27821230112").await["stage"], "stopped");
+
+    assert_eq!(
+        fx.deliver(APP_SECRET, &inbound("27821230113", "wamid.IN-N3", "STOP"))
+            .await,
+        StatusCode::OK
+    );
+    assert_eq!(contact_json(&fx, "27821230113").await["stage"], "stopped");
+
+    // A row from before the desk ("asked to stop") reads as stopped.
+    fx.state
+        .db
+        .whatsapp_ensure_contact(community, "27821230114", Some("Old"))
+        .await
+        .expect("contact");
+    fx.state
+        .db
+        .whatsapp_opt_out(community, "27821230114", "asked to stop", Utc::now())
+        .await
+        .expect("opt out");
+    assert_eq!(contact_json(&fx, "27821230114").await["stage"], "stopped");
+
+    // An opted-out contact cannot be moved by hand: the stage would show nothing.
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update("27821230111", json!({"stage": "client"})),
+        )
+        .await,
+    );
+    assert!(refusal.contains("cannot be changed"), "{refusal}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_tap_on_the_templates_first_quick_reply_button_wants_a_call() {
+    // GUARD: `tap_means_wants_call` reads the stored template buttons through the tapped
+    // message; the literal texts are only the fallback for an unknown template.
+    let fx = fixture().await;
+    for (wa, wamid) in [
+        ("27821230121", "wamid.OUT-W1"),
+        ("27821230122", "wamid.OUT-W2"),
+        ("27821230123", "wamid.OUT-W3"),
+    ] {
+        seed_opener(&fx, wa, wamid, "delivered", None).await;
+    }
+    let now = Utc::now();
+
+    // First button "Send me a quote" (not a literal text we know): tapping it counts.
+    set_template_buttons(
+        &fx,
+        json!([{"type": "QUICK_REPLY", "text": "Send me a quote"}, {"type": "QUICK_REPLY", "text": "No thanks"}]),
+    )
+    .await;
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &tap_at(
+                "27821230121",
+                "wamid.IN-W1",
+                "Send me a quote",
+                Some("wamid.OUT-W1"),
+                now
+            )
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        contact_json(&fx, "27821230121").await["stage"],
+        "wants_call"
+    );
+
+    // The literal "Yes, call me" on a template whose first button is something else is just a reply.
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &tap_at(
+                "27821230122",
+                "wamid.IN-W2",
+                "Yes, call me",
+                Some("wamid.OUT-W2"),
+                now
+            )
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(contact_json(&fx, "27821230122").await["stage"], "replied");
+
+    // Redelivery of the same tap changes nothing (idempotent).
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &tap_at(
+                "27821230121",
+                "wamid.IN-W1",
+                "Send me a quote",
+                Some("wamid.OUT-W1"),
+                now
+            )
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        contact_json(&fx, "27821230121").await["stage"],
+        "wants_call"
+    );
+
+    // No context (template unknown): the literal fallback applies.
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &tap_at("27821230123", "wamid.IN-W3", "Yes, tell me more", None, now)
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        contact_json(&fx, "27821230123").await["stage"],
+        "wants_call"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_failed_send_with_the_meta_undeliverable_code_is_not_on_whatsapp_until_a_later_send_lands(
+) {
+    let fx = fixture().await;
+    let wa = "27821230131";
+    seed_opener(&fx, wa, "wamid.OUT-F1", "failed", Some("131026")).await;
+    assert_eq!(contact_json(&fx, wa).await["stage"], "not_on_whatsapp");
+    assert_eq!(contact_json(&fx, wa).await["lastOutboundState"], "failed");
+
+    // Another failure code (a spam block) is not "not on WhatsApp".
+    let other = "27821230132";
+    seed_opener(&fx, other, "wamid.OUT-F2", "failed", Some("131049")).await;
+    assert_ne!(contact_json(&fx, other).await["stage"], "not_on_whatsapp");
+
+    // A newer message that reached the contact clears it.
+    sqlx::query(
+        "INSERT INTO whatsapp_messages (community_id, id, wa_id, direction, kind, body, state, wamid, sent_at, created_at) \
+         VALUES ($1, $2, $3, 'out', 'text', 'Hello again', 'sent', 'wamid.OUT-F3', now(), now())",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(Uuid::new_v4())
+    .bind(wa)
+    .execute(&fx.pool)
+    .await
+    .expect("later send");
+    assert_eq!(contact_json(&fx, wa).await["stage"], "contacted");
+
+    // A manual move is refused while the number is unreachable.
+    let blocked = "27821230133";
+    seed_opener(&fx, blocked, "wamid.OUT-F4", "failed", Some("131026")).await;
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(blocked, json!({"stage": "client"})),
+        )
+        .await,
+    );
+    assert!(refusal.contains("cannot be changed"), "{refusal}");
 }

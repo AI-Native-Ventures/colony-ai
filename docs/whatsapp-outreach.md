@@ -162,7 +162,7 @@ for an outbound message is immutable.
 
 ## Events (member signed commands, handled by the relay)
 
-**Kind block.** This feature owns actions `47048` to `47055` (four used: `47048` to `47051`) and,
+**Kind block.** This feature owns actions `47048` to `47055` (five used: `47048` to `47052`) and,
 if relay-signed heads are ever needed, `30660` to `30667` (none used today). `47046` and `47047` are
 reserved for the business profile and team computer actions. Co-founder mode owns
 `30670` to `30679` and `47060` to `47069`. A compile-time assert in `kind.rs` keeps the
@@ -280,6 +280,39 @@ Cap range 0 to 1000. Takes effect immediately. Default 30.
 `templateTitle` with `propose: false` renames (owner/admin only, max 80 characters, kept across
 syncs). With `propose: true` any owner, admin or Outreach member can suggest a title; nothing
 changes until an owner or admin renames. A `template_title_proposed` notice is posted in Outreach.
+
+### `47052` `KIND_WHATSAPP_CONTACT_UPDATE` (owner, admin, their agents such as Scout, Outreach members)
+
+```json
+{ "v": 1, "waId": "27821234567", "stage": "call_booked" }
+{ "v": 1, "waId": "27821234567", "label": "Plane Tree Hotel" }
+{ "v": 1, "waId": "27821234567", "label": null }
+```
+
+Sets the contact's pipeline stage and/or its label (owner's name, shown instead of the WhatsApp
+profile name; `null` clears it; 1 to 120 characters). Same access as replying (`Access::can_send`);
+a plain member is refused. A stage a person may set: `contacted`, `replied`, `wants_call`,
+`call_booked`, `quote_sent`, `client`, `no_thanks`. `stopped` and `not_on_whatsapp` are facts and
+are never accepted; a contact that opted out or is not on WhatsApp refuses a stage change.
+Every change is appended to the audit log (`whatsapp_contact_updated`). Marking `call_booked`
+also adds a `CallBooked` milestone (kind `47069`) to the contact's customer record when
+co-founder mode is on, the record exists and the caller may write it; the milestone is named by
+the command, so a retry never adds a second one.
+
+**Stage** (computed by the relay, returned on every Contact): `none`, `contacted`, `replied`,
+`wants_call`, `call_booked`, `quote_sent`, `client`, `no_thanks`, `stopped`, `not_on_whatsapp`.
+Order of precedence: opted out (`stopped`, or `no_thanks` when the reason is `no_thanks`); latest
+send failed with Meta `131026` (`not_on_whatsapp`); a manual stage unless a newer fact implies a
+strictly later stage; then derived, latest first: `client` (customer record is a client, or the
+linked lead is won), `quote_sent` (record has QuoteDrafted/QuoteAccepted), `call_booked` (record
+has CallBooked), `no_thanks` (lead lost), `wants_call` (tap on the template's first quick-reply
+button), `replied`, `contacted`. Opt-out reasons are stored as `stop` or `no_thanks`; older rows
+(`asked to stop`) read as `stopped`.
+
+Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubkey),
+`stageChangedAt`, `lastContactedAt`, `lastReplyAt`, `label`, `profileName`, `lastOutboundState`
+(`sent`, `delivered`, `read`, `failed` or null), and, when the contact is linked to a lead,
+`businessName` and `website`. `displayName` is the label when one is set.
 
 ## Sending, pacing, cap
 
