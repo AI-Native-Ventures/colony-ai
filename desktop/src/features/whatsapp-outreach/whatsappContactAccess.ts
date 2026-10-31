@@ -7,6 +7,7 @@ export function canManageWhatsAppContact(input: {
   return Boolean(
     input.role === "owner" ||
       input.role === "admin" ||
+      input.role === "member" ||
       input.isOutreachMember ||
       (input.isManagedAgent && input.ownerPubkey?.trim()),
   );
