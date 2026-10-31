@@ -81,7 +81,7 @@
         "manage channel updates details",
         "unknown relay message states keep the WhatsApp chat visible",
         "header, contact identity, and rejected batch summaries stay distinct at owner size",
-        "Outreach approved card sends the exact batch after confirmation",
+        "Outreach pending batch stays in Needs you, not Discussion",
         "Scout DM approved card sends the exact batch after confirmation",
         "approved card opens WhatsApp chats from the channel",
         "pending card changes to approved after approving without reloading",
