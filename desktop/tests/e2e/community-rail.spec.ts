@@ -60,6 +60,42 @@ async function seedCommunities(
   );
 }
 
+test("red proof: Cmd+number switches to the matching workspace", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      get: () => "MacIntel",
+    });
+  });
+  await installMockBridge(page, undefined, {
+    seedPreviewFeatures: false,
+    skipCommunitySeed: true,
+  });
+  await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
+  await page.goto("/");
+  await expect(page.getByTestId("sidebar-business-switcher")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "2",
+        metaKey: true,
+      }),
+    );
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem("buzz-active-community-id"),
+      ),
+    )
+    .toBe(COMMUNITY_B.id);
+});
+
 test.describe("community rail", () => {
   test("shows the rail with multiple communities despite a stale opt-out", async ({
     page,
