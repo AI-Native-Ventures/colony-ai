@@ -422,7 +422,8 @@ impl WakeLedger {
         let Some((_, ids)) = self.turns.remove(position) else {
             return self.sync(pending, now);
         };
-        if answered {
+        // RED PROOF: settle every ended turn, answered or not (the old behavior).
+        if answered || !ids.is_empty() {
             for id in ids {
                 self.in_flight.remove(&id);
             }
