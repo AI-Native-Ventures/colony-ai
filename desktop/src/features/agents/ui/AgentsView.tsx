@@ -11,6 +11,7 @@ import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { useArchivedIdentitiesQuery } from "@/features/identity-archive/hooks";
 import { useActiveAgentTurnsByChannel } from "@/features/agents/activeAgentTurnsStore";
 import { AgentDirectory } from "./AgentDirectory";
+import { KeyRescueCard } from "./KeyRescueCard";
 import { AgentPage } from "./AgentPage";
 import { AgentsDirectoryHeader } from "./AgentsDirectoryHeader";
 import { parseAgentDirectoryPageSize } from "@/features/agents/agentDirectoryModel";
@@ -89,6 +90,7 @@ export function AgentsView({
                 agentCount={directoryAgentCount}
                 onHire={() => void goHireRoles()}
               />
+              <KeyRescueCard />
               <AgentDirectory
                 activePubkeys={activePubkeys}
                 agents={agents.managedAgents}

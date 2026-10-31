@@ -269,6 +269,8 @@ type MockBridgeOptions = {
   companySecretBindingHeads?: RelayEvent[];
   /** Fail the native secret-store boundary with a generic error. */
   companySecretStoreError?: boolean;
+  /** `get_key_rescue_status` result; absent means nothing to rescue. */
+  keyRescueStatus?: unknown;
   /** Reject secret-binding activation publishes in order. */
   companySecretActivationErrors?: string[];
   /** Reject these ask response publishes in order, then accept them. */
