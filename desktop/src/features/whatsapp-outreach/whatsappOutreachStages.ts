@@ -53,9 +53,10 @@ export function getWhatsAppNeedsYouItems(
       item = { contact, section: "waiting-for-reply", hasDraft };
     }
     if (!item) continue;
-    const existing = itemByWaId.get(contact.waId);
+    const itemKey = `${contact.waId}:${item.section}`;
+    const existing = itemByWaId.get(itemKey);
     if (!existing || item.section === "wants-call") {
-      itemByWaId.set(contact.waId, item);
+      itemByWaId.set(itemKey, item);
     }
   }
   const items = [...itemByWaId.values()];
