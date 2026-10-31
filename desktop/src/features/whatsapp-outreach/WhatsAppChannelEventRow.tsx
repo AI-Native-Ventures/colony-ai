@@ -179,7 +179,10 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     (batchDetailsQuery.data?.status === "approved"
       ? batchDetailsQuery.data
       : null);
-  const canSendNow = canSendNowWhatsAppBatch(sendNowBatch, canUseSendNow);
+  const canSendNow = canSendNowWhatsAppBatch(
+    sendNowBatch,
+    canUseSendNow || role === "member",
+  );
 
   async function decide(nextDecision: "approve" | "reject") {
     if (!batch || !canManage || busy) return;
