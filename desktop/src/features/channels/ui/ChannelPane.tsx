@@ -68,6 +68,7 @@ import { useChannelPaneMessages } from "@/features/channels/ui/useChannelPaneMes
 import { useRoutedMessageEdit } from "@/features/channels/ui/useRoutedMessageEdit";
 import { Button } from "@/shared/ui/button";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
+import { foldWhatsAppActivityEntries } from "@/features/whatsapp-outreach/whatsappDiscussionActivity";
 import { useRenderScopedReactionHydration } from "@/features/messages/lib/useRenderScopedReactionHydration";
 import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/onboarding/welcome";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
@@ -86,6 +87,8 @@ export const ChannelPane = React.memo(function ChannelPane({
   editTarget = null,
   fetchOlder,
   header,
+  workspaceContent,
+  foldWhatsAppActivity = false,
   idleAuxiliaryPanel = null,
   idleAuxiliaryHeaderActions,
   idleAuxiliaryOverridesThread = false,
@@ -387,6 +390,13 @@ export const ChannelPane = React.memo(function ChannelPane({
         : channelTimelineEntries,
     [channelTimelineEntries, threadContextRootId],
   );
+  const renderedTimelineEntries = React.useMemo(
+    () =>
+      foldWhatsAppActivity
+        ? foldWhatsAppActivityEntries(mainTimelineEntries)
+        : mainTimelineEntries,
+    [foldWhatsAppActivity, mainTimelineEntries],
+  );
   const visibleMessages = React.useMemo(
     () =>
       threadContextRootId
@@ -676,7 +686,9 @@ export const ChannelPane = React.memo(function ChannelPane({
           >
             {header}
             <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-              {showCofounderChatSurface ? (
+              {workspaceContent !== undefined ? (
+                workspaceContent
+              ) : showCofounderChatSurface ? (
                 <div
                   className="cf2-chat-embedded min-h-0 flex-1 overflow-y-auto"
                   data-testid="cofounder-chat-surface"
@@ -756,7 +768,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                   onRetry={onRetryTimeline}
                   entranceMessageId={entranceMessageId}
                   onEntranceMessageComplete={onEntranceMessageComplete}
-                  mainEntries={mainTimelineEntries}
+                  mainEntries={renderedTimelineEntries}
                   threadSummaries={threadSummaries}
                   messages={visibleMessages}
                   firstUnreadMessageId={firstUnreadMessageId}
@@ -787,7 +799,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                   threadUnreadCounts={threadUnreadCounts}
                 />
               )}
-              {isNonMemberView ? (
+              {workspaceContent !== undefined ? null : isNonMemberView ? (
                 <div
                   data-testid="join-banner"
                   className="flex flex-wrap items-center gap-3.5 border-t border-colony-border bg-[var(--colony-warm-surface-alt)] px-7 py-3.5"
