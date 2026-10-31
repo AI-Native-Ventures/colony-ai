@@ -17,6 +17,7 @@ import {
   useWhatsAppBatchQuery,
   useWhatsAppBatchesQuery,
   useWhatsAppCommand,
+  useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
 import { whatsappQueuedScheduleLabel } from "./whatsappOutreachModels";
 import { canSendNowWhatsAppBatch } from "./whatsappSendNowEligibility";
@@ -32,6 +33,20 @@ function batchPrefix(content: string): string | null {
       ?.replaceAll("-", "")
       .toLocaleLowerCase() ?? null
   );
+}
+
+function decisionDateTimeLabel(value: string | null | undefined): string {
+  if (!value) return "Time unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
+  return new Intl.DateTimeFormat("en-ZA", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Africa/Johannesburg",
+  }).format(date);
 }
 
 function ChannelCard({
@@ -127,7 +142,14 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         ? "rejected"
         : batch?.status;
   const batchDetailsQuery = useWhatsAppBatchQuery(
-    batch && initialDisplayStatus === "approved" ? batch.batchId : null,
+    batch && initialDisplayStatus && initialDisplayStatus !== "pending"
+      ? batch.batchId
+      : null,
+  );
+  const templatesQuery = useWhatsAppTemplatesQuery(
+    Boolean(
+      batch && initialDisplayStatus && initialDisplayStatus !== "pending",
+    ),
   );
   const approvedDetailsQuery = useWhatsAppApprovedBatchDetailsQuery(
     initialDisplayStatus === "approved",
@@ -159,7 +181,8 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         ) ?? (decision === "approve" ? batchDetailsQuery.data : null));
   const approvedByPubkey =
     approvedDetail?.decidedBy ??
-    (decision === "approve" ? (currentPubkey ?? null) : null);
+    batchDetailsQuery.data?.decidedBy ??
+    (decision ? (currentPubkey ?? null) : null);
   const approverProfilesQuery = useUsersBatchQuery(
     approvedByPubkey ? [approvedByPubkey] : [],
     { enabled: Boolean(approvedByPubkey) },
@@ -168,6 +191,22 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     ? approverProfilesQuery.data?.profiles[normalizePubkey(approvedByPubkey)]
     : undefined;
   const approvedByName = approver?.displayName?.trim() || "an owner";
+  const decisionDetail =
+    batchDetailsQuery.data?.batchId === batch?.batchId
+      ? batchDetailsQuery.data
+      : null;
+  const decidedTemplateName = decisionDetail?.template ?? batch?.template ?? "";
+  const decidedTemplateTitle =
+    templatesQuery.data?.find(
+      (template) => template.name === decidedTemplateName,
+    )?.title ?? decidedTemplateName;
+  const decidedMessageCount =
+    decisionDetail?.counts.total ?? batch?.rows.total ?? 0;
+  const decisionSummary = decisionDetail
+    ? `${decidedTemplateTitle} · ${decidedMessageCount} ${decidedMessageCount === 1 ? "message" : "messages"} · ${decisionDateTimeLabel(decisionDetail.decidedAt)} · ${approvedByName}`
+    : batchDetailsQuery.isError
+      ? "Decision details could not be loaded."
+      : "Loading decision details…";
   const scheduleRow = approvedDetail?.rows.find(
     (row) => row.state === "ready" || row.state === "queued",
   );
@@ -275,6 +314,14 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="m-0 text-sm font-bold">{title}</h3>
+          {isRejected || isSent ? (
+            <p
+              className="m-0 mt-1 text-sm text-colony-fg-secondary"
+              data-testid="whatsapp-channel-batch-summary"
+            >
+              {decisionSummary}
+            </p>
+          ) : null}
           {isPending ? (
             <p className="mb-0 mt-1 whitespace-pre-wrap text-sm text-colony-fg-secondary">
               {message.body}

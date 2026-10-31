@@ -526,6 +526,21 @@ export function maskWhatsAppNumber(value: string): string {
   return `+${digits.slice(0, 3)} **** ${digits.slice(-4)}`;
 }
 
+export function formatWhatsAppPhoneNumber(value: string): string {
+  const digits = value.replace(/\D/gu, "");
+  if (digits.startsWith("27") && digits.length === 11) {
+    return `+27 ${digits.slice(2, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  }
+  return value.trim();
+}
+
+export function isWhatsAppPhoneLikeName(value: string): boolean {
+  const name = value.trim();
+  return (
+    /^[+]?([\d\s().-])+$/u.test(name) && name.replace(/\D/gu, "").length >= 7
+  );
+}
+
 export function isWhatsAppReplyWindowOpen(
   lastInboundAt: string | number | null,
   nowMs: number,
