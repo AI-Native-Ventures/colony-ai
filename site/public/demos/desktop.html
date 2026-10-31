@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Colony desktop demo</title>
+  <link rel="preload" href="../assets/manrope-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="demo.css?v=1">
+  <script src="demo.js?v=1" defer></script>
+</head>
+<body data-layout="desktop">
+<div class="screen" data-scene="customers" aria-hidden="true">
+
+  <!-- Sidebar: the Colony 3.0 shell on its field -->
+  <div class="side">
+    <div class="field"><i></i><i></i><i></i><b></b><svg aria-hidden="true"><filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#grain)"/></svg></div>
+    <div class="ws">
+      <span class="ws-tile">L</span>
+      <span class="ws-name"><b>Lerato Social</b><span>Company workspace</span></span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a4453" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
+    </div>
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
+      <span>Find anything</span><kbd>⌘K</kbd>
+    </div>
+    <nav class="side-nav">
+      <div class="nav-group">
+        <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg><span class="lbl">Today</span></div>
+        <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="4.5" width="13" height="16" rx="2.5"/><path d="M9.5 3.5h5v3h-5z"/><path d="m9.5 13.5 2 2 3.5-4"/></svg><span class="lbl">Activity</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav" data-open="team"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20.5V8.5l8-5 8 5v12"/><path d="M9.5 20.5v-6h5v6"/></svg><span class="lbl">Company</span><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+        <div class="sub" data-for="team">
+          <div class="nav" data-on="team"><span class="lbl">Team</span><span class="count" data-team-count>6</span></div>
+          <div class="nav"><span class="lbl">Agents</span></div>
+          <div class="nav"><span class="lbl">Work</span></div>
+        </div>
+        <div class="nav" data-open="money"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="12.5" rx="2.5"/><path d="M9 7.5V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5v2"/><path d="M3.5 12.5h17"/></svg><span class="lbl">Business</span><svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+        <div class="sub" data-for="money">
+          <div class="nav"><span class="lbl">Leads</span></div>
+          <div class="nav"><span class="lbl">Clients</span></div>
+          <div class="nav" data-on="money"><span class="lbl">Money</span></div>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label"><span>Channels</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="nav"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M4 15h14M10 4 8 20M16 4l-2 16"/></svg><span class="lbl">general</span></div>
+        <div class="nav"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg><span class="lbl">Sales</span></div>
+        <div class="nav"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg><span class="lbl">Outreach</span><span class="badge" data-outreach hidden>1</span></div>
+        <div class="nav"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg><span class="lbl">Welcome</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label"><span>Direct messages</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="nav" data-on="customers"><span class="ant a22"><img src="../assets/agents/scout.svg" alt=""></span><span class="lbl">Scout</span><i class="online"></i></div>
+        <div class="nav"><span class="ant a22 t-aya"><img src="../assets/agents/aya.svg" alt=""></span><span class="lbl">Aya</span><i class="online"></i></div>
+        <div class="nav appear" data-birch hidden><span class="ant a22 t-birch"><img src="../assets/agents/birch.svg" alt=""></span><span class="lbl">Birch</span><i class="online"></i></div>
+      </div>
+    </nav>
+    <div class="side-foot"><span class="person p36">LM</span><span><b>Lerato Molefe</b><small>Set a status</small></span></div>
+  </div>
+
+  <div class="main">
+
+    <!-- Find customers: Scout lines up a WhatsApp batch and waits for your yes -->
+    <section class="scene" data-id="customers">
+      <header class="chat-head">
+        <span class="ant a40 with-dot"><img src="../assets/agents/scout.svg" alt=""></span>
+        <span class="grow"><b>Scout</b><small>AI employee · managed by Lerato</small></span>
+        <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M14.5 4.5v15"/></svg></span>
+        <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg></span>
+        <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5.5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="18.5" r="1.8"/></svg></span>
+      </header>
+      <div class="chat" data-chat>
+        <div class="day">Yesterday</div>
+        <article class="msg">
+          <span class="ant a36"><img src="../assets/agents/scout.svg" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta"><b>Scout</b><span>managed by Lerato</span><span>17:04</span></div>
+            <p class="msg-text">Wrapped up for today. The October carousel is with <span class="mention">@Mina</span> and <span class="mention">@Theo</span> checked the captions. Tomorrow I can line up new shops for outreach.</p>
+          </div>
+        </article>
+        <div class="day">Today</div>
+      </div>
+      <div class="composer-wrap">
+        <div class="composer">
+          <span class="composer-text" data-composer data-placeholder="Message Scout"></span>
+          <button tabindex="-1" class="send" type="button" data-send aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+        </div>
+      </div>
+      <div class="toast" data-toast style="right: 24px; bottom: 96px;">
+        <span class="ant a40 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>
+        <span><b>Little Kin replied on WhatsApp</b><span>“Yes, tell me more.” Aya is drafting an answer for you to check.</span></span>
+        <span class="btn btn-ink" style="height: 34px;">Open</span>
+      </div>
+    </section>
+
+    <!-- Revenue & costs: Money, with a reminder Noor drafted -->
+    <section class="scene" data-id="money">
+      <div class="topbar">
+        <span class="icon-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span>
+        <span class="icon-btn" style="color: var(--faint);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+        <span class="crumbs"><span>Business</span><span>/</span><b>Money</b></span>
+      </div>
+      <div class="page">
+        <div class="page-title"><h1>Money</h1><p>Invoices, payments and adjustments recorded in your client channels.</p></div>
+        <div class="tabs-row">
+          <div class="seg"><span class="on">Overview</span><span>Revenue</span><span>Invoices</span></div>
+          <div class="links"><span class="link">Credit notes &amp; refunds</span><span class="link">Follow-ups</span><span class="link">Costs</span><span class="link">Profitability</span></div>
+        </div>
+        <div class="selects">
+          <span class="select">Period <b>October 2026</b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25222c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          <span class="select">Client <b>All clients</b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25222c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+        </div>
+        <div class="kpis">
+          <div class="card kpi"><span>Invoiced revenue <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span><b>R 14 200</b><small>Issued invoices · drafts excluded</small></div>
+          <div class="card kpi"><span>Outstanding invoices <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span><b data-outstanding>R 6 200</b><small>Unpaid balances for this period</small></div>
+        </div>
+        <div class="money-cols">
+          <div class="card">
+            <div class="card-head"><h2>Needs attention</h2><span class="link">All follow-ups →</span></div>
+            <div class="attn" data-attn>
+              <div class="attn-item">
+                <span class="client">CC</span>
+                <span class="grow"><b>Cedar Café · R 3 000 outstanding</b><small>Invoice 0027 · due 20 Oct 2026</small></span>
+                <span class="chip chip-bad" data-attn-chip>Overdue</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#68626f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+              </div>
+              <div class="ask-box" data-ask>
+                <span class="ant a28 t-noor"><img src="../assets/agents/noor.svg" alt=""></span>
+                <span class="grow"><b>Reminder drafted by Noor</b> · needs your approval</span>
+                <button tabindex="-1" class="btn btn-line" type="button" data-review>Review reminder</button>
+              </div>
+            </div>
+          </div>
+          <div class="card cash">
+            <h2>Cash movement</h2>
+            <span class="eyebrow">Payments collected</span>
+            <span class="big" data-collected>R 8 000</span>
+            <div data-pays>
+              <div class="pay"><span><b>The Olive House</b><small>Invoice 0025 · 12 Oct 2026</small></span><strong>R 6 500</strong></div>
+              <div class="pay"><span><b>Cedar Café</b><small>Invoice 0027 · 18 Oct 2026 · Recorded by Noor</small></span><strong>R 1 500</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="scrim" data-scrim></div>
+      <div class="drawer" data-drawer>
+        <div class="drawer-head">
+          <span class="client">CC</span>
+          <span class="grow"><b>Reminder for Cedar Café</b><small>Invoice 0027 · R 3 000 · 11 days overdue</small></span>
+          <button tabindex="-1" class="icon-btn" type="button" data-close-drawer aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div class="drawer-body">
+          <div class="steps">
+            <div class="step done"><i>✓</i><span><b>Drafted</b><small>Noor wrote it from the invoice</small></span></div>
+            <div class="step now" data-step-review><i>2</i><span><b>In review</b><small>You check the wording</small></span></div>
+            <div class="step" data-step-approved><i>3</i><span><b>Approved</b><small>Ready for you to send yourself</small></span></div>
+          </div>
+          <div class="letter">
+            <div class="letter-from"><span class="ant a22 t-noor"><img src="../assets/agents/noor.svg" alt=""></span>Drafted by Noor · for WhatsApp</div>
+            Hi Thandi, a friendly reminder that invoice 0027 for R 3 000 was due on 20 October. You can pay by EFT with the details on the invoice, or reply here if anything looks wrong. Thank you!<br>Lerato
+          </div>
+          <p class="drawer-note">Colony saves reminder drafts only. Nothing is sent until you send it.</p>
+        </div>
+        <div class="drawer-foot">
+          <button tabindex="-1" class="btn btn-ink" type="button" data-approve-reminder>Approve</button>
+          <button tabindex="-1" class="btn btn-line" type="button" data-edit-reminder>Edit</button>
+          <button tabindex="-1" class="btn btn-ink" type="button" data-copy hidden>Copy reminder</button>
+        </div>
+      </div>
+      <div class="toast" data-toast style="right: 24px; bottom: 24px;">
+        <span class="ant a40 t-noor"><img src="../assets/agents/noor.svg" alt=""></span>
+        <span><b>Noor recorded a payment</b><span>Cedar Café paid R 3 000 for invoice 0027.</span></span>
+      </div>
+    </section>
+
+    <!-- Grow your team: hire a new AI employee -->
+    <section class="scene" data-id="team">
+      <div class="topbar">
+        <span class="icon-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span>
+        <span class="icon-btn" style="color: var(--faint);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+        <span class="crumbs"><span>Company</span><span>/</span><span>Team</span><span>/</span><b data-crumb>Hire</b></span>
+      </div>
+      <div class="page">
+
+        <div class="hire-step is-on" data-step="role">
+          <div class="page-title"><h1>Hire an AI employee</h1><p>Pick a role, or describe your own. Scout is already your Chief of Staff.</p></div>
+          <div class="stepper"><span class="now"><i>1</i>Role</span><em></em><span><i>2</i>Configure</span><em></em><span><i>3</i>Review</span><em></em><span><i>4</i>Hired</span></div>
+          <div class="own-role">
+            <span class="plus"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="grow"><b>Create your own role</b><small>Describe the job in your own words. Scout drafts the role and you check it.</small></span>
+            <span class="btn btn-ink">Describe a job</span>
+          </div>
+          <div class="role-groups">
+            <div class="role-group">
+              <h3><span class="ant a22 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>Sales</h3>
+              <div class="row-pick"><span class="ant a48 t-aya"><img src="../assets/agents/aya.svg" alt=""></span><span class="grow"><b>Business development</b><small>Finds new customers and follows up on leads.</small></span><span class="radio"></span></div>
+            </div>
+            <div class="role-group">
+              <h3><span class="ant a22 t-theo"><img src="../assets/agents/theo.svg" alt=""></span>Operations</h3>
+              <div class="row-pick"><span class="ant a48 t-theo"><img src="../assets/agents/theo.svg" alt=""></span><span class="grow"><b>Writer</b><small>Writes posts, emails and documents in your voice.</small></span><span class="radio"></span></div>
+              <div class="row-pick" data-pick-role><span class="ant a48 t-theo"><img src="../assets/agents/theo.svg" alt=""></span><span class="grow"><b>Hospitality researcher</b><small>Finds and compares guesthouses, hotels and venues.</small></span><span class="radio"></span></div>
+            </div>
+            <div class="role-group">
+              <h3><span class="ant a22 t-noor"><img src="../assets/agents/noor.svg" alt=""></span>Finance</h3>
+              <div class="row-pick"><span class="ant a48 t-noor"><img src="../assets/agents/noor.svg" alt=""></span><span class="grow"><b>Bookkeeper</b><small>Records money in and out and drafts your invoices.</small></span><span class="radio"></span></div>
+            </div>
+            <div class="role-group">
+              <h3><span class="ant a22 t-mina"><img src="../assets/agents/mina.svg" alt=""></span>Brand</h3>
+              <div class="row-pick"><span class="ant a48 t-mina"><img src="../assets/agents/mina.svg" alt=""></span><span class="grow"><b>Social media manager</b><small>Plans and drafts posts for your social accounts.</small></span><span class="radio"></span></div>
+            </div>
+          </div>
+          <div class="hire-foot"><button tabindex="-1" class="btn btn-ink" type="button" data-continue disabled>Continue</button></div>
+        </div>
+
+        <div class="hire-step" data-step="configure">
+          <div class="page-title"><h1>Set up your Hospitality researcher</h1><p>Its name, picture, AI and channels.</p></div>
+          <div class="stepper"><span class="done"><i>✓</i>Role</span><em></em><span class="now"><i>2</i>Configure</span><em></em><span><i>3</i>Review</span><em></em><span><i>4</i>Hired</span></div>
+          <div class="config">
+            <div class="card">
+              <div class="pic">
+                <span class="ant a56 t-theo" data-pic><img src="../assets/agents/theo.svg" alt=""></span>
+                <span class="grow"><b>Picture</b><small data-pic-note>Picked from the role. Operations gets the blue ant with a gear.</small></span>
+                <button tabindex="-1" class="btn btn-line" type="button" data-change-pic>Change picture</button>
+                <div class="swatches" data-swatches>
+                  <button tabindex="-1" class="swatch is-picked" type="button" style="background: #6e97de;" aria-label="Blue"></button>
+                  <button tabindex="-1" class="swatch" type="button" style="background: #4fae9c;" data-teal aria-label="Teal"></button>
+                  <button tabindex="-1" class="swatch" type="button" style="background: #719763;" aria-label="Green"></button>
+                  <button tabindex="-1" class="swatch" type="button" style="background: #e0826b;" aria-label="Coral"></button>
+                  <button tabindex="-1" class="swatch" type="button" style="background: #d9a83f;" aria-label="Gold"></button>
+                  <button tabindex="-1" class="swatch" type="button" style="background: #9179da;" aria-label="Lilac"></button>
+                </div>
+              </div>
+              <div class="fields">
+                <span class="field-l">Name<span class="input" data-name data-placeholder="Give it a name"></span></span>
+                <span class="field-l">Role<span class="input">Hospitality researcher</span></span>
+              </div>
+              <span class="field-l">Who can give it instructions<span class="input">You and admins</span></span>
+              <div class="field-l">Add it to channels
+                <div class="chip-row">
+                  <span class="chip-toggle"><span class="box"></span>#general</span>
+                  <span class="chip-toggle" data-sales><span class="box"></span>#Sales</span>
+                  <span class="chip-toggle"><span class="box"></span>#Outreach</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h2 style="font-size: 18px; font-weight: 800;">AI</h2>
+              <div class="ai-summary"><span><span>Model</span><b>Nemotron 3 Ultra</b></span><span><span>Harness</span><b>Colony Agent</b></span><span><span>Effort</span><b>medium</b></span></div>
+              <span class="opt-label">Colony</span>
+              <div class="option is-on"><span class="radio"></span><span><b>Colony free AI</b><small>Harness: Colony Agent · Provider: Colony free AI</small></span></div>
+              <span class="opt-label">Your Claude plan</span>
+              <div class="option"><span class="radio"></span><span><b>Claude Opus 5.5</b><small>Harness: Claude Code</small></span></div>
+              <div class="option"><span class="radio"></span><span><b>Claude Sonnet 5.5</b><small>Harness: Claude Code</small></span></div>
+            </div>
+          </div>
+          <div class="hire-foot"><button tabindex="-1" class="btn btn-line" type="button">Back</button><button tabindex="-1" class="btn btn-ink" type="button" data-to-review>Continue to review</button></div>
+        </div>
+
+        <div class="hire-step" data-step="review">
+          <div class="page-title"><h1>Review Birch</h1><p>Check the details, then hire.</p></div>
+          <div class="stepper"><span class="done"><i>✓</i>Role</span><em></em><span class="done"><i>✓</i>Configure</span><em></em><span class="now"><i>3</i>Review</span><em></em><span><i>4</i>Hired</span></div>
+          <dl class="card review">
+            <dt>Picture</dt><dd><span class="ant a40 t-birch"><img src="../assets/agents/birch.svg" alt=""></span>Teal, chosen by you</dd>
+            <dt>Name</dt><dd>Birch</dd>
+            <dt>Role</dt><dd>Hospitality researcher</dd>
+            <dt>Reports to</dt><dd><span class="ant a28"><img src="../assets/agents/scout.svg" alt=""></span>Scout · Chief of Staff</dd>
+            <dt>Channels</dt><dd>#Sales</dd>
+            <dt>Takes instructions from</dt><dd>You and admins</dd>
+            <dt>AI</dt><dd>Nemotron 3 Ultra · Colony free AI</dd>
+          </dl>
+          <div class="hire-foot"><button tabindex="-1" class="btn btn-line" type="button">Back</button><button tabindex="-1" class="btn btn-ink" type="button" data-hire>Hire Birch</button></div>
+        </div>
+
+        <div class="hire-step hired" data-step="hired">
+          <div class="stepper"><span class="done"><i>✓</i>Role</span><em></em><span class="done"><i>✓</i>Configure</span><em></em><span class="done"><i>✓</i>Review</span><em></em><span class="now"><i>✓</i>Hired</span></div>
+          <span class="ant a96 t-birch"><img src="../assets/agents/birch.svg" alt=""></span>
+          <h1>Birch joined the team.</h1>
+          <p>Hospitality researcher · reports to Scout · #Sales</p>
+          <div class="intro">
+            <span class="opt-label">Introduction in #Sales</span>
+            <div class="card">
+              <span class="ant a36 t-birch"><img src="../assets/agents/birch.svg" alt=""></span>
+              <div>
+                <div class="msg-meta"><b>Birch</b><span>Hospitality researcher · just now</span></div>
+                <p>Hello team. I’ll coordinate hospitality research for Lerato Social. Mention me here when you need a market scan or a shortlist of hospitality leads to qualify.</p>
+              </div>
+            </div>
+          </div>
+          <div class="ph-actions" style="justify-content: center;"><span class="btn btn-ink">Open employee profile</span><span class="btn btn-line">View team</span><span class="btn btn-line">Open introduction channel</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <span class="cursor" data-cursor><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4.5 2.8 19.4 13l-7.1 1.3-3.9 6.9z" fill="#25222c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+</div>
+
+<template id="t-ask">
+  <article class="msg appear">
+    <span class="person p36">LM</span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Lerato Molefe</b><span>10:31</span></div>
+      <p class="msg-text">Line up the Parkhurst gift shops for WhatsApp. Use the Sample posts template.</p>
+    </div>
+  </article>
+</template>
+
+<template id="t-typing">
+  <article class="msg appear" data-typing>
+    <span class="ant a36"><img src="../assets/agents/scout.svg" alt=""></span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Scout</b><span>managed by Lerato</span></div>
+      <span class="typing"><i></i><i></i><i></i></span>
+    </div>
+  </article>
+</template>
+
+<template id="t-batch">
+  <article class="msg appear">
+    <span class="ant a36"><img src="../assets/agents/scout.svg" alt=""></span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Scout</b><span>managed by Lerato</span><span>10:46</span></div>
+      <p class="msg-text">12 are ready, each with three sample posts. Nothing goes out until you approve.</p>
+      <div class="batch" data-batch>
+        <div class="batch-tags"><span class="chip chip-need">Needs you</span><span class="chip chip-soft">WhatsApp batch</span><span>Sends from +27 61 534 0627</span></div>
+        <h3>Scout wants to message 12 shops in Parkhurst</h3>
+        <p class="batch-meta">Template: Sample posts · Marketing · approved by Meta</p>
+        <p class="batch-label">First message, as Little Kin will see it</p>
+        <div class="wa-bubble">Hey, my name’s Lerato from Lerato Social 👋 I came across your shop while looking for <span class="mention">gift shops</span> in <span class="mention">Parkhurst</span> and made three sample posts for you. Take a look: <a>preview.lerato.social/little-kin</a><br><br>These could be on your Instagram this week. Interested?</div>
+        <div class="wa-replies"><span>↩ Yes, I’m interested</span><span>↩ Not interested</span></div>
+        <div class="list-head"><span>Shops · 12</span><span>Preview link filled in per shop</span></div>
+        <div class="shop"><span class="shop-thumb th1"></span><span class="shop-name"><b>Little Kin</b><small>+27 82 *** 4410</small></span><span class="link">Post preview ↗</span><span class="btn btn-line">Edit</span><span class="btn btn-quiet">Remove</span></div>
+        <div class="shop"><span class="shop-thumb th2"></span><span class="shop-name"><b>The Sunday Edit</b><small>+27 71 *** 2286</small></span><span class="link">Post preview ↗</span><span class="btn btn-line">Edit</span><span class="btn btn-quiet">Remove</span></div>
+        <div class="shop"><span class="shop-thumb th3"></span><span class="shop-name"><b>Common Ground Store</b><small>+27 83 *** 9031</small></span><span class="link">Post preview ↗</span><span class="btn btn-line">Edit</span><span class="btn btn-quiet">Remove</span></div>
+        <div class="batch-actions"><button tabindex="-1" class="btn btn-ink" type="button" data-approve>Approve all 12</button><button tabindex="-1" class="btn btn-line" type="button">Reject</button><span class="spacer"></span><span class="link">Show all 12</span></div>
+      </div>
+    </div>
+  </article>
+</template>
+
+<template id="t-sending">
+  <div class="batch appear" data-batch>
+    <div class="batch-tags"><span class="chip chip-ok">✓ Approved</span><span class="chip chip-soft">WhatsApp batch</span><span>You approved at 10:52 · Sample posts</span></div>
+    <h3>Messaging 12 shops in Parkhurst</h3>
+    <p class="batch-progress"><b data-sent>0</b> of 12 sent</p>
+    <div class="bar" data-bar><i></i><i></i><i></i></div>
+    <div class="tiles"><div class="tile"><span>Next send</span><b data-next>10:55</b></div><div class="tile"><span>Still to go today</span><b data-left>8</b></div><div class="tile need"><span>Roll to tomorrow</span><b>4</b></div></div>
+    <p class="batch-note">Sends are spaced about 8 minutes apart to keep the number’s quality Green.</p>
+    <div class="list-head"><span>Shops · 12</span></div>
+    <div class="shop" data-row><span class="shop-thumb th1"></span><span class="shop-name"><b>Little Kin</b><small>+27 82 *** 4410</small></span><time>10:55</time><span class="chip chip-accent">Up next</span></div>
+    <div class="shop" data-row><span class="shop-thumb th2"></span><span class="shop-name"><b>The Sunday Edit</b><small>+27 71 *** 2286</small></span><time>11:03</time><span class="chip chip-soft">Queued</span></div>
+    <div class="shop" data-row><span class="shop-thumb th3"></span><span class="shop-name"><b>Common Ground Store</b><small>+27 83 *** 9031</small></span><time>11:11</time><span class="chip chip-soft">Queued</span></div>
+    <div class="shop" data-row><span class="shop-thumb th4"></span><span class="shop-name"><b>Gather House</b><small>+27 72 *** 5517</small></span><time>11:19</time><span class="chip chip-soft">Queued</span></div>
+    <div class="batch-actions"><button tabindex="-1" class="btn btn-line" type="button">Pause this batch</button><button tabindex="-1" class="btn btn-line" type="button">Open #Outreach</button></div>
+  </div>
+</template>
+</body>
+</html>

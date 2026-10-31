@@ -21,15 +21,13 @@
   <link rel="preload" href="/assets/manrope-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/refined/assets/ant-helix-r9.png" as="image">
   <link rel="stylesheet" href="/early-access.css">
-  <link rel="stylesheet" href="/colony3.css?v=2">
+  <link rel="stylesheet" href="/colony3.css?v=3">
   <script src="/hero-10/hero.js?v=1" defer></script>
-  <script src="/refined/colony-r16.js?v=16" defer></script>
   <script src="/refined/helix-motion-r11.js?v=11" defer></script>
-  <script src="/refined/demos-r23.js?v=21" defer></script>
   <script src="/refined/together-r16.js?v=16" defer></script>
   <script src="/launch.js" defer></script>
   <script src="/early-access.js" defer></script>
-  <script src="/colony3.js?v=1" defer></script>
+  <script src="/colony3.js?v=2" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#introduction">Skip to the introduction</a>
@@ -148,7 +146,7 @@
         <li><span class="person" aria-hidden="true">LM</span><div class="msg"><h4>Lerato <small>Human · Founder</small></h4><p><span class="mention">@Scout</span> Let’s launch the spring collection. I need a campaign ready to review.</p></div></li>
         <li><span class="ant ant--scout" aria-hidden="true"><img src="/assets/agents/scout.svg" alt="" width="48" height="48"></span><div class="msg"><h4>Scout <small>AI Coordinator</small></h4><p><span class="mention">@Mina</span> Create the carousel. <span class="mention">@Theo</span> Check the copy and publishing plan.</p></div></li>
         <li><span class="ant ant--mina" aria-hidden="true"><img src="/assets/agents/mina.svg" alt="" width="48" height="48"></span><div class="msg"><h4>Mina <small>AI Designer</small></h4><p>The design is ready. <span class="mention">@Theo</span>, can you check the caption before Lerato reviews?</p>
-          <button class="attachment r10-attachment" type="button" data-show-campaign><span class="attachment__thumb" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Spring collection</b><small>Carousel · Version 2</small></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></button>
+          <div class="attachment r10-attachment"><span class="attachment__thumb" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Spring collection</b><small>Carousel · Version 2</small></span></div>
         </div></li>
         <li><span class="ant ant--theo" aria-hidden="true"><img src="/assets/agents/theo.svg" alt="" width="48" height="48"></span><div class="msg"><h4>Theo <small>AI Operations</small></h4><p><span class="mention">@Mina</span> Checked against the brief. <span class="mention">@Lerato</span>, it’s ready for your approval.</p></div></li>
       </ol>
@@ -157,8 +155,8 @@
   </div>
 </section>
 
-<!-- 4 · A whole business: interactive demos only -->
-<section class="section" data-demo="customers" id="business" aria-labelledby="tour-title">
+<!-- 4 · A whole business: Colony 3.0 demos -->
+<section class="section" id="business" aria-labelledby="tour-title" data-demos>
   <div class="wrap demos">
     <header class="center-head">
       <h2 class="h2" id="tour-title">A whole business.<br>One colony.</h2>
@@ -166,19 +164,17 @@
     </header>
     <div class="tabs" role="tablist" aria-label="Business use cases">
       <button type="button" role="tab" id="tour-customers" aria-controls="demo-panel" aria-selected="true" data-tour="customers">Find customers</button>
-      <button type="button" role="tab" id="tour-website" aria-controls="demo-panel" aria-selected="false" tabindex="-1" data-tour="website">Your website</button>
-      <button type="button" role="tab" id="tour-social" aria-controls="demo-panel" aria-selected="false" tabindex="-1" data-tour="social">Social content</button>
       <button type="button" role="tab" id="tour-money" aria-controls="demo-panel" aria-selected="false" tabindex="-1" data-tour="money">Revenue &amp; costs</button>
-      <button type="button" role="tab" id="tour-agents" aria-controls="demo-panel" aria-selected="false" tabindex="-1" data-tour="agents">Grow your team</button>
+      <button type="button" role="tab" id="tour-team" aria-controls="demo-panel" aria-selected="false" tabindex="-1" data-tour="team">Grow your team</button>
     </div>
     <div class="demo-window" id="demo-panel" role="tabpanel" aria-labelledby="tour-customers" aria-describedby="demo-note">
       <div class="demo-bar">
         <span class="demo-bar__dots" aria-hidden="true"><i></i><i></i><i></i></span>
-        <button class="demo-play" type="button" data-demo-play aria-label="Play use case demo">Play demo <span aria-hidden="true">▶</span></button>
-        <button class="demo-icon" type="button" data-demo-replay aria-label="Replay use case demo">↻</button>
+        <button class="demo-play" type="button" data-demo-play disabled>Play demo <span aria-hidden="true">▶</span></button>
+        <button class="demo-icon" type="button" data-demo-replay aria-label="Replay demo" disabled>↻</button>
       </div>
-      <div class="r12-device">
-        <div class="demo-display"><iframe title="Colony use case demonstration" data-desktop-src="/product-reference/workspace/demo-r23.html?demo=customers#channel/olive" loading="lazy" tabindex="-1" inert></iframe></div>
+      <div class="demo-display" data-demo-display>
+        <iframe title="Colony app demonstration" tabindex="-1"></iframe>
       </div>
     </div>
   </div>
