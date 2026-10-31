@@ -4,11 +4,15 @@ import {
   ChevronRight,
   Copy,
   Link2,
+  LogOut,
   Plus,
   Settings2,
   UserRoundPlus,
 } from "lucide-react";
 
+import { toast } from "sonner";
+
+import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
 import type { Community } from "@/features/communities/types";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { isMacPlatform } from "@/shared/lib/platform";
@@ -43,6 +47,7 @@ type WorkspaceSwitcherMenuProps = {
   onOpenWorkspaceSettings: () => void;
   onInvitePeople: () => void;
   onCopyWorkspaceLink: () => void;
+  onRemoveWorkspace: (id: string) => Promise<LeaveCommunityResult | undefined>;
 };
 
 function workspaceAddress(relayUrl: string): string {
@@ -159,11 +164,17 @@ function WorkspaceActions({
   onOpenWorkspaceSettings,
   onInvitePeople,
   onCopyWorkspaceLink,
+  onLeaveWorkspace,
+  leaveError,
+  isLeaving,
   mobile = false,
 }: {
   onOpenWorkspaceSettings: () => void;
   onInvitePeople: () => void;
   onCopyWorkspaceLink: () => void;
+  onLeaveWorkspace: () => void;
+  leaveError: string | null;
+  isLeaving: boolean;
   mobile?: boolean;
 }) {
   if (mobile) {
@@ -183,6 +194,28 @@ function WorkspaceActions({
             className="h-4 w-4 text-muted-foreground"
           />
         </button>
+        <button
+          aria-label="Leave workspace"
+          className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-semibold text-destructive outline-hidden transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50"
+          data-testid="workspace-leave-action"
+          disabled={isLeaving}
+          onClick={onLeaveWorkspace}
+          type="button"
+        >
+          <LogOut aria-hidden="true" className="h-5 w-5" />
+          <span className="flex-1">
+            {isLeaving ? "Leaving workspace…" : "Leave workspace"}
+          </span>
+        </button>
+        {leaveError ? (
+          <p
+            className="px-3 py-2 text-xs text-destructive"
+            data-testid="workspace-leave-error"
+            role="alert"
+          >
+            {leaveError}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -226,6 +259,29 @@ function WorkspaceActions({
           <span>Copy workspace link</span>
         </button>
       </DropdownMenuItem>
+      <DropdownMenuSeparator className="my-1.5" />
+      <DropdownMenuItem
+        aria-label="Leave workspace"
+        className="text-destructive focus:text-destructive"
+        data-testid="workspace-leave-action"
+        disabled={isLeaving}
+        onSelect={(event) => {
+          event.preventDefault();
+          onLeaveWorkspace();
+        }}
+      >
+        <LogOut aria-hidden="true" className="h-4 w-4" />
+        <span>{isLeaving ? "Leaving workspace…" : "Leave workspace"}</span>
+      </DropdownMenuItem>
+      {leaveError ? (
+        <p
+          className="px-2 py-2 text-xs text-destructive"
+          data-testid="workspace-leave-error"
+          role="alert"
+        >
+          {leaveError}
+        </p>
+      ) : null}
     </>
   );
 }
@@ -241,9 +297,12 @@ export function WorkspaceSwitcherMenu({
   onOpenWorkspaceSettings,
   onInvitePeople,
   onCopyWorkspaceLink,
+  onRemoveWorkspace,
 }: WorkspaceSwitcherMenuProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
+  const [leaveError, setLeaveError] = React.useState<string | null>(null);
+  const [isLeaving, setIsLeaving] = React.useState(false);
   const menuContentRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -261,6 +320,31 @@ export function WorkspaceSwitcherMenu({
     [onSwitchWorkspace],
   );
 
+  const leaveWorkspace = React.useCallback(async () => {
+    if (!activeWorkspace || isLeaving) return;
+    setIsLeaving(true);
+    setLeaveError(null);
+    try {
+      const result = await onRemoveWorkspace(activeWorkspace.id);
+      setOpen(false);
+      if (result?.status === "already-absent") {
+        toast("Workspace removed", {
+          description:
+            "You were no longer a member, so Colony removed the workspace from this device.",
+        });
+      }
+    } catch (error) {
+      setLeaveError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't leave the workspace. Try again.",
+      );
+      setOpen(true);
+    } finally {
+      setIsLeaving(false);
+    }
+  }, [activeWorkspace, isLeaving, onRemoveWorkspace]);
+
   const renderActions = (mobile = false) => (
     <WorkspaceActions
       mobile={mobile}
@@ -276,6 +360,9 @@ export function WorkspaceSwitcherMenu({
         setOpen(false);
         onOpenWorkspaceSettings();
       }}
+      onLeaveWorkspace={() => void leaveWorkspace()}
+      leaveError={leaveError}
+      isLeaving={isLeaving}
     />
   );
 

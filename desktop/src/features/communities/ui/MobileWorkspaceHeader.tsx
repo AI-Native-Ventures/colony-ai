@@ -1,5 +1,6 @@
 import { ChevronDown, Menu } from "lucide-react";
 
+import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
 import type { Community } from "@/features/communities/types";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import { WorkspaceSwitcherMenu } from "@/features/communities/ui/WorkspaceSwitcherMenu";
@@ -13,6 +14,7 @@ type MobileWorkspaceHeaderProps = {
   onInvitePeople: () => void;
   onJoinWorkspace: () => void;
   onOpenWorkspaceSettings: () => void;
+  onRemoveWorkspace: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onSwitchWorkspace: (id: string) => void;
 };
 
@@ -24,6 +26,7 @@ export function MobileWorkspaceHeader({
   onInvitePeople,
   onJoinWorkspace,
   onOpenWorkspaceSettings,
+  onRemoveWorkspace,
   onSwitchWorkspace,
 }: MobileWorkspaceHeaderProps) {
   const sidebar = useSidebar();
@@ -43,6 +46,7 @@ export function MobileWorkspaceHeader({
           onInvitePeople={onInvitePeople}
           onJoinWorkspace={onJoinWorkspace}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+          onRemoveWorkspace={onRemoveWorkspace}
           onSwitchWorkspace={onSwitchWorkspace}
           renderTrigger={({ open }) => (
             <button

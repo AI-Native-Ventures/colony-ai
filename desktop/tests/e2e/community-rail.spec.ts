@@ -912,12 +912,8 @@ test.describe("community rail", () => {
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
     await page.getByTestId("channel-general").click();
 
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     await expect(page).toHaveURL(randomUrl);
     await expect
@@ -986,12 +982,8 @@ test.describe("community rail", () => {
     const identityBefore = await page.evaluate(async () =>
       window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__("get_identity"),
     );
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     await expect(page.getByText("Join or create a community")).toBeVisible();
     await expect(page.getByTestId("welcome-setup-back")).toHaveCount(0);
@@ -1046,12 +1038,8 @@ test.describe("community rail", () => {
     await seedCommunities(page, [COMMUNITY_A], COMMUNITY_A.id);
     await page.goto("/");
 
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     const error = page.getByTestId("community-apply-error");
     await expect(error).toBeVisible();

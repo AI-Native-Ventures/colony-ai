@@ -919,6 +919,7 @@ export function AppShell() {
                                 openWorkspaceDialog("join")
                               }
                               onOpenWorkspaceSettings={openWorkspaceSettings}
+                              onRemoveWorkspace={handleRemoveCommunity}
                               onSwitchWorkspace={handleSwitchCommunity}
                             />
                           ) : showAppTopChrome ? (
