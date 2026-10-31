@@ -22,6 +22,23 @@ pub(crate) fn keyring_service() -> &'static str {
     }
 }
 
+/// Fixed text that records, inside the compiled host, where this build keeps
+/// its secrets: `keychain` (the `system-keyring` feature) or `file` (0600
+/// files). The Electron package workflow greps the built host for it, so an
+/// unsigned Mac build that still reads the Keychain (and logs the owner out on
+/// every update) or a signed one that lost it fails before it can ship. Only
+/// the selected literal reaches the binary.
+static SECRET_STORAGE_MARKER: &str = if cfg!(feature = "system-keyring") {
+    "colony-secret-storage=keychain"
+} else {
+    "colony-secret-storage=file"
+};
+
+/// The marker, kept alive in the binary by the boot log line.
+pub(crate) fn secret_storage_marker() -> &'static str {
+    std::hint::black_box(SECRET_STORAGE_MARKER)
+}
+
 pub(super) fn migration_marker_name(service: &str, default_name: &str) -> String {
     if service == "buzz-desktop" || service == "buzz-desktop-dev" {
         default_name.to_string()

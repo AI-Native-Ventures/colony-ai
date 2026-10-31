@@ -25,6 +25,7 @@ mod channel_window;
 mod channels;
 mod clipboard;
 mod company_secrets;
+mod device_secret_file;
 mod dms;
 mod engrams;
 mod export_util;

@@ -386,12 +386,11 @@ pub async fn import_identity(
         let key_path = data_dir.join("identity.key");
 
         let (pubkey, storage) = commit_imported_identity(&state, &data_dir, keys, |keys| {
-            // Persist into the OS keyring first (store → read-back verify →
-            // marker → delete file). Falls back to the 0o600 file when the
-            // keyring is unavailable; returns Err only when both backends fail.
-            let store =
-                crate::secret_store::SecretStore::shared(crate::app_state::keyring_service());
-            crate::app_state::persist_imported_identity(store, keys, &key_path, &data_dir)
+            // A keyring build persists into the OS keyring first (store →
+            // read-back verify → marker → delete file) and falls back to the
+            // 0o600 file; a build without `system-keyring` writes only the
+            // file. Err only when every backend it uses fails.
+            crate::app_state::persist_imported_identity(keys, &key_path, &data_dir)
         })?;
 
         let pubkey_hex = pubkey.to_hex();
@@ -517,9 +516,7 @@ pub async fn persist_current_identity(
         std::fs::create_dir_all(&data_dir).map_err(|e| format!("create app data dir: {e}"))?;
         let key_path = data_dir.join("identity.key");
 
-        let store = crate::secret_store::SecretStore::shared(crate::app_state::keyring_service());
-        let storage =
-            crate::app_state::persist_imported_identity(store, &keys, &key_path, &data_dir)?;
+        let storage = crate::app_state::persist_imported_identity(&keys, &key_path, &data_dir)?;
 
         // Keys are already the live identity. Record where the durable write
         // landed before clearing identity_lost.

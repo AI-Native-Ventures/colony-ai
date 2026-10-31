@@ -7,11 +7,9 @@ use zeroize::Zeroize;
 #[cfg(feature = "system-keyring")]
 use crate::secret_store::SecretStore;
 
-#[cfg(any(test, feature = "system-keyring"))]
 const MAX_SECRET_VALUE_BYTES: usize = 64 * 1024;
 
-#[cfg(any(test, feature = "system-keyring"))]
-trait DeviceSecretStore {
+pub(super) trait DeviceSecretStore {
     fn store(&self, key: &str, value: &str) -> Result<(), String>;
     fn delete(&self, key: &str) -> Result<(), String>;
 }
@@ -30,7 +28,6 @@ impl DeviceSecretStore for OperatingSystemSecretStore {
     }
 }
 
-#[cfg(any(test, feature = "system-keyring"))]
 fn secret_storage_key(relay_pubkey: &str, binding_id: Uuid) -> Result<String, String> {
     if relay_pubkey.len() != 64 || !relay_pubkey.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("The relay identity is unavailable.".into());
@@ -42,9 +39,8 @@ fn secret_storage_key(relay_pubkey: &str, binding_id: Uuid) -> Result<String, St
     ))
 }
 
-#[cfg(any(test, feature = "system-keyring"))]
 fn store_device_secret(
-    store: &impl DeviceSecretStore,
+    store: &(impl DeviceSecretStore + ?Sized),
     relay_pubkey: &str,
     binding_id: Uuid,
     value: &str,
@@ -58,9 +54,8 @@ fn store_device_secret(
         .map_err(|_| "Device secure storage is unavailable.".to_owned())
 }
 
-#[cfg(any(test, feature = "system-keyring"))]
 fn delete_device_secret(
-    store: &impl DeviceSecretStore,
+    store: &(impl DeviceSecretStore + ?Sized),
     relay_pubkey: &str,
     binding_id: Uuid,
 ) -> Result<(), String> {
@@ -70,9 +65,34 @@ fn delete_device_secret(
         .map_err(|_| "Device secure storage is unavailable.".to_owned())
 }
 
+/// Where this build keeps device credentials: the OS keyring when it has one,
+/// otherwise an owner-only file in the app data directory.
+fn device_secret_store(app: &tauri::AppHandle) -> Result<Box<dyn DeviceSecretStore>, String> {
+    #[cfg(feature = "system-keyring")]
+    {
+        let _ = app;
+        Ok(Box::new(OperatingSystemSecretStore(SecretStore::shared(
+            crate::app_state::keyring_service(),
+        ))))
+    }
+
+    #[cfg(not(feature = "system-keyring"))]
+    {
+        use tauri::Manager;
+        let data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|_| "Device secure storage is unavailable.".to_owned())?;
+        Ok(Box::new(
+            super::device_secret_file::FileSecretStore::in_dir(&data_dir),
+        ))
+    }
+}
+
 /// Store a device-scoped company credential without returning or logging it.
 #[tauri::command]
 pub fn store_company_secret(
+    app: tauri::AppHandle,
     relay_pubkey: String,
     binding_id: String,
     mut secret_value: String,
@@ -81,42 +101,24 @@ pub fn store_company_secret(
         secret_value.zeroize();
         "The secret binding is unavailable.".to_owned()
     })?;
-
-    #[cfg(feature = "system-keyring")]
-    {
-        let store =
-            OperatingSystemSecretStore(SecretStore::shared(crate::app_state::keyring_service()));
-        let result = store_device_secret(&store, &relay_pubkey, binding_id, &secret_value);
-        secret_value.zeroize();
-        result
-    }
-
-    #[cfg(not(feature = "system-keyring"))]
-    {
-        let _ = (relay_pubkey, binding_id);
-        secret_value.zeroize();
-        Err("Device secure storage is unavailable in this build.".into())
-    }
+    let result = device_secret_store(&app).and_then(|store| {
+        store_device_secret(store.as_ref(), &relay_pubkey, binding_id, &secret_value)
+    });
+    secret_value.zeroize();
+    result
 }
 
 /// Remove a device-scoped credential after an unactivated binding fails.
 #[tauri::command]
-pub fn delete_company_secret(relay_pubkey: String, binding_id: String) -> Result<(), String> {
+pub fn delete_company_secret(
+    app: tauri::AppHandle,
+    relay_pubkey: String,
+    binding_id: String,
+) -> Result<(), String> {
     let binding_id = Uuid::parse_str(&binding_id)
         .map_err(|_| "The secret binding is unavailable.".to_owned())?;
-
-    #[cfg(feature = "system-keyring")]
-    {
-        let store =
-            OperatingSystemSecretStore(SecretStore::shared(crate::app_state::keyring_service()));
-        delete_device_secret(&store, &relay_pubkey, binding_id)
-    }
-
-    #[cfg(not(feature = "system-keyring"))]
-    {
-        let _ = (relay_pubkey, binding_id);
-        Err("Device secure storage is unavailable in this build.".into())
-    }
+    let store = device_secret_store(&app)?;
+    delete_device_secret(store.as_ref(), &relay_pubkey, binding_id)
 }
 
 #[cfg(test)]
