@@ -77,7 +77,6 @@
         "sends the first message from the new direct message composer",
         "open channel management supports join and leave",
         "manage channel updates details",
-        "unknown relay message states keep the WhatsApp chat visible",
         "Outreach approved card sends the exact batch after confirmation",
         "Scout DM approved card sends the exact batch after confirmation",
         "approved card opens WhatsApp chats from the channel",
