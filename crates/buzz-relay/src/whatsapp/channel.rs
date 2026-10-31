@@ -132,6 +132,8 @@ const KEEP_AGE_SECS: i64 = 600;
 /// five-minute bucket before the current one (so 300 to 600 s old). Every attempt inside one
 /// bucket signs the same event, which keeps a repeated post idempotent.
 const STALE_BUCKET_SECS: i64 = 300;
+// At least 300 s of the floor stay free for the commit.
+const _: () = assert!(KEEP_AGE_SECS + 300 <= buzz_db::replica_fence::CREATED_AT_FLOOR_SECS);
 
 /// The time a Colony post must carry so the database accepts it: `wanted` while it is recent
 /// enough, otherwise a deterministic recent bucket. A retry of an old message, or the first
@@ -500,10 +502,6 @@ mod tests {
         let age = now.timestamp() - root_at.timestamp();
         assert!((300..=600).contains(&age), "root age {age} s");
         assert!(age < buzz_db::replica_fence::CREATED_AT_FLOOR_SECS);
-        assert!(
-            KEEP_AGE_SECS + 300 <= buzz_db::replica_fence::CREATED_AT_FLOOR_SECS,
-            "keep at least 300 s of the floor for the commit"
-        );
         // Two racing first posts in the same bucket sign the same root.
         let racing = at(now.timestamp() + 60);
         assert_eq!(thread_root_parts(&contact, racing).2, root_at);
