@@ -286,6 +286,12 @@ test("workspace create checks the auto address without submitting", async ({
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
   await expect(page.getByTestId("community-rail")).toBeVisible();
+  const secondWorkspaceInRail = page.getByTestId(
+    "community-rail-button-workspace-two",
+  );
+  await expect(secondWorkspaceInRail).toHaveAccessibleName("Lerato Social, ⌘2");
+  await secondWorkspaceInRail.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Lerato Social, ⌘2");
   const railCreateAction = page.getByTestId("community-rail-add");
   await expect(railCreateAction).toHaveAccessibleName("Create a workspace");
   await capture(page, "WSRail");

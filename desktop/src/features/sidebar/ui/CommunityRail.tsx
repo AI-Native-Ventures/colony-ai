@@ -60,6 +60,11 @@ type CommunityRailProps = {
 
 const MAX_BADGE = 99;
 
+function workspaceShortcut(index: number): string | null {
+  if (index >= 9) return null;
+  return `${isMacPlatform() ? "⌘" : "Ctrl+"}${index + 1}`;
+}
+
 /**
  * Presentation decisions for one community button, derived from its observed
  * mention state. Pure so it can be unit-tested without a DOM. The `state` guard
@@ -95,6 +100,7 @@ export function communityRailIndicators(unread: CommunityUnreadState): {
 function CommunityButton({
   community,
   isActive,
+  shortcut,
   unread,
   onSwitch,
   menu,
@@ -104,6 +110,7 @@ function CommunityButton({
 }: {
   community: Community;
   isActive: boolean;
+  shortcut: string | null;
   unread: CommunityUnreadState;
   onSwitch: () => void;
   menu: React.ReactNode;
@@ -119,6 +126,9 @@ function CommunityButton({
     : showDot
       ? `${community.name}, unread`
       : community.name;
+  const accessibleLabel = shortcut
+    ? `${tooltipLabel}, ${shortcut}`
+    : tooltipLabel;
 
   return (
     <ContextMenu modal={false}>
@@ -127,7 +137,7 @@ function CommunityButton({
           <ContextMenuTrigger asChild>
             <button
               aria-current={isActive ? "true" : undefined}
-              aria-label={tooltipLabel}
+              aria-label={accessibleLabel}
               className={cn(
                 "colony-rail-button touch-none outline-hidden focus:outline-none focus-visible:outline-none",
                 isDragging && "opacity-30",
@@ -178,7 +188,7 @@ function CommunityButton({
           </ContextMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          {tooltipLabel}
+          {accessibleLabel}
         </TooltipContent>
       </Tooltip>
       <ContextMenuContent data-testid={`community-rail-menu-${community.id}`}>
@@ -210,6 +220,7 @@ function CommunityDragOverlay({ community }: { community: Community }) {
 function SortableCommunityButton({
   community,
   activeCommunityId,
+  shortcut,
   unreadByCommunity,
   canInvite,
   onInvite,
@@ -219,6 +230,7 @@ function SortableCommunityButton({
 }: {
   community: Community;
   activeCommunityId: string | null;
+  shortcut: string | null;
   unreadByCommunity: Record<string, CommunityUnreadState>;
   canInvite: boolean;
   onInvite: () => void;
@@ -275,6 +287,7 @@ function SortableCommunityButton({
             </ContextMenuItem>
           </>
         }
+        shortcut={shortcut}
         onSwitch={() => onSwitchCommunity(community.id)}
         unread={
           unreadByCommunity[community.id] ?? {
@@ -380,7 +393,7 @@ export function CommunityRail({
           items={communityIds}
           strategy={verticalListSortingStrategy}
         >
-          {communities.map((community) => (
+          {communities.map((community, index) => (
             <SortableCommunityButton
               key={community.id}
               activeCommunityId={activeCommunityId}
@@ -388,6 +401,7 @@ export function CommunityRail({
                 community.id === activeCommunityId && canInviteToActiveCommunity
               }
               community={community}
+              shortcut={workspaceShortcut(index)}
               unreadByCommunity={unreadByCommunity}
               onInvite={() => onOpenSettings?.("community-members")}
               onMarkAllRead={handleMarkAllRead}
