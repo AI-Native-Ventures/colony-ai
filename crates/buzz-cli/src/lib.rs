@@ -1507,6 +1507,24 @@ pub enum WhatsappCmd {
         /// New cap, 0 through 1000; leave out to show the current cap
         value: Option<i32>,
     },
+    /// Move a contact to a pipeline stage: contacted, replied, wants_call, call_booked,
+    /// quote_sent, client or no_thanks. A business that stopped or is not on WhatsApp stays so
+    Stage {
+        /// Phone number, for example +27821234567
+        wa_id: String,
+        /// The stage
+        stage: String,
+    },
+    /// Give a contact a name (shown instead of its WhatsApp profile name), or clear it
+    Rename {
+        /// Phone number, for example +27821234567
+        wa_id: String,
+        /// The name, for example "Plane Tree Hotel"
+        label: Option<String>,
+        /// Clear the name so the WhatsApp profile name shows again
+        #[arg(long, conflicts_with = "label")]
+        clear: bool,
+    },
 }
 
 #[derive(Subcommand)]

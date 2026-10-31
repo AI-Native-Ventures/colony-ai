@@ -24,6 +24,7 @@ use buzz_db::whatsapp::{
 use super::{api_error, api_error_with_code, gifs, internal_error};
 use crate::state::AppState;
 use crate::whatsapp::connect::{self, ConnectError};
+use crate::whatsapp::desk;
 use crate::whatsapp::inbound::process_payload;
 use crate::whatsapp::policy::{
     contact_label, e164, next_window_start, normalize_wa_id, verify_signature,
@@ -196,6 +197,23 @@ fn contact_view(
     })
 }
 
+/// Add the Outreach desk fields (stage, label, business ...) to a contact view. Additive:
+/// older apps ignore them; `displayName` is the owner's label when one is set.
+fn with_desk(mut view: Value, contact: &WhatsappContact, desk: &desk::DeskData) -> Value {
+    let facts = desk.facts.get(&contact.wa_id).cloned().unwrap_or_default();
+    let lead_id = contact.lead_id.as_deref();
+    let fields = desk::desk_fields(
+        contact,
+        &facts,
+        lead_id.and_then(|id| desk.leads.get(id)),
+        lead_id.and_then(|id| desk.records.get(id)),
+    );
+    if let Some(object) = view.as_object_mut() {
+        object.extend(fields);
+    }
+    view
+}
+
 /// The delivery state the app understands. Rows of a pending batch are `held` and approved
 /// rows waiting for the send window are `ready`; both read as queued (the app has no other
 /// word for "will go out"), with `awaitingApproval` telling them apart. A `skipped` row is a
@@ -265,10 +283,16 @@ pub(crate) async fn contacts_view(
         .whatsapp_outreach_flags(community, &ids)
         .await
         .map_err(|error| internal_error(&format!("whatsapp query: {error}")))?;
+    let desk = desk::load(state, community, contacts)
+        .await
+        .map_err(|reason| internal_error(&reason))?;
     Ok(json!({
         "contacts": contacts
             .iter()
-            .map(|c| contact_view(c, now, &flags.get(&c.wa_id).copied().unwrap_or_default()))
+            .map(|c| {
+                let flags = flags.get(&c.wa_id).copied().unwrap_or_default();
+                with_desk(contact_view(c, now, &flags), c, &desk)
+            })
             .collect::<Vec<_>>(),
     }))
 }
@@ -305,8 +329,11 @@ pub(crate) async fn thread_view(
         .await
         .map_err(db_error)?;
     let flags = flags.get(&contact.wa_id).copied().unwrap_or_default();
+    let desk = desk::load(state, community, std::slice::from_ref(&contact))
+        .await
+        .map_err(|reason| internal_error(&reason))?;
     Ok(json!({
-        "contact": contact_view(&contact, now, &flags),
+        "contact": with_desk(contact_view(&contact, now, &flags), &contact, &desk),
         "messages": messages
             .iter()
             .map(|message| message_view(message, now))

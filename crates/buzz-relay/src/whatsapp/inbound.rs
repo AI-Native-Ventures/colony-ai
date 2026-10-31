@@ -16,9 +16,10 @@ use buzz_db::EventQuery;
 
 use super::channel;
 use super::connect::{refresh_phone_info, sync_templates};
-use super::policy::{contact_label, e164, is_opt_out_button, is_stop_message, normalize_wa_id};
+use super::policy::{classify_opt_out, contact_label, e164, is_wants_call_tap, normalize_wa_id};
 use super::sender::handle_failure;
 use crate::state::AppState;
+use buzz_core::whatsapp_stage::OptOutKind;
 
 const MAX_LEADS_SCANNED: i64 = 2000;
 
@@ -39,6 +40,8 @@ pub struct InboundMessage {
     pub text: String,
     /// The message is a button reply.
     pub is_button: bool,
+    /// WhatsApp id of the message this one answers (the template a button was tapped on).
+    pub context_wamid: Option<String>,
 }
 
 /// One delivery status callback.
@@ -142,6 +145,11 @@ fn parse_message(
         kind,
         text: clip(&text, 4000),
         is_button,
+        context_wamid: message
+            .pointer("/context/id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty() && id.len() <= 256)
+            .map(str::to_owned),
     })
 }
 
@@ -349,17 +357,28 @@ async fn handle_message(
         return Err("stored message vanished".into());
     };
 
-    let opted_out_now = if is_stop_message(&message.text)
-        || (message.is_button && is_opt_out_button(&message.text))
-    {
+    let opt_out_kind = classify_opt_out(&message.text, message.is_button);
+    let opted_out_now = if let Some(kind) = opt_out_kind {
         state
             .db
-            .whatsapp_opt_out(community, &message.wa_id, "asked to stop", message.at)
+            .whatsapp_opt_out(community, &message.wa_id, kind.reason(), message.at)
             .await
             .map_err(|error| error.to_string())?
     } else {
         false
     };
+    // A tap on the template's first quick-reply button means "call me". Recorded on the
+    // message so the contact's stage reads it later; safe to repeat on a redelivery.
+    if message.is_button
+        && opt_out_kind.is_none()
+        && tap_means_wants_call(state, community, message).await?
+    {
+        state
+            .db
+            .whatsapp_set_message_intent(community, stored.id, "wants_call")
+            .await
+            .map_err(|error| error.to_string())?;
+    }
 
     if contact.lead_id.is_none() {
         if let Some(lead) = find_lead_by_phone(state, tenant, &message.wa_id).await {
@@ -400,15 +419,50 @@ async fn handle_message(
         } else {
             format!("{label} ({})", e164(&contact.wa_id))
         };
+        let what = if opt_out_kind == Some(OptOutKind::NoThanks) {
+            "said no thanks"
+        } else {
+            "asked to stop"
+        };
         channel::post_notice(
             state,
             tenant,
             "opt_out",
-            &format!("{who} asked to stop. Nothing more will be sent to them."),
+            &format!("{who} {what}. Nothing more will be sent to them."),
         )
         .await;
     }
     Ok(())
+}
+
+/// Does this button tap answer the first quick-reply button of the template it was tapped on?
+/// The template is found from the tapped message (`context.id`); when that is missing or
+/// unknown the literal fallback applies (see [`is_wants_call_tap`]).
+async fn tap_means_wants_call(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    message: &InboundMessage,
+) -> Result<bool, String> {
+    let mut buttons = None;
+    if let Some(context) = message.context_wamid.as_deref() {
+        let tapped = state
+            .db
+            .whatsapp_get_message_by_wamid(community, context)
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Some((name, language)) = tapped
+            .filter(|row| row.direction == "out")
+            .and_then(|row| row.template_name.zip(row.template_language))
+        {
+            buttons = state
+                .db
+                .whatsapp_get_template(community, &name, &language)
+                .await
+                .map_err(|error| error.to_string())?
+                .map(|template| template.buttons);
+        }
+    }
+    Ok(is_wants_call_tap(buttons.as_ref(), &message.text))
 }
 
 async fn handle_status(
@@ -475,6 +529,7 @@ async fn handle_template_event(
 
 #[cfg(test)]
 mod tests {
+    use super::super::policy::is_opt_out_button;
     use super::*;
     use serde_json::json;
 
