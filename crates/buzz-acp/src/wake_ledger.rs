@@ -11,17 +11,30 @@
 //! The persisted exclusion boundary takes precedence over the startup watermark
 //! and time clamp, so evicted events stay excluded even after a clock rewind.
 //!
-//! Events are recorded as handled before a turn sees them: the listener calls
+//! Events are recorded before a turn sees them: the listener calls
 //! [`WakeLedger::commit`] with a batch right before its turn starts, and with a
 //! steered event right before it reaches a running turn, and starts nothing
-//! when the file cannot be written. A crash during a turn therefore never
-//! replays that turn's events. Events still waiting in the queue stay out of
-//! the handled list and hold the floor at or below them, so a restart replays
-//! them. Events handed back with [`WakeLedger::forget_events`] (a turn that
-//! stopped before doing its work, for example because credits ran out) leave
-//! the handled list too and are processed again on the next start, once.
+//! when the file cannot be written. A committed event is *in flight*, not yet
+//! handled: it is handled only once its turn ends with an answer in the
+//! conversation (or a deliberate decision that none is needed, or a failure
+//! notice the person can see), which the listener reports with
+//! [`WakeLedger::finish_turn`]. A turn that is cut off, cancelled, crashed or
+//! timed out leaves its events in flight. They stay in the file, hold the floor
+//! at or below them, and the next start delivers them again, at most
+//! [`MAX_REDELIVERIES`] times with a growing pause ([`REDELIVERY_BACKOFF_SECS`]).
+//! After that they are abandoned (never delivered again on their own) and
+//! [`WakeLedger::take_stopped`] lists them so the listener can say so. A
+//! person's "Try again" passes a replay floor, and [`WakeLedger::reopen_for_retry`]
+//! then delivers every abandoned or paused event at or after it, straight away.
+//! Events still waiting in the queue stay out of the handled list and hold the
+//! floor at or below them, so a restart replays them. Events handed back with
+//! [`WakeLedger::forget_events`] leave the handled list too and are processed
+//! again on the next start, once.
 //!
-//! Known limits: a turn cut short by a crash is not run again (at most once);
+//! Known limits: a redelivered event whose first turn did publish an answer
+//! before the process died is checked against the relay by the listener
+//! before it runs again, but that check fails open (a relay that cannot be
+//! asked means one possible duplicate rather than silence);
 //! a handed-back event older than an id already forgotten by the size bound is
 //! not replayed (at most once wins);
 //! an event whose `created_at` is already older than the floor when it reaches
@@ -50,6 +63,15 @@ pub(crate) const SETTLE_SECS: u64 = 30;
 pub(crate) const WRITE_RETRY_SECS: u64 = 30;
 /// Largest ledger file read back; a bigger file is treated as damaged.
 const MAX_FILE_BYTES: u64 = 256 * 1024;
+/// Most times a mention whose turn was cut off is delivered again by a restart.
+pub(crate) const MAX_REDELIVERIES: u32 = 3;
+/// Pause before the next restart may deliver an unanswered mention again, by how
+/// many times it was delivered again already. A person's "Try again" skips it.
+pub(crate) const REDELIVERY_BACKOFF_SECS: [u64; 3] = [0, 30, 120];
+/// Most abandoned ids kept so "Try again" can bring them back.
+const MAX_ABANDONED: usize = 32;
+/// Most finished-turn id lists kept while their turns run.
+const MAX_TURNS: usize = 64;
 /// File format version; a file with any other version is replaced.
 const FILE_VERSION: u32 = 1;
 
@@ -69,6 +91,18 @@ struct HandledEvent {
     created_at: u64,
 }
 
+/// An event a turn was started for that has not ended with an answer yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InFlightEvent {
+    id: String,
+    created_at: u64,
+    /// How many times a restart delivered it again so far.
+    restarts: u32,
+    /// Unix seconds the latest turn for it started.
+    last_attempt: u64,
+}
+
 /// The ledger file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +116,12 @@ struct LedgerFile {
     #[serde(default)]
     evicted_floor: u64,
     handled: Vec<HandledEvent>,
+    /// Events whose turn has not ended with an answer. Older files have none.
+    #[serde(default)]
+    in_flight: Vec<InFlightEvent>,
+    /// Events given up on after [`MAX_REDELIVERIES`]. Older files have none.
+    #[serde(default)]
+    abandoned: Vec<HandledEvent>,
 }
 
 /// How a delivered channel event relates to what this employee already handled.
@@ -142,6 +182,17 @@ pub(crate) struct WakeLedger {
     /// again since, with their `created_at`. They hold the floor at or below
     /// them, so the next start replays them.
     released: HashMap<String, u64>,
+    /// Turn started and not answered yet, by event id.
+    in_flight: HashMap<String, InFlightEvent>,
+    /// Delivered again by this run's start and not committed yet: the number of
+    /// times it will have been delivered again once its turn starts.
+    carried: HashMap<String, u32>,
+    /// Events given up on, newest last.
+    abandoned: VecDeque<HandledEvent>,
+    /// Events given up on by this run's start, for the listener to announce.
+    stopped: Vec<HandledEvent>,
+    /// Event ids committed for each running turn, oldest turn first.
+    turns: VecDeque<(String, Vec<String>)>,
     written: Option<LedgerFile>,
     retry_at: Option<u64>,
 }
@@ -208,12 +259,25 @@ impl WakeLedger {
             committed: HashSet::new(),
             evicted_floor,
             released: HashMap::new(),
+            in_flight: HashMap::new(),
+            carried: HashMap::new(),
+            abandoned: VecDeque::new(),
+            stopped: Vec::new(),
+            turns: VecDeque::new(),
             written: None,
             retry_at: None,
         };
-        for entry in loaded.map(|file| file.handled).unwrap_or_default() {
+        let (handled, in_flight, abandoned) = loaded
+            .map(|file| (file.handled, file.in_flight, file.abandoned))
+            .unwrap_or_default();
+        for entry in handled {
             ledger.remember(entry);
         }
+        for entry in abandoned {
+            ledger.remember(entry.clone());
+            ledger.abandoned.push_back(entry);
+        }
+        ledger.recover_interrupted(in_flight, now);
         // Trimming an older file can raise the exclusion boundary during load.
         if let Some(since) = ledger.catch_up_since {
             let since = since.max(ledger.evicted_floor);
@@ -267,15 +331,31 @@ impl WakeLedger {
         pending: impl IntoIterator<Item = &'p nostr::Event>,
         now: u64,
     ) -> SyncOutcome {
-        let mut newly_committed = Vec::new();
+        // What each newly committed id looked like before, to undo a failed save.
+        let mut newly_committed: Vec<(String, Option<InFlightEvent>, Option<u32>)> = Vec::new();
         for event in events {
             let id = event.id.to_hex();
+            let created_at = event.created_at.as_secs();
             self.remember(HandledEvent {
                 id: id.clone(),
-                created_at: event.created_at.as_secs(),
+                created_at,
             });
             if self.committed.insert(id.clone()) {
-                newly_committed.push(id);
+                let carried = self.carried.remove(&id);
+                let previous = self.in_flight.get(&id).cloned();
+                let restarts = carried
+                    .or_else(|| previous.as_ref().map(|entry| entry.restarts))
+                    .unwrap_or(0);
+                self.in_flight.insert(
+                    id.clone(),
+                    InFlightEvent {
+                        id: id.clone(),
+                        created_at,
+                        restarts,
+                        last_attempt: now,
+                    },
+                );
+                newly_committed.push((id, previous, carried));
             }
         }
         // A failed or deferred commit never reached a turn. Keep its seen state,
@@ -283,11 +363,182 @@ impl WakeLedger {
         // succeeds. Existing successful commitments must survive this rollback.
         let outcome = self.sync(pending, now);
         if !outcome.is_saved() {
-            for id in newly_committed {
+            for (id, previous, carried) in newly_committed {
                 self.committed.remove(&id);
+                match previous {
+                    Some(entry) => {
+                        self.in_flight.insert(id.clone(), entry);
+                    }
+                    None => {
+                        self.in_flight.remove(&id);
+                    }
+                }
+                if let Some(restarts) = carried {
+                    self.carried.insert(id, restarts);
+                }
             }
         }
         outcome
+    }
+
+    /// Note which events the running turn `turn_id` was started for, so
+    /// [`WakeLedger::finish_turn`] can settle them when it ends. Call it for a
+    /// batch right after [`WakeLedger::commit`], and for a steered event with
+    /// the turn it was steered into.
+    pub(crate) fn attach_to_turn<'i>(
+        &mut self,
+        turn_id: &str,
+        event_ids: impl IntoIterator<Item = &'i str>,
+    ) {
+        let ids: Vec<String> = event_ids.into_iter().map(str::to_owned).collect();
+        if let Some((_, existing)) = self.turns.iter_mut().find(|(id, _)| id == turn_id) {
+            for id in ids {
+                if !existing.contains(&id) {
+                    existing.push(id);
+                }
+            }
+            return;
+        }
+        self.turns.push_back((turn_id.to_owned(), ids));
+        while self.turns.len() > MAX_TURNS {
+            self.turns.pop_front();
+        }
+    }
+
+    /// A turn ended. With `answered` its events are handled for good: the
+    /// agent published an answer, decided none was needed, or the person was
+    /// told it could not be done. Without it they stay in flight, hold the
+    /// floor, and the next start delivers them again (see the module docs).
+    pub(crate) fn finish_turn<'p>(
+        &mut self,
+        turn_id: &str,
+        answered: bool,
+        pending: impl IntoIterator<Item = &'p nostr::Event>,
+        now: u64,
+    ) -> SyncOutcome {
+        let Some(position) = self.turns.iter().position(|(id, _)| id == turn_id) else {
+            return self.sync(pending, now);
+        };
+        let Some((_, ids)) = self.turns.remove(position) else {
+            return self.sync(pending, now);
+        };
+        if answered {
+            for id in ids {
+                self.in_flight.remove(&id);
+            }
+        }
+        self.sync(pending, now)
+    }
+
+    /// Whether this start gave up on `event_id`; true once, so the listener
+    /// tells the person one time.
+    pub(crate) fn take_stopped_event(&mut self, event_id: &str) -> bool {
+        let before = self.stopped.len();
+        self.stopped.retain(|entry| entry.id != event_id);
+        self.stopped.len() != before
+    }
+
+    /// Whether `event_id` is a mention a restart delivered again after its
+    /// turn was cut off. The listener checks the relay for an answer first.
+    pub(crate) fn is_redelivery(&self, event_id: &str) -> bool {
+        self.carried.contains_key(event_id)
+    }
+
+    /// The agent already answered `event_id` before its process went away:
+    /// settle it without running it again.
+    pub(crate) fn settle_answered<'p>(
+        &mut self,
+        event_id: &str,
+        pending: impl IntoIterator<Item = &'p nostr::Event>,
+        now: u64,
+    ) -> SyncOutcome {
+        self.carried.remove(event_id);
+        self.in_flight.remove(event_id);
+        self.sync(pending, now)
+    }
+
+    /// A person asked to try again with replay floor `floor`: every abandoned
+    /// or paused event at or after it is delivered again now, with a fresh
+    /// count. Returns how many were brought back.
+    pub(crate) fn reopen_for_retry(&mut self, floor: u64) -> usize {
+        let mut reopened: Vec<(String, u64, u32)> = Vec::new();
+        let mut kept = VecDeque::with_capacity(self.abandoned.len());
+        for entry in self.abandoned.drain(..) {
+            if entry.created_at >= floor {
+                reopened.push((entry.id, entry.created_at, 0));
+            } else {
+                kept.push_back(entry);
+            }
+        }
+        self.abandoned = kept;
+        // Paused by the backoff: still in flight, held out of delivery.
+        let paused: Vec<InFlightEvent> = self
+            .in_flight
+            .values()
+            .filter(|entry| {
+                entry.created_at >= floor
+                    && self.handled_ids.contains(&entry.id)
+                    && !self.committed.contains(&entry.id)
+            })
+            .cloned()
+            .collect();
+        for entry in paused {
+            self.in_flight.remove(&entry.id);
+            reopened.push((
+                entry.id,
+                entry.created_at,
+                entry.restarts.min(MAX_REDELIVERIES - 1) + 1,
+            ));
+        }
+        let count = reopened.len();
+        if let Some(lowest) = reopened.iter().map(|(_, created_at, _)| *created_at).min() {
+            // The subscription starts from the saved floor, which moved past
+            // events given up on: reach back to the oldest one brought back.
+            let since = self
+                .catch_up_since
+                .map_or(lowest, |since| since.min(lowest))
+                .max(self.evicted_floor);
+            self.catch_up_since = Some(since);
+            self.baseline = self.baseline.min(since);
+        }
+        for (id, created_at, restarts) in reopened {
+            self.handled_ids.remove(&id);
+            self.handled.retain(|entry| entry.id != id);
+            self.stopped.retain(|entry| entry.id != id);
+            self.released.insert(id.clone(), created_at);
+            self.carried.insert(id, restarts);
+        }
+        count
+    }
+
+    /// Sort the events a previous run left in flight: deliver again, pause
+    /// until the backoff ends, or give up after [`MAX_REDELIVERIES`].
+    fn recover_interrupted(&mut self, events: Vec<InFlightEvent>, now: u64) {
+        for entry in events {
+            let next = entry.restarts + 1;
+            let pause = REDELIVERY_BACKOFF_SECS
+                [(entry.restarts as usize).min(REDELIVERY_BACKOFF_SECS.len() - 1)];
+            let handled = HandledEvent {
+                id: entry.id.clone(),
+                created_at: entry.created_at,
+            };
+            if next > MAX_REDELIVERIES {
+                self.remember(handled.clone());
+                self.abandoned.push_back(handled.clone());
+                while self.abandoned.len() > MAX_ABANDONED {
+                    self.abandoned.pop_front();
+                }
+                self.stopped.push(handled);
+            } else if now < entry.last_attempt.saturating_add(pause) {
+                // Too soon after the last try. Keep it in flight and out of
+                // delivery; a later start (or "Try again") delivers it.
+                self.remember(handled);
+                self.in_flight.insert(entry.id.clone(), entry);
+            } else {
+                self.released.insert(entry.id.clone(), entry.created_at);
+                self.carried.insert(entry.id, next);
+            }
+        }
     }
 
     /// Hand events back after their turn stopped before doing the work, for
@@ -317,6 +568,7 @@ impl WakeLedger {
             if forgotten.contains(entry.id.as_str()) {
                 self.handled_ids.remove(&entry.id);
                 self.committed.remove(&entry.id);
+                self.in_flight.remove(&entry.id);
                 self.released.insert(entry.id.clone(), entry.created_at);
             } else {
                 kept.push_back(entry);
@@ -412,6 +664,7 @@ impl WakeLedger {
         let lowest_unhandled = oldest_pending
             .into_iter()
             .chain(self.released.values().copied())
+            .chain(self.in_flight.values().map(|entry| entry.created_at))
             .min();
         let floor = lowest_unhandled
             .map_or(caught_up, |lowest| lowest.min(caught_up))
@@ -425,9 +678,17 @@ impl WakeLedger {
             handled: self
                 .handled
                 .iter()
-                .filter(|entry| !pending_ids.contains(&entry.id))
+                .filter(|entry| {
+                    !pending_ids.contains(&entry.id) && !self.in_flight.contains_key(&entry.id)
+                })
                 .cloned()
                 .collect(),
+            in_flight: {
+                let mut entries: Vec<InFlightEvent> = self.in_flight.values().cloned().collect();
+                entries.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+                entries
+            },
+            abandoned: self.abandoned.iter().cloned().collect(),
         }
     }
 
@@ -503,6 +764,20 @@ mod tests {
             .custom_created_at(Timestamp::from(created_at))
             .sign_with_keys(&Keys::generate())
             .expect("sign test event")
+    }
+
+    /// End the turn that `events` were committed for, with an answer.
+    fn settle(ledger: &mut WakeLedger, events: &[nostr::Event], now: u64) {
+        end_turn(ledger, events, true, now);
+    }
+
+    /// End the turn that `events` were committed for.
+    fn end_turn(ledger: &mut WakeLedger, events: &[nostr::Event], answered: bool, now: u64) {
+        let ids: Vec<String> = events.iter().map(|event| event.id.to_hex()).collect();
+        ledger.attach_to_turn("turn", ids.iter().map(String::as_str));
+        assert!(ledger
+            .finish_turn("turn", answered, std::iter::empty(), now)
+            .is_saved());
     }
 
     /// A ledger path inside a fresh temporary directory, removed on drop.
@@ -635,10 +910,22 @@ mod tests {
             .is_saved());
         assert!(
             temp.written()
+                .in_flight
+                .iter()
+                .any(|entry| entry.id == steered.id.to_hex()),
+            "a steered event is saved as in flight before it reaches the turn"
+        );
+        settle(
+            &mut first,
+            std::slice::from_ref(&steered),
+            10_000 + SETTLE_SECS,
+        );
+        assert!(
+            temp.written()
                 .handled
                 .iter()
                 .any(|entry| entry.id == steered.id.to_hex()),
-            "a steered event is saved as handled before it reaches the turn"
+            "a steered event is handled once its turn answered"
         );
         let mut second = temp.open(20_000);
         assert_eq!(
@@ -661,6 +948,11 @@ mod tests {
         assert!(ledger
             .commit([&previously_committed], std::iter::empty(), now)
             .is_saved());
+        settle(
+            &mut ledger,
+            std::slice::from_ref(&previously_committed),
+            now,
+        );
 
         std::fs::remove_file(&path).expect("remove saved ledger");
         std::fs::remove_dir(&state_dir).expect("remove ledger directory");
@@ -709,13 +1001,18 @@ mod tests {
         assert!(ledger
             .commit([&waiting], queue.pending_events(), retry_now)
             .is_saved());
+        // Its turn answered; the deferred event still waits in the queue.
+        ledger.attach_to_turn("turn", [waiting.id.to_hex().as_str()]);
+        assert!(ledger
+            .finish_turn("turn", true, queue.pending_events(), retry_now)
+            .is_saved());
         let mut after_commit = WakeLedger::open(path, RELAY, &agent(), 30_000, 30_000);
         assert_eq!(after_commit.admit(&waiting, 30_000), Admission::Duplicate);
         assert_eq!(after_commit.admit(&deferred, 30_000), Admission::CaughtUp);
     }
 
     #[test]
-    fn crash_during_replay_never_answers_twice() {
+    fn crash_during_replay_runs_the_unanswered_wake_again() {
         let temp = TempLedger::new();
         // The last run saved floor 10_000, then the computer slept.
         temp.open(10_000).sync(std::iter::empty(), 10_000);
@@ -727,7 +1024,7 @@ mod tests {
         assert_eq!(replay.catch_up_since(), Some(10_000));
         assert_eq!(replay.admit(&first_wake, 20_000), Admission::CaughtUp);
         assert_eq!(replay.admit(&second_wake, 20_000), Admission::CaughtUp);
-        // The first wake's turn starts, so it is saved as handled first. The
+        // The first wake's turn starts, so it is saved as in flight. The
         // second still waits in the queue.
         assert!(replay
             .commit([&first_wake], [&second_wake], 20_001)
@@ -742,18 +1039,234 @@ mod tests {
         assert_eq!(
             after_crash.catch_up_since(),
             Some(10_000),
-            "the floor stays at or below the wake still queued"
+            "the floor stays at or below the wakes still unanswered"
         );
         assert_eq!(
             after_crash.admit(&first_wake, 30_000),
-            Admission::Duplicate,
-            "the wake whose turn had started is never answered twice"
+            Admission::CaughtUp,
+            "the wake whose turn was cut off runs again"
         );
+        assert!(after_crash.is_redelivery(&first_wake.id.to_hex()));
         assert_eq!(
             after_crash.admit(&second_wake, 30_000),
             Admission::CaughtUp,
             "the wake that never reached a turn still runs once"
         );
+        assert!(!after_crash.is_redelivery(&second_wake.id.to_hex()));
+    }
+
+    #[test]
+    fn an_answered_turn_is_never_delivered_again() {
+        let temp = TempLedger::new();
+        let wake = event_at(10_100);
+        let mut first = temp.open(10_000);
+        first.admit(&wake, 10_100);
+        assert!(first.commit([&wake], std::iter::empty(), 10_101).is_saved());
+        settle(&mut first, std::slice::from_ref(&wake), 10_102);
+        drop(first);
+
+        let mut after = temp.open(20_000);
+        assert_eq!(after.admit(&wake, 20_000), Admission::Duplicate);
+        assert!(temp.written().in_flight.is_empty());
+    }
+
+    #[test]
+    fn an_interrupted_turn_stays_pending_across_restarts() {
+        let temp = TempLedger::new();
+        let wake = event_at(10_100);
+        let mut first = temp.open(10_000);
+        first.admit(&wake, 10_100);
+        assert!(first.commit([&wake], std::iter::empty(), 10_101).is_saved());
+        // The turn was cut off: it ends without an answer.
+        end_turn(&mut first, std::slice::from_ref(&wake), false, 10_200);
+        let file = temp.written();
+        assert_eq!(file.in_flight.len(), 1, "still pending in the file");
+        assert!(
+            file.floor <= 10_100,
+            "the floor holds at the unanswered wake"
+        );
+        drop(first);
+
+        let mut second = temp.open(20_000);
+        assert!(second.catch_up_since().is_some_and(|since| since <= 10_100));
+        assert_eq!(second.admit(&wake, 20_000), Admission::CaughtUp);
+        assert!(second.is_redelivery(&wake.id.to_hex()));
+    }
+
+    #[test]
+    fn a_redelivered_turn_that_answers_is_handled_and_not_run_again() {
+        let temp = TempLedger::new();
+        let wake = event_at(10_100);
+        let mut first = temp.open(10_000);
+        first.admit(&wake, 10_100);
+        assert!(first.commit([&wake], std::iter::empty(), 10_101).is_saved());
+        drop(first);
+
+        let mut second = temp.open(20_000);
+        assert_eq!(second.admit(&wake, 20_000), Admission::CaughtUp);
+        assert!(second
+            .commit([&wake], std::iter::empty(), 20_001)
+            .is_saved());
+        assert_eq!(
+            temp.written().in_flight[0].restarts,
+            1,
+            "the redelivery is counted"
+        );
+        settle(&mut second, std::slice::from_ref(&wake), 20_002);
+        drop(second);
+
+        let mut third = temp.open(30_000);
+        assert_eq!(third.admit(&wake, 30_000), Admission::Duplicate);
+    }
+
+    /// Cut a turn off and restart, `restarts` times; the last run's turn is
+    /// committed and cut off too. Returns the wake and the clock of that run.
+    fn cut_off_turns(temp: &TempLedger, restarts: u32) -> (nostr::Event, u64) {
+        let wake = event_at(10_100);
+        let mut now = 10_100;
+        let mut ledger = temp.open(10_000);
+        ledger.admit(&wake, now);
+        assert!(ledger.commit([&wake], std::iter::empty(), now).is_saved());
+        for _ in 0..restarts {
+            drop(ledger);
+            // Far enough apart that no backoff applies.
+            now += 10_000;
+            ledger = temp.open(now);
+            assert_eq!(ledger.admit(&wake, now), Admission::CaughtUp);
+            assert!(ledger.commit([&wake], std::iter::empty(), now).is_saved());
+        }
+        (wake, now)
+    }
+
+    #[test]
+    fn a_mention_is_delivered_again_at_most_three_times() {
+        let temp = TempLedger::new();
+        // First run plus three redeliveries: all cut off.
+        let (wake, now) = cut_off_turns(&temp, MAX_REDELIVERIES);
+        assert_eq!(temp.written().in_flight[0].restarts, MAX_REDELIVERIES);
+
+        // The next start gives up: it is not delivered, and is announced once.
+        let mut next = temp.open(now + 10_000);
+        assert_eq!(next.admit(&wake, now + 10_000), Admission::Duplicate);
+        assert!(next.take_stopped_event(&wake.id.to_hex()));
+        assert!(
+            !next.take_stopped_event(&wake.id.to_hex()),
+            "the person is told once"
+        );
+        assert!(next.sync(std::iter::empty(), now + 10_000).is_saved());
+        let file = temp.written();
+        assert!(file.in_flight.is_empty());
+        assert_eq!(file.abandoned.len(), 1);
+        drop(next);
+
+        // And it stays given up on later starts.
+        let mut later = temp.open(now + 20_000);
+        assert_eq!(later.admit(&wake, now + 20_000), Admission::Duplicate);
+        assert!(!later.take_stopped_event(&wake.id.to_hex()));
+    }
+
+    #[test]
+    fn try_again_after_giving_up_delivers_it_with_a_fresh_count() {
+        let temp = TempLedger::new();
+        let (wake, now) = cut_off_turns(&temp, MAX_REDELIVERIES);
+        // The start that gives up on it.
+        let mut stop = temp.open(now + 10_000);
+        assert!(stop.take_stopped_event(&wake.id.to_hex()));
+        // Try again in the same start: the floor reaches back to the mention.
+        assert_eq!(stop.reopen_for_retry(10_100), 1);
+        assert!(stop.catch_up_since().is_some_and(|since| since <= 10_100));
+        assert_eq!(stop.admit(&wake, now + 10_000), Admission::CaughtUp);
+        assert!(stop.is_redelivery(&wake.id.to_hex()));
+        assert!(stop
+            .commit([&wake], std::iter::empty(), now + 10_001)
+            .is_saved());
+        assert_eq!(
+            temp.written().in_flight[0].restarts,
+            0,
+            "the count starts over"
+        );
+        assert!(temp.written().abandoned.is_empty());
+    }
+
+    #[test]
+    fn a_floor_after_the_mention_does_not_bring_it_back() {
+        let temp = TempLedger::new();
+        let (wake, now) = cut_off_turns(&temp, MAX_REDELIVERIES);
+        let mut stop = temp.open(now + 10_000);
+        assert_eq!(stop.reopen_for_retry(10_101), 0);
+        assert_eq!(stop.admit(&wake, now + 10_000), Admission::Duplicate);
+    }
+
+    /// A mention whose first two turns were cut off, the second one at 10_020.
+    fn twice_cut_off(temp: &TempLedger) -> nostr::Event {
+        let wake = event_at(10_000);
+        let mut first = temp.open(10_000);
+        first.admit(&wake, 10_000);
+        assert!(first.commit([&wake], std::iter::empty(), 10_000).is_saved());
+        drop(first);
+        // The first redelivery has no pause.
+        let mut second = temp.open(10_020);
+        assert_eq!(second.admit(&wake, 10_020), Admission::CaughtUp);
+        assert!(second
+            .commit([&wake], std::iter::empty(), 10_020)
+            .is_saved());
+        wake
+    }
+
+    #[test]
+    fn restarts_back_off_before_delivering_an_unanswered_mention_again() {
+        let temp = TempLedger::new();
+        let wake = twice_cut_off(&temp);
+
+        // A third start straight away is paused: not delivered, not lost.
+        let mut paused = temp.open(10_025);
+        assert_eq!(paused.admit(&wake, 10_025), Admission::Duplicate);
+        assert!(paused.sync(std::iter::empty(), 10_025).is_saved());
+        let file = temp.written();
+        assert_eq!(file.in_flight.len(), 1, "still pending");
+        assert_eq!(file.in_flight[0].restarts, 1, "the pause is not a delivery");
+        drop(paused);
+
+        // After the pause it is delivered.
+        let after = 10_020 + REDELIVERY_BACKOFF_SECS[1];
+        let mut later = temp.open(after);
+        assert_eq!(later.admit(&wake, after), Admission::CaughtUp);
+    }
+
+    #[test]
+    fn try_again_skips_the_backoff() {
+        let temp = TempLedger::new();
+        let wake = twice_cut_off(&temp);
+
+        let mut paused = temp.open(10_025);
+        assert_eq!(paused.reopen_for_retry(10_000), 1);
+        assert!(paused.catch_up_since().is_some_and(|since| since <= 10_000));
+        assert_eq!(paused.admit(&wake, 10_025), Admission::CaughtUp);
+        assert!(paused.is_redelivery(&wake.id.to_hex()));
+    }
+
+    #[test]
+    fn an_older_file_without_in_flight_entries_still_loads() {
+        let temp = TempLedger::new();
+        let handled = event_at(1_000);
+        let legacy = serde_json::json!({
+            "version": 1,
+            "relayUrl": RELAY,
+            "agentPubkey": agent(),
+            "floor": 1_006,
+            "evictedFloor": 0,
+            "handled": [{ "id": handled.id.to_hex(), "createdAt": 1_000 }]
+        });
+        std::fs::create_dir_all(&temp.dir).expect("create ledger dir");
+        std::fs::write(
+            temp.path(),
+            serde_json::to_vec(&legacy).expect("encode legacy file"),
+        )
+        .expect("write legacy file");
+        let file = temp.written();
+        assert!(file.in_flight.is_empty() && file.abandoned.is_empty());
+        let mut ledger = temp.open(1_001);
+        assert_eq!(ledger.admit(&handled, 1_001), Admission::Duplicate);
     }
 
     #[test]
@@ -902,6 +1415,7 @@ mod tests {
         assert!(ledger
             .commit([&oldest], std::iter::empty(), 1_000)
             .is_saved());
+        settle(&mut ledger, std::slice::from_ref(&oldest), 1_000);
         for offset in 0..(MAX_HANDLED as u64 - 1) {
             ledger.admit(&event_at(2_000 + offset), 2_000 + offset);
         }
@@ -940,6 +1454,7 @@ mod tests {
             first.admit(event, 1_000);
         }
         assert!(first.commit(&events, std::iter::empty(), 1_000).is_saved());
+        settle(&mut first, &events, 1_000);
         let file = temp.written();
         assert_eq!(file.handled.len(), MAX_HANDLED);
         assert!(file
@@ -967,6 +1482,7 @@ mod tests {
             first.admit(event, 1_000);
         }
         assert!(first.commit(&events, std::iter::empty(), 1_000).is_saved());
+        settle(&mut first, &events, 1_000);
         assert_eq!(temp.written().floor, 1_000 + SINCE_SKEW_SECS + 1);
         drop(first);
 
@@ -987,6 +1503,7 @@ mod tests {
         assert!(first
             .commit([&oldest], std::iter::empty(), 1_000)
             .is_saved());
+        settle(&mut first, std::slice::from_ref(&oldest), 1_000);
         for offset in 0..(MAX_HANDLED as u64 - 1) {
             first.admit(&event_at(2_000 + offset), 2_000 + offset);
         }
@@ -1115,6 +1632,7 @@ mod tests {
         assert!(resumed
             .commit([&wake], std::iter::empty(), 20_001)
             .is_saved());
+        settle(&mut resumed, std::slice::from_ref(&wake), 20_002);
         drop(resumed);
         let mut later = temp.open(30_000);
         assert_eq!(
