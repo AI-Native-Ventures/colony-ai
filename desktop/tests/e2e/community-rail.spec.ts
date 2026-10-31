@@ -60,6 +60,22 @@ async function seedCommunities(
   );
 }
 
+test("red proof: clicking the workspace header opens the workspace menu", async ({
+  page,
+}) => {
+  await installMockBridge(page, undefined, {
+    seedPreviewFeatures: false,
+    skipCommunitySeed: true,
+  });
+  await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
+  await page.goto("/");
+
+  const workspaceHeader = page.getByTestId("sidebar-business-switcher");
+  await expect(workspaceHeader).toBeVisible();
+  await workspaceHeader.click();
+  await expect(page.getByTestId("workspace-switcher-menu")).toBeVisible();
+});
+
 test.describe("community rail", () => {
   test("shows the rail with multiple communities despite a stale opt-out", async ({
     page,
