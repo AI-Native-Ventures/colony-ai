@@ -73,6 +73,29 @@ impl FileSecretStore {
     }
 }
 
+#[cfg_attr(feature = "system-keyring", allow(dead_code))]
+impl FileSecretStore {
+    /// Add the entries whose key is not stored yet, in one atomic write, and
+    /// return how many were added. A value already stored is never replaced:
+    /// it is newer than anything an older build left behind.
+    pub(super) fn store_all_if_absent(
+        &self,
+        entries: &BTreeMap<String, String>,
+    ) -> Result<usize, String> {
+        let _guard = WRITE_LOCK.lock().map_err(|_| "secrets lock poisoned")?;
+        let mut map = self.read_map()?;
+        let before = map.len();
+        for (key, value) in entries {
+            map.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+        let added = map.len() - before;
+        if added > 0 {
+            self.write_map(&map)?;
+        }
+        Ok(added)
+    }
+}
+
 impl DeviceSecretStore for FileSecretStore {
     fn store(&self, key: &str, value: &str) -> Result<(), String> {
         self.mutate(|map| {
