@@ -140,6 +140,7 @@ export default defineConfig({
         "**/work-area-pins.spec.ts",
         "**/whatsapp-work-area.spec.ts",
         "**/whatsapp-decided-card.spec.ts",
+        "**/wa-polish-header-red.spec.ts",
         "**/first-reply-runtime.spec.ts",
         "**/judge-ready-ai.spec.ts",
         "**/connect-polish.spec.ts",
