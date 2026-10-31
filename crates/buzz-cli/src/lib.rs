@@ -4928,7 +4928,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("whatsapp", 11),
+            ("whatsapp", 13),
             ("work", 16),
             ("workflows", 8),
         ];

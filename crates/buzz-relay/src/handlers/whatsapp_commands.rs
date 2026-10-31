@@ -863,6 +863,18 @@ async fn handle_send(
     }
 }
 
+/// GUARD: only people who may reply on WhatsApp change a contact's stage or name; a plain member
+/// is refused with a plain message.
+fn require_contact_editor(access: Access) -> Result<(), IngestError> {
+    if access.can_send() {
+        Ok(())
+    } else {
+        Err(restricted(
+            "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
+        ))
+    }
+}
+
 /// Clean an owner label: collapse whitespace, 1 through 120 characters.
 fn clean_label(raw: &str) -> Result<String, IngestError> {
     let label = raw.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -888,12 +900,7 @@ async fn handle_contact_update(
     event: &Event,
     access: Access,
 ) -> Result<IngestResult, IngestError> {
-    // GUARD: plain members never change the pipeline.
-    if !access.can_send() {
-        return Err(restricted(
-            "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
-        ));
-    }
+    require_contact_editor(access)?;
     let command: ContactUpdateCommand = parse(event)?;
     check_version(command.v)?;
     let community = tenant.community();
@@ -1187,6 +1194,40 @@ mod tests {
             row_refusal(Some(&waiting)).as_deref(),
             Some("already messaged with no reply yet")
         );
+    }
+
+    #[test]
+    fn only_people_who_may_reply_can_edit_a_contact() {
+        // GUARD: `require_contact_editor`. A plain member is refused with a plain message.
+        assert!(require_contact_editor(Access::OwnerAdmin).is_ok());
+        assert!(require_contact_editor(Access::Outreach).is_ok());
+        let IngestError::Rejected(reason) =
+            require_contact_editor(Access::Member).expect_err("a plain member is refused")
+        else {
+            panic!("a refusal is a rejection");
+        };
+        assert!(
+            reason.contains("only the owner, admins, their agents and Outreach members"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn contact_update_commands_parse_absent_and_null_labels_apart() {
+        let both: ContactUpdateCommand =
+            serde_json::from_str(r#"{"v":1,"waId":"27821234567","stage":"client","label":"X"}"#)
+                .expect("both");
+        assert_eq!(both.label, Some(Some("X".to_string())));
+        let clear: ContactUpdateCommand =
+            serde_json::from_str(r#"{"v":1,"waId":"27821234567","label":null}"#).expect("clear");
+        assert_eq!(clear.label, Some(None));
+        let absent: ContactUpdateCommand =
+            serde_json::from_str(r#"{"v":1,"waId":"27821234567","stage":"client"}"#)
+                .expect("absent");
+        assert_eq!(absent.label, None);
+        assert!(clean_label("   ").is_err());
+        assert_eq!(clean_label("  Plane   Tree ").expect("clean"), "Plane Tree");
+        assert!(clean_label(&"x".repeat(121)).is_err());
     }
 
     #[test]
