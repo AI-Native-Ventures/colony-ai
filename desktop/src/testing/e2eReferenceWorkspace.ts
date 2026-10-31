@@ -117,6 +117,30 @@ export const REFERENCE_PROSPECT_IDS = {
   "cedar-co": "1e1a7000-0000-4000-9000-000000001012",
   "marigold-house": "1e1a7000-0000-4000-9000-000000001013",
   "melville-hill-cottages": "1e1a7000-0000-4000-9000-000000001014",
+  "linden-tree-lodge": "1e1a7000-0000-4000-9000-000000001015",
+  "stoop-on-seventh": "1e1a7000-0000-4000-9000-000000001016",
+  "quiet-owl-bb": "1e1a7000-0000-4000-9000-000000001017",
+  "red-fern-guesthouse": "1e1a7000-0000-4000-9000-000000001018",
+  "garden-gate-rooms": "1e1a7000-0000-4000-9000-000000001019",
+  "emmarentia-gardens": "1e1a7000-0000-4000-9000-000000001020",
+  "richmond-avenue-bnb": "1e1a7000-0000-4000-9000-000000001021",
+  "parkview-guest-rooms": "1e1a7000-0000-4000-9000-000000001022",
+  "44-stanley-stay": "1e1a7000-0000-4000-9000-000000001023",
+  "milpark-house": "1e1a7000-0000-4000-9000-000000001024",
+  "saxonwold-guest-lodge": "1e1a7000-0000-4000-9000-000000001025",
+  "houghton-view-rooms": "1e1a7000-0000-4000-9000-000000001026",
+  "greenside-courtyard": "1e1a7000-0000-4000-9000-000000001027",
+  "northcliff-hill-house": "1e1a7000-0000-4000-9000-000000001028",
+  "rosebank-suites": "1e1a7000-0000-4000-9000-000000001029",
+  "auckland-park-house": "1e1a7000-0000-4000-9000-000000001030",
+  "kingsway-guest-rooms": "1e1a7000-0000-4000-9000-000000001031",
+  "the-french-quarter": "1e1a7000-0000-4000-9000-000000001032",
+  "melville-corner-rooms": "1e1a7000-0000-4000-9000-000000001033",
+  "westcliff-garden-suites": "1e1a7000-0000-4000-9000-000000001034",
+  "parkhurst-palm-guesthouse": "1e1a7000-0000-4000-9000-000000001035",
+  "little-linden": "1e1a7000-0000-4000-9000-000000001036",
+  "orange-grove-manor": "1e1a7000-0000-4000-9000-000000001037",
+  "parkview-manor": "1e1a7000-0000-4000-9000-000000001038",
 } as const;
 
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
@@ -1401,7 +1425,10 @@ export function referenceSalesRecordEvents(
       potentialMonthlyValueMinor: options.whatsappGuesthouses
         ? null
         : value * 100,
-      website: `https://${slug}.example`,
+      website:
+        options.whatsappGuesthouses && slug === "gather-house"
+          ? null
+          : `https://${slug}.example`,
       contactName,
       location,
       email: `hello@${slug}.example`,

@@ -21,6 +21,8 @@ export type ChannelScreenProps = {
   currentProfile?: Profile;
   /** Opens the WhatsApp work area on this contact after route navigation. */
   initialWhatsAppContactWaId?: string | null;
+  /** Opens an Outreach desk tab for an in-channel activity link. */
+  initialWhatsAppDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
   /** Hides the Colony workspace top bar. */
   hideWorkspaceTopBar?: boolean;
   idleAuxiliaryPanel?: ReactNode;

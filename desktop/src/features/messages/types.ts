@@ -49,4 +49,16 @@ export type TimelineMessage = {
   kind?: number;
   tags?: string[][];
   reactions?: TimelineReaction[];
+  /** One expandable, day-level summary of WhatsApp channel activity. */
+  whatsappActivity?: {
+    day: string;
+    summary: string;
+    items: ReadonlyArray<{
+      id: string;
+      label: string;
+      detail: string;
+      waId: string | null;
+      batchId: string | null;
+    }>;
+  };
 };

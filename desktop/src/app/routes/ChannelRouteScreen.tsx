@@ -24,6 +24,7 @@ type ChannelRouteScreenProps = {
   targetThreadRootId: string | null;
   whatsappContactWaId: string | null;
   whatsappBatchId: string | null;
+  whatsappDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
 };
 
 const MAX_ROUTE_ANCESTOR_HOPS = 50;
@@ -105,6 +106,7 @@ export function ChannelRouteScreen({
   targetThreadRootId,
   whatsappContactWaId,
   whatsappBatchId,
+  whatsappDeskTab,
 }: ChannelRouteScreenProps) {
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
@@ -264,6 +266,7 @@ export function ChannelRouteScreen({
       currentIdentity={identityQuery.data}
       currentProfile={profileQuery.data}
       initialWhatsAppContactWaId={whatsappContactWaId}
+      initialWhatsAppDeskTab={whatsappDeskTab}
       targetMessageEvents={targetMessageEvents}
       targetMessageId={targetMessageId}
       targetSearchMessageId={activeSearchHighlight?.messageId}
