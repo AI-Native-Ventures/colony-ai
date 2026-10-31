@@ -6,6 +6,7 @@ import realTemplateSeed from "../fixtures/whatsapp/wa-templates.json" with {
 import { installMockBridge } from "./bridge";
 import {
   REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
   REFERENCE_PROSPECT_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
 
@@ -23,6 +24,7 @@ declare global {
 export const OUTREACH_CHANNEL_ID = "e2e-whatsapp-outreach-channel";
 export const WHATSAPP_BATCH_ID = "e2e-whatsapp-batch";
 export const WHATSAPP_SECOND_BATCH_ID = "e2e-whatsapp-batch-second";
+export const WHATSAPP_DECIDED_BATCH_ID = "0b2fdeca-0000-4000-8000-000000000018";
 export const PLANE_TREE_WA_ID = "27821237135";
 export const PLANE_TREE_LEAD_ID = REFERENCE_PROSPECT_IDS["form-field"];
 const PLANE_TREE_REPLY_WINDOW_CLOSES_AT = new Date(
@@ -41,6 +43,12 @@ type WhatsAppMockActor = {
   relayRole?: "owner" | "admin" | "member" | null;
   profileIsAgent?: boolean;
   profileOwnerPubkey?: string | null;
+  batchVariant?:
+    | "decided-card-pending"
+    | "decided-card-approved"
+    | "decided-card-rejected"
+    | "decided-card-sent"
+    | "decided-card-missing";
 };
 
 export async function setWhatsAppProofTheme(
@@ -625,6 +633,14 @@ export async function installWhatsAppMockBridge(
           members: [{ pubkey: REFERENCE_AGENTS.aya.pubkey, role: "member" }],
           selfRole: "owner",
         },
+        {
+          id: REFERENCE_CHANNEL_IDS.scoutDm,
+          name: "Scout",
+          description: "Direct messages with Scout.",
+          channelType: "dm",
+          members: [{ pubkey: REFERENCE_AGENTS.scout.pubkey, role: "member" }],
+          selfRole: "owner",
+        },
       ],
     },
   });
@@ -639,6 +655,8 @@ export async function installWhatsAppMockBridge(
         visualNorthNoteLeadId,
         stillroomLeadId,
         scoutPubkey,
+        decidedBatchId,
+        batchVariant: seededBatchVariant,
         templates: templateSeed,
         ...baseSeed
       } = seed;
@@ -647,6 +665,7 @@ export async function installWhatsAppMockBridge(
         window.location.hash.split("?")[1] ?? "",
       );
       const batchVariant =
+        seededBatchVariant ??
         new URLSearchParams(window.location.search).get("__waBatch") ??
         routeSearch.get("batch");
       const disconnected = routeSearch.get("whatsapp") === "disconnected";
@@ -671,6 +690,71 @@ export async function installWhatsAppMockBridge(
         approvedBatch || sendNowBatch || leadsBatch
           ? "2026-10-29T10:52:00+02:00"
           : null;
+      if (
+        batchVariant?.startsWith("decided-card-") &&
+        [
+          "decided-card-pending",
+          "decided-card-approved",
+          "decided-card-rejected",
+          "decided-card-sent",
+          "decided-card-missing",
+        ].includes(batchVariant)
+      ) {
+        const tomorrow = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Johannesburg",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+          .formatToParts(new Date(Date.now() + 24 * 60 * 60 * 1000))
+          .reduce<Record<string, string>>((parts, part) => {
+            if (part.type !== "literal") parts[part.type] = part.value;
+            return parts;
+          }, {});
+        const sendsAt = new Date(
+          Date.UTC(
+            Number(tomorrow.year),
+            Number(tomorrow.month) - 1,
+            Number(tomorrow.day),
+            6,
+          ),
+        ).toISOString();
+        const sourceRow = state.batch.rows[0];
+        state.batch.batchId = decidedBatchId;
+        state.batch.rows = [
+          {
+            ...sourceRow,
+            idx: 0,
+            state: batchVariant === "decided-card-sent" ? "sent" : "ready",
+            sendsAt,
+          },
+        ];
+        state.batch.counts = {
+          total: 1,
+          ready: batchVariant === "decided-card-sent" ? 0 : 1,
+          sent: batchVariant === "decided-card-sent" ? 1 : 0,
+          failed: 0,
+          dropped: 0,
+        };
+        state.batch.nextSendAt = sendsAt;
+        if (batchVariant === "decided-card-approved") {
+          state.batch.status = "approved";
+          state.batch.decidedBy = selfPubkey;
+          state.batch.decidedAt = "2026-10-29T10:52:00+02:00";
+        } else if (batchVariant === "decided-card-rejected") {
+          state.batch.status = "rejected";
+          state.batch.decidedBy = selfPubkey;
+          state.batch.decidedAt = "2026-10-29T10:52:00+02:00";
+        } else if (batchVariant === "decided-card-sent") {
+          state.batch.status = "completed";
+          state.batch.decidedBy = selfPubkey;
+          state.batch.decidedAt = "2026-10-29T10:52:00+02:00";
+        } else if (batchVariant === "decided-card-missing") {
+          state.batch.batchId = "missing-decided-card-batch";
+        }
+        state.secondPendingBatch.batchId = "different-e2e-pending-batch";
+        state.secondPendingBatch.status = "pending";
+      }
       const baseContacts = clone(seed.contacts);
       if (visualBatchScreen) {
         state.status.newChatsSentToday = 16;
@@ -879,10 +963,8 @@ export async function installWhatsAppMockBridge(
               const batches = [state.batch, state.secondPendingBatch]
                 .filter(
                   (batch) =>
-                    (requestedState === undefined ||
-                      requestedState === batch.status) &&
-                    batch.status !== "rejected" &&
-                    batch.status !== "completed",
+                    requestedState === undefined ||
+                    requestedState === batch.status,
                 )
                 .map((batch) => ({
                   batchId: batch.batchId,
@@ -960,6 +1042,9 @@ export async function installWhatsAppMockBridge(
             const edit = edits.find((value) => value.idx === row.idx);
             const dropped = dropRows.includes(row.idx);
             const rolled = row.idx === 2;
+            const keepReadyAfterApprove =
+              batchVariant?.startsWith("decided-card-") &&
+              body.decision === "approve";
             const params = edit?.params ?? row.params;
             return {
               ...row,
@@ -972,9 +1057,11 @@ export async function installWhatsAppMockBridge(
                 ? "dropped"
                 : rolled
                   ? "held"
-                  : row.idx === 0
-                    ? "sent"
-                    : "ready",
+                  : keepReadyAfterApprove
+                    ? "ready"
+                    : row.idx === 0
+                      ? "sent"
+                      : "ready",
               skipReason: rolled ? "The daily cap has been reached." : null,
             };
           });
@@ -1016,6 +1103,8 @@ export async function installWhatsAppMockBridge(
       visualNorthNoteLeadId: REFERENCE_PROSPECT_IDS["north-note"],
       stillroomLeadId: REFERENCE_PROSPECT_IDS.stillroom,
       scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
+      decidedBatchId: WHATSAPP_DECIDED_BATCH_ID,
+      batchVariant: actor.batchVariant ?? null,
     },
   );
 }
