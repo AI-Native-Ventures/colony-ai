@@ -20,6 +20,8 @@ pub mod company_asks;
 pub mod company_brief;
 /// Nostr-first broker for the per-company co-founder settings record.
 pub mod company_cofounder;
+/// Broker for the customer record (kind 47069, head kind 30679).
+pub mod company_customers;
 pub mod company_duties;
 /// Nostr-first broker for community-wide employee configuration history.
 pub mod company_employee_history;

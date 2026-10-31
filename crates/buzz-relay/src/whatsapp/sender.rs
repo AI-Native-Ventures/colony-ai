@@ -456,7 +456,7 @@ pub async fn process_community(
         return Ok(());
     };
 
-    repair_unposted(state, &tenant, settings.outreach_channel_id).await;
+    repair_unposted(state, &tenant, settings.outreach_channel_id, now).await;
 
     for batch_id in state
         .db
@@ -739,11 +739,15 @@ pub async fn handle_failure(
     }
 }
 
-/// Retry the Colony posts that failed after the message was stored or sent.
+/// Retry the Colony posts that failed after the message was stored or sent. A row that fails
+/// again backs off (5 s doubling to 1 h) and is dropped from the loop after
+/// `POST_MAX_ATTEMPTS` (24) failures, so one permanent refusal cannot starve the rows behind it
+/// or retry for ever. The message stays in the database and in the thread API either way.
 pub async fn repair_unposted(
     state: &Arc<AppState>,
     tenant: &TenantContext,
     channel_id: Option<Uuid>,
+    now: DateTime<Utc>,
 ) {
     let Some(channel_id) = channel_id else {
         return;
@@ -751,7 +755,7 @@ pub async fn repair_unposted(
     let community = tenant.community();
     let drafts = match state
         .db
-        .whatsapp_list_unposted_drafts(community, UNPOSTED_PER_TICK)
+        .whatsapp_list_unposted_drafts(community, UNPOSTED_PER_TICK, now)
         .await
     {
         Ok(drafts) => drafts,
@@ -772,11 +776,12 @@ pub async fn repair_unposted(
             channel::post_for_message(state, tenant, channel_id, &contact, &message).await
         {
             tracing::warn!(%community, message = %message.id, "whatsapp draft post retry failed: {error}");
+            note_post_failure(state, community, &message, now).await;
         }
     }
     let pending = match state
         .db
-        .whatsapp_list_unposted(community, UNPOSTED_PER_TICK)
+        .whatsapp_list_unposted(community, UNPOSTED_PER_TICK, now)
         .await
     {
         Ok(pending) => pending,
@@ -797,6 +802,30 @@ pub async fn repair_unposted(
             channel::post_for_message(state, tenant, channel_id, &contact, &message).await
         {
             tracing::warn!(%community, message = %message.id, "whatsapp post retry failed: {error}");
+            note_post_failure(state, community, &message, now).await;
+        }
+    }
+}
+
+/// Schedule the next retry of a failed Colony post, or give up after the last attempt. A
+/// failure to record is logged and the row is simply tried again on the next pass.
+async fn note_post_failure(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    message: &WhatsappMessage,
+    now: DateTime<Utc>,
+) {
+    match state
+        .db
+        .whatsapp_note_post_failure(community, message.id, now)
+        .await
+    {
+        Ok((attempts, true)) => {
+            tracing::error!(%community, message = %message.id, attempts, "whatsapp post gave up: the message stays in the thread API but has no Colony message");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(%community, message = %message.id, "whatsapp post failure record failed: {error}");
         }
     }
 }

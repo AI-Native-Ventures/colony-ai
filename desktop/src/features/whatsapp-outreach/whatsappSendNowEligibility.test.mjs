@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canUseWhatsAppSendNow } from "./whatsappSendNowEligibility.ts";
+import {
+  canSendNowWhatsAppBatch,
+  canUseWhatsAppSendNow,
+} from "./whatsappSendNowEligibility.ts";
 
 const OWNER = "ab".repeat(32);
 
@@ -38,4 +41,34 @@ test("send now excludes agent identities and identities owned by the user", () =
     false,
   );
   assert.equal(canUseWhatsAppSendNow(access({ pubkey: undefined })), false);
+});
+
+test("send now batch must be approved, small, and still ready", () => {
+  const ready = { state: "ready" };
+  assert.equal(
+    canSendNowWhatsAppBatch({ status: "approved", rows: [ready] }, true),
+    true,
+  );
+  assert.equal(
+    canSendNowWhatsAppBatch({ status: "pending", rows: [ready] }, true),
+    false,
+  );
+  assert.equal(
+    canSendNowWhatsAppBatch(
+      { status: "approved", rows: [ready, ready, ready, ready] },
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    canSendNowWhatsAppBatch(
+      { status: "approved", rows: [{ state: "sent" }] },
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    canSendNowWhatsAppBatch({ status: "approved", rows: [ready] }, false),
+    false,
+  );
 });

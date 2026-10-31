@@ -957,57 +957,53 @@ export function WhatsAppOutreachScreen({
             })}
             {selectedAwaitingApproval ? (
               <article
-                aria-label="WhatsApp batch waiting for approval"
+                aria-label={
+                  selectedPendingBatch
+                    ? "WhatsApp batch waiting for approval"
+                    : "WhatsApp batch unavailable"
+                }
                 className="c3wa-held-batch-card"
                 data-testid="whatsapp-thread-held-batch"
               >
-                <div>
-                  <strong>Waiting for your approval</strong>
-                  <p>{selectedHeldPreview ?? "Loading message preview…"}</p>
-                </div>
-                <div className="c3wa-held-batch-actions">
-                  <Button
-                    disabled={
-                      busy || !canManage || selectedPendingBatch === null
-                    }
-                    onClick={() => {
-                      if (selectedPendingBatch) {
-                        void approveBatch(selectedPendingBatch.batchId);
-                      }
-                    }}
-                    size="sm"
-                    type="button"
-                  >
-                    Approve batch
-                  </Button>
-                  <Button
-                    disabled={selectedPendingBatch === null}
-                    onClick={() => reviewBatch(selectedPendingBatch)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Review
-                  </Button>
-                  {!canManage ? (
-                    <span>
-                      Only the owner or an admin can approve this batch.
-                    </span>
-                  ) : null}
-                  {pendingBatchesQuery.isPending ? (
-                    <span>Finding the pending batch…</span>
-                  ) : null}
-                  {pendingBatchesQuery.isError ? (
-                    <span role="alert">
-                      {pendingBatchesQuery.error.message}
-                    </span>
-                  ) : null}
-                  {!pendingBatchesQuery.isPending &&
-                  !pendingBatchesQuery.isError &&
-                  !selectedPendingBatch ? (
-                    <span>The pending batch is not available.</span>
-                  ) : null}
-                </div>
+                {selectedPendingBatch ? (
+                  <>
+                    <div>
+                      <strong>Waiting for your approval</strong>
+                      <p>{selectedHeldPreview ?? "Loading message preview…"}</p>
+                    </div>
+                    <div className="c3wa-held-batch-actions">
+                      <Button
+                        disabled={busy || !canManage}
+                        onClick={() =>
+                          void approveBatch(selectedPendingBatch.batchId)
+                        }
+                        size="sm"
+                        type="button"
+                      >
+                        Approve batch
+                      </Button>
+                      <Button
+                        onClick={() => reviewBatch(selectedPendingBatch)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        Review
+                      </Button>
+                      {!canManage ? (
+                        <span>
+                          Only the owner or an admin can approve this batch.
+                        </span>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <p className="m-0">
+                    {selectedPendingBatchRows.length > 1
+                      ? "More than one pending batch is available for this chat."
+                      : "This batch is no longer available."}
+                  </p>
+                )}
               </article>
             ) : null}
             {thread &&

@@ -6,6 +6,7 @@ pub mod channels;
 pub mod cofounder;
 pub mod company_duties_lessons;
 pub mod credits;
+pub mod customers;
 pub mod discovery;
 pub mod dms;
 pub mod emoji;

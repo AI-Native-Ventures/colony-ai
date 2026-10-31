@@ -22,7 +22,10 @@ import {
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
-import { canUseWhatsAppSendNow } from "./whatsappSendNowEligibility";
+import {
+  canSendNowWhatsAppBatch,
+  canUseWhatsAppSendNow,
+} from "./whatsappSendNowEligibility";
 import {
   useWhatsAppBatchQuery,
   useWhatsAppCommand,
@@ -409,11 +412,7 @@ export function WhatsAppBatchScreen({
   const remainingToday = pending
     ? Math.min(rows.length, capAvailable)
     : readyToday;
-  const canSendNowBatch =
-    batch?.status === "approved" &&
-    rows.length <= 3 &&
-    rows.some((row) => row.state === "ready") &&
-    canSendNow;
+  const canSendNowBatch = canSendNowWhatsAppBatch(batch, canSendNow);
 
   function updateRowParams(idx: number, params: readonly string[]) {
     setEditedRows((current) => ({ ...current, [idx]: params }));

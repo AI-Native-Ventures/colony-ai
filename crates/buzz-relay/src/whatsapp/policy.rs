@@ -66,6 +66,18 @@ pub fn e164(wa_id: &str) -> String {
     format!("+{wa_id}")
 }
 
+/// The name to show for a contact. A WhatsApp profile name with no letter or digit (a lone
+/// ".", an emoji, punctuation) tells a person nothing, so it counts as no name and the number
+/// is shown instead.
+pub fn contact_label(display_name: &str, wa_id: &str) -> String {
+    let name = display_name.trim();
+    if name.chars().any(char::is_alphanumeric) {
+        name.to_string()
+    } else {
+        e164(wa_id)
+    }
+}
+
 /// `true` when `text` is an opt-out word. Whole message only, so "stop by at 5" is not one.
 pub fn is_stop_message(text: &str) -> bool {
     let cleaned: String = text
@@ -442,6 +454,22 @@ mod tests {
             assert_eq!(normalize_wa_id(bad), None, "{bad:?}");
         }
         assert_eq!(e164("27821234567"), "+27821234567");
+    }
+
+    #[test]
+    fn a_profile_name_without_a_letter_or_digit_shows_the_number() {
+        // GUARD: a WhatsApp profile name of "." must not become the contact's name.
+        for blank in ["", "   ", ".", " . ", "...", "\u{1F44D}", "-_-"] {
+            assert_eq!(
+                contact_label(blank, "27821234567"),
+                "+27821234567",
+                "{blank:?}"
+            );
+        }
+        assert_eq!(contact_label("Thabo", "27821234567"), "Thabo");
+        assert_eq!(contact_label("  Thabo M. ", "27821234567"), "Thabo M.");
+        assert_eq!(contact_label("007", "27821234567"), "007");
+        assert_eq!(contact_label("Zoë", "27821234567"), "Zoë");
     }
 
     #[test]

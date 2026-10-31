@@ -46,13 +46,19 @@
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
       "cofounder-phase2.spec.ts",
+      "cofounder-customer-record.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
       "thread-reply-anchor-roleplay.spec.ts"
     ],
     "focus": {
-      "specs": ["messaging.spec.ts", "mentions.spec.ts", "channels.spec.ts"],
+      "specs": [
+        "messaging.spec.ts",
+        "mentions.spec.ts",
+        "channels.spec.ts",
+        "whatsapp-decided-card.spec.ts"
+      ],
       "titles": [
         "send a message and see it in timeline",
         "send message with Enter key",
@@ -71,14 +77,26 @@
         "start a new direct message from the sidebar",
         "sends the first message from the new direct message composer",
         "open channel management supports join and leave",
-        "manage channel updates details"
+        "manage channel updates details",
+        "unknown relay message states keep the WhatsApp chat visible",
+        "Outreach approved card sends the exact batch after confirmation",
+        "Scout DM approved card sends the exact batch after confirmation",
+        "approved card opens WhatsApp chats from the channel",
+        "pending card changes to approved after approving without reloading",
+        "rejected and fully sent batches have no actions",
+        "genuinely missing batch is one plain line with no actions",
+        "cannot use send now on an approved card"
       ]
     }
   },
   "features": [
     {
       "paths": ["desktop/src/features/cofounder/**"],
-      "specs": ["cofounder-playbooks.spec.ts", "cofounder-map.spec.ts"]
+      "specs": [
+        "cofounder-playbooks.spec.ts",
+        "cofounder-map.spec.ts",
+        "cofounder-customer-record.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/home/**"],
@@ -155,7 +173,8 @@
       "paths": ["desktop/src/features/clients/**"],
       "specs": [
         "w11-clients-work.spec.ts",
-        "colony3-business-money-proof.spec.ts"
+        "colony3-business-money-proof.spec.ts",
+        "cofounder-customer-record.spec.ts"
       ]
     },
     {
@@ -388,8 +407,11 @@
       ]
     },
     {
-      "paths": ["desktop/src/features/whatsapp-outreach/**"],
-      "specs": ["whatsapp-work-area.spec.ts"]
+      "paths": [
+        "desktop/src/features/whatsapp-outreach/**",
+        "desktop/tests/helpers/whatsappOutreach.ts"
+      ],
+      "specs": ["whatsapp-work-area.spec.ts", "whatsapp-decided-card.spec.ts"]
     },
     {
       "paths": ["desktop/src/features/terminal/**"],

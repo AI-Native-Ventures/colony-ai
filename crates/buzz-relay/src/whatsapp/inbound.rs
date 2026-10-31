@@ -16,7 +16,7 @@ use buzz_db::EventQuery;
 
 use super::channel;
 use super::connect::{refresh_phone_info, sync_templates};
-use super::policy::{e164, is_opt_out_button, is_stop_message, normalize_wa_id};
+use super::policy::{contact_label, e164, is_opt_out_button, is_stop_message, normalize_wa_id};
 use super::sender::handle_failure;
 use crate::state::AppState;
 
@@ -394,18 +394,17 @@ async fn handle_message(
     )
     .await;
     if opted_out_now {
+        let label = contact_label(&contact.display_name, &contact.wa_id);
+        let who = if label == e164(&contact.wa_id) {
+            label
+        } else {
+            format!("{label} ({})", e164(&contact.wa_id))
+        };
         channel::post_notice(
             state,
             tenant,
             "opt_out",
-            &format!(
-                "{} asked to stop. Nothing more will be sent to them.",
-                if contact.display_name.is_empty() {
-                    e164(&contact.wa_id)
-                } else {
-                    format!("{} ({})", contact.display_name, e164(&contact.wa_id))
-                }
-            ),
+            &format!("{who} asked to stop. Nothing more will be sent to them."),
         )
         .await;
     }

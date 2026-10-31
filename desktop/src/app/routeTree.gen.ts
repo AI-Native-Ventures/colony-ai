@@ -46,6 +46,7 @@ import { Route as salesDotleadDotprospectIdRouteImport } from "./routes/sales.le
 import { Route as moneyDotrevenueDotinvoiceIdRouteImport } from "./routes/money.revenue.$invoiceId";
 import { Route as moneyDotinvoiceDotinvoiceIdRouteImport } from "./routes/money.invoice.$invoiceId";
 import { Route as companyDotfunctionDotfunctionRouteImport } from "./routes/company.function.$function";
+import { Route as clientsDotrecordDotpartyIdRouteImport } from "./routes/clients.record.$partyId";
 import { Route as channelsDotpinsDotchannelIdRouteImport } from "./routes/channels.pins.$channelId";
 import { Route as asksDotchannelIdDotaskIdRouteImport } from "./routes/asks.$channelId.$askId";
 
@@ -264,6 +265,12 @@ const companyDotfunctionDotfunctionRoute =
     path: "/company/function/$function",
     getParentRoute: () => rootRouteImport,
   } as any);
+const clientsDotrecordDotpartyIdRoute =
+  clientsDotrecordDotpartyIdRouteImport.update({
+    id: "/clients/record/$partyId",
+    path: "/clients/record/$partyId",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const channelsDotpinsDotchannelIdRoute =
   channelsDotpinsDotchannelIdRouteImport.update({
     id: "/channels/pins/$channelId",
@@ -311,6 +318,7 @@ export interface FileRoutesByFullPath {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/clients/record/$partyId": typeof clientsDotrecordDotpartyIdRoute;
   "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
@@ -356,6 +364,7 @@ export interface FileRoutesByTo {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/clients/record/$partyId": typeof clientsDotrecordDotpartyIdRoute;
   "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
@@ -402,6 +411,7 @@ export interface FileRoutesById {
   "/work/$workId": typeof workDotworkIdRoute;
   "/asks/$channelId/$askId": typeof asksDotchannelIdDotaskIdRoute;
   "/channels/pins/$channelId": typeof channelsDotpinsDotchannelIdRoute;
+  "/clients/record/$partyId": typeof clientsDotrecordDotpartyIdRoute;
   "/company/function/$function": typeof companyDotfunctionDotfunctionRoute;
   "/money/invoice/$invoiceId": typeof moneyDotinvoiceDotinvoiceIdRoute;
   "/money/revenue/$invoiceId": typeof moneyDotrevenueDotinvoiceIdRoute;
@@ -449,6 +459,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/clients/record/$partyId"
     | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
@@ -494,6 +505,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/clients/record/$partyId"
     | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
@@ -539,6 +551,7 @@ export interface FileRouteTypes {
     | "/work/$workId"
     | "/asks/$channelId/$askId"
     | "/channels/pins/$channelId"
+    | "/clients/record/$partyId"
     | "/company/function/$function"
     | "/money/invoice/$invoiceId"
     | "/money/revenue/$invoiceId"
@@ -585,6 +598,7 @@ export interface RootRouteChildren {
   workDotworkIdRoute: typeof workDotworkIdRoute;
   asksDotchannelIdDotaskIdRoute: typeof asksDotchannelIdDotaskIdRoute;
   channelsDotpinsDotchannelIdRoute: typeof channelsDotpinsDotchannelIdRoute;
+  clientsDotrecordDotpartyIdRoute: typeof clientsDotrecordDotpartyIdRoute;
   companyDotfunctionDotfunctionRoute: typeof companyDotfunctionDotfunctionRoute;
   moneyDotinvoiceDotinvoiceIdRoute: typeof moneyDotinvoiceDotinvoiceIdRoute;
   moneyDotrevenueDotinvoiceIdRoute: typeof moneyDotrevenueDotinvoiceIdRoute;
@@ -886,6 +900,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof companyDotfunctionDotfunctionRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/clients/record/$partyId": {
+      id: "/clients/record/$partyId";
+      path: "/clients/record/$partyId";
+      fullPath: "/clients/record/$partyId";
+      preLoaderRoute: typeof clientsDotrecordDotpartyIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/channels/pins/$channelId": {
       id: "/channels/pins/$channelId";
       path: "/channels/pins/$channelId";
@@ -937,6 +958,7 @@ const rootRouteChildren: RootRouteChildren = {
   workDotworkIdRoute: workDotworkIdRoute,
   asksDotchannelIdDotaskIdRoute: asksDotchannelIdDotaskIdRoute,
   channelsDotpinsDotchannelIdRoute: channelsDotpinsDotchannelIdRoute,
+  clientsDotrecordDotpartyIdRoute: clientsDotrecordDotpartyIdRoute,
   companyDotfunctionDotfunctionRoute: companyDotfunctionDotfunctionRoute,
   moneyDotinvoiceDotinvoiceIdRoute: moneyDotinvoiceDotinvoiceIdRoute,
   moneyDotrevenueDotinvoiceIdRoute: moneyDotrevenueDotinvoiceIdRoute,

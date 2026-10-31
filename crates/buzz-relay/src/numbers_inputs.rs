@@ -230,7 +230,7 @@ fn sorted(times: &[i64]) -> Vec<i64> {
     times
 }
 
-async fn read_events(
+pub(crate) async fn read_events(
     state: &Arc<AppState>,
     community_id: CommunityId,
     kind: u32,

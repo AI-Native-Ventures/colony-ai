@@ -13,6 +13,7 @@ export const routes = rootRoute("root.tsx", [
   route("/navigation/start", "navigation.start.tsx"),
   route("/settings", "settings.tsx"),
   route("/clients", "clients.tsx"),
+  route("/clients/record/$partyId", "clients.record.$partyId.tsx"),
   route("/clients/$clientId", "clients.$clientId.tsx"),
   route("/$workSurface", "work.tsx"),
   route("/work/$workId", "work.$workId.tsx"),

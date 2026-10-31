@@ -90,7 +90,7 @@ export type WhatsAppMessage = Readonly<{
   kind: WhatsAppMessageKind;
   text: string;
   templateName: string | null;
-  state: WhatsAppMessageState;
+  state: WhatsAppMessageState | null;
   errorCode: string | null;
   errorText: string | null;
   eventId: string | null;
@@ -314,11 +314,36 @@ const MESSAGE_STATES = new Set<WhatsAppMessageState>([
   "unconfirmed",
 ]);
 
+let hasLoggedUnknownWhatsAppMessageState = false;
+
+/** Resets the unknown-message warning when the active community changes. */
+export function resetWhatsAppUnknownMessageStateWarning(): void {
+  hasLoggedUnknownWhatsAppMessageState = false;
+}
+
+function parseWhatsAppMessageState(
+  value: unknown,
+  direction: WhatsAppDirection,
+): WhatsAppMessageState | null {
+  const state = typeof value === "string" ? value : null;
+  if (direction === "in" && state === "received") return "read";
+  if (state !== null && MESSAGE_STATES.has(state as WhatsAppMessageState)) {
+    return state as WhatsAppMessageState;
+  }
+  if (!hasLoggedUnknownWhatsAppMessageState) {
+    hasLoggedUnknownWhatsAppMessageState = true;
+    console.warn(
+      "The relay returned an unknown WhatsApp message state; showing the message without a status.",
+      state ?? typeof value,
+    );
+  }
+  return null;
+}
+
 export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
   const message = record(value, "message");
   const direction = stringValue(message.direction, "message direction");
   const kind = stringValue(message.kind, "message kind");
-  const state = stringValue(message.state, "message state");
   if (!MESSAGE_DIRECTIONS.has(direction as WhatsAppDirection)) {
     throw new Error(
       "The relay returned an invalid WhatsApp message direction.",
@@ -327,9 +352,10 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
   if (!MESSAGE_KINDS.has(kind as WhatsAppMessageKind)) {
     throw new Error("The relay returned an invalid WhatsApp message kind.");
   }
-  if (!MESSAGE_STATES.has(state as WhatsAppMessageState)) {
-    throw new Error("The relay returned an invalid WhatsApp message state.");
-  }
+  const state = parseWhatsAppMessageState(
+    message.state,
+    direction as WhatsAppDirection,
+  );
   return {
     id: stringValue(message.id, "message id"),
     waId: stringValue(message.waId, "message contact id"),
@@ -337,7 +363,7 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     kind: kind as WhatsAppMessageKind,
     text: stringValue(message.text, "message text"),
     templateName: nullableString(message.templateName, "message template name"),
-    state: state as WhatsAppMessageState,
+    state,
     errorCode: nullableString(message.errorCode, "message error code"),
     errorText: nullableString(message.errorText, "message error text"),
     eventId: nullableString(message.eventId, "message event id"),
