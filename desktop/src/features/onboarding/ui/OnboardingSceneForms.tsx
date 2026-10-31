@@ -402,7 +402,7 @@ export function BusinessChooser({
   /** A business was picked and its AI connection is being checked. */
   pending?: boolean;
 }) {
-  const choices =
+  const choices: OnboardingBusinessChoice[] =
     businessChoices ??
     (data.visualOnly
       ? [
@@ -451,6 +451,8 @@ export function BusinessChooser({
                 dot={index === 0 ? "#f5a4d5" : undefined}
                 logoUrl={choice.logoUrl}
                 name={choice.name}
+                relayUrl={choice.relayUrl}
+                communityId={choice.id}
                 tone={index === 0 ? undefined : "light"}
               />
               <span className="c3fr-business-text">

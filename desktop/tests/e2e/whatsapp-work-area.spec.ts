@@ -70,6 +70,7 @@ test.describe("WhatsApp work area dock", () => {
     await installWhatsAppMockBridge(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
+    await page.getByTestId("channel-view-tab-discussion").click();
 
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(page.getByTestId("message-composer")).toBeVisible();

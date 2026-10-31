@@ -12,6 +12,7 @@ import { MessageRow } from "./MessageRow";
 import { MessageThreadSummaryRow } from "./MessageThreadSummaryRow";
 import { SystemMessageRow } from "./SystemMessageRow";
 import { WhatsAppChannelEventRow } from "@/features/whatsapp-outreach/WhatsAppChannelEventRow";
+import { WhatsAppDiscussionActivity } from "@/features/whatsapp-outreach/WhatsAppDiscussionActivityRow";
 
 type ToggleReaction = (
   message: TimelineMessage,
@@ -128,6 +129,14 @@ export function MessageRowItem({
   videoReviewContext,
 }: MessageRowItemProps) {
   const { message, summary } = entry;
+  if (message.whatsappActivity) {
+    return (
+      <div style={{ paddingBottom: MESSAGE_GROUP_SPACING_PX }}>
+        <WhatsAppDiscussionActivity channelId={channelId} message={message} />
+        {footer}
+      </div>
+    );
+  }
   const hasWhatsAppNotice = message.tags?.some((tag) => tag[0] === "wa-notice");
   if (channelId && (hasWhatsAppNotice || summary?.latestWhatsAppReply)) {
     return (

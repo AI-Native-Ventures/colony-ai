@@ -55,14 +55,22 @@ export function useCommunityIcons(
 
 /** Icon of the ACTIVE community, for settings preview. */
 export function useActiveCommunityIcon(relayUrl: string | undefined) {
-  return useQuery({
+  const query = useQuery({
     queryKey: communityIconQueryKey(relayUrl ?? ""),
     queryFn: async () => {
       const icon = await fetchCommunityIcon(relayUrl ?? "");
       if (relayUrl) saveCachedCommunityIcon(relayUrl, icon);
       return icon;
     },
-    enabled: relayUrl !== undefined,
+    enabled: Boolean(relayUrl),
+    // Cached relay icons are available on the first render while NIP-11
+    // refreshes, including during returning-user onboarding.
+    placeholderData: relayUrl ? loadCachedCommunityIcon(relayUrl) : null,
     staleTime: ICON_STALE_MS,
+    retry: 1,
   });
+  return {
+    ...query,
+    data: query.data ?? (relayUrl ? loadCachedCommunityIcon(relayUrl) : null),
+  };
 }
