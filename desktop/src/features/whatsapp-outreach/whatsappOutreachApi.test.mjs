@@ -143,6 +143,20 @@ test("signed command payloads use the contract kind and have no channel tags", a
     tags: [],
   });
 
+  const contactUpdate = makeWhatsAppCommand(
+    whatsappCommandKinds.contactUpdate,
+    {
+      v: 1,
+      waId: "27821237135",
+      stage: "call_booked",
+    },
+  );
+  assert.deepEqual(contactUpdate, {
+    kind: 47052,
+    content: '{"v":1,"waId":"27821237135","stage":"call_booked"}',
+    tags: [],
+  });
+
   let signed = null;
   let published = null;
   await publishWhatsAppCommand(

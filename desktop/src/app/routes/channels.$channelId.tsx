@@ -26,10 +26,20 @@ type ChannelRouteSearch = {
   threadRootId?: string;
   whatsappContactWaId?: string;
   whatsappBatchId?: string;
+  whatsappDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
 };
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function outreachTab(value: unknown): ChannelRouteSearch["whatsappDeskTab"] {
+  return value === "needs-you" ||
+    value === "pipeline" ||
+    value === "chats" ||
+    value === "discussion"
+    ? value
+    : undefined;
 }
 
 function validateChannelSearch(
@@ -45,6 +55,7 @@ function validateChannelSearch(
     threadRootId: nonEmptyString(search.threadRootId),
     whatsappContactWaId: nonEmptyString(search.whatsappContactWaId),
     whatsappBatchId: nonEmptyString(search.whatsappBatchId),
+    whatsappDeskTab: outreachTab(search.whatsappDeskTab),
   };
 }
 
@@ -77,6 +88,7 @@ function ChannelRouteComponent() {
         targetThreadRootId={search.threadRootId ?? search.thread ?? null}
         whatsappContactWaId={search.whatsappContactWaId ?? null}
         whatsappBatchId={search.whatsappBatchId ?? null}
+        whatsappDeskTab={search.whatsappDeskTab}
       />
     </React.Suspense>
   );

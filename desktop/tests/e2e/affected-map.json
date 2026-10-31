@@ -161,6 +161,7 @@
         "channel-controls.spec.ts",
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
+        "whatsapp-outreach-desk.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-polish.spec.ts",
         "channel-sort.spec.ts",
@@ -284,6 +285,7 @@
     {
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
+        "whatsapp-outreach-desk.spec.ts",
         "messaging.spec.ts",
         "link-preview-bare-domain.spec.ts",
         "mentions.spec.ts",
@@ -415,6 +417,9 @@
         "desktop/tests/helpers/whatsappOutreach.ts"
       ],
       "specs": [
+        "whatsapp-outreach-desk.spec.ts",
+        "whatsapp-outreach-desk.visual.spec.ts",
+        "whatsapp-outreach.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts"
