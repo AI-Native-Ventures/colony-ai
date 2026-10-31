@@ -37,6 +37,10 @@ export type ChannelPaneProps = {
   editTarget?: MessageComposerEditTarget | null;
   fetchOlder?: () => Promise<void>;
   header?: React.ReactNode;
+  /** In-channel workspace replacing the ordinary timeline and composer. */
+  workspaceContent?: React.ReactNode;
+  /** Fold Outreach notices and WhatsApp conversation roots by day. */
+  foldWhatsAppActivity?: boolean;
   /**
    * Idle-state body for the right auxiliary pane (project extras, etc.).
    * Uses the same slot as thread, profile, and management panels.
