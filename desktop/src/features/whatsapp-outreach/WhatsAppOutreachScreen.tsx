@@ -252,6 +252,10 @@ export function WhatsAppOutreachScreen({
           selectedContact.lastContactedAt ??
           thread?.contact.lastContactedAt ??
           null,
+        lastOutboundState:
+          selectedContact.lastOutboundState ??
+          thread?.contact.lastOutboundState ??
+          null,
         lastReplyAt:
           selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
         leadId:
@@ -702,6 +706,7 @@ export function WhatsAppOutreachScreen({
                 selected={isSelected}
                 website={identity.website}
                 isDesk
+                isLinked={identity.isLinked}
                 waitingForApproval={rowMatches.length > 0}
               />
             ) : (

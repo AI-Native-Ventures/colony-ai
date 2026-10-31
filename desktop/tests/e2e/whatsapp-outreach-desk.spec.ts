@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   CORNER_COTTAGE_WA_ID,
+  GREEN_SHUTTER_WA_ID,
   JACARANDA_WA_ID,
   OUTREACH_CHANNEL_ID,
   installWhatsAppMockBridge,
@@ -14,6 +15,12 @@ const NO_WEBSITE_WA_ID = "27795552241";
 
 type WhatsAppMockState = {
   commands: Array<{ kind: number; body: Record<string, unknown> }>;
+  contacts: Array<{
+    waId: string;
+    stage: string;
+    label: string | null;
+    displayName: string | null;
+  }>;
 };
 
 type WhatsAppEventWindow = Window & {
@@ -29,6 +36,11 @@ type WhatsAppEventWindow = Window & {
     createdAt?: number;
   }) => { id: string };
   __BUZZ_E2E_WHATSAPP_STATE__?: WhatsAppMockState;
+  __BUZZ_E2E_WHATSAPP__?: (request: {
+    action: "command";
+    kind: number;
+    body: Record<string, unknown>;
+  }) => Promise<unknown>;
 };
 
 async function installLogoPreview(page: Page) {
@@ -143,6 +155,16 @@ test.describe("Outreach desk", () => {
         `outreach-pipeline-card-${CORNER_COTTAGE_WA_ID}`,
       ),
     ).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Contacted" })
+        .getByTestId(`outreach-pipeline-card-${JACARANDA_WA_ID}`),
+    ).toContainText("Waiting for a reply, read");
+    await expect(
+      page
+        .getByRole("region", { name: "Contacted" })
+        .getByTestId(`outreach-pipeline-card-${GREEN_SHUTTER_WA_ID}`),
+    ).not.toContainText("Waiting for a reply");
 
     const moveButton = page
       .getByRole("region", { name: "WhatsApp pipeline stages" })
@@ -227,6 +249,27 @@ test.describe("Outreach desk", () => {
     await expect(
       page.getByTestId(`outreach-pipeline-card-${JACARANDA_WA_ID}`).first(),
     ).toContainText("Jacaranda House");
+    await page.getByTestId("channel-view-tab-chats").click();
+    await page.getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`).click();
+    await page.getByTestId("whatsapp-rename-contact").click();
+    await expect(page.getByLabel("Contact label")).toHaveAttribute(
+      "maxlength",
+      "120",
+    );
+    await page.getByRole("button", { name: "Clear label" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (waId) =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.contacts.find(
+              (contact) => contact.waId === waId,
+            )?.displayName,
+          JACARANDA_WA_ID,
+        ),
+      )
+      .toBe("Mpho");
   });
 
   test("plain members have no stage or rename controls", async ({ page }) => {
@@ -246,6 +289,31 @@ test.describe("Outreach desk", () => {
     await page.getByTestId("channel-view-tab-chats").click();
     await page.getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`).click();
     await expect(page.getByTestId("whatsapp-rename-contact")).toHaveCount(0);
+    const refusal = await page.evaluate(async (waId) => {
+      const event = window as WhatsAppEventWindow;
+      return event.__BUZZ_E2E_WHATSAPP__?.({
+        action: "command",
+        kind: 47052,
+        body: { waId, stage: "quote_sent" },
+      });
+    }, JACARANDA_WA_ID);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (waId) =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.contacts.find(
+              (contact) => contact.waId === waId,
+            )?.stage,
+          JACARANDA_WA_ID,
+        ),
+      )
+      .toBe("contacted");
+    expect(refusal).toEqual({
+      message:
+        "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
+    });
   });
 
   test("Discussion folds WhatsApp activity and removes pending batch notices", async ({

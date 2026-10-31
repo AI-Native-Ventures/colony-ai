@@ -375,7 +375,7 @@ export function WhatsAppContactRecordPanel({
             <span>Contact label</span>
             <input
               autoFocus
-              maxLength={80}
+              maxLength={120}
               onChange={(event) => setLabel(event.currentTarget.value)}
               value={label}
             />

@@ -11,6 +11,7 @@ import {
   REFERENCE_CHANNEL_IDS,
   REFERENCE_PROSPECT_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
+import { canManageWhatsAppContact } from "../../src/features/whatsapp-outreach/whatsappContactAccess";
 import {
   cedarCafeLeadRecord,
   planeTreeCustomerRecord,
@@ -58,8 +59,8 @@ function deskCustomerRecordMock() {
     ayaPubkey: REFERENCE_AGENTS.aya.pubkey,
     ownerPubkey: E2E_SELF_PUBKEY,
   });
-  cornerCottageRecord.partyId = "e2e-corner-cottage-party";
-  cornerCottageRecord.leadId = "e2e-corner-cottage-lead";
+  cornerCottageRecord.partyId = REFERENCE_PROSPECT_IDS["sunday-edit"];
+  cornerCottageRecord.leadId = REFERENCE_PROSPECT_IDS["sunday-edit"];
   cornerCottageRecord.displayName = "Corner Cottage Parkhurst";
   return {
     relaySelf: getPublicKey(companyRelaySecret),
@@ -330,7 +331,10 @@ const fixture = {
     {
       waId: PLANE_TREE_WA_ID,
       e164: "+27 82 123 7135",
-      displayName: "Plane Tree Guesthouse",
+      displayName: "Thandeka",
+      profileName: "Thandeka",
+      businessName: "Plane Tree Guesthouse",
+      website: "https://form-field.example",
       leadId: PLANE_TREE_LEAD_ID,
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-plane-tree",
@@ -345,7 +349,10 @@ const fixture = {
     {
       waId: CORNER_COTTAGE_WA_ID,
       e164: "+27 72 555 1188",
-      displayName: "Corner Cottage Parkhurst",
+      displayName: "Lwazi",
+      profileName: "Lwazi",
+      businessName: "Corner Cottage Parkhurst",
+      website: "https://sunday-edit.example",
       leadId: REFERENCE_PROSPECT_IDS["sunday-edit"],
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-corner-cottage",
@@ -360,7 +367,10 @@ const fixture = {
     {
       waId: JACARANDA_WA_ID,
       e164: "+27 82 123 4410",
-      displayName: "Jacaranda Lane Guesthouse",
+      displayName: "Mpho",
+      profileName: "Mpho",
+      businessName: "Jacaranda Lane Guesthouse",
+      website: "https://stillroom.example",
       leadId: REFERENCE_PROSPECT_IDS.stillroom,
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-jacaranda",
@@ -376,7 +386,9 @@ const fixture = {
     {
       waId: LAVENDER_HILL_WA_ID,
       e164: "+27 79 555 2241",
-      displayName: "Lavender Hill Guesthouse",
+      displayName: "Karen",
+      profileName: "Karen",
+      businessName: "Lavender Hill Guesthouse",
       leadId: REFERENCE_PROSPECT_IDS["gather-house"],
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-lavender-hill",
@@ -391,7 +403,10 @@ const fixture = {
     {
       waId: GREEN_SHUTTER_WA_ID,
       e164: "+27 60 555 3422",
-      displayName: "The Green Shutter B&B",
+      displayName: "Palesa",
+      profileName: "Palesa",
+      businessName: "The Green Shutter B&B",
+      website: "https://common-ground.example",
       leadId: REFERENCE_PROSPECT_IDS["common-ground"],
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-green-shutter",
@@ -406,7 +421,10 @@ const fixture = {
     {
       waId: OAKLEAF_WA_ID,
       e164: "+27 65 555 1175",
-      displayName: "Oakleaf Rooms",
+      displayName: "Sam",
+      profileName: "Sam",
+      businessName: "Oakleaf Rooms",
+      website: "https://clay-collective.example",
       leadId: REFERENCE_PROSPECT_IDS["clay-collective"],
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-oakleaf",
@@ -421,7 +439,8 @@ const fixture = {
     {
       waId: "27825550104",
       e164: "+27 82 555 0104",
-      displayName: "Parkview Guest Rooms",
+      displayName: "Nomsa",
+      profileName: "Nomsa",
       leadId: null,
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-parkview",
@@ -436,7 +455,8 @@ const fixture = {
     {
       waId: "27615550126",
       e164: "+27 61 555 0126",
-      displayName: "Melville Garden Rooms",
+      displayName: "+27 61 555 0126",
+      profileName: null,
       leadId: null,
       ownerPubkey: null,
       threadRootEventId: "e2e-whatsapp-thread-melville-garden",
@@ -702,15 +722,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27794441101",
     e164: "+27 79 444 1101",
-    displayName: "Linden Loft Guesthouse",
+    displayName: "Kea",
     profileName: "Kea",
-    businessName: "Linden Loft Guesthouse",
-    website: "https://linden-loft.example",
-    leadId: null,
+    businessName: "Linden Tree Lodge",
+    website: "https://linden-tree-lodge.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["linden-tree-lodge"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-linden-loft",
     lastInboundAt: null,
     lastContactedAt: "2026-10-28T09:30:00+02:00",
+    lastOutboundState: "read",
     lastReplyAt: null,
     stage: "contacted",
     stageSetBy: "auto",
@@ -726,15 +748,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27664441102",
     e164: "+27 66 444 1102",
-    displayName: "Greenside Cottage B&B",
+    displayName: "Zola",
     profileName: "Zola",
-    businessName: "Greenside Cottage B&B",
-    website: null,
-    leadId: null,
+    businessName: "Greenside Courtyard Stay",
+    website: "https://greenside-courtyard.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["greenside-courtyard"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-greenside-cottage",
     lastInboundAt: null,
     lastContactedAt: "2026-10-28T09:20:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: null,
     stage: "contacted",
     stageSetBy: "auto",
@@ -750,15 +774,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27734441103",
     e164: "+27 73 444 1103",
-    displayName: "Emmarentia Rose Lodge",
+    displayName: "Sipho",
     profileName: "Sipho",
-    businessName: "Emmarentia Rose Lodge",
-    website: "https://emmarentia-rose.example",
-    leadId: null,
+    businessName: "Emmarentia Gardens Guesthouse",
+    website: "https://emmarentia-gardens.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["emmarentia-gardens"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-emmarentia-rose",
     lastInboundAt: "2026-10-29T10:18:00+02:00",
     lastContactedAt: "2026-10-27T09:30:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-29T10:18:00+02:00",
     stage: "replied",
     stageSetBy: "auto",
@@ -774,15 +800,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27724441104",
     e164: "+27 72 444 1104",
-    displayName: "Westcliff Garden Lodge",
+    displayName: "Pieter",
     profileName: "Pieter",
-    businessName: "Westcliff Garden Lodge",
-    website: "https://westcliff-garden.example",
-    leadId: null,
+    businessName: "Westcliff Garden Suites",
+    website: "https://westcliff-garden-suites.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["westcliff-garden-suites"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-westcliff",
     lastInboundAt: "2026-10-30T14:00:00+02:00",
     lastContactedAt: "2026-10-27T09:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-30T14:00:00+02:00",
     stage: "call_booked",
     stageSetBy: "auto",
@@ -798,15 +826,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27763334444",
     e164: "+27 76 333 4444",
-    displayName: "Melville Garden Rooms",
+    displayName: "Kabelo",
     profileName: "Kabelo",
-    businessName: "Melville Garden Rooms",
-    website: "https://melville-garden.example",
-    leadId: null,
+    businessName: "Melville Hill Cottages",
+    website: "https://melville-hill-cottages.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["melville-hill-cottages"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-melville-garden-business",
     lastInboundAt: null,
     lastContactedAt: "2026-10-22T10:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: null,
     stage: "quote_sent",
     stageSetBy: "auto",
@@ -822,15 +852,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27714441105",
     e164: "+27 71 444 1105",
-    displayName: "Craighall Courtyard Rooms",
+    displayName: "Ayesha",
     profileName: "Ayesha",
-    businessName: "Craighall Courtyard Rooms",
-    website: "https://craighall-courtyard.example",
-    leadId: null,
+    businessName: "The Stoop on Seventh",
+    website: "https://stoop-on-seventh.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["stoop-on-seventh"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-craighall",
     lastInboundAt: null,
     lastContactedAt: "2026-10-15T10:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-16T11:00:00+02:00",
     stage: "client",
     stageSetBy: "auto",
@@ -846,15 +878,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27684441106",
     e164: "+27 68 444 1106",
-    displayName: "The Quiet Owl B&B",
+    displayName: "Palesa",
     profileName: "Palesa",
     businessName: "The Quiet Owl B&B",
-    website: "https://quiet-owl.example",
-    leadId: null,
+    website: "https://quiet-owl-bb.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["quiet-owl-bb"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-quiet-owl",
     lastInboundAt: "2026-10-27T14:00:00+02:00",
     lastContactedAt: "2026-10-26T09:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-27T14:00:00+02:00",
     stage: "no_thanks",
     stageSetBy: "auto",
@@ -870,15 +904,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27874441107",
     e164: "+27 87 444 1107",
-    displayName: "Parkview Manor",
+    displayName: "Naledi",
     profileName: "Naledi",
     businessName: "Parkview Manor",
-    website: null,
-    leadId: null,
+    website: "https://parkview-manor.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["parkview-manor"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-parkview-manor",
     lastInboundAt: "2026-10-26T11:00:00+02:00",
     lastContactedAt: "2026-10-25T09:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-26T11:00:00+02:00",
     stage: "no_thanks",
     stageSetBy: "auto",
@@ -894,15 +930,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27884441108",
     e164: "+27 88 444 1108",
-    displayName: "Westdene House",
+    displayName: "Musa",
     profileName: "Musa",
-    businessName: "Westdene House",
-    website: "https://westdene-house.example",
-    leadId: null,
+    businessName: "Bramble & Brick Guesthouse",
+    website: "https://woven-living.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["woven-living"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-westdene",
     lastInboundAt: "2026-10-24T11:00:00+02:00",
     lastContactedAt: "2026-10-24T09:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: "2026-10-24T11:00:00+02:00",
     stage: "stopped",
     stageSetBy: "auto",
@@ -918,15 +956,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27894441109",
     e164: "+27 89 444 1109",
-    displayName: "The Red Fern Guesthouse",
+    displayName: "Musa",
     profileName: "Musa",
     businessName: "The Red Fern Guesthouse",
-    website: "https://red-fern.example",
-    leadId: null,
+    website: "https://red-fern-guesthouse.example",
+    label: null,
+    leadId: REFERENCE_PROSPECT_IDS["red-fern-guesthouse"],
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-red-fern",
     lastInboundAt: null,
     lastContactedAt: "2026-10-23T09:00:00+02:00",
+    lastOutboundState: null,
     lastReplyAt: null,
     stage: "not_on_whatsapp",
     stageSetBy: "auto",
@@ -942,15 +982,17 @@ const deskPipelineAdditionalContacts = [
   {
     waId: "27683735905",
     e164: "+27 68 373 5905",
-    displayName: null,
+    displayName: "+27 68 373 5905",
     profileName: null,
     businessName: null,
     website: null,
+    label: null,
     leadId: null,
     ownerPubkey: null,
     threadRootEventId: "e2e-whatsapp-thread-unlinked",
     lastInboundAt: "2026-10-29T08:44:00+02:00",
     lastContactedAt: null,
+    lastOutboundState: null,
     lastReplyAt: "2026-10-29T08:44:00+02:00",
     stage: "none",
     stageSetBy: "auto",
@@ -970,6 +1012,12 @@ export async function installWhatsAppMockBridge(
   theme: WhatsAppProofTheme = "light",
   actor: WhatsAppMockActor = {},
 ) {
+  const canManageContacts = canManageWhatsAppContact({
+    role: actor.relayRole ?? "owner",
+    isOutreachMember: actor.outreachChannelMember !== false,
+    isManagedAgent: actor.profileIsAgent ?? false,
+    ownerPubkey: actor.profileOwnerPubkey ?? null,
+  });
   await page.emulateMedia({ colorScheme: theme });
   await installMockBridge(page, {
     referenceWorkspace: true,
@@ -1031,6 +1079,9 @@ export async function installWhatsAppMockBridge(
       const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
       const {
         selfPubkey,
+        canManageContacts,
+        activeLeadIds,
+        referenceProspectIds,
         visualBatch: visual,
         visualLeadBatchIds,
         visualNorthNoteLeadId,
@@ -1305,11 +1356,11 @@ export async function installWhatsAppMockBridge(
         );
         if (cornerCottage) {
           Object.assign(cornerCottage, {
-            displayName: null,
+            displayName: "Lindiwe",
             profileName: "Lindiwe",
             businessName: "Corner Cottage Parkhurst",
-            website: null,
-            leadId: "e2e-corner-cottage-lead",
+            website: "https://sunday-edit.example",
+            leadId: referenceProspectIds["sunday-edit"],
             optedOut: false,
             stage: "wants_call",
             stageSetBy: "auto",
@@ -1325,10 +1376,12 @@ export async function installWhatsAppMockBridge(
         );
         if (jacaranda) {
           Object.assign(jacaranda, {
+            displayName: "Mpho",
             stage: "contacted",
             stageSetBy: "auto",
             stageChangedAt: "2026-10-29T09:40:00+02:00",
             lastContactedAt: "2026-10-29T09:40:00+02:00",
+            lastOutboundState: "read",
           });
         }
         const greenShutter = baseContacts.find(
@@ -1336,11 +1389,13 @@ export async function installWhatsAppMockBridge(
         );
         if (greenShutter) {
           Object.assign(greenShutter, {
+            displayName: "Palesa",
             optedOut: false,
             stage: "contacted",
             stageSetBy: "auto",
             stageChangedAt: "2026-10-28T10:30:00+02:00",
             lastContactedAt: "2026-10-28T10:30:00+02:00",
+            lastOutboundState: null,
             unanswered: false,
           });
         }
@@ -1349,6 +1404,7 @@ export async function installWhatsAppMockBridge(
         );
         if (oakleaf) {
           Object.assign(oakleaf, {
+            displayName: "Sam",
             optedOut: false,
             stage: "contacted",
             stageSetBy: "auto",
@@ -1362,10 +1418,11 @@ export async function installWhatsAppMockBridge(
         if (parkview) {
           Object.assign(parkview, {
             optedOut: false,
-            displayName: null,
+            displayName: "Nomsa",
             profileName: "Nomsa",
             businessName: "Parkview Guest Rooms",
             website: "https://parkview-guest-rooms.example",
+            leadId: referenceProspectIds["parkview-guest-rooms"],
             stage: "quote_sent",
             stageSetBy: "auto",
             stageChangedAt: "2026-10-23T10:00:00+02:00",
@@ -1378,7 +1435,7 @@ export async function installWhatsAppMockBridge(
         if (melville) {
           Object.assign(melville, {
             optedOut: false,
-            displayName: null,
+            displayName: "+27 61 555 0126",
             profileName: null,
             businessName: null,
             website: null,
@@ -1394,10 +1451,10 @@ export async function installWhatsAppMockBridge(
         );
         if (lavender) {
           Object.assign(lavender, {
-            leadId: null,
+            leadId: referenceProspectIds["gather-house"],
             businessName: "Lavender Hill Guesthouse",
             profileName: "Karen Mokoena",
-            displayName: null,
+            displayName: "Karen Mokoena",
             website: null,
             stage: "contacted",
             stageSetBy: "auto",
@@ -1470,13 +1527,19 @@ export async function installWhatsAppMockBridge(
         ? state.threads["27821234410"]
         : null;
       if (jacarandaContact && jacarandaThread) {
-        jacarandaContact.displayName = null;
+        jacarandaContact.displayName =
+          jacarandaContact.profileName ?? jacarandaContact.e164;
         jacarandaContact.leadId = null;
         jacarandaThread.contact = {
           ...jacarandaThread.contact,
-          displayName: null,
+          displayName:
+            jacarandaThread.contact.profileName ?? jacarandaThread.contact.e164,
           leadId: null,
         };
+        delete jacarandaContact.businessName;
+        delete jacarandaContact.website;
+        delete jacarandaThread.contact.businessName;
+        delete jacarandaThread.contact.website;
         const templateBody =
           templateSeed.find(([name]) => name === "hl_vb")?.[4] ?? "";
         const params = [
@@ -1531,6 +1594,37 @@ export async function installWhatsAppMockBridge(
               : {}),
           });
         }
+      }
+      const activeLeadIdSet = new Set(activeLeadIds as string[]);
+      const normalizeContactView = (value: unknown) => {
+        if (typeof value !== "object" || value === null) return;
+        const contact = value as Record<string, unknown>;
+        const label =
+          typeof contact.label === "string" && contact.label.trim()
+            ? contact.label
+            : null;
+        const profileName =
+          typeof contact.profileName === "string" &&
+          /[\p{L}\p{N}]/u.test(contact.profileName)
+            ? contact.profileName
+            : null;
+        contact.profileName = profileName;
+        contact.displayName =
+          label ??
+          profileName ??
+          (typeof contact.e164 === "string" ? contact.e164 : null);
+        contact.lastOutboundState ??= null;
+        if (
+          typeof contact.leadId !== "string" ||
+          !activeLeadIdSet.has(contact.leadId)
+        ) {
+          delete contact.businessName;
+          delete contact.website;
+        }
+      };
+      for (const contact of state.contacts) normalizeContactView(contact);
+      for (const thread of Object.values(state.threads)) {
+        normalizeContactView(thread.contact);
       }
       const globalWindow = window as Window & {
         __BUZZ_E2E_WHATSAPP_STATE__?: typeof state;
@@ -1632,6 +1726,54 @@ export async function installWhatsAppMockBridge(
             (candidate) => candidate.waId === body.waId,
           );
           if (contact) {
+            if (!canManageContacts) {
+              return {
+                message:
+                  "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
+              };
+            }
+            if (
+              typeof body.label === "string" &&
+              body.label.trim().length === 0
+            ) {
+              return { message: "label is empty; send null to clear it" };
+            }
+            if (typeof body.label === "string" && body.label.length > 120) {
+              return { message: "label must be 120 characters or fewer" };
+            }
+            const manualStages = [
+              "contacted",
+              "replied",
+              "wants_call",
+              "call_booked",
+              "quote_sent",
+              "client",
+              "no_thanks",
+            ];
+            if (
+              typeof body.stage === "string" &&
+              ["stopped", "no_thanks", "not_on_whatsapp"].includes(
+                contact.stage,
+              )
+            ) {
+              return {
+                message:
+                  "this business asked not to be messaged or is not on WhatsApp, so its stage cannot be changed",
+              };
+            }
+            if (
+              typeof body.stage === "string" &&
+              !manualStages.includes(body.stage)
+            ) {
+              return { message: "invalid WhatsApp contact stage" };
+            }
+            if (
+              body.label !== undefined &&
+              body.label !== null &&
+              typeof body.label !== "string"
+            ) {
+              return { message: "invalid WhatsApp contact label" };
+            }
             if (typeof body.stage === "string") {
               contact.stage = body.stage;
               contact.stageSetBy = selfPubkey;
@@ -1639,6 +1781,12 @@ export async function installWhatsAppMockBridge(
             }
             if (body.label === null || typeof body.label === "string") {
               contact.label = body.label;
+              const profileName =
+                typeof contact.profileName === "string" &&
+                /[\p{L}\p{N}]/u.test(contact.profileName)
+                  ? contact.profileName
+                  : contact.e164;
+              contact.displayName = body.label ?? profileName;
             }
             const thread = state.threads[contact.waId];
             if (thread) thread.contact = clone(contact);
@@ -1729,6 +1877,9 @@ export async function installWhatsAppMockBridge(
     {
       ...fixture,
       selfPubkey: E2E_SELF_PUBKEY,
+      canManageContacts,
+      activeLeadIds: Object.values(REFERENCE_PROSPECT_IDS),
+      referenceProspectIds: REFERENCE_PROSPECT_IDS,
       templates,
       visualBatch,
       secondPendingBatch,

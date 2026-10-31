@@ -49,7 +49,11 @@ function nextStep(
   customerStep: string | null,
   personName: string,
 ) {
-  if (contact.stage === "contacted") return null;
+  if (contact.stage === "contacted") {
+    return contact.lastOutboundState
+      ? `Waiting for a reply, ${contact.lastOutboundState}`
+      : null;
+  }
   if (contact.stage === "replied") {
     return hasDraft ? "Scout drafted a reply" : "Reply needed";
   }

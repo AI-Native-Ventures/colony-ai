@@ -2,6 +2,7 @@ import type { BusinessRecords } from "@/features/discovery/businessRecordRelay";
 import type { CustomerRecordView } from "@/features/cofounder/customerRecords";
 import {
   formatWhatsAppNumber,
+  isWhatsAppPhoneLikeName,
   type WhatsAppContact,
 } from "./whatsappOutreachModels";
 
@@ -26,19 +27,28 @@ export function resolveOutreachContactIdentity(
         ({ record }) => record.prospectId === contact.leadId,
       )?.record.prospect
     : undefined;
-  const linkedBusinessName = lead?.party.displayName ?? contact.businessName;
-  const isLinked = Boolean(lead || contact.businessName?.trim());
+  const rawLinkedBusinessName =
+    lead?.party.displayName ?? (contact.leadId ? contact.businessName : null);
+  const linkedBusinessName = rawLinkedBusinessName?.trim()
+    ? isWhatsAppPhoneLikeName(rawLinkedBusinessName)
+      ? null
+      : rawLinkedBusinessName
+    : null;
+  const linkedWebsite =
+    lead?.website ?? (contact.leadId ? contact.website : null);
+  const isLinked = Boolean(
+    lead || (contact.leadId && rawLinkedBusinessName?.trim()),
+  );
   const displayName =
     contact.label?.trim() ||
-    (isLinked
-      ? linkedBusinessName || contact.displayName || "WhatsApp contact"
-      : formatWhatsAppNumber(contact.e164));
+    linkedBusinessName ||
+    formatWhatsAppNumber(contact.e164);
   return {
     displayName,
-    businessName: linkedBusinessName ?? null,
-    personName: lead?.contactName ?? contact.profileName ?? contact.displayName,
+    businessName: linkedBusinessName,
+    personName: lead?.contactName ?? contact.profileName,
     location: lead?.location ?? null,
-    website: lead?.website ?? contact.website,
+    website: linkedWebsite,
     phone: formatWhatsAppNumber(contact.e164),
     partyId: lead?.party.partyId ?? null,
     leadId: contact.leadId,

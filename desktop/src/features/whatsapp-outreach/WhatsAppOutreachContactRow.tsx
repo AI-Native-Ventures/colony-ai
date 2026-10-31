@@ -42,6 +42,7 @@ export function WhatsAppOutreachContactRow({
   personName,
   website,
   isDesk = false,
+  isLinked = Boolean(contact.leadId || contact.businessName),
 }: {
   contact: WhatsAppContact;
   businessName: string;
@@ -55,6 +56,7 @@ export function WhatsAppOutreachContactRow({
   personName: string | null;
   website: string | null;
   isDesk?: boolean;
+  isLinked?: boolean;
 }) {
   const status = contactStatus(contact, waitingForApproval);
   const lastMessageAt = [
@@ -76,7 +78,7 @@ export function WhatsAppOutreachContactRow({
       >
         <span aria-hidden="true" className="c3wa-contact-avatar">
           {isDesk ? (
-            contact.leadId || contact.businessName ? (
+            isLinked ? (
               <BusinessLogoMark
                 className="c3wa-desk-logo-mark"
                 name={businessName}
@@ -104,7 +106,7 @@ export function WhatsAppOutreachContactRow({
             ) : (
               <StatusChip status={status} />
             )}
-            {isDesk && !contact.leadId && !contact.businessName ? (
+            {isDesk && !isLinked ? (
               <span className="c3wa-contact-unlinked-chip">
                 Not linked to a business
               </span>
