@@ -4,6 +4,7 @@ import { signRelayEvent } from "@/shared/api/tauri";
 import {
   KIND_WHATSAPP_BATCH,
   KIND_WHATSAPP_BATCH_DECISION,
+  KIND_WHATSAPP_CONTACT_UPDATE,
   KIND_WHATSAPP_SEND_REQUEST,
   KIND_WHATSAPP_SETTINGS,
 } from "@/shared/constants/kinds";
@@ -33,6 +34,7 @@ const DISCONNECT_PATH = "/api/whatsapp/disconnect";
 export type WhatsAppCommandKind =
   | typeof KIND_WHATSAPP_BATCH
   | typeof KIND_WHATSAPP_BATCH_DECISION
+  | typeof KIND_WHATSAPP_CONTACT_UPDATE
   | typeof KIND_WHATSAPP_SEND_REQUEST
   | typeof KIND_WHATSAPP_SETTINGS;
 
@@ -414,4 +416,5 @@ export const whatsappCommandKinds = {
   decision: KIND_WHATSAPP_BATCH_DECISION,
   send: KIND_WHATSAPP_SEND_REQUEST,
   settings: KIND_WHATSAPP_SETTINGS,
+  contactUpdate: KIND_WHATSAPP_CONTACT_UPDATE,
 } as const;

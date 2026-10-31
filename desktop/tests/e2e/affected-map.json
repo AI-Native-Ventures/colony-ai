@@ -59,7 +59,8 @@
         "mentions.spec.ts",
         "channels.spec.ts",
         "whatsapp-decided-card.spec.ts",
-        "whatsapp-polish.spec.ts"
+        "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts"
       ],
       "titles": [
         "send a message and see it in timeline",
@@ -82,13 +83,14 @@
         "manage channel updates details",
         "unknown relay message states keep the WhatsApp chat visible",
         "header, contact identity, and rejected batch summaries stay distinct at owner size",
-        "Outreach approved card sends the exact batch after confirmation",
+        "Outreach pending batch stays in Needs you, not Discussion",
         "Scout DM approved card sends the exact batch after confirmation",
         "approved card opens WhatsApp chats from the channel",
         "pending card changes to approved after approving without reloading",
         "rejected and fully sent batches have no actions",
         "genuinely missing batch is one plain line with no actions",
-        "cannot use send now on an approved card"
+        "cannot use send now on an approved card",
+        "channel content and actions stay reachable beside the dock at owner size"
       ]
     }
   },
@@ -162,8 +164,10 @@
         "channel-controls.spec.ts",
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
+        "whatsapp-outreach-desk.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts",
         "channel-sort.spec.ts",
         "channel-star.spec.ts",
         "auxiliary-pane-close-visibility.spec.ts",
@@ -286,6 +290,7 @@
     {
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
+        "whatsapp-outreach-desk.spec.ts",
         "messaging.spec.ts",
         "link-preview-bare-domain.spec.ts",
         "mentions.spec.ts",
@@ -419,9 +424,13 @@
         "desktop/tests/helpers/whatsappOutreach.ts"
       ],
       "specs": [
+        "whatsapp-outreach-desk.spec.ts",
+        "whatsapp-outreach-desk.visual.spec.ts",
+        "whatsapp-outreach.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",
-        "whatsapp-polish.spec.ts"
+        "whatsapp-polish.spec.ts",
+        "whatsapp-dock-narrow.spec.ts"
       ]
     },
     {
@@ -441,6 +450,7 @@
         "work-area-browser-screenshots.spec.ts",
         "work-area-knowledge.spec.ts",
         "work-area-pins.spec.ts",
+        "whatsapp-dock-narrow.spec.ts",
         "workspace-file-links.spec.ts",
         "browser-profile-forget.spec.ts",
         "colony3-conv-workarea-proof.spec.ts"

@@ -349,7 +349,10 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
     await expect(leadRow).toContainText("Replied");
     await leadRow.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
-    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    await expect(page.getByTestId("channel-view-tab-chats")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await expect(
       page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
     ).toHaveAttribute("aria-current", "true");
@@ -387,7 +390,10 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
     ).toBeVisible();
     await whatsAppCard.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
-    await expect(page.getByTestId("work-area-panel")).toBeVisible();
+    await expect(page.getByTestId("channel-view-tab-chats")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await expect(
       page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
     ).toHaveAttribute("aria-current", "true");
