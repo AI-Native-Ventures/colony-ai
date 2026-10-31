@@ -168,6 +168,28 @@ for distributable builds or builds from an immutable release tag.
 
 ---
 
+## Where the Mac app keeps its secrets
+
+The Electron package workflow builds `colony-native-host` for macOS in one of two
+ways, decided by whether the Apple signing secrets are complete (`mac_signed`):
+
+- **Unsigned (ad-hoc) Mac build:** built with `--no-default-features`, so it has
+  no system keyring. The identity key, agent keys and device credentials live in
+  owner-only files (`identity.key`, the agents JSON, `device-secrets.json`, all
+  mode 0600, written atomically). It never touches the Keychain, so it shows no
+  prompt. The Keychain is not an option here: it trusts an app by its code hash,
+  an ad-hoc app gets a new hash every release, and the next release could not
+  read what the last one stored, which signed the user out on every update.
+- **Signed Mac build:** keeps the Keychain (`system-keyring`). On first launch it
+  adopts a leftover `identity.key` into the Keychain and removes the file.
+  Agent keys saved inline are lifted into the Keychain the same way.
+
+The built host carries the marker `colony-secret-storage=file` or
+`colony-secret-storage=keychain`, and the workflow fails when the marker does not
+match the signing result. When Developer ID signing is added, nothing else needs
+to change: the first signed release flips the flag by itself, and the tag release
+never reuses an unsigned candidate when signing is configured.
+
 ## Release Retry
 
 `release.yml` has no manual dispatch and cannot build from `main` or another
