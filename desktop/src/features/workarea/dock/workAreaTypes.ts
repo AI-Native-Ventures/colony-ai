@@ -74,7 +74,7 @@ export const WORK_AREA_DEFAULT_WIDTH = 68.85;
 export const WORK_AREA_KEY_STEP = 2;
 export const WORK_AREA_KEY_STEP_LARGE = 10;
 /** Below this layout width the dock overlays the conversation. */
-export const WORK_AREA_OVERLAY_BREAKPOINT_PX = 760;
+export const WORK_AREA_OVERLAY_BREAKPOINT_PX = 712;
 
 export const EMPTY_WORK_AREA_STATE: WorkAreaChannelState = Object.freeze({
   open: false,
