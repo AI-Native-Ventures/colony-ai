@@ -18,6 +18,7 @@ import {
   ExpandSidebarIcon,
   TodayIcon,
 } from "@/shared/ui/colonyIcons";
+import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 
 type SidebarSelectedView =
   | "today"
@@ -32,7 +33,9 @@ type SidebarSelectedView =
   | "pins";
 
 type AppSidebarPinnedHeaderProps = {
+  activeCommunityId?: string;
   activeCommunityName: string;
+  activeCommunityRelayUrl?: string;
   channelLabels: Record<string, string>;
   currentChannelId?: string | null;
   currentPubkey?: string;
@@ -59,7 +62,9 @@ type AppSidebarPrimaryMenuProps = {
 };
 
 export function AppSidebarPinnedHeader({
+  activeCommunityId,
   activeCommunityName,
+  activeCommunityRelayUrl,
   channelLabels,
   currentChannelId,
   currentPubkey,
@@ -95,10 +100,21 @@ export function AppSidebarPinnedHeader({
           }
           type="button"
         >
-          <span aria-hidden="true" className="colony-sidebar-brand-mark">
-            {communityInitial}
-            <span className="colony-sidebar-brand-dot" />
-          </span>
+          <WorkspaceMark
+            className="colony-sidebar-brand-mark"
+            communityIconFit="cover"
+            communityId={activeCommunityId}
+            dataTestId="sidebar-community-brand-mark"
+            dot={<span className="colony-sidebar-brand-dot" />}
+            fallbackContent={
+              <span data-testid="sidebar-community-brand-fallback">
+                {communityInitial}
+              </span>
+            }
+            imageFit="contain"
+            name={activeCommunityName}
+            relayUrl={activeCommunityRelayUrl}
+          />
           <span className="sidebar-company-name">
             <span>{activeCommunityName || "No community"}</span>
             <span className="sidebar-company-context">Company workspace</span>
