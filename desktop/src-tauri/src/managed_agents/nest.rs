@@ -83,7 +83,9 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 20 combines the co-founder Phase 2 integration and initiative sections
 /// with the worker-start rule.
 /// Version 21 adds the Playbooks section (`colony playbooks`) to that skill.
-const NEST_SKILL_VERSION: u32 = 21;
+/// Version 22 adds the Private folders rule (no whole-home scans, no Photos,
+/// Music, Mail or Messages) so existing nests regenerate the skill with it.
+const NEST_SKILL_VERSION: u32 = 22;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

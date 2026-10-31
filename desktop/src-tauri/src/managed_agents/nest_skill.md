@@ -17,6 +17,10 @@ Colony sets your identity key, relay, and owner attestation for you when it star
 
 Run the bundled CLI with `--help` and `<command> <subcommand> --help` to discover all flags, arguments, and usage. This skill documents only what `--help` cannot tell you.
 
+## Private folders (hard rule)
+
+Never scan the whole home folder or `/` (`find ~`, `find /Users`, `grep -r ~`, `ls -R ~`, `du ~`). Search only your nest, the business folders the owner named, and paths in the request. Never open, list or search Photos, `Pictures`, `Music`, `Movies`, `Mail`, `Messages`, `Calendars`, the address book or `/Volumes` unless the owner asked for that exact path in the message, and touch `Desktop`, `Documents` and `Downloads` only when the owner names them. macOS asks the owner for permission in Colony each time, and the prompt keeps returning. If you cannot find something, ask the owner where it is. A refusal on one of these paths means stop and ask.
+
 ## Conversational Agent Management
 
 When someone naturally asks to create an agent, ask for at most two things: the agent's **name** and **what it should do day-to-day**. Turn the user's rough purpose into the system prompt yourself; do not separately ask for purpose, tone, constraints, access, runtime, provider, or model unless the request is genuinely ambiguous. Then run:
