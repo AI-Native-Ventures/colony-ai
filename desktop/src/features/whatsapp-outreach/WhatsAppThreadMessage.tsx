@@ -224,9 +224,16 @@ export function WhatsAppThreadMessage({
     );
   }
   const inbound = message.direction === "in";
-  const statusLabel = waitingForApproval
-    ? "Waiting for your approval"
-    : whatsappDeliveryLabel(message.state, message.errorText, message.sendsAt);
+  const statusLabel =
+    message.state === null
+      ? null
+      : waitingForApproval
+        ? "Waiting for your approval"
+        : whatsappDeliveryLabel(
+            message.state,
+            message.errorText,
+            message.sendsAt,
+          );
   const template =
     templates.find((item) => item.name === message.templateName) ?? null;
   const mediaParts =
@@ -307,7 +314,7 @@ export function WhatsAppThreadMessage({
             <span aria-hidden="true">!</span>
             <span>{message.errorText ?? statusLabel}</span>
           </div>
-        ) : !inbound ? (
+        ) : !inbound && message.state !== null ? (
           <div className="c3wa-message-receipt">
             <span aria-hidden="true" className="c3wa-delivery-glyph">
               {deliveryGlyph(message.state)}

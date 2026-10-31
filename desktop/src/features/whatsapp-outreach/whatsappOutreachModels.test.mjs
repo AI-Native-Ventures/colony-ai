@@ -7,8 +7,10 @@ import {
   isWhatsAppReplyWindowOpen,
   maskWhatsAppNumber,
   parseWhatsAppBatchDetail,
+  parseWhatsAppMessage,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
+  resetWhatsAppUnknownMessageStateWarning,
   renderWhatsAppTemplate,
   whatsappDeliveryLabel,
   whatsappQueuedScheduleLabel,
@@ -66,6 +68,42 @@ test("reply window is open before, but not at, the 24 hour boundary", () => {
     false,
   );
   assert.equal(isWhatsAppReplyWindowOpen(inboundAt, inboundAt - 1), false);
+});
+
+test("inbound received state maps to read and unknown states are omitted", () => {
+  const message = {
+    id: "message-id",
+    waId: "27821237135",
+    direction: "in",
+    kind: "text",
+    text: "Message text.",
+    templateName: null,
+    state: "received",
+    errorCode: null,
+    errorText: null,
+    eventId: null,
+    senderPubkey: null,
+    createdAt: "2026-10-31T09:00:00+02:00",
+  };
+  assert.equal(parseWhatsAppMessage(message).state, "read");
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  resetWhatsAppUnknownMessageStateWarning();
+  console.warn = (...args) => warnings.push(args);
+  try {
+    const unknown = {
+      ...message,
+      direction: "out",
+      state: "received_by_carrier",
+    };
+    assert.equal(parseWhatsAppMessage(unknown).state, null);
+    assert.equal(parseWhatsAppMessage(unknown).state, null);
+  } finally {
+    console.warn = originalWarn;
+    resetWhatsAppUnknownMessageStateWarning();
+  }
+  assert.equal(warnings.length, 1);
 });
 
 test("daily cap progress handles zero, the cap, and over-cap counts", () => {

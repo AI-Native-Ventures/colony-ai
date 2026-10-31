@@ -57,6 +57,7 @@ import { browserCommunityOrigin } from "../../../electron/browser-broker/session
 import { initWorkAreaStore } from "@/features/workarea/dock/workAreaStore";
 import { resetWorkAreaState } from "@/features/workarea/dock/resetWorkAreaState";
 import { resetMembershipDenialGate } from "./membershipDenialGate";
+import { resetWhatsAppUnknownMessageStateWarning } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 
 import {
   initFirstCommunity,
@@ -100,6 +101,7 @@ async function resetCommunityState({
   }
   resetSidebarRelayConnectionCardState();
   resetMembershipDenialGate();
+  resetWhatsAppUnknownMessageStateWarning();
   resetDiscoveryRuntime();
   resetTenantCommunityCache();
   resetWorkAreaState();
