@@ -5,6 +5,7 @@
 
 pub mod channel;
 pub mod connect;
+pub mod desk;
 pub mod graph;
 pub mod inbound;
 pub mod policy;

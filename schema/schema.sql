@@ -716,7 +716,20 @@ CREATE TABLE whatsapp_contacts (
     pause_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (community_id, wa_id)
+    label TEXT CHECK (label IS NULL OR char_length(label) BETWEEN 1 AND 120),
+    manual_stage TEXT CHECK (
+        manual_stage IS NULL OR manual_stage IN
+            ('contacted', 'replied', 'wants_call', 'call_booked', 'quote_sent', 'client', 'no_thanks')
+    ),
+    manual_stage_by BYTEA CHECK (
+        manual_stage_by IS NULL OR octet_length(manual_stage_by) = 32
+    ),
+    manual_stage_at TIMESTAMPTZ,
+    PRIMARY KEY (community_id, wa_id),
+    CONSTRAINT whatsapp_contacts_manual_stage_complete CHECK (
+        (manual_stage IS NULL) = (manual_stage_by IS NULL)
+        AND (manual_stage IS NULL) = (manual_stage_at IS NULL)
+    )
 );
 
 CREATE TABLE whatsapp_batches (
@@ -776,6 +789,7 @@ CREATE TABLE whatsapp_messages (
     post_attempts INTEGER NOT NULL DEFAULT 0 CHECK (post_attempts >= 0),
     post_retry_at TIMESTAMPTZ,
     post_gave_up_at TIMESTAMPTZ,
+    intent TEXT CHECK (intent IS NULL OR intent IN ('wants_call')),
     PRIMARY KEY (community_id, id),
     FOREIGN KEY (community_id, wa_id) REFERENCES whatsapp_contacts (community_id, wa_id),
     FOREIGN KEY (community_id, batch_id) REFERENCES whatsapp_batches (community_id, id),
