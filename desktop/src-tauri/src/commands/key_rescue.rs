@@ -261,10 +261,9 @@ fn rescue_identity(
         return IdentityOutcome::NotInKeychain;
     };
     let path = data_dir.join(colony_identity_kernel::IDENTITY_FILE_NAME);
-    if path.exists() {
-        return IdentityOutcome::KeptCurrent;
-    }
-    let Some(keys) = keys_for(nsec, &signed_in.to_hex()) else {
+    // RED PROOF: replaces identity.key and ignores whose key it is.
+    let _ = signed_in;
+    let Ok(keys) = Keys::parse(nsec.trim()) else {
         return IdentityOutcome::DifferentAccount;
     };
     let restored = colony_identity_kernel::save_key_file(&path, &keys)
