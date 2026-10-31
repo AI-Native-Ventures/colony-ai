@@ -89,6 +89,7 @@ body[data-layout="phone"] .screen { width: 390px; height: 800px; display: flex; 
 .p36 { width: 36px; height: 36px; font-size: 13px; }
 .p40 { width: 40px; height: 40px; font-size: 14px; }
 .p34 { width: 34px; height: 34px; font-size: 12.5px; }
+.p28 { width: 28px; height: 28px; font-size: 11px; }
 .with-dot { position: relative; }
 .with-dot::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: var(--online); box-shadow: 0 0 0 2.5px var(--canvas); }
 
@@ -231,7 +232,19 @@ body[data-layout="phone"] .cursor::before {
 .msg-meta { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .msg-meta b { font-size: 15px; font-weight: 800; color: var(--ink); }
 .msg-text { font-size: 15.5px; line-height: 1.5; font-weight: 500; color: var(--ink); }
-.composer-wrap { flex: none; padding: 0 24px 20px; }
+.composer-wrap { position: relative; flex: none; padding: 0 24px 20px; }
+.mention-pop {
+  position: absolute; left: 24px; bottom: 84px; z-index: 5; width: 320px; padding: 8px;
+  border-radius: 16px; background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 22px 44px -22px rgba(40, 20, 60, 0.45);
+  display: flex; flex-direction: column; gap: 2px;
+  opacity: 0; transform: translateY(6px); pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.mention-pop.is-on { opacity: 1; transform: none; }
+.mention-pop .opt-label { padding: 4px 8px 6px; }
+.mention-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 11px; font-size: 14.5px; }
+.mention-row b { font-weight: 800; }
+.mention-row small { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--muted); }
+.mention-row.is-on { background: var(--accent-soft); }
 .composer { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 8px 8px 18px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow-composer); }
 .composer-text { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; }
 .composer-text:empty::before { content: attr(data-placeholder); color: var(--faint); }

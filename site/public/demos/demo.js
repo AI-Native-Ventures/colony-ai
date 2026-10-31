@@ -116,6 +116,17 @@
     }
     el.classList.remove('is-typing');
   }
+  // Types into a text node, so chips already in the field stay put.
+  async function typeText(node, text, perSecond = 30) {
+    if (reduced) {
+      node.data += text;
+      return;
+    }
+    for (const ch of text) {
+      node.data += ch;
+      await sleep(1000 / perSecond);
+    }
+  }
   function toBottom(box) {
     box.scrollTo({ top: box.scrollHeight, behavior: reduced ? 'auto' : 'smooth' });
   }
@@ -145,7 +156,23 @@
     const send = $('[data-send]', scene);
     await sleep(500);
     await moveTo(composer, 0.06, 0.5);
-    await type(composer, 'Line up the Parkhurst gift shops for WhatsApp. Use the Sample posts template.', 34);
+    // Lerato tags the agent the task is for: typing @ opens the mention picker, Scout becomes a chip.
+    composer.classList.add('is-typing');
+    const handle = document.createTextNode('');
+    composer.append(handle);
+    await typeText(handle, '@Sc', 9);
+    const picker = $('[data-mention-pop]', scene);
+    picker.classList.add('is-on');
+    await sleep(900);
+    picker.classList.remove('is-on');
+    const chip = document.createElement('span');
+    chip.className = 'mention';
+    chip.textContent = '@Scout';
+    const task = document.createTextNode(' ');
+    handle.replaceWith(chip, task);
+    await sleep(250);
+    await typeText(task, 'Line up the Parkhurst gift shops for WhatsApp. Use the Sample posts template.', 34);
+    composer.classList.remove('is-typing');
     await click(send);
     composer.textContent = '';
     chat.append(clone('t-ask'));

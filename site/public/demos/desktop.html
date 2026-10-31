@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Colony desktop demo</title>
   <link rel="preload" href="../assets/manrope-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="demo.css?v=1">
-  <script src="demo.js?v=1" defer></script>
+  <link rel="stylesheet" href="demo.css?v=2">
+  <script src="demo.js?v=2" defer></script>
 </head>
 <body data-layout="desktop">
 <div class="screen" data-scene="customers" aria-hidden="true">
@@ -83,6 +83,11 @@
         <div class="day">Today</div>
       </div>
       <div class="composer-wrap">
+        <div class="mention-pop" data-mention-pop>
+          <span class="opt-label">Mention</span>
+          <div class="mention-row is-on"><span class="ant a28"><img src="../assets/agents/scout.svg" alt=""></span><b>Scout</b><small>Chief of Staff</small></div>
+          <div class="mention-row"><span class="person p28">LM</span><b>Lerato Molefe</b><small>Founder</small></div>
+        </div>
         <div class="composer">
           <span class="composer-text" data-composer data-placeholder="Message Scout"></span>
           <button tabindex="-1" class="send" type="button" data-send aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
@@ -302,7 +307,7 @@
     <span class="person p36">LM</span>
     <div class="msg-body">
       <div class="msg-meta"><b>Lerato Molefe</b><span>10:31</span></div>
-      <p class="msg-text">Line up the Parkhurst gift shops for WhatsApp. Use the Sample posts template.</p>
+      <p class="msg-text"><span class="mention">@Scout</span> Line up the Parkhurst gift shops for WhatsApp. Use the Sample posts template.</p>
     </div>
   </article>
 </template>
