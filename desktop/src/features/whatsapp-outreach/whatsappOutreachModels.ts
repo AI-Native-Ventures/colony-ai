@@ -1,4 +1,15 @@
 export type WhatsAppQuality = "green" | "yellow" | "red";
+export type WhatsAppStage =
+  | "none"
+  | "contacted"
+  | "replied"
+  | "wants_call"
+  | "call_booked"
+  | "quote_sent"
+  | "client"
+  | "no_thanks"
+  | "stopped"
+  | "not_on_whatsapp";
 export type WhatsAppLeadStatus =
   | "not-contacted"
   | "in-batch"
@@ -6,6 +17,7 @@ export type WhatsAppLeadStatus =
   | "replied"
   | "opted-out";
 export type WhatsAppDirection = "in" | "out";
+export type WhatsAppOutboundState = "sent" | "delivered" | "read" | "failed";
 export type WhatsAppMessageKind = "text" | "template" | "media" | "button";
 export type WhatsAppMessageState =
   | "draft"
@@ -70,10 +82,20 @@ export type WhatsAppContact = Readonly<{
   waId: string;
   e164: string;
   displayName: string | null;
+  profileName: string | null;
+  businessName: string | null;
+  website: string | null;
+  label: string | null;
   leadId: string | null;
   ownerPubkey: string | null;
   threadRootEventId: string | null;
   lastInboundAt: string | null;
+  lastContactedAt: string | null;
+  lastOutboundState: WhatsAppOutboundState | null;
+  lastReplyAt: string | null;
+  stage: WhatsAppStage;
+  stageSetBy: "auto" | string | null;
+  stageChangedAt: string | null;
   windowOpen: boolean;
   windowClosesAt: string | null;
   optedOut: boolean;
@@ -199,6 +221,19 @@ function parseQuality(value: unknown): WhatsAppQuality | null {
   throw new Error("The relay returned an invalid WhatsApp quality rating.");
 }
 
+function parseOutboundState(value: unknown): WhatsAppOutboundState | null {
+  if (value === null || value === undefined) return null;
+  if (
+    value === "sent" ||
+    value === "delivered" ||
+    value === "read" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  throw new Error("The relay returned an invalid WhatsApp outbound state.");
+}
+
 function parseTemplateButton(value: unknown): WhatsAppTemplateButton {
   const button = record(value, "template button");
   return {
@@ -271,10 +306,39 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
 
 export function parseWhatsAppContact(value: unknown): WhatsAppContact {
   const contact = record(value, "contact");
+  const stage = contact.stage ?? "none";
+  const allowedStages = new Set<WhatsAppStage>([
+    "none",
+    "contacted",
+    "replied",
+    "wants_call",
+    "call_booked",
+    "quote_sent",
+    "client",
+    "no_thanks",
+    "stopped",
+    "not_on_whatsapp",
+  ]);
+  if (typeof stage !== "string" || !allowedStages.has(stage as WhatsAppStage)) {
+    throw new Error("The relay returned an invalid WhatsApp contact stage.");
+  }
+  const stageSetBy = contact.stageSetBy;
+  if (
+    stageSetBy !== null &&
+    stageSetBy !== undefined &&
+    stageSetBy !== "auto" &&
+    (typeof stageSetBy !== "string" || !/^[0-9a-f]{64}$/iu.test(stageSetBy))
+  ) {
+    throw new Error("The relay returned an invalid WhatsApp stage author.");
+  }
   return {
     waId: stringValue(contact.waId, "WhatsApp id"),
     e164: stringValue(contact.e164, "contact phone number"),
     displayName: nullableString(contact.displayName, "contact name"),
+    profileName: nullableString(contact.profileName, "WhatsApp profile name"),
+    businessName: nullableString(contact.businessName, "business name"),
+    website: nullableString(contact.website, "business website"),
+    label: nullableString(contact.label, "contact label"),
     leadId: nullableString(contact.leadId, "lead id"),
     ownerPubkey: nullableString(contact.ownerPubkey, "owner pubkey"),
     threadRootEventId: nullableString(
@@ -282,6 +346,18 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
       "thread root id",
     ),
     lastInboundAt: nullableString(contact.lastInboundAt, "last inbound time"),
+    lastContactedAt: nullableString(
+      contact.lastContactedAt,
+      "last contacted time",
+    ),
+    lastOutboundState: parseOutboundState(contact.lastOutboundState),
+    lastReplyAt: nullableString(contact.lastReplyAt, "last reply time"),
+    stage: stage as WhatsAppStage,
+    stageSetBy: (stageSetBy as "auto" | string | null | undefined) ?? null,
+    stageChangedAt: nullableString(
+      contact.stageChangedAt,
+      "stage changed time",
+    ),
     windowOpen: booleanValue(contact.windowOpen, "reply-window flag"),
     windowClosesAt: nullableString(
       contact.windowClosesAt,
@@ -539,6 +615,18 @@ export function isWhatsAppPhoneLikeName(value: string): boolean {
   return (
     /^[+]?([\d\s().-])+$/u.test(name) && name.replace(/\D/gu, "").length >= 7
   );
+}
+
+/** Format a WhatsApp id or E.164 number for display without hiding digits. */
+export function formatWhatsAppNumber(value: string): string {
+  const digits = value.replace(/\D/gu, "");
+  if (digits.length === 11 && digits.startsWith("27")) {
+    return `+27 ${digits.slice(2, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  }
+  if (value.trim().startsWith("+") && digits.length > 0) {
+    return `+${digits}`;
+  }
+  return value.trim() || digits;
 }
 
 export function isWhatsAppReplyWindowOpen(

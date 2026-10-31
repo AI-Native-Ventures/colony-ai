@@ -47,11 +47,15 @@ const variants = {
 async function openChannelFromHome(
   page: Page,
   channelName: "Outreach" | "Scout",
+  selectDiscussion = true,
 ) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("home-inbox")).toBeVisible();
   await page.getByTestId(`channel-${channelName}`).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelName);
+  if (channelName === "Outreach" && selectDiscussion) {
+    await page.getByTestId("channel-view-tab-discussion").click();
+  }
 }
 
 async function emitBatchNotice(page: Page, channelName: "Outreach" | "Scout") {
@@ -219,18 +223,28 @@ test.describe("WhatsApp decided batch channel card", () => {
     await expect.poll(() => stateWarnings.length).toBe(1);
   });
 
-  test("Outreach approved card sends the exact batch after confirmation", async ({
+  test("Outreach pending batch stays in Needs you, not Discussion", async ({
     page,
   }) => {
     await installWhatsAppMockBridge(page, "light", {
-      batchVariant: variants.approved,
+      deskFixture: true,
+      batchVariant: variants.pending,
     });
-    const card = await openApprovedCardFromHome(page, "Outreach");
-    await card.getByRole("button", { name: "Send now (test)" }).click();
-    const dialog = page.getByTestId("whatsapp-send-now-dialog");
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Send now", exact: true }).click();
-    await expectSendNowCommand(page);
+    await openChannelFromHome(page, "Outreach", false);
+    const needsBatch = page.getByTestId(
+      `outreach-needs-batch-${WHATSAPP_DECIDED_BATCH_ID}`,
+    );
+    await expect(needsBatch).toBeVisible();
+    await page.getByTestId("channel-view-tab-discussion").click();
+    await emitBatchNotice(page, "Outreach");
+    await expect(
+      page.getByTestId("whatsapp-channel-batch-pending"),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(/Scout prepared batch .* using hl_new_site/u),
+    ).toHaveCount(0);
+    await page.getByTestId("channel-view-tab-needs-you").click();
+    await expect(needsBatch).toBeVisible();
   });
 
   test("Scout DM approved card sends the exact batch after confirmation", async ({
@@ -253,7 +267,7 @@ test.describe("WhatsApp decided batch channel card", () => {
     await installWhatsAppMockBridge(page, "light", {
       batchVariant: variants.approved,
     });
-    const card = await openApprovedCardFromHome(page, "Outreach");
+    const card = await openApprovedCardFromHome(page, "Scout");
     await card.getByRole("button", { name: "Open chats" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
   });
@@ -264,8 +278,8 @@ test.describe("WhatsApp decided batch channel card", () => {
     await installWhatsAppMockBridge(page, "light", {
       batchVariant: variants.pending,
     });
-    await openChannelFromHome(page, "Outreach");
-    await emitBatchNotice(page, "Outreach");
+    await openChannelFromHome(page, "Scout");
+    await emitBatchNotice(page, "Scout");
     const pendingCard = page.getByTestId("whatsapp-channel-batch-pending");
     await expect(
       pendingCard.getByRole("button", { name: "Approve and send" }),
@@ -308,9 +322,9 @@ test.describe("WhatsApp decided batch channel card", () => {
         waitUntil: "domcontentloaded",
       });
       await expect(page.getByTestId("home-inbox")).toBeVisible();
-      await page.getByTestId("channel-Outreach").click();
-      await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
-      await emitBatchNotice(page, "Outreach");
+      await page.getByTestId("channel-Scout").click();
+      await expect(page.getByTestId("chat-title")).toHaveText("Scout");
+      await emitBatchNotice(page, "Scout");
       const card = page.getByTestId(testId);
       await expect(card).toContainText(title);
       await expect(card.getByRole("button")).toHaveCount(0);
@@ -323,8 +337,8 @@ test.describe("WhatsApp decided batch channel card", () => {
     await installWhatsAppMockBridge(page, "light", {
       batchVariant: variants.missing,
     });
-    await openChannelFromHome(page, "Outreach");
-    await emitBatchNotice(page, "Outreach");
+    await openChannelFromHome(page, "Scout");
+    await emitBatchNotice(page, "Scout");
     const card = page.getByTestId("whatsapp-channel-batch-unavailable");
     await expect(card).toHaveText("This batch is no longer available.");
     await expect(card.getByRole("button")).toHaveCount(0);
@@ -345,8 +359,8 @@ test.describe("WhatsApp decided batch channel card", () => {
         ...actorCase.actor,
         batchVariant: variants.approved,
       });
-      await openChannelFromHome(page, "Outreach");
-      await emitBatchNotice(page, "Outreach");
+      await openChannelFromHome(page, "Scout");
+      await emitBatchNotice(page, "Scout");
       const card = page.getByTestId("whatsapp-channel-batch-approved");
       await expect(card).toBeVisible();
       await expect(
@@ -384,9 +398,9 @@ test.describe("WhatsApp decided batch channel card", () => {
             waitUntil: "domcontentloaded",
           });
           await expect(page.getByTestId("home-inbox")).toBeVisible();
-          await page.getByTestId("channel-Outreach").click();
-          await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
-          await emitBatchNotice(page, "Outreach");
+          await page.getByTestId("channel-Scout").click();
+          await expect(page.getByTestId("chat-title")).toHaveText("Scout");
+          await emitBatchNotice(page, "Scout");
           const testId =
             state === "pending"
               ? "whatsapp-channel-batch-pending"

@@ -6,10 +6,12 @@ import {
   formatWhatsAppPhoneNumber,
   getWhatsAppDailyCapProgress,
   isWhatsAppPhoneLikeName,
+  formatWhatsAppNumber,
   isWhatsAppReplyWindowOpen,
   maskWhatsAppNumber,
   parseWhatsAppBatchDetail,
   parseWhatsAppMessage,
+  parseWhatsAppContact,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   resetWhatsAppUnknownMessageStateWarning,
@@ -34,6 +36,59 @@ const approvedTemplate = {
   slots: 2,
   buttons: [{ type: "QUICK_REPLY", text: "Yes, I'm interested" }],
 };
+
+test("contact parser accepts the additive stage and identity view fields", () => {
+  const payload = {
+    waId: "27821237135",
+    e164: "+27821237135",
+    displayName: "Plane Tree Guesthouse",
+    profileName: "Thandeka",
+    businessName: "Plane Tree Guesthouse",
+    website: "https://form-field.example",
+    label: "Plane Tree",
+    leadId: "lead-id",
+    ownerPubkey: null,
+    threadRootEventId: null,
+    lastInboundAt: "2026-10-29T09:14:00+02:00",
+    lastContactedAt: "2026-10-28T09:40:00+02:00",
+    lastReplyAt: "2026-10-29T09:14:00+02:00",
+    stage: "wants_call",
+    stageSetBy: "deadbeef".repeat(8),
+    stageChangedAt: "2026-10-29T09:14:00+02:00",
+    lastOutboundState: "read",
+    windowOpen: true,
+    windowClosesAt: "2026-10-30T09:14:00+02:00",
+    optedOut: false,
+    paused: false,
+    pauseReason: null,
+    unanswered: true,
+  };
+  const contact = parseWhatsAppContact(payload);
+  assert.equal(contact.stage, "wants_call");
+  assert.equal(contact.profileName, "Thandeka");
+  assert.equal(contact.businessName, "Plane Tree Guesthouse");
+  assert.equal(contact.website, "https://form-field.example");
+  assert.equal(contact.label, "Plane Tree");
+  assert.equal(contact.stageSetBy, "deadbeef".repeat(8));
+  assert.equal(contact.lastContactedAt, "2026-10-28T09:40:00+02:00");
+  assert.equal(contact.lastReplyAt, "2026-10-29T09:14:00+02:00");
+  assert.equal(contact.lastOutboundState, "read");
+
+  const legacyContact = parseWhatsAppContact({
+    ...payload,
+    stageSetBy: "auto",
+    lastOutboundState: undefined,
+  });
+  assert.equal(legacyContact.lastOutboundState, null);
+  assert.throws(
+    () => parseWhatsAppContact({ ...payload, stageSetBy: "not-a-pubkey" }),
+    /invalid WhatsApp stage author/u,
+  );
+  assert.throws(
+    () => parseWhatsAppContact({ ...payload, lastOutboundState: "queued" }),
+    /invalid WhatsApp outbound state/u,
+  );
+});
 
 function baseStatus(overrides = {}) {
   return {
@@ -213,6 +268,7 @@ test("status precedence keeps an opted-out contact locked", () => {
 
 test("South African phone masking preserves only the prefix and final four", () => {
   assert.equal(maskWhatsAppNumber("+27615340627"), "+27 61 *** 0627");
+  assert.equal(formatWhatsAppNumber("27821237135"), "+27 82 123 7135");
 });
 
 test("delivery states have visible text equivalents, including failures", () => {

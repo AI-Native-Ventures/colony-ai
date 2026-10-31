@@ -9,7 +9,10 @@ import { ChannelAddAgentHost } from "@/features/channels/ui/ChannelAddAgentHost"
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
-import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import {
+  ChannelWorkspaceTabs,
+  type OutreachDeskTab,
+} from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { ConversationHeader } from "@/features/channels/ui/ConversationHeader";
 import { DmAgentSubtitle } from "@/features/channels/ui/DmAgentSubtitle";
 import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
@@ -75,6 +78,7 @@ type ChannelScreenHeaderProps = {
   activeDmPresenceStatus: PresenceStatus | null;
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   currentPubkey?: string;
+  outreachTab?: OutreachDeskTab;
   headerEndActions?: React.ReactNode;
   isAddBotOpen?: boolean;
   isJoining?: boolean;
@@ -82,6 +86,7 @@ type ChannelScreenHeaderProps = {
   showHeaderContent?: boolean;
   transparentChrome?: boolean;
   onAddBotOpenChange?: (open: boolean) => void;
+  onOutreachTabChange?: (tab: OutreachDeskTab) => void;
   onJoinChannel?: () => Promise<void>;
   onManageChannel: () => void;
   onToggleMembers: () => void;
@@ -97,11 +102,13 @@ export function ChannelScreenHeader({
   activeDmPresenceStatus,
   chromeWrapperRef,
   currentPubkey,
+  outreachTab,
   headerEndActions,
   isAddBotOpen,
   isJoining = false,
   members = [],
   onAddBotOpenChange,
+  onOutreachTabChange,
   showHeaderContent = true,
   onJoinChannel,
   onManageChannel,
@@ -117,6 +124,14 @@ export function ChannelScreenHeader({
     !activeChannel.archivedAt &&
     onJoinChannel;
   const workArea = useWorkAreaDock(activeChannel?.id ?? null);
+  const isOutreach =
+    activeChannel?.channelType === "stream" &&
+    activeChannel.name.trim().toLocaleLowerCase() === "outreach";
+  const isOutreachDeskSurface =
+    isOutreach &&
+    (outreachTab === "needs-you" ||
+      outreachTab === "pipeline" ||
+      outreachTab === "chats");
   const whatsAppTabOpen = workArea.tabs.some((tab) => tab.kind === "whatsapp");
   const whatsAppContactsQuery = useWhatsAppContactsQuery(
     workArea.open && whatsAppTabOpen,
@@ -303,6 +318,7 @@ export function ChannelScreenHeader({
       }
       descriptionBelow={Boolean(showJoinButton)}
       leading={leading}
+      overlapContent={!isOutreachDeskSurface}
       statusBadge={
         <>
           {activeChannel?.archivedAt ? (
@@ -332,7 +348,11 @@ export function ChannelScreenHeader({
       tabs={
         activeChannel?.channelType === "stream" &&
         !referenceThreadPresentation ? (
-          <ChannelWorkspaceTabs />
+          <ChannelWorkspaceTabs
+            isOutreach={isOutreach}
+            onOutreachTabChange={onOutreachTabChange}
+            outreachTab={outreachTab}
+          />
         ) : undefined
       }
       title={activeChannelTitle}
