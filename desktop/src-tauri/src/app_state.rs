@@ -281,6 +281,7 @@ pub fn resolve_persisted_identity(app: &AppHandle, state: &AppState) -> Result<(
         .map_err(|e| format!("app data dir: {e}"))?;
     std::fs::create_dir_all(&data_dir).map_err(|e| format!("create app data dir: {e}"))?;
 
+    eprintln!("buzz-desktop: {}", secret_storage_marker());
     let resolved = load_or_create_identity(&data_dir)?;
     // Write keys and storage before setting the recovery flags (Release) so
     // any thread that reads a flag as false with Acquire sees consistent data.
@@ -302,7 +303,7 @@ pub fn resolve_persisted_identity(app: &AppHandle, state: &AppState) -> Result<(
 
 #[path = "app_state_keyring.rs"]
 mod keyring_config;
-pub(crate) use keyring_config::keyring_service;
+pub(crate) use keyring_config::{keyring_service, secret_storage_marker};
 
 #[path = "app_state_pending_channels.rs"]
 mod pending_channels;
@@ -327,18 +328,12 @@ fn load_or_create_identity(data_dir: &std::path::Path) -> Result<ResolvedIdentit
     let legacy_path = data_dir.join(colony_identity_kernel::IDENTITY_FILE_NAME);
     let profile = profile_scope(&legacy_path, data_dir);
 
-    // Keep the existing no-keyring build behavior: it uses only the 0600
-    // file and does not interpret a keyring migration marker. The headless
-    // consumer contract is explicit, but this adapter must not change the
-    // baseline feature policy while the extraction is incremental.
+    // A build without `system-keyring` (every unsigned Mac build) never reads
+    // the OS keychain: the 0600 file is the identity. See
+    // `resolve_identity_from_file`.
     #[cfg(not(feature = "system-keyring"))]
     {
-        let keys = colony_identity_kernel::load_file_or_generate(&profile)?;
-        Ok(ResolvedIdentity {
-            keys,
-            recovery: RecoveryState::None,
-            storage: IdentityStorage::LocalFile,
-        })
+        resolve_identity_from_file(&profile)
     }
 
     #[cfg(feature = "system-keyring")]
@@ -346,6 +341,57 @@ fn load_or_create_identity(data_dir: &std::path::Path) -> Result<ResolvedIdentit
         let store = crate::secret_store::SecretStore::shared(keyring_service());
         colony_identity_kernel::resolve_identity_with_store(store, &profile)
     }
+}
+
+/// Boot identity for a build that keeps its secrets in owner-only files.
+///
+/// Unsigned Mac builds are ad-hoc signed, so a Keychain item created by one
+/// release is not trusted by the next one (the trust follows the code hash,
+/// which changes every release) and every update ended in a sign-in. Those
+/// builds are compiled without `system-keyring`, never touch the Keychain
+/// (no prompt), and keep the key in `identity.key` (0600, atomic writes).
+///
+/// An install that an older, Keychain-backed build already migrated has the
+/// migration marker and no `identity.key`; this build cannot read that
+/// Keychain item. It boots like a fresh install (a new throwaway key saved to
+/// `identity.key`), the owner signs in once, the sign-in writes the restored
+/// key to `identity.key` through [`persist_identity_to_file`], and every
+/// later update boots with that same key.
+///
+/// A signed build later adopts a leftover `identity.key` into the Keychain
+/// through the kernel resolver (see `resolve_identity_with_store`).
+#[cfg_attr(feature = "system-keyring", allow(dead_code))]
+fn resolve_identity_from_file(profile: &ProfileScope) -> Result<ResolvedIdentity, String> {
+    if !profile.legacy_identity_path().exists() && profile.migration_marker_path().exists() {
+        eprintln!(
+            "buzz-desktop: this build keeps its identity in identity.key and never reads the OS \
+             keychain; the key an earlier build kept there is not readable here, so the account \
+             must sign in again once"
+        );
+    }
+    let keys = colony_identity_kernel::load_file_or_generate(profile)?;
+    Ok(ResolvedIdentity {
+        keys,
+        recovery: RecoveryState::None,
+        storage: IdentityStorage::LocalFile,
+    })
+}
+
+/// Persist an imported or restored identity to `identity.key` (0600, atomic
+/// write) and read it back before reporting success. The file-only twin of
+/// the kernel's keyring-first `persist_imported_identity`.
+#[cfg_attr(feature = "system-keyring", allow(dead_code))]
+fn persist_identity_to_file(
+    keys: &Keys,
+    profile: &ProfileScope,
+) -> Result<IdentityStorage, String> {
+    let path = profile.legacy_identity_path();
+    colony_identity_kernel::save_key_file(path, keys)?;
+    let reloaded = colony_identity_kernel::load_key_file(path)?;
+    if reloaded.public_key() != keys.public_key() {
+        return Err("identity.key read-back did not match the saved key".to_string());
+    }
+    Ok(IdentityStorage::LocalFile)
 }
 
 #[cfg(test)]
@@ -369,6 +415,7 @@ fn persist_identity_to_keyring(
     colony_identity_kernel::persist_identity_to_keyring(store, keys, &profile)
 }
 
+#[cfg_attr(not(any(test, feature = "system-keyring")), allow(dead_code))]
 fn persist_imported_identity_impl(
     store: &impl IdentityKeyStore,
     keys: &Keys,
@@ -380,13 +427,23 @@ fn persist_imported_identity_impl(
 }
 
 /// Public Tauri adapter used by import and mobile recovery commands.
+///
+/// A keyring build tries the OS keyring first and falls back to the 0600
+/// file. A build without `system-keyring` writes the file and nothing else.
 pub(crate) fn persist_imported_identity(
-    store: &crate::secret_store::SecretStore,
     keys: &Keys,
     legacy_path: &std::path::Path,
     data_dir: &std::path::Path,
 ) -> Result<IdentityStorage, String> {
-    persist_imported_identity_impl(store, keys, legacy_path, data_dir)
+    #[cfg(feature = "system-keyring")]
+    {
+        let store = crate::secret_store::SecretStore::shared(keyring_service());
+        persist_imported_identity_impl(store, keys, legacy_path, data_dir)
+    }
+    #[cfg(not(feature = "system-keyring"))]
+    {
+        persist_identity_to_file(keys, &profile_scope(legacy_path, data_dir))
+    }
 }
 
 fn remove_file_if_present(path: &std::path::Path) -> Result<(), String> {
@@ -449,3 +506,7 @@ pub(crate) use colony_identity_kernel::{
 #[cfg(test)]
 #[path = "app_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app_state_file_storage_tests.rs"]
+mod file_storage_tests;

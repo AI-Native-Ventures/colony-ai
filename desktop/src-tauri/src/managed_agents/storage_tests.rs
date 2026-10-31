@@ -245,6 +245,29 @@ fn spawn_refused_when_private_key_empty() {
 }
 
 #[test]
+fn keyless_build_names_the_keychain_and_the_fix_for_an_agent_it_cannot_read() {
+    // An agent whose key an older build moved into the macOS Keychain is
+    // unreadable in a build without a keyring. The refusal must say so and name
+    // the fix, not blame a keyring that will never become reachable.
+    let message = super::key_refusal_message("agentpubkey", false);
+    assert!(message.contains("agentpubkey"));
+    assert!(message.contains("Keychain"), "{message}");
+    assert!(
+        message.contains("Delete this agent and add it again"),
+        "{message}"
+    );
+    assert!(!message.contains("unreachable"), "{message}");
+    assert!(!message.contains('\u{2014}'), "no em dashes in user text");
+
+    let keyring_message = super::key_refusal_message("agentpubkey", true);
+    assert!(keyring_message.contains("keyring may be unreachable"));
+    assert!(
+        !keyring_message.contains('\u{2014}'),
+        "no em dashes in user text"
+    );
+}
+
+#[test]
 fn spawn_allowed_when_private_key_present() {
     // A record carrying a key must not be blocked by the refusal guard.
     let record = record_with_key("nsec1realkey");

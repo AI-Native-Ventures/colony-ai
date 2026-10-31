@@ -242,13 +242,29 @@ fn migrate_inline_key(store: &impl KeyStore, record: &ManagedAgentRecord) -> Key
 /// `BUZZ_PRIVATE_KEY`/`NOSTR_PRIVATE_KEY`, launching with no identity. Callers
 /// (the spawn path) must fail closed (Wes storage.rs:158).
 pub(crate) fn spawn_key_refusal(record: &ManagedAgentRecord) -> Option<String> {
-    record.private_key_nsec.is_empty().then(|| {
+    record
+        .private_key_nsec
+        .is_empty()
+        .then(|| key_refusal_message(&record.pubkey, cfg!(feature = "system-keyring")))
+}
+
+/// Why an agent without a usable key is refused. A build without a keyring
+/// (every unsigned Mac build) never reads the OS keychain, so an agent whose
+/// key an older build moved there cannot be started here; say that plainly and
+/// name the fix instead of blaming a keyring that will never become reachable.
+fn key_refusal_message(pubkey: &str, keyring_build: bool) -> String {
+    if keyring_build {
         format!(
-            "agent {} has no private key available — the OS keyring may be unreachable. \
-             Refusing to start without an identity; retry once the keyring is reachable.",
-            record.pubkey
+            "agent {pubkey} has no private key available. The OS keyring may be unreachable. \
+             Refusing to start without an identity; retry once the keyring is reachable."
         )
-    })
+    } else {
+        format!(
+            "agent {pubkey} has no private key on this device. An earlier Colony version kept \
+             it in the macOS Keychain, and this version stores keys in private files instead, \
+             so it cannot read that one. Delete this agent and add it again to give it a new key."
+        )
+    }
 }
 
 /// Read the raw unified store — keyed instances AND key-less definitions —
