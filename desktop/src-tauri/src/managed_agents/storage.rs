@@ -16,7 +16,7 @@ use crate::secret_store::{KeyringProbe, SecretStore};
 
 /// Keyring key name for an agent's nsec, namespaced from the human identity
 /// key (`"identity"`) which shares the service.
-fn agent_keyring_name(pubkey: &str) -> String {
+pub(crate) fn agent_keyring_name(pubkey: &str) -> String {
     format!("agent:{pubkey}")
 }
 
