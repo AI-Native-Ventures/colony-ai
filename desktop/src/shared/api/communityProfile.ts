@@ -45,7 +45,7 @@ export async function setCommunityIcon(icon: string): Promise<void> {
   });
   await relayClient.publishEvent(
     event,
-    "Timed out while updating the community icon.",
-    "Failed to update the community icon.",
+    "Timed out while updating the workspace icon.",
+    "Failed to update the workspace icon.",
   );
 }

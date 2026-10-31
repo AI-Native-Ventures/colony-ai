@@ -51,9 +51,6 @@ interface ProfilePopoverProps {
   // Used when auxiliary triggers (avatar, status text) live alongside the
   // primary PopoverTrigger and toggle the popover via controlled `open`.
   triggerContainerRef?: React.RefObject<HTMLElement | null>;
-  // Optional slot rendered before the profile actions. Used by the sidebar to
-  // surface active-community actions inside the profile menu.
-  communitySwitcherSlot?: React.ReactNode;
   /** Colour mode of the app, for the light/dark switch row. */
   isDark?: boolean;
   /** Switches between the light and dark twin of the current theme. */
@@ -87,7 +84,6 @@ export function ProfilePopover({
   onSendFeedback,
   children,
   triggerContainerRef,
-  communitySwitcherSlot,
   isDark = false,
   onToggleTheme,
 }: ProfilePopoverProps) {
@@ -230,16 +226,6 @@ export function ProfilePopover({
                 </button>
 
                 <hr className="pm-rule" />
-
-                {communitySwitcherSlot ? (
-                  <>
-                    {/* Community actions */}
-                    <div data-testid="profile-popover-community">
-                      {communitySwitcherSlot}
-                    </div>
-                    <hr className="pm-rule" />
-                  </>
-                ) : null}
 
                 {onSendFeedback ? (
                   <button

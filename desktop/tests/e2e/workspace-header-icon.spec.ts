@@ -259,14 +259,14 @@ async function setDesktopSidebarCollapsed(page: Page, collapsed: boolean) {
   }
 }
 
-async function openProfileCommunitySwitcher(page: Page) {
+async function openWorkspaceMenuItem(page: Page) {
   await page.getByTestId("sidebar-business-switcher").click();
-  const communityRow = page.getByTestId("profile-popover-community");
-  await expect(communityRow).toBeVisible();
-  return communityRow.getByTestId("community-switcher");
+  const workspaceMenu = page.getByTestId("workspace-switcher-menu");
+  await expect(workspaceMenu).toBeVisible();
+  return workspaceMenu.getByTestId("workspace-menu-item-workspace-header-icon");
 }
 
-test("header icon matches the community switcher and remains in the collapsed sidebar", async ({
+test("header icon matches the workspace menu and remains in the collapsed sidebar", async ({
   page,
 }) => {
   await seedWorkspace(page, { icon: COMMUNITY_ICON });
@@ -274,15 +274,17 @@ test("header icon matches the community switcher and remains in the collapsed si
   await page.goto("/#/today");
   await openSidebar(page);
 
-  const brandMark = page.getByTestId("sidebar-community-brand-mark");
+  const brandMark = page
+    .getByTestId("sidebar-business-switcher")
+    .getByTestId("sidebar-community-brand-mark");
   const headerImage = brandMark.locator("img");
   await expect(headerImage).toHaveCount(1);
   await expect(headerImage).toBeVisible();
   await expect(headerImage).toHaveAttribute("src", COMMUNITY_ICON);
   await expect(brandMark.locator(".colony-sidebar-brand-dot")).toHaveCount(0);
 
-  const communitySwitcher = await openProfileCommunitySwitcher(page);
-  const switcherImage = communitySwitcher.locator("img");
+  const workspaceMenuItem = await openWorkspaceMenuItem(page);
+  const switcherImage = workspaceMenuItem.locator("img");
   await expect(switcherImage).toBeVisible();
   expect(await headerImage.getAttribute("src")).toBe(
     await switcherImage.getAttribute("src"),
@@ -303,7 +305,9 @@ test("header keeps the letter tile when the community has no icon", async ({
   await page.goto("/#/today");
   await openSidebar(page);
 
-  const brandMark = page.getByTestId("sidebar-community-brand-mark");
+  const brandMark = page
+    .getByTestId("sidebar-business-switcher")
+    .getByTestId("sidebar-community-brand-mark");
   await expect(
     brandMark.getByTestId("sidebar-community-brand-fallback"),
   ).toHaveText("C");
@@ -322,7 +326,9 @@ test("header falls back to the saved business logo when the community icon fails
   await page.goto("/#/today");
   await openSidebar(page);
 
-  const brandMark = page.getByTestId("sidebar-community-brand-mark");
+  const brandMark = page
+    .getByTestId("sidebar-business-switcher")
+    .getByTestId("sidebar-community-brand-mark");
   const fallbackLogo = brandMark.locator("img");
   await expect(fallbackLogo).toHaveAttribute("src", BUSINESS_LOGO);
   await expect(fallbackLogo).toBeVisible();

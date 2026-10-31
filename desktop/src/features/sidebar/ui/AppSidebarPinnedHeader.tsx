@@ -1,8 +1,9 @@
+import { ChevronDown } from "lucide-react";
 import { isMacPlatform } from "@/shared/lib/platform";
 import { useIsFullscreen } from "@/shared/lib/useIsFullscreen";
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
-import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
 import type { Channel, SearchHit } from "@/shared/api/types";
+import type { Community } from "@/features/communities/types";
 import {
   SidebarHeader,
   SidebarMenu,
@@ -19,6 +20,7 @@ import {
   TodayIcon,
 } from "@/shared/ui/colonyIcons";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
+import { WorkspaceSwitcherMenu } from "@/features/communities/ui/WorkspaceSwitcherMenu";
 
 type SidebarSelectedView =
   | "today"
@@ -33,18 +35,23 @@ type SidebarSelectedView =
   | "pins";
 
 type AppSidebarPinnedHeaderProps = {
-  activeCommunityId?: string;
-  activeCommunityName: string;
-  activeCommunityRelayUrl?: string;
+  activeWorkspace: Community | null;
+  workspaces: Community[];
   channelLabels: Record<string, string>;
   currentChannelId?: string | null;
   currentPubkey?: string;
   onBrowseChannels?: () => void;
+  onCopyWorkspaceLink: () => void;
+  onCreateWorkspace: () => void;
   onCreateAgent: () => void;
   onCreateChannel: () => void;
   onOpenDm: (input: { pubkeys: string[] }) => Promise<void>;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;
+  onInvitePeople: () => void;
+  onJoinWorkspace: () => void;
+  onOpenWorkspaceSettings: () => void;
   onSelectChannel: (channelId: string) => void;
+  onSwitchWorkspace: (id: string) => void;
   searchChannels: Channel[];
   searchFocusRequest: number;
   showSidebarCollapseButton: boolean;
@@ -62,18 +69,23 @@ type AppSidebarPrimaryMenuProps = {
 };
 
 export function AppSidebarPinnedHeader({
-  activeCommunityId,
-  activeCommunityName,
-  activeCommunityRelayUrl,
+  activeWorkspace,
+  workspaces,
   channelLabels,
   currentChannelId,
   currentPubkey,
   onBrowseChannels,
+  onCopyWorkspaceLink,
+  onCreateWorkspace,
   onCreateAgent,
   onCreateChannel,
   onOpenDm,
   onOpenSearchResult,
+  onInvitePeople,
+  onJoinWorkspace,
+  onOpenWorkspaceSettings,
   onSelectChannel,
+  onSwitchWorkspace,
   searchChannels,
   searchFocusRequest,
   showSidebarCollapseButton,
@@ -82,8 +94,9 @@ export function AppSidebarPinnedHeader({
 }: AppSidebarPinnedHeaderProps) {
   const sidebar = useSidebar();
   const isFullscreen = useIsFullscreen();
+  const activeWorkspaceName = activeWorkspace?.name ?? "No workspace";
   const communityInitial =
-    activeCommunityName.trim().slice(0, 1).toUpperCase() || "C";
+    activeWorkspaceName.trim().slice(0, 1).toUpperCase() || "C";
 
   return (
     <div
@@ -92,34 +105,65 @@ export function AppSidebarPinnedHeader({
       data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
     >
       <div className="colony-sidebar-brand">
-        <button
-          aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
-          data-testid="sidebar-business-switcher"
-          onClick={() =>
-            window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
-          }
-          type="button"
-        >
-          <WorkspaceMark
-            className="colony-sidebar-brand-mark"
-            communityIconFit="cover"
-            communityId={activeCommunityId}
-            dataTestId="sidebar-community-brand-mark"
-            dot={<span className="colony-sidebar-brand-dot" />}
-            fallbackContent={
-              <span data-testid="sidebar-community-brand-fallback">
-                {communityInitial}
+        <WorkspaceSwitcherMenu
+          activeWorkspace={activeWorkspace}
+          workspaces={workspaces}
+          onCopyWorkspaceLink={onCopyWorkspaceLink}
+          onCreateWorkspace={onCreateWorkspace}
+          onInvitePeople={onInvitePeople}
+          onJoinWorkspace={onJoinWorkspace}
+          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+          onSwitchWorkspace={onSwitchWorkspace}
+          renderWorkspaceMark={(workspace) => (
+            <WorkspaceMark
+              className="colony-sidebar-brand-mark grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-[var(--colony-sidebar-ink)] text-[var(--colony-accent-foreground)] text-sm font-extrabold leading-none"
+              communityIconFit="cover"
+              communityId={workspace.id}
+              dataTestId={`workspace-menu-mark-${workspace.id}`}
+              fallbackContent={
+                <span data-testid="sidebar-community-brand-fallback">
+                  {workspace.name.trim().slice(0, 1).toUpperCase() || "C"}
+                </span>
+              }
+              imageFit="contain"
+              name={workspace.name}
+              relayUrl={workspace.relayUrl}
+            />
+          )}
+          renderTrigger={({ mobile, open }) => (
+            <button
+              aria-expanded={open}
+              aria-haspopup={mobile ? "dialog" : "menu"}
+              aria-label={`Open workspace menu, current workspace ${activeWorkspaceName}`}
+              className="min-w-0"
+              data-testid="sidebar-business-switcher"
+              type="button"
+            >
+              <WorkspaceMark
+                className="colony-sidebar-brand-mark"
+                communityIconFit="cover"
+                communityId={activeWorkspace?.id}
+                dataTestId="sidebar-community-brand-mark"
+                dot={<span className="colony-sidebar-brand-dot" />}
+                fallbackContent={
+                  <span data-testid="sidebar-community-brand-fallback">
+                    {communityInitial}
+                  </span>
+                }
+                imageFit="contain"
+                name={activeWorkspaceName}
+                relayUrl={activeWorkspace?.relayUrl}
+              />
+              <span className="sidebar-company-name">
+                <span>{activeWorkspaceName}</span>
+                <span className="sidebar-company-context">
+                  Company workspace
+                </span>
               </span>
-            }
-            imageFit="contain"
-            name={activeCommunityName}
-            relayUrl={activeCommunityRelayUrl}
-          />
-          <span className="sidebar-company-name">
-            <span>{activeCommunityName || "No community"}</span>
-            <span className="sidebar-company-context">Company workspace</span>
-          </span>
-        </button>
+              <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          )}
+        />
         {showSidebarCollapseButton ? (
           <button
             aria-expanded={sidebar.open}

@@ -1,0 +1,345 @@
+import { expect, test, type Page } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { waitForAnimations } from "../helpers/animations";
+import { installMockBridge } from "../helpers/bridge";
+
+const PUBKEY = "deadbeef".repeat(8);
+const WORKSPACES = [
+  {
+    id: "workspace-one",
+    name: "North Star",
+    relayUrl: "wss://north-star.workspaces-test.example",
+    pubkey: PUBKEY,
+    addedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "workspace-two",
+    name: "Lerato Social",
+    relayUrl: "wss://lerato-social.workspaces-test.example",
+    pubkey: PUBKEY,
+    addedAt: "2026-01-02T00:00:00.000Z",
+  },
+];
+const CAPTURE_DIR = process.env.WS_SWITCHER_CAPTURE_DIR;
+const CAPTURE_PHASE = process.env.WS_SWITCHER_CAPTURE_PHASE ?? "capture";
+const WORKSPACE_ICON = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#174F38"/><circle cx="20" cy="20" r="8" fill="#F5F1D9"/></svg>',
+)}`;
+
+async function seedWorkspaces(
+  page: Page,
+  options: { theme?: "light" | "dark"; workspaceCount?: number } = {},
+) {
+  const workspaces = WORKSPACES.slice(0, options.workspaceCount ?? 2);
+  await page.addInitScript(
+    ({ workspaces, theme, icon }) => {
+      Object.defineProperty(navigator, "platform", {
+        configurable: true,
+        get: () => "MacIntel",
+      });
+      window.localStorage.setItem(
+        "buzz-communities",
+        JSON.stringify(workspaces),
+      );
+      window.localStorage.setItem("buzz-active-community-id", workspaces[0].id);
+      window.localStorage.setItem(
+        "buzz-community-icons",
+        JSON.stringify(
+          Object.fromEntries(
+            workspaces.map((workspace) => [workspace.relayUrl, icon]),
+          ),
+        ),
+      );
+      window.localStorage.setItem(
+        "buzz-theme",
+        theme === "dark" ? "buzz-dark" : "buzz",
+      );
+      window.localStorage.setItem("buzz-follow-system", "false");
+      window.localStorage.setItem("buzz-accent-color", "#5B45BE");
+    },
+    { workspaces, theme: options.theme ?? "light", icon: WORKSPACE_ICON },
+  );
+  await installMockBridge(page, undefined, { skipCommunitySeed: true });
+}
+
+async function dispatchWorkspaceShortcut(page: Page, digit: string) {
+  const cancelled = await page.evaluate((key) => {
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key,
+      metaKey: true,
+    });
+    const wasNotCancelled = window.dispatchEvent(event);
+    return !wasNotCancelled && event.defaultPrevented;
+  }, digit);
+  expect(cancelled).toBe(true);
+}
+
+async function openWorkspaceHeader(page: Page) {
+  const switcher = page.getByTestId("sidebar-business-switcher");
+  const viewportWidth = page.viewportSize()?.width ?? 1440;
+  if (viewportWidth < 768) {
+    await expect(page.getByTestId("mobile-workspace-switcher")).toBeVisible();
+    return;
+  } else {
+    const appSidebar = page.getByTestId("app-sidebar");
+    if ((await appSidebar.getAttribute("data-state")) === "collapsed") {
+      await appSidebar.getByRole("button", { name: "Toggle Sidebar" }).click();
+      await expect(appSidebar).toHaveAttribute("data-state", "expanded");
+    }
+  }
+  await expect(switcher).toBeVisible();
+  await expect(switcher.locator(".sidebar-company-name")).toBeVisible();
+}
+
+async function capture(page: Page, filename: string) {
+  if (!CAPTURE_DIR) return;
+  mkdirSync(CAPTURE_DIR, { recursive: true });
+  await waitForAnimations(page);
+  await page.screenshot({
+    fullPage: false,
+    path: join(CAPTURE_DIR, `${CAPTURE_PHASE}-${filename}.png`),
+  });
+}
+
+async function openWorkspaceMenu(page: Page) {
+  await page.getByTestId("sidebar-business-switcher").click();
+  const menu = page.getByTestId("workspace-switcher-menu");
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+test("header menu lists workspaces, switches by click and shortcut, profile stays separate", async ({
+  page,
+}) => {
+  await seedWorkspaces(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toBeVisible();
+
+  const menu = await openWorkspaceMenu(page);
+  const firstWorkspace = menu.getByTestId("workspace-menu-item-workspace-one");
+  const secondWorkspace = menu.getByTestId("workspace-menu-item-workspace-two");
+  await expect(firstWorkspace).toContainText("North Star");
+  await expect(firstWorkspace).toContainText(
+    "north-star.workspaces-test.example",
+  );
+  await expect(
+    menu.getByTestId("workspace-menu-mark-workspace-one"),
+  ).toHaveAttribute("data-source", "community");
+  await expect(firstWorkspace).toContainText("⌘1");
+  await expect(firstWorkspace).toHaveAttribute("aria-current", "true");
+  await expect(
+    menu.getByRole("menuitem", {
+      name: "Open workspace North Star, north-star.workspaces-test.example, current workspace, ⌘1",
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await expect(secondWorkspace).toContainText("Lerato Social");
+  await expect(secondWorkspace).toContainText("⌘2");
+  await expect(secondWorkspace).not.toHaveAttribute("aria-current", "true");
+  await capture(page, "desktop-light-menu");
+
+  await page.keyboard.press("Escape");
+  await page.getByTestId("sidebar-business-switcher").focus();
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(firstWorkspace).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(secondWorkspace).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz-active-community-id")),
+    )
+    .toBe("workspace-two");
+  await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
+    "Lerato Social",
+  );
+  // Chromium reserves Meta+number for tab switching, so dispatch the same keydown at the app window.
+  await dispatchWorkspaceShortcut(page, "1");
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz-active-community-id")),
+    )
+    .toBe("workspace-one");
+  await dispatchWorkspaceShortcut(page, "2");
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz-active-community-id")),
+    )
+    .toBe("workspace-two");
+  await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
+    "Lerato Social",
+  );
+  const reopenedMenu = await openWorkspaceMenu(page);
+  await reopenedMenu.getByTestId("workspace-menu-item-workspace-one").click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz-active-community-id")),
+    )
+    .toBe("workspace-one");
+  await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
+    "North Star",
+  );
+
+  await page.getByTestId("sidebar-profile-avatar-button").click();
+  await expect(page.getByTestId("profile-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-popover-community")).toHaveCount(0);
+});
+
+test("dark header menu preserves workspace rows and shortcut hints", async ({
+  page,
+}) => {
+  await seedWorkspaces(page, { theme: "dark", workspaceCount: 1 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toHaveCount(0);
+  const menu = await openWorkspaceMenu(page);
+  await expect(
+    menu.getByTestId("workspace-menu-item-workspace-one"),
+  ).toBeVisible();
+  await expect(
+    menu.getByTestId("workspace-menu-item-workspace-two"),
+  ).toHaveCount(0);
+  await capture(page, "desktop-dark-menu");
+});
+
+test("workspace create checks the auto address without submitting", async ({
+  page,
+}) => {
+  await seedWorkspaces(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: "workspaces-test.example",
+        public: true,
+        max_per_owner: 3,
+      },
+    }),
+  );
+  await page.route("**/api/communities/availability**", (route) => {
+    const name = new URL(route.request().url()).searchParams.get("name") ?? "";
+    return route.fulfill({ json: { name, available: true } });
+  });
+  await page.route("https://img.logo.dev/**", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#68c8bf"/></svg>',
+    }),
+  );
+  const createPosts: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/communities"
+    ) {
+      createPosts.push(request.url());
+    }
+  });
+
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toBeVisible();
+  const railCreateAction = page.getByTestId("community-rail-add");
+  await expect(railCreateAction).toHaveAccessibleName("Create a workspace");
+  await capture(page, "desktop-light-rail");
+  await railCreateAction.click();
+  const railCreateDialog = page.getByTestId("workspace-action-dialog");
+  await expect(railCreateDialog).toBeVisible();
+  await expect(
+    railCreateDialog.getByRole("heading", { name: "Create a workspace" }),
+  ).toBeVisible();
+  await railCreateDialog.getByTestId("workspace-dialog-close").click();
+
+  const menu = await openWorkspaceMenu(page);
+  await menu.getByTestId("workspace-create-action").click();
+  const dialog = page.getByTestId("workspace-action-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("workspace-create-name").fill("North Star Studio");
+  await page.getByLabel("Website (optional)").fill("https://example.com");
+  await expect(page.getByTestId("workspace-create-address")).toHaveValue(
+    "north-star-studio",
+  );
+  await expect(page.getByTestId("workspace-create-availability")).toContainText(
+    "That address is available.",
+  );
+  await page
+    .getByTestId("workspace-create-form")
+    .getByRole("heading", { name: "Create a workspace" })
+    .click();
+  await capture(page, "desktop-light-create");
+  await expect(page.getByTestId("workspace-create-submit")).toBeEnabled();
+  expect(createPosts).toEqual([]);
+});
+
+test("workspace settings start collapsed and the mobile switcher opens as a sheet", async ({
+  page,
+}) => {
+  await seedWorkspaces(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  const menu = await openWorkspaceMenu(page);
+  await menu.getByTestId("workspace-settings-action").click();
+  const settings = page.getByRole("dialog");
+  await expect(settings.getByText("Workspace settings")).toBeVisible();
+  const advanced = page.getByTestId("workspace-settings-advanced-toggle");
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    page.getByTestId("workspace-settings-advanced-fields"),
+  ).toHaveCount(0);
+  await capture(page, "desktop-light-settings");
+  await advanced.click();
+  await expect(
+    page.getByRole("textbox", { name: "Connection address" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("API token (optional)")).toHaveAttribute(
+    "placeholder",
+    "Paste a token",
+  );
+  await expect(page.getByLabel("API token (optional)")).not.toHaveValue(
+    /buzz_/,
+  );
+  await capture(page, "desktop-light-settings-advanced");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWorkspaceHeader(page);
+  await page.getByTestId("mobile-workspace-switcher").click();
+  await expect(page.getByTestId("community-rail")).toHaveCount(0);
+  await expect(page.getByTestId("mobile-workspace-mark")).toHaveAttribute(
+    "data-source",
+    "community",
+  );
+  const sheet = page.getByTestId("workspace-switcher-sheet");
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("Switch workspace")).toBeVisible();
+  await expect(
+    sheet.getByTestId("workspace-menu-item-workspace-one"),
+  ).toBeVisible();
+  await capture(page, "mobile-light-menu");
+});
+
+test("dark mobile workspace menu fits the 390px sheet", async ({ page }) => {
+  await seedWorkspaces(page, { theme: "dark" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await page.getByTestId("mobile-workspace-switcher").click();
+  await expect(page.getByTestId("community-rail")).toHaveCount(0);
+  const sheet = page.getByTestId("workspace-switcher-sheet");
+  await expect(sheet).toBeVisible();
+  await expect(
+    sheet.getByTestId("workspace-menu-item-workspace-two"),
+  ).toBeVisible();
+  await capture(page, "mobile-dark-menu");
+});

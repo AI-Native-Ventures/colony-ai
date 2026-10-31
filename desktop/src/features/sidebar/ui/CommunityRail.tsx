@@ -51,7 +51,9 @@ type CommunityRailProps = {
   onAddCommunity: () => void;
   onUpdateCommunity: (
     id: string,
-    updates: Partial<Pick<Community, "name" | "relayUrl" | "token">>,
+    updates: Partial<
+      Pick<Community, "name" | "relayUrl" | "token" | "reposDir">
+    >,
   ) => void;
   onReorderCommunities: (orderedIds: string[]) => void;
 };
@@ -259,17 +261,17 @@ function SortableCommunityButton({
               }}
             >
               <Link2 className="h-4 w-4" />
-              Copy community URL
+              Copy workspace link
             </ContextMenuItem>
             {canInvite ? (
               <ContextMenuItem onClick={onInvite}>
                 <Ticket className="h-4 w-4" />
-                Invite to community
+                Invite people
               </ContextMenuItem>
             ) : null}
             <ContextMenuItem onClick={() => onSetEditingCommunity(community)}>
               <Settings2 className="h-4 w-4" />
-              Community settings
+              Workspace settings
             </ContextMenuItem>
           </>
         }
@@ -286,10 +288,10 @@ function SortableCommunityButton({
 }
 
 /**
- * Discord/Slack-style vertical rail of communities on the far left of the app.
+ * Discord/Slack-style vertical rail of workspaces on the far left of the app.
  * Shows a mention-count badge for inactive communities (observed via
  * `useCommunityUnread`) and switches relays on click. Right-click opens a
- * per-community menu for read state, community URL, invites, and settings.
+ * per-workspace menu for read state, links, invites, and settings.
  *
  * Hidden entirely with a single community — a rail of one adds no value.
  */
@@ -362,7 +364,7 @@ export function CommunityRail({
 
   return (
     <nav
-      aria-label="Communities"
+      aria-label="Workspaces"
       // The native window buttons sit over the rail's top-left corner.
       data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
       data-testid="community-rail"
@@ -403,7 +405,7 @@ export function CommunityRail({
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            aria-label="Add community"
+            aria-label="Create a workspace"
             className="colony-rail-add outline-hidden focus:outline-none focus-visible:outline-none"
             data-testid="community-rail-add"
             onClick={onAddCommunity}
@@ -413,7 +415,7 @@ export function CommunityRail({
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          Add community
+          Create a workspace
         </TooltipContent>
       </Tooltip>
       <EditCommunityDialog

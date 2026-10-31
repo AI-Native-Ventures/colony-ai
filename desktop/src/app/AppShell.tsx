@@ -9,6 +9,8 @@ import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
 import { AppShellFrame } from "@/app/AppShellFrame";
 import { AppTopChrome } from "@/app/AppTopChrome";
+import { EditCommunityDialog } from "@/features/communities/ui/EditCommunityDialog";
+import { MobileWorkspaceHeader } from "@/features/communities/ui/MobileWorkspaceHeader";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   type TerminalContextOverride,
@@ -82,6 +84,8 @@ import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
 import { useChannelMutes } from "@/features/sidebar/lib/useChannelMutes";
 import { useChannelStars } from "@/features/sidebar/lib/useChannelStars";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useWorkspaceSwitchShortcuts } from "@/features/communities/useWorkspaceSwitchShortcuts";
+import type { Community } from "@/features/communities/types";
 import { useMembershipDenialWatcher } from "@/features/communities/useMembershipDenialWatcher";
 import { plainRelayErrorMessage } from "@/shared/lib/relayError";
 import {
@@ -97,6 +101,7 @@ import { useDeferredStartup } from "@/shared/hooks/useDeferredStartup";
 import { useWebviewScrollBoundaryLock } from "@/shared/hooks/useWebviewScrollBoundaryLock";
 import { joinChannel } from "@/shared/api/tauri";
 import type { ChannelVisibility, SearchHit } from "@/shared/api/types";
+import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { ChannelNavigationProvider } from "@/shared/context/ChannelNavigationContext";
 import { useAppDeepLinks } from "@/shared/useAppDeepLinks";
 import { SidebarProvider } from "@/shared/ui/sidebar";
@@ -111,12 +116,32 @@ export function AppShell() {
   useWebviewScrollBoundaryLock();
   const communitiesHook = useCommunities();
   const location = useLocation();
+  const isNarrowWindow = useIsMobile();
   const { selectedChannelId, selectedView } = React.useMemo(
     () => deriveShellRoute(location.pathname),
     [location.pathname],
   );
-  const hasCommunityRail = communitiesHook.communities.length > 1;
+  const hasCommunityRail =
+    communitiesHook.communities.length > 1 && !isNarrowWindow;
   const addCommunityDialog = useAddCommunityDialogState();
+  const [workspaceDialogMode, setWorkspaceDialogMode] = React.useState<
+    "add-community" | "create" | "join"
+  >("add-community");
+  const [workspaceSettingsCommunity, setWorkspaceSettingsCommunity] =
+    React.useState<Community | null>(null);
+  const openWorkspaceDialog = (mode: "create" | "join") => {
+    setWorkspaceDialogMode(mode);
+    addCommunityDialog.openDialog();
+  };
+  const openWorkspaceSettings = React.useCallback(() => {
+    if (communitiesHook.activeCommunity) {
+      setWorkspaceSettingsCommunity(communitiesHook.activeCommunity);
+    }
+  }, [communitiesHook.activeCommunity]);
+  const handleAddCommunityDialogOpenChange = (open: boolean) => {
+    if (!open) setWorkspaceDialogMode("add-community");
+    addCommunityDialog.onOpenChange(open);
+  };
   const [isChannelManagementOpen, setIsChannelManagementOpen] =
     React.useState(false);
   const [managedChannelId, setManagedChannelId] = React.useState<string | null>(
@@ -161,9 +186,13 @@ export function AppShell() {
     selectedChannelId,
     selectedView,
   });
+  useWorkspaceSwitchShortcuts(
+    communitiesHook.communities,
+    communitiesHook.activeCommunity?.id ?? null,
+    handleSwitchCommunity,
+  );
   // Settings lives in history so back returns to the previous app entry.
   const settingsOpen = location.pathname === "/settings";
-  const isNarrowWindow = useIsMobile();
   const showAppTopChrome =
     !settingsOpen &&
     selectedView !== "pins" &&
@@ -688,7 +717,7 @@ export function AppShell() {
             {hasCommunityRail ? (
               <CommunityRail
                 activeCommunityId={communitiesHook.activeCommunity?.id ?? null}
-                onAddCommunity={addCommunityDialog.openDialog}
+                onAddCommunity={() => openWorkspaceDialog("create")}
                 onReorderCommunities={communitiesHook.reorderCommunities}
                 onSwitchCommunity={handleSwitchCommunity}
                 onUpdateCommunity={communitiesHook.updateCommunity}
@@ -769,6 +798,7 @@ export function AppShell() {
                       isPowerActive={location.pathname === "/power"}
                       addCommunityPrefill={addCommunityDialog.prefill}
                       isAddCommunityOpen={addCommunityDialog.open}
+                      workspaceDialogMode={workspaceDialogMode}
                       relayConnectionCard={relayConnectionCard}
                       isCreatingChannel={createChannelMutation.isPending}
                       isLoading={channelsQuery.isLoading}
@@ -782,13 +812,15 @@ export function AppShell() {
                         });
                         handleSwitchCommunity(id);
                       }}
-                      onAddCommunityOpenChange={addCommunityDialog.onOpenChange}
+                      onAddCommunityOpenChange={
+                        handleAddCommunityDialogOpenChange
+                      }
                       onNewMessage={goNewMessage}
                       onBackgroundClick={requestFocusedThreadClose}
                       onCreateChannelOpenChange={setIsCreateChannelOpen}
-                      onOpenAddCommunity={addCommunityDialog.openDialog}
+                      onOpenWorkspaceDialog={openWorkspaceDialog}
+                      onOpenWorkspaceSettings={openWorkspaceSettings}
                       onSendFeedback={() => setIsSendFeedbackOpen(true)}
-                      onUpdateCommunity={communitiesHook.updateCommunity}
                       onRemoveCommunity={handleRemoveCommunity}
                       onSwitchCommunity={handleSwitchCommunity}
                       onCreateAgent={() => requestOpenCreateAgent()}
@@ -863,7 +895,33 @@ export function AppShell() {
                     >
                       <AppShellChannelSurface
                         topChrome={
-                          showAppTopChrome ? (
+                          isNarrowWindow ? (
+                            <MobileWorkspaceHeader
+                              activeWorkspace={communitiesHook.activeCommunity}
+                              workspaces={communitiesHook.communities}
+                              onCopyWorkspaceLink={() => {
+                                const workspace =
+                                  communitiesHook.activeCommunity;
+                                if (workspace) {
+                                  copyTextToClipboard(
+                                    workspace.relayUrl,
+                                    "Workspace link copied.",
+                                  );
+                                }
+                              }}
+                              onCreateWorkspace={() =>
+                                openWorkspaceDialog("create")
+                              }
+                              onInvitePeople={() =>
+                                handleOpenSettings("community-members")
+                              }
+                              onJoinWorkspace={() =>
+                                openWorkspaceDialog("join")
+                              }
+                              onOpenWorkspaceSettings={openWorkspaceSettings}
+                              onSwitchWorkspace={handleSwitchCommunity}
+                            />
+                          ) : showAppTopChrome ? (
                             <AppTopChrome
                               canGoBack={canGoBack}
                               canGoForward={canGoForward}
@@ -882,6 +940,18 @@ export function AppShell() {
                         <Outlet />
                       </AppShellChannelSurface>
                     </TerminalContextOverrideProvider>
+                    <EditCommunityDialog
+                      community={workspaceSettingsCommunity}
+                      onOpenChange={(open) => {
+                        if (!open) setWorkspaceSettingsCommunity(null);
+                      }}
+                      onSave={communitiesHook.updateCommunity}
+                      open={workspaceSettingsCommunity !== null}
+                      showIconEditor={
+                        workspaceSettingsCommunity?.id ===
+                        communitiesHook.activeCommunity?.id
+                      }
+                    />
                     <RelayConnectionOverlay
                       card={relayConnectionCard}
                       errorMessage={channelsErrorDisplay}

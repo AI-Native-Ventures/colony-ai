@@ -22385,9 +22385,10 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "validate_repos_dir":
         // The browser harness has no host filesystem to validate. Treat the
-        // seeded empty/default path as valid so Add Community can continue to
-        // relay-policy discovery.
+        // seeded empty/default path as valid so workspace settings can save.
         return;
+      case "pick_workspace_repos_dir":
+        return null;
       case "fetch_join_policy":
         return activeConfig?.mock?.joinPolicy ?? null;
       case "read_business_website":

@@ -7,6 +7,7 @@ import { AddCommunityDialog } from "@/features/communities/ui/AddCommunityDialog
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { ColonyField } from "@/shared/ui/ColonyField";
 import { PowerIcon, SettingsIcon } from "@/shared/ui/colonyIcons";
+import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { useDeferredLoad } from "@/shared/hooks/useDeferredStartup";
 import {
   useChannelSections,
@@ -92,6 +93,7 @@ export function AppSidebar({
   fallbackDisplayName,
   homeBadgeCount,
   isPowerActive,
+  workspaceDialogMode,
   onBackgroundClick,
   isAddCommunityOpen,
   isLoading,
@@ -112,7 +114,8 @@ export function AppSidebar({
   onAddCommunity,
   onAddCommunityOpenChange,
   onCreateChannel,
-  onOpenAddCommunity,
+  onOpenWorkspaceDialog,
+  onOpenWorkspaceSettings,
   onSendFeedback,
   onHideDm,
   onMarkChannelUnread,
@@ -120,8 +123,6 @@ export function AppSidebar({
   onMarkAllChannelsRead,
   onBrowseChannels,
   onOpenDm,
-  onUpdateCommunity,
-  onRemoveCommunity,
   onCreateAgent,
   onSelectToday,
   onSelectAgents,
@@ -546,20 +547,32 @@ export function AppSidebar({
       >
         <ColonyField />
         <AppSidebarPinnedHeader
-          activeCommunityName={activeCommunity?.name ?? ""}
-          activeCommunityId={activeCommunity?.id}
-          activeCommunityRelayUrl={activeCommunity?.relayUrl}
+          activeWorkspace={activeCommunity}
+          workspaces={communities}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={
             selectedView === "channel" ? selectedChannelId : null
           }
           onBrowseChannels={onBrowseChannels}
+          onCopyWorkspaceLink={() => {
+            if (activeCommunity) {
+              copyTextToClipboard(
+                activeCommunity.relayUrl,
+                "Workspace link copied.",
+              );
+            }
+          }}
+          onCreateWorkspace={() => onOpenWorkspaceDialog("create")}
           onCreateAgent={onCreateAgent}
           onCreateChannel={handleOpenCreateChannel}
           onOpenDm={onOpenDm}
           onOpenSearchResult={onOpenSearchResult}
+          onInvitePeople={() => onSelectSettings("community-members")}
+          onJoinWorkspace={() => onOpenWorkspaceDialog("join")}
+          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
           onSelectChannel={onSelectChannel}
+          onSwitchWorkspace={onSwitchCommunity}
           searchChannels={searchChannels}
           searchFocusRequest={searchFocusRequests[0]}
           showSidebarCollapseButton={showSidebarCollapseButton}
@@ -923,22 +936,16 @@ export function AppSidebar({
             ) : null}
             <div className="colony-sidebar-footer-row">
               <SidebarProfileCard
-                activeCommunity={activeCommunity}
                 isPresencePending={isPresencePending}
-                onOpenAddCommunity={onOpenAddCommunity}
                 onOpenSettings={onSelectSettings}
                 onSendFeedback={onSendFeedback}
-                onRemoveCommunity={onRemoveCommunity}
                 onSetPresenceStatus={onSetPresenceStatus}
                 onSetUserStatus={onSetUserStatus}
                 onClearUserStatus={onClearUserStatus}
-                onSwitchCommunity={onSwitchCommunity}
-                onUpdateCommunity={onUpdateCommunity}
                 profile={profile}
                 resolvedDisplayName={resolvedDisplayName}
                 selfPresenceStatus={selfPresenceStatus}
                 selfUserStatus={selfUserStatus}
-                communities={communities}
               />
               <button
                 aria-label="AI spend and power"
@@ -983,6 +990,8 @@ export function AppSidebar({
       />
 
       <AddCommunityDialog
+        mode={workspaceDialogMode}
+        onOpenWorkspaceDialog={onOpenWorkspaceDialog}
         prefill={addCommunityPrefill}
         onOpenChange={onAddCommunityOpenChange ?? (() => {})}
         onSubmit={onAddCommunity}

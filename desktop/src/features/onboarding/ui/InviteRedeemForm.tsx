@@ -42,7 +42,11 @@ type InviteRedeemFormProps = {
   onConnect?: (relayWsUrl: string) => void;
   onRedeem: (relayWsUrl: string, code: string, policyReceipt?: string) => void;
   placeholder?: string;
-  variant?: "add-community" | "default" | "onboarding-spotlight";
+  variant?:
+    | "add-community"
+    | "add-workspace"
+    | "default"
+    | "onboarding-spotlight";
 };
 
 export function InviteRedeemForm({
@@ -80,7 +84,9 @@ export function InviteRedeemForm({
   const normalizedRelayUrl = React.useMemo(
     () =>
       onConnect &&
-      (!parsed || (variant === "add-community" && !hasInviteRelay(parsed)))
+      (!parsed ||
+        ((variant === "add-community" || variant === "add-workspace") &&
+          !hasInviteRelay(parsed)))
         ? normalizeRelayUrl(inviteInput)
         : null,
     [inviteInput, onConnect, parsed, variant],
@@ -129,7 +135,9 @@ export function InviteRedeemForm({
         (isBareCode && bareCodeRelayUrl.trim().length > 0))) ||
     normalizedRelayUrl !== null;
   const isOnboardingSpotlight = variant === "onboarding-spotlight";
-  const isAddCommunity = variant === "add-community";
+  const isAddCommunity =
+    variant === "add-community" || variant === "add-workspace";
+  const isAddWorkspace = variant === "add-workspace";
   const showInvalidInviteTip =
     isOnboardingSpotlight && inviteInput.trim().length > 0 && !canSubmit;
 
@@ -284,18 +292,24 @@ export function InviteRedeemForm({
       : "Checking…"
     : isOnboardingSpotlight
       ? "Continue"
-      : isAddCommunity
+      : isAddWorkspace
         ? joinPolicy
-          ? "Accept and join"
-          : "Join community"
-        : joinPolicy
-          ? "Accept and redeem invite"
-          : "Redeem invite";
+          ? "Accept and join workspace"
+          : "Join workspace"
+        : isAddCommunity
+          ? joinPolicy
+            ? "Accept and join workspace"
+            : "Join workspace"
+          : joinPolicy
+            ? "Accept and redeem invite"
+            : "Redeem invite";
   const inputLabel = isOnboardingSpotlight
     ? "Or paste your invite link or community link"
-    : isAddCommunity
-      ? "Community URL or invite link"
-      : "Invite link or code";
+    : isAddWorkspace
+      ? "Workspace URL or invite link"
+      : isAddCommunity
+        ? "Community URL or invite link"
+        : "Invite link or code";
   const inputPlaceholder = isOnboardingSpotlight
     ? (placeholder ?? "https://")
     : isAddCommunity
@@ -440,6 +454,11 @@ export function InviteRedeemForm({
 
       {isOnboardingSpotlight ? null : isAddCommunity ? (
         <div className="c3fr-redeem-actions">
+          {isAddWorkspace ? (
+            <FirstRunButton disabled={isRedeeming} onClick={onCancel}>
+              Cancel
+            </FirstRunButton>
+          ) : null}
           <button
             className="c3fr-accent-button"
             data-testid="invite-redeem-submit"

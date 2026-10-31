@@ -131,6 +131,7 @@
   font-size: calc(13 * var(--colony-px));
   font-weight: 600;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .app-sidebar-full-shell .colony-sidebar-collapse {

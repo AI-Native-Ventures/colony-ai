@@ -76,26 +76,6 @@ test("ProfilePopover board: account menu", async ({ page }) => {
   );
 });
 
-test("ProfilePopover board: community flyout", async ({ page }) => {
-  await openLerato(page, { route: "/#/today" });
-  await waitForShell(page);
-  await openAccountMenu(page);
-  await page.getByTestId("community-switcher").hover();
-  const actions = page.getByTestId("profile-community-actions");
-  await expect(actions).toBeVisible();
-  await page.waitForTimeout(400);
-  await shot(
-    page,
-    {
-      name: "ProfilePopover-flyout",
-      board: "ProfilePopover",
-      refRect: [350, 561, 284, 249],
-      title: "Community flyout",
-    },
-    page.locator(".pm-flyout"),
-  );
-});
-
 test("ProfilePopover board: set a status", async ({ page }) => {
   await openLerato(page, { route: "/#/today" });
   await waitForShell(page);
