@@ -17,6 +17,7 @@ import {
   THREAD_PREFIX,
 } from "@/features/channels/readState/readStateFormat";
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
+import { KeyRescueCard } from "@/features/agents/ui/KeyRescueCard";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
@@ -748,6 +749,12 @@ export function ChannelScreen({
             className="colony-channel-route-content"
             ref={channelContentRef}
           >
+          {activeDmParticipantPubkeys.length > 0 ? (
+            <KeyRescueCard
+              className="mx-5 mt-3"
+              scopePubkeys={activeDmParticipantPubkeys}
+            />
+          ) : null}
           {activeChannel ? (
               <React.Suspense
                 fallback={<ViewLoadingFallback includeHeader kind="channel" />}
