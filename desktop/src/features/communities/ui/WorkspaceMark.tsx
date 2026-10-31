@@ -28,7 +28,27 @@ type WorkspaceMarkProps = {
  * The shared workspace mark resolver. A cached or fetched NIP-11 icon wins,
  * then the saved business-profile logo, then the workspace initial.
  */
-export function WorkspaceMark({
+export function WorkspaceMark(props: WorkspaceMarkProps) {
+  return props.relayUrl ? (
+    <WorkspaceMarkWithCommunityIcon {...props} relayUrl={props.relayUrl} />
+  ) : (
+    <WorkspaceMarkContent {...props} communityIcon={null} />
+  );
+}
+
+function WorkspaceMarkWithCommunityIcon(
+  props: WorkspaceMarkProps & { relayUrl: string },
+) {
+  const communityIconQuery = useActiveCommunityIcon(props.relayUrl);
+  return (
+    <WorkspaceMarkContent
+      {...props}
+      communityIcon={communityIconQuery.data ?? null}
+    />
+  );
+}
+
+function WorkspaceMarkContent({
   name,
   relayUrl,
   communityId,
@@ -46,9 +66,8 @@ export function WorkspaceMark({
   imageTestId,
   style,
   onLogoError,
-}: WorkspaceMarkProps) {
-  const communityIconQuery = useActiveCommunityIcon(relayUrl);
-  const communityIcon = communityIconQuery.data ?? null;
+  communityIcon,
+}: WorkspaceMarkProps & { communityIcon: string | null }) {
   const profileLogo =
     businessLogoUrl !== undefined
       ? businessLogoUrl
