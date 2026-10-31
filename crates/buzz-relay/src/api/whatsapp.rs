@@ -204,9 +204,6 @@ fn client_state(state: &str) -> &str {
     match state {
         "held" | "ready" => "queued",
         "skipped" => "failed",
-        // The released app has no `received` state and rejects the whole thread for it. An
-        // inbound message has been seen by definition, which is what `read` means there.
-        "received" => "read",
         other => other,
     }
 }
