@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { Settings, UserRound } from "lucide-react";
 
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
@@ -8,6 +9,7 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   KIND_WHATSAPP_BATCH_DECISION,
   KIND_WHATSAPP_SEND_REQUEST,
@@ -15,6 +17,8 @@ import {
 } from "@/shared/constants/kinds";
 import {
   getWhatsAppDailyCapProgress,
+  formatWhatsAppPhoneNumber,
+  isWhatsAppPhoneLikeName,
   maskWhatsAppNumber,
   type WhatsAppBatchDetail,
   type WhatsAppContact,
@@ -136,7 +140,11 @@ function ContactRow({
         type="button"
       >
         <span aria-hidden="true" className="c3wa-contact-avatar">
-          {whatsappInitials(name)}
+          {isWhatsAppPhoneLikeName(name) ? (
+            <UserRound aria-hidden="true" size={17} strokeWidth={1.8} />
+          ) : (
+            whatsappInitials(name)
+          )}
         </span>
         <span className="c3wa-contact-main">
           <span className="c3wa-contact-title">
@@ -152,6 +160,9 @@ function ContactRow({
             {hasDraft ? (
               <span className="c3wa-draft-waiting">Draft waiting</span>
             ) : null}
+            {preview ? (
+              <span className="c3wa-contact-preview">{preview}</span>
+            ) : null}
             {contact.unanswered && !selected ? (
               <span
                 aria-label="Unread reply"
@@ -159,11 +170,7 @@ function ContactRow({
                 role="img"
               />
             ) : null}
-            <span>{maskWhatsAppNumber(contact.e164)}</span>
           </span>
-          {preview ? (
-            <span className="c3wa-contact-preview">{preview}</span>
-          ) : null}
         </span>
       </button>
       {waitingForApproval ? (
@@ -290,11 +297,16 @@ export function WhatsAppOutreachScreen({
     const linkedLead = contact.leadId
       ? leadIdentities.get(contact.leadId)
       : undefined;
+    const savedName =
+      linkedLead?.businessName?.trim() || contact.displayName?.trim() || null;
+    const unnamed = !savedName || isWhatsAppPhoneLikeName(savedName);
     return {
-      businessName:
-        linkedLead?.businessName ?? contact.displayName ?? "WhatsApp contact",
+      businessName: unnamed
+        ? formatWhatsAppPhoneNumber(contact.e164)
+        : savedName,
       personName:
-        linkedLead?.personName ?? contact.displayName ?? "WhatsApp contact",
+        linkedLead?.personName?.trim() ||
+        (unnamed ? "WhatsApp contact" : savedName),
       location: linkedLead?.location ?? null,
     };
   };
@@ -667,8 +679,10 @@ export function WhatsAppOutreachScreen({
   return (
     <main
       className="c3wa-root c3wa-outreach"
-      data-testid="whatsapp-outreach"
       data-channel-id={channelId}
+      data-has-selected-contact={selectedContact ? "true" : "false"}
+      data-mode={mode}
+      data-testid="whatsapp-outreach"
     >
       <aside
         className={cn(
@@ -688,14 +702,21 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "dock" ? "Chats" : "Outreach"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
-            <button
-              aria-label="WhatsApp settings"
-              className="c3wa-icon-button"
-              onClick={openSettings}
-              type="button"
-            >
-              ⚙
-            </button>
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label="WhatsApp settings"
+                  className="c3wa-icon-button c3wa-settings-button"
+                  data-testid="whatsapp-settings-trigger"
+                  onClick={openSettings}
+                  title="WhatsApp settings"
+                  type="button"
+                >
+                  <Settings aria-hidden="true" size={17} strokeWidth={1.8} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>WhatsApp settings</TooltipContent>
+            </Tooltip>
           </div>
           <input
             aria-label="Search chats"
@@ -754,7 +775,12 @@ export function WhatsAppOutreachScreen({
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
-                preview={rowBatch?.row.preview ?? null}
+                preview={
+                  isSelected && chronologicalMessages.length > 0
+                    ? chronologicalMessages[chronologicalMessages.length - 1]
+                        .text
+                    : (rowBatch?.row.preview ?? null)
+                }
                 selected={isSelected}
                 waitingForApproval={rowMatches.length > 0}
               />
@@ -785,16 +811,24 @@ export function WhatsAppOutreachScreen({
               ‹
             </button>
             <span aria-hidden="true" className="c3wa-thread-avatar">
-              {whatsappInitials(selectedIdentity?.businessName ?? "WhatsApp")}
+              {isWhatsAppPhoneLikeName(selectedIdentity?.businessName ?? "") ? (
+                <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
+              ) : (
+                whatsappInitials(selectedIdentity?.businessName ?? "WhatsApp")
+              )}
             </span>
             <div className="c3wa-thread-head-copy">
               <strong>
                 {selectedIdentity?.businessName ?? "WhatsApp contact"}
               </strong>
               <span className="c3wa-thread-head-desktop">
-                {selectedIdentity?.personName ?? "Contact"} ·{" "}
-                {maskWhatsAppNumber(selectedContact.e164)}
-                {selectedIdentity?.location
+                {isWhatsAppPhoneLikeName(selectedIdentity?.businessName ?? "")
+                  ? (selectedIdentity?.location?.split(",")[0].trim() ??
+                    "WhatsApp contact")
+                  : `${selectedIdentity?.personName ?? "Contact"} · ${maskWhatsAppNumber(selectedContact.e164)}`}
+                {!isWhatsAppPhoneLikeName(
+                  selectedIdentity?.businessName ?? "",
+                ) && selectedIdentity?.location
                   ? ` · ${selectedIdentity.location.split(",")[0].trim()}`
                   : ""}
               </span>
@@ -935,6 +969,9 @@ export function WhatsAppOutreachScreen({
                     contactName={
                       selectedIdentity?.personName ?? "WhatsApp contact"
                     }
+                    anonymousContact={isWhatsAppPhoneLikeName(
+                      selectedIdentity?.businessName ?? "",
+                    )}
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}

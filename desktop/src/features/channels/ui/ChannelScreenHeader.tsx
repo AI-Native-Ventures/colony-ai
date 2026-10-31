@@ -40,6 +40,7 @@ import {
 } from "@/shared/ui/conversationIcons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import "./channelScreenHeader.css";
 
 /** A header control with its name in a tooltip. */
 function HeaderTip({
@@ -171,17 +172,19 @@ export function ChannelScreenHeader({
           aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
           aria-expanded={workArea.open && workArea.activeTabId === "whatsapp"}
           aria-label="WhatsApp chats"
-          className="c3c-icon-button relative inline-flex items-center gap-2 px-2.5"
+          className="c3c-icon-button c3c-channel-action-button c3c-whatsapp-chats-button relative inline-flex items-center gap-2 px-2.5"
           data-testid="channel-whatsapp-chats-trigger"
           onClick={() => requestWorkAreaTab("whatsapp")}
           type="button"
         >
           <MessageCircle aria-hidden="true" size={17} />
-          <span className="hidden text-sm xl:inline">WhatsApp chats</span>
+          <span className="c3c-header-action-label text-sm">
+            WhatsApp chats
+          </span>
           {unansweredWhatsAppCount > 0 ? (
             <span
               aria-hidden="true"
-              className="inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
+              className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
               data-testid="channel-whatsapp-unread-count"
             >
               {unansweredWhatsAppCount}
@@ -195,7 +198,7 @@ export function ChannelScreenHeader({
             aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
             aria-expanded={workArea.open}
             aria-label="Open work area"
-            className="c3c-icon-button"
+            className="c3c-icon-button c3c-channel-action-button c3c-work-area-button"
             data-active={workArea.open ? "true" : undefined}
             data-testid="channel-work-area-trigger"
             onClick={(event) =>
