@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use nostr::{Event, EventBuilder, Kind, Tag};
 use uuid::Uuid;
 
@@ -16,7 +16,7 @@ use buzz_core::TenantContext;
 use buzz_db::channel::{ChannelType, ChannelVisibility};
 use buzz_db::whatsapp::{WhatsappContact, WhatsappMessage};
 
-use super::policy::e164;
+use super::policy::{contact_label, e164};
 use crate::state::AppState;
 
 const CHANNEL_NAME: &str = "Outreach";
@@ -124,21 +124,44 @@ pub async fn ensure_outreach_channel(
     Ok(channel_id)
 }
 
-/// Content and tags of a contact's thread root. Deterministic for one contact (the
-/// timestamp is the contact's creation time), so two racing first messages sign the same
-/// event and the second insert is a no-op.
-pub fn thread_root_parts(contact: &WhatsappContact) -> (String, Vec<Vec<String>>, DateTime<Utc>) {
-    let name = if contact.display_name.is_empty() {
-        e164(&contact.wa_id)
-    } else {
-        contact.display_name.clone()
-    };
+/// A post whose wanted time is at most this old keeps it. The database refuses to commit a
+/// channel event older than 960 s (`CREATED_AT_FLOOR_SECS`, the replica-fence floor), so this
+/// leaves 360 s for the commit.
+const KEEP_AGE_SECS: i64 = 600;
+/// A post whose wanted time is older than [`KEEP_AGE_SECS`] is stamped with the start of the
+/// five-minute bucket before the current one (so 300 to 600 s old). Every attempt inside one
+/// bucket signs the same event, which keeps a repeated post idempotent.
+const STALE_BUCKET_SECS: i64 = 300;
+// At least 300 s of the floor stay free for the commit.
+const _: () = assert!(KEEP_AGE_SECS + 300 <= buzz_db::replica_fence::CREATED_AT_FLOOR_SECS);
+
+/// The time a Colony post must carry so the database accepts it: `wanted` while it is recent
+/// enough, otherwise a deterministic recent bucket. A retry of an old message, or the first
+/// post of a contact created long ago, would otherwise be refused for ever.
+pub fn fence_safe_time(wanted: DateTime<Utc>, now: DateTime<Utc>) -> DateTime<Utc> {
+    if now - wanted <= Duration::seconds(KEEP_AGE_SECS) {
+        return wanted;
+    }
+    let bucket = now.timestamp().div_euclid(STALE_BUCKET_SECS) * STALE_BUCKET_SECS;
+    DateTime::from_timestamp(bucket - STALE_BUCKET_SECS, 0).unwrap_or(now)
+}
+
+/// Content and tags of a contact's thread root. Deterministic for one contact while the
+/// fence-safe time is (the contact's creation time while recent, else a five-minute bucket),
+/// so two racing first messages sign the same event and the second insert is a no-op. A race
+/// that straddles a bucket edge can sign two roots; [`ensure_thread_root`] keeps the one that
+/// was recorded first.
+pub fn thread_root_parts(
+    contact: &WhatsappContact,
+    now: DateTime<Utc>,
+) -> (String, Vec<Vec<String>>, DateTime<Utc>) {
+    let name = contact_label(&contact.display_name, &contact.wa_id);
     let content = format!("WhatsApp: {name} ({})", e164(&contact.wa_id));
     let tags = vec![
         vec!["wa".to_string(), contact.wa_id.clone()],
         vec!["wa-name".to_string(), name],
     ];
-    (content, tags, contact.created_at)
+    (content, tags, fence_safe_time(contact.created_at, now))
 }
 
 /// Make sure the contact has its one thread and return the root event id (hex).
@@ -151,14 +174,42 @@ pub async fn ensure_thread_root(
     if let Some(root) = contact.thread_root_event_id.as_ref() {
         return Ok(hex::encode(root));
     }
-    let (content, tags, created_at) = thread_root_parts(contact);
-    let event = post_message(state, tenant, channel_id, None, content, tags, created_at).await?;
-    state
+    let community = tenant.community();
+    // The caller's copy may predate a racing first post: use the root that already won.
+    let fresh = state
         .db
-        .whatsapp_set_thread_root(tenant.community(), &contact.wa_id, event.id.as_bytes())
+        .whatsapp_get_contact(community, &contact.wa_id)
+        .await
+        .map_err(|error| format!("contact lookup failed: {error}"))?;
+    if let Some(root) = fresh
+        .as_ref()
+        .and_then(|fresh| fresh.thread_root_event_id.as_ref())
+    {
+        return Ok(hex::encode(root));
+    }
+    let (content, tags, created_at) =
+        thread_root_parts(fresh.as_ref().unwrap_or(contact), Utc::now());
+    let event = post_message(state, tenant, channel_id, None, content, tags, created_at).await?;
+    let won = state
+        .db
+        .whatsapp_set_thread_root(community, &contact.wa_id, event.id.as_bytes())
         .await
         .map_err(|error| format!("could not remember the thread root: {error}"))?;
-    Ok(event.id.to_hex())
+    if won {
+        return Ok(event.id.to_hex());
+    }
+    // Lost the compare-and-set to a racing first post: every reply belongs under the winner.
+    let winner = state
+        .db
+        .whatsapp_get_contact(community, &contact.wa_id)
+        .await
+        .map_err(|error| format!("contact lookup failed: {error}"))?
+        .and_then(|contact| contact.thread_root_event_id)
+        .ok_or_else(|| "the thread root vanished after a lost race".to_string())?;
+    if winner.as_slice() != event.id.as_bytes() {
+        tracing::warn!(%community, "whatsapp thread root race: an unused duplicate root was posted");
+    }
+    Ok(hex::encode(winner))
 }
 
 /// Post one relay-signed message. With `thread_root_hex` it is a reply in that thread,
@@ -205,6 +256,15 @@ pub async fn post_message(
     };
     for tag in extra_tags {
         tags.push(Tag::parse(tag).map_err(|error| format!("message tag invalid: {error}"))?);
+    }
+    // The database refuses an event older than the replica-fence floor, so a post that is
+    // retried long after its message must be stamped inside it, and never before its root.
+    let mut created_at = fence_safe_time(created_at, Utc::now());
+    if let Some(root_at) = ancestry
+        .as_ref()
+        .map(|ancestry| ancestry.root_event_created_at)
+    {
+        created_at = created_at.max(root_at);
     }
     let timestamp = u64::try_from(created_at.timestamp())
         .map_err(|_| "message time predates the Unix epoch".to_string())?;
@@ -289,11 +349,7 @@ pub fn message_tags(
     message: &WhatsappMessage,
     owner_in_channel: bool,
 ) -> Vec<Vec<String>> {
-    let name = if contact.display_name.is_empty() {
-        e164(&contact.wa_id)
-    } else {
-        contact.display_name.clone()
-    };
+    let name = contact_label(&contact.display_name, &contact.wa_id);
     let direction = if message.direction == "out" {
         "out"
     } else {
@@ -416,15 +472,62 @@ mod tests {
         }
     }
 
+    fn at(secs: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(secs, 0).expect("time")
+    }
+
     #[test]
     fn thread_root_is_deterministic_for_one_contact() {
         let contact = contact("Thabo");
-        assert_eq!(thread_root_parts(&contact), thread_root_parts(&contact));
-        let (content, tags, at) = thread_root_parts(&contact);
+        let now = at(1_800_000_060);
+        assert_eq!(
+            thread_root_parts(&contact, now),
+            thread_root_parts(&contact, now)
+        );
+        let (content, tags, root_at) = thread_root_parts(&contact, now);
         assert_eq!(content, "WhatsApp: Thabo (+27821234567)");
         assert!(tags.contains(&vec!["wa".to_string(), "27821234567".to_string()]));
         assert!(tags.contains(&vec!["wa-name".to_string(), "Thabo".to_string()]));
-        assert_eq!(at.timestamp(), 1_800_000_000);
+        // A recent contact keeps its creation time.
+        assert_eq!(root_at.timestamp(), 1_800_000_000);
+    }
+
+    #[test]
+    fn an_old_contacts_thread_root_is_stamped_inside_the_database_fence() {
+        // GUARD: the root used to be signed with `contact.created_at` for ever, so a contact
+        // created a day before its first post was refused by the 960 s fence on every retry.
+        let contact = contact("Thabo");
+        let now = at(1_800_000_000 + 86_400 + 137);
+        let (_, _, root_at) = thread_root_parts(&contact, now);
+        let age = now.timestamp() - root_at.timestamp();
+        assert!((300..=600).contains(&age), "root age {age} s");
+        assert!(age < buzz_db::replica_fence::CREATED_AT_FLOOR_SECS);
+        // Two racing first posts in the same bucket sign the same root.
+        let racing = at(now.timestamp() + 60);
+        assert_eq!(thread_root_parts(&contact, racing).2, root_at);
+    }
+
+    #[test]
+    fn fence_safe_time_keeps_recent_times_and_buckets_old_ones() {
+        let now = at(1_800_000_650);
+        assert_eq!(fence_safe_time(now, now), now);
+        assert_eq!(fence_safe_time(at(1_800_000_050), now), at(1_800_000_050));
+        // Slightly in the future (clock skew) is kept as it is.
+        assert_eq!(fence_safe_time(at(1_800_000_700), now), at(1_800_000_700));
+        // Older than 600 s: the bucket before the current five-minute one.
+        let stale = fence_safe_time(at(1_800_000_049), now);
+        assert_eq!(stale, at(1_800_000_300));
+        for age in [601, 3_600, 86_400, 30 * 86_400] {
+            for jitter in 0..300 {
+                let now = at(1_800_100_000 + jitter);
+                let stamped = fence_safe_time(now - Duration::seconds(age), now);
+                let gap = (now - stamped).num_seconds();
+                assert!(
+                    (300..=600).contains(&gap),
+                    "age {age} jitter {jitter} gap {gap}"
+                );
+            }
+        }
     }
 
     fn message(direction: &str) -> WhatsappMessage {
@@ -494,8 +597,20 @@ mod tests {
 
     #[test]
     fn unnamed_contact_shows_their_number() {
-        let (content, tags, _) = thread_root_parts(&contact(""));
+        let now = at(1_800_000_060);
+        let (content, tags, _) = thread_root_parts(&contact(""), now);
         assert_eq!(content, "WhatsApp: +27821234567 (+27821234567)");
         assert!(tags.contains(&vec!["wa-name".to_string(), "+27821234567".to_string()]));
+    }
+
+    #[test]
+    fn a_dot_profile_name_is_no_name_in_the_root_and_in_message_tags() {
+        // GUARD: the contact's WhatsApp profile name was ".", and the app showed ".".
+        let now = at(1_800_000_060);
+        let (content, tags, _) = thread_root_parts(&contact("."), now);
+        assert_eq!(content, "WhatsApp: +27821234567 (+27821234567)");
+        assert!(tags.contains(&vec!["wa-name".to_string(), "+27821234567".to_string()]));
+        let message_tags = message_tags(&contact("."), &message("in"), false);
+        assert!(message_tags.contains(&vec!["wa-name".to_string(), "+27821234567".to_string()]));
     }
 }

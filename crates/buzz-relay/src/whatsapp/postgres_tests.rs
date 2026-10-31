@@ -16,6 +16,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use nostr::{EventBuilder, Keys, Kind};
 use serde_json::{json, Value};
 use sha2::Sha256;
+use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -178,6 +179,17 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
+    fixture_with_fence(false).await
+}
+
+/// A fixture whose writer pool arms the production replica-fence floor
+/// (`buzz.created_at_floor`, 960 s) on every connection, exactly as `Db::connect` does, so a
+/// channel event older than the floor is refused at COMMIT.
+async fn fence_fixture() -> Fixture {
+    fixture_with_fence(true).await
+}
+
+async fn fixture_with_fence(arm_fence: bool) -> Fixture {
     let mut config = crate::config::Config::from_env().expect("test relay config");
     let database_url = crate::test_support::database_url();
     config.database_url = database_url.clone();
@@ -188,9 +200,23 @@ async fn fixture() -> Fixture {
     let host = format!("whatsapp-test-{}.example", Uuid::new_v4().simple());
     config.relay_url = format!("wss://{host}");
 
-    let pool = PgPool::connect(&database_url)
-        .await
-        .expect("connect whatsapp test Postgres");
+    let pool = if arm_fence {
+        PgPoolOptions::new()
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    sqlx::query("SELECT set_config('buzz.created_at_floor', $1, false)")
+                        .bind(buzz_db::replica_fence::CREATED_AT_FLOOR_SECS.to_string())
+                        .execute(&mut *conn)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect(&database_url)
+            .await
+    } else {
+        PgPool::connect(&database_url).await
+    }
+    .expect("connect whatsapp test Postgres");
     if !matches!(
         std::env::var("BUZZ_TEST_SCHEMA_MODE").as_deref(),
         Ok("desired")
@@ -2089,4 +2115,288 @@ async fn send_now_still_refuses_opted_out_contacts_and_a_stopped_number() {
         "{:?}",
         opted_out.skip_reason
     );
+}
+
+/// Seed a contact created a day ago, with one inbound text, one inbound button and one sent
+/// template, all a day old and all without a Colony message: what production held after the
+/// first outreach batch on 30 Oct.
+async fn seed_old_unposted_chat(fx: &Fixture, wa_id: &str, profile_name: &str) {
+    let day_ago = Utc::now() - Duration::days(1);
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some(profile_name))
+        .await
+        .expect("contact");
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET created_at = $3 WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(wa_id)
+    .bind(day_ago)
+    .execute(&fx.pool)
+    .await
+    .expect("backdate the contact");
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, wamid, sent_at, created_at) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Hi, it is Sam.', 'read', $4, $5, $5)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(Uuid::new_v4())
+    .bind(wa_id)
+    .bind(format!("wamid.OUT{wa_id}"))
+    .bind(day_ago)
+    .execute(&fx.pool)
+    .await
+    .expect("sent template");
+    for (offset, kind, body) in [(60, "button", "Yes, call me"), (120, "text", "Thanks")] {
+        fx.state
+            .db
+            .whatsapp_insert_inbound(
+                fx.community(),
+                wa_id,
+                kind,
+                body,
+                &format!("wamid.IN{offset}{wa_id}"),
+                day_ago + Duration::seconds(offset),
+            )
+            .await
+            .expect("inbound")
+            .expect("new row");
+    }
+}
+
+async fn channel_events(
+    fx: &Fixture,
+    channel: Uuid,
+    wa_id: &str,
+) -> Vec<(String, DateTime<Utc>, Value)> {
+    sqlx::query_as::<_, (String, DateTime<Utc>, Value)>(
+        "SELECT content, created_at, tags FROM events \
+         WHERE community_id = $1 AND channel_id = $2 AND kind = 9 \
+           AND tags @> jsonb_build_array(jsonb_build_array('wa', $3::text)) \
+         ORDER BY created_at, id",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(channel)
+    .bind(wa_id)
+    .fetch_all(&fx.pool)
+    .await
+    .expect("channel events")
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn rows_unposted_for_a_day_post_by_themselves_under_the_replica_fence() {
+    // GUARD (self-heal): production held three rows of a contact created a day earlier. The
+    // thread root was signed with `contact.created_at` and each reply with the message time, so
+    // the 960 s replica-fence floor refused every attempt, every 5 s, for ever.
+    // `channel::fence_safe_time` stamps them inside the floor; `repair_unposted` then posts them.
+    let fx = fence_fixture().await;
+    let channel = fx.outreach_channel().await;
+    let wa_id = "27683735905";
+    seed_old_unposted_chat(&fx, wa_id, ".").await;
+    assert!(channel_events(&fx, channel, wa_id).await.is_empty());
+
+    let now = Utc::now();
+    sender::repair_unposted(&fx.state, &fx.tenant, Some(channel), now).await;
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), wa_id)
+        .await
+        .expect("contact")
+        .expect("exists");
+    let root = contact
+        .thread_root_event_id
+        .expect("the thread root is recorded");
+    let events = channel_events(&fx, channel, wa_id).await;
+    assert_eq!(events.len(), 4, "one root and three posts: {events:?}");
+    let roots: Vec<_> = events
+        .iter()
+        .filter(|(content, _, _)| content.starts_with("WhatsApp: "))
+        .collect();
+    assert_eq!(roots.len(), 1, "exactly one thread root");
+    // GUARD: a profile name of "." shows the number.
+    assert_eq!(roots[0].0, "WhatsApp: +27683735905 (+27683735905)");
+    let root_at = roots[0].1;
+    let floor = Duration::seconds(buzz_db::replica_fence::CREATED_AT_FLOOR_SECS);
+    for (content, at, _) in &events {
+        assert!(now - *at < floor, "{content:?} at {at} is inside the fence");
+        assert!(*at >= root_at, "{content:?} is never before its root");
+    }
+    for message in fx.thread(wa_id).await {
+        let event = message
+            .event_id
+            .expect("every message has its Colony event");
+        assert_ne!(event, root, "a reply, not the root");
+    }
+
+    // A second pass has nothing left to do: still one root, no duplicates.
+    sender::repair_unposted(
+        &fx.state,
+        &fx.tenant,
+        Some(channel),
+        now + Duration::seconds(5),
+    )
+    .await;
+    assert_eq!(channel_events(&fx, channel, wa_id).await.len(), 4);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_stale_contact_copy_joins_the_thread_root_that_already_won() {
+    // GUARD: `ensure_thread_root` re-reads the contact before it posts, and
+    // `whatsapp_set_thread_root` reports a lost compare-and-set, so two racing first posts end
+    // with ONE recorded root and every reply under it.
+    let fx = fence_fixture().await;
+    let channel = fx.outreach_channel().await;
+    let wa_id = "27683735906";
+    seed_old_unposted_chat(&fx, wa_id, "Lerato").await;
+    let stale = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), wa_id)
+        .await
+        .expect("contact")
+        .expect("exists");
+    assert!(stale.thread_root_event_id.is_none());
+
+    let first = super::channel::ensure_thread_root(&fx.state, &fx.tenant, channel, &stale)
+        .await
+        .expect("first root");
+    // The racer holds the same stale copy (no root yet) and must land on the same root.
+    let second = super::channel::ensure_thread_root(&fx.state, &fx.tenant, channel, &stale)
+        .await
+        .expect("second root");
+    assert_eq!(first, second);
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_set_thread_root(fx.community(), wa_id, &[7u8; 32])
+            .await
+            .expect("set again"),
+        "the first writer wins"
+    );
+    let roots = channel_events(&fx, channel, wa_id)
+        .await
+        .into_iter()
+        .filter(|(content, _, _)| content.starts_with("WhatsApp: Lerato"))
+        .count();
+    assert_eq!(roots, 1);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_post_that_keeps_failing_backs_off_then_gives_up_without_starving_other_rows() {
+    // GUARD: `repair_unposted` used to retry the same failing rows every 5 s for ever, and 25
+    // such rows would have starved every row behind them (AGENTS.md rules 1 and 4).
+    let fx = fixture().await;
+    let wa_id = "27683735907";
+    seed_old_unposted_chat(&fx, wa_id, "Thabo").await;
+    // A channel that does not exist: every post is refused, which stands for a permanent failure.
+    let missing = Some(Uuid::new_v4());
+    let attempts = || async {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT COALESCE(sum(post_attempts), 0)::int FROM whatsapp_messages \
+             WHERE community_id = $1 AND wa_id = $2",
+        )
+        .bind(fx.community().as_uuid())
+        .bind(wa_id)
+        .fetch_one(&fx.pool)
+        .await
+        .expect("attempts")
+    };
+
+    let t0 = Utc::now();
+    sender::repair_unposted(&fx.state, &fx.tenant, missing, t0).await;
+    assert_eq!(attempts().await, 3, "each of the three rows tried once");
+    // Inside the first backoff (5 s) nothing is tried.
+    sender::repair_unposted(&fx.state, &fx.tenant, missing, t0 + Duration::seconds(2)).await;
+    assert_eq!(attempts().await, 3, "no retry inside the backoff");
+    // After it, each row is tried again, and the wait doubles.
+    sender::repair_unposted(&fx.state, &fx.tenant, missing, t0 + Duration::seconds(6)).await;
+    assert_eq!(attempts().await, 6);
+    sender::repair_unposted(&fx.state, &fx.tenant, missing, t0 + Duration::seconds(10)).await;
+    assert_eq!(attempts().await, 6, "the second wait is 10 s");
+
+    // Hours apart the rows keep failing until they give up for good.
+    let mut at = t0 + Duration::seconds(6);
+    for _ in 0..40 {
+        at += Duration::hours(2);
+        sender::repair_unposted(&fx.state, &fx.tenant, missing, at).await;
+    }
+    let total = attempts().await;
+    assert_eq!(
+        total,
+        3 * buzz_db::whatsapp::POST_MAX_ATTEMPTS,
+        "stops at the cap"
+    );
+    let gave_up: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM whatsapp_messages \
+         WHERE community_id = $1 AND wa_id = $2 AND post_gave_up_at IS NOT NULL",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(wa_id)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("gave up");
+    assert_eq!(gave_up, 3);
+    sender::repair_unposted(&fx.state, &fx.tenant, missing, at + Duration::days(30)).await;
+    assert_eq!(attempts().await, total, "a row that gave up is not retried");
+
+    // Backed-off rows leave the list, so a healthy row behind 25 failing ones is reached.
+    let other = "27683735908";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), other, Some("Nomsa"))
+        .await
+        .expect("contact");
+    let mut ids = Vec::new();
+    for index in 0..26 {
+        let id = fx
+            .state
+            .db
+            .whatsapp_insert_inbound(
+                fx.community(),
+                other,
+                "text",
+                "hello",
+                &format!("wamid.STARVE{index:02}"),
+                t0 + Duration::seconds(index),
+            )
+            .await
+            .expect("inbound")
+            .expect("new row");
+        ids.push(id);
+    }
+    let now = t0;
+    let first_page = fx
+        .state
+        .db
+        .whatsapp_list_unposted(fx.community(), 25, now)
+        .await
+        .expect("list");
+    assert_eq!(first_page.len(), 25);
+    for message in &first_page {
+        fx.state
+            .db
+            .whatsapp_note_post_failure(fx.community(), message.id, now)
+            .await
+            .expect("note failure");
+    }
+    let next = fx
+        .state
+        .db
+        .whatsapp_list_unposted(fx.community(), 25, now)
+        .await
+        .expect("list");
+    assert!(
+        next.iter().any(|message| ids.contains(&message.id)),
+        "a row behind the failing page is reached"
+    );
+    assert!(next
+        .iter()
+        .all(|m| !first_page.iter().any(|f| f.id == m.id)));
 }

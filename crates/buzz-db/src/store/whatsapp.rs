@@ -18,6 +18,8 @@ use crate::Db;
 pub const MAX_DAILY_NEW_CHAT_CAP: i32 = 1000;
 /// Default daily cap on NEW chats.
 pub const DEFAULT_DAILY_NEW_CHAT_CAP: i32 = 30;
+/// Failed Colony posts of one message before the repair loop gives up on it.
+pub const POST_MAX_ATTEMPTS: i32 = 24;
 
 async fn begin(pool: &PgPool) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
     let connection = crate::observability::acquire_writer(
@@ -1089,14 +1091,15 @@ impl Db {
         Ok(())
     }
 
-    /// Remember the contact's single thread root (first writer wins).
+    /// Remember the contact's single thread root (first writer wins). `true` when this call
+    /// recorded it, `false` when a racing first post had already won.
     pub async fn whatsapp_set_thread_root(
         &self,
         community: CommunityId,
         wa_id: &str,
         root_event_id: &[u8],
-    ) -> Result<()> {
-        sqlx::query(
+    ) -> Result<bool> {
+        let result = sqlx::query(
             "UPDATE whatsapp_contacts SET thread_root_event_id = $3, updated_at = now() \
              WHERE community_id = $1 AND wa_id = $2 AND thread_root_event_id IS NULL",
         )
@@ -1105,7 +1108,7 @@ impl Db {
         .bind(root_event_id)
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok(result.rows_affected() == 1)
     }
 
     /// Assign the owning agent when the contact has none yet.
@@ -1330,6 +1333,35 @@ impl Db {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Record a failed Colony post of a stored message and schedule its next try: 5 s doubling
+    /// to a cap of 1 h. After [`POST_MAX_ATTEMPTS`] failures the row stops being retried.
+    /// Returns the attempt count and whether the row gave up.
+    pub async fn whatsapp_note_post_failure(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(i32, bool)> {
+        let row = sqlx::query(
+            "UPDATE whatsapp_messages SET post_attempts = post_attempts + 1, \
+                 post_retry_at = $3::timestamptz + LEAST(interval '1 hour', \
+                     interval '5 seconds' * power(2, LEAST(post_attempts, 11))), \
+                 post_gave_up_at = CASE WHEN post_attempts + 1 >= $4 THEN $3::timestamptz END \
+             WHERE community_id = $1 AND id = $2 AND event_id IS NULL \
+             RETURNING post_attempts, post_gave_up_at IS NOT NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(now)
+        .bind(POST_MAX_ATTEMPTS)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(match row {
+            Some(row) => (row.try_get(0)?, row.try_get(1)?),
+            None => (0, false),
+        })
     }
 
     /// Store one outbound message. `None` means the idempotency key was already used.
@@ -1675,6 +1707,7 @@ impl Db {
         &self,
         community: CommunityId,
         limit: i64,
+        now: DateTime<Utc>,
     ) -> Result<Vec<WhatsappMessage>> {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
@@ -1683,10 +1716,12 @@ impl Db {
              FROM whatsapp_messages \
              WHERE community_id = $1 AND event_id IS NULL AND wamid IS NOT NULL \
                AND state IN ('received', 'sent', 'delivered', 'read') \
+               AND post_gave_up_at IS NULL AND (post_retry_at IS NULL OR post_retry_at <= $3) \
              ORDER BY created_at LIMIT $2",
         )
         .bind(community.as_uuid())
         .bind(limit.clamp(1, 200))
+        .bind(now)
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_message).collect()
@@ -1718,6 +1753,7 @@ impl Db {
         &self,
         community: CommunityId,
         limit: i64,
+        now: DateTime<Utc>,
     ) -> Result<Vec<WhatsappMessage>> {
         let rows = sqlx::query(
             "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
@@ -1726,10 +1762,12 @@ impl Db {
              FROM whatsapp_messages \
              WHERE community_id = $1 AND direction = 'out' AND state = 'draft' \
                AND event_id IS NULL \
+               AND post_gave_up_at IS NULL AND (post_retry_at IS NULL OR post_retry_at <= $3) \
              ORDER BY created_at LIMIT $2",
         )
         .bind(community.as_uuid())
         .bind(limit.clamp(1, 200))
+        .bind(now)
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_message).collect()
