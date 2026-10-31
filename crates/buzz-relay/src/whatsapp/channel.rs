@@ -151,7 +151,7 @@ pub fn fence_safe_time(wanted: DateTime<Utc>, now: DateTime<Utc>) -> DateTime<Ut
 /// was recorded first.
 pub fn thread_root_parts(
     contact: &WhatsappContact,
-    now: DateTime<Utc>,
+    _now: DateTime<Utc>,
 ) -> (String, Vec<Vec<String>>, DateTime<Utc>) {
     let name = contact_label(&contact.display_name, &contact.wa_id);
     let content = format!("WhatsApp: {name} ({})", e164(&contact.wa_id));
@@ -159,7 +159,7 @@ pub fn thread_root_parts(
         vec!["wa".to_string(), contact.wa_id.clone()],
         vec!["wa-name".to_string(), name],
     ];
-    (content, tags, fence_safe_time(contact.created_at, now))
+    (content, tags, contact.created_at)
 }
 
 /// Make sure the contact has its one thread and return the root event id (hex).
