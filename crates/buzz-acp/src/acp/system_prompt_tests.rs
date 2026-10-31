@@ -161,7 +161,7 @@ async fn session_new_full_sends_private_folder_deny_rules_to_claude_adapter() {
     let script = r#"
             read -t 2 _init
             echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
-            read -t 2 REQ
+            read -r -t 2 REQ
             echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"ses_claude","_receivedRequest":'"$REQ"'}}'
             sleep 1
         "#;

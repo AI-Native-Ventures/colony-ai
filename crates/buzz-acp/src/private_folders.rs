@@ -14,8 +14,8 @@
 //!   `session/new` `_meta.claudeCode.options.disallowedTools`. Deny rules win
 //!   over `bypassPermissions`.
 //! - **OpenCode**: a `permission` block merged into `OPENCODE_CONFIG_CONTENT`.
-//! - **Codex**: nothing the adapter config supports (see [`CODEX_NOTE`]); the
-//!   base prompt rule is the only guard there.
+//! - **Codex**: nothing. `codex-acp` has no per-path read deny in its supported
+//!   config, so the base prompt rule is the only guard there.
 
 use serde_json::{json, Map, Value};
 
@@ -33,10 +33,6 @@ pub(crate) const PRIVATE_HOME_FOLDERS: &[&str] = &[
 
 /// Absolute roots that hold removable or network volumes.
 pub(crate) const PRIVATE_ABSOLUTE_FOLDERS: &[&str] = &["/Volumes"];
-
-/// Why Codex gets no config guard, for the PR and logs.
-pub(crate) const CODEX_NOTE: &str = "codex-acp has no per-path read deny in its supported config; \
-     agents are only instructed via the base prompt";
 
 /// Whole-home scan shapes. Each entry is a command prefix; Claude Code matches
 /// `Bash(<prefix>:*)` on a word boundary, so `find ~` matches `find ~ -name x`
