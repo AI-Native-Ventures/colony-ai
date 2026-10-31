@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   contactWhatsAppStatus,
+  formatWhatsAppPhoneNumber,
   getWhatsAppDailyCapProgress,
+  isWhatsAppPhoneLikeName,
   isWhatsAppReplyWindowOpen,
   maskWhatsAppNumber,
   parseWhatsAppBatchDetail,
@@ -68,6 +70,15 @@ test("reply window is open before, but not at, the 24 hour boundary", () => {
     false,
   );
   assert.equal(isWhatsAppReplyWindowOpen(inboundAt, inboundAt - 1), false);
+});
+
+test("unnamed South African contacts use one readable phone display", () => {
+  assert.equal(formatWhatsAppPhoneNumber("+27683735905"), "+27 68 373 5905");
+  assert.equal(formatWhatsAppPhoneNumber("27 68 373 5905"), "+27 68 373 5905");
+  assert.equal(formatWhatsAppPhoneNumber("+1 202 555 0100"), "+1 202 555 0100");
+  assert.equal(isWhatsAppPhoneLikeName("+27683735905"), true);
+  assert.equal(isWhatsAppPhoneLikeName("+27 68 373 5905"), true);
+  assert.equal(isWhatsAppPhoneLikeName("Corner Cottage"), false);
 });
 
 test("inbound received state maps to read and unknown states are omitted", () => {

@@ -1,9 +1,11 @@
 import * as React from "react";
+import { UserRound } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
+  isWhatsAppPhoneLikeName,
   whatsappDeliveryLabel,
   type WhatsAppMessage,
   type WhatsAppTemplate,
@@ -190,6 +192,7 @@ export function WhatsAppThreadMessage({
   message,
   templates,
   contactName,
+  anonymousContact = false,
   waitingForApproval = false,
   canSendNow = false,
   sendNowBatchId = null,
@@ -203,6 +206,7 @@ export function WhatsAppThreadMessage({
   message: WhatsAppMessage;
   templates: readonly WhatsAppTemplate[];
   contactName: string;
+  anonymousContact?: boolean;
   waitingForApproval?: boolean;
   canSendNow?: boolean;
   sendNowBatchId?: string | null;
@@ -254,8 +258,13 @@ export function WhatsAppThreadMessage({
           inbound ? "is-contact" : "is-sender",
         )}
       >
-        {whatsappInitials(
-          inbound ? contactName : agentWritten ? agentName : currentUserName,
+        {inbound &&
+        (anonymousContact || isWhatsAppPhoneLikeName(contactName)) ? (
+          <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
+        ) : (
+          whatsappInitials(
+            inbound ? contactName : agentWritten ? agentName : currentUserName,
+          )
         )}
       </span>
       <div className="c3wa-message-content">

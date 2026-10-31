@@ -1246,8 +1246,13 @@
 
 .c3wa-outreach-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
+}
+
+.c3wa-settings-button {
+  align-self: flex-start;
+  margin-top: 0.25rem;
 }
 
 .c3wa-outreach-title-row > div {
@@ -1553,6 +1558,8 @@
 
 .c3wa-contact-preview {
   display: block;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   color: var(--c3wa-muted);
   font-size: calc(11.5 * var(--colony-px));
@@ -1560,11 +1567,9 @@
   white-space: nowrap;
 }
 
-.c3wa-contact-subtitle > span:last-child {
+.c3wa-contact-subtitle .c3wa-contact-preview {
   min-width: 0;
   overflow: hidden;
-  color: var(--c3wa-muted);
-  font-size: calc(11.5 * var(--colony-px));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3788,6 +3793,11 @@
 }
 
 .c3wa-button-reply p > span {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   color: var(--c3wa-accent-ink);
 }
 
@@ -4150,5 +4160,45 @@
     min-height: 3.25rem;
     flex: 1;
     font-size: calc(16.5 * var(--colony-px));
+  }
+}
+
+@media (min-width: 48.001rem) and (max-width: 64rem) {
+  .c3wa-outreach[data-mode="dock"] {
+    display: block;
+    position: relative;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-contact-panel,
+  .c3wa-outreach[data-mode="dock"] .c3wa-thread-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-contact-panel {
+    display: none;
+    border-right: 0;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-contact-panel.is-mobile-visible,
+  .c3wa-outreach[data-mode="dock"][data-has-selected-contact="false"]
+    .c3wa-contact-panel {
+    display: flex;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-thread-panel {
+    display: flex;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-thread-panel.is-mobile-hidden,
+  .c3wa-outreach[data-mode="dock"][data-has-selected-contact="false"]
+    .c3wa-thread-panel {
+    display: none;
+  }
+
+  .c3wa-outreach[data-mode="dock"] .c3wa-mobile-back {
+    display: block;
   }
 }
