@@ -257,13 +257,6 @@ pub async fn post_message(
     }
     // The database refuses an event older than the replica-fence floor, so a post that is
     // retried long after its message must be stamped inside it, and never before its root.
-    let mut created_at = fence_safe_time(created_at, Utc::now());
-    if let Some(root_at) = ancestry
-        .as_ref()
-        .map(|ancestry| ancestry.root_event_created_at)
-    {
-        created_at = created_at.max(root_at);
-    }
     let timestamp = u64::try_from(created_at.timestamp())
         .map_err(|_| "message time predates the Unix epoch".to_string())?;
     let event = EventBuilder::new(Kind::from(KIND_STREAM_MESSAGE as u16), content)
