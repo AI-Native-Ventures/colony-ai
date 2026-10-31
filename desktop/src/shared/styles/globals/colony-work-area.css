@@ -22,8 +22,11 @@
 
   .colony-work-area-layout[data-open="true"][data-overlay="false"] {
     grid-template-columns:
-      minmax(21.25rem, 1fr) 1px
-      minmax(23.75rem, var(--colony-work-area-size, 68.85%));
+      minmax(min(21.25rem, calc(100% - 23.8125rem)), 1fr) 1px
+      minmax(
+        23.75rem,
+        min(var(--colony-work-area-size, 68.85%), calc(100% - 21.25rem - 1px))
+      );
   }
 
   .colony-work-area-conversation {
