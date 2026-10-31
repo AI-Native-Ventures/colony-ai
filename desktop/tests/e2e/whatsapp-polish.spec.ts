@@ -384,6 +384,7 @@ test.describe("WhatsApp owner view polish", () => {
       " ",
     );
     expect(threadHeaderText.split(UNNAMED_NUMBER)).toHaveLength(2);
+    expect(threadHeaderText).not.toContain("+27683735905");
     await expect(
       page
         .getByTestId(`whatsapp-contact-${UNNAMED_WA_ID}`)
