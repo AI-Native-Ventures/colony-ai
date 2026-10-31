@@ -806,7 +806,7 @@ impl AcpClient {
             // Merge — _meta may already carry a system prompt from an adapter extension.
             params["_meta"]["sessionTitle"] = serde_json::Value::String(title.to_owned());
         }
-        if self.standard_adapter == Some(StandardAdapterKind::Claude) {
+        if false && self.standard_adapter == Some(StandardAdapterKind::Claude) {
             // Keep agents out of macOS privacy-protected folders. claude-agent-acp
             // merges these with its own disallowed tools, and deny rules win even
             // under bypassPermissions.
