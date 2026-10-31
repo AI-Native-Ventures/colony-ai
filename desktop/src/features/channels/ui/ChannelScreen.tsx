@@ -176,7 +176,7 @@ export function ChannelScreen({
     void activeChannelId;
     setOutreachTab(
       initialWhatsAppDeskTab ??
-        (initialWhatsAppContactWaId ? "chats" : "needs-you"),
+        (initialWhatsAppContactWaId ? "chats" : "pipeline"),
     );
   }, [activeChannelId, initialWhatsAppContactWaId, initialWhatsAppDeskTab]);
   const relaySelfPubkey = useRelaySelfQuery(activeChannel !== null).data;
