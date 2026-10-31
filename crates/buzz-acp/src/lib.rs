@@ -4820,11 +4820,19 @@ mod wake_ledger_dispatch_tests {
         );
         assert!(queue.is_scope_in_flight(&scope));
         assert_eq!(pool.task_map().len(), 1);
-        let mut reopened = wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), now, now);
-        assert_eq!(
-            reopened.admit(&event, now),
+        // A restart after the turn started (and was cut off): the event was
+        // saved in flight before its turn, so it is delivered again.
+        let later = now + 60;
+        let mut reopened =
+            wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), later, later);
+        assert_ne!(
+            reopened.admit(&event, later),
             wake_ledger::Admission::Duplicate,
-            "the event was saved before its turn started"
+            "an unanswered event is delivered again"
+        );
+        assert!(
+            reopened.is_redelivery(&event.id.to_hex()),
+            "the event was saved in flight before its turn started"
         );
         pool.join_set.abort_all();
         let _ = std::fs::remove_dir_all(dir);
