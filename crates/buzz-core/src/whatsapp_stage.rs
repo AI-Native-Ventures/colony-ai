@@ -47,7 +47,7 @@ impl OptOutKind {
     /// Read the stored `opt_out_reason`. Anything but `no_thanks` (including old rows and a
     /// missing reason) reads as `Stop`.
     pub fn from_reason(reason: Option<&str>) -> Self {
-        if reason.is_some_and(|r| r.trim() == OPT_OUT_REASON_NO_THANKS) {
+        if reason.is_some_and(|r| r.trim() == OPT_OUT_REASON_STOP) {
             Self::NoThanks
         } else {
             Self::Stop
