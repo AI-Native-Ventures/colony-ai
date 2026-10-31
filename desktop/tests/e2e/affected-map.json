@@ -27,6 +27,7 @@
   "essential": {
     "specs": [
       "account-auth.spec.ts",
+      "workspace-header-icon.spec.ts",
       "connect-polish.spec.ts",
       "start-free-opencode.spec.ts",
       "colony3-first-run-proof.spec.ts",
@@ -188,6 +189,7 @@
       ],
       "specs": [
         "community-rail.spec.ts",
+        "workspace-header-icon.spec.ts",
         "community-apply-error.spec.ts",
         "removed-member-escape.spec.ts",
         "add-community-screenshots.spec.ts",
@@ -337,6 +339,7 @@
     {
       "paths": ["desktop/src/features/onboarding/**"],
       "specs": [
+        "workspace-header-icon.spec.ts",
         "colony3-first-run-proof.spec.ts",
         "connect-polish.spec.ts",
         "start-free-opencode.spec.ts",
@@ -394,6 +397,7 @@
       "paths": ["desktop/src/features/sidebar/**"],
       "specs": [
         "sidebar-full-app.spec.ts",
+        "workspace-header-icon.spec.ts",
         "sidebar-offcanvas-rail.spec.ts",
         "sidebar-reference-fixture.spec.ts",
         "sidebar-snapshot.spec.ts",
