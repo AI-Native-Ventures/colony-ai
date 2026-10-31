@@ -57,7 +57,8 @@
         "messaging.spec.ts",
         "mentions.spec.ts",
         "channels.spec.ts",
-        "whatsapp-decided-card.spec.ts"
+        "whatsapp-decided-card.spec.ts",
+        "wa-polish-number-red.spec.ts"
       ],
       "titles": [
         "send a message and see it in timeline",
@@ -79,6 +80,7 @@
         "open channel management supports join and leave",
         "manage channel updates details",
         "unknown relay message states keep the WhatsApp chat visible",
+        "unnamed WhatsApp chat header displays only the formatted number",
         "Outreach approved card sends the exact batch after confirmation",
         "Scout DM approved card sends the exact batch after confirmation",
         "approved card opens WhatsApp chats from the channel",
@@ -160,6 +162,7 @@
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
         "whatsapp-work-area.spec.ts",
+        "wa-polish-number-red.spec.ts",
         "channel-sort.spec.ts",
         "channel-star.spec.ts",
         "auxiliary-pane-close-visibility.spec.ts",
@@ -411,7 +414,11 @@
         "desktop/src/features/whatsapp-outreach/**",
         "desktop/tests/helpers/whatsappOutreach.ts"
       ],
-      "specs": ["whatsapp-work-area.spec.ts", "whatsapp-decided-card.spec.ts"]
+      "specs": [
+        "whatsapp-work-area.spec.ts",
+        "whatsapp-decided-card.spec.ts",
+        "wa-polish-number-red.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/terminal/**"],
