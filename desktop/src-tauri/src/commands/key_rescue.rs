@@ -207,7 +207,7 @@ pub(crate) fn compute_status(
     let locked = locked_agents(records);
     let attempt = read_attempt(data_dir);
     let offer = keyless_build
-        && attempt.is_none()
+        // RED PROOF: offered again after an attempt.
         && (!locked.is_empty() || identity_still_in_keychain(data_dir));
     KeyRescueStatus {
         offer,
@@ -297,10 +297,7 @@ pub(crate) fn run_rescue(
     reader: &impl LegacyBlobReader,
     agents: &impl AgentKeyStore,
 ) -> Result<RescueAttempt, String> {
-    if let Some(done) = read_attempt(data_dir) {
-        return Ok(done);
-    }
-
+    // RED PROOF: a recorded attempt no longer stops a second read.
     let raw = match reader.read_blob() {
         Ok(Some(raw)) => raw,
         Ok(None) => {
