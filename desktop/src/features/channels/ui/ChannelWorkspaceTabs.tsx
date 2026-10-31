@@ -9,7 +9,7 @@ import { getWhatsAppNeedsYouItems } from "@/features/whatsapp-outreach/whatsappO
 import { cn } from "@/shared/lib/cn";
 
 const TAB_CLASS =
-  "c3c-tab flex h-[calc(42*var(--colony-px))] items-center gap-1.5 border-b-[2.5px] border-transparent px-3.5 text-colony-fg-secondary transition-colors hover:text-colony-fg focus-visible:outline-2 focus-visible:outline-ring";
+  "c3c-tab flex h-[calc(42*var(--colony-px))] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-[2.5px] border-transparent px-3.5 text-colony-fg-secondary transition-colors hover:text-colony-fg focus-visible:outline-2 focus-visible:outline-ring";
 
 /** The channel's views, as in the Colony 3.0 header: Discussion is this screen. */
 export type OutreachDeskTab =

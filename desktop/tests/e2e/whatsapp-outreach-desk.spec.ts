@@ -214,6 +214,10 @@ test.describe("Outreach desk", () => {
     ).toHaveCount(1);
     await expect(unlinkedRow.locator("svg.lucide-user-round")).toBeVisible();
 
+    const linkedRow = page.getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`);
+    await expect(linkedRow).toContainText("Mpho");
+    await expect(linkedRow).not.toContainText("+27 82 123 4410");
+
     const noWebsiteRow = page.getByTestId(
       `whatsapp-contact-${NO_WEBSITE_WA_ID}`,
     );

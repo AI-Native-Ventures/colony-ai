@@ -3,7 +3,6 @@ import { UserRound } from "lucide-react";
 import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { cn } from "@/shared/lib/cn";
 import {
-  formatWhatsAppNumber,
   maskWhatsAppNumber,
   type WhatsAppContact,
 } from "./whatsappOutreachModels";
@@ -99,6 +98,7 @@ export function WhatsAppOutreachContactRow({
             </time>
           </span>
           <span className="c3wa-contact-subtitle">
+            {personName && isDesk ? <span>{personName}</span> : null}
             {isDesk ? (
               <span className="c3wa-contact-stage-chip">
                 {WHATSAPP_STAGE_LABELS[contact.stage]}
@@ -121,14 +121,7 @@ export function WhatsAppOutreachContactRow({
                 role="img"
               />
             ) : null}
-            {personName && isDesk ? <span>{personName}</span> : null}
-            {!(isDesk && !contact.leadId) ? (
-              <span>
-                {isDesk
-                  ? formatWhatsAppNumber(contact.e164)
-                  : maskWhatsAppNumber(contact.e164)}
-              </span>
-            ) : null}
+            {!isDesk ? <span>{maskWhatsAppNumber(contact.e164)}</span> : null}
           </span>
           {preview ? (
             <span className="c3wa-contact-preview">{preview}</span>

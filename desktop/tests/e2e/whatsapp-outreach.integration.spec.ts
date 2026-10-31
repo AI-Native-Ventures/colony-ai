@@ -357,7 +357,7 @@ test.describe("WhatsApp outreach conversations and approvals", () => {
       page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`),
     ).toHaveAttribute("aria-current", "true");
     await expect(page.locator(".c3wa-thread-head-desktop")).toContainText(
-      "Thandeka · +27 82 123 7135 · Parkhurst",
+      "Thandeka · +27 82 *** 7135 · Parkhurst",
     );
 
     await gotoWhatsAppScreen(page, "/leads", "batch=leads");

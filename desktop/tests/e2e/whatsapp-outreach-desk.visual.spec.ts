@@ -168,6 +168,10 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         await expect(
           page.getByRole("heading", { name: /things need you/u }),
         ).toBeVisible();
+        await expect(page.getByTestId("channel-view-tab-needs-you")).toHaveCSS(
+          "white-space",
+          "nowrap",
+        );
         const suffix = `${viewport.label}-${theme}`;
 
         await capture(page, `needs-you-${suffix}.png`, viewport.width);
