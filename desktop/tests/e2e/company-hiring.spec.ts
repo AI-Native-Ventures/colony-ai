@@ -257,6 +257,49 @@ for (const roleName of BUILT_IN_ROLE_NAMES) {
   });
 }
 
+test("Business development configures twice through its single materialized persona", async ({
+  page,
+}) => {
+  await installBlankConfigureMock(page);
+  await page.goto("/#/hire/roles");
+  const builtInRole = page.getByTestId(
+    "hire-role-built-in-role-business-development",
+  );
+  await expect(builtInRole).toBeVisible();
+  await builtInRole.getByRole("button", { name: "Configure" }).dblclick();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
+
+  const rolePersonas = await page.evaluate(async () => {
+    const invoke = (
+      window as Window & {
+        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+          command: string,
+          payload?: unknown,
+        ) => Promise<unknown>;
+      }
+    ).__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+    return (await invoke?.("list_personas", {})) as Array<{
+      id: string;
+      display_name: string;
+      company_role: unknown;
+    }>;
+  });
+  const businessDevelopment = rolePersonas.filter(
+    (persona) =>
+      persona.display_name === "Business development" && persona.company_role,
+  );
+  expect(businessDevelopment).toHaveLength(1);
+
+  await page.goto("/#/hire/roles");
+  await page
+    .getByTestId(`hire-role-${businessDevelopment[0].id}`)
+    .getByRole("button", { name: "Configure" })
+    .click();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
+});
+
 test("Configure says the role could not be loaded and goes back to roles", async ({
   page,
 }) => {

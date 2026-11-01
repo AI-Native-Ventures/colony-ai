@@ -723,6 +723,59 @@ test.describe("Co-founder mode Phase 2", () => {
     );
   });
 
+  test("a stalled Scout card retries by publishing co-founder mode as enabled", async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "brief",
+      withoutBrief: true,
+      businessName: "Colony",
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(
+      card.getByText("Scout is getting to know Colony"),
+    ).toBeVisible();
+    await page.clock.fastForward(3 * 60 * 1000);
+    await expect(card.getByText("Scout has not started yet")).toBeVisible();
+    const retry = page.getByTestId("cofounder-retry-scout");
+    await expect(retry).toHaveText("Try again");
+    await retry.click();
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const events =
+            (
+              window as Window & {
+                __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                  kind: number;
+                  content?: string;
+                }>;
+              }
+            ).__BUZZ_E2E_SIGNED_EVENTS__ ?? [];
+          return events.some((event) => {
+            if (event.kind !== 47060 || !event.content) return false;
+            try {
+              return (
+                (
+                  JSON.parse(event.content) as {
+                    settings?: { enabled?: boolean };
+                  }
+                ).settings?.enabled === true
+              );
+            } catch {
+              return false;
+            }
+          });
+        }),
+      )
+      .toBe(true);
+  });
+
   test("co-founder settings hides the getting to know card after Scout sends a brief", async ({
     page,
   }) => {
