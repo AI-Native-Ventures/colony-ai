@@ -72,6 +72,10 @@ pub mod moderation_authz;
 pub mod moderation_commands;
 /// Relay-signed moderation notice DMs.
 pub mod moderation_notices;
+/// Money rails connections (provider recipes, notice map, default), kind 47074.
+pub mod money_connections;
+/// Money rails payment link cards (draft, approve, record, report), kind 47070.
+pub mod money_pay_links;
 /// Product-feedback validation + deployment sidecar persistence.
 pub mod product_feedback;
 #[allow(dead_code, missing_docs)]

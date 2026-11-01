@@ -286,6 +286,12 @@ enum Cmd {
         long_about = "WhatsApp outreach through the company's official WhatsApp Business number.\n\nRules:\n- Templates first: a new chat can only start with an approved template, and only through a batch the owner or an admin approves. Nothing in a pending batch is sent.\n- Free text only inside the 24 hour window after the contact last wrote to us.\n- Keep replies short and human. Never send more than one message in a row without a reply.\n- If a contact says stop, unsubscribe, no thanks or not interested they are opted out and every later send is refused. Never work around it.\n- A daily cap limits new chats; the owner can change it any time.\n\nStart with `colony whatsapp status` and `colony whatsapp templates`."
     )]
     Whatsapp(WhatsappCmd),
+    /// Payment links: draft a card for the owner to approve, then work it through to paid
+    #[command(
+        subcommand,
+        long_about = "Payment links from any provider the owner uses.\n\nRules:\n- You can only ask for money. Refunds, payouts, transfers, withdrawals and balance moves are refused by the relay, whatever was approved.\n- Draft a card; the owner approves it. Nothing reaches a client before that, and an edit after approval voids it.\n- You never see a provider key. The relay runs owner-approved recipes for you.\n- Paid is never your call: report what you saw and the owner or a verified notice settles it.\n\nStart with `colony pay connections`."
+    )]
+    Pay(PayCmd),
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
@@ -1416,6 +1422,227 @@ pub enum LeadsCmd {
         /// Remove the lead from the saved leads instead of saving it
         #[arg(long)]
         unsave: bool,
+    },
+}
+
+/// Where a payment was seen, for `colony pay report`.
+#[derive(Clone, clap::ValueEnum)]
+pub enum PayReportSource {
+    /// In the provider's dashboard
+    Dashboard,
+    /// In an email
+    Gmail,
+    /// The client said so
+    ClientMessage,
+}
+
+#[derive(Subcommand)]
+pub enum PayCmd {
+    /// List the payment providers: route, status, default and the recipes the owner approved
+    Connections,
+    /// List payment link cards, most recently changed first
+    Cards {
+        /// Only cards in this state (draft, needs_you, creating_link, sent, payment_reported, paid, expired, cancelled, failed)
+        #[arg(long)]
+        state: Option<String>,
+        /// Only cards for this customer record party id
+        #[arg(long)]
+        party: Option<String>,
+        /// Only cards for this invoice (UUID)
+        #[arg(long)]
+        invoice: Option<String>,
+        /// Maximum cards, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show one card and the head id the next command on it will name
+    Card {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+    },
+    /// Draft a payment link card for the owner to approve
+    Draft {
+        /// Customer record party id
+        #[arg(long)]
+        party: String,
+        /// Invoice the payment is against (UUID); it must be issued before the owner can approve
+        #[arg(long)]
+        invoice: String,
+        /// Amount in minor units, for example 375000 for R3750.00
+        #[arg(long)]
+        amount: i64,
+        /// Currency code, for example ZAR
+        #[arg(long)]
+        currency: String,
+        /// What the payment is for, one line
+        #[arg(long)]
+        purpose: String,
+        /// Send to this WhatsApp number, for example +27821234567
+        #[arg(long, conflicts_with = "to_email")]
+        to_whatsapp: Option<String>,
+        /// Or send to this email address
+        #[arg(long)]
+        to_email: Option<String>,
+        /// The recipient's name
+        #[arg(long)]
+        name: String,
+        /// The one message that carries the link; it must contain {link} once
+        #[arg(long)]
+        message: String,
+        /// Provider connection (UUID); default connection when omitted
+        #[arg(long)]
+        connection: Option<String>,
+        /// Days the link stays open (1 through 90, default 14)
+        #[arg(long)]
+        expires_days: Option<u32>,
+        /// Reuse a card id (UUID) to retry safely: one id is at most one card
+        #[arg(long)]
+        card_id: Option<String>,
+    },
+    /// Change a card; an edit after approval voids the approval
+    Edit {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// New amount in minor units
+        #[arg(long)]
+        amount: Option<i64>,
+        /// New purpose line
+        #[arg(long)]
+        purpose: Option<String>,
+        /// New message (must contain {link} once)
+        #[arg(long)]
+        message: Option<String>,
+        /// New WhatsApp number
+        #[arg(long, conflicts_with = "to_email")]
+        to_whatsapp: Option<String>,
+        /// New email address
+        #[arg(long)]
+        to_email: Option<String>,
+        /// The recipient's name (with a new address)
+        #[arg(long)]
+        name: Option<String>,
+        /// New link life in days
+        #[arg(long)]
+        expires_days: Option<u32>,
+        /// The head id you saw; read from the card when omitted
+        #[arg(long)]
+        expected: Option<String>,
+    },
+    /// Send a complete draft to the owner
+    Submit {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// The head id you saw; read from the card when omitted
+        #[arg(long)]
+        expected: Option<String>,
+    },
+    /// Cancel your own draft (the owner cancels anything else)
+    Cancel {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// Why
+        #[arg(long)]
+        reason: Option<String>,
+        /// The head id you saw; read from the card when omitted
+        #[arg(long)]
+        expected: Option<String>,
+    },
+    /// Propose a request recipe from the provider's public docs (the owner approves it)
+    RecipePropose {
+        /// Connection id (UUID)
+        #[arg(long)]
+        connection: String,
+        /// JSON file with the recipe
+        #[arg(long)]
+        file: std::path::PathBuf,
+    },
+    /// Propose how to read the provider's payment notices (the owner approves it)
+    NoticeMapPropose {
+        /// Connection id (UUID)
+        #[arg(long)]
+        connection: String,
+        /// JSON file with the notice map
+        #[arg(long)]
+        file: std::path::PathBuf,
+    },
+    /// Run the owner-approved recipe for an approved card (API route)
+    Run {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// Recipe id
+        #[arg(long)]
+        recipe: String,
+        /// For a lookup recipe: the provider reference to look up
+        #[arg(long)]
+        reference: Option<String>,
+    },
+    /// Browser route: record the link you created and read back as the payer
+    Created {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// The payment link URL
+        #[arg(long)]
+        url: String,
+        /// The provider's reference for the link, if the page shows one
+        #[arg(long)]
+        reference: Option<String>,
+        /// The amount the link shows the payer, in minor units
+        #[arg(long)]
+        shown_amount: i64,
+        /// The currency the link shows the payer
+        #[arg(long)]
+        shown_currency: String,
+        /// The head id you saw; read from the card when omitted
+        #[arg(long)]
+        expected: Option<String>,
+    },
+    /// Report a payment you saw; the owner or a verified notice settles it
+    Report {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// Where you saw it
+        #[arg(long, value_enum)]
+        source: PayReportSource,
+        /// Provider reference you saw
+        #[arg(long)]
+        reference: Option<String>,
+        /// Amount you saw, in minor units
+        #[arg(long)]
+        amount: Option<i64>,
+        /// Currency you saw
+        #[arg(long)]
+        currency: Option<String>,
+        /// What you saw, one line
+        #[arg(long)]
+        note: String,
+        /// The head id you saw; read from the card when omitted
+        #[arg(long)]
+        expected: Option<String>,
+    },
+    /// Browser route: ask whether the Create step may run without the on-screen confirmation
+    StepCheck {
+        /// Card id (UUID)
+        #[arg(long)]
+        card: String,
+        /// The host the step runs on
+        #[arg(long)]
+        host: String,
+        /// The page URL
+        #[arg(long)]
+        url: String,
+        /// The button or step label
+        #[arg(long)]
+        label: String,
+        /// The kind of step (only `create` can be allowed)
+        #[arg(long, default_value = "create")]
+        kind: String,
     },
 }
 
@@ -4381,6 +4608,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Discovery(sub) => commands::discovery::dispatch(sub, &client).await,
         Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
         Cmd::Whatsapp(sub) => commands::whatsapp::dispatch(sub, &client).await,
+        Cmd::Pay(sub) => commands::pay::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
@@ -4594,6 +4822,7 @@ mod tests {
             "onboarding",
             "pack",
             "patches",
+            "pay",
             "permissions",
             "plans",
             "playbooks",
@@ -4920,6 +5149,7 @@ mod tests {
             ("money", 4),
             ("pack", 2),
             ("patches", 4),
+            ("pay", 13),
             ("permissions", 3),
             ("pr", 5),
             ("projects", 8),
