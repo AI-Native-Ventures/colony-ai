@@ -1357,12 +1357,17 @@ mod postgres_tests {
             .cofounder_pending_wakes(community(&fixture), soon(), 10)
             .await
             .expect("pending wakes");
+        // A sweep inside the Friday review window also queues the weekly review; only the
+        // start-up wakes are under test.
+        let recovered = recovered
+            .into_iter()
+            .filter(|wake| wake.reason == "mode_on")
+            .collect::<Vec<_>>();
         assert_eq!(
             recovered.len(),
             1,
             "one fresh start-up wake, not one per sweep"
         );
-        assert_eq!(recovered[0].reason, "mode_on");
 
         deliver_one(&fixture.state, community(&fixture), soon())
             .await
@@ -1375,6 +1380,23 @@ mod postgres_tests {
         sweep_one(&fixture.state, fixture.tenant.community(), early)
             .await
             .expect("sweep after delivery");
-        assert_eq!(pending_count(&fixture).await, 0, "no second start-up wake");
+        assert_eq!(mode_on_count(&fixture).await, 0, "no second start-up wake");
+    }
+
+    /// Pending start-up wakes, whatever else the sweep queued.
+    async fn mode_on_count(fixture: &Fixture) -> usize {
+        fixture
+            .state
+            .db
+            .cofounder_pending_wakes(
+                community(fixture),
+                Utc::now() + chrono::Duration::days(30),
+                100,
+            )
+            .await
+            .expect("pending wakes")
+            .iter()
+            .filter(|wake| wake.reason == "mode_on")
+            .count()
     }
 }
