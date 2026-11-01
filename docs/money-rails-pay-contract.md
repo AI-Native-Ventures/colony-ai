@@ -17,9 +17,9 @@ if the UI needs a different shape, say so in the PR before the relay code lands.
 | Rule | Enforced by | Proven by |
 | --- | --- | --- |
 | Scout can only ask for money. A recipe or browser step that refunds, pays out, transfers, withdraws or moves balance is refused, whatever was approved. | `buzz_core::money_rails::refusal` runs at recipe propose, at recipe approve, at every recipe run and at every browser step check. | Postgres test `refund_recipe_is_refused_even_when_approved`; red proof. |
-| Nothing reaches a client before the owner approves the card. Approve is one atomic relay command that re-checks amount, currency, recipient and message against the card head. Edit after approval voids it. | Kind 47070 `approve` under the head row lock; the sender and the recipe runner read the approval digest, never the action. | `approve_after_edit_is_refused`, `edit_after_approval_voids_it`; red proof. |
+| Nothing reaches a client before the owner approves the card. Approve is one atomic relay command that re-checks amount, currency, recipient and message against the card head. Edit after approval voids it. | Kind 47070 `approve` under the head row lock; the sender and the recipe runner read the approval digest, never the action. | `approve_after_edit_is_refused_and_edit_voids_the_approval`; red proof. |
 | Provider keys are pasted in a Colony dialog only, sealed at the relay (KEK + community + connection id as AAD), locked to the provider API host(s), never returned in any response, event, log or agent output, and responses are scrubbed by exact match. | `money_rails::vault` (same envelope as `whatsapp::secrets`), `money_rails::runner` host lock and scrub. | `vault_key_never_appears_in_any_output` greps every response, event and captured log line for the key. |
-| A payment notice alone never marks Paid. Only an HMAC-verified notice, a matching API lookup, or the owner's tick does. Otherwise "Payment reported, check". | `money_rails::notices::classify` is the only writer of `paid`. | `unverified_notice_never_marks_paid`, `spoofed_and_replayed_notice_is_not_paid`; red proof. |
+| A payment notice alone never marks Paid. Only an HMAC-verified notice, a matching API lookup, or the owner's tick does. Otherwise "Payment reported, check". | `money_rails::notices::classify` is the only writer of `paid`. | `unverified_notice_never_marks_paid`, `spoofed_and_replayed_notices_are_not_paid_and_a_signed_one_is_paid_once`, `a_signed_notice_for_another_amount_is_a_report_not_a_payment`; red proof. |
 
 ## 2. Event kinds
 
@@ -234,12 +234,12 @@ A recipe is a named request shape Colony runs for Scout. Scout never calls the p
   relay compares the extracted amount and currency with the card; a mismatch stops the
   flow (section 6.3). `lookup_payment` extracts `reference`, `amount`, `currency`, and
   optionally `paid` (`{ "pointer": "/status", "equals": "succeeded" }`).
-* Response handling: the body is parsed, the key value is removed by exact match from
-  every string (also from the extracted values), known secret-looking field names
-  (`api_key`, `secret`, `token`, `authorization`, `password`, `client_secret`,
-  `access_token`, `refresh_token`) are replaced by `"[removed]"`, and the body is capped at
-  64 KiB. What goes back to Scout is `{ ok, status, link?, reference?, amountMinor?,
-  currency?, redacted: [...] }`, never the raw body.
+* Response handling: the body is read through a response cap of 64 KiB and parsed; the key
+  value is removed by exact match from every string the relay keeps or returns (the link,
+  the reference, an excerpt of a provider error). What reaches Scout is never the raw body:
+  `colony pay run` for a create recipe answers with where the card is (`{ ok, state, link?,
+  failure? }`), for a lookup recipe with `{ ok, reference, amountMinor, currency, paid }`.
+  A provider error shows on the card as `provider_rejected` with a scrubbed one line excerpt.
 
 ### 5.1 The refusal list (fail closed)
 
@@ -403,19 +403,24 @@ Every op after `draft` names the head it saw. A stale head is refused with `conf
   After Create it reads the link, opens it as the payer, and sends `record_created`. The
   relay then compares, sends the message and moves to `sent`. The card says it needs the
   owner's Mac awake and signed in to the provider.
-* **Sending.** WhatsApp goes through the existing sender (`whatsapp::sender::enqueue_send`,
-  an owner or admin approved free text message, keyed `paylink:<linkId>`). If the 24 hour
-  window is closed the card fails with `message_window_closed` and keeps the link so the
-  owner can send it by hand and `mark_sent`. Email uses relay mail when configured
-  (**OPEN**, see section 13).
+* **Sending.** WhatsApp goes through the existing sender (`whatsapp::sender::enqueue_send`
+  as the approving owner, so it is queued at once; free text only, so the 24 hour window
+  rules apply). If WhatsApp refuses (window closed, no number connected) the card fails with
+  `message_window_closed` or `message_failed` and keeps the link so the owner can send it
+  by hand and `mark_sent`. Email uses the relay's Resend key when mail is configured, a
+  plain text body; otherwise it fails the same visible way. After a send is queued the card
+  stays `creating_link` until WhatsApp reports it sent (or failed).
 
-### 6.5 Sweeper
+### 6.5 Job runner
 
-A relay task (same pattern as the WhatsApp sender tick) with a lease per card:
-resumes `creating_link` jobs after a crash, retries evidence writes stuck in
-`evidence_pending`, expires `sent` cards past `expiresAt`, expires browser grants
-(`failed`, `browser_grant_expired`), and reduces notice bodies older than 90 days.
-Retry has backoff and a terminal state; nothing loops without a bound.
+A relay task (same pattern as the WhatsApp sender tick, every 5 seconds) leases due rows of
+`money_rails_jobs`: `create` (the recipe run; its provider result is saved before the head
+changes, so a crash never repeats the call), `send` (queues the one approved message and
+follows it to sent or failed; WhatsApp through `enqueue_send`, keyed `paylink:<card>`),
+`evidence` (writes 47027, retried every 15 minutes up to 100 times while the reason shows on
+the card as `evidence_pending`), `expire` (at `expiresAt`), `grant` (at the end of the
+browser window). A failed create retries up to 6 times, then the card shows `failed` with
+Try again. Nothing loops without a bound, and the card always shows where it is.
 
 ## 7. Browser route step check
 
@@ -456,12 +461,16 @@ randomness. An unknown id, or an id on the wrong host, is a plain 404.
   `money_rails_notices` with the receive time and the signature header value. Kept 90
   days, then the body is dropped and only the evidence fields stay (reference, amount,
   currency, time, match, signature state).
-* Dedupe: key = provider event id read through the approved notice map, else SHA-256 of the
-  raw body. `UNIQUE (community_id, connection_id, dedupe_key)`; a repeat returns `200`
-  with `{ "ok": true, "duplicate": true }` and changes nothing.
-* The route always answers `200 {"ok": true}` for a well formed, stored notice, whatever
-  its signature state, so a provider does not retry forever; an invalid signature is
-  stored as `invalid` and never acted on. Rate limit per connection (60 per minute).
+* Dedupe: only a notice whose signature verified earns the provider event id (read through
+  the approved notice map) as its dedupe key. Every other notice dedupes by the SHA-256 of
+  its raw body, so a forged post that borrows a real event id can never block the genuine
+  notice that carries it. `UNIQUE (community_id, connection_id, dedupe_key)`; a repeat
+  returns `200` with `{ "ok": true, "duplicate": true }` and changes nothing.
+* The route answers `200 {"ok": true, "duplicate": bool}` for a stored notice, whatever its
+  signature state, so a provider does not retry a forged one forever. Limits per connection:
+  60 posts a minute and 5,000 notices holding a raw body (`429` above either).
+* Not found (unknown id, or an id on the wrong host) is `404`, a body over 64 KiB is `413`,
+  and a relay fault is `500` so the provider redelivers (the dedupe row keeps that safe).
 * A notice never creates or changes a card by itself except as in 8.3.
 
 ### 8.2 Notice map (owner approved, non secret)
@@ -489,17 +498,24 @@ For each stored notice the relay finds the card (map reference, `cardRef`, or
 and then:
 
 1. Signature: HMAC-SHA256 as configured, constant time. Result `verified`, `invalid`,
-   `unsigned` (no header) or `no_secret` (connection has no signing secret).
+   `unsigned` (the connection holds a signing secret but the notice carried no signature)
+   or `no_secret` (the connection holds no signing secret, so nothing could be checked).
 2. Facts: amount and currency from the map, compared with the card.
-3. Outcome:
-   * `verified` and the facts equal the card: write payment evidence, card `paid`,
-     `source: "hmac"`.
-   * not `verified`, but the connection has an approved `lookup_payment` recipe: the relay
-     runs it; reference, amount and currency equal the card and `paid` is true: card
-     `paid`, `source: "lookup"`.
-   * anything else, including `invalid`, `unsigned`, `no_secret`, a replay of an old event
-     with other facts, or a verified notice whose facts differ: the card goes to
-     `payment_reported` with `payment.mismatch` set when the facts differ. Never `paid`.
+3. Outcome (`judge_notice`, the only decision that can lead to paid):
+   * The map says the event is not a payment success (for example an expiry): nothing changes.
+   * The connection holds a secret and the notice is `invalid` or `unsigned`: nothing changes
+     (stored and listed as ignored), so a forged post cannot even raise a report.
+   * The notice facts differ from the card: `payment_reported` with `payment.mismatch`
+     set, even when signed. Never paid.
+   * `verified` AND the approved map's success rules matched: the card goes to
+     `payment_reported` with `payment.state = "verified"`, a durable evidence job is queued,
+     and only when the evidence (47027) is written does the card become `paid`
+     (`source: "hmac"`). HMAC alone without an approved success rule is not enough.
+   * Not `verified` but the connection has an approved `lookup_payment` recipe: the relay
+     runs it; reference, amount and currency equal the card and the paid flag is true:
+     the same path with `source: "lookup"`.
+   * Anything else: `payment_reported` ("Payment reported, check"), `payment.state =
+     "reported"`. Never paid.
 
 A replayed verified notice is a duplicate (dedupe), so it cannot write evidence twice.
 
@@ -509,11 +525,16 @@ A replayed verified notice is a duplicate (dedupe), so it cannot write evidence 
 
 | `what` | Roles | Result |
 | --- | --- | --- |
-| `connections` | owner, admin, owned agent | `{ "connections": [Summary] }` (the head plus `noticeAddress` only for owner or admin) |
-| `connection` `connectionId` | owner, admin | the summary plus full recipe bodies and the notice map (never a secret) |
-| `links` `state?`, `partyId?`, `invoiceId?`, `limit?`, `before?` | owner, admin, owned agent | `{ "links": [CardSummary] }` |
-| `link` `linkId` | owner, admin | the head plus the full recipient address and the link's notices |
-| `notices` `connectionId`, `unmatched?`, `limit?` | owner, admin | `[{ id, receivedAt, signature, reference, amountMinor, currency, matchedLinkId, excerpt }]` with the excerpt cut at 512 bytes and scrubbed |
+| `connections` | owner, admin, owned agent | `{ "connections": [Summary] }`. Each summary is `{ "connection": <head>, "headEventId": hex }` and, for owner or admin only, also `noticeAddress`, `signature` (header and format, no secret) and `noticeMap`. |
+| `connection` `connectionId` | owner, admin | the summary plus the full recipe bodies (never a secret) |
+| `links` `linkId?`, `state?`, `partyId?`, `invoiceId?`, `limit?` | owner, admin, owned agent | `{ "links": [{ "headEventId": hex, "link": <head> }] }`, most recently changed first. `headEventId` is the head event id the next command on that card must name. |
+| `link` `linkId` | owner, admin | `{ headEventId, link, recipient { channel, address, name }, notices }` (the only place the full address is returned) |
+| `notices` `connectionId?`, `linkId?`, `unmatched?`, `limit?` | owner, admin | `{ "notices": [{ id, connectionId, receivedAt, signature, reference, amountMinor, currency, matchedLinkId, judgement, excerpt }] }` with the excerpt cut at 512 bytes |
+
+The desktop can also read the heads directly as events: a REQ for kind 30680 and 30683
+authored by the relay (community-wide company records, no secret in them) and filter by the
+`partyId` or `invoiceId` inside. The customer record head (30679) is NOT changed by this PR:
+the customer record's Money section reads the card heads of its `partyId`.
 
 `POST /api/money-rails/run` (NIP-98, owner, admin or owned agent):
 `{ "linkId": "uuid", "recipeId": "create-payment-link" }` runs an approved `create_link`
@@ -548,16 +569,21 @@ writes return `{event_id, accepted, message}`; a refusal prints the relay's plai
 
 | Command | What it does |
 | --- | --- |
-| `colony pay connections` | Lists connections (provider, route, status, default, approved recipes). No secret ever. |
-| `colony pay draft --party <id> --invoice <id> --amount <minor> --currency ZAR --purpose "..." --to-whatsapp <number> --name "..." --message "...{link}..." [--connection <id>] [--expires-days 14]` | Drafts a card (47070 `draft`). Prints the card id and state. |
-| `colony pay card <linkId>` | Shows the card head. |
-| `colony pay edit <linkId> --expected <headEventId> [fields]` | Edits a draft; voids an approval. |
-| `colony pay recipe propose <connectionId> --file recipe.json` | Proposes a recipe from the provider's public docs. Prints `proposed` or the refusal code. |
-| `colony pay notice-map propose <connectionId> --file map.json` | Proposes the notice map. |
-| `colony pay run <linkId> --recipe <recipeId>` | Runs the approved recipe on an approved card (API route). Prints the scrubbed result. |
-| `colony pay created <linkId> --url <url> --reference <ref> --shown-amount <minor> --shown-currency ZAR` | Browser route: record the link Scout read from the page. |
-| `colony pay report <linkId> --source dashboard\|gmail\|client_message [--reference ...] [--amount ...] [--currency ...] --note "..."` | Reports a payment for the owner to check. Never marks paid. |
-| `colony pay step-check <linkId> --host <h> --url <u> --label "..."` | Calls the browser step check. |
+| `colony pay connections` | Lists connections (provider, route, status, default, recipes and their approval). No secret ever. |
+| `colony pay cards [--state S] [--party P] [--invoice I] [--limit N]` | Lists cards, most recently changed first. |
+| `colony pay card --card <id>` | Shows one card and its `headEventId`. |
+| `colony pay draft --party P --invoice I --amount <minor> --currency ZAR --purpose "..." (--to-whatsapp N \| --to-email E) --name "..." --message "...{link}..." [--connection C] [--expires-days 14] [--card-id ID]` | Drafts a card (47070 `draft`). Prints the card id on stderr. `--card-id` makes a retry safe. |
+| `colony pay edit --card ID [--amount] [--purpose] [--message] [--to-whatsapp\|--to-email --name] [--expires-days] [--expected H]` | Edits a card; voids an approval. |
+| `colony pay submit --card ID` / `colony pay cancel --card ID [--reason]` | Sends a complete draft to the owner / cancels your own draft. |
+| `colony pay recipe-propose --connection C --file recipe.json` | Proposes a recipe from the provider's public docs. |
+| `colony pay notice-map-propose --connection C --file map.json` | Proposes how to read the provider's notices. |
+| `colony pay run --card ID --recipe R [--reference REF]` | Runs the approved recipe: a create recipe runs the card's create job now and prints where the card is; a lookup recipe prints what the provider says (never the raw body). |
+| `colony pay created --card ID --url U [--reference R] --shown-amount <minor> --shown-currency ZAR` | Browser route: record the link read back as the payer. |
+| `colony pay report --card ID --source dashboard\|gmail\|client-message [--reference] [--amount] [--currency] --note "..."` | Reports a payment for the owner to check. Never marks paid. |
+| `colony pay step-check --card ID --host H --url U --label L [--kind create]` | Calls the browser step check. |
+
+Every command that changes a card reads its current `headEventId` itself unless `--expected`
+is given. Output is the relay's JSON; writes print `{event_id, accepted, message}`.
 
 There is no `approve`, `confirm`, `refund`, `payout` or `transfer` command. Agents cannot
 approve, and the word list means they could not ask for money to leave even through a recipe.
@@ -565,14 +591,18 @@ approve, and the word list means they could not ask for money to leave even thro
 ## 12. Storage and deploy
 
 Migration `migrations/0061_money_rails_pay.sql` and the same tables in
-`schema/schema.sql`. **Additive only** (new tables, no change to an existing table), each
-with `attach_community_write_fence`:
+`schema/schema.sql`, `scripts/reconcile-schema-after-pgschema.sql` (write fences) and the
+tenant deletion manifest. **Additive only** (four new tables, no change to an existing
+table), each with `attach_community_write_fence`:
 
-* `money_rails_connections` (sealed key and signing secret, KEK id, nonces, hosts, auth
-  scheme, signature config, notice id, recipes JSONB, notice map JSONB, status, default flag).
-* `money_rails_links` (private side of a card: full recipient, job state, lease, idempotency
-  keys, browser grant stamp, delivery state).
-* `money_rails_notices` (raw body up to 64 KiB, dedupe key, signature state, match, reduced flag).
+* `money_rails_connections` (sealed key and signing secret, KEK id, nonces, the non secret
+  configuration as JSON including recipes and the notice map, notice id, status, default flag).
+* `money_rails_recipients` (the private recipient of a card, one row per reference, never
+  updated).
+* `money_rails_jobs` (durable work per card: `create`, `send`, `evidence`, `expire`,
+  `grant`; leased, retried with backoff 15 s doubling to 15 min, bounded).
+* `money_rails_notices` (raw body up to 64 KiB, dedupe key, signature state, match,
+  judgement, reduced flag).
 
 **Relay deploy with `existing_data_plan=migrate` is needed before the desktop release.**
 Without it the new routes answer `503 money_not_configured`/missing table errors and the
@@ -587,10 +617,14 @@ UI must show "Money connections are not ready yet" (a distinct state, not an emp
    `draft` with `waitingFor: "invoice_issue"` and the owner issues it (existing action) before
    approving. A deposit with no quote waits for a later change that lets the owner create an
    invoice directly.
-2. **Email delivery.** The relay's only mail sender (`send_resend`) is for sign-in and reset.
-   v1 sends WhatsApp through the existing path. Email uses `send_resend` when mail is
-   configured, with a plain text body and sender "<Business> via Colony"; if the coordinator
-   prefers WhatsApp only for v1, say so and email recipients become "copy the message" on the card.
+2. **Email delivery.** The relay's only mail sender (`send_resend`) is for sign-in codes. v1
+   posts a plain text message to Resend with the relay's configured sender address (no
+   "<Business> via Colony" name, no reply-to: the relay does not know the owner's email). If
+   the coordinator prefers WhatsApp only for v1, say so and email recipients become "copy the
+   message" on the card.
+5. **Scout is not woken on approval.** The browser route needs Scout to notice the approved
+   card. v1 adds no wake reason: Scout finds it with `colony pay cards --state
+   creating_link` on its normal wake. A wake reason is a one line follow-up if wanted.
 3. **Evidence is written as the approving owner or admin.** The business record handler
    needs that person to be in the client's private channel. If this fails in practice the
    fallback is the `evidence_pending` state above, which the owner clears by ticking again.

@@ -309,11 +309,15 @@ pub async fn query(
             for row in rows {
                 let notice_id = row.notice_id;
                 let loaded = parse_connection(row).map_err(|reason| internal_error(&reason))?;
-                views.push(if role.is_owner_admin() {
+                let mut view = if role.is_owner_admin() {
                     private_view(&loaded.config, notice_id, &host)
                 } else {
                     public_view(&loaded.config)
-                });
+                };
+                view["headEventId"] = json!(
+                    connection_head_event_id(&state, community, loaded.config.connection_id).await
+                );
+                views.push(view);
             }
             Ok(Json(json!({ "connections": views })))
         }
@@ -331,16 +335,18 @@ pub async fn query(
                 .map_err(|reason| internal_error(&reason))?;
             let mut view = private_view(&loaded.config, loaded.row.notice_id, &host);
             view["recipes"] = json!(loaded.config.recipes);
+            view["headEventId"] = json!(connection_head_event_id(&state, community, id).await);
             Ok(Json(view))
         }
         "links" => {
             require_prepare(role)?;
             let mut heads = card_heads(&state, community).await?;
-            heads.retain(|head| {
-                request
-                    .state
-                    .as_deref()
-                    .is_none_or(|wanted| head.state.as_str() == wanted)
+            heads.retain(|(_, head)| {
+                request.link_id.is_none_or(|wanted| head.link_id == wanted)
+                    && request
+                        .state
+                        .as_deref()
+                        .is_none_or(|wanted| head.state.as_str() == wanted)
                     && request
                         .party_id
                         .as_deref()
@@ -349,16 +355,20 @@ pub async fn query(
                         .invoice_id
                         .is_none_or(|wanted| head.invoice_id == wanted)
             });
-            heads.sort_by_key(|head| std::cmp::Reverse(head.updated_at));
+            heads.sort_by_key(|(_, head)| std::cmp::Reverse(head.updated_at));
             heads.truncate(limit);
-            Ok(Json(json!({ "links": heads })))
+            let links: Vec<Value> = heads
+                .into_iter()
+                .map(|(head_event_id, head)| json!({ "headEventId": head_event_id, "link": head }))
+                .collect();
+            Ok(Json(json!({ "links": links })))
         }
         "link" => {
             require_owner_admin(role)?;
             let id = request
                 .link_id
                 .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "linkId is required"))?;
-            let (_, head) = read_link(&state, community, id)
+            let (stored, head) = read_link(&state, community, id)
                 .await
                 .map_err(|error| internal_error(&format!("{error:?}")))?
                 .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "not found"))?;
@@ -388,6 +398,7 @@ pub async fn query(
                 })
                 .collect();
             Ok(Json(json!({
+                "headEventId": stored.event.id.to_hex(),
                 "link": head,
                 "recipient": recipient.map(|recipient| json!({
                     "channel": recipient.channel,
@@ -436,10 +447,27 @@ pub async fn query(
     }
 }
 
+async fn connection_head_event_id(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    connection_id: Uuid,
+) -> Option<String> {
+    crate::handlers::company_initiative::load_head(
+        state,
+        community,
+        buzz_core::kind::KIND_MONEY_CONNECTION_HEAD,
+        &buzz_core::money_rails::connection_d_tag(connection_id),
+    )
+    .await
+    .ok()
+    .flatten()
+    .map(|stored| stored.event.id.to_hex())
+}
+
 async fn card_heads(
     state: &Arc<AppState>,
     community: buzz_core::tenant::CommunityId,
-) -> Result<Vec<LinkHead>, (StatusCode, Json<Value>)> {
+) -> Result<Vec<(String, LinkHead)>, (StatusCode, Json<Value>)> {
     let stored = crate::numbers_inputs::read_events(
         state,
         community,
@@ -452,7 +480,11 @@ async fn card_heads(
     .map_err(|reason| internal_error(&reason))?;
     Ok(stored
         .iter()
-        .filter_map(|stored| serde_json::from_str::<LinkHead>(&stored.event.content).ok())
+        .filter_map(|stored| {
+            serde_json::from_str::<LinkHead>(&stored.event.content)
+                .ok()
+                .map(|head| (stored.event.id.to_hex(), head))
+        })
         .collect())
 }
 
