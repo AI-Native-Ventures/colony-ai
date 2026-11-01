@@ -546,7 +546,9 @@ pub fn judge_notice(
             mismatch: lookup_mismatch,
         };
     }
-    Judgement::Reported { mismatch: None }
+    Judgement::Verified {
+        by: VerifiedBy::Hmac,
+    }
 }
 
 #[cfg(test)]
