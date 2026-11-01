@@ -152,3 +152,109 @@ fn session_info_update_msg(active_run_id: Option<serde_json::Value>) -> serde_js
         }
     })
 }
+
+#[tokio::test]
+async fn session_new_full_sends_private_folder_deny_rules_to_claude_adapter() {
+    // Production seam: the Claude adapter must receive the deny rules in
+    // `_meta.claudeCode.options.disallowedTools` on every session/new, even when
+    // there is no system prompt and no session title.
+    let script = r#"
+            read -t 2 _init
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
+            read -r -t 2 REQ
+            echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"ses_claude","_receivedRequest":'"$REQ"'}}'
+            sleep 1
+        "#;
+    let mut client = spawn_script(script).await;
+    client.standard_adapter = Some(StandardAdapterKind::Claude);
+    client
+        .initialize()
+        .await
+        .expect("initialize should succeed");
+
+    let resp = client
+        .session_new_full("/tmp", vec![], None, None)
+        .await
+        .expect("session_new_full should succeed");
+
+    let rules: Vec<String> = resp.raw["_receivedRequest"]["params"]["_meta"]["claudeCode"]
+        ["options"]["disallowedTools"]
+        .as_array()
+        .expect("disallowedTools must be an array")
+        .iter()
+        .map(|rule| rule.as_str().expect("rule is a string").to_owned())
+        .collect();
+    for expected in [
+        "Read(~/Pictures/**)",
+        "Glob(~/Pictures/**)",
+        "Grep(~/Music/**)",
+        "Read(~/Library/Mail/**)",
+        "Bash(find ~:*)",
+        "Bash(grep -r ~:*)",
+    ] {
+        assert!(
+            rules.iter().any(|rule| rule == expected),
+            "missing deny rule {expected}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn session_new_full_sends_no_deny_rules_to_other_adapters() {
+    let script = r#"
+            read -t 2 _init
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
+            read -t 2 REQ
+            echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"ses_other","_receivedRequest":'"$REQ"'}}'
+            sleep 1
+        "#;
+    let mut client = spawn_script(script).await;
+    client.standard_adapter = Some(StandardAdapterKind::Codex);
+    client
+        .initialize()
+        .await
+        .expect("initialize should succeed");
+
+    let resp = client
+        .session_new_full("/tmp", vec![], None, None)
+        .await
+        .expect("session_new_full should succeed");
+
+    assert!(
+        resp.raw["_receivedRequest"]["params"]
+            .get("_meta")
+            .is_none(),
+        "only the Claude adapter understands _meta.claudeCode"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn spawn_hands_opencode_its_private_folder_deny_rules() {
+    // Production seam: spawn() must put the guard into the child's
+    // OPENCODE_CONFIG_CONTENT, merged with what the desktop already set.
+    let extra_env = vec![(
+        "OPENCODE_CONFIG_CONTENT".to_owned(),
+        r#"{"autoupdate":false}"#.to_owned(),
+    )];
+    let observed =
+        spawn_named_and_read_child_env("opencode", "OPENCODE_CONFIG_CONTENT", &extra_env).await;
+    let config: serde_json::Value = serde_json::from_str(&observed).expect("config is JSON");
+    assert_eq!(
+        config["permission"]["read"]["~/Pictures/**"],
+        serde_json::json!("deny")
+    );
+    assert_eq!(
+        config["permission"]["bash"]["find ~ *"],
+        serde_json::json!("deny")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn spawn_leaves_other_agents_without_opencode_config() {
+    assert_eq!(
+        spawn_named_and_read_child_env("goose", "OPENCODE_CONFIG_CONTENT", &[]).await,
+        "<unset>"
+    );
+}

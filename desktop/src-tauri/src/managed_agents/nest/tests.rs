@@ -641,6 +641,28 @@ fn colony_cli_skill_recorded_at_the_previous_version_is_regenerated() {
 }
 
 #[test]
+fn skill_forbids_scanning_private_folders_and_ships_to_existing_nests() {
+    assert!(COLONY_CLI_SKILL_MD.contains("## Private folders (hard rule)"));
+    assert!(COLONY_CLI_SKILL_MD.contains("Never scan the whole home folder or `/`"));
+    assert!(
+        COLONY_CLI_SKILL_MD.contains("Photos, `Pictures`, `Music`, `Movies`, `Mail`, `Messages`")
+    );
+    assert!(COLONY_CLI_SKILL_MD.contains("unless the owner asked for that exact path"));
+
+    // A nest generated at the previous version must pick the rule up.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    ensure_nest_at(&root).unwrap();
+    let skill_dir = root.join(".agents/skills/colony-cli");
+    fs::write(skill_dir.join("SKILL.md"), "stale skill content").unwrap();
+    fs::write(skill_dir.join(".skill-version"), "21\n").unwrap();
+    ensure_nest_at(&root).unwrap();
+    assert!(fs::read_to_string(skill_dir.join("SKILL.md"))
+        .unwrap()
+        .contains("## Private folders (hard rule)"));
+}
+
+#[test]
 fn skill_written_before_the_document_rule_is_regenerated_with_it() {
     assert!(
         COLONY_CLI_SKILL_MD.contains("--doc --title"),
