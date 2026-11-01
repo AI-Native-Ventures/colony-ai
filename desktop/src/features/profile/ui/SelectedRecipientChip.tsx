@@ -55,6 +55,7 @@ export function SelectedRecipientChip({
           avatarUrl={user.avatarUrl}
           className="c3nm-chip-avatar"
           label={label}
+          pubkey={user.pubkey}
           shape={user.isAgent ? "squircle" : "circle"}
         />
         {inspectable ? (
@@ -152,6 +153,7 @@ export function SelectedRecipientChip({
           className="h-5 w-5 text-3xs shadow-none transition-opacity group-hover/remove-recipient:opacity-0 group-focus-visible/remove-recipient:opacity-0"
           iconClassName="h-2.5 w-2.5"
           label={label}
+          pubkey={user.pubkey}
           shape={user.isAgent ? "squircle" : "circle"}
         />
         <span

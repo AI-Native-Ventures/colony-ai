@@ -212,6 +212,7 @@ export function ChannelMemberInviteCard({
                       avatarUrl={invitee.avatarUrl ?? null}
                       className="ask3-av size-6"
                       label={formatSearchUserName(invitee)}
+                      pubkey={invitee.pubkey}
                       shape={invitee.isAgent ? "squircle" : "circle"}
                     />
                     <span>{formatSearchUserName(invitee)}</span>
@@ -255,6 +256,7 @@ export function ChannelMemberInviteCard({
                           avatarUrl={null}
                           className="ask3-av size-7"
                           label={truncateNpub(directInvitee.pubkey)}
+                          pubkey={directInvitee.pubkey}
                         />
                         <span className="ask3-invite-result-name">
                           {truncateNpub(directInvitee.pubkey)}
@@ -281,6 +283,7 @@ export function ChannelMemberInviteCard({
                           avatarUrl={result.avatarUrl}
                           className="ask3-av size-7"
                           label={formatSearchUserName(result)}
+                          pubkey={result.pubkey}
                           shape={result.isAgent ? "squircle" : "circle"}
                         />
                         <span className="ask3-invite-result-name">

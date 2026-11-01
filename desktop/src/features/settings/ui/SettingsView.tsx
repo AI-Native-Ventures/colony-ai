@@ -368,6 +368,7 @@ export function SettingsView({
                     avatarUrl={profile.data?.avatarUrl ?? null}
                     className="cs-person-avatar"
                     label={signedInDisplayName}
+                    pubkey={profile.data?.pubkey}
                     testId="settings-profile-avatar"
                   />
                   <span className="cs-person-copy">

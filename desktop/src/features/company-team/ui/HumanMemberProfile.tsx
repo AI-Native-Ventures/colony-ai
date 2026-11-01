@@ -49,6 +49,7 @@ export function HumanMemberProfile({
           avatarUrl={profiles.data?.profiles[member.pubkey]?.avatarUrl ?? null}
           className="team-profile-avatar"
           label={fullName}
+          pubkey={member.pubkey}
         />
         <div className="team-profile-heading">
           <TeamPageTitle>{fullName}</TeamPageTitle>

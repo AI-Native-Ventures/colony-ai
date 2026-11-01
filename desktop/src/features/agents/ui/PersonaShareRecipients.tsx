@@ -283,6 +283,7 @@ export function PersonaShareRecipients({
                     className="h-8 w-8 text-xs shadow-none"
                     iconClassName="h-4 w-4"
                     label={formatShareRecipientName(user)}
+                    pubkey={user.pubkey}
                   />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {formatShareRecipientName(user)}

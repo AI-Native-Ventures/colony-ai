@@ -61,6 +61,7 @@ export function MemberAvatar({
         }
         instance={member.managedAgent?.avatarUrl}
         name={name}
+        pubkey={member.pubkey}
         personaId={member.managedAgent?.personaId}
         profile={profiles[member.pubkey]?.avatarUrl}
         role={member.position?.head.title}
@@ -72,6 +73,7 @@ export function MemberAvatar({
       avatarUrl={profiles[member.pubkey]?.avatarUrl ?? null}
       className={className}
       displayName={name}
+      pubkey={member.pubkey}
     />
   );
 }

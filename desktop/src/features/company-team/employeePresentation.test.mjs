@@ -71,7 +71,7 @@ test("runtime evidence wins over a missing company position and stale active tur
     "Needs attention",
   );
 });
-test("employee art uses profile and instance before the definition, then a role ant", () => {
+test("employee art uses profile, managed picture, definition, then a role ant", () => {
   const input = {
     name: "Scout",
     personaId: "builtin:fizz",
@@ -84,9 +84,14 @@ test("employee art uses profile and instance before the definition, then a role 
     "instance.png",
   );
   assert.equal(
+    employeeAvatarSource({ ...input, managedAgent: "managed-ant.svg" }),
+    "managed-ant.svg",
+  );
+  assert.equal(
     employeeAvatarSource({
       ...input,
       instance: "instance.png",
+      managedAgent: "managed-ant.svg",
       profile: "profile.png",
     }),
     "profile.png",

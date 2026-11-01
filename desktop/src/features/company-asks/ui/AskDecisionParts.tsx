@@ -177,6 +177,7 @@ export function DecisionAvatar({
       avatarUrl={profile?.avatarUrl ?? null}
       className={cn("colony-decision-avatar", `colony-decision-avatar-${size}`)}
       label={name}
+      pubkey={pubkey}
       shape={agent ? "squircle" : "circle"}
     />
   );
