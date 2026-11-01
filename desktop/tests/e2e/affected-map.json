@@ -91,7 +91,8 @@
         "rejected and fully sent batches have no actions",
         "genuinely missing batch is one plain line with no actions",
         "cannot use send now on an approved card",
-        "channel content and actions stay reachable beside the dock at owner size"
+        "channel content and actions stay reachable beside the dock at owner size",
+        "whatsapp header keeps the label and unread badge inside the action at every requested width"
       ]
     }
   },
