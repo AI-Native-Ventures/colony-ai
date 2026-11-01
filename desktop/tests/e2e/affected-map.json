@@ -52,7 +52,8 @@
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
-      "thread-reply-anchor-roleplay.spec.ts"
+      "thread-reply-anchor-roleplay.spec.ts",
+      "agent-avatar-search-redproof.spec.ts"
     ],
     "focus": {
       "specs": [
