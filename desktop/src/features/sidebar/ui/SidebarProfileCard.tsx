@@ -7,10 +7,6 @@ import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { ProfilePopover } from "@/features/profile/ui/ProfilePopover";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
 import type { UserStatusInput } from "@/features/user-status/types";
-import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
-import type { Community } from "@/features/communities/types";
-import { CommunitySwitcher } from "@/features/communities/ui/CommunitySwitcher";
-import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
 import type { PresenceStatus, Profile, UserStatus } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
@@ -19,47 +15,31 @@ import {
   getThemePair,
   type SyntaxThemeName,
 } from "@/shared/theme/theme-loader";
-import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
 
 type SidebarProfileCardProps = {
-  activeCommunity: Community | null;
   isPresencePending?: boolean;
-  onOpenAddCommunity: () => void;
   onOpenSettings: (section?: SettingsSection) => void;
-  onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onSendFeedback?: () => void;
   onSetPresenceStatus?: (status: PresenceStatus) => void;
   onSetUserStatus: (status: UserStatusInput) => void;
   onClearUserStatus: () => void;
-  onSwitchCommunity: (id: string) => void;
-  onUpdateCommunity: (
-    id: string,
-    updates: Partial<Pick<Community, "name" | "relayUrl" | "token">>,
-  ) => void;
   profile?: Profile;
   resolvedDisplayName: string;
   selfPresenceStatus: PresenceStatus;
   selfUserStatus?: UserStatus;
-  communities: Community[];
 };
 
 export function SidebarProfileCard({
-  activeCommunity,
   isPresencePending,
-  onOpenAddCommunity,
   onOpenSettings,
   onSendFeedback,
-  onRemoveCommunity,
   onSetPresenceStatus,
   onSetUserStatus,
   onClearUserStatus,
-  onSwitchCommunity,
-  onUpdateCommunity,
   profile,
   resolvedDisplayName,
   selfPresenceStatus,
   selfUserStatus,
-  communities,
 }: SidebarProfileCardProps) {
   const selfProfileCache = useSelfProfileCache();
   const {
@@ -69,9 +49,6 @@ export function SidebarProfileCard({
     isDark,
     selectedThemeName,
   } = useTheme();
-  const myMembershipQuery = useMyRelayMembershipLookupQuery();
-  const activeRole = myMembershipQuery.data?.membership?.role;
-  const canInvite = activeRole === "owner" || activeRole === "admin";
   const [profilePopoverOpen, setProfilePopoverOpen] = React.useState(false);
   const profileCardRef = React.useRef<HTMLDivElement | null>(null);
   const toggleProfilePopover = React.useCallback(
@@ -92,19 +69,6 @@ export function SidebarProfileCard({
     [toggleProfilePopover],
   );
   const hasStatus = Boolean(selfUserStatus?.text || selfUserStatus?.emoji);
-
-  React.useEffect(() => {
-    const openProfilePopover = () => setProfilePopoverOpen(true);
-    window.addEventListener(
-      OPEN_SIDEBAR_PROFILE_POPOVER_EVENT,
-      openProfilePopover,
-    );
-    return () =>
-      window.removeEventListener(
-        OPEN_SIDEBAR_PROFILE_POPOVER_EVENT,
-        openProfilePopover,
-      );
-  }, []);
 
   const toggleTheme = React.useCallback(() => {
     const pairedTheme = getThemePair(selectedThemeName as SyntaxThemeName);
@@ -177,25 +141,6 @@ export function SidebarProfileCard({
             userStatusExpiresAt={selfUserStatus?.expiresAt}
             userStatusText={selfUserStatus?.text}
             userStatusUpdatedAt={selfUserStatus?.updatedAt}
-            communitySwitcherSlot={
-              <CommunitySwitcher
-                activeCommunity={activeCommunity}
-                canInvite={canInvite}
-                onAddCommunity={() => {
-                  setProfilePopoverOpen(false);
-                  onOpenAddCommunity();
-                }}
-                onInvite={() => {
-                  setProfilePopoverOpen(false);
-                  onOpenSettings("community-members");
-                }}
-                onRemoveCommunity={onRemoveCommunity}
-                onSwitchCommunity={onSwitchCommunity}
-                onUpdateCommunity={onUpdateCommunity}
-                variant="profile-menu"
-                communities={communities}
-              />
-            }
           >
             <button
               onClick={(event) => {

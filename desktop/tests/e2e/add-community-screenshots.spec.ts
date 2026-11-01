@@ -30,24 +30,26 @@ test.beforeEach(async ({ page }) => {
   });
   await installMockBridge(page, {});
   await page.goto("/");
-  await page.getByTestId("sidebar-profile-avatar-button").click();
-  await page.getByTestId("community-switcher").click();
-  await page.getByRole("menuitem", { name: "Add a community" }).click();
+  await page.getByTestId("sidebar-business-switcher").click();
+  await page
+    .getByTestId("workspace-switcher-menu")
+    .getByTestId("workspace-create-action")
+    .click();
 });
 
 for (const width of [1440, 900]) {
-  test(`capture Colony community creation at ${width}px`, async ({ page }) => {
+  test(`capture workspace creation at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    // Create and join sit side by side on one card.
-    await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
-    await expect(page.getByTestId("add-community-join")).toBeVisible();
-    const dialog = page.getByTestId("add-community-dialog");
+    await expect(page.getByTestId("workspace-create-form")).toBeVisible();
+    const dialog = page.getByTestId("workspace-action-dialog");
     await expect(
-      dialog.getByRole("heading", { name: "Add a community" }),
+      dialog.getByRole("heading", { name: "Create a workspace" }),
     ).toHaveCount(1);
-    await expect(page.getByLabel("Community address")).toBeVisible();
-    await expect(page.getByTestId("invite-redeem-input")).toBeVisible();
+    await expect(page.getByLabel("Workspace name")).toBeVisible();
+    await expect(page.getByLabel("Website (optional)")).toBeVisible();
+    await expect(page.getByLabel("Workspace address")).toBeVisible();
+    await expect(page.getByTestId("workspace-create-join")).toBeVisible();
     await expect(page.getByText(/Builderlab/i)).toHaveCount(0);
-    await captureReskinAtWidth(page, "add-community-choices", width);
+    await captureReskinAtWidth(page, "workspace-create", width);
   });
 }

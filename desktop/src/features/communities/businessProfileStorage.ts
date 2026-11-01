@@ -10,6 +10,16 @@ export type OnboardingBusinessProfile = {
   logoUrl: string | null;
 };
 
+export function saveOnboardingBusinessProfile(
+  communityId: string,
+  profile: OnboardingBusinessProfile,
+): void {
+  localStorage.setItem(
+    onboardingBusinessProfileKey(communityId),
+    JSON.stringify(profile),
+  );
+}
+
 export function onboardingBusinessProfileKey(communityId: string) {
   return `${PROFILE_STORAGE_KEY}:${communityId}`;
 }

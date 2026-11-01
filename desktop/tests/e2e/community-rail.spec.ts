@@ -160,16 +160,16 @@ test.describe("community rail", () => {
       `community-rail-button-${COMMUNITY_A.id}`,
     );
     await communityButton.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Community settings" }).click();
+    await page.getByRole("menuitem", { name: "Workspace settings" }).click();
 
     await expect(
-      page.getByRole("dialog", { name: "Edit Community" }),
+      page.getByRole("dialog", { name: "Workspace settings" }),
     ).toBeVisible();
     await expect(page.getByTestId("community-icon-settings")).toBeVisible();
     await page.mouse.click(0, 0);
 
     await expect(
-      page.getByRole("dialog", { name: "Edit Community" }),
+      page.getByRole("dialog", { name: "Workspace settings" }),
     ).toHaveCount(0);
     await expect(page.locator("body")).not.toHaveCSS("pointer-events", "none");
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
@@ -203,11 +203,11 @@ test.describe("community rail", () => {
     await expect(railMenu.getByRole("separator")).toHaveCount(1);
     await expect(railMenu.getByRole("menuitem")).toHaveText([
       "Mark all as read",
-      "Copy community URL",
-      "Invite to community",
-      "Community settings",
+      "Copy workspace link",
+      "Invite people",
+      "Workspace settings",
     ]);
-    await page.getByRole("menuitem", { name: "Invite to community" }).click();
+    await page.getByRole("menuitem", { name: "Invite people" }).click();
 
     await expect(page).toHaveURL(/#\/settings\?section=community-members$/);
     await expect(page.getByTestId("settings-community-members")).toBeVisible();
@@ -248,22 +248,21 @@ test.describe("community rail", () => {
       .click({ button: "right" });
 
     await expect(
-      page.getByRole("menuitem", { name: "Invite to community" }),
+      page.getByRole("menuitem", { name: "Invite people" }),
     ).toHaveCount(0);
-    await page.getByRole("menuitem", { name: "Community settings" }).click();
+    await page.getByRole("menuitem", { name: "Workspace settings" }).click();
     await expect(
-      page.getByRole("dialog", { name: "Edit Community" }),
+      page.getByRole("dialog", { name: "Workspace settings" }),
     ).toBeVisible();
     await expect(page.getByTestId("community-icon-settings")).toHaveCount(0);
   });
 
-  test("shows active community actions instead of another switcher in the profile menu", async ({
+  test("workspace actions live in the header and the profile menu stays account-only", async ({
     page,
   }) => {
     await installMockBridge(
       page,
       {
-        relayMembershipEoseDelayMs: 30_000,
         relayRequiresMembership: true,
         relayRole: "admin",
       },
@@ -273,227 +272,19 @@ test.describe("community rail", () => {
     await page.goto("/");
 
     await page.getByTestId("sidebar-profile-avatar-button").click();
-    const communityTrigger = page.getByTestId("community-switcher");
-    const feedback = page.getByTestId("profile-popover-send-feedback");
-    const settings = page.getByTestId("profile-popover-settings");
-    const communityBox = await communityTrigger.boundingBox();
-    const feedbackBox = await feedback.boundingBox();
-    const settingsBox = await settings.boundingBox();
-    expect(communityBox).not.toBeNull();
-    expect(feedbackBox).not.toBeNull();
-    expect(settingsBox).not.toBeNull();
-    expect(communityBox?.y).toBeLessThan(feedbackBox?.y ?? 0);
-    expect(feedbackBox?.y).toBeLessThan(settingsBox?.y ?? 0);
+    await expect(page.getByTestId("profile-popover")).toBeVisible();
+    await expect(page.getByTestId("profile-popover-community")).toHaveCount(0);
+    await expect(
+      page.getByTestId("profile-popover-send-feedback"),
+    ).toBeVisible();
+    await expect(page.getByTestId("profile-popover-settings")).toBeVisible();
 
-    const menu = page.getByRole("menu", { name: "Community actions" });
-    await communityTrigger.evaluate((trigger) => {
-      trigger.addEventListener(
-        "mouseenter",
-        () => {
-          trigger.dataset.hoverStartedAt = String(performance.now());
-        },
-        { once: true },
-      );
-      trigger.addEventListener("mouseleave", () => {
-        trigger.dataset.leftAt = String(performance.now());
-      });
-      const observer = new MutationObserver((records) => {
-        if (
-          trigger.getAttribute("aria-expanded") === "true" &&
-          !trigger.dataset.expandedAt
-        ) {
-          trigger.dataset.expandedAt = String(performance.now());
-        }
-        if (
-          records.some(
-            (record) =>
-              record.attributeName === "aria-expanded" &&
-              record.oldValue === "true",
-          )
-        ) {
-          trigger.dataset.closedAfterOpening = "true";
-        }
-      });
-      observer.observe(trigger, {
-        attributeFilter: ["aria-expanded"],
-        attributeOldValue: true,
-        attributes: true,
-      });
-    });
-    await communityTrigger.hover();
-    await expect(menu).toBeVisible({ timeout: 700 });
-    const openDelayMs = await communityTrigger.evaluate((trigger) => {
-      const hoverStartedAt = Number(trigger.dataset.hoverStartedAt);
-      const expandedAt = Number(trigger.dataset.expandedAt);
-      if (!Number.isFinite(hoverStartedAt) || !Number.isFinite(expandedAt)) {
-        throw new Error("Community actions open timing was not recorded");
-      }
-      return expandedAt - hoverStartedAt;
-    });
-    expect(openDelayMs).toBeGreaterThanOrEqual(40);
-    expect(openDelayMs).toBeLessThan(300);
-
-    const openTriggerBox = await communityTrigger.boundingBox();
-    const menuBox = await menu.boundingBox();
-    expect(openTriggerBox).not.toBeNull();
-    expect(menuBox).not.toBeNull();
-    if (!openTriggerBox || !menuBox) {
-      throw new Error("Community actions geometry unavailable");
-    }
-    // Time the bridge from the trigger's mouseleave to the menu's mouseenter
-    // inside the page. Reading performance.now() in a later evaluate also
-    // counted that evaluate's round trip, which on loaded hosts pushed the
-    // measured bridge past the budget while the pointer was already inside.
-    await menu.evaluate((element) => {
-      element.addEventListener(
-        "mouseenter",
-        () => {
-          (element as HTMLElement).dataset.enteredAt = String(
-            performance.now(),
-          );
-        },
-        { once: true },
-      );
-    });
-    const triggerExitX = openTriggerBox.x + openTriggerBox.width - 1;
-    const triggerExitY = Math.min(
-      openTriggerBox.y + openTriggerBox.height - 4,
-      menuBox.y + menuBox.height - 4,
-    );
-    await page.mouse.move(triggerExitX, triggerExitY);
-    await page.mouse.move(menuBox.x + 8, menuBox.y - 8);
-    await page.waitForTimeout(80);
-    await page.mouse.move(menuBox.x + 8, menuBox.y + 8);
-    await expect
-      .poll(() => menu.evaluate((element) => element.dataset.enteredAt ?? ""))
-      .not.toBe("");
-    const enteredAt = Number(
-      await menu.evaluate((element) => element.dataset.enteredAt),
-    );
-    const leftAt = Number(
-      await communityTrigger.evaluate((trigger) => trigger.dataset.leftAt),
-    );
-    if (!Number.isFinite(leftAt) || !Number.isFinite(enteredAt)) {
-      throw new Error("Community actions bridge timing was not recorded");
-    }
-    const bridgeDurationMs = enteredAt - leftAt;
-    expect(bridgeDurationMs).toBeGreaterThanOrEqual(60);
-    expect(bridgeDurationMs).toBeLessThan(140);
-    await page.waitForTimeout(180);
+    await page.getByTestId("sidebar-business-switcher").click();
+    const menu = page.getByTestId("workspace-switcher-menu");
     await expect(menu).toBeVisible();
-    await expect(communityTrigger).not.toHaveAttribute(
-      "data-closed-after-opening",
-      "true",
-    );
-    await expect(
-      menu.getByRole("menuitem", { name: "Copy community URL" }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: "Copy community URL" }),
-    ).not.toBeFocused();
-    await expect(
-      menu.getByRole("menuitem", { name: "Invite to community" }),
-    ).toBeVisible({ timeout: 1_000 });
-    await expect(
-      menu.getByRole("menuitem", { name: "Community settings" }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: "Leave community" }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: "Add a community" }),
-    ).toBeVisible();
-    await expect(menu.getByRole("separator")).toHaveCount(1);
-    await expect(menu.getByRole("menuitem", { name: "Alpha" })).toHaveCount(0);
-    await expect(menu.getByRole("menuitem", { name: "Bravo" })).toHaveCount(0);
-
-    await menu.getByRole("menuitem", { name: "Invite to community" }).click();
-    await expect(page).toHaveURL(/#\/settings\?section=community-members$/);
-  });
-
-  test("clicking a hover-opened community actions menu keeps it open", async ({
-    page,
-  }) => {
-    await installMockBridge(
-      page,
-      {
-        relayRequiresMembership: true,
-        relayRole: "member",
-      },
-      { skipCommunitySeed: true },
-    );
-    await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
-    await page.goto("/");
-
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    const communityTrigger = page.getByTestId("community-switcher");
-    const menu = page.getByRole("menu", { name: "Community actions" });
-    // Most pointer paths dwell on the trigger longer than the hover-open
-    // delay before clicking, so the click lands on an already open menu.
-    await communityTrigger.hover();
-    await expect(communityTrigger).toHaveAttribute("aria-expanded", "true");
-    await communityTrigger.click();
-    await page.waitForTimeout(250);
-    await expect(communityTrigger).toHaveAttribute("aria-expanded", "true");
-    await expect(menu).toBeVisible();
-
-    // Escape still dismisses it.
-    await page.keyboard.press("Escape");
-    await expect(menu).toHaveCount(0);
-  });
-
-  test("keeps profile community actions available to members without invite access", async ({
-    page,
-  }) => {
-    await page
-      .context()
-      .grantPermissions(["clipboard-read", "clipboard-write"], {
-        origin: "http://127.0.0.1:4173",
-      });
-    await installMockBridge(
-      page,
-      {
-        relayRequiresMembership: true,
-        relayRole: "member",
-      },
-      { skipCommunitySeed: true },
-    );
-    await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
-    await page.goto("/");
-
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-
-    const menu = page.getByRole("menu", { name: "Community actions" });
-    await expect(
-      menu.getByRole("menuitem", { name: "Invite to community" }),
-    ).toHaveCount(0);
-    await expect(
-      menu.getByRole("menuitem", { name: "Copy community URL" }),
-    ).toBeVisible();
-    await expect(
-      menu.getByRole("menuitem", { name: "Add a community" }),
-    ).toBeVisible();
-
-    await menu.getByRole("menuitem", { name: "Copy community URL" }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          return (window.__BUZZ_E2E_COMMAND_LOG__ ?? []).findLast(
-            (entry) => entry.command === "copy_text_to_clipboard",
-          )?.payload;
-        }),
-      )
-      .toEqual({ text: COMMUNITY_A.relayUrl });
-
-    await page.getByTestId("community-switcher").click();
-    await menu.getByRole("menuitem", { name: "Community settings" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Edit Community" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Leave Community" }),
-    ).toHaveCount(0);
+    await expect(menu.getByTestId("workspace-invite-action")).toBeVisible();
+    await expect(menu.getByTestId("workspace-copy-link-action")).toBeVisible();
+    await expect(menu.getByTestId("workspace-settings-action")).toBeVisible();
   });
 
   test("switches the active community on click", async ({ page }) => {
@@ -1121,12 +912,8 @@ test.describe("community rail", () => {
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
     await page.getByTestId("channel-general").click();
 
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     await expect(page).toHaveURL(randomUrl);
     await expect
@@ -1195,12 +982,8 @@ test.describe("community rail", () => {
     const identityBefore = await page.evaluate(async () =>
       window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__("get_identity"),
     );
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     await expect(page.getByText("Join or create a community")).toBeVisible();
     await expect(page.getByTestId("welcome-setup-back")).toHaveCount(0);
@@ -1255,12 +1038,8 @@ test.describe("community rail", () => {
     await seedCommunities(page, [COMMUNITY_A], COMMUNITY_A.id);
     await page.goto("/");
 
-    await page.getByTestId("sidebar-profile-avatar-button").click();
-    await page.getByTestId("community-switcher").click();
-    await page
-      .getByRole("menu", { name: "Community actions" })
-      .getByRole("menuitem", { name: "Leave community" })
-      .click();
+    await page.getByTestId("sidebar-business-switcher").click();
+    await page.getByTestId("workspace-leave-action").click();
 
     const error = page.getByTestId("community-apply-error");
     await expect(error).toBeVisible();
@@ -1285,7 +1064,7 @@ test.describe("community rail", () => {
     await page.goto("/");
 
     await page
-      .getByRole("button", { name: "Toggle Sidebar", exact: true })
+      .getByRole("button", { name: "Open navigation", exact: true })
       .click();
     await expect(
       page.locator('[data-sidebar="sidebar"][data-mobile="true"]'),

@@ -72,7 +72,7 @@ export function CommunityIconSettingsCard({
             toast.error(
               error instanceof Error
                 ? error.message
-                : "Couldn’t update the community icon.",
+                : "Could not update the workspace icon.",
             );
           }
         }
@@ -105,9 +105,9 @@ export function CommunityIconSettingsCard({
       data-testid="community-icon-settings"
     >
       <AgentCreationPreview
-        assetLabel="community icon"
+        assetLabel="workspace icon"
         avatarUrl={draftIcon || null}
-        label={activeCommunity?.name ?? "Community"}
+        label={activeCommunity?.name ?? "Workspace"}
         onClearAvatar={clearIconPreview}
         onCommitAvatar={persistIcon}
         onSelectAvatar={previewIcon}

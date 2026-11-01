@@ -504,15 +504,15 @@ test("community edit", async ({ page }) => {
   await page
     .getByTestId(`community-rail-button-${communities[0].id}`)
     .click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Community settings" }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit Community" });
+  await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Workspace settings" });
   await expect(dialog).toBeVisible();
   await shot(
     page,
     {
       name: "19-community-edit",
       board: "CommunityEdit",
-      title: "Edit community",
+      title: "Workspace settings",
       // The board also draws the reconnect page beside it: only the dialog is compared.
       refRect: [956, 163, 422, 730],
     },

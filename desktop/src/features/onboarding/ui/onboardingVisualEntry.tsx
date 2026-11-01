@@ -3,6 +3,7 @@ import "@/shared/styles/globals.css";
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 import { AdvancedSignIn } from "./AdvancedSignIn";
@@ -18,6 +19,7 @@ import {
 } from "./onboardingScenes";
 
 const params = new URLSearchParams(window.location.search);
+const queryClient = new QueryClient();
 const requestedScene = params.get("scene");
 const requestedReskin = params.get("reskin");
 const scene: OnboardingSceneId = ONBOARDING_SCENE_IDS.includes(
@@ -58,37 +60,39 @@ const data: OnboardingSceneData = {
 createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      {requestedReskin === "native-unavailable" ? (
-        <NativeUnavailableScreen
-          body="Colony could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
-          details="Native startup bridge: timed out after 10s"
-          onBack={() => undefined}
-          onRetry={() => undefined}
-          title="Colony could not start"
-        />
-      ) : requestedReskin === "invite" ? (
-        <InviteSampleScene />
-      ) : requestedReskin === "advanced" ? (
-        <AdvancedSignIn
-          error={null}
-          hasSelectedIdentity={false}
-          identityLost={false}
-          isPending={false}
-          onBack={() => undefined}
-          onCreate={() => undefined}
-          onImport={async () => undefined}
-          onRecovered={async () => undefined}
-        />
-      ) : (
-        <OnboardingScenePresentation
-          data={data}
-          onAdvanced={() => undefined}
-          onGoogleSignIn={() => undefined}
-          onHaveInviteLink={() => undefined}
-          onSignOut={() => undefined}
-          scene={scene}
-        />
-      )}
+      <QueryClientProvider client={queryClient}>
+        {requestedReskin === "native-unavailable" ? (
+          <NativeUnavailableScreen
+            body="Colony could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+            details="Native startup bridge: timed out after 10s"
+            onBack={() => undefined}
+            onRetry={() => undefined}
+            title="Colony could not start"
+          />
+        ) : requestedReskin === "invite" ? (
+          <InviteSampleScene />
+        ) : requestedReskin === "advanced" ? (
+          <AdvancedSignIn
+            error={null}
+            hasSelectedIdentity={false}
+            identityLost={false}
+            isPending={false}
+            onBack={() => undefined}
+            onCreate={() => undefined}
+            onImport={async () => undefined}
+            onRecovered={async () => undefined}
+          />
+        ) : (
+          <OnboardingScenePresentation
+            data={data}
+            onAdvanced={() => undefined}
+            onGoogleSignIn={() => undefined}
+            onHaveInviteLink={() => undefined}
+            onSignOut={() => undefined}
+            scene={scene}
+          />
+        )}
+      </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

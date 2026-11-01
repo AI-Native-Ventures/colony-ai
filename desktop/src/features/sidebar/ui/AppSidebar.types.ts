@@ -1,5 +1,4 @@
 import type { AddCommunityPrefillRequest } from "@/features/communities/addCommunityPrefill";
-import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
 import type { Community } from "@/features/communities/types";
 import type { useSidebarRelayConnectionCard } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
@@ -26,6 +25,7 @@ export type AppSidebarProps = {
   homeBadgeCount: number;
   isPowerActive: boolean;
   isAddCommunityOpen?: boolean;
+  workspaceDialogMode: "add-community" | "create" | "join";
   isLoading: boolean;
   isCreatingChannel: boolean;
   profile?: Profile;
@@ -59,7 +59,8 @@ export type AppSidebarProps = {
     visibility: ChannelVisibility;
     ttlSeconds?: number;
   }) => Promise<void>;
-  onOpenAddCommunity: () => void;
+  onOpenWorkspaceDialog: (mode: "create" | "join") => void;
+  onOpenWorkspaceSettings: () => void;
   onSendFeedback?: () => void;
   onHideDm: (channelId: string) => void;
   onMarkChannelUnread: (channelId: string) => void;
@@ -70,11 +71,6 @@ export type AppSidebarProps = {
   onMarkAllChannelsRead: () => void;
   onBrowseChannels?: (onCreated?: (channelId: string) => void) => void;
   onOpenDm: (input: { pubkeys: string[] }) => Promise<void>;
-  onUpdateCommunity: (
-    id: string,
-    updates: Partial<Pick<Community, "name" | "relayUrl" | "token">>,
-  ) => void;
-  onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onCreateAgent: () => void;
   onSelectToday: () => void;
   onSelectAgents: () => void;

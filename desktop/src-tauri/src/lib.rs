@@ -915,6 +915,7 @@ pub fn run() {
             apply_workspace,
             set_agent_avatar_communities,
             validate_repos_dir,
+            pick_workspace_repos_dir,
             get_active_workspace,
             fetch_workspace_icon,
             fetch_join_policy,
