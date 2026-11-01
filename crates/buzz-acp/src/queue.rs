@@ -2279,9 +2279,15 @@ impl MergeFraming {
                 // overclaim preserved state (per Dawn's framing review).
                 prior_tag: "what-you-were-working-on",
                 new_tag: "new-message-arrived-while-you-were-working",
-                closing_note: "Note: A new message arrived while you were working. Continue your \
-                     in-progress work and incorporate the new message if it's relevant; if it's \
-                     unrelated, you may briefly acknowledge it and carry on.",
+                // GATE-329-COF: told it "may briefly acknowledge" an unrelated
+                // message, the model folded a second request into the answer
+                // to the first one and the second person got no reply of their
+                // own. A new message is its own request with its own reply.
+                closing_note: "Note: A new message arrived while you were working. It is a \
+                     separate request from a person. Finish your in-progress work, and answer \
+                     the new message in its own reply to that message, apart from the earlier \
+                     answer. Do not fold it into the earlier reply. If it asks for something \
+                     you must not do, say so in that reply.",
             },
             Some(CancelReason::Interrupt) => MergeFraming {
                 prior_tag: "previous-request-interrupted-before-completion",
@@ -2979,6 +2985,21 @@ mod tests {
         let prompt = format_prompt(&batch, &FormatPromptArgs::default()).join("\n\n");
         assert!(prompt.contains("<new-message-arrived-while-you-were-working count=\"2\">"));
         assert!(!prompt.contains("supersedes"));
+    }
+
+    /// A message merged into a running turn is its own request: the framing says
+    /// to answer it in a reply of its own and never to fold it into the earlier
+    /// answer (GATE-329-COF: a second request got no reply of its own).
+    #[test]
+    fn test_steer_framing_asks_for_a_separate_reply() {
+        let (_, note) = native_steer_framing();
+        assert!(note.contains("arrived while you were working"));
+        assert!(note.contains("its own reply"), "{note}");
+        assert!(
+            note.contains("Do not fold it into the earlier reply"),
+            "{note}"
+        );
+        assert!(!note.contains("briefly acknowledge"), "{note}");
     }
 
     /// Cross-thread steering: original work in thread A (cancelled), steering

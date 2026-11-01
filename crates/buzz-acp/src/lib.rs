@@ -33,7 +33,7 @@ pub use acp::{
     AcpClient, AcpError, EnvVar, McpServer, SessionNewResponse, StopReason, SystemPromptTransport,
 };
 pub use observer::{ObserverContext, ObserverEvent, ObserverHandle};
-pub use prompt_framing::{VOICE_RULES, WEB_TASK_RULES};
+pub use prompt_framing::{COMPANY_RECORD_RULES, VOICE_RULES, WEB_TASK_RULES};
 pub use usage::TurnUsage;
 
 use std::collections::{HashMap, HashSet, VecDeque};

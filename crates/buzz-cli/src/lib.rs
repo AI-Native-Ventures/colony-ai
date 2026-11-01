@@ -1756,9 +1756,15 @@ pub enum WorkersCmd {
         /// Seconds before the worker is stopped, 30 to 900
         #[arg(long, default_value_t = 600)]
         timeout_secs: u32,
-        /// Wait for the worker to finish and print its output
+        /// Wait up to 90 seconds for the worker and print its output. A longer run keeps
+        /// going in the background: the command then prints status running. Do not
+        /// start another worker because of that
         #[arg(long)]
         wait: bool,
+        /// Start this worker although one of yours is already running. Only for a
+        /// request that asked for several workers
+        #[arg(long)]
+        another: bool,
     },
     /// List workers (status, tokens, cost); a running worker past its deadline shows failed
     List {
