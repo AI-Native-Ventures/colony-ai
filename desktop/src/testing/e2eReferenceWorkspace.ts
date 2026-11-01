@@ -1332,7 +1332,11 @@ function referenceW10Event(
 export function referenceSalesRecordEvents(
   selfPubkey: string,
   communityId: TenantCommunityId,
-  options: { longLeadNames?: boolean; whatsappGuesthouses?: boolean } = {},
+  options: {
+    longLeadNames?: boolean;
+    whatsappGuesthouses?: boolean;
+    leadCount?: number;
+  } = {},
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
   const now = Math.floor(Date.now() / 1000);
@@ -1366,14 +1370,20 @@ export function referenceSalesRecordEvents(
     ),
   );
 
-  const leadSeeds = options.whatsappGuesthouses
+  const sourceLeadSeeds = options.whatsappGuesthouses
     ? [...WHATSAPP_GUESTHOUSE_LEADS, ...WHATSAPP_EXTRA_GUESTHOUSE_LEADS].sort(
         (left, right) =>
           (WHATSAPP_GUESTHOUSE_ORDER.get(left[0]) ?? Number.MAX_SAFE_INTEGER) -
           (WHATSAPP_GUESTHOUSE_ORDER.get(right[0]) ?? Number.MAX_SAFE_INTEGER),
       )
     : REFERENCE_LEADS;
-  leadSeeds.forEach((lead, index) => {
+  const requestedLeadCount = Number.isInteger(options.leadCount)
+    ? Math.min(500, Math.max(sourceLeadSeeds.length, options.leadCount ?? 0))
+    : sourceLeadSeeds.length;
+  Array.from(
+    { length: requestedLeadCount },
+    (_, index) => sourceLeadSeeds[index % sourceLeadSeeds.length],
+  ).forEach((lead, index) => {
     const [
       slug,
       name,
@@ -1386,16 +1396,26 @@ export function referenceSalesRecordEvents(
       stage,
       value,
     ] = lead;
+    const isSyntheticLead = index >= sourceLeadSeeds.length;
+    const generatedName = isSyntheticLead
+      ? options.longLeadNames && index % 9 === 0
+        ? `The ${name} Collection and Design Studio ${String(index + 1).padStart(3, "0")}`
+        : `${name} ${String(index + 1).padStart(3, "0")}`
+      : name;
     const displayName =
-      options.longLeadNames && slug === "cedar-co"
+      options.longLeadNames && !isSyntheticLead && slug === "cedar-co"
         ? REFERENCE_LONG_LEAD_NAME
-        : name;
+        : generatedName;
+    const generatedSlug = isSyntheticLead
+      ? `${slug}-${String(index + 1).padStart(3, "0")}`
+      : slug;
     const extraLeadIndex = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.findIndex(
       ([extraSlug]) => extraSlug === slug,
     );
-    const prospectId =
-      REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS] ??
-      `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`;
+    const prospectId = isSyntheticLead
+      ? `1e1a7000-0000-4000-9000-${String(900000 + index).padStart(12, "0")}`
+      : (REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS] ??
+        `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`);
     const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
     const qualification = [
       "qualified",
@@ -1428,10 +1448,10 @@ export function referenceSalesRecordEvents(
       website:
         options.whatsappGuesthouses && slug === "gather-house"
           ? null
-          : `https://${slug}.example`,
+          : `https://${generatedSlug}.example`,
       contactName,
       location,
-      email: `hello@${slug}.example`,
+      email: `hello@${generatedSlug}.example`,
       phone: null,
       evidence: [
         {
@@ -1452,7 +1472,7 @@ export function referenceSalesRecordEvents(
       referenceW10Event(
         eventId,
         selfPubkey,
-        now - (leadSeeds.length - index),
+        now - (requestedLeadCount - index),
         KIND_PROSPECT_HEAD,
         channelId,
         businessDTag(communityId, "prospect", prospectId),
