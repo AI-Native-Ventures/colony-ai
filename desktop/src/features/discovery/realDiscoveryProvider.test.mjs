@@ -10,6 +10,7 @@ import {
 import { DiscoverySearchError } from "./discoverySearch.ts";
 import { resetVerticalTagsForTest, setVerticalTags } from "./taxonomy.ts";
 import {
+  buildEndNote,
   buildResultsMessage,
   createDiscoveryController,
   FIRST_START_ERROR,
@@ -209,7 +210,7 @@ test("a run searches, saves each business, posts the best fits in Sales and is s
   assert.equal(saved.currentId, "camp-1");
 });
 
-test("picked tags split the provider budget, deduplicate places and persist cursors", async () => {
+test("picked tags take turns with full pages, deduplicate places and persist cursors", async () => {
   const { controller, log, storageMap } = harness({
     search: async (request) => {
       const tagged = request.query.startsWith("wedding guest ");
@@ -221,7 +222,7 @@ test("picked tags split the provider budget, deduplicate places and persist curs
             { ...place(2), name: "Wedding Guest House 2" },
           ],
           estimatedCostUsd: 0.02,
-          nextSkip: 10,
+          nextSkip: request.skip + 20,
         };
       }
       return {
@@ -231,7 +232,7 @@ test("picked tags split the provider budget, deduplicate places and persist curs
           { ...place(3), name: "Bridal Suite Guest House" },
         ],
         estimatedCostUsd: 0.02,
-        nextSkip: 10,
+        nextSkip: request.skip + 20,
       };
     },
   });
@@ -253,13 +254,9 @@ test("picked tags split the provider budget, deduplicate places and persist curs
   assert.deepEqual(
     log.searches.map(({ query, limit, skip }) => [query, limit, skip]),
     [
-      ["wedding guest Guesthouses and inns", 10, 0],
-      ["bridal suite Guesthouses and inns", 10, 0],
+      ["wedding guest Guesthouses and inns", 20, 0],
+      ["bridal suite Guesthouses and inns", 20, 0],
     ],
-  );
-  assert.equal(
-    log.searches.reduce((total, request) => total + request.limit, 0),
-    20,
   );
   assert.equal(log.publishes.length, 3);
   assert.deepEqual(log.publishes[0].discoveryTags, [
@@ -269,7 +266,190 @@ test("picked tags split the provider budget, deduplicate places and persist curs
   const current = controller.getCurrent();
   assert.deepEqual(current.pickedTags, ["wedding guest", "bridal suite"]);
   const saved = stored(storageMap).campaigns[0];
-  assert.deepEqual(saved.tagCursors, [10, 10]);
+  assert.deepEqual(saved.tagCursors, [20, 20]);
+});
+
+/** Every request a run makes must be a full page at a multiple of 20. */
+function assertPagedByTwenty(searches) {
+  for (const request of searches) {
+    assert.equal(request.limit, 20, "full pages only");
+    assert.equal(request.skip % 20, 0, `skip ${request.skip}`);
+  }
+}
+
+test("owner incident: a provider that repeats its results with three tags stops after a few pages, not 25", async () => {
+  // The same 20 restaurants come back for every request, as Outscraper did for
+  // skips that were not a multiple of 20. 25 pages were paid for and 41 kept.
+  const { controller, log, storageMap } = harness({
+    pages: () => page(1, 20, 20),
+  });
+  await controller.start({
+    ...INPUT,
+    verticalName: "Restaurants",
+    location: "Johannesburg",
+    target: 100,
+    pickedTags: ["steak", "sushi", "pizza"],
+  });
+  await controller.whenIdle();
+
+  assertPagedByTwenty(log.searches);
+  // Page 1 saves 20. Each other tag then repeats it once and is ended, and the
+  // first tag is asked once more before it is ended too.
+  assert.equal(log.searches.length, 4);
+  assert.ok(log.searches.length < MAX_PAGES / 5);
+  const done = controller.getCurrent();
+  assert.equal(done.status, "complete");
+  assert.equal(done.count, 20);
+  assert.equal(
+    done.endNote,
+    "Google has no more restaurants for these tags in Johannesburg. Add another area or tag to find more.",
+  );
+  assert.match(log.posts[0], /^Found 20 prospects /);
+  assert.ok(log.posts[0].includes(done.endNote), "the Sales message says why");
+  assert.ok(!log.posts[0].includes("\u2014"), "no em dash");
+  assert.deepEqual(stored(storageMap).campaigns[0].tagCursors, [
+    null,
+    null,
+    null,
+  ]);
+});
+
+test("a provider that repeats its results without tags ends after one wasted page", async () => {
+  const { controller, log } = harness({ pages: () => page(1, 20, 20) });
+  await controller.start({
+    ...INPUT,
+    verticalName: "Restaurants",
+    location: "Johannesburg",
+    target: 100,
+  });
+  await controller.whenIdle();
+  assertPagedByTwenty(log.searches);
+  assert.equal(log.searches.length, 2);
+  const done = controller.getCurrent();
+  assert.equal(done.status, "complete");
+  assert.equal(done.count, 20);
+  assert.equal(
+    done.endNote,
+    "Google has no more restaurants in Johannesburg. Add another area or tag to find more.",
+  );
+});
+
+test("a page that is only businesses already in Leads ends that query instead of paying for more", async () => {
+  const { controller, log } = harness({
+    existing: Array.from({ length: 40 }, (_, index) => `id-p${index + 1}`),
+    pages: (request) => page(request.skip + 1, 20, request.skip + 20),
+  });
+  await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+  assert.equal(log.searches.length, 1);
+  assert.equal(controller.getCurrent().count, 0);
+  assert.equal(controller.getCurrent().status, "complete");
+  assert.match(controller.getCurrent().endNote, /^Google has no more /);
+});
+
+test("a query that is used up at the provider's 400 places ends honestly with 20 pages", async () => {
+  // Like the relay: full pages with a next skip until skip 380, then none.
+  const { controller, log } = harness({
+    pages: (request) =>
+      page(
+        request.skip + 1,
+        20,
+        request.skip + 20 < 400 ? request.skip + 20 : null,
+      ),
+  });
+  await controller.start({
+    ...INPUT,
+    verticalName: "Restaurants",
+    location: "Johannesburg",
+    target: 500,
+  });
+  await controller.whenIdle();
+  assertPagedByTwenty(log.searches);
+  assert.equal(log.searches.length, 20);
+  const done = controller.getCurrent();
+  assert.equal(done.count, 400);
+  assert.equal(done.status, "complete");
+  assert.match(
+    done.endNote,
+    /^Google has no more restaurants in Johannesburg\./,
+  );
+  assert.ok(log.posts[0].includes(done.endNote));
+});
+
+test("an old relay that keeps offering pages past 400 places is not asked for them", async () => {
+  const { controller, log } = harness({
+    pages: (request) => page(request.skip + 1, 20, request.skip + 20),
+  });
+  await controller.start({ ...INPUT, target: 500 });
+  await controller.whenIdle();
+  assertPagedByTwenty(log.searches);
+  assert.ok(log.searches.every((request) => request.skip < 400));
+});
+
+test("a stored campaign with off-step cursors from an older build pages by 20 when resumed", async () => {
+  const { controller, log } = harness({
+    pages: (request) => page(request.skip + 1, 20, request.skip + 20),
+  });
+  setVerticalTags(verticalTags);
+  try {
+    await controller.start({
+      ...INPUT,
+      verticalId: "guesthouses-and-inns",
+      verticalName: "Guesthouses and inns",
+      target: 100,
+      pickedTags: ["wedding guest", "bridal suite", "farm stay"],
+    });
+    await controller.pause();
+    await controller.resume();
+    await controller.whenIdle();
+  } finally {
+    resetVerticalTagsForTest();
+  }
+  assertPagedByTwenty(log.searches);
+});
+
+test("the end note tells why a run finished short, and is empty when the target was met", () => {
+  const base = {
+    count: 41,
+    target: 100,
+    exhausted: true,
+    pagesFetched: 5,
+    verticalName: "Restaurants",
+    location: "Johannesburg",
+    pickedTags: ["steak"],
+  };
+  assert.equal(
+    buildEndNote(base),
+    "Google has no more restaurants for these tags in Johannesburg. Add another area or tag to find more.",
+  );
+  assert.equal(
+    buildEndNote({ ...base, pickedTags: [] }),
+    "Google has no more restaurants in Johannesburg. Add another area or tag to find more.",
+  );
+  assert.equal(buildEndNote({ ...base, count: 100 }), null);
+  assert.equal(
+    buildEndNote({ ...base, verticalName: "IT support" }),
+    "Google has no more IT support for these tags in Johannesburg. Add another area or tag to find more.",
+  );
+  assert.equal(
+    buildEndNote({ ...base, exhausted: false, pagesFetched: MAX_PAGES }),
+    `The search stopped after ${MAX_PAGES} pages to protect your search budget. Start another search in a nearby area to find more.`,
+  );
+  for (const note of [
+    buildEndNote(base),
+    buildEndNote({ ...base, exhausted: false }),
+  ]) {
+    assert.ok(!note.includes("\u2014"), "no em dash");
+  }
+});
+
+test("the end note is stored with the campaign and read back", async () => {
+  const { controller, storageMap } = harness({ pages: () => page(1, 5, null) });
+  await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+  const saved = stored(storageMap).campaigns[0];
+  assert.match(saved.endNote, /^Google has no more /);
+  assert.equal(controller.getCurrent().endNote, saved.endNote);
 });
 
 test("a server that cannot search fails start with its words and creates nothing", async () => {
@@ -593,23 +773,29 @@ test("the relay's 'already exists' means someone else saved it first on a first 
   assert.equal(log.publishes.length, 1);
 });
 
-test("a run never goes past the page cap, even when everything found is already in Leads", async () => {
-  const existing = Array.from(
-    { length: 20 * (MAX_PAGES + 2) },
-    (_, index) => `id-p${index}`,
-  );
+test("a run never goes past the page cap, and says so when it stops short", async () => {
+  // Three tags never run out inside 25 pages (each query allows 20), and every
+  // page adds 19 new places, so the target of 500 is not reached either.
+  const offsets = { steak: 0, sushi: 100_000, pizza: 200_000 };
   const { controller, log } = harness({
-    existing,
-    pages: (request) => page(request.skip, 20, request.skip + 20),
+    pages: (request) => {
+      const tag = request.query.split(" ")[0];
+      return page(offsets[tag] + request.skip, 19, request.skip + 20);
+    },
   });
-  await controller.start({ ...INPUT, target: 500 });
+  await controller.start({
+    ...INPUT,
+    target: 500,
+    pickedTags: ["steak", "sushi", "pizza"],
+  });
   await controller.whenIdle();
+  assertPagedByTwenty(log.searches);
   assert.equal(log.searches.length, MAX_PAGES);
   const done = controller.getCurrent();
   assert.equal(done.status, "complete");
-  assert.equal(done.count, 0);
-  assert.equal(done.skippedDuplicates, 20 * MAX_PAGES);
-  assert.equal(log.posts.length, 0);
+  assert.equal(done.count, 19 * MAX_PAGES);
+  assert.match(done.endNote, /^The search stopped after 25 pages /);
+  assert.ok(log.posts[0].includes(done.endNote));
 });
 
 test("after a restart a running campaign is paused and resumes from its stored cursor", async () => {
