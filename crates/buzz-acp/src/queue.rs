@@ -2981,6 +2981,21 @@ mod tests {
         assert!(!prompt.contains("supersedes"));
     }
 
+    /// A message merged into a running turn is its own request: the framing says
+    /// to answer it in a reply of its own and never to fold it into the earlier
+    /// answer (GATE-329-COF: a second request got no reply of its own).
+    #[test]
+    fn test_steer_framing_asks_for_a_separate_reply() {
+        let (_, note) = native_steer_framing();
+        assert!(note.contains("arrived while you were working"));
+        assert!(note.contains("its own reply"), "{note}");
+        assert!(
+            note.contains("Do not fold it into the earlier reply"),
+            "{note}"
+        );
+        assert!(!note.contains("briefly acknowledge"), "{note}");
+    }
+
     /// Cross-thread steering: original work in thread A (cancelled), steering
     /// message in thread B (new). Pins Perci's edge — the reply instruction
     /// targets the *steering* message (the one the agent is responding to, where
