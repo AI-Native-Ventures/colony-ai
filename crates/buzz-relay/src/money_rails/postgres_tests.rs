@@ -430,6 +430,7 @@ impl Fixture {
             expected_head_event_id: Some(current.event.event.id.to_hex()),
             action: InvoiceVersionAction::Issue,
             status: InvoiceStatus::Issued,
+            due_at: Some(chrono::Utc::now().timestamp() + 30 * 86_400),
             ..version
         };
         let issue_event = signed_with_h(
