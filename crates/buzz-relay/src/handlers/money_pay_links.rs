@@ -265,7 +265,7 @@ pub(crate) async fn apply_effects_tx(
                 name,
             } => {
                 money_insert_recipient_tx(
-                    &mut **tx,
+                    tx,
                     community,
                     *recipient_ref,
                     link_id,
@@ -277,7 +277,7 @@ pub(crate) async fn apply_effects_tx(
                 .map_err(internal)?;
             }
             LinkEffect::QueueCreate => {
-                money_enqueue_job_tx(&mut **tx, community, link_id, "create", &json!({}), now)
+                money_enqueue_job_tx(tx, community, link_id, "create", &json!({}), now)
                     .await
                     .map_err(internal)?;
                 enqueue_expiry(tx, community, link_id, head).await?;
@@ -285,7 +285,7 @@ pub(crate) async fn apply_effects_tx(
             LinkEffect::WakeBrowser => {
                 if let Some(grant) = &head.browser_grant {
                     money_enqueue_job_tx(
-                        &mut **tx,
+                        tx,
                         community,
                         link_id,
                         "grant",
@@ -299,7 +299,7 @@ pub(crate) async fn apply_effects_tx(
             }
             LinkEffect::QueueSend => {
                 money_enqueue_job_tx(
-                    &mut **tx,
+                    tx,
                     community,
                     link_id,
                     "send",
@@ -310,7 +310,7 @@ pub(crate) async fn apply_effects_tx(
                 .map_err(internal)?;
             }
             LinkEffect::CancelJobs => {
-                money_cancel_jobs_tx(&mut **tx, community, link_id)
+                money_cancel_jobs_tx(tx, community, link_id)
                     .await
                     .map_err(internal)?;
             }
@@ -331,7 +331,7 @@ pub(crate) async fn apply_effects_tx(
                     "at": paid_at,
                     "noticeId": notice_id,
                 });
-                money_enqueue_job_tx(&mut **tx, community, link_id, "evidence", &payload, now)
+                money_enqueue_job_tx(tx, community, link_id, "evidence", &payload, now)
                     .await
                     .map_err(internal)?;
             }
@@ -357,7 +357,7 @@ async fn enqueue_expiry(
 ) -> Result<(), IngestError> {
     if let Some(expires_at) = head.expires_at {
         buzz_db::money_rails::money_enqueue_job_tx(
-            &mut **tx,
+            tx,
             community,
             link_id,
             "expire",
@@ -370,22 +370,15 @@ async fn enqueue_expiry(
     Ok(())
 }
 
-/// What a relay transition did.
-pub(crate) enum SystemApplied {
-    /// Nothing changed.
-    Unchanged,
-    /// The new head.
-    Changed(Box<LinkHead>),
-}
-
 /// Applies a relay transition to a card under the head lock and stores the new head with its
-/// side effects. Idempotent: a repeat finds the card already moved on and changes nothing.
+/// side effects. Returns whether the card changed. Idempotent: a repeat finds the card already
+/// moved on and changes nothing.
 pub(crate) async fn apply_system_op(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     link_id: Uuid,
     op: SystemOp,
-) -> Result<SystemApplied, IngestError> {
+) -> Result<bool, IngestError> {
     let community = tenant.community();
     let d_tag = link_d_tag(link_id);
     let mut tx = state
@@ -416,7 +409,7 @@ pub(crate) async fn apply_system_op(
     let source_id = derived_event_id("system", link_id, current.version.saturating_add(1));
     let change = apply_system(&current, &op, now, &source_id).map_err(map_money_error)?;
     let outcome = match change {
-        LinkChange::Unchanged(_) => return Ok(SystemApplied::Unchanged),
+        LinkChange::Unchanged(_) => return Ok(false),
         LinkChange::Changed(outcome) => *outcome,
     };
     let actor = outcome
@@ -447,7 +440,7 @@ pub(crate) async fn apply_system_op(
         },
     )
     .await?;
-    Ok(SystemApplied::Changed(Box::new(outcome.head)))
+    Ok(true)
 }
 
 /// A head to replace without a member action (a relay transition).

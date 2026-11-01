@@ -58,7 +58,7 @@ pub async fn run(state: Arc<AppState>) {
             tracing::error!("money rails tick failed: {error}");
         }
         ticks = ticks.wrapping_add(1);
-        if ticks % REDUCE_EVERY_TICKS == 0 {
+        if ticks.is_multiple_of(REDUCE_EVERY_TICKS) {
             match state
                 .db
                 .money_reduce_old_notices(NOTICE_KEEP_DAYS, 500)

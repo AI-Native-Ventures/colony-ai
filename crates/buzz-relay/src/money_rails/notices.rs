@@ -22,7 +22,7 @@ use buzz_db::money_rails::NewMoneyNotice;
 
 use super::provider::ProviderHttp;
 use super::{parse_connection, runner};
-use crate::handlers::money_pay_links::{apply_system_op, SystemApplied};
+use crate::handlers::money_pay_links::apply_system_op;
 use crate::state::AppState;
 
 /// Notices a connection may post per minute.
@@ -241,7 +241,7 @@ pub async fn receive(
             )
             .await
             .map_err(|error| internal(format!("{error:?}")))?;
-            if matches!(applied, SystemApplied::Changed(_)) && verified_by.is_some() {
+            if applied && verified_by.is_some() {
                 super::jobs::process_now(state, http, tenant, head.link_id, "evidence").await;
             }
         }
