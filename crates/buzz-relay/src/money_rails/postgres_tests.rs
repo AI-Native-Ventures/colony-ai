@@ -348,6 +348,8 @@ impl Fixture {
         let client_id = self.client_id;
         let invoice_id = self.invoice_id;
         let proposal_version_event_id = "a".repeat(64);
+        // Issuing may not change the draft terms, so the due date is set on the draft.
+        let due_at = Some(chrono::Utc::now().timestamp() + 30 * 86_400);
         let lines = vec![ProposalLine {
             service_id: None,
             description: "Shopfront refit".into(),
@@ -370,7 +372,7 @@ impl Fixture {
             customer_tax_number: None,
             total_minor: TOTAL,
             status: InvoiceStatus::Draft,
-            due_at: None,
+            due_at,
             void_reason: None,
         };
         let version_event = signed_with_h(
@@ -407,7 +409,7 @@ impl Fixture {
             version: 1,
             current_version_event_id: version_event.id.to_hex(),
             status: InvoiceStatus::Draft,
-            due_at: None,
+            due_at,
             issued_at: None,
             source_event_id: version_event.id.to_hex(),
         };
@@ -430,7 +432,6 @@ impl Fixture {
             expected_head_event_id: Some(current.event.event.id.to_hex()),
             action: InvoiceVersionAction::Issue,
             status: InvoiceStatus::Issued,
-            due_at: Some(chrono::Utc::now().timestamp() + 30 * 86_400),
             ..version
         };
         let issue_event = signed_with_h(
