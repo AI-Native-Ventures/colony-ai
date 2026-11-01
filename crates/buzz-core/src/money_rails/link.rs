@@ -660,7 +660,7 @@ pub enum LinkChange {
     /// Nothing to store.
     Unchanged(&'static str),
     /// Store this.
-    Changed(LinkOutcome),
+    Changed(Box<LinkOutcome>),
 }
 
 fn need<T>(value: Option<T>, name: &str) -> Result<T, MoneyError> {
@@ -668,7 +668,7 @@ fn need<T>(value: Option<T>, name: &str) -> Result<T, MoneyError> {
 }
 
 fn changed(head: LinkHead, effects: Vec<LinkEffect>) -> Result<LinkChange, MoneyError> {
-    Ok(LinkChange::Changed(LinkOutcome { head, effects }))
+    Ok(LinkChange::Changed(Box::new(LinkOutcome { head, effects })))
 }
 
 fn message_ok(message: &str) -> bool {
@@ -1828,6 +1828,10 @@ pub fn apply_system(
 mod tests {
     use super::*;
 
+    fn eid(n: u64) -> String {
+        format!("{n:064x}")
+    }
+
     const OWNER: &str = "aa";
     const SCOUT: &str = "bb";
 
@@ -2165,7 +2169,7 @@ mod tests {
                     shown_currency: "ZAR".to_owned(),
                 },
                 400,
-                "e1",
+                &eid(1),
             )
             .expect("link created"),
         );
@@ -2193,7 +2197,7 @@ mod tests {
                 shown_currency: "ZAR".to_owned(),
             },
             400,
-            "e1",
+            &eid(1),
         )
         .expect("mismatch is a result, not an error");
         assert!(!effects_of(&change).contains(&LinkEffect::QueueSend));
@@ -2215,7 +2219,7 @@ mod tests {
                 shown_currency: "USD".to_owned(),
             },
             400,
-            "e2",
+            &eid(2),
         )
         .expect("currency mismatch");
         assert_eq!(
@@ -2286,14 +2290,15 @@ mod tests {
                     shown_currency: "ZAR".to_owned(),
                 },
                 400,
-                "e1",
+                &eid(1),
             )
             .expect("created"),
         );
-        let sent = head_of(apply_system(&created, &SystemOp::Delivered, 410, "e2").expect("sent"));
+        let sent =
+            head_of(apply_system(&created, &SystemOp::Delivered, 410, &eid(2)).expect("sent"));
         assert_eq!(sent.state, LinkState::Sent);
         assert!(matches!(
-            apply_system(&sent, &SystemOp::Delivered, 420, "e3").expect("repeat"),
+            apply_system(&sent, &SystemOp::Delivered, 420, &eid(3)).expect("repeat"),
             LinkChange::Unchanged(_)
         ));
     }
@@ -2310,11 +2315,11 @@ mod tests {
                     shown_currency: "ZAR".to_owned(),
                 },
                 400,
-                "e1",
+                &eid(1),
             )
             .expect("created"),
         );
-        head_of(apply_system(&created, &SystemOp::Delivered, 410, "e2").expect("sent"))
+        head_of(apply_system(&created, &SystemOp::Delivered, 410, &eid(2)).expect("sent"))
     }
 
     fn notice(verified_by: Option<VerifiedBy>, mismatch: Option<Mismatch>) -> SystemOp {
@@ -2332,7 +2337,7 @@ mod tests {
     #[test]
     fn an_unverified_notice_reports_but_never_pays() {
         let sent = sent_card();
-        let change = apply_system(&sent, &notice(None, None), 500, "e3").expect("notice");
+        let change = apply_system(&sent, &notice(None, None), 500, &eid(3)).expect("notice");
         assert!(effects_of(&change).is_empty(), "no evidence is written");
         let reported = head_of(change);
         assert_eq!(reported.state, LinkState::PaymentReported);
@@ -2350,7 +2355,7 @@ mod tests {
             &sent,
             &notice(Some(VerifiedBy::Hmac), Some(Mismatch::Amount)),
             500,
-            "e3",
+            &eid(3),
         )
         .expect("notice");
         assert!(effects_of(&change).is_empty());
@@ -2365,7 +2370,7 @@ mod tests {
     #[test]
     fn a_verified_notice_records_evidence_before_the_card_is_paid() {
         let sent = sent_card();
-        let change = apply_system(&sent, &notice(Some(VerifiedBy::Hmac), None), 500, "e3")
+        let change = apply_system(&sent, &notice(Some(VerifiedBy::Hmac), None), 500, &eid(3))
             .expect("verified");
         assert!(matches!(
             effects_of(&change).first(),
@@ -2388,14 +2393,15 @@ mod tests {
                     evidence_event_id: "ev".to_owned(),
                 },
                 510,
-                "e4",
+                &eid(4),
             )
             .expect("evidence"),
         );
         assert_eq!(paid.state, LinkState::Paid);
         // A replay of the same notice, or a second one, changes nothing.
         assert!(matches!(
-            apply_system(&paid, &notice(Some(VerifiedBy::Hmac), None), 520, "e5").expect("replay"),
+            apply_system(&paid, &notice(Some(VerifiedBy::Hmac), None), 520, &eid(5))
+                .expect("replay"),
             LinkChange::Unchanged(_)
         ));
     }
@@ -2404,7 +2410,7 @@ mod tests {
     fn evidence_for_an_unverified_payment_is_refused() {
         let sent = sent_card();
         let reported =
-            head_of(apply_system(&sent, &notice(None, None), 500, "e3").expect("report"));
+            head_of(apply_system(&sent, &notice(None, None), 500, &eid(3)).expect("report"));
         let error = apply_system(
             &reported,
             &SystemOp::EvidenceRecorded {
@@ -2412,7 +2418,7 @@ mod tests {
                 evidence_event_id: "ev".to_owned(),
             },
             510,
-            "e4",
+            &eid(4),
         )
         .expect_err("not verified");
         assert_eq!(error.code, "payment_not_verified");
@@ -2482,20 +2488,21 @@ mod tests {
         let sent = sent_card();
         let expires_at = sent.expires_at.expect("expiry");
         assert!(matches!(
-            apply_system(&sent, &SystemOp::Expire, expires_at - 1, "e").expect("early"),
+            apply_system(&sent, &SystemOp::Expire, expires_at - 1, &eid(9)).expect("early"),
             LinkChange::Unchanged(_)
         ));
         assert_eq!(
-            head_of(apply_system(&sent, &SystemOp::Expire, expires_at, "e").expect("due")).state,
+            head_of(apply_system(&sent, &SystemOp::Expire, expires_at, &eid(9)).expect("due"))
+                .state,
             LinkState::Expired
         );
         // A confirmed payment waiting for its evidence never expires.
         let waiting = head_of(
-            apply_system(&sent, &notice(Some(VerifiedBy::Hmac), None), 500, "e3")
+            apply_system(&sent, &notice(Some(VerifiedBy::Hmac), None), 500, &eid(3))
                 .expect("verified"),
         );
         assert!(matches!(
-            apply_system(&waiting, &SystemOp::Expire, expires_at + 1, "e").expect("confirmed"),
+            apply_system(&waiting, &SystemOp::Expire, expires_at + 1, &eid(9)).expect("confirmed"),
             LinkChange::Unchanged(_)
         ));
     }
@@ -2512,7 +2519,7 @@ mod tests {
                     retryable: true,
                 },
                 400,
-                "e1",
+                &eid(1),
             )
             .expect("fail"),
         );

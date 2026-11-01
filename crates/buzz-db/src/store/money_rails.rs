@@ -675,6 +675,51 @@ impl Db {
         rows.iter().map(row_to_job).collect()
     }
 
+    /// Lease one specific job if it is open and not leased, counting the claim as an attempt.
+    pub async fn money_claim_job(
+        &self,
+        community: CommunityId,
+        link_id: Uuid,
+        kind: &str,
+        lease_secs: i64,
+    ) -> Result<Option<MoneyJob>> {
+        let row = sqlx::query(
+            "UPDATE money_rails_jobs \
+             SET lease_until = now() + make_interval(secs => $4::double precision), \
+                 attempts = attempts + 1 \
+             WHERE community_id = $1 AND link_id = $2 AND kind = $3 AND done_at IS NULL \
+               AND (lease_until IS NULL OR lease_until <= now()) \
+             RETURNING community_id, link_id, kind, payload, result, attempts, \
+                       (done_at IS NOT NULL) AS done",
+        )
+        .bind(community.as_uuid())
+        .bind(link_id)
+        .bind(kind)
+        .bind(lease_secs as f64)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_job).transpose()
+    }
+
+    /// Whether a notice with this dedupe key was already stored for the connection.
+    pub async fn money_notice_exists(
+        &self,
+        community: CommunityId,
+        connection_id: Uuid,
+        dedupe_key: &str,
+    ) -> Result<bool> {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM money_rails_notices \
+             WHERE community_id = $1 AND connection_id = $2 AND dedupe_key = $3)",
+        )
+        .bind(community.as_uuid())
+        .bind(connection_id)
+        .bind(dedupe_key)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists)
+    }
+
     /// Finish a job.
     pub async fn money_complete_job(
         &self,

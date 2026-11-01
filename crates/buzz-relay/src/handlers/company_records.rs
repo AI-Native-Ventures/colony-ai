@@ -95,6 +95,12 @@ pub async fn handle(
         buzz_core::kind::KIND_CUSTOMER_ACTION => {
             super::company_customers::handle(tenant, state, event, auth).await
         }
+        buzz_core::kind::KIND_PAYMENT_LINK_ACTION => {
+            super::money_pay_links::handle(tenant, state, event, auth).await
+        }
+        buzz_core::kind::KIND_MONEY_CONNECTION_ACTION => {
+            super::money_connections::handle(tenant, state, event, auth).await
+        }
         _ => handle_goal_action(tenant, state, event, auth).await,
     }
 }
