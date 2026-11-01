@@ -83,7 +83,7 @@ export function deviceEvidenceRuntimeId(
   const runtime = runtimes.find((entry) => entry.id === deviceRuntimeId);
   if (!runtime) return null;
   const status = runtime.authStatus.status;
-  return status === "logged_out" || status === "config_invalid"
+  return status !== "logged_out" && status !== "config_invalid"
     ? null
     : deviceRuntimeId;
 }
