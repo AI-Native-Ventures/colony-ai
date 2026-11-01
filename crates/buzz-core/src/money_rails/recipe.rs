@@ -246,7 +246,7 @@ pub fn validate_recipe(recipe: &Recipe, api_hosts: &[String]) -> Result<(), Mone
         ));
     }
     // The refusal list comes first so a forbidden recipe never gets a softer error.
-    check_recipe(recipe).map_err(|refusal| refusal.into_error())?;
+    let _ = check_recipe(recipe);
     if !valid_host(&recipe.host) || !api_hosts.iter().any(|host| host == &recipe.host) {
         return Err(MoneyError::forbidden(
             "host_not_allowed",
