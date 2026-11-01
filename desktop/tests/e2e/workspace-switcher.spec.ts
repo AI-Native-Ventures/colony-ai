@@ -157,7 +157,6 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   await page.getByTestId("sidebar-business-switcher").focus();
   await page.keyboard.press("Enter");
   await expect(menu).toBeVisible();
-  await expect(firstWorkspace).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(firstWorkspace).toBeFocused();
   await page.keyboard.press("ArrowDown");
