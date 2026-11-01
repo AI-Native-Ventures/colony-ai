@@ -17,6 +17,8 @@ type ConversationHeaderProps = {
   subtitle?: React.ReactNode;
   /** Channel views (Discussion, Work, Knowledge, Canvas, Files). */
   tabs?: React.ReactNode;
+  /** Whether the message timeline scrolls under this header. */
+  overlapContent?: boolean;
   title: string;
   titleAdornment?: React.ReactNode;
 };
@@ -35,6 +37,7 @@ export function ConversationHeader({
   statusBadge,
   subtitle,
   tabs,
+  overlapContent = true,
   title,
   titleAdornment,
 }: ConversationHeaderProps) {
@@ -42,7 +45,7 @@ export function ConversationHeader({
   const titleBlock = (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-center",
+        "c3c-header-title-block flex min-w-0 flex-1 items-center",
         subtitle || descriptionBelow ? "gap-3" : "gap-2.5",
       )}
     >
@@ -106,7 +109,10 @@ export function ConversationHeader({
 
   return (
     <div
-      className="pointer-events-none relative z-40 -mb-(--buzz-channel-content-top-padding,5.75rem) overflow-visible"
+      className={cn(
+        "pointer-events-none relative z-40 overflow-visible",
+        overlapContent && "-mb-(--buzz-channel-content-top-padding,5.75rem)",
+      )}
       ref={chromeWrapperRef}
     >
       <header
@@ -121,9 +127,9 @@ export function ConversationHeader({
       >
         {tabs ? (
           <>
-            <div className="flex items-center gap-3.5">
+            <div className="c3c-header-primary-row flex min-w-0 items-center gap-3.5">
               {titleBlock}
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+              <div className="c3c-header-actions ml-auto flex items-center gap-1">
                 <UpdateIndicator />
                 {actions}
               </div>
@@ -133,7 +139,7 @@ export function ConversationHeader({
         ) : (
           <>
             {titleBlock}
-            <div className="ml-auto flex items-center gap-1">
+            <div className="c3c-header-actions ml-auto flex items-center gap-1">
               <UpdateIndicator />
               {actions}
             </div>

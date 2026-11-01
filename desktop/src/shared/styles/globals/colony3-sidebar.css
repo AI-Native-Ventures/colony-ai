@@ -102,6 +102,10 @@
   line-height: 1;
 }
 
+.app-sidebar-full-shell .colony-sidebar-brand-mark > img {
+  border-radius: inherit;
+}
+
 :root.dark .app-sidebar-full-shell .colony-sidebar-brand-mark {
   color: hsl(var(--colony-surface));
 }
@@ -127,6 +131,7 @@
   font-size: calc(13 * var(--colony-px));
   font-weight: 600;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .app-sidebar-full-shell .colony-sidebar-collapse {
@@ -813,15 +818,15 @@
 }
 
 [data-collapsible="icon"] .app-sidebar-full-shell .colony-sidebar-brand-mark {
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 0.8125rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
   font-size: calc(19 * var(--colony-px));
 }
 
 [data-collapsible="icon"] .app-sidebar-full-shell .colony-sidebar-brand-dot {
-  right: 0.625rem;
-  bottom: 0.6875rem;
+  right: 0.5625rem;
+  bottom: 0.625rem;
 }
 
 [data-collapsible="icon"] .app-sidebar-full-shell .colony-sidebar-collapse {

@@ -2,8 +2,10 @@
 //! pacing inside the Africa/Johannesburg send window, template rendering and the webhook
 //! signature check. No I/O, so every rule here has a plain unit test.
 
+use buzz_core::whatsapp_stage::OptOutKind;
 use chrono::{DateTime, Duration, Utc};
 use hmac::{Hmac, KeyInit, Mac};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -116,6 +118,61 @@ pub fn is_opt_out_button(title: &str) -> bool {
     ]
     .iter()
     .any(|word| lowered.contains(word))
+}
+
+/// Why an inbound message opts the contact out, or `None` when it does not. A "No thanks" /
+/// "Not interested" answer (typed or tapped) is [`OptOutKind::NoThanks`]; every other opt-out
+/// (STOP, "Stop messages", unsubscribe ...) is [`OptOutKind::Stop`]. Both block sending.
+pub fn classify_opt_out(text: &str, is_button: bool) -> Option<OptOutKind> {
+    if !(is_stop_message(text) || (is_button && is_opt_out_button(text))) {
+        return None;
+    }
+    let lowered = text.trim().to_lowercase();
+    let soft = ["no thanks", "no thank you", "not interested"]
+        .iter()
+        .any(|phrase| lowered.contains(phrase));
+    Some(if soft && !lowered.contains("stop") {
+        OptOutKind::NoThanks
+    } else {
+        OptOutKind::Stop
+    })
+}
+
+fn normalise_reply(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// `true` when an inbound button tap is the positive answer ("Yes, call me"): the tap matches
+/// the FIRST quick-reply button of the template that was answered. `buttons` is the stored
+/// `[{type, text}]` of that template; `None` means the template is unknown, and only then do
+/// the literal texts "Yes, call me" and "Yes, tell me more" count. A first button that is an
+/// opt-out button is never positive.
+pub fn is_wants_call_tap(buttons: Option<&Value>, reply: &str) -> bool {
+    let reply = normalise_reply(reply);
+    if reply.is_empty() {
+        return false;
+    }
+    let Some(buttons) = buttons else {
+        return matches!(reply.as_str(), "yes, call me" | "yes, tell me more");
+    };
+    let first = buttons
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|button| {
+            button
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("QUICK_REPLY"))
+        })
+        .and_then(|button| button.get("text").and_then(Value::as_str));
+    match first {
+        Some(text) => !is_opt_out_button(text) && normalise_reply(text) == reply,
+        None => matches!(reply.as_str(), "yes, call me" | "yes, tell me more"),
+    }
 }
 
 /// `true` when the contact may still receive free text at `now`.
@@ -409,6 +466,47 @@ mod tests {
         Utc.with_ymd_and_hms(2026, 10, 29, h, m, s)
             .single()
             .expect("test time")
+    }
+
+    #[test]
+    fn no_thanks_and_stop_are_different_opt_outs() {
+        // GUARD: both block sending, the stored reason tells them apart.
+        use OptOutKind::{NoThanks, Stop};
+        assert_eq!(classify_opt_out("No thanks", true), Some(NoThanks));
+        assert_eq!(classify_opt_out("no thanks", false), Some(NoThanks));
+        assert_eq!(classify_opt_out("Not interested.", false), Some(NoThanks));
+        assert_eq!(classify_opt_out("Stop messages", true), Some(Stop));
+        assert_eq!(classify_opt_out("STOP", false), Some(Stop));
+        assert_eq!(classify_opt_out("unsubscribe", false), Some(Stop));
+        assert_eq!(classify_opt_out("Stop promotions", true), Some(Stop));
+        assert_eq!(classify_opt_out("Yes, call me", true), None);
+        assert_eq!(classify_opt_out("stop by at 5", false), None);
+        // A typed phrase that is not a whole stop message is not an opt-out, even with "no".
+        assert_eq!(classify_opt_out("no thanks, maybe later", false), None);
+    }
+
+    #[test]
+    fn the_first_quick_reply_button_is_the_positive_answer() {
+        let template = serde_json::json!([
+            {"type": "URL", "text": "Open site"},
+            {"type": "QUICK_REPLY", "text": "Yes, tell me more"},
+            {"type": "QUICK_REPLY", "text": "No thanks"},
+        ]);
+        assert!(is_wants_call_tap(Some(&template), "Yes, tell me more"));
+        assert!(is_wants_call_tap(Some(&template), "  yes,  TELL me more "));
+        assert!(!is_wants_call_tap(Some(&template), "No thanks"));
+        // Read from the template, not from fixed text: a different first button counts.
+        let other = serde_json::json!([{"type": "QUICK_REPLY", "text": "Send me a quote"}]);
+        assert!(is_wants_call_tap(Some(&other), "Send me a quote"));
+        assert!(!is_wants_call_tap(Some(&other), "Yes, call me"));
+        // Unknown template: literal fallback only.
+        assert!(is_wants_call_tap(None, "Yes, call me"));
+        assert!(is_wants_call_tap(None, "Yes, tell me more"));
+        assert!(!is_wants_call_tap(None, "Send me a quote"));
+        // A first button that opts out is never positive.
+        let negative_first = serde_json::json!([{"type": "QUICK_REPLY", "text": "Stop messages"}]);
+        assert!(!is_wants_call_tap(Some(&negative_first), "Stop messages"));
+        assert!(!is_wants_call_tap(Some(&other), ""));
     }
 
     #[test]

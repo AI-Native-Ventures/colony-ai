@@ -9,7 +9,10 @@ import { ChannelAddAgentHost } from "@/features/channels/ui/ChannelAddAgentHost"
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
-import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import {
+  ChannelWorkspaceTabs,
+  type OutreachDeskTab,
+} from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { ConversationHeader } from "@/features/channels/ui/ConversationHeader";
 import { DmAgentSubtitle } from "@/features/channels/ui/DmAgentSubtitle";
 import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
@@ -40,6 +43,7 @@ import {
 } from "@/shared/ui/conversationIcons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import "./channelScreenHeader.css";
 
 /** A header control with its name in a tooltip. */
 function HeaderTip({
@@ -74,6 +78,7 @@ type ChannelScreenHeaderProps = {
   activeDmPresenceStatus: PresenceStatus | null;
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   currentPubkey?: string;
+  outreachTab?: OutreachDeskTab;
   headerEndActions?: React.ReactNode;
   isAddBotOpen?: boolean;
   isJoining?: boolean;
@@ -81,6 +86,7 @@ type ChannelScreenHeaderProps = {
   showHeaderContent?: boolean;
   transparentChrome?: boolean;
   onAddBotOpenChange?: (open: boolean) => void;
+  onOutreachTabChange?: (tab: OutreachDeskTab) => void;
   onJoinChannel?: () => Promise<void>;
   onManageChannel: () => void;
   onToggleMembers: () => void;
@@ -96,11 +102,13 @@ export function ChannelScreenHeader({
   activeDmPresenceStatus,
   chromeWrapperRef,
   currentPubkey,
+  outreachTab,
   headerEndActions,
   isAddBotOpen,
   isJoining = false,
   members = [],
   onAddBotOpenChange,
+  onOutreachTabChange,
   showHeaderContent = true,
   onJoinChannel,
   onManageChannel,
@@ -116,6 +124,14 @@ export function ChannelScreenHeader({
     !activeChannel.archivedAt &&
     onJoinChannel;
   const workArea = useWorkAreaDock(activeChannel?.id ?? null);
+  const isOutreach =
+    activeChannel?.channelType === "stream" &&
+    activeChannel.name.trim().toLocaleLowerCase() === "outreach";
+  const isOutreachDeskSurface =
+    isOutreach &&
+    (outreachTab === "needs-you" ||
+      outreachTab === "pipeline" ||
+      outreachTab === "chats");
   const whatsAppTabOpen = workArea.tabs.some((tab) => tab.kind === "whatsapp");
   const whatsAppContactsQuery = useWhatsAppContactsQuery(
     workArea.open && whatsAppTabOpen,
@@ -171,22 +187,26 @@ export function ChannelScreenHeader({
           aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
           aria-expanded={workArea.open && workArea.activeTabId === "whatsapp"}
           aria-label="WhatsApp chats"
-          className="c3c-icon-button relative inline-flex items-center gap-2 px-2.5"
+          className="c3c-icon-button c3c-channel-action-button c3c-whatsapp-chats-button relative inline-flex items-center gap-2 px-2.5"
           data-testid="channel-whatsapp-chats-trigger"
           onClick={() => requestWorkAreaTab("whatsapp")}
           type="button"
         >
-          <MessageCircle aria-hidden="true" size={17} />
-          <span className="hidden text-sm xl:inline">WhatsApp chats</span>
-          {unansweredWhatsAppCount > 0 ? (
-            <span
-              aria-hidden="true"
-              className="inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
-              data-testid="channel-whatsapp-unread-count"
-            >
-              {unansweredWhatsAppCount}
-            </span>
-          ) : null}
+          <span className="c3c-whatsapp-chats-icon relative inline-flex shrink-0">
+            <MessageCircle aria-hidden="true" size={17} />
+            {unansweredWhatsAppCount > 0 ? (
+              <span
+                aria-hidden="true"
+                className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
+                data-testid="channel-whatsapp-unread-count"
+              >
+                {unansweredWhatsAppCount}
+              </span>
+            ) : null}
+          </span>
+          <span className="c3c-header-action-label text-sm">
+            WhatsApp chats
+          </span>
         </button>
       </HeaderTip>
       {showJoinButton || !workArea ? null : (
@@ -195,7 +215,7 @@ export function ChannelScreenHeader({
             aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
             aria-expanded={workArea.open}
             aria-label="Open work area"
-            className="c3c-icon-button"
+            className="c3c-icon-button c3c-channel-action-button c3c-work-area-button"
             data-active={workArea.open ? "true" : undefined}
             data-testid="channel-work-area-trigger"
             onClick={(event) =>
@@ -300,6 +320,7 @@ export function ChannelScreenHeader({
       }
       descriptionBelow={Boolean(showJoinButton)}
       leading={leading}
+      overlapContent={!isOutreachDeskSurface}
       statusBadge={
         <>
           {activeChannel?.archivedAt ? (
@@ -329,7 +350,11 @@ export function ChannelScreenHeader({
       tabs={
         activeChannel?.channelType === "stream" &&
         !referenceThreadPresentation ? (
-          <ChannelWorkspaceTabs />
+          <ChannelWorkspaceTabs
+            isOutreach={isOutreach}
+            onOutreachTabChange={onOutreachTabChange}
+            outreachTab={outreachTab}
+          />
         ) : undefined
       }
       title={activeChannelTitle}

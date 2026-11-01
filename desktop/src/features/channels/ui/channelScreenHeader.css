@@ -1,0 +1,71 @@
+.c3c-header {
+  container-name: c3c-channel-header;
+  container-type: inline-size;
+}
+
+.c3c-header-action-label {
+  display: none;
+  white-space: nowrap;
+}
+
+.c3c-whatsapp-chats-button {
+  flex: none;
+}
+
+.c3c-whatsapp-chats-icon {
+  flex: none;
+}
+
+.c3c-whatsapp-unread-badge {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.2rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.c3c-header-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+
+@container c3c-channel-header (min-width: 64rem) {
+  .c3c-header-action-label {
+    display: inline;
+  }
+
+  .c3c-whatsapp-chats-button {
+    display: inline-flex;
+    width: auto;
+    min-width: calc(40 * var(--colony-px));
+    flex: 0 0 auto;
+  }
+}
+
+@container c3c-channel-header (max-width: 36rem) {
+  .c3c-header-primary-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .c3c-header-title-block {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .c3c-header-actions {
+    width: 100%;
+    margin-left: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .c3c-header-actions .c3c-channel-action-button {
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    padding-right: 0;
+    padding-left: 0;
+  }
+}

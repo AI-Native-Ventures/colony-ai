@@ -33,10 +33,14 @@ async function loadTheme(page: Page, theme: string) {
   await page.goto("/");
 }
 
-async function openAddCommunityDialog(page: Page) {
-  await page.getByTestId("sidebar-profile-avatar-button").click();
-  await page.getByTestId("community-switcher").click();
-  await page.getByRole("menuitem", { name: "Add a community" }).click();
+async function openWorkspaceDialog(page: Page, mode: "create" | "join") {
+  await page.getByTestId("sidebar-business-switcher").click();
+  await page
+    .getByTestId("workspace-switcher-menu")
+    .getByTestId(
+      mode === "create" ? "workspace-create-action" : "workspace-join-action",
+    )
+    .click();
 }
 
 // Regression guard for the "Leave channel" lockup: with two bundled copies of
@@ -183,7 +187,9 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     .toBe("none");
 });
 
-test("add community shows create and join side by side", async ({ page }) => {
+test("workspace create offers a name, website, available address, and join link", async ({
+  page,
+}) => {
   await page.route("**/api/communities/config", (route) =>
     route.fulfill({
       json: {
@@ -194,27 +200,33 @@ test("add community shows create and join side by side", async ({ page }) => {
       },
     }),
   );
+  await page.route("**/api/communities/availability**", (route) => {
+    const slug = new URL(route.request().url()).searchParams.get("name") ?? "";
+    return route.fulfill({ json: { name: slug, available: true } });
+  });
   await installMockBridge(page, {});
   await page.goto("/");
 
-  await openAddCommunityDialog(page);
+  await openWorkspaceDialog(page, "create");
 
   await expect(
-    page.getByRole("heading", { name: "Add a community" }),
+    page.getByRole("heading", { name: "Create a workspace" }),
   ).toBeVisible();
-  await expect(page.getByTestId("self-serve-community-create")).toContainText(
-    "Create a new community",
+  await expect(page.getByLabel("Workspace name")).toBeVisible();
+  await expect(page.getByLabel("Website (optional)")).toBeVisible();
+  await page.getByLabel("Workspace name").fill("North Star");
+  await expect(page.getByLabel("Workspace address")).toHaveValue("north-star");
+  await expect(page.getByTestId("workspace-create-availability")).toContainText(
+    "That address is available.",
   );
-  await expect(page.getByTestId("add-community-join")).toContainText(
-    "Join an existing community",
+  await expect(page.getByTestId("workspace-create-join")).toHaveText(
+    "Join with an invite link instead",
   );
   await expect(page.getByLabel("API Token")).toHaveCount(0);
   await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
-  await expect(page.getByLabel("Community URL or invite link")).toBeVisible();
-  await expect(page.getByLabel("Community address")).toBeVisible();
 });
 
-test("automatically shows community join requirements near the community URL", async ({
+test("automatically shows workspace join requirements near the invite link", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -228,9 +240,9 @@ test("automatically shows community join requirements near the community URL", a
   });
   await page.goto("/");
 
-  await openAddCommunityDialog(page);
+  await openWorkspaceDialog(page, "join");
   await page
-    .getByLabel("Community URL or invite link")
+    .getByLabel("Workspace URL or invite link")
     .fill("https://policy.example.com");
 
   const ageConfirmation = page.getByLabel("I’m 18 or older");
@@ -242,23 +254,23 @@ test("automatically shows community join requirements near the community URL", a
   ).toHaveCount(0);
   await expect(page.getByText(/By continuing, you agree/)).toHaveCount(0);
 
-  const joinCommunityButton = page.getByTestId("invite-redeem-submit");
-  await expect(joinCommunityButton).toBeDisabled();
+  const joinWorkspaceButton = page.getByTestId("invite-redeem-submit");
+  await expect(joinWorkspaceButton).toBeDisabled();
   await ageConfirmation.check();
-  await expect(joinCommunityButton).toBeDisabled();
+  await expect(joinWorkspaceButton).toBeDisabled();
   await agreementConfirmation.check();
-  await expect(joinCommunityButton).toBeEnabled();
-  await expect(joinCommunityButton).toHaveText("Accept and join");
+  await expect(joinWorkspaceButton).toBeEnabled();
+  await expect(joinWorkspaceButton).toHaveText("Accept and join workspace");
 
   const consentBox = await agreementConfirmation.boundingBox();
-  const communityInput = await page
-    .getByLabel("Community URL or invite link")
+  const workspaceInput = await page
+    .getByLabel("Workspace URL or invite link")
     .boundingBox();
-  const joinButtonBox = await joinCommunityButton.boundingBox();
-  expect(consentBox?.y).toBeGreaterThan(communityInput?.y ?? Number.MAX_VALUE);
+  const joinButtonBox = await joinWorkspaceButton.boundingBox();
+  expect(consentBox?.y).toBeGreaterThan(workspaceInput?.y ?? Number.MAX_VALUE);
   expect(consentBox?.y).toBeLessThan(joinButtonBox?.y ?? 0);
 
-  await joinCommunityButton.click();
+  await joinWorkspaceButton.click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -269,14 +281,14 @@ test("automatically shows community join requirements near the community URL", a
     .toContain('"relayUrl":"wss://policy.example.com"');
 });
 
-test("joins a community URL without an API token field", async ({ page }) => {
+test("joins a workspace URL without an API token field", async ({ page }) => {
   await installMockBridge(page, { applyCommunityDelayMs: 1_000 });
   await page.goto("/");
 
-  await openAddCommunityDialog(page);
+  await openWorkspaceDialog(page, "join");
 
   await page
-    .getByLabel("Community URL or invite link")
+    .getByLabel("Workspace URL or invite link")
     .fill("token.example.com");
   await expect(page.getByLabel("API token")).toHaveCount(0);
   await expect(page.getByTestId("community-api-token-reveal")).toHaveCount(0);

@@ -1,4 +1,5 @@
 import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -689,6 +690,8 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Rename the active reference business for a focused visual fixture. */
+    referenceWorkspaceBusinessName?: string;
     /** Seed one deliberately long lead name for picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
     whatsappGuesthouses?: boolean;
@@ -1159,6 +1162,8 @@ type E2eConfig = {
     companySecretBindingHeads?: RelayEvent[];
     /** Fail the native secret-store boundary with a generic error. */
     companySecretStoreError?: boolean;
+    /** What `get_key_rescue_status` returns; absent means nothing to rescue. */
+    keyRescueStatus?: unknown;
     /** Reject secret-binding activation publishes in order. */
     companySecretActivationErrors?: string[];
     /** Relay-signed standing permission heads used by company permission E2E. */
@@ -5799,7 +5804,10 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       pubkey: agent.pubkey,
       display_name: agent.name,
       name: agent.name,
-      avatar_url: null,
+      avatar_url:
+        agent.pubkey === REFERENCE_AGENTS.scout.pubkey
+          ? agentAntAvatarDataUrl("Other", "green")
+          : null,
       about: null,
       nip05_handle: null,
       owner_pubkey: null,
@@ -5950,9 +5958,11 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, {
     sidebarShell,
     colony3,
-    ...(config.mock?.whatsappGuesthouses
-      ? { businessName: "Horizon Labs" }
-      : {}),
+    ...(config.mock?.referenceWorkspaceBusinessName
+      ? { businessName: config.mock.referenceWorkspaceBusinessName }
+      : config.mock?.whatsappGuesthouses
+        ? { businessName: "Horizon Labs" }
+        : {}),
   });
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
@@ -22231,6 +22241,27 @@ export function maybeInstallE2eTauriMocks() {
           reset_failed: resetFailed,
         };
       }
+      case "get_key_rescue_status":
+        return (
+          activeConfig?.mock?.keyRescueStatus ?? {
+            offer: false,
+            lockedAgents: [],
+            attempt: null,
+          }
+        );
+      case "rescue_legacy_keys":
+        // The owner clicked "Move my agents' keys": every locked agent moved.
+        return {
+          offer: false,
+          lockedAgents: [],
+          attempt: {
+            attemptedAtUnix: 1,
+            outcome: "rescued",
+            agentsMoved: ["0".repeat(64)],
+            deviceSecretsMoved: 0,
+            identity: "keptCurrent",
+          },
+        };
       case "is_shared_identity":
         // Match the default Rust command: the E2E identity is local to the
         // mocked desktop and is not sourced from BUZZ_SHARE_IDENTITY.
@@ -22385,9 +22416,10 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "validate_repos_dir":
         // The browser harness has no host filesystem to validate. Treat the
-        // seeded empty/default path as valid so Add Community can continue to
-        // relay-policy discovery.
+        // seeded empty/default path as valid so workspace settings can save.
         return;
+      case "pick_workspace_repos_dir":
+        return null;
       case "fetch_join_policy":
         return activeConfig?.mock?.joinPolicy ?? null;
       case "read_business_website":

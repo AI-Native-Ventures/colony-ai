@@ -1022,6 +1022,10 @@ export async function validateReposDir(dir: string): Promise<void> {
   await invokeTauri("validate_repos_dir", { dir });
 }
 
+export async function pickWorkspaceReposDir(): Promise<string | null> {
+  return invokeTauri<string | null>("pick_workspace_repos_dir");
+}
+
 export const setPreventSleepActive = (active: boolean) =>
   invokeTauri("set_prevent_sleep_active", { active });
 

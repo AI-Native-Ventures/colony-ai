@@ -193,6 +193,8 @@ type MockBridgeOptions = {
   userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Override the active workspace name in the reference mock. */
+  referenceWorkspaceBusinessName?: string;
   /** Add a long lead name for picker overflow regression coverage. */
   referenceWorkspaceLongLeadNames?: boolean;
   /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */
@@ -269,6 +271,8 @@ type MockBridgeOptions = {
   companySecretBindingHeads?: RelayEvent[];
   /** Fail the native secret-store boundary with a generic error. */
   companySecretStoreError?: boolean;
+  /** `get_key_rescue_status` result; absent means nothing to rescue. */
+  keyRescueStatus?: unknown;
   /** Reject secret-binding activation publishes in order. */
   companySecretActivationErrors?: string[];
   /** Reject these ask response publishes in order, then accept them. */

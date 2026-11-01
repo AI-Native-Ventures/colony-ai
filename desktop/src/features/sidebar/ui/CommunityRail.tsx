@@ -20,8 +20,8 @@ import { CheckCheck, Link2, Settings2, Ticket } from "lucide-react";
 import * as React from "react";
 
 import type { Community } from "@/features/communities/types";
+import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import { EditCommunityDialog } from "@/features/communities/ui/EditCommunityDialog";
-import { useCommunityIcons } from "@/features/communities/useCommunityIcons";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import {
   useCommunityUnread,
@@ -51,12 +51,19 @@ type CommunityRailProps = {
   onAddCommunity: () => void;
   onUpdateCommunity: (
     id: string,
-    updates: Partial<Pick<Community, "name" | "relayUrl" | "token">>,
+    updates: Partial<
+      Pick<Community, "name" | "relayUrl" | "token" | "reposDir">
+    >,
   ) => void;
   onReorderCommunities: (orderedIds: string[]) => void;
 };
 
 const MAX_BADGE = 99;
+
+function workspaceShortcut(index: number): string | null {
+  if (index >= 9) return null;
+  return `${isMacPlatform() ? "⌘" : "Ctrl+"}${index + 1}`;
+}
 
 /**
  * Presentation decisions for one community button, derived from its observed
@@ -93,8 +100,8 @@ export function communityRailIndicators(unread: CommunityUnreadState): {
 function CommunityButton({
   community,
   isActive,
+  shortcut,
   unread,
-  iconUrl,
   onSwitch,
   menu,
   dragListeners,
@@ -103,8 +110,8 @@ function CommunityButton({
 }: {
   community: Community;
   isActive: boolean;
+  shortcut: string | null;
   unread: CommunityUnreadState;
-  iconUrl: string | null;
   onSwitch: () => void;
   menu: React.ReactNode;
   dragListeners?: React.HTMLAttributes<HTMLElement>;
@@ -119,6 +126,9 @@ function CommunityButton({
     : showDot
       ? `${community.name}, unread`
       : community.name;
+  const accessibleLabel = shortcut
+    ? `${tooltipLabel}, ${shortcut}`
+    : tooltipLabel;
 
   return (
     <ContextMenu modal={false}>
@@ -127,7 +137,7 @@ function CommunityButton({
           <ContextMenuTrigger asChild>
             <button
               aria-current={isActive ? "true" : undefined}
-              aria-label={tooltipLabel}
+              aria-label={accessibleLabel}
               className={cn(
                 "colony-rail-button touch-none outline-hidden focus:outline-none focus-visible:outline-none",
                 isDragging && "opacity-30",
@@ -145,20 +155,20 @@ function CommunityButton({
                   data-testid={`community-rail-active-${community.id}`}
                 />
               ) : null}
-              {iconUrl ? (
-                <img
-                  alt=""
-                  data-testid={`community-rail-icon-${community.id}`}
-                  draggable={false}
-                  src={iconUrl}
-                />
-              ) : isActive ? (
-                // The open community reads as its single-letter brand mark,
-                // the same letter the sidebar header shows.
-                (community.name.trim().slice(0, 1).toUpperCase() ?? "C") || "C"
-              ) : (
-                getInitials(community.name) || "C"
-              )}
+              <WorkspaceMark
+                className="colony-rail-mark"
+                communityIconFit="cover"
+                communityId={community.id}
+                fallbackText={
+                  isActive
+                    ? community.name.trim().slice(0, 1).toUpperCase() || "C"
+                    : getInitials(community.name) || "C"
+                }
+                imageFit="contain"
+                imageTestId={`community-rail-icon-${community.id}`}
+                name={community.name}
+                relayUrl={community.relayUrl}
+              />
               {showBadge ? (
                 <span
                   className="colony-rail-badge"
@@ -178,7 +188,7 @@ function CommunityButton({
           </ContextMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          {tooltipLabel}
+          {accessibleLabel}
         </TooltipContent>
       </Tooltip>
       <ContextMenuContent data-testid={`community-rail-menu-${community.id}`}>
@@ -188,28 +198,21 @@ function CommunityButton({
   );
 }
 
-function CommunityDragOverlay({
-  community,
-  iconUrl,
-}: {
-  community: Community;
-  iconUrl: string | null;
-}) {
+function CommunityDragOverlay({ community }: { community: Community }) {
   return (
     <div
       className="colony-rail-button cursor-grabbing opacity-90 shadow-lg"
       data-buzz-flat
     >
-      {iconUrl ? (
-        <img
-          alt=""
-          className="h-full w-full object-cover"
-          draggable={false}
-          src={iconUrl}
-        />
-      ) : (
-        getInitials(community.name) || "C"
-      )}
+      <WorkspaceMark
+        className="colony-rail-mark"
+        communityIconFit="cover"
+        communityId={community.id}
+        fallbackText={getInitials(community.name) || "C"}
+        imageFit="contain"
+        name={community.name}
+        relayUrl={community.relayUrl}
+      />
     </div>
   );
 }
@@ -217,7 +220,7 @@ function CommunityDragOverlay({
 function SortableCommunityButton({
   community,
   activeCommunityId,
-  iconsByCommunity,
+  shortcut,
   unreadByCommunity,
   canInvite,
   onInvite,
@@ -227,7 +230,7 @@ function SortableCommunityButton({
 }: {
   community: Community;
   activeCommunityId: string | null;
-  iconsByCommunity: Record<string, string | null | undefined>;
+  shortcut: string | null;
   unreadByCommunity: Record<string, CommunityUnreadState>;
   canInvite: boolean;
   onInvite: () => void;
@@ -255,7 +258,6 @@ function SortableCommunityButton({
         community={community}
         dragAttributes={attributes}
         dragListeners={listeners}
-        iconUrl={iconsByCommunity[community.id] ?? null}
         isActive={community.id === activeCommunityId}
         isDragging={isDragging}
         menu={
@@ -271,20 +273,21 @@ function SortableCommunityButton({
               }}
             >
               <Link2 className="h-4 w-4" />
-              Copy community URL
+              Copy workspace link
             </ContextMenuItem>
             {canInvite ? (
               <ContextMenuItem onClick={onInvite}>
                 <Ticket className="h-4 w-4" />
-                Invite to community
+                Invite people
               </ContextMenuItem>
             ) : null}
             <ContextMenuItem onClick={() => onSetEditingCommunity(community)}>
               <Settings2 className="h-4 w-4" />
-              Community settings
+              Workspace settings
             </ContextMenuItem>
           </>
         }
+        shortcut={shortcut}
         onSwitch={() => onSwitchCommunity(community.id)}
         unread={
           unreadByCommunity[community.id] ?? {
@@ -298,10 +301,10 @@ function SortableCommunityButton({
 }
 
 /**
- * Discord/Slack-style vertical rail of communities on the far left of the app.
+ * Discord/Slack-style vertical rail of workspaces on the far left of the app.
  * Shows a mention-count badge for inactive communities (observed via
  * `useCommunityUnread`) and switches relays on click. Right-click opens a
- * per-community menu for read state, community URL, invites, and settings.
+ * per-workspace menu for read state, links, invites, and settings.
  *
  * Hidden entirely with a single community — a rail of one adds no value.
  */
@@ -318,7 +321,6 @@ export function CommunityRail({
     communities,
     activeCommunityId,
   );
-  const iconsByCommunity = useCommunityIcons(communities);
   const { markAllChannelsRead, onOpenSettings } = useAppShell();
   const myMembershipQuery = useMyRelayMembershipLookupQuery();
   const activeRole = myMembershipQuery.data?.membership?.role;
@@ -375,7 +377,7 @@ export function CommunityRail({
 
   return (
     <nav
-      aria-label="Communities"
+      aria-label="Workspaces"
       // The native window buttons sit over the rail's top-left corner.
       data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
       data-testid="community-rail"
@@ -391,7 +393,7 @@ export function CommunityRail({
           items={communityIds}
           strategy={verticalListSortingStrategy}
         >
-          {communities.map((community) => (
+          {communities.map((community, index) => (
             <SortableCommunityButton
               key={community.id}
               activeCommunityId={activeCommunityId}
@@ -399,7 +401,7 @@ export function CommunityRail({
                 community.id === activeCommunityId && canInviteToActiveCommunity
               }
               community={community}
-              iconsByCommunity={iconsByCommunity}
+              shortcut={workspaceShortcut(index)}
               unreadByCommunity={unreadByCommunity}
               onInvite={() => onOpenSettings?.("community-members")}
               onMarkAllRead={handleMarkAllRead}
@@ -410,17 +412,14 @@ export function CommunityRail({
         </SortableContext>
         <DragOverlay>
           {draggingCommunity ? (
-            <CommunityDragOverlay
-              community={draggingCommunity}
-              iconUrl={iconsByCommunity[draggingCommunity.id] ?? null}
-            />
+            <CommunityDragOverlay community={draggingCommunity} />
           ) : null}
         </DragOverlay>
       </DndContext>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            aria-label="Add community"
+            aria-label="Create a workspace"
             className="colony-rail-add outline-hidden focus:outline-none focus-visible:outline-none"
             data-testid="community-rail-add"
             onClick={onAddCommunity}
@@ -430,7 +429,7 @@ export function CommunityRail({
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          Add community
+          Create a workspace
         </TooltipContent>
       </Tooltip>
       <EditCommunityDialog

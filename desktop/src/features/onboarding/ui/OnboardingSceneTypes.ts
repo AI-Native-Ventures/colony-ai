@@ -37,6 +37,7 @@ export type OnboardingSceneData = {
 export type OnboardingBusinessChoice = {
   id: string;
   name: string;
+  relayUrl?: string;
   role: string;
   /** When the person last opened it on this computer, in words ("today"). */
   lastVisited?: string;

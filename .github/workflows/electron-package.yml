@@ -56,6 +56,12 @@ permissions:
 
 env:
   CARGO_BUILD_JOBS: 4
+  # A release build bakes in the production relay and builds the installers. A
+  # release candidate pull request (release/<version>-candidate, from this
+  # repository, into main) builds exactly the same way, so the tag release can
+  # publish the candidate's installers instead of building them a second time
+  # (see release-desktop.yml and desktop/scripts/select-release-candidate.mjs).
+  COLONY_RELEASE_BUILD: ${{ inputs.release == true || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/') && endsWith(github.head_ref, '-candidate')) }}
 
 jobs:
   resolve-signing:
@@ -69,6 +75,7 @@ jobs:
         id: resolve
         shell: bash
         env:
+          RELEASE_BUILD: ${{ env.COLONY_RELEASE_BUILD }}
           APPLE_DEVELOPER_ID_CERT_P12_B64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_B64 }}
           APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
           APPLE_NOTARY_API_KEY_P8_B64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_B64 }}
@@ -93,20 +100,20 @@ jobs:
           for value in "$WINDOWS_SIGNING_CERT_PFX_B64" "$WINDOWS_SIGNING_CERT_PASSWORD"; do
             if [ -n "$value" ]; then windows_any=1; else windows_all=0; fi
           done
-          if [ "${{ inputs.release }}" = "true" ] && [ "$mac_any" = "1" ] && [ "$mac_all" != "1" ]; then
+          if [ "$RELEASE_BUILD" = "true" ] && [ "$mac_any" = "1" ] && [ "$mac_all" != "1" ]; then
             echo "Apple signing requires the complete five-secret group." >&2
             exit 1
           fi
-          if [ "${{ inputs.release }}" = "true" ] && [ "$windows_any" = "1" ] && [ "$windows_all" != "1" ]; then
+          if [ "$RELEASE_BUILD" = "true" ] && [ "$windows_any" = "1" ] && [ "$windows_all" != "1" ]; then
             echo "Windows signing requires the complete two-secret group." >&2
             exit 1
           fi
-          if [ "${{ inputs.release }}" = "true" ] && [ "$mac_all" = "1" ]; then
+          if [ "$RELEASE_BUILD" = "true" ] && [ "$mac_all" = "1" ]; then
             echo "mac_signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mac_signed=false" >> "$GITHUB_OUTPUT"
           fi
-          if [ "${{ inputs.release }}" = "true" ] && [ "$windows_all" = "1" ]; then
+          if [ "$RELEASE_BUILD" = "true" ] && [ "$windows_all" = "1" ]; then
             echo "windows_signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "windows_signed=false" >> "$GITHUB_OUTPUT"
@@ -129,8 +136,21 @@ jobs:
             arch: x64
 
     steps:
+      # A candidate pull request builds its own head commit, not the merge with
+      # main, so the installers match the head tree the release compares.
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.COLONY_RELEASE_BUILD == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+
+      - name: Record the source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Package ${{ matrix.platform }}-${{ matrix.arch }}: release build ${COLONY_RELEASE_BUILD}"
+            echo "commit $(git rev-parse HEAD) tree $(git rev-parse 'HEAD^{tree}')"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Activate Hermit toolchain (macOS)
         if: runner.os != 'Windows'
@@ -229,9 +249,21 @@ jobs:
           COLONY_LOGO_DEV_TOKEN: ${{ secrets.COLONY_LOGO_DEV_TOKEN }}
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
-          RELEASE_BUILD: ${{ inputs.release && 'true' || 'false' }}
+          RELEASE_BUILD: ${{ env.COLONY_RELEASE_BUILD == 'true' && 'true' || 'false' }}
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+          MAC_SIGNED: ${{ needs.resolve-signing.outputs.mac_signed }}
         run: |
           set -euo pipefail
+          # An unsigned (ad-hoc) Mac app cannot read the Keychain item the
+          # previous release created, because the Keychain trusts the code
+          # hash and every release has a new one. That signed the owner out on
+          # every update. Unsigned Mac builds therefore leave out the system
+          # keyring and keep secrets in owner-only files; a signed build keeps
+          # the Keychain. The marker check below proves which one was built.
+          keyring_flags=""
+          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ] && [ "$MAC_SIGNED" != "true" ]; then
+            keyring_flags="--no-default-features"
+          fi
           # Without a build-time relay the host defaults to ws://localhost:3000, so a
           # release installer would try to sign in against the user's own machine.
           # Release builds bake in the production relay; other builds are unchanged.
@@ -242,13 +274,42 @@ jobs:
             # the gateway is off, and no key is ever baked into the host.
             export COLONY_CREDITS_GATEWAY=1
           fi
+          # shellcheck disable=SC2086 # one flag or none, deliberately unquoted
           cargo build --locked --release \
+            $keyring_flags \
             --features electron-host \
             --bin colony-native-host \
             --manifest-path desktop/src-tauri/Cargo.toml
 
+      - name: Verify where the native host keeps its secrets
+        shell: bash
+        env:
+          COLONY_PACKAGE_PLATFORM: ${{ matrix.platform }}
+          MAC_SIGNED: ${{ needs.resolve-signing.outputs.mac_signed }}
+        run: |
+          set -euo pipefail
+          target_dir="$(node -p 'JSON.parse(require("node:child_process").execFileSync("cargo", ["metadata", "--manifest-path", "desktop/src-tauri/Cargo.toml", "--format-version", "1", "--no-deps"], { encoding: "utf8" })).target_directory')"
+          host="$target_dir/release/colony-native-host"
+          if [ ! -f "$host" ]; then host="$host.exe"; fi
+          expected="colony-secret-storage=keychain"
+          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ] && [ "$MAC_SIGNED" != "true" ]; then
+            expected="colony-secret-storage=file"
+          fi
+          # LC_ALL=C: BSD grep on macOS rejects binary data under a UTF-8 locale.
+          if ! LC_ALL=C grep -a -F -q "$expected" "$host"; then
+            echo "The native host does not carry $expected." >&2
+            exit 1
+          fi
+          for other in colony-secret-storage=keychain colony-secret-storage=file; do
+            if [ "$other" != "$expected" ] && LC_ALL=C grep -a -F -q "$other" "$host"; then
+              echo "The native host unexpectedly carries $other." >&2
+              exit 1
+            fi
+          done
+          echo "Native host secret storage: $expected."
+
       - name: Verify the production relay is baked into the release host
-        if: inputs.release
+        if: env.COLONY_RELEASE_BUILD == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -263,7 +324,7 @@ jobs:
           echo "Production relay is present in the release native host."
 
       - name: Verify the Colony Agent gateway flag is baked into the release host
-        if: inputs.release
+        if: env.COLONY_RELEASE_BUILD == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -369,7 +430,7 @@ jobs:
           platform-key: ${{ matrix.platform }}-${{ matrix.arch }}
 
       - name: Prepare temporary Apple signing keychain
-        if: inputs.release && matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true'
+        if: env.COLONY_RELEASE_BUILD == 'true' && matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true'
         shell: bash
         env:
           APPLE_DEVELOPER_ID_CERT_P12_B64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_B64 }}
@@ -407,7 +468,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Prepare optional Windows signing certificate
-        if: inputs.release && matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true'
+        if: env.COLONY_RELEASE_BUILD == 'true' && matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true'
         shell: pwsh
         env:
           WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_B64 }}
@@ -429,10 +490,10 @@ jobs:
         shell: bash
         env:
           COLONY_FFMPEG_BUNDLE_DIR: ${{ steps.ffmpeg.outputs.directory }}
-          COLONY_ELECTRON_RELEASE: ${{ inputs.release && '1' || '0' }}
-          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
-          COLONY_ELECTRON_SIGNED: ${{ inputs.release && ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}
-          COLONY_ELECTRON_AUTO_UPDATE: ${{ inputs.release && (matrix.platform != 'darwin' || needs.resolve-signing.outputs.mac_signed == 'true') && '1' || '0' }}
+          COLONY_ELECTRON_RELEASE: ${{ env.COLONY_RELEASE_BUILD == 'true' && '1' || '0' }}
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ env.COLONY_RELEASE_BUILD == 'true' && 'Colony' || '' }}
+          COLONY_ELECTRON_SIGNED: ${{ env.COLONY_RELEASE_BUILD == 'true' && ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}
+          COLONY_ELECTRON_AUTO_UPDATE: ${{ env.COLONY_RELEASE_BUILD == 'true' && (matrix.platform != 'darwin' || needs.resolve-signing.outputs.mac_signed == 'true') && '1' || '0' }}
         run: |
           set -euo pipefail
           if [ "${{ matrix.platform }}" = "win32" ]; then
@@ -446,7 +507,7 @@ jobs:
             --host="$host"
 
       - name: Build release installer and updater metadata
-        if: inputs.release
+        if: env.COLONY_RELEASE_BUILD == 'true'
         shell: bash
         env:
           COLONY_ELECTRON_SIGNED: ${{ ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}
@@ -456,7 +517,7 @@ jobs:
       # Installed Macs update by unpacking this archive and swapping the app in
       # place, so it must unpack to a Colony app whose signature verifies.
       - name: Verify the Mac update archive unpacks to a valid app
-        if: inputs.release && matrix.platform == 'darwin'
+        if: env.COLONY_RELEASE_BUILD == 'true' && matrix.platform == 'darwin'
         shell: bash
         run: |
           set -euo pipefail
@@ -491,7 +552,7 @@ jobs:
           }
 
       - name: Upload package artifact
-        if: ${{ !inputs.release }}
+        if: ${{ env.COLONY_RELEASE_BUILD != 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: colony-electron-${{ matrix.platform }}-${{ matrix.arch }}
@@ -502,7 +563,7 @@ jobs:
           retention-days: 7
 
       - name: Upload release installer artifacts
-        if: inputs.release
+        if: env.COLONY_RELEASE_BUILD == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: colony-electron-release-${{ matrix.platform }}-${{ matrix.arch }}
@@ -519,7 +580,7 @@ jobs:
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
           # Every build is named Colony (the Tauri config default); the release flag only pins it.
-          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ env.COLONY_RELEASE_BUILD == 'true' && 'Colony' || '' }}
           COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
@@ -554,7 +615,7 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
-          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ env.COLONY_RELEASE_BUILD == 'true' && 'Colony' || '' }}
         run: |
           $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
           $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Colony" }

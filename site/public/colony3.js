@@ -24,6 +24,19 @@
   });
   applyMotion();
 
+  // ---------- Downloads ----------
+  // Release updates edit the download cards in #download; the hero and closing buttons copy those links.
+  const downloadSection = document.getElementById('download');
+  if (downloadSection) {
+    for (const ext of ['.dmg', '.exe']) {
+      const source = downloadSection.querySelector(`a[href$="${ext}"]`);
+      if (!source) continue;
+      for (const link of document.querySelectorAll(`a[href$="${ext}"]`)) {
+        if (link !== source) link.href = source.href;
+      }
+    }
+  }
+
   // ---------- Video cards ----------
   // Cards ship with native controls so they work without JavaScript.
   // With JavaScript, a poster play button starts each one; only one plays at a time.

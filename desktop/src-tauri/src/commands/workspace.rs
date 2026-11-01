@@ -136,6 +136,25 @@ pub async fn validate_repos_dir(dir: String) -> Result<(), String> {
     .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
 
+/// Open the native folder picker for the active workspace's local repos root.
+/// Returns `None` when the user cancels without changing the saved value.
+#[tauri::command]
+pub async fn pick_workspace_repos_dir(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+
+    let path = rx
+        .await
+        .map_err(|error| format!("folder picker failed: {error}"))?;
+    Ok(path
+        .and_then(|picked| picked.as_path().map(|path| path.to_path_buf()))
+        .map(|path| path.to_string_lossy().into_owned()))
+}
+
 /// Refresh avatar source trust without reconnecting or restoring the workspace.
 /// Only the user's saved community list may supply these origins.
 #[tauri::command]

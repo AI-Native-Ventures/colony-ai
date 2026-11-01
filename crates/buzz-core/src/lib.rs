@@ -81,6 +81,8 @@ pub mod relay;
 pub mod tenant;
 /// Schnorr signature and event ID verification.
 pub mod verification;
+/// Pipeline stage of one WhatsApp contact (the Outreach desk).
+pub mod whatsapp_stage;
 
 pub use error::VerificationError;
 pub use event::StoredEvent;

@@ -274,3 +274,67 @@ test.describe("W07 agent workspace smoke", () => {
     }
   });
 });
+
+test.describe("one-time Keychain key rescue card", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const locked = [
+    { pubkey: "a".repeat(64), name: "Scout" },
+    { pubkey: "b".repeat(64), name: "Nova" },
+  ];
+
+  test("is offered once, moves the keys on click, then goes quiet", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      managedAgents,
+      keyRescueStatus: { offer: true, lockedAgents: locked, attempt: null },
+    });
+    await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
+    const card = page.getByTestId("key-rescue-card");
+    await expect(card).toContainText("still in the Mac Keychain");
+    await expect(card).toContainText("choose Always Allow");
+    await page.screenshot({ path: "test-results/key-rescue-offer.png" });
+
+    await page.getByRole("button", { name: "Move my agents' keys" }).click();
+    await expect(card).toContainText("Your agents' keys are moved");
+    await expect(
+      page.getByRole("button", { name: "Move my agents' keys" }),
+    ).toHaveCount(0);
+  });
+
+  test("after a denied attempt lists the agents and the delete and add again path", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      managedAgents,
+      keyRescueStatus: {
+        offer: false,
+        lockedAgents: locked,
+        attempt: {
+          attemptedAtUnix: 1,
+          outcome: "denied",
+          agentsMoved: [],
+          deviceSecretsMoved: 0,
+          identity: "notInKeychain",
+        },
+      },
+    });
+    await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
+    const card = page.getByTestId("key-rescue-card");
+    await expect(card).toContainText("did not let Colony read");
+    await expect(page.getByTestId("key-rescue-agents")).toContainText(
+      "Scout, Nova",
+    );
+    await expect(card).toContainText("add it again");
+    await expect(page.getByTestId("key-rescue-move")).toHaveCount(0);
+    await page.screenshot({ path: "test-results/key-rescue-denied.png" });
+  });
+
+  test("shows nothing when there is nothing to rescue", async ({ page }) => {
+    await installMockBridge(page, { managedAgents });
+    await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("agent-directory")).toBeVisible();
+    await expect(page.getByTestId("key-rescue-card")).toHaveCount(0);
+  });
+});

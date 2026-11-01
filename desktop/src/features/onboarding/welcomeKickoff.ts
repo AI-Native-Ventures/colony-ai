@@ -1,4 +1,5 @@
 import {
+  readDeviceVerifiedRuntime,
   readVerifiedWelcomeConnection,
   type VerifiedWelcomeConnection,
 } from "./welcomeConnection";
@@ -68,6 +69,24 @@ export async function postWelcomeKickoffSetupNotice(
 }
 
 const WELCOME_KICKOFF_CTA = "What can I help you build?";
+
+/**
+ * A route another workspace on this Mac already proved counts as evidence only
+ * while the catalog does not report that runtime as signed out: a real
+ * sign-out must still reach the person.
+ */
+export function deviceEvidenceRuntimeId(
+  runtimes: readonly { id: string; authStatus: { status: string } }[],
+  deviceRuntimeId: string | null,
+): string | null {
+  if (!deviceRuntimeId) return null;
+  const runtime = runtimes.find((entry) => entry.id === deviceRuntimeId);
+  if (!runtime) return null;
+  const status = runtime.authStatus.status;
+  return status === "logged_out" || status === "config_invalid"
+    ? null
+    : deviceRuntimeId;
+}
 
 function formatAgentNames(agents: readonly ManagedAgent[]) {
   if (agents.length === 0) return "";
@@ -639,6 +658,8 @@ export function useWelcomeKickoff(
     config: typeof globalConfig;
     businessId: string | undefined;
     proof: VerifiedWelcomeConnection | null;
+    /** A route this Mac already proved in another workspace. No reply text. */
+    deviceRuntimeId?: string | null;
     error?: string;
   } | null>(null);
   const proofPending =
@@ -649,16 +670,20 @@ export function useWelcomeKickoff(
   React.useEffect(() => {
     void retryGeneration;
     let cancelled = false;
-    void readVerifiedWelcomeConnection(
-      activeCommunity?.businessCommunityId,
-      globalConfig,
-    )
-      .then((proof) => {
+    void Promise.all([
+      readVerifiedWelcomeConnection(
+        activeCommunity?.businessCommunityId,
+        globalConfig,
+      ),
+      readDeviceVerifiedRuntime(globalConfig).catch(() => null),
+    ])
+      .then(([proof, deviceRuntimeId]) => {
         if (!cancelled)
           setProofState({
             config: globalConfig,
             businessId: activeCommunity?.businessCommunityId,
             proof,
+            deviceRuntimeId,
           });
       })
       .catch(() => {
@@ -676,6 +701,9 @@ export function useWelcomeKickoff(
       cancelled = true;
     };
   }, [activeCommunity?.businessCommunityId, globalConfig, retryGeneration]);
+  const deviceRuntimeId = proofPending
+    ? null
+    : (proofState?.deviceRuntimeId ?? null);
   const readiness = React.useMemo(
     () =>
       resolveAgentReadiness(
@@ -683,7 +711,8 @@ export function useWelcomeKickoff(
         globalConfig,
         "preferred",
         gitBashQuery.isError ? undefined : gitBashQuery.data,
-        verifiedConnection?.runtimeId,
+        verifiedConnection?.runtimeId ??
+          deviceEvidenceRuntimeId(runtimesQuery.data ?? [], deviceRuntimeId),
       ),
     [
       globalConfig,
@@ -691,8 +720,12 @@ export function useWelcomeKickoff(
       gitBashQuery.data,
       gitBashQuery.isError,
       verifiedConnection,
+      deviceRuntimeId,
     ],
   );
+  // A catalog that was cold or timed out is the other way a working Mac reads
+  // as disconnected. Probe once more before telling anyone to reconnect.
+  const reprobedChannelRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     void retryGeneration;
     if (!proofPending && proofState?.error) {
@@ -723,6 +756,15 @@ export function useWelcomeKickoff(
       return;
     }
 
+    if (
+      !readiness.ready &&
+      readiness.reason === undefined &&
+      reprobedChannelRef.current !== channelId
+    ) {
+      reprobedChannelRef.current = channelId;
+      retryKickoff();
+      return;
+    }
     const kickoffController = kickoffCoordinator.begin(channelId);
     if (!kickoffController) return;
     setKickoffError(null);
@@ -886,6 +928,7 @@ export function useWelcomeKickoff(
     proofPending,
     proofState,
     retryGeneration,
+    retryKickoff,
     gitBashQuery.isPending,
     runtimesQuery.isPending,
     runtimesQuery.isError,

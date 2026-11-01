@@ -155,6 +155,10 @@ pub struct AcpClient {
     first_token_ms: Option<u64>,
     /// The assistant message the running turn ended on (see `turn_reply`).
     final_text: crate::turn_reply::FinalTextCapture,
+    /// The turn ended and the person was left without an answer: the agent
+    /// published nothing and the harness could not post one either. The wake
+    /// ledger keeps the mention in flight so a restart delivers it again.
+    reply_unconfirmed: bool,
     own_process_group: bool,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
@@ -552,6 +556,24 @@ impl AcpClient {
             }
         }
 
+        // OpenCode has no per-session hook, so its private-folder deny rules ride
+        // in its inline config, merged into any config the operator or desktop
+        // already set and set last so it wins over the loop below.
+        let opencode_guard = if crate::config::normalize_agent_command_identity(command)
+            == "opencode"
+        {
+            let current = std::env::var("OPENCODE_CONFIG_CONTENT").ok().or_else(|| {
+                extra_env
+                    .iter()
+                    .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
+                    .map(|(_, v)| v.clone())
+            });
+            let home = std::env::var("HOME").ok();
+            crate::private_folders::opencode_config_with_guard(current.as_deref(), home.as_deref())
+        } else {
+            None
+        };
+
         for (key, value) in extra_env {
             if key == "CODEX_CONFIG" && codex_merge_active {
                 // Handled by build_codex_config_env; skip here to avoid double-setting.
@@ -563,6 +585,9 @@ impl AcpClient {
         }
         if let Some(merged) = codex_config_value {
             cmd.env("CODEX_CONFIG", merged);
+        }
+        if let Some(guarded) = opencode_guard {
+            cmd.env("OPENCODE_CONFIG_CONTENT", guarded);
         }
 
         // Browser launch fields belong to the native harness, never to a
@@ -614,6 +639,7 @@ impl AcpClient {
             prompt_started: None,
             first_token_ms: None,
             final_text: crate::turn_reply::FinalTextCapture::default(),
+            reply_unconfirmed: false,
             own_process_group,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
@@ -658,6 +684,17 @@ impl AcpClient {
     /// its final tool call, never thinking or earlier narration.
     pub(crate) fn take_final_assistant_text(&mut self) -> String {
         self.final_text.take()
+    }
+
+    /// Record whether the turn that just ended left the person unanswered.
+    pub(crate) fn set_reply_unconfirmed(&mut self, unconfirmed: bool) {
+        self.reply_unconfirmed = unconfirmed;
+    }
+
+    /// Whether the turn that just ended left the person unanswered. Reading it
+    /// clears it.
+    pub(crate) fn take_reply_unconfirmed(&mut self) -> bool {
+        std::mem::take(&mut self.reply_unconfirmed)
     }
 
     /// Take the bounded assistant reply captured by the connection proof.
@@ -784,6 +821,15 @@ impl AcpClient {
         if let Some(title) = session_title {
             // Merge — _meta may already carry a system prompt from an adapter extension.
             params["_meta"]["sessionTitle"] = serde_json::Value::String(title.to_owned());
+        }
+        if self.standard_adapter == Some(StandardAdapterKind::Claude) {
+            // Keep agents out of macOS privacy-protected folders. claude-agent-acp
+            // merges these with its own disallowed tools, and deny rules win even
+            // under bypassPermissions.
+            let home = std::env::var("HOME").ok();
+            params["_meta"]["claudeCode"]["options"]["disallowedTools"] = serde_json::json!(
+                crate::private_folders::claude_disallowed_tools(home.as_deref())
+            );
         }
         let started = std::time::Instant::now();
         let result = self.send_request("session/new", params).await?;

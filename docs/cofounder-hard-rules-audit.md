@@ -44,6 +44,7 @@ This audit was read from the code. "Test" names the test that fails if the guard
 | Batch create 47048 | `handle_batch` | owner, admin, Outreach agent | batch `pending`, rows `held`; opted-out and paused numbers refused | PG `pending_batch_never_sends_...` |
 | Role resolution | `whatsapp::access_for` | any caller | **A managed agent never gets `OwnerAdmin`, whatever role row it holds (guard added in this PR).** Without it an agent given an admin row would have its messages queued and sent at once. | PG **`a_managed_agent_with_an_admin_role_row_still_only_drafts` (new)**: the message is a draft, nothing reaches Graph, and the agent cannot approve its own draft |
 | Settings, cap, template rename 47051 | `handle_settings` | owner or admin; agents may only propose a title | `is_owner_admin` | PG `template_titles_default_from_the_body_rename_and_survive_sync` |
+| Contact stage and label 47052 | `handle_contact_update` | owner, admin, their agents, Outreach members; plain members refused; audited | `Access::can_send` | PG `only_people_who_may_reply_can_change_a_stage_or_name_and_every_change_is_audited` |
 | Connect, disconnect | `api/whatsapp.rs` | owner or admin | `require_owner_admin` | PG `secrets_stay_sealed_and_out_of_every_response` |
 | Inbound webhook | `api/whatsapp.rs` | Meta | HMAC check; no send call in `inbound.rs` or `channel.rs` | PG `webhook_checks_the_signature_answers_the_challenge_and_dedupes` |
 
