@@ -154,6 +154,94 @@ pub async fn update_profile_at_relay(
         .unwrap_or_else(|| empty_profile_info(&expected_pubkey)))
 }
 
+/// Read the signed-in person's own profile (kind 0) at another workspace's
+/// relay, so a new workspace can start from it. Read only: nothing is written
+/// to either relay.
+#[tauri::command]
+pub async fn get_profile_at_relay(
+    relay_url: String,
+    expected_pubkey: String,
+    state: State<'_, AppState>,
+) -> Result<ProfileInfo, String> {
+    let signer = capture_expected_signer(&state, &expected_pubkey)?;
+    let api_base_url = relay_http_base_url(&relay_url);
+    let filter = serde_json::json!({
+        "kinds": [0],
+        "authors": [expected_pubkey],
+        "limit": 1
+    });
+    let events = query_relay_at_with_keys(&state, &api_base_url, &[filter], &signer, None).await?;
+    Ok(events
+        .first()
+        .map(nostr_convert::profile_info_from_event)
+        .transpose()?
+        .unwrap_or_else(|| empty_profile_info(&expected_pubkey)))
+}
+
+/// Largest picture copied between workspaces.
+const MAX_CARRIED_AVATAR_BYTES: usize = 8 * 1024 * 1024;
+const CARRIED_AVATAR_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// True when `avatar_url` is media served by the source workspace's own host.
+/// Such a picture is bound to that community, so a new workspace needs its own
+/// copy. Inline `data:` pictures and pictures on other hosts are not bound.
+fn avatar_is_bound_to_relay(avatar_url: &str, source_relay_url: &str) -> bool {
+    let (Ok(avatar), Ok(source)) = (
+        url::Url::parse(avatar_url.trim()),
+        url::Url::parse(&relay_http_base_url(source_relay_url)),
+    ) else {
+        return false;
+    };
+    matches!(avatar.scheme(), "http" | "https")
+        && avatar.host_str().is_some()
+        && avatar.host_str() == source.host_str()
+        && avatar.port_or_known_default() == source.port_or_known_default()
+}
+
+/// Copy a picture that lives in another workspace's media store into the
+/// active workspace's media store and return the new URL. A picture that is not
+/// bound to the source workspace is returned unchanged. Fails (so the caller
+/// can carry the name alone) when the picture cannot be fetched, is too large,
+/// or is not an image.
+#[tauri::command]
+pub async fn copy_avatar_to_active_community(
+    source_relay_url: String,
+    avatar_url: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    if !avatar_is_bound_to_relay(&avatar_url, &source_relay_url) {
+        return Ok(avatar_url);
+    }
+    let response = state
+        .http_client
+        .get(avatar_url.trim())
+        .timeout(CARRIED_AVATAR_TIMEOUT)
+        .send()
+        .await
+        .map_err(|error| format!("avatar download failed: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "avatar download failed: HTTP {}",
+            response.status()
+        ));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_CARRIED_AVATAR_BYTES as u64)
+    {
+        return Err("avatar is too large to copy".to_string());
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("avatar download failed: {error}"))?;
+    if bytes.len() > MAX_CARRIED_AVATAR_BYTES {
+        return Err("avatar is too large to copy".to_string());
+    }
+    let uploaded = crate::commands::media::upload_image_bytes(bytes.to_vec(), &state).await?;
+    Ok(uploaded.url)
+}
+
 fn build_deferred_profile_event(
     current: &Value,
     avatar_url: &str,
@@ -479,6 +567,33 @@ mod tests {
             serde_json::from_str::<Value>(&event.content).unwrap()["picture"],
             "https://example.com/avatar.png"
         );
+    }
+
+    #[test]
+    fn only_media_on_the_source_workspace_host_is_copied() {
+        let source = "wss://colony.example.com";
+        assert!(avatar_is_bound_to_relay(
+            "https://colony.example.com/media/abc.png",
+            source
+        ));
+        // Another workspace, an outside host, an inline picture and junk stay as they are.
+        assert!(!avatar_is_bound_to_relay(
+            "https://socket.example.com/media/abc.png",
+            source
+        ));
+        assert!(!avatar_is_bound_to_relay(
+            "https://lh3.googleusercontent.com/a/photo",
+            source
+        ));
+        assert!(!avatar_is_bound_to_relay(
+            "data:image/png;base64,AAAA",
+            source
+        ));
+        assert!(!avatar_is_bound_to_relay("not a url", source));
+        assert!(!avatar_is_bound_to_relay(
+            "ftp://colony.example.com/media/abc.png",
+            source
+        ));
     }
 
     #[test]
