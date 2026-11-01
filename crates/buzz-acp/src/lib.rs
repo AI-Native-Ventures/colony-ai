@@ -14,6 +14,7 @@ mod filter;
 mod observer;
 mod pool;
 mod pool_lifecycle;
+mod private_folders;
 mod prompt_framing;
 mod prompt_project;
 mod provider_failure;
@@ -6918,6 +6919,23 @@ mod agent_draft_prompt_tests {
         assert!(prompt.contains("CI and live workflow evidence answer different questions"));
         assert!(prompt.contains("record the invariant in the same session"));
         assert!(prompt.contains("update the team's shared guidance"));
+    }
+
+    #[test]
+    fn shared_base_prompt_forbids_scanning_private_folders() {
+        let prompt = include_str!("base_prompt.md");
+        assert!(prompt.contains("## Private Folders (hard rule)"));
+        assert!(prompt.contains("Never scan the whole home folder or `/`"));
+        assert!(prompt.contains("no `find ~`, `find /Users`, `grep -r ~`"));
+        assert!(prompt.contains("Photos, `Pictures`, `Music`, `Movies`, `Mail`, `Messages`"));
+        assert!(prompt.contains("unless the owner asked for that exact path"));
+        assert!(prompt.contains(
+            "Touch `Desktop`, `Documents` and `Downloads` only when the owner names them"
+        ));
+        // The rule must ship in the framed prompt every harness receives.
+        assert!(
+            crate::prompt_framing::DEFAULT_BASE_PROMPT.contains("## Private Folders (hard rule)")
+        );
     }
 
     #[test]
