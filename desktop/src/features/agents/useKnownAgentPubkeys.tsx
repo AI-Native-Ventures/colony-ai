@@ -66,14 +66,18 @@ export function KnownAgentPubkeysProvider({
   const relayAgents = relayQuery.data;
   const managedAgentAvatars = useStableMap(
     new Map(
-      (managedAgents ?? []).map((agent) => [
-        normalizePubkey(agent.pubkey),
-        agent.avatarUrl?.trim() ||
-          agentAntAvatarDataUrl(
-            agent.name.trim().toLowerCase() === "scout" ? "Other" : agent.name,
-            agent.name.trim().toLowerCase() === "scout" ? "green" : undefined,
-          ),
-      ]),
+      (managedAgents ?? []).map((agent) => {
+        const name = agent.name?.trim() || "Agent";
+        const isScout = name.toLowerCase() === "scout";
+        return [
+          normalizePubkey(agent.pubkey),
+          agent.avatarUrl?.trim() ||
+            agentAntAvatarDataUrl(
+              isScout ? "Other" : name,
+              isScout ? "green" : undefined,
+            ),
+        ];
+      }),
     ),
   );
   const localPubkeys = useStableSet(
