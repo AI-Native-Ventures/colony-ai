@@ -694,6 +694,8 @@ type E2eConfig = {
     referenceWorkspaceBusinessName?: string;
     /** Seed one deliberately long lead name for picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
+    /** Add bounded synthetic lead rows for dense Leads screen proof. */
+    referenceWorkspaceLeadCount?: number;
     whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
@@ -5970,6 +5972,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
+      leadCount: config.mock?.referenceWorkspaceLeadCount,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;
