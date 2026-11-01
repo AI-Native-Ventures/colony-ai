@@ -133,7 +133,12 @@ async function openDesk(
   await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
 }
 
-async function capture(page: Page, fileName: string, width: number) {
+async function capture(
+  page: Page,
+  fileName: string,
+  width: number,
+  proofDirectory: string,
+) {
   await page.evaluate(() => {
     window.scrollTo(0, 0);
     document.querySelectorAll<HTMLElement>("body *").forEach((element) => {
@@ -181,7 +186,12 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         );
         const suffix = `${viewport.label}-${theme}`;
 
-        await capture(page, `needs-you-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `needs-you-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
 
         await page.getByTestId("channel-view-tab-pipeline").click();
         await expect(page.getByTestId("outreach-desk-pipeline")).toBeVisible();
@@ -190,11 +200,21 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         ).toBeVisible();
         await expect(page.locator(".c3wa-desk-page-head")).toBeInViewport();
         await expect(page.getByPlaceholder("Find a business")).toBeVisible();
-        await capture(page, `pipeline-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `pipeline-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
 
         await page.getByTestId("channel-view-tab-chats").click();
         await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
-        await capture(page, `chats-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `chats-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
         if (viewport.width === 1440) {
           await page.getByTestId("whatsapp-contact-27821237135").click();
           await expect(
@@ -207,6 +227,7 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
             page,
             `chats-conversation-${suffix}.png`,
             viewport.width,
+            proofDirectory,
           );
         }
         if (viewport.width === 390) {
@@ -223,13 +244,19 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
             page,
             `chats-conversation-${suffix}.png`,
             viewport.width,
+            proofDirectory,
           );
           await openRecord.focus({ timeout: 5_000 });
           await page.keyboard.press("Enter");
           await expect(page.getByTestId("whatsapp-contact-record")).toBeVisible(
             { timeout: 10_000 },
           );
-          await capture(page, `chats-record-${suffix}.png`, viewport.width);
+          await capture(
+            page,
+            `chats-record-${suffix}.png`,
+            viewport.width,
+            proofDirectory,
+          );
         }
 
         await page.getByTestId("channel-view-tab-discussion").click();
@@ -242,18 +269,33 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
           await scrollToLatest.click();
           await expect(scrollToLatest).toHaveCount(0);
         }
-        await capture(page, `discussion-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `discussion-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
 
         await page.getByTestId("channel-view-tab-knowledge").click();
         await expect(page.getByTestId("work-area-panel")).toBeVisible();
         await expect(page.getByTestId("work-area-knowledge")).toBeVisible();
-        await capture(page, `knowledge-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `knowledge-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
         await page.getByTestId("work-area-close").click();
 
         await page.getByTestId("channel-view-tab-canvas").click();
         await expect(page.getByTestId("work-area-panel")).toBeVisible();
         await expect(page.getByTestId("work-area-canvas")).toBeVisible();
-        await capture(page, `canvas-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `canvas-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
         await page.getByTestId("work-area-close").click();
 
         await page.getByTestId("channel-view-tab-files").click();
@@ -261,7 +303,12 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         await expect(
           page.locator("[data-testid^='work-area-files']").first(),
         ).toBeVisible();
-        await capture(page, `files-${suffix}.png`, viewport.width);
+        await capture(
+          page,
+          `files-${suffix}.png`,
+          viewport.width,
+          proofDirectory,
+        );
         await page.getByTestId("work-area-close").click();
       }
     } finally {
