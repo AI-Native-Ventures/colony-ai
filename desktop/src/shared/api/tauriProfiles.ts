@@ -99,6 +99,27 @@ export async function updateProfileAtRelay(input: {
   return fromRawProfile(profile);
 }
 
+/** The signed-in person's own profile at another workspace's relay. Read only. */
+export async function getProfileAtRelay(input: {
+  relayUrl: string;
+  expectedPubkey: string;
+}): Promise<Profile> {
+  const profile = await invokeTauri<RawProfile>("get_profile_at_relay", input);
+  return fromRawProfile(profile);
+}
+
+/**
+ * Copy a picture stored by another workspace into the active workspace's media
+ * store and return its new URL. Pictures not bound to that workspace come back
+ * unchanged.
+ */
+export async function copyAvatarToActiveCommunity(input: {
+  sourceRelayUrl: string;
+  avatarUrl: string;
+}): Promise<string> {
+  return invokeTauri<string>("copy_avatar_to_active_community", input);
+}
+
 export async function getUserProfile(pubkey?: string): Promise<Profile> {
   const profile = await invokeTauri<RawProfile>("get_user_profile", { pubkey });
   return fromRawProfile(profile);
