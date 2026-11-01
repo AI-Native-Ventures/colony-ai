@@ -195,8 +195,12 @@ type MockBridgeOptions = {
   referenceWorkspace?: boolean;
   /** Override the active workspace name in the reference mock. */
   referenceWorkspaceBusinessName?: string;
-  /** Add a long lead name for picker overflow regression coverage. */
+  /** Add long lead names for row and picker overflow regression coverage. */
   referenceWorkspaceLongLeadNames?: boolean;
+  /** Add bounded synthetic lead rows for dense Leads screen proof. */
+  referenceWorkspaceLeadCount?: number;
+  /** Leave one reference lead's contact and value blank for visual proof. */
+  referenceWorkspaceMissingLeadFields?: boolean;
   /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */
   whatsappGuesthouses?: boolean;
   /** Report the window as fullscreen (no macOS traffic-light inset). */

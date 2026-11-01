@@ -335,6 +335,7 @@ export default defineConfig({
         "**/cofounder-customer-record.spec.ts",
         "**/cofounder-phase2.spec.ts",
         "**/cofounder-playbooks.spec.ts",
+        "**/leads-table-polish.spec.ts",
         "**/whatsapp-outreach.spec.ts",
         "**/whatsapp-outreach.visual.spec.ts",
       ],

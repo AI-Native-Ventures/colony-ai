@@ -49,12 +49,19 @@ class _DiscoveryWorkspaceContent extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
       children: [
         Text(
-          'Every relationship.\nOne place.',
+          'Leads',
           style: context.textTheme.headlineMedium?.copyWith(
             color: context.mobileTokens.ink,
             fontWeight: FontWeight.w800,
-            height: 1.12,
             letterSpacing: -0.8,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Every relationship. One place.',
+          style: context.textTheme.bodyMedium?.copyWith(
+            color: context.mobileTokens.muted,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 16),
@@ -73,45 +80,99 @@ class _DiscoveryWorkspaceContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text('Show', style: context.textTheme.labelSmall),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          key: ValueKey('discovery-stage-filter-$selectedStage'),
-          initialValue: stageValues.contains(selectedStage)
-              ? selectedStage
-              : 'all',
-          style: context.textTheme.bodySmall,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: context.mobileTokens.paper,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
-          ),
-          items: [
-            const DropdownMenuItem(value: 'all', child: Text('All prospects')),
-            for (final stage in stageValues)
-              DropdownMenuItem(value: stage, child: Text(_humanize(stage))),
+        Row(
+          children: [
+            Text(
+              'Show',
+              style: context.textTheme.bodySmall?.copyWith(
+                color: context.mobileTokens.muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('discovery-stage-filter-$selectedStage'),
+                initialValue: stageValues.contains(selectedStage)
+                    ? selectedStage
+                    : 'all',
+                style: context.textTheme.bodySmall?.copyWith(
+                  color: context.mobileTokens.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  filled: true,
+                  fillColor: context.mobileTokens.paper,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 'all',
+                    child: Text('All prospects'),
+                  ),
+                  for (final stage in stageValues)
+                    DropdownMenuItem(
+                      value: stage,
+                      child: Text(_humanize(stage)),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) onStageChanged(value);
+                },
+              ),
+            ),
           ],
-          onChanged: (value) {
-            if (value != null) onStageChanged(value);
-          },
         ),
         const SizedBox(height: 20),
         if (visibleProspects.isNotEmpty)
-          Text(
-            '${visibleProspects.length} ${visibleProspects.length == 1 ? 'prospect' : 'prospects'}',
-            style: context.textTheme.labelSmall?.copyWith(
-              color: context.mobileTokens.muted,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${visibleProspects.length} ${visibleProspects.length == 1 ? 'PROSPECT' : 'PROSPECTS'}',
+                style: context.textTheme.labelSmall?.copyWith(
+                  color: context.mobileTokens.muted,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.45,
+                ),
+              ),
+              Text(
+                'Best fit first',
+                style: context.textTheme.labelSmall?.copyWith(
+                  color: context.mobileTokens.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 12),
         if (visibleProspects.isEmpty)
           const _DiscoveryEmptyState()
         else
-          for (final record in visibleProspects)
-            _DiscoveryRecordTile(
-              key: ValueKey(record.event.id),
-              record: record,
+          Container(
+            decoration: BoxDecoration(
+              color: context.mobileTokens.paper,
+              border: Border.all(color: context.mobileTokens.line),
+              borderRadius: BorderRadius.circular(18),
             ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var index = 0; index < visibleProspects.length; index++)
+                  _DiscoveryRecordTile(
+                    key: ValueKey(visibleProspects[index].event.id),
+                    record: visibleProspects[index],
+                    showDivider: index < visibleProspects.length - 1,
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -131,9 +192,14 @@ int _bestFitFirst(MobileBusinessRecord left, MobileBusinessRecord right) {
 }
 
 class _DiscoveryRecordTile extends StatelessWidget {
-  const _DiscoveryRecordTile({required this.record, super.key});
+  const _DiscoveryRecordTile({
+    required this.record,
+    required this.showDivider,
+    super.key,
+  });
 
   final MobileBusinessRecord record;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
@@ -141,10 +207,16 @@ class _DiscoveryRecordTile extends StatelessWidget {
     final party = _readObject(prospect['party']) ?? const {};
     final name = _stringOr(party['displayName'], 'Prospect');
     final score = prospect['fitScore'];
+    final stage = prospect['stage'] is String
+        ? prospect['stage'] as String
+        : null;
     final tokens = context.mobileTokens;
-    final subtitle = [
-      prospect['industry'],
+    final vertical = _stringOr(
       prospect['vertical'],
+      _stringOr(prospect['industry'], ''),
+    );
+    final subtitle = [
+      vertical,
       prospect['location'],
     ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' · ');
     void openDetail() {
@@ -157,88 +229,97 @@ class _DiscoveryRecordTile extends StatelessWidget {
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: tokens.line)),
-      ),
-      child: Semantics(
-        button: true,
-        label: [
-          name,
-          subtitle,
-          if (score is int) '$score fit score',
-        ].where((value) => value.isNotEmpty).join('. '),
-        onTap: openDetail,
-        child: ExcludeSemantics(
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: openDetail,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.textTheme.bodyMedium?.copyWith(
-                              color: tokens.ink,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (subtitle.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              subtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: context.textTheme.bodySmall?.copyWith(
-                                color: tokens.muted,
-                                height: 1.45,
+    final tile = Semantics(
+      button: true,
+      label: [
+        name,
+        if (stage != null) _humanize(stage),
+        subtitle,
+        if (score is int) '$score fit score',
+      ].where((value) => value.isNotEmpty).join('. '),
+      onTap: openDetail,
+      child: ExcludeSemantics(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: openDetail,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: context.textTheme.bodyMedium?.copyWith(
+                                  color: tokens.ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
+                            if (stage != null) ...[
+                              const SizedBox(width: 7),
+                              _ProspectStageTag(stage: stage),
+                            ],
                           ],
-                          if (prospect['stage'] is String) ...[
-                            const SizedBox(height: 8),
-                            _ProspectStageTag(
-                              stage: prospect['stage'] as String,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    if (score is int) ...[
-                      const SizedBox(width: 12),
-                      Text(
-                        '$score',
-                        style: context.textTheme.titleSmall?.copyWith(
-                          color: context.appColors.success,
-                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4, top: 4),
-                        child: Text(
-                          'fit',
-                          style: context.textTheme.labelSmall?.copyWith(
-                            color: tokens.muted,
+                      if (score is int) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          '$score',
+                          style: context.textTheme.titleSmall?.copyWith(
+                            color: tokens.ink,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                      ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, top: 4),
+                          child: Text(
+                            'fit',
+                            style: context.textTheme.labelSmall?.copyWith(
+                              color: tokens.muted,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: tokens.muted,
+                        height: 1.4,
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
         ),
       ),
+    );
+    if (!showDivider) return tile;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        tile,
+        Container(height: 1, color: tokens.line),
+      ],
     );
   }
 }
@@ -452,21 +533,33 @@ class _ProspectStageTag extends StatelessWidget {
   final String stage;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: context.mobileTokens.soft,
-      borderRadius: BorderRadius.circular(7),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Text(
-        _humanize(stage),
-        style: context.textTheme.labelSmall?.copyWith(
-          color: context.mobileTokens.muted,
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final (background, foreground) = switch (stage) {
+      'won' => (tokens.success, context.appColors.success),
+      'proposal' => (tokens.warning, context.appColors.warning),
+      'in_conversation' => (tokens.info, tokens.action),
+      'qualified' => (tokens.actionSoft, tokens.action),
+      'lost' => (tokens.error, Theme.of(context).colorScheme.error),
+      _ => (tokens.soft, tokens.muted),
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          _humanize(stage),
+          style: context.textTheme.labelSmall?.copyWith(
+            color: foreground,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _DiscoveryDetailRow extends StatelessWidget {
@@ -540,9 +633,8 @@ class _BusinessPageHeader extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 24),
         SizedBox(
-          height: 68,
+          height: 48,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
             child: Row(
@@ -556,9 +648,9 @@ class _BusinessPageHeader extends StatelessWidget {
                       onPressed: onBack,
                       icon: const Icon(Icons.arrow_back),
                       style: IconButton.styleFrom(
-                        backgroundColor: context.mobileTokens.paper,
+                        backgroundColor: Colors.transparent,
                         foregroundColor: context.mobileTokens.ink,
-                        side: BorderSide(color: context.mobileTokens.line),
+                        side: BorderSide.none,
                       ),
                     ),
                   ),
