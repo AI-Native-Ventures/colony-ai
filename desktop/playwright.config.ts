@@ -147,6 +147,7 @@ export default defineConfig({
         "**/first-reply-runtime.spec.ts",
         "**/judge-ready-ai.spec.ts",
         "**/connect-polish.spec.ts",
+        "**/redproof-money-rails-connect-secret.spec.ts",
         "**/smoke.spec.ts",
         "**/shell-design.spec.ts",
         "**/account-auth.spec.ts",
