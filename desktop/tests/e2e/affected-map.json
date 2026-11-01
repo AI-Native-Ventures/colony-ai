@@ -29,6 +29,7 @@
       "account-auth.spec.ts",
       "workspace-header-icon.spec.ts",
       "workspace-switcher.spec.ts",
+      "agent-avatar-everywhere.spec.ts",
       "connect-polish.spec.ts",
       "start-free-opencode.spec.ts",
       "colony3-first-run-proof.spec.ts",
