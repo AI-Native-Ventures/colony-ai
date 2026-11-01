@@ -211,11 +211,16 @@ test.describe("co-founder customer records", () => {
       .getByRole("table", { name: "Leads" })
       .getByRole("row")
       .filter({ hasText: "Melville Manor Guesthouse" });
-    const convert = row.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`);
+    await row.getByRole("link", { name: "Review lead" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/sales/lead/${MELVILLE_PARTY_ID}$`),
+    );
+    const detail = page.getByTestId("w10-prospect-page");
+    const convert = detail.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`);
     await expect(convert).toBeVisible();
     await convert.click();
     await expect(convert).toHaveCount(0);
-    await row.getByRole("link", { name: "Customer record" }).click();
+    await detail.getByRole("link", { name: "Customer record" }).click();
 
     const timeline = page
       .getByTestId("customer-record-screen")
@@ -303,11 +308,16 @@ test.describe("co-founder customer records", () => {
       .getByRole("table", { name: "Leads" })
       .getByRole("row")
       .filter({ hasText: "Melville Manor Guesthouse" });
-    const convert = row.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`);
+    await row.getByRole("link", { name: "Review lead" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/sales/lead/${MELVILLE_PARTY_ID}$`),
+    );
+    const detail = page.getByTestId("w10-prospect-page");
+    const convert = detail.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`);
     await expect(convert).toBeVisible();
     await convert.click();
     await expect(convert).toHaveCount(0);
-    await row.getByRole("link", { name: "Customer record" }).click();
+    await detail.getByRole("link", { name: "Customer record" }).click();
     await expect(
       page.getByTestId("customer-record-screen").locator("ol li"),
     ).toHaveCount(3);

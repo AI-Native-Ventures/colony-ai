@@ -2,6 +2,8 @@ import * as React from "react";
 import { UserRound } from "lucide-react";
 
 import { useAvatarPresentation } from "@/features/profile/avatarPresentationStore";
+import { useManagedAgentAvatarUrl } from "@/features/agents/useKnownAgentPubkeys";
+import { resolveAvatarUrl } from "@/features/profile/lib/avatarResolver";
 import { avatarSourceUrlForShape } from "@/features/profile/ui/ProfileAvatarEditor.utils";
 import { parseAnimatedAvatarUrl } from "@/shared/lib/animatedAvatar";
 import { cn } from "@/shared/lib/cn";
@@ -22,6 +24,8 @@ function isInlineDataUrl(url: string): boolean {
 
 type ProfileAvatarProps = {
   avatarUrl: string | null;
+  pubkey?: string | null;
+  fallbackAvatarUrl?: string | null;
   avatarDataUrl?: string | null;
   label: string;
   /**
@@ -57,6 +61,8 @@ type ProfileAvatarProps = {
 
 export function ProfileAvatar({
   avatarUrl,
+  pubkey,
+  fallbackAvatarUrl,
   avatarDataUrl,
   label,
   initialsLabel,
@@ -70,8 +76,15 @@ export function ProfileAvatar({
   untrusted = false,
 }: ProfileAvatarProps) {
   const initials = getInitials(initialsLabel ?? label);
+  const knownManagedAgentAvatarUrl = useManagedAgentAvatarUrl(pubkey);
+  const profileAvatarUrl = avatarUrl?.trim() || avatarDataUrl?.trim() || null;
+  const resolvedAvatarUrl = resolveAvatarUrl(
+    profileAvatarUrl,
+    knownManagedAgentAvatarUrl,
+    fallbackAvatarUrl,
+  );
   const presentation = useAvatarPresentation(avatarUrl);
-  const presentedAvatarUrl = presentation?.displayUrl ?? avatarUrl;
+  const presentedAvatarUrl = presentation?.displayUrl ?? resolvedAvatarUrl;
   const shapedAvatarUrl = avatarSourceUrlForShape(presentedAvatarUrl, shape);
 
   // Animated avatars show their static poster frame until hovered, then play

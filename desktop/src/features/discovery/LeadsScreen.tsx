@@ -3,8 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { formatZar } from "./BusinessCommon";
 import { BusinessLogoMark } from "./BusinessLogoMark";
-import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
-import { discoveryTagFitLabel } from "./discoveryTags";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { AddLeadDialog } from "./LeadDialogs";
 import { LeadPill, PlusGlyph, RunnerMark, SearchGlyph } from "./LeadParts";
@@ -21,46 +19,18 @@ import {
   getWhatsAppLeadStatus,
   useWhatsAppLeadData,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
-import {
-  maskWhatsAppNumber,
-  whatsappLeadStatusLabel,
-} from "@/features/whatsapp-outreach/whatsappOutreachModels";
-import { customerActions } from "@/features/cofounder/customerActions";
-import {
-  useCustomerRecordAction,
-  useCustomerRecords,
-} from "@/features/cofounder/customerHooks";
-import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
-import type { CustomerRecordView } from "@/features/cofounder/customerRecords";
 
 import "./colony3-leads.css";
 
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
   const { campaign } = useDiscoveryCampaign();
-  const customerAccess = useCustomerRecordCapabilities();
-  const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
-  const customerAction = useCustomerRecordAction();
-  const { statusQuery, contactsQuery, inBatchLeadIds, batchIdByLeadId } =
-    useWhatsAppLeadData();
+  const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("all");
   const [whatsappFilter, setWhatsappFilter] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [conversionError, setConversionError] = React.useState<string | null>(
-    null,
-  );
   const canWrite = canEdit(context.role);
-  const customerRecordByPartyId = React.useMemo(
-    () =>
-      new Map(
-        (customerRecordsQuery.data ?? []).map((record) => [
-          record.partyId,
-          record,
-        ]),
-      ),
-    [customerRecordsQuery.data],
-  );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const activeProspects = context.records.prospects.filter(
     ({ record }) => record.status === "active",
@@ -98,20 +68,6 @@ export function LeadsScreen(context: LeadContext) {
     return matchesQuery && matchesStage && matchesWhatsApp;
   });
   const runner = campaign?.runBy ?? null;
-  const outreachChannelId = statusQuery.data?.outreachChannelId;
-
-  async function makeClient(record: CustomerRecordView) {
-    setConversionError(null);
-    try {
-      await customerAction.mutateAsync(customerActions.convertToClient(record));
-    } catch (error) {
-      setConversionError(
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : "The lead could not be converted. Open the customer record and try again.",
-      );
-    }
-  }
 
   return (
     <main className="c3l-page" data-testid="w10-leads-page">
@@ -194,12 +150,6 @@ export function LeadsScreen(context: LeadContext) {
           </select>
         </div>
 
-        {conversionError ? (
-          <p className="c3l-conversion-error" role="alert">
-            {conversionError}
-          </p>
-        ) : null}
-
         {prospects.length ? (
           <div className="c3l-card c3l-table-wrap">
             <table aria-label="Leads" className="c3l-table">
@@ -209,60 +159,16 @@ export function LeadsScreen(context: LeadContext) {
                   <th>Contact</th>
                   <th>Stage</th>
                   <th>Service / month</th>
-                  <th>WhatsApp</th>
                   <th>Next step</th>
                 </tr>
               </thead>
               <tbody>
                 {prospects.map(({ record, eventId }) => {
                   const prospect = record.prospect;
-                  const customerRecord = customerRecordByPartyId.get(
-                    prospect.party.partyId,
-                  );
-                  const matchedTags = (prospect.discoveryTags ?? [])
-                    .slice()
-                    .sort(
-                      (left, right) =>
-                        Number(right.picked) - Number(left.picked),
-                    )
-                    .slice(0, 3)
-                    .map((match) => match.tag);
-                  const tagFit = discoveryTagFitLabel(
-                    prospect.discoveryTags ?? [],
-                  );
-                  const whatsappContact = findWhatsAppContactForLead(
-                    record.prospectId,
-                    contactsQuery.data ?? [],
-                  );
-                  const whatsappStatus = getWhatsAppLeadStatus(
-                    whatsappContact,
-                    inBatchLeadIds.has(record.prospectId),
-                  );
-                  const activeBatchId = batchIdByLeadId.get(record.prospectId);
-                  const hasWhatsAppNextAction = Boolean(
-                    (whatsappContact &&
-                      outreachChannelId &&
-                      (whatsappStatus === "replied" ||
-                        whatsappStatus === "sent")) ||
-                      (whatsappStatus === "in-batch" && activeBatchId),
-                  );
                   return (
                     <tr className="c3l-row" key={eventId}>
                       <td className="c3l-cell-business">
-                        <a
-                          aria-label={
-                            prospect.party.displayName +
-                            ", " +
-                            prospect.vertical +
-                            ", " +
-                            (prospect.location ?? "Location not set") +
-                            (matchedTags.length
-                              ? `, matching tags ${matchedTags.join(", ")}`
-                              : "")
-                          }
-                          className="c3l-business-link"
-                          href={`#/sales/lead/${record.prospectId}`}
-                        >
+                        <div className="c3l-business-identity">
                           <BusinessLogoMark
                             className="c3l-mark"
                             name={prospect.party.displayName}
@@ -274,23 +180,8 @@ export function LeadsScreen(context: LeadContext) {
                               {prospect.vertical} ·{" "}
                               {prospect.location ?? "Location not set"}
                             </small>
-                            {tagFit ? (
-                              <span className="c3l-tag-fit">{tagFit}</span>
-                            ) : null}
-                            <DiscoveryLeadTags
-                              limit={3}
-                              tags={prospect.discoveryTags}
-                            />
                           </span>
-                        </a>
-                        {customerAccess.enabled ? (
-                          <a
-                            className="c3l-customer-record-link"
-                            href={`#/clients/record/${prospect.party.partyId}`}
-                          >
-                            Customer record
-                          </a>
-                        ) : null}
+                        </div>
                       </td>
                       <td className="c3l-cell-contact">
                         {prospect.contactName ? (
@@ -301,7 +192,9 @@ export function LeadsScreen(context: LeadContext) {
                             {prospect.contactName}
                           </>
                         ) : (
-                          <span className="c3l-muted">Not set</span>
+                          <span className="c3l-muted c3l-empty-value">
+                            Not set
+                          </span>
                         )}
                       </td>
                       <td>
@@ -323,90 +216,22 @@ export function LeadsScreen(context: LeadContext) {
                         )}
                       </td>
                       <td className="c3l-cell-amount">
-                        {formatZar(prospect.potentialMonthlyValueMinor)}
-                      </td>
-                      <td className="c3l-whatsapp-cell">
-                        <span
-                          className={`c3l-whatsapp-status is-${whatsappStatus}`}
-                        >
-                          {whatsappLeadStatusLabel(whatsappStatus)}
-                        </span>
-                        {whatsappContact ? (
-                          <span className="c3l-whatsapp-number">
-                            {whatsappContact.lastInboundAt
-                              ? new Intl.DateTimeFormat("en-ZA", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  timeZone: "Africa/Johannesburg",
-                                }).format(
-                                  new Date(whatsappContact.lastInboundAt),
-                                )
-                              : maskWhatsAppNumber(whatsappContact.e164)}
+                        {prospect.potentialMonthlyValueMinor === null ||
+                        prospect.potentialMonthlyValueMinor === undefined ? (
+                          <span className="c3l-muted c3l-empty-value">
+                            Not set
                           </span>
-                        ) : null}
+                        ) : (
+                          formatZar(prospect.potentialMonthlyValueMinor)
+                        )}
                       </td>
-                      <td
-                        className={
-                          hasWhatsAppNextAction
-                            ? "c3l-cell-next-step has-whatsapp-action"
-                            : "c3l-cell-next-step"
-                        }
-                      >
-                        {customerAccess.enabled &&
-                        customerAccess.canConvert &&
-                        customerRecord?.stage === "lead" ? (
-                          <button
-                            className="c3l-next-step c3l-next-step-button c3l-make-client"
-                            data-testid={`lead-make-client-${prospect.party.partyId}`}
-                            disabled={customerAction.isPending}
-                            onClick={() => void makeClient(customerRecord)}
-                            type="button"
-                          >
-                            Make client
-                          </button>
-                        ) : null}
-                        {whatsappContact &&
-                        outreachChannelId &&
-                        (whatsappStatus === "replied" ||
-                          whatsappStatus === "sent") ? (
-                          <button
-                            className="c3l-next-step c3l-next-step-button"
-                            onClick={() =>
-                              void navigate({
-                                to: "/channels/$channelId",
-                                params: { channelId: outreachChannelId },
-                                search: {
-                                  whatsappContactWaId: whatsappContact.waId,
-                                },
-                              })
-                            }
-                            type="button"
-                          >
-                            Open chat <span aria-hidden="true">↗</span>
-                          </button>
-                        ) : whatsappStatus === "in-batch" && activeBatchId ? (
-                          <button
-                            className="c3l-next-step c3l-next-step-button"
-                            onClick={() =>
-                              void navigate({
-                                to: "/whatsapp/batches/$batchId",
-                                params: { batchId: activeBatchId },
-                              })
-                            }
-                            type="button"
-                          >
-                            View batch
-                          </button>
-                        ) : null}
-                        {whatsappStatus === "not-contacted" ||
-                        whatsappStatus === "opted-out" ? (
-                          <a
-                            className="c3l-next-step"
-                            href={`#/sales/lead/${record.prospectId}`}
-                          >
-                            Review lead
-                          </a>
-                        ) : null}
+                      <td className="c3l-cell-next-step">
+                        <a
+                          className="c3l-next-step"
+                          href={`#/sales/lead/${record.prospectId}`}
+                        >
+                          Review lead
+                        </a>
                       </td>
                     </tr>
                   );

@@ -136,6 +136,7 @@ function PersonAvatar({
       avatarUrl={profile?.avatarUrl ?? null}
       className={className}
       label={profile?.displayName ?? fallbackLabel}
+      pubkey={pubkey}
       shape={profile?.isAgent === true ? "squircle" : "circle"}
     />
   );

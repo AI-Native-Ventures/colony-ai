@@ -192,6 +192,7 @@ function DmChannelIcon({
       <span className="relative flex size-6 shrink-0 items-center justify-center">
         <ProfileAvatar
           avatarUrl={primaryParticipant.avatarUrl}
+          pubkey={primaryParticipant.pubkey}
           className="size-6 text-3xs shadow-none"
           iconClassName="h-3.5 w-3.5"
           label={primaryParticipant.label}

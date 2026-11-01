@@ -48,6 +48,11 @@ export type DiscoveryCampaign = {
   createdAt?: number;
   /** Places the search found that were already in Leads, so not added again. */
   skippedDuplicates?: number;
+  /**
+   * Plain-words reason a finished run is below its target (for example "Google
+   * has no more restaurants ..."); null when the target was reached.
+   */
+  endNote?: string | null;
 };
 
 export type DiscoveryCampaignInput = Omit<

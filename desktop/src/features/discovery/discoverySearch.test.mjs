@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  alignSkip,
   buildDiscoverySearchPlan,
+  cursorHasPages,
+  QUERY_PLACE_CEILING,
+  SEARCH_PAGE_SIZE,
   buildTagSearchQuery,
   buildSearchRequest,
   countryForLocation,
@@ -157,37 +161,58 @@ test("the search request pages by 20 with a clean location", () => {
   assert.equal(city.skip, 0);
 });
 
-test("picked tags narrow the query and split the same 20-result page budget", () => {
-  for (const [pickedTags, expectedLimits] of [
-    [["wedding venue"], [20]],
-    [
-      ["wedding venue", "family stays"],
-      [10, 10],
-    ],
-    [
-      ["wedding venue", "family stays", "local tourism"],
-      [7, 7, 6],
-    ],
+test("a search request never carries a skip that is not a multiple of 20, or a short page", () => {
+  for (const [skip, expected] of [
+    [0, 0],
+    [7, 0],
+    [14, 0],
+    [21, 20],
+    [39, 20],
+    [40, 40],
+    [Number.NaN, 0],
+    [-5, 0],
   ]) {
-    const plan = buildDiscoverySearchPlan({
-      verticalName: "Guesthouses and inns",
-      location: "Cape Town",
-      skip: 0,
-      pickedTags,
-      tagCursors: pickedTags.map(() => 0),
+    assert.equal(alignSkip(skip), expected, `skip ${skip}`);
+    const request = buildSearchRequest({
+      query: "Restaurants",
+      location: "Johannesburg",
+      skip,
     });
-    assert.deepEqual(
-      plan.requests.map(({ request }) => request.limit),
-      expectedLimits,
-    );
-    assert.equal(plan.totalRequestedResults, 20);
-    assert.deepEqual(
-      plan.requests.map(({ request }) => request.query),
-      pickedTags.map((tag) => `${tag} Guesthouses and inns`),
-    );
-    assert.ok(
-      plan.requests.every(({ request }) => request.location === "Cape Town"),
-    );
+    assert.equal(request.skip, expected, `request skip ${skip}`);
+    assert.equal(request.limit, SEARCH_PAGE_SIZE);
+  }
+  assert.equal(cursorHasPages(0), true);
+  assert.equal(cursorHasPages(QUERY_PLACE_CEILING - 20), true);
+  assert.equal(cursorHasPages(QUERY_PLACE_CEILING), false);
+  assert.equal(cursorHasPages(null), false);
+});
+
+test("picked tags narrow the query and take turns, one full page of 20 each", () => {
+  for (const pickedTags of [
+    ["wedding venue"],
+    ["wedding venue", "family stays"],
+    ["wedding venue", "family stays", "local tourism"],
+  ]) {
+    const queries = [];
+    for (let turn = 0; turn < pickedTags.length * 2; turn += 1) {
+      const plan = buildDiscoverySearchPlan({
+        verticalName: "Guesthouses and inns",
+        location: "Cape Town",
+        skip: 0,
+        pickedTags,
+        tagCursors: pickedTags.map(() => 0),
+        turn,
+      });
+      assert.equal(plan.requests.length, 1, "one request per page");
+      const { request } = plan.requests[0];
+      assert.equal(request.limit, 20);
+      assert.equal(request.skip, 0);
+      assert.equal(request.location, "Cape Town");
+      assert.equal(plan.totalRequestedResults, 20);
+      queries.push(request.query);
+    }
+    const expected = pickedTags.map((tag) => `${tag} Guesthouses and inns`);
+    assert.deepEqual(queries, [...expected, ...expected]);
   }
   assert.equal(
     buildTagSearchQuery(" wedding venue ", " Guesthouses and inns "),
@@ -199,13 +224,38 @@ test("picked tags narrow the query and split the same 20-result page budget", ()
   );
 });
 
-test("picked-tag pages keep independent cursors and stop exhausted searches", () => {
+test("no plan, with or without tags, ever asks for a skip that is not a multiple of 20", () => {
+  const tagSets = [[], ["steak"], ["steak", "sushi", "pizza"]];
+  for (const pickedTags of tagSets) {
+    for (const skip of [0, 7, 14, 21, 33, 100, 399]) {
+      for (const cursor of [0, 7, 14, 21, 100, 399]) {
+        for (let turn = 0; turn < 6; turn += 1) {
+          const plan = buildDiscoverySearchPlan({
+            verticalName: "Restaurants",
+            location: "Johannesburg",
+            skip,
+            pickedTags,
+            tagCursors: pickedTags.map(() => cursor),
+            turn,
+          });
+          for (const { request } of plan.requests) {
+            assert.equal(request.skip % 20, 0, `skip ${request.skip}`);
+            assert.equal(request.limit, 20);
+          }
+        }
+      }
+    }
+  }
+});
+
+test("picked-tag pages keep independent cursors, skip spent tags and stop at the 400 place ceiling", () => {
   const plan = buildDiscoverySearchPlan({
     verticalName: "Guesthouses and inns",
     location: "Cape Town",
-    skip: 20,
+    skip: 60,
     pickedTags: ["wedding venue", "family stays", "local tourism"],
-    tagCursors: [7, null, 6],
+    tagCursors: [20, null, 40],
+    turn: 1,
   });
   assert.deepEqual(
     plan.requests.map(({ tagIndex, request }) => [
@@ -213,12 +263,22 @@ test("picked-tag pages keep independent cursors and stop exhausted searches", ()
       request.limit,
       request.skip,
     ]),
-    [
-      [0, 10, 7],
-      [2, 10, 6],
-    ],
+    [[2, 20, 40]],
   );
-  assert.equal(plan.totalRequestedResults, 20);
+
+  const spent = buildDiscoverySearchPlan({
+    verticalName: "Guesthouses and inns",
+    location: "Cape Town",
+    skip: 0,
+    pickedTags: ["wedding venue", "family stays"],
+    tagCursors: [QUERY_PLACE_CEILING, null],
+    turn: 0,
+  });
+  assert.deepEqual(
+    spent.requests,
+    [],
+    "no paid request once every query is spent",
+  );
 });
 
 test("merged tag results deduplicate by place id and add request costs", () => {

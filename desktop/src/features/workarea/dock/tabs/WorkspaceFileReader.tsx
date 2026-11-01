@@ -106,6 +106,7 @@ export function WorkspaceFileReader({
             avatarUrl={profile?.avatarUrl ?? null}
             className="h-[1.375rem] w-[1.375rem] text-3xs"
             label={authorName}
+            pubkey={reference.agentPubkey}
             shape="squircle"
           />
           <span>

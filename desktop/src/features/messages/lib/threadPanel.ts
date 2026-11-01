@@ -14,6 +14,7 @@ type ThreadPanelData = {
 
 export type TimelineThreadSummaryParticipant = {
   id: string;
+  pubkey?: string;
   author: string;
   avatarUrl: string | null;
   isAgent?: boolean;
@@ -161,6 +162,7 @@ export function buildDescendantStatsByMessageId(
     const participantKey = message.pubkey ?? message.id;
     const participant: TimelineThreadSummaryParticipant = {
       id: participantKey,
+      ...(message.pubkey ? { pubkey: message.pubkey } : {}),
       author: message.author,
       avatarUrl: message.avatarUrl ?? null,
       ...(message.isAgent === true || message.role === "bot"
@@ -255,6 +257,7 @@ function participantFromMessage(
 ): TimelineThreadSummaryParticipant {
   return {
     id: message.pubkey ?? message.id,
+    ...(message.pubkey ? { pubkey: message.pubkey } : {}),
     author: message.author,
     avatarUrl: message.avatarUrl ?? null,
     ...(message.isAgent === true || message.role === "bot"
@@ -428,6 +431,7 @@ function buildRelayThreadSummary(
       .reverse()
       .map((pubkey) => ({
         id: pubkey,
+        pubkey,
         // Unnamed participants fall back to the compact npub — the same label
         // the client-assembled path derives via `resolveUserLabel` — so a
         // cold/relay-only facepile never surfaces raw hex. This `author` is

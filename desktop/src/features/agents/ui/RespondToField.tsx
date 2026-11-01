@@ -384,6 +384,7 @@ function AllowlistPicker({
                 <UserAvatar
                   avatarUrl={null}
                   displayName={truncateNpub(pubkey)}
+                  pubkey={pubkey}
                   size="xs"
                 />
                 <PubKey pubkey={pubkey} />
@@ -420,6 +421,7 @@ function AllowlistPicker({
                       <UserAvatar
                         avatarUrl={result.avatarUrl}
                         displayName={formatSearchUserName(result)}
+                        pubkey={result.pubkey}
                         shape={result.isAgent ? "squircle" : "circle"}
                         size="xs"
                       />
@@ -447,6 +449,7 @@ function AllowlistPicker({
                   <UserAvatar
                     avatarUrl={null}
                     displayName={truncateNpub(queryPubkey)}
+                    pubkey={queryPubkey}
                     size="xs"
                   />
                   <div className="min-w-0">

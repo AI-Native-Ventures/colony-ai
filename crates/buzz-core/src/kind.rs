@@ -834,6 +834,8 @@ pub const KIND_NUMBERS_ACTION: u32 = 47068;
 pub const KIND_CUSTOMER_HEAD: u32 = 30679;
 /// Member customer record write (refresh, convert, milestone, email, file), brokered and community-wide (co-founder block).
 pub const KIND_CUSTOMER_ACTION: u32 = 47069;
+/// Relay-authored record of whether Scout can be reached while co-founder mode is on (community-wide, one per business). Relay only: no member action writes it. The 30670 to 30679 co-founder block is full, so this is the first kind after it.
+pub const KIND_COFOUNDER_LEAD_HEAD: u32 = 30680;
 
 // WhatsApp outreach (official Cloud API). Member-authored commands handled by
 // `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
@@ -921,6 +923,7 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_COFOUNDER_LEAD_HEAD,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -999,6 +1002,7 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_HEAD
             | KIND_CUSTOMER_ACTION
+            | KIND_COFOUNDER_LEAD_HEAD
     )
 }
 
@@ -1329,6 +1333,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_COFOUNDER_LEAD_HEAD,
     KIND_WHATSAPP_BATCH,
     KIND_WHATSAPP_BATCH_DECISION,
     KIND_WHATSAPP_SEND_REQUEST,
@@ -1488,6 +1493,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_HEAD
             | KIND_NUMBERS_HEAD
             | KIND_CUSTOMER_HEAD
+            | KIND_COFOUNDER_LEAD_HEAD
     )
 }
 
@@ -1543,6 +1549,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 �
 const _: () = assert!(is_parameterized_replaceable(KIND_PLAYBOOK_HEAD)); // 30677 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_NUMBERS_HEAD)); // 30678 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_CUSTOMER_HEAD)); // 30679 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_LEAD_HEAD)); // 30680 ∈ 30000–39999
 
 // Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
 const _: () = assert!(
@@ -1714,6 +1721,16 @@ mod tests {
         assert!(!is_company_command_kind(KIND_NUMBERS_HEAD));
         assert_eq!(KIND_NUMBERS_HEAD, 30678);
         assert_eq!(KIND_NUMBERS_ACTION, 47068);
+    }
+
+    #[test]
+    fn cofounder_lead_kind_is_relay_only_and_has_no_member_action() {
+        assert!(COMPANY_RECORD_KINDS.contains(&KIND_COFOUNDER_LEAD_HEAD));
+        assert!(is_company_global_kind(KIND_COFOUNDER_LEAD_HEAD));
+        assert!(is_relay_only_kind(KIND_COFOUNDER_LEAD_HEAD));
+        assert!(!is_company_command_kind(KIND_COFOUNDER_LEAD_HEAD));
+        assert!(!is_command_kind(KIND_COFOUNDER_LEAD_HEAD));
+        assert_eq!(KIND_COFOUNDER_LEAD_HEAD, 30680);
     }
 
     #[test]
