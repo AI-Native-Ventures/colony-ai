@@ -170,6 +170,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/hooks/whatsapp/{id}",
             get(api::whatsapp::webhook_verify).post(api::whatsapp::webhook_receive),
         )
+        // Money rails: provider key intake, role filtered reads, recipe runs and the browser
+        // step check (NIP-98 auth).
+        .route(
+            api::money_rails::CONNECT_PATH,
+            post(api::money_rails::connect),
+        )
+        .route(
+            api::money_rails::SECRET_PATH,
+            post(api::money_rails::secret),
+        )
+        .route(
+            api::money_rails::DISCONNECT_PATH,
+            post(api::money_rails::disconnect),
+        )
+        .route(api::money_rails::QUERY_PATH, post(api::money_rails::query))
+        .route(api::money_rails::RUN_PATH, post(api::money_rails::run))
+        .route(
+            api::money_rails::STEP_PATH,
+            post(api::money_rails::browser_step),
+        )
+        // Payment notice inbox for one connection (random id, no NIP-98; never marks Paid alone).
+        .route("/hooks/pay/{id}", post(api::money_rails::notice_receive))
         // Webhook trigger (secret-authenticated, no NIP-98)
         .route("/hooks/{id}", post(api::bridge::workflow_webhook))
         // Mesh demo echo probe — testbed-only; 404 unless BUZZ_MESH=on and

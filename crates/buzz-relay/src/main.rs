@@ -852,6 +852,14 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         info!("WhatsApp outreach sender started");
     }
 
+    // Money rails job runner: creates payment links, sends the approved message, records
+    // verified payments, expires links.
+    {
+        let money_state = Arc::clone(&state);
+        tokio::spawn(async move { buzz_relay::money_rails::jobs::run(money_state).await });
+        info!("Money rails job runner started");
+    }
+
     if state.config.accounts.has_mail_delivery() {
         let account_outbox_state = Arc::clone(&state);
         tokio::spawn(async move {

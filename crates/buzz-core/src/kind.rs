@@ -835,6 +835,19 @@ pub const KIND_CUSTOMER_HEAD: u32 = 30679;
 /// Member customer record write (refresh, convert, milestone, email, file), brokered and community-wide (co-founder block).
 pub const KIND_CUSTOMER_ACTION: u32 = 47069;
 
+// Money rails (payment links, signing, call booking) own relay-signed heads 30680 to 30689
+// and member actions 47070 to 47079. Only the payment kinds are defined so far; 30681,
+// 30682, 47071, 47072 and 47073 are reserved for signing and booking.
+// Contract: docs/money-rails-pay-contract.md.
+/// Relay-authored payment link card head (money rails, community-wide, one per card).
+pub const KIND_PAYMENT_LINK_HEAD: u32 = 30680;
+/// Member or owned-agent payment link card command (money rails, community-wide).
+pub const KIND_PAYMENT_LINK_ACTION: u32 = 47070;
+/// Relay-authored money rails connection head (provider connections, never a secret value).
+pub const KIND_MONEY_CONNECTION_HEAD: u32 = 30683;
+/// Member or owned-agent money rails connection command (recipes, notice map, default).
+pub const KIND_MONEY_CONNECTION_ACTION: u32 = 47074;
+
 // WhatsApp outreach (official Cloud API). Member-authored commands handled by
 // `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
 // of the Graph send API. Events are stored in the company's private Outreach
@@ -921,6 +934,10 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_PAYMENT_LINK_HEAD,
+    KIND_PAYMENT_LINK_ACTION,
+    KIND_MONEY_CONNECTION_HEAD,
+    KIND_MONEY_CONNECTION_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -950,6 +967,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_ACTION
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_ACTION
     )
 }
 
@@ -999,6 +1018,10 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_HEAD
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_HEAD
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_HEAD
+            | KIND_MONEY_CONNECTION_ACTION
     )
 }
 
@@ -1329,6 +1352,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_PAYMENT_LINK_HEAD,
+    KIND_PAYMENT_LINK_ACTION,
+    KIND_MONEY_CONNECTION_HEAD,
+    KIND_MONEY_CONNECTION_ACTION,
     KIND_WHATSAPP_BATCH,
     KIND_WHATSAPP_BATCH_DECISION,
     KIND_WHATSAPP_SEND_REQUEST,
@@ -1431,6 +1458,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_ACTION
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_ACTION
             | KIND_WHATSAPP_BATCH
             | KIND_WHATSAPP_BATCH_DECISION
             | KIND_WHATSAPP_SEND_REQUEST
@@ -1488,6 +1517,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_HEAD
             | KIND_NUMBERS_HEAD
             | KIND_CUSTOMER_HEAD
+            | KIND_PAYMENT_LINK_HEAD
+            | KIND_MONEY_CONNECTION_HEAD
     )
 }
 
@@ -1543,6 +1574,8 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 �
 const _: () = assert!(is_parameterized_replaceable(KIND_PLAYBOOK_HEAD)); // 30677 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_NUMBERS_HEAD)); // 30678 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_CUSTOMER_HEAD)); // 30679 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_PAYMENT_LINK_HEAD)); // 30680 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_CONNECTION_HEAD)); // 30683 ∈ 30000–39999
 
 // Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
 const _: () = assert!(
@@ -1731,6 +1764,29 @@ mod tests {
         assert_eq!(KIND_CUSTOMER_ACTION, 47069);
         assert!((30670..=30679).contains(&KIND_CUSTOMER_HEAD));
         assert!((47060..=47069).contains(&KIND_CUSTOMER_ACTION));
+    }
+
+    #[test]
+    fn money_rails_kinds_have_expected_write_authority() {
+        for head in [KIND_PAYMENT_LINK_HEAD, KIND_MONEY_CONNECTION_HEAD] {
+            assert!(COMPANY_RECORD_KINDS.contains(&head));
+            assert!(is_company_global_kind(head));
+            assert!(is_relay_only_kind(head));
+            assert!(!is_company_command_kind(head));
+            assert!((30680..=30689).contains(&head));
+        }
+        for action in [KIND_PAYMENT_LINK_ACTION, KIND_MONEY_CONNECTION_ACTION] {
+            assert!(COMPANY_RECORD_KINDS.contains(&action));
+            assert!(is_company_global_kind(action));
+            assert!(is_company_command_kind(action));
+            assert!(is_command_kind(action));
+            assert!(!is_relay_only_kind(action));
+            assert!((47070..=47079).contains(&action));
+        }
+        assert_eq!(KIND_PAYMENT_LINK_HEAD, 30680);
+        assert_eq!(KIND_PAYMENT_LINK_ACTION, 47070);
+        assert_eq!(KIND_MONEY_CONNECTION_HEAD, 30683);
+        assert_eq!(KIND_MONEY_CONNECTION_ACTION, 47074);
     }
 
     #[test]

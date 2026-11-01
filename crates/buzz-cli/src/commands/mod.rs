@@ -27,6 +27,7 @@ pub mod notes;
 pub mod numbers;
 pub mod pack;
 pub mod patches;
+pub mod pay;
 pub mod permissions;
 pub mod plans;
 pub mod playbooks;
