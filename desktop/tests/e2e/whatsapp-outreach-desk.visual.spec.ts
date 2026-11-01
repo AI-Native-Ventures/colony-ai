@@ -10,9 +10,6 @@ import {
   type WhatsAppProofTheme,
 } from "../helpers/whatsappOutreach";
 
-const proofDirectory =
-  process.env.WA_DESK_PROOF_DIR ?? "/private/tmp/colony-outreach-desk-proof";
-
 type WhatsAppEventWindow = Window & {
   __BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?: (input: {
     channelName: string;
@@ -158,6 +155,9 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
   browser,
 }) => {
   test.setTimeout(300_000);
+  const proofDirectory = process.env.WA_DESK_PROOF_DIR
+    ? path.resolve(process.env.WA_DESK_PROOF_DIR)
+    : test.info().outputPath("screenshots");
   await mkdir(proofDirectory, { recursive: true });
 
   for (const theme of ["light", "dark"] as const) {
@@ -274,6 +274,9 @@ test("captures the C11 connect state with the active business name", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
+  const proofDirectory = process.env.WA_DESK_PROOF_DIR
+    ? path.resolve(process.env.WA_DESK_PROOF_DIR)
+    : test.info().outputPath("screenshots");
   await mkdir(proofDirectory, { recursive: true });
 
   for (const theme of ["light", "dark"] as const) {
