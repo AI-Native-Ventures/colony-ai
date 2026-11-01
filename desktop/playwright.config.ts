@@ -123,6 +123,7 @@ export default defineConfig({
         "**/colony3-*.spec.ts",
         "**/mac-update-cards.spec.ts",
         "**/avatar-discoverability.spec.ts",
+        "**/agent-avatar-search-redproof.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/scout-branding.spec.ts",
         "**/workspace-file-links.spec.ts",
