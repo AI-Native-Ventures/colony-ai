@@ -92,7 +92,8 @@
         "rejected and fully sent batches have no actions",
         "genuinely missing batch is one plain line with no actions",
         "cannot use send now on an approved card",
-        "channel content and actions stay reachable beside the dock at owner size"
+        "channel content and actions stay reachable beside the dock at owner size",
+        "whatsapp header keeps the label and unread badge inside the action at every requested width"
       ]
     }
   },
@@ -100,6 +101,7 @@
     {
       "paths": ["desktop/src/features/cofounder/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "cofounder-playbooks.spec.ts",
         "cofounder-map.spec.ts",
         "cofounder-customer-record.spec.ts"
@@ -398,6 +400,7 @@
     {
       "paths": ["desktop/src/features/settings/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "colony3-settings.spec.ts",
         "settings-section-layout.spec.ts",
         "appearance-chrome.spec.ts",

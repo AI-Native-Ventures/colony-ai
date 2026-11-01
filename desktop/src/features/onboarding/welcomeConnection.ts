@@ -87,6 +87,55 @@ export async function readVerifiedWelcomeConnection(
     return null;
   return receipt;
 }
+/** How long a tested route on this Mac stays good evidence for a new workspace. */
+export const DEVICE_VERIFIED_TTL_MS = 30 * 24 * 60 * 60_000;
+const KEY_PREFIX = "colony-welcome-connection.v1:";
+
+/**
+ * The runtime this Mac already proved with a real reply in ANY workspace, for
+ * the exact saved configuration. The reply is business text, so it is never
+ * returned: a new workspace may only learn that the route works. Evidence
+ * lasts longer than one business's handoff because the route belongs to the
+ * computer, not to the workspace (a second workspace has no receipt of its
+ * own). Changing the runtime, model, provider or credentials drops it.
+ */
+export async function readDeviceVerifiedRuntime(
+  config: GlobalAgentConfig,
+  now = Date.now(),
+): Promise<string | null> {
+  if (!config.preferred_runtime || typeof localStorage === "undefined")
+    return null;
+  let keys: string[] = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const name = localStorage.key(index);
+      if (name?.startsWith(KEY_PREFIX)) keys.push(name);
+    }
+  } catch {
+    return null;
+  }
+  keys = keys.slice(0, 64);
+  const current = await fingerprint(config);
+  for (const name of keys) {
+    const raw = localStorage.getItem(name);
+    if (!raw || raw.length > 12_000) continue;
+    try {
+      const receipt = JSON.parse(raw) as Partial<VerifiedWelcomeConnection>;
+      if (
+        typeof receipt.completedAt === "number" &&
+        Number.isFinite(receipt.completedAt) &&
+        receipt.runtimeId === config.preferred_runtime &&
+        receipt.fingerprint === current &&
+        now >= receipt.completedAt &&
+        now - receipt.completedAt < DEVICE_VERIFIED_TTL_MS
+      )
+        return receipt.runtimeId;
+    } catch {
+      // A broken receipt is simply not evidence.
+    }
+  }
+  return null;
+}
 /** Community-scoped standing context, read by both starter seeding and kickoff. */
 export function readWelcomeBusinessContext(
   relayUrl?: string | null,

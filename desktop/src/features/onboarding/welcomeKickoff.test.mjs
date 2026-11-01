@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { resolveAgentReadiness } from "./ui/agentReadiness.ts";
 import {
   WELCOME_KICKOFF_PROVIDER_MESSAGE,
   areWelcomeTeammatesOnline,
@@ -9,6 +10,7 @@ import {
   buildWelcomeKickoffOpenerSendInput,
   classifyWelcomeKickoffResolution,
   createWelcomeKickoffCoordinator,
+  deviceEvidenceRuntimeId,
   mergeKickoffEvents,
   postWelcomeKickoffSetupNotice,
   resolveWelcomeAgentSet,
@@ -579,6 +581,70 @@ test("welcome posts setup guidance for an installed harness with no auth probe",
     await postWelcomeKickoffSetupNotice(ready, async () =>
       assert.fail("must not post setup guidance for signed-in Codex"),
     ),
+    false,
+  );
+});
+
+const claudeConfig = {
+  preferred_runtime: "claude",
+  provider: null,
+  model: null,
+  env_vars: {},
+};
+function claude(status) {
+  return {
+    id: "claude",
+    label: "Claude Code",
+    availability: "available",
+    authStatus: { status },
+  };
+}
+
+test("a second workspace on a Mac that already runs Claude Code is ready", () => {
+  // The catalog cannot confirm the sign-in (unknown), and this new workspace has
+  // no receipt of its own. The first workspace proved the route on this Mac.
+  const runtimes = [claude("unknown")];
+  assert.equal(
+    resolveAgentReadiness(runtimes, claudeConfig, "preferred", null, undefined)
+      .ready,
+    false,
+  );
+  assert.equal(
+    resolveAgentReadiness(
+      runtimes,
+      claudeConfig,
+      "preferred",
+      null,
+      deviceEvidenceRuntimeId(runtimes, "claude"),
+    ).ready,
+    true,
+  );
+});
+
+test("device evidence never hides a real sign-out or a missing runtime", () => {
+  assert.equal(deviceEvidenceRuntimeId([claude("logged_out")], "claude"), null);
+  assert.equal(
+    deviceEvidenceRuntimeId(
+      [
+        {
+          ...claude("config_invalid"),
+          authStatus: { status: "config_invalid" },
+        },
+      ],
+      "claude",
+    ),
+    null,
+  );
+  assert.equal(deviceEvidenceRuntimeId([], "claude"), null);
+  assert.equal(deviceEvidenceRuntimeId([claude("unknown")], null), null);
+  assert.equal(
+    resolveAgentReadiness(
+      [claude("logged_out")],
+      claudeConfig,
+      "preferred",
+      null,
+      deviceEvidenceRuntimeId([claude("logged_out")], "claude"),
+    ).ready,
     false,
   );
 });

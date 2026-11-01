@@ -201,19 +201,21 @@ export function ChannelScreenHeader({
           onClick={() => requestWorkAreaTab("whatsapp")}
           type="button"
         >
-          <MessageCircle aria-hidden="true" size={17} />
+          <span className="c3c-whatsapp-chats-icon relative inline-flex shrink-0">
+            <MessageCircle aria-hidden="true" size={17} />
+            {unansweredWhatsAppCount > 0 ? (
+              <span
+                aria-hidden="true"
+                className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
+                data-testid="channel-whatsapp-unread-count"
+              >
+                {unansweredWhatsAppCount}
+              </span>
+            ) : null}
+          </span>
           <span className="c3c-header-action-label text-sm">
             WhatsApp chats
           </span>
-          {unansweredWhatsAppCount > 0 ? (
-            <span
-              aria-hidden="true"
-              className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
-              data-testid="channel-whatsapp-unread-count"
-            >
-              {unansweredWhatsAppCount}
-            </span>
-          ) : null}
         </button>
       </HeaderTip>
       {showJoinButton || !workArea ? null : (

@@ -193,6 +193,8 @@ type MockBridgeOptions = {
   userStatus?: string;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
+  /** Override the active workspace name in the reference mock. */
+  referenceWorkspaceBusinessName?: string;
   /** Add a long lead name for picker overflow regression coverage. */
   referenceWorkspaceLongLeadNames?: boolean;
   /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */
