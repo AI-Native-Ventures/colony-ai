@@ -380,6 +380,7 @@ async function boot(
     companyNumbers?: MockNumbers;
     enabled?: boolean;
     identity?: RelayBridgeIdentity;
+    businessName?: string;
     referenceWorkspace?: boolean;
     scoutDmChannelName?: string;
     withoutBrief?: boolean;
@@ -426,6 +427,9 @@ async function boot(
       colony3Sidebar: referenceWorkspace,
       ...(referenceWorkspace
         ? {
+            ...(options.businessName
+              ? { referenceWorkspaceBusinessName: options.businessName }
+              : {}),
             colony3Extras: {
               ...(options.scoutDmChannelName
                 ? {
@@ -676,12 +680,13 @@ test.describe("Co-founder mode Phase 2", () => {
       scoutDmChannelName: "Lerato and Scout",
       step: "brief",
       withoutBrief: true,
+      businessName: "Colony",
     });
     await page.goto("/#/settings?section=experimental");
     const card = page.getByTestId("cofounder-scout-entry");
     await expect(card).toBeVisible();
     await expect(
-      card.getByText("Scout is getting to know Lerato Social", {
+      card.getByText("Scout is getting to know Colony", {
         exact: true,
       }),
     ).toBeVisible();
@@ -1163,6 +1168,7 @@ test.describe("Co-founder mode Phase 2", () => {
         route: "/#/settings?section=experimental",
         step: "brief" as const,
         withoutBrief: true,
+        businessName: "Colony",
       },
       {
         surface: "plan",
@@ -1208,6 +1214,9 @@ test.describe("Co-founder mode Phase 2", () => {
             await boot(page, {
               theme,
               step: item.step,
+              ...(item.surface === "settings"
+                ? { businessName: "Colony" }
+                : {}),
               ...(item.surface === "settings" ? { withoutBrief: true } : {}),
               identity: TEST_IDENTITIES.tyler,
               ...(needsYouPreview
