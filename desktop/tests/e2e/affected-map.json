@@ -99,6 +99,7 @@
     {
       "paths": ["desktop/src/features/cofounder/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "cofounder-playbooks.spec.ts",
         "cofounder-map.spec.ts",
         "cofounder-customer-record.spec.ts"
@@ -391,6 +392,7 @@
     {
       "paths": ["desktop/src/features/settings/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "colony3-settings.spec.ts",
         "settings-section-layout.spec.ts",
         "appearance-chrome.spec.ts",

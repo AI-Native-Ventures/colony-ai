@@ -380,6 +380,7 @@ async function boot(
     companyNumbers?: MockNumbers;
     enabled?: boolean;
     identity?: RelayBridgeIdentity;
+    scoutDmChannelName?: string;
     step?: CofounderOnboardingStep;
     theme?: "light" | "dark";
   } = {},
@@ -420,6 +421,18 @@ async function boot(
       companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
       referenceWorkspace: true,
       colony3Sidebar: true,
+      ...(options.scoutDmChannelName
+        ? {
+            colony3Extras: {
+              patchChannels: [
+                {
+                  id: REFERENCE_CHANNEL_IDS.scoutDm,
+                  name: options.scoutDmChannelName,
+                },
+              ],
+            },
+          }
+        : {}),
       relayRequiresMembership: true,
       relayRole: "owner",
       relayMembers: [
@@ -652,7 +665,7 @@ test.describe("Co-founder mode Phase 2", () => {
   test("enabled co-founder mode opens the Scout direct message from settings", async ({
     page,
   }) => {
-    await boot(page, { step: "map" });
+    await boot(page, { scoutDmChannelName: "Lerato and Scout", step: "map" });
     await page.goto("/#/settings?section=experimental");
     const openScout = page.getByTestId("cofounder-open-scout");
     await expect(openScout).toBeVisible();
