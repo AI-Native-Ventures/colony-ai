@@ -2284,7 +2284,7 @@ impl MergeFraming {
                 // to the first one and the second person got no reply of their
                 // own. A new message is its own request with its own reply.
                 closing_note: "Note: A new message arrived while you were working. It is a \
-                     separate request from a person. Finish your in-progress work, and answer \
+                     separate request from a person. Continue your in-progress work, and answer \
                      the new message in its own reply to that message, apart from the earlier \
                      answer. Do not fold it into the earlier reply. If it asks for something \
                      you must not do, say so in that reply.",
