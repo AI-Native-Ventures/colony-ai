@@ -39,8 +39,14 @@ import type {
 } from "@/features/cofounder/customerRecords";
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
+import { useMoneyRailsSnapshot } from "@/features/cofounder/moneyRailsBridge";
+import {
+  moneyLabel as paymentMoneyLabel,
+  MONEY_LINK_STATE_LABEL,
+} from "@/features/cofounder/moneyRails";
 
 import "./cofounderCustomerRecord.css";
+import "./moneyRails.css";
 
 const TIMELINE_ICON: Record<TimelineKind, typeof Search> = {
   found: Search,
@@ -79,14 +85,7 @@ function dateLabel(value: number | null): string {
 
 function moneyLabel(value: number | null, currency: string | null): string {
   if (value === null || currency === null) return "-";
-  try {
-    return new Intl.NumberFormat("en-ZA", {
-      style: "currency",
-      currency,
-    }).format(value / 100);
-  } catch {
-    return "-";
-  }
+  return paymentMoneyLabel(value, currency);
 }
 
 function errorText(error: unknown): string {
@@ -144,8 +143,11 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
   }, [navigate, settings.data]);
 
   const record = recordQuery.record;
+  const moneyRails = useMoneyRailsSnapshot(partyId);
   const name =
     record?.displayName ?? prospect?.party.displayName ?? "Customer record";
+  const paymentLinks = moneyRails.paymentLinks;
+  const confirmedPayment = paymentLinks.find((link) => link.state === "paid");
   const location = prospect?.location?.trim() || "Location not set";
   const businessType =
     prospect?.vertical?.trim() || prospect?.industry?.trim() || "Business";
@@ -666,6 +668,73 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
                 currency
               </p>
             ) : null}
+            {confirmedPayment ? (
+              <div className="cf-customer-payment-confirmation" role="status">
+                <span>Paid</span>
+                <p>
+                  Confirmed by {confirmedPayment.provider.name}, not just
+                  reported
+                </p>
+              </div>
+            ) : null}
+          </section>
+
+          <section
+            aria-labelledby="customer-payment-links-title"
+            className="b3-card b3-side-card cf-customer-side-list cf-customer-payment-links"
+            data-testid="customer-payment-links"
+          >
+            <h2 className="b3-side-title" id="customer-payment-links-title">
+              Payment links
+            </h2>
+            {moneyRails.availability === "loading" ? (
+              <p className="b3-fine" role="status">
+                Loading payment links…
+              </p>
+            ) : moneyRails.availability === "not_ready" ? (
+              <p className="b3-fine" role="status">
+                Money connections are not enabled on this relay yet.
+              </p>
+            ) : moneyRails.availability === "error" ? (
+              <p className="b3-fine" role="alert">
+                Payment links could not be loaded. Refresh to try again.
+              </p>
+            ) : paymentLinks.length ? (
+              paymentLinks.map((link) => {
+                const stateLabel =
+                  link.state === "payment_reported"
+                    ? "Check"
+                    : MONEY_LINK_STATE_LABEL[link.state];
+                return (
+                  <div
+                    className="cf-customer-payment-link"
+                    data-state={link.state}
+                    data-testid={`customer-payment-link-${link.id}`}
+                    key={link.id}
+                  >
+                    <div>
+                      <strong>
+                        {link.title} ·{" "}
+                        {paymentMoneyLabel(link.amountMinor, link.currency)}
+                      </strong>
+                      <small>
+                        {link.state === "paid"
+                          ? link.expiresLabel ||
+                            `Confirmed by ${link.provider.name}`
+                          : link.state === "payment_reported"
+                            ? (link.statusDetail ?? "Payment reported, check")
+                            : link.state === "expired"
+                              ? "The payment link has expired"
+                              : `${link.state === "sent" ? "Sent" : stateLabel} · ${link.recipient.channel}`}
+                      </small>
+                    </div>
+                    <span data-state={link.state}>{stateLabel}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="b3-fine">No payment links yet.</p>
+            )}
           </section>
 
           <section

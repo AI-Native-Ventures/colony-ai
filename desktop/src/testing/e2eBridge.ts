@@ -6103,8 +6103,9 @@ function applyColony3Extras(extras: Colony3Extras, self: string): void {
     } catch {
       readState = {};
     }
-    // Later than any message a board seeds, whatever the fixed clock says.
-    const readAt = "2026-10-23T23:59:00.000+02:00";
+    // This option marks seeded board history read even when a board uses a
+    // future date relative to the test clock.
+    const readAt = "2099-12-31T23:59:00.000Z";
     for (const channelId of extras.readChannelIds) {
       readState[channelId] = new Date(readAt).toISOString();
     }

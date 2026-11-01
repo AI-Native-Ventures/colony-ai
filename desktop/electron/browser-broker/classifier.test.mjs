@@ -5,6 +5,7 @@ import {
   confirmationSummary,
   consequentialCategory,
   isCredentialField,
+  isPaymentLinkCreateControl,
 } from "./classifier.mjs";
 
 const page = { origin: "https://shop.example" };
@@ -84,6 +85,23 @@ test("buy and pay style buttons need confirmation", () => {
     const result = click(button(name));
     assert.equal(result.decision, "confirm", name);
     assert.equal(result.category, "payment", name);
+  }
+});
+
+test("creating a payment link is a distinct confirmation category", () => {
+  for (const name of ["Create payment link", "Create a payment link"]) {
+    const result = click(button(name));
+    assert.equal(result.decision, "confirm", name);
+    assert.equal(result.category, "payment_link_create", name);
+    assert.deepEqual(codes(result), ["payment_link_create"]);
+    assert.equal(isPaymentLinkCreateControl(button(name)), true);
+  }
+  for (const name of [
+    "Create link",
+    "Create payment link now",
+    "Create account",
+  ]) {
+    assert.equal(isPaymentLinkCreateControl(button(name)), false, name);
   }
 });
 

@@ -149,7 +149,12 @@ export function SettingsView({
   onSetSoundForSlot,
   section,
 }: SettingsViewProps) {
-  const { isMobile, open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
+  const {
+    isMobile,
+    open: sidebarOpen,
+    setOpen: setSidebarOpen,
+    setOpenMobile,
+  } = useSidebar();
   const [isLoaded, setIsLoaded] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [remembered, setRemembered] = React.useState(safeReadLastSections);
@@ -263,11 +268,13 @@ export function SettingsView({
   function chooseGroup(group: SettingsGroupDescriptor) {
     onSectionChange(loadRememberedSection(group, remembered));
     setSearch("");
+    if (isMobile) setOpenMobile(false);
   }
 
   function chooseSection(next: SettingsSection) {
     onSectionChange(canonicalSettingsSection(next));
     setSearch("");
+    if (isMobile) setOpenMobile(false);
   }
 
   const categories = settingsNavCategory(businessName, canManageWhatsApp);

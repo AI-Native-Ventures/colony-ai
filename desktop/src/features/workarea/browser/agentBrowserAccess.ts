@@ -8,6 +8,11 @@ import {
   type BrowserBrokerEvent,
   browserBroker,
 } from "@/shared/api/browserBroker";
+import {
+  checkMoneyRailBrowserStep,
+  fetchMoneyRailsSnapshot,
+} from "@/features/cofounder/moneyRailsApi";
+import { providerHost } from "@/features/cofounder/moneyRails";
 
 import {
   answerBrowserContinue,
@@ -77,7 +82,8 @@ export type AgentAccessRequest = {
 type Running = {
   businessId: string;
   communityOrigin: string;
-  api: Pick<typeof browserBroker, "grant" | "onEvent">;
+  relayWsUrl: string | null;
+  api: Pick<typeof browserBroker, "grant" | "onEvent" | "grants" | "confirm">;
   unsubscribe: () => void;
   unsubscribeWorkArea: () => void;
   unsubscribeTabs: () => void;
@@ -97,11 +103,172 @@ const latestRequestByChannel = new Map<string, number>();
 let requestSequence = 0;
 const MAX_TRACKED_TASKS = 256;
 const MAX_DISMISSED_TASKS = 256;
+const MAX_MONEY_LINK_TASK_CONTEXTS = 256;
+const MAX_PAYMENT_LINK_ACTIONS = 128;
+const MONEY_LINK_TASK_CONTEXT_TTL_MS = 24 * 60 * 60_000;
 let waiting: readonly AgentAccessRequest[] = Object.freeze([]);
 const listeners = new Set<() => void>();
+const moneyLinkTaskContexts = new Map<
+  string,
+  { taskId: string; expiresAt: number }
+>();
+const paymentLinkActionsInFlight = new Set<string>();
+const processedPaymentLinkActions = new Set<string>();
 
 const taskKey = (request: { agentId: string; taskId: string }) =>
   `${request.agentId}|${request.taskId}`;
+
+const PAYMENT_LINK_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** Remember the Scout conversation that carried a payment-link card. */
+export function rememberMoneyLinkTaskContext(
+  linkId: string,
+  taskId: string,
+  now = Date.now(),
+) {
+  if (!PAYMENT_LINK_ID.test(linkId) || !TASK.test(taskId)) return;
+  moneyLinkTaskContexts.delete(linkId);
+  moneyLinkTaskContexts.set(linkId, {
+    taskId,
+    expiresAt: now + MONEY_LINK_TASK_CONTEXT_TTL_MS,
+  });
+  while (moneyLinkTaskContexts.size > MAX_MONEY_LINK_TASK_CONTEXTS) {
+    const oldest = moneyLinkTaskContexts.keys().next().value;
+    if (oldest === undefined) break;
+    moneyLinkTaskContexts.delete(oldest);
+  }
+}
+
+export function clearMoneyLinkTaskContext(linkId: string) {
+  moneyLinkTaskContexts.delete(linkId);
+}
+
+function moneyLinkTaskContext(linkId: string, now = Date.now()) {
+  const association = moneyLinkTaskContexts.get(linkId);
+  if (!association) return null;
+  if (now >= association.expiresAt) {
+    moneyLinkTaskContexts.delete(linkId);
+    return null;
+  }
+  return association;
+}
+
+function rememberPaymentLinkAction(actionId: string) {
+  if (!actionId || processedPaymentLinkActions.has(actionId)) return false;
+  if (paymentLinkActionsInFlight.has(actionId)) return false;
+  if (processedPaymentLinkActions.size >= MAX_PAYMENT_LINK_ACTIONS) {
+    const oldest = processedPaymentLinkActions.values().next().value;
+    if (oldest !== undefined) processedPaymentLinkActions.delete(oldest);
+  }
+  paymentLinkActionsInFlight.add(actionId);
+  return true;
+}
+
+function isPaymentLinkActionCurrent(current: Running, mine: number) {
+  return running === current && generation === mine;
+}
+
+function approveRelayCheckedPaymentLinkStep(
+  current: Running,
+  mine: number,
+  event: Extract<BrowserBrokerEvent, { type: "confirmation-requested" }>,
+) {
+  if (
+    event.category !== "payment_link_create" ||
+    !event.paymentLinkStep ||
+    !current.relayWsUrl ||
+    !rememberPaymentLinkAction(event.actionId)
+  )
+    return;
+
+  const step = event.paymentLinkStep;
+  const host = providerHost(step.host);
+  let url: URL;
+  try {
+    url = new URL(step.url);
+  } catch {
+    paymentLinkActionsInFlight.delete(event.actionId);
+    processedPaymentLinkActions.add(event.actionId);
+    return;
+  }
+  if (
+    !host ||
+    url.hostname.toLowerCase() !== host ||
+    url.username ||
+    url.password ||
+    !["http:", "https:"].includes(url.protocol)
+  ) {
+    paymentLinkActionsInFlight.delete(event.actionId);
+    processedPaymentLinkActions.add(event.actionId);
+    return;
+  }
+
+  const ensureCurrent = () => {
+    if (!isPaymentLinkActionCurrent(current, mine))
+      throw new Error("The active company changed during this request.");
+  };
+  void (async () => {
+    ensureCurrent();
+    const grants = await current.api.grants();
+    ensureCurrent();
+    const grant = grants.find(
+      (item) => item.id === event.grantId && item.state === "active",
+    );
+    if (!grant) return;
+    const snapshot = await fetchMoneyRailsSnapshot(
+      current.relayWsUrl ?? "",
+      undefined,
+      ensureCurrent,
+    );
+    ensureCurrent();
+    if (snapshot.availability !== "ready") return;
+    const candidates = snapshot.paymentLinks.filter((card) => {
+      const browserGrant = card.browserGrant;
+      const origin = moneyLinkTaskContext(card.id);
+      return (
+        card.state === "creating_link" &&
+        card.provider.route === "browser" &&
+        card.provider.host === host &&
+        card.draftedBy?.toLowerCase() === grant.agentId.toLowerCase() &&
+        origin?.taskId === grant.taskId &&
+        browserGrant?.host === host &&
+        browserGrant.usedAt === null &&
+        Math.floor(Date.now() / 1_000) < browserGrant.until
+      );
+    });
+    if (candidates.length !== 1) return;
+    const card = candidates[0];
+    if (!card) return;
+    const result = await checkMoneyRailBrowserStep(
+      current.relayWsUrl ?? "",
+      {
+        linkId: card.id,
+        host,
+        url: `${url.origin}${url.pathname}`,
+        label: step.label,
+        kind: "create",
+      },
+      ensureCurrent,
+    );
+    ensureCurrent();
+    if (!result.allow || !result.consumed) return;
+    const confirmed = await current.api.confirm(event.actionId);
+    ensureCurrent();
+    if (confirmed.resolved) clearMoneyLinkTaskContext(card.id);
+  })()
+    .catch(() => {
+      // A failed check leaves the original broker confirmation for the owner.
+    })
+    .finally(() => {
+      paymentLinkActionsInFlight.delete(event.actionId);
+      processedPaymentLinkActions.add(event.actionId);
+      if (processedPaymentLinkActions.size > MAX_PAYMENT_LINK_ACTIONS) {
+        const oldest = processedPaymentLinkActions.values().next().value;
+        if (oldest !== undefined) processedPaymentLinkActions.delete(oldest);
+      }
+    });
+}
 
 function rememberDismissedTask(key: string) {
   dismissedTasks.delete(key);
@@ -438,17 +605,20 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
 export function startAgentBrowserAccess({
   businessId,
   communityOrigin,
+  relayWsUrl,
   api = browserBroker,
 }: {
   businessId: string;
   communityOrigin: string;
-  api?: Pick<typeof browserBroker, "grant" | "onEvent">;
+  relayWsUrl?: string;
+  api?: Pick<typeof browserBroker, "grant" | "onEvent" | "grants" | "confirm">;
 }) {
   resetAgentBrowserAccess();
   const mine = generation;
   const current: Running = {
     businessId,
     communityOrigin,
+    relayWsUrl: relayWsUrl ?? null,
     api,
     unsubscribe: () => {},
     unsubscribeWorkArea: () => {},
@@ -463,6 +633,8 @@ export function startAgentBrowserAccess({
     if (running !== current) return;
     noteBrowserEvent(event);
     forgetEndedGrant(event);
+    if (event.type === "confirmation-requested")
+      approveRelayCheckedPaymentLinkStep(current, mine, event);
     handle(current, mine, event);
   });
 }
@@ -481,6 +653,9 @@ export function resetAgentBrowserAccess() {
   taskByGrant.clear();
   latestRequestByChannel.clear();
   requestSequence = 0;
+  moneyLinkTaskContexts.clear();
+  paymentLinkActionsInFlight.clear();
+  processedPaymentLinkActions.clear();
   for (const timer of cardTimers.values()) clearTimeout(timer);
   cardTimers.clear();
   resetBrowserActivity();

@@ -49,6 +49,7 @@
       "colony3-lead-reference.spec.ts",
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
+      "money-rails-pay-ui.spec.ts",
       "cofounder-phase2.spec.ts",
       "cofounder-customer-record.spec.ts",
       "w11-clients-work.spec.ts",
@@ -105,7 +106,8 @@
         "cofounder-phase2.spec.ts",
         "cofounder-playbooks.spec.ts",
         "cofounder-map.spec.ts",
-        "cofounder-customer-record.spec.ts"
+        "cofounder-customer-record.spec.ts",
+        "money-rails-pay-ui.spec.ts"
       ]
     },
     {
@@ -299,6 +301,7 @@
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
         "whatsapp-outreach-desk.spec.ts",
+        "money-rails-pay-ui.spec.ts",
         "messaging.spec.ts",
         "link-preview-bare-domain.spec.ts",
         "mentions.spec.ts",
@@ -404,6 +407,7 @@
       "specs": [
         "cofounder-phase2.spec.ts",
         "colony3-settings.spec.ts",
+        "money-rails-pay-ui.spec.ts",
         "settings-section-layout.spec.ts",
         "appearance-chrome.spec.ts",
         "appearance-previews.spec.ts",
@@ -430,6 +434,7 @@
         "badge.spec.ts",
         "navigation.spec.ts",
         "shell-design.spec.ts",
+        "money-rails-pay-ui.spec.ts",
         "top-chrome-zoom-clearance.spec.ts",
         "agent-avatar-everywhere.spec.ts"
       ]
@@ -469,6 +474,7 @@
         "whatsapp-dock-narrow.spec.ts",
         "workspace-file-links.spec.ts",
         "browser-profile-forget.spec.ts",
+        "money-rails-pay-ui.spec.ts",
         "colony3-conv-workarea-proof.spec.ts"
       ]
     }

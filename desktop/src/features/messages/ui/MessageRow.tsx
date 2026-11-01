@@ -65,6 +65,8 @@ import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
+import { MoneyRailMessageAttachment } from "@/features/cofounder/ui/MoneyRailMessageAttachment";
+import { paymentLinkIdFromTags } from "@/features/cofounder/moneyRails";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
@@ -171,6 +173,7 @@ export const MessageRow = React.memo(
     videoReviewContext?: VideoReviewContext;
   }) {
     const navigate = useNavigate();
+    const paymentLinkId = paymentLinkIdFromTags(message.tags);
     // Keep the transient send state with its timestamp rather than collapsing
     // it into a grouped message row with no header.
     const isDisplayedAsContinuation = isContinuation && !message.pending;
@@ -401,6 +404,18 @@ export const MessageRow = React.memo(
       message.tags?.find((tag) => tag[0] === name)?.[1];
 
     const renderBody = () => {
+      if (paymentLinkId)
+        return (
+          <>
+            {message.body.trim() ? (
+              <p className="mb-2 mt-1 text-message">{message.body}</p>
+            ) : null}
+            <MoneyRailMessageAttachment
+              channelId={channelId}
+              linkId={paymentLinkId}
+            />
+          </>
+        );
       const hasWorkItemReference = message.tags?.some(
         (tag) =>
           tag[0] === "a" && tag[1]?.startsWith(`${KIND_WORK_ITEM_HEAD}:`),
