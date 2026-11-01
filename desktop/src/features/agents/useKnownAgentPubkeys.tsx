@@ -10,8 +10,10 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { isAgentDirectoryReady } from "./lib/agentAutocompleteEligibility";
 import { isOwnedAgentNotManagedOnDevice } from "./lib/otherSetupAgent";
+import { agentAntAvatarDataUrl } from "./ui/agentAntAvatar";
 
 const EMPTY_KNOWN_AGENT_PUBKEYS: ReadonlySet<string> = new Set();
+const EMPTY_MANAGED_AGENT_AVATARS: ReadonlyMap<string, string> = new Map();
 
 const AgentManagementContext = React.createContext<{
   currentPubkey?: string;
@@ -27,6 +29,9 @@ const AgentManagementContext = React.createContext<{
 const KnownAgentPubkeysContext = React.createContext<ReadonlySet<string>>(
   EMPTY_KNOWN_AGENT_PUBKEYS,
 );
+const ManagedAgentAvatarsContext = React.createContext<
+  ReadonlyMap<string, string>
+>(EMPTY_MANAGED_AGENT_AVATARS);
 
 /**
  * Owns the app's only React Query subscription to the known-agent source
@@ -59,6 +64,18 @@ export function KnownAgentPubkeysProvider({
   const currentPubkey = useIdentityQuery().data?.pubkey;
   const managedAgents = managedQuery.data;
   const relayAgents = relayQuery.data;
+  const managedAgentAvatars = useStableMap(
+    new Map(
+      (managedAgents ?? []).map((agent) => [
+        normalizePubkey(agent.pubkey),
+        agent.avatarUrl?.trim() ||
+          agentAntAvatarDataUrl(
+            agent.name.trim().toLowerCase() === "scout" ? "Other" : agent.name,
+            agent.name.trim().toLowerCase() === "scout" ? "green" : undefined,
+          ),
+      ]),
+    ),
+  );
   const localPubkeys = useStableSet(
     new Set(
       (managedAgents ?? []).map((agent) => normalizePubkey(agent.pubkey)),
@@ -93,9 +110,11 @@ export function KnownAgentPubkeysProvider({
 
   return (
     <KnownAgentPubkeysContext.Provider value={stable}>
-      <AgentManagementContext.Provider value={management}>
-        {children}
-      </AgentManagementContext.Provider>
+      <ManagedAgentAvatarsContext.Provider value={managedAgentAvatars}>
+        <AgentManagementContext.Provider value={management}>
+          {children}
+        </AgentManagementContext.Provider>
+      </ManagedAgentAvatarsContext.Provider>
     </KnownAgentPubkeysContext.Provider>
   );
 }
@@ -126,6 +145,15 @@ export function KnownAgentPubkeysProvider({
  */
 export function useKnownAgentPubkeys(): ReadonlySet<string> {
   return React.useContext(KnownAgentPubkeysContext);
+}
+
+/** Managed-agent fallback artwork without per-avatar query observers. */
+export function useManagedAgentAvatarUrl(
+  pubkey?: string | null,
+): string | null {
+  const avatars = React.useContext(ManagedAgentAvatarsContext);
+  const key = normalizePubkey(pubkey ?? "");
+  return key ? (avatars.get(key) ?? null) : null;
 }
 
 /** Shared provenance without per-row query observers; exact keys, never personas. */

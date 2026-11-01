@@ -645,6 +645,7 @@ function InboxMessageDetailPane({
                       className="ca-participant"
                       key={person.pubkey}
                       label={person.label}
+                      pubkey={person.pubkey}
                       shape={person.isAgent ? "squircle" : "circle"}
                     />
                   ))}

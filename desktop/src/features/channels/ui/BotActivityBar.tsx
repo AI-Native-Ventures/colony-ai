@@ -220,6 +220,7 @@ export function BotActivityComposerAction({
                     isInline ? "!h-4.5 !w-4.5 text-3xs" : "shrink-0",
                   )}
                   displayName={agent.name}
+                  pubkey={agent.pubkey}
                   shape="squircle"
                   fallbackDelayMs={isInline ? 0 : undefined}
                   key={agent.pubkey}
@@ -276,6 +277,7 @@ export function BotActivityComposerAction({
                   avatarUrl={agentAvatarUrl(agent)}
                   className="shrink-0"
                   displayName={agent.name}
+                  pubkey={agent.pubkey}
                   shape="squircle"
                   size="sm"
                 />

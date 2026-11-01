@@ -147,6 +147,7 @@ export function AccountProfileSettingsPanel({
                 avatarUrl={profileQuery.data?.avatarUrl ?? null}
                 className="cs-avatar-large-image"
                 label={profileName || "Your profile"}
+                pubkey={profileQuery.data?.pubkey}
                 testId="account-profile-avatar"
               />
               <span

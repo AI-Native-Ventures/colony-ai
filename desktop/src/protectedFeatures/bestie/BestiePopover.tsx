@@ -49,6 +49,7 @@ export function BestieTriggerVisual({
         avatarUrl={agent.avatarUrl}
         className={cn(compact ? "h-6 w-6" : "h-10 w-10", className)}
         displayName={agent.name}
+        pubkey={agent.pubkey}
         fallbackDelayMs={0}
         imageDraggable={imageDraggable}
         size={compact ? "sm" : "md"}
@@ -89,6 +90,7 @@ export function BestieAgentLockup({
           avatarUrl={agent.avatarUrl}
           className={compact ? "h-5 w-5" : "h-8 w-8"}
           displayName={agent.name}
+          pubkey={agent.pubkey}
           fallbackDelayMs={0}
           size={compact ? "xs" : "sm"}
         />
@@ -440,6 +442,7 @@ export function BestiePopover({
                 avatarUrl={contextMessage.avatarUrl ?? null}
                 className="h-5 w-5"
                 displayName={contextMessage.author}
+                pubkey={contextMessage.pubkey}
                 fallbackDelayMs={0}
                 size="xs"
               />

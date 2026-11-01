@@ -2,6 +2,7 @@ import type * as React from "react";
 import { MessageCircle } from "lucide-react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
 import { getChannelDetail } from "@/features/channels/lib/channelDescription";
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
@@ -117,6 +118,14 @@ export function ChannelScreenHeader({
   const isDm = activeChannel?.channelType === "dm";
   const isGroupDm = isDm && activeDmHeaderParticipants.length > 1;
   const activeDmParticipant = activeDmHeaderParticipants[0] ?? null;
+  const knownAgentPubkeys = useKnownAgentPubkeys();
+  const fallbackDmPubkey =
+    activeChannel?.participantPubkeys.find(
+      (pubkey) => pubkey.toLowerCase() !== currentPubkey?.toLowerCase(),
+    ) ?? activeChannel?.participantPubkeys[0];
+  const fallbackDmIsAgent = fallbackDmPubkey
+    ? knownAgentPubkeys.has(fallbackDmPubkey.toLowerCase())
+    : false;
   const showJoinButton =
     activeChannel !== null &&
     !activeChannel.isMember &&
@@ -273,6 +282,7 @@ export function ChannelScreenHeader({
         <ProfileAvatarWithStatus
           avatarClassName="text-sm"
           avatarUrl={activeDmAvatarUrl}
+          pubkey={activeDmParticipant.pubkey}
           className="h-10 w-10"
           geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
           iconClassName="h-4 w-4"
@@ -288,11 +298,12 @@ export function ChannelScreenHeader({
       <ProfileAvatarWithStatus
         avatarClassName="text-sm"
         avatarUrl={activeDmAvatarUrl}
+        pubkey={fallbackDmPubkey}
         className="h-10 w-10"
         geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
         iconClassName="h-4 w-4"
         label={activeChannelTitle}
-        shape="circle"
+        shape={fallbackDmIsAgent ? "squircle" : "circle"}
         size={DM_HEADER_AVATAR_SIZE}
         status={activeDmPresenceStatus ?? "offline"}
         statusTestId="chat-presence-badge"
@@ -411,6 +422,7 @@ function DmHeaderParticipantStack({
                   : "h-8 w-8 text-xs"
               }
               displayName={participant.displayName}
+              pubkey={participant.pubkey}
               shape={participant.isAgent ? "squircle" : "circle"}
               size="sm"
             />

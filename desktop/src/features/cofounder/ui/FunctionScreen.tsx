@@ -52,11 +52,17 @@ function MemberAvatar({
       className={className}
       instance={member.managedAgent?.avatarUrl}
       name={name}
+      pubkey={member.pubkey}
       personaId={member.managedAgent?.personaId}
       profile={profile}
     />
   ) : (
-    <ProfileAvatar avatarUrl={profile} className={className} label={name} />
+    <ProfileAvatar
+      avatarUrl={profile}
+      className={className}
+      label={name}
+      pubkey={member.pubkey}
+    />
   );
 }
 

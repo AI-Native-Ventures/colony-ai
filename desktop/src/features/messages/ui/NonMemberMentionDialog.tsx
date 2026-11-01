@@ -9,7 +9,7 @@ import {
 } from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { PlusIcon } from "@/shared/ui/colonyIcons";
-import { getInitials } from "@/shared/lib/initials";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { PRIVATE_CHANNEL_ADD_DENIED_MESSAGE } from "@/features/channels/lib/channelMemberAdmission";
 
 type NonMemberMentionDialogProps = {
@@ -17,7 +17,12 @@ type NonMemberMentionDialogProps = {
   canInvite: boolean;
   error: string | null;
   isInvitePending: boolean;
-  names: string[];
+  recipients: Array<{
+    avatarUrl: string | null;
+    isAgent: boolean;
+    label: string;
+    pubkey: string;
+  }>;
   onDismiss: () => void;
   /** Omit when publication requires the intended recipients to be invited. */
   onDoNothing?: () => void;
@@ -31,7 +36,7 @@ export function NonMemberMentionDialog({
   canInvite,
   error,
   isInvitePending,
-  names,
+  recipients,
   onDismiss,
   onDoNothing,
   onInvite,
@@ -40,6 +45,8 @@ export function NonMemberMentionDialog({
 }: NonMemberMentionDialogProps) {
   const safeActionRef = React.useRef<HTMLButtonElement>(null);
   const restoreFocusRef = React.useRef(onRestoreFocus);
+  const names = recipients.map((recipient) => recipient.label);
+  const firstRecipient = recipients[0];
   return (
     <AlertDialog
       onOpenChange={(nextOpen) => {
@@ -64,10 +71,18 @@ export function NonMemberMentionDialog({
           requestAnimationFrame(() => restoreFocusRef.current?.());
         }}
       >
-        <span className="flex items-center">
-          <span className="flex size-10 items-center justify-center rounded-full bg-colony-person text-xs font-extrabold text-colony-fg ring-[3px] ring-colony-pop">
-            {getInitials(names[0] ?? "")}
-          </span>
+        <span aria-hidden="true" className="flex items-center">
+          {firstRecipient ? (
+            <ProfileAvatar
+              avatarUrl={firstRecipient.avatarUrl}
+              className="size-10 ring-[3px] ring-colony-pop"
+              label={firstRecipient.label}
+              pubkey={firstRecipient.pubkey}
+              shape={firstRecipient.isAgent ? "squircle" : "circle"}
+            />
+          ) : (
+            <span className="flex size-10 items-center justify-center rounded-full bg-colony-person text-xs font-extrabold text-colony-fg ring-[3px] ring-colony-pop" />
+          )}
           <span className="-ml-2.5 flex size-10 items-center justify-center rounded-full bg-colony-track text-colony-fg-secondary ring-[3px] ring-colony-pop">
             <PlusIcon size={17} strokeWidth={2} />
           </span>

@@ -61,6 +61,7 @@ type VideoReviewReaction = {
 };
 export type VideoReviewComment = {
   id: string;
+  pubkey?: string;
   author: string;
   avatarUrl?: string | null;
   isAgent?: boolean;
@@ -1805,6 +1806,7 @@ function VideoReviewDialog({
                                   avatarUrl={item.comment.avatarUrl ?? null}
                                   className="h-4 w-4 shadow-none"
                                   displayName={item.comment.author}
+                                  pubkey={item.comment.pubkey}
                                   shape={
                                     item.comment.isAgent ? "squircle" : "circle"
                                   }
@@ -2138,6 +2140,7 @@ function VideoReviewCommentBody({
           avatarUrl={item.comment.avatarUrl ?? null}
           className="h-6 w-6 shadow-none"
           displayName={item.comment.author}
+          pubkey={item.comment.pubkey}
           shape={item.comment.isAgent ? "squircle" : "circle"}
           size="xs"
         />

@@ -149,7 +149,8 @@
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
         "mention-wake-stop-race.spec.ts",
-        "agent-working-indicator.spec.ts"
+        "agent-working-indicator.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {
@@ -336,7 +337,8 @@
         "colony3-conv-dialogs-proof.spec.ts",
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
-        "mention-wake-stop-race.spec.ts"
+        "mention-wake-stop-race.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {
@@ -386,7 +388,11 @@
     },
     {
       "paths": ["desktop/src/features/search/**"],
-      "specs": ["search-scope-screenshots.spec.ts", "smoke.spec.ts"]
+      "specs": [
+        "search-scope-screenshots.spec.ts",
+        "smoke.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/settings/**"],
@@ -418,7 +424,8 @@
         "badge.spec.ts",
         "navigation.spec.ts",
         "shell-design.spec.ts",
-        "top-chrome-zoom-clearance.spec.ts"
+        "top-chrome-zoom-clearance.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {

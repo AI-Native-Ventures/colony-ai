@@ -555,6 +555,7 @@ export function ReviewRehireDialog({
               className="team-dialog-summary-avatar"
               instance={member.managedAgent?.avatarUrl}
               name={name}
+              pubkey={member.pubkey}
               personaId={member.managedAgent?.personaId}
             />
             <dl>

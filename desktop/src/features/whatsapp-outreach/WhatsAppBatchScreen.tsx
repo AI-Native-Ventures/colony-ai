@@ -11,6 +11,7 @@ import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 import {
   maskWhatsAppNumber,
@@ -771,9 +772,13 @@ export function WhatsAppBatchScreen({
           </div>
           <div className="c3wa-owner-message">
             <span aria-hidden="true" className="c3wa-owner-message-avatar">
-              {(profileQuery.data?.displayName ?? "Owner")
-                .slice(0, 1)
-                .toUpperCase()}
+              <UserAvatar
+                avatarUrl={profileQuery.data?.avatarUrl ?? null}
+                className="size-full"
+                displayName={profileQuery.data?.displayName ?? "Owner"}
+                fallbackDelayMs={0}
+                pubkey={currentPubkey}
+              />
             </span>
             <div>
               <div className="c3wa-owner-message-meta">
