@@ -926,6 +926,14 @@ mod tests {
         last_skip.skip = Some(1_000);
         assert!(validate_request(last_skip).is_ok());
 
+        // Outscraper pages in steps of 20; any other skip returns repeats that
+        // are paid for twice, so it must be refused.
+        for skip in [1, 7, 14, 21, 39] {
+            let mut input = request("a");
+            input.skip = Some(skip);
+            assert!(validate_request(input).is_err(), "skip {skip}");
+        }
+
         for language in ["e", "toolong", "e1", "en US"] {
             let mut input = request("a");
             input.language = Some(language.to_string());
