@@ -73,7 +73,7 @@ async fn fenced_tx(
 }
 
 /// Handles a connection command (kind 47074).
-pub(super) async fn handle(
+pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

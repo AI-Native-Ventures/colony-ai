@@ -81,7 +81,7 @@ pub(crate) async fn read_link(
 }
 
 /// Handles a payment link command (kind 47070).
-pub(super) async fn handle(
+pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

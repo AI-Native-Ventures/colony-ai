@@ -16,7 +16,7 @@ use buzz_core::money_rails::notice::{
     dedupe_key, judge_notice, matches_card, read_notice, verify_signature, Judgement, LookupResult,
     MatchKeys, SignatureState,
 };
-use buzz_core::money_rails::NOTICE_MAX_BYTES;
+use buzz_core::money_rails::{sha256_hex, NOTICE_MAX_BYTES};
 use buzz_core::tenant::TenantContext;
 use buzz_db::money_rails::NewMoneyNotice;
 
@@ -89,7 +89,7 @@ pub async fn receive(
     http: &dyn ProviderHttp,
     tenant: &TenantContext,
     notice_id: Uuid,
-    header: &dyn Fn(&str) -> Option<String>,
+    header: &(dyn Fn(&str) -> Option<String> + Sync),
     body: &[u8],
 ) -> Result<NoticeOutcome, NoticeError> {
     let community = tenant.community();
@@ -144,7 +144,14 @@ pub async fn receive(
 
     let map = loaded.config.approved_notice_map();
     let first_read = read_notice(body, map, "");
-    let key = dedupe_key(&first_read, body);
+    // Only a verified signature earns the provider's own event id as the dedupe key. Anything
+    // else dedupes by the hash of the body, so a forged post that borrows a real event id can
+    // never block the genuine notice that carries it.
+    let key = if signature == SignatureState::Verified {
+        dedupe_key(&first_read, body)
+    } else {
+        format!("sha256:{}", sha256_hex(body))
+    };
     if state
         .db
         .money_notice_exists(community, connection_id, &key)
