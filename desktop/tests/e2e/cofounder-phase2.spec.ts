@@ -652,8 +652,13 @@ async function capture(page: Page, name: string, fullPage = true) {
       dark: themeName === "buzz-dark",
       buzzTheme: themeName,
     });
-  const file = resolve("/private/tmp/cof-ui-defects-proof/screenshots", name);
-  await mkdir(dirname(file), { recursive: true });
+  const proofDirectory = process.env.COF_UI_DEFECTS_PROOF_DIR;
+  const file = proofDirectory
+    ? resolve(proofDirectory, name)
+    : test.info().outputPath(name);
+  if (proofDirectory) {
+    await mkdir(dirname(file), { recursive: true });
+  }
   await page.screenshot({ fullPage, path: file });
 }
 
@@ -676,6 +681,7 @@ test.describe("Co-founder mode Phase 2", () => {
   test("enabled co-founder mode opens the Scout direct message from settings", async ({
     page,
   }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
     await boot(page, {
       scoutDmChannelName: "Lerato and Scout",
       step: "brief",
@@ -708,6 +714,7 @@ test.describe("Co-founder mode Phase 2", () => {
   test("enabled co-founder mode creates a Scout direct message when none exists", async ({
     page,
   }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
     await boot(page, {
       referenceWorkspace: false,
       step: "brief",
@@ -1058,9 +1065,9 @@ test.describe("Co-founder mode Phase 2", () => {
 
     await batch.getByRole("button", { name: /Review batch/u }).click();
     await expect(page.getByTestId("whatsapp-batch-page")).toBeVisible();
-    await expect(page.getByTestId("whatsapp-batch-page")).toContainText(
-      "2 guesthouses in Melville",
-    );
+    const batchPage = page.getByTestId("whatsapp-batch-page");
+    await expect(batchPage).toContainText("2 businesses");
+    await expect(batchPage).toContainText("Guesthouses · 2");
   });
 
   test("Needs you completes real plan and capability-gap steps", async ({

@@ -241,9 +241,20 @@ test.describe("co-founder customer records", () => {
     const lead = leads.getByRole("row").filter({
       hasText: "Melville Manor Guesthouse",
     });
-    const customerRecordLink = lead.getByRole("link", {
-      name: "Customer record",
+    const reviewLeadLink = lead.getByRole("link", {
+      name: "Review lead",
     });
+    await expect(reviewLeadLink).toBeVisible();
+    await reviewLeadLink.click();
+    await expect(page).toHaveURL(
+      new RegExp(`/sales/lead/${MELVILLE_PARTY_ID}$`),
+    );
+
+    const customerRecordLink = page
+      .getByTestId("w10-prospect-page")
+      .getByRole("link", {
+        name: "Customer record",
+      });
     await expect(customerRecordLink).toBeVisible();
     await customerRecordLink.click();
     await expect(page).toHaveURL(
@@ -255,13 +266,23 @@ test.describe("co-founder customer records", () => {
     await expect(timeline).not.toContainText("Found in Discovery");
 
     await page.goto("/#/leads");
+    const leadToConvert = page
+      .getByRole("table", { name: "Leads" })
+      .getByRole("row")
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await leadToConvert.getByRole("link", { name: "Review lead" }).click();
+    const leadDetail = page.getByTestId("w10-prospect-page");
+    const convert = leadDetail.getByTestId(
+      `lead-make-client-${MELVILLE_PARTY_ID}`,
+    );
+    await convert.click();
+    await expect(convert).toHaveCount(0);
+
+    await page.goto("/#/leads");
     const convertedLead = page
       .getByRole("table", { name: "Leads" })
       .getByRole("row")
       .filter({ hasText: "Melville Manor Guesthouse" });
-    await convertedLead
-      .getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`)
-      .click();
     await expect.soft(convertedLead).toContainText("Client");
 
     await page.goto("/#/clients");
