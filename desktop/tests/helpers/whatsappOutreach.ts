@@ -83,6 +83,7 @@ type WhatsAppMockActor = {
   relayRole?: "owner" | "admin" | "member" | null;
   profileIsAgent?: boolean;
   profileOwnerPubkey?: string | null;
+  workspaceName?: string;
   /** Seed the approved desk states without changing legacy inbox fixtures. */
   deskFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
@@ -98,13 +99,18 @@ type WhatsAppMockActor = {
 export async function setWhatsAppProofTheme(
   page: Page,
   theme: WhatsAppProofTheme,
+  workspaceName = "Horizon Labs",
 ) {
   const relayUrl = (
     process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
   ).replace(/^http/u, "ws");
   await page.emulateMedia({ colorScheme: theme });
   await page.addInitScript(
-    ({ selectedTheme, scopedRelayUrl }) => {
+    ({
+      selectedTheme,
+      scopedRelayUrl,
+      workspaceName: selectedWorkspaceName,
+    }) => {
       const themeName = selectedTheme === "dark" ? "buzz-dark" : "buzz";
       const pubkey = "deadbeef".repeat(8);
       // Appearance snapshots are newer durable preferences than the theme key.
@@ -140,14 +146,14 @@ export async function setWhatsAppProofTheme(
         communities.find((community) => community.id === activeId) ??
         communities[0];
       if (active) {
-        active.name = "Horizon Labs";
+        active.name = selectedWorkspaceName;
         window.localStorage.setItem(
           "buzz-communities",
           JSON.stringify(communities),
         );
       }
     },
-    { selectedTheme: theme, scopedRelayUrl: relayUrl },
+    { selectedTheme: theme, scopedRelayUrl: relayUrl, workspaceName },
   );
 }
 
@@ -1021,6 +1027,9 @@ export async function installWhatsAppMockBridge(
   await page.emulateMedia({ colorScheme: theme });
   await installMockBridge(page, {
     referenceWorkspace: true,
+    ...(actor.workspaceName
+      ? { referenceWorkspaceBusinessName: actor.workspaceName }
+      : {}),
     colony3Sidebar: true,
     whatsappGuesthouses: true,
     referenceWorkspaceRole: "owner",
@@ -1073,7 +1082,7 @@ export async function installWhatsAppMockBridge(
       ],
     },
   });
-  await setWhatsAppProofTheme(page, theme);
+  await setWhatsAppProofTheme(page, theme, actor.workspaceName);
   await page.addInitScript(
     (seed) => {
       const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
