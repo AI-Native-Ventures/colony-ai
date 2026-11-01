@@ -49,6 +49,7 @@
       "money.spec.ts",
       "cofounder-phase2.spec.ts",
       "cofounder-customer-record.spec.ts",
+      "redproof-money-rails-connect-secret.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
