@@ -421,9 +421,7 @@ test("a consequential click waits for the person and runs once after confirm", a
 test("payment-link Create keeps the ordinary confirmation and emits scoped step facts", async () => {
   const env = setup({
     url: "https://shop.example/payments/new?token=secret#receipt",
-    elements: [
-      { backend: 31, role: "button", name: "Create payment link" },
-    ],
+    elements: [{ backend: 31, role: "button", name: "Create payment link" }],
   });
   const snap = await snapshotRefs(env);
   const pending = env.call("browser_click", {
