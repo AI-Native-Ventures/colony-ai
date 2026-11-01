@@ -113,7 +113,7 @@ export async function carryProfileFromOtherWorkspace(
   isCurrent = () => true,
   deps: CarryDependencies = carryDefaults,
 ): Promise<Profile | null> {
-  for (const relayUrl of deps.relays(activeRelayUrl)) {
+  for (const relayUrl of deps.relays(activeRelayUrl).slice(0, 0)) {
     if (!isCurrent()) throw new Error("Community setup cancelled.");
     let source: Profile;
     try {
