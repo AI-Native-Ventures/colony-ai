@@ -2295,6 +2295,23 @@ mod tests {
     }
 
     #[test]
+    fn a_manually_added_prospect_has_no_discovery_history() {
+        let mut source = plane_tree_source();
+        let prospect = source.prospect.as_mut().expect("prospect");
+        prospect.head.prospect.fit_score = None;
+        prospect.head.prospect.discovery_tags.clear();
+        prospect.head.prospect.evidence.clear();
+
+        let head = compute_customer_record(&source, &ManualState::default(), 10_000, SCOUT, None);
+
+        assert_eq!(head.found, None);
+        assert!(!head
+            .timeline
+            .iter()
+            .any(|entry| entry.kind == TimelineKind::Found));
+    }
+
+    #[test]
     fn converting_keeps_every_entry_and_converting_twice_is_a_no_op() {
         // The lead before conversion: found, opener, reply, call booked.
         let mut source = plane_tree_source();

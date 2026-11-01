@@ -80,6 +80,7 @@ function deskCustomerRecordMock() {
 
 export type WhatsAppProofTheme = "light" | "dark";
 type WhatsAppMockActor = {
+  businessName?: string;
   relayRole?: "owner" | "admin" | "member" | null;
   profileIsAgent?: boolean;
   profileOwnerPubkey?: string | null;
@@ -99,18 +100,14 @@ type WhatsAppMockActor = {
 export async function setWhatsAppProofTheme(
   page: Page,
   theme: WhatsAppProofTheme,
-  workspaceName = "Horizon Labs",
+  businessName = "Horizon Labs",
 ) {
   const relayUrl = (
     process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
   ).replace(/^http/u, "ws");
   await page.emulateMedia({ colorScheme: theme });
   await page.addInitScript(
-    ({
-      selectedTheme,
-      scopedRelayUrl,
-      workspaceName: selectedWorkspaceName,
-    }) => {
+    ({ selectedTheme, scopedRelayUrl, selectedBusinessName }) => {
       const themeName = selectedTheme === "dark" ? "buzz-dark" : "buzz";
       const pubkey = "deadbeef".repeat(8);
       // Appearance snapshots are newer durable preferences than the theme key.
@@ -146,14 +143,18 @@ export async function setWhatsAppProofTheme(
         communities.find((community) => community.id === activeId) ??
         communities[0];
       if (active) {
-        active.name = selectedWorkspaceName;
+        active.name = selectedBusinessName;
         window.localStorage.setItem(
           "buzz-communities",
           JSON.stringify(communities),
         );
       }
     },
-    { selectedTheme: theme, scopedRelayUrl: relayUrl, workspaceName },
+    {
+      selectedTheme: theme,
+      scopedRelayUrl: relayUrl,
+      selectedBusinessName: businessName,
+    },
   );
 }
 
@@ -1055,7 +1056,7 @@ export async function installWhatsAppMockBridge(
         {
           id: OUTREACH_CHANNEL_ID,
           name: "Outreach",
-          description: "Private WhatsApp conversations for Horizon Labs.",
+          description: `Private WhatsApp conversations for ${actor.businessName ?? "your business"}.`,
           visibility:
             actor.outreachChannelMember === false ? "open" : "private",
           selfIsMember: actor.outreachChannelMember !== false,
@@ -1082,7 +1083,11 @@ export async function installWhatsAppMockBridge(
       ],
     },
   });
-  await setWhatsAppProofTheme(page, theme, actor.workspaceName);
+  await setWhatsAppProofTheme(
+    page,
+    theme,
+    actor.businessName ?? actor.workspaceName,
+  );
   await page.addInitScript(
     (seed) => {
       const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;

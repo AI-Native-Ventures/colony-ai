@@ -33,6 +33,7 @@ function customerFixture({
   companyFunctionHeads,
   managedAgents,
   customerActionErrors,
+  manualMelville = false,
 }: {
   enabled?: boolean;
   role?: "owner" | "admin" | "member";
@@ -40,6 +41,7 @@ function customerFixture({
   companyFunctionHeads?: MockCompanyFunctionHead[];
   managedAgents?: MockManagedAgentSeed[];
   customerActionErrors?: string[];
+  manualMelville?: boolean;
 } = {}) {
   const relaySecret = generateSecretKey();
   const input = {
@@ -60,6 +62,12 @@ function customerFixture({
     byPubkey: input.ayaPubkey,
     search: "guesthouses in Melville",
   };
+  if (manualMelville) {
+    melville.found = null;
+    melville.timeline = (melville.timeline as Array<{ kind: string }>).filter(
+      (entry) => entry.kind !== "found",
+    );
+  }
 
   const olive = structuredClone(planeTree);
   olive.partyId = OLIVE_PARTY_ID;
@@ -188,6 +196,47 @@ test.describe("co-founder customer records", () => {
     await expect(timeline.nth(0)).toContainText("Found in Discovery");
     await expect(timeline.nth(1)).toContainText("WhatsApp opener approved");
     await expect(timeline.nth(2)).toContainText("Became a client");
+  });
+
+  test("a manually added lead keeps truthful history and appears as one client after conversion", async ({
+    page,
+  }) => {
+    await installMockBridge(page, customerFixture({ manualMelville: true }));
+    await page.goto("/#/leads");
+
+    const leads = page.getByRole("table", { name: "Leads" });
+    const lead = leads.getByRole("row").filter({
+      hasText: "Melville Manor Guesthouse",
+    });
+    const customerRecordLink = lead.getByRole("link", {
+      name: "Customer record",
+    });
+    await expect(customerRecordLink).toBeVisible();
+    await customerRecordLink.click();
+    await expect(page).toHaveURL(
+      new RegExp(`/clients/record/${MELVILLE_PARTY_ID}$`),
+    );
+    const timeline = page
+      .getByTestId("customer-record-screen")
+      .locator("ol li");
+    await expect(timeline).not.toContainText("Found in Discovery");
+
+    await page.goto("/#/leads");
+    const convertedLead = page
+      .getByRole("table", { name: "Leads" })
+      .getByRole("row")
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await convertedLead
+      .getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`)
+      .click();
+    await expect.soft(convertedLead).toContainText("Client");
+
+    await page.goto("/#/clients");
+    const client = page.getByTestId(`client-row-${MELVILLE_PARTY_ID}`);
+    await expect.soft(client).toContainText("Melville Manor Guesthouse");
+    await expect
+      .soft(page.getByRole("table", { name: "Clients" }).locator("tbody tr"))
+      .toHaveCount(3);
   });
 
   test("a Sales lead can convert a lead while still a plain member", async ({
