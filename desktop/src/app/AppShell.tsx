@@ -177,15 +177,13 @@ export function AppShell() {
   );
   const { canGoBack, canGoForward, goBack, goForward } =
     useBackForwardControls();
-  const {
-    removeCommunity: handleRemoveCommunity,
-    switchCommunity: handleSwitchCommunity,
-  } = useCommunityNavigationTransitions({
-    communities: communitiesHook,
-    goHome,
-    selectedChannelId,
-    selectedView,
-  });
+  const { switchCommunity: handleSwitchCommunity } =
+    useCommunityNavigationTransitions({
+      communities: communitiesHook,
+      goHome,
+      selectedChannelId,
+      selectedView,
+    });
   useWorkspaceSwitchShortcuts(
     communitiesHook.communities,
     communitiesHook.activeCommunity?.id ?? null,
@@ -821,7 +819,6 @@ export function AppShell() {
                       onOpenWorkspaceDialog={openWorkspaceDialog}
                       onOpenWorkspaceSettings={openWorkspaceSettings}
                       onSendFeedback={() => setIsSendFeedbackOpen(true)}
-                      onRemoveCommunity={handleRemoveCommunity}
                       onSwitchCommunity={handleSwitchCommunity}
                       onCreateAgent={() => requestOpenCreateAgent()}
                       selfPresenceStatus={presenceSession.currentStatus}
@@ -919,7 +916,6 @@ export function AppShell() {
                                 openWorkspaceDialog("join")
                               }
                               onOpenWorkspaceSettings={openWorkspaceSettings}
-                              onRemoveWorkspace={handleRemoveCommunity}
                               onSwitchWorkspace={handleSwitchCommunity}
                             />
                           ) : showAppTopChrome ? (

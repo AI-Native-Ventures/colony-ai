@@ -9,15 +9,15 @@ const PUBKEY = "deadbeef".repeat(8);
 const WORKSPACES = [
   {
     id: "workspace-one",
-    name: "North Star",
-    relayUrl: "wss://north-star.workspaces-test.example",
+    name: "Colony",
+    relayUrl: "wss://colony.colony.ainative.ventures",
     pubkey: PUBKEY,
     addedAt: "2026-01-01T00:00:00.000Z",
   },
   {
     id: "workspace-two",
-    name: "Lerato Social",
-    relayUrl: "wss://lerato-social.workspaces-test.example",
+    name: "Horizon Labs",
+    relayUrl: "wss://horizon-labs.colony.ainative.ventures",
     pubkey: PUBKEY,
     addedAt: "2026-01-02T00:00:00.000Z",
   },
@@ -48,7 +48,10 @@ async function seedWorkspaces(
         "buzz-community-icons",
         JSON.stringify(
           Object.fromEntries(
-            workspaces.map((workspace) => [workspace.relayUrl, icon]),
+            workspaces.map((workspace, index) => [
+              workspace.relayUrl,
+              index === 0 ? icon : null,
+            ]),
           ),
         ),
       );
@@ -131,10 +134,8 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   const menu = await openWorkspaceMenu(page);
   const firstWorkspace = menu.getByTestId("workspace-menu-item-workspace-one");
   const secondWorkspace = menu.getByTestId("workspace-menu-item-workspace-two");
-  await expect(firstWorkspace).toContainText("North Star");
-  await expect(firstWorkspace).toContainText(
-    "north-star.workspaces-test.example",
-  );
+  await expect(firstWorkspace).toContainText("Colony");
+  await expect(firstWorkspace).toContainText("colony.colony.ainative.ventures");
   await expect(
     menu.getByTestId("workspace-menu-mark-workspace-one"),
   ).toHaveAttribute("data-source", "community");
@@ -142,13 +143,14 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
   await expect(firstWorkspace).toHaveAttribute("aria-current", "true");
   await expect(
     menu.getByRole("menuitem", {
-      name: "Open workspace North Star, north-star.workspaces-test.example, current workspace, ⌘1",
+      name: "Open workspace Colony, colony.colony.ainative.ventures, current workspace, ⌘1",
       exact: true,
     }),
   ).toHaveCount(1);
-  await expect(secondWorkspace).toContainText("Lerato Social");
+  await expect(secondWorkspace).toContainText("Horizon Labs");
   await expect(secondWorkspace).toContainText("⌘2");
   await expect(secondWorkspace).not.toHaveAttribute("aria-current", "true");
+  await expect(menu.getByTestId("workspace-leave-action")).toHaveCount(0);
   await capture(page, "WSMenuTwo");
 
   await page.keyboard.press("Escape");
@@ -166,7 +168,7 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
     )
     .toBe("workspace-two");
   await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
-    "Lerato Social",
+    "Horizon Labs",
   );
   // Chromium reserves Meta+number for tab switching, so dispatch the same keydown at the app window.
   await dispatchWorkspaceShortcut(page, "1");
@@ -182,7 +184,7 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
     )
     .toBe("workspace-two");
   await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
-    "Lerato Social",
+    "Horizon Labs",
   );
   const reopenedMenu = await openWorkspaceMenu(page);
   await reopenedMenu.getByTestId("workspace-menu-item-workspace-one").click();
@@ -192,9 +194,8 @@ test("header menu lists workspaces, switches by click and shortcut, profile stay
     )
     .toBe("workspace-one");
   await expect(page.getByTestId("sidebar-business-switcher")).toContainText(
-    "North Star",
+    "Colony",
   );
-
   await page.getByTestId("sidebar-profile-avatar-button").click();
   await expect(page.getByTestId("profile-popover")).toBeVisible();
   await expect(page.getByTestId("profile-popover-community")).toHaveCount(0);
@@ -248,7 +249,7 @@ test("dark header menu preserves workspace rows and shortcut hints", async ({
   await capture(page, "WSMenuDark");
 });
 
-test("workspace create checks the auto address without submitting", async ({
+test("workspace rail keeps the add action and opens create", async ({
   page,
 }) => {
   await seedWorkspaces(page);
@@ -257,7 +258,43 @@ test("workspace create checks the auto address without submitting", async ({
     route.fulfill({
       json: {
         self_serve: true,
-        domain: "workspaces-test.example",
+        domain: "colony.ainative.ventures",
+        public: true,
+        max_per_owner: 3,
+      },
+    }),
+  );
+  await page.goto("/#/today");
+  await openWorkspaceHeader(page);
+  await expect(page.getByTestId("community-rail")).toBeVisible();
+  const secondWorkspaceInRail = page.getByTestId(
+    "community-rail-button-workspace-two",
+  );
+  await expect(secondWorkspaceInRail).toHaveAccessibleName("Horizon Labs, ⌘2");
+  await secondWorkspaceInRail.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Horizon Labs, ⌘2");
+  const railCreateAction = page.getByTestId("community-rail-add");
+  await expect(railCreateAction).toHaveAccessibleName("Create a workspace");
+  await capture(page, "WSRail");
+  await railCreateAction.click();
+  const railCreateDialog = page.getByTestId("workspace-action-dialog");
+  await expect(railCreateDialog).toBeVisible();
+  await expect(
+    railCreateDialog.getByRole("heading", { name: "Create a workspace" }),
+  ).toBeVisible();
+  await railCreateDialog.getByTestId("workspace-dialog-close").click();
+});
+
+test("workspace create checks the auto address without submitting", async ({
+  page,
+}) => {
+  await seedWorkspaces(page, { workspaceCount: 1 });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: "colony.ainative.ventures",
         public: true,
         max_per_owner: 3,
       },
@@ -267,12 +304,6 @@ test("workspace create checks the auto address without submitting", async ({
     const name = new URL(route.request().url()).searchParams.get("name") ?? "";
     return route.fulfill({ json: { name, available: true } });
   });
-  await page.route("https://img.logo.dev/**", (route) =>
-    route.fulfill({
-      contentType: "image/svg+xml",
-      body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#68c8bf"/></svg>',
-    }),
-  );
   const createPosts: string[] = [];
   page.on("request", (request) => {
     if (
@@ -285,32 +316,13 @@ test("workspace create checks the auto address without submitting", async ({
 
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
-  await expect(page.getByTestId("community-rail")).toBeVisible();
-  const secondWorkspaceInRail = page.getByTestId(
-    "community-rail-button-workspace-two",
-  );
-  await expect(secondWorkspaceInRail).toHaveAccessibleName("Lerato Social, ⌘2");
-  await secondWorkspaceInRail.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Lerato Social, ⌘2");
-  const railCreateAction = page.getByTestId("community-rail-add");
-  await expect(railCreateAction).toHaveAccessibleName("Create a workspace");
-  await capture(page, "WSRail");
-  await railCreateAction.click();
-  const railCreateDialog = page.getByTestId("workspace-action-dialog");
-  await expect(railCreateDialog).toBeVisible();
-  await expect(
-    railCreateDialog.getByRole("heading", { name: "Create a workspace" }),
-  ).toBeVisible();
-  await railCreateDialog.getByTestId("workspace-dialog-close").click();
-
   const menu = await openWorkspaceMenu(page);
   await menu.getByTestId("workspace-create-action").click();
   const dialog = page.getByTestId("workspace-action-dialog");
   await expect(dialog).toBeVisible();
-  await page.getByTestId("workspace-create-name").fill("North Star Studio");
-  await page.getByLabel("Website (optional)").fill("https://example.com");
+  await page.getByTestId("workspace-create-name").fill("Horizon Labs");
   await expect(page.getByTestId("workspace-create-address")).toHaveValue(
-    "north-star-studio",
+    "horizon-labs",
   );
   await expect(page.getByTestId("workspace-create-availability")).toContainText(
     "That address is available.",
@@ -324,10 +336,10 @@ test("workspace create checks the auto address without submitting", async ({
   expect(createPosts).toEqual([]);
 });
 
-test("workspace settings start collapsed and the mobile switcher opens as a sheet", async ({
+test("workspace settings start collapsed and expose accurate advanced fields", async ({
   page,
 }) => {
-  await seedWorkspaces(page);
+  await seedWorkspaces(page, { workspaceCount: 1 });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/#/today");
   await openWorkspaceHeader(page);
@@ -355,8 +367,12 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   await page.setViewportSize({ width: 1440, height: 1260 });
   await capture(page, "WSSettingsAdvanced");
   await page.getByRole("button", { name: "Close", exact: true }).click();
+});
 
+test("light mobile workspace switcher opens as a sheet", async ({ page }) => {
+  await seedWorkspaces(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#/today");
   await openWorkspaceHeader(page);
   await page.getByTestId("mobile-workspace-switcher").click();
   await expect(page.getByTestId("community-rail")).toHaveCount(0);
@@ -370,6 +386,15 @@ test("workspace settings start collapsed and the mobile switcher opens as a shee
   await expect(
     sheet.getByTestId("workspace-menu-item-workspace-one"),
   ).toBeVisible();
+  await expect(
+    sheet.getByTestId("workspace-menu-item-workspace-two"),
+  ).toBeVisible();
+  await expect(
+    sheet.getByTestId("workspace-menu-item-workspace-one"),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(sheet).not.toContainText("⌘1");
+  await expect(sheet).not.toContainText("⌘2");
+  await expect(sheet.getByTestId("workspace-leave-action")).toHaveCount(0);
   await capture(page, "WSMobileMenu");
 });
 
@@ -385,5 +410,8 @@ test("dark mobile workspace menu fits the 390px sheet", async ({ page }) => {
   await expect(
     sheet.getByTestId("workspace-menu-item-workspace-two"),
   ).toBeVisible();
+  await expect(sheet).not.toContainText("⌘1");
+  await expect(sheet).not.toContainText("⌘2");
+  await expect(sheet.getByTestId("workspace-leave-action")).toHaveCount(0);
   await capture(page, "WSMobileMenuDark");
 });

@@ -4,15 +4,11 @@ import {
   ChevronRight,
   Copy,
   Link2,
-  LogOut,
   Plus,
   Settings2,
   UserRoundPlus,
 } from "lucide-react";
 
-import { toast } from "sonner";
-
-import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
 import type { Community } from "@/features/communities/types";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { isMacPlatform } from "@/shared/lib/platform";
@@ -47,7 +43,6 @@ type WorkspaceSwitcherMenuProps = {
   onOpenWorkspaceSettings: () => void;
   onInvitePeople: () => void;
   onCopyWorkspaceLink: () => void;
-  onRemoveWorkspace: (id: string) => Promise<LeaveCommunityResult | undefined>;
 };
 
 function workspaceAddress(relayUrl: string): string {
@@ -76,14 +71,13 @@ function WorkspaceChoices({
 }) {
   return (
     <div className="flex flex-col gap-0.5" data-testid="workspace-menu-list">
-      {workspaces.map((workspace, index) => {
+      {workspaces.map((workspace) => {
         const isActive = workspace.id === activeWorkspace?.id;
-        const shortcut = workspaceShortcut(index);
         const address = workspaceAddress(workspace.relayUrl);
         return (
           <button
             aria-current={isActive ? "true" : undefined}
-            aria-label={`Open workspace ${workspace.name}, ${address}${isActive ? ", current workspace" : ""}${shortcut ? `, ${shortcut}` : ""}`}
+            aria-label={`Open workspace ${workspace.name}, ${address}${isActive ? ", current workspace" : ""}`}
             className="flex min-h-16 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left outline-hidden transition-colors hover:bg-accent focus-visible:bg-accent"
             data-testid={`workspace-menu-item-${workspace.id}`}
             key={workspace.id}
@@ -99,21 +93,14 @@ function WorkspaceChoices({
                 {address}
               </span>
             </span>
-            {isActive ? (
-              <Check
-                aria-hidden="true"
-                className="h-4 w-4 shrink-0 text-emerald-600"
-                strokeWidth={3}
-              />
-            ) : null}
-            {shortcut ? (
-              <span
-                aria-hidden="true"
-                className="shrink-0 rounded-md bg-muted px-1.5 py-1 text-xs text-muted-foreground"
-              >
-                {shortcut}
-              </span>
-            ) : null}
+            <span
+              aria-hidden="true"
+              className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${isActive ? "border-emerald-600 bg-emerald-600 text-white" : "border-border text-transparent"}`}
+            >
+              {isActive ? (
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              ) : null}
+            </span>
           </button>
         );
       })}
@@ -124,12 +111,14 @@ function WorkspaceChoices({
 function WorkspaceAction({
   children,
   description,
+  iconContainerClassName,
   icon,
   onSelect,
   testId,
 }: {
   children: React.ReactNode;
   description: string;
+  iconContainerClassName?: string;
   icon: React.ReactNode;
   onSelect: () => void;
   testId: string;
@@ -144,7 +133,7 @@ function WorkspaceAction({
     >
       <span
         aria-hidden="true"
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-muted text-foreground"
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-foreground ${iconContainerClassName ?? "bg-muted"}`}
       >
         {icon}
       </span>
@@ -164,59 +153,29 @@ function WorkspaceActions({
   onOpenWorkspaceSettings,
   onInvitePeople,
   onCopyWorkspaceLink,
-  onLeaveWorkspace,
-  leaveError,
-  isLeaving,
   mobile = false,
 }: {
   onOpenWorkspaceSettings: () => void;
   onInvitePeople: () => void;
   onCopyWorkspaceLink: () => void;
-  onLeaveWorkspace: () => void;
-  leaveError: string | null;
-  isLeaving: boolean;
   mobile?: boolean;
 }) {
   if (mobile) {
     return (
-      <div className="flex flex-col">
-        <button
-          aria-label="Workspace settings"
-          className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-semibold outline-hidden transition-colors hover:bg-accent focus-visible:bg-accent"
-          data-testid="workspace-settings-action"
-          onClick={onOpenWorkspaceSettings}
-          type="button"
-        >
-          <Settings2 aria-hidden="true" className="h-5 w-5" />
-          <span className="flex-1">Workspace settings</span>
-          <ChevronRight
-            aria-hidden="true"
-            className="h-4 w-4 text-muted-foreground"
-          />
-        </button>
-        <button
-          aria-label="Leave workspace"
-          className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-semibold text-destructive outline-hidden transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50"
-          data-testid="workspace-leave-action"
-          disabled={isLeaving}
-          onClick={onLeaveWorkspace}
-          type="button"
-        >
-          <LogOut aria-hidden="true" className="h-5 w-5" />
-          <span className="flex-1">
-            {isLeaving ? "Leaving workspace…" : "Leave workspace"}
-          </span>
-        </button>
-        {leaveError ? (
-          <p
-            className="px-3 py-2 text-xs text-destructive"
-            data-testid="workspace-leave-error"
-            role="alert"
-          >
-            {leaveError}
-          </p>
-        ) : null}
-      </div>
+      <button
+        aria-label="Workspace settings"
+        className="flex min-h-12 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-semibold outline-hidden transition-colors hover:bg-accent focus-visible:bg-accent"
+        data-testid="workspace-settings-action"
+        onClick={onOpenWorkspaceSettings}
+        type="button"
+      >
+        <Settings2 aria-hidden="true" className="h-5 w-5" />
+        <span className="flex-1">Workspace settings</span>
+        <ChevronRight
+          aria-hidden="true"
+          className="h-4 w-4 text-muted-foreground"
+        />
+      </button>
     );
   }
 
@@ -259,29 +218,6 @@ function WorkspaceActions({
           <span>Copy workspace link</span>
         </button>
       </DropdownMenuItem>
-      <DropdownMenuSeparator className="my-1.5" />
-      <DropdownMenuItem
-        aria-label="Leave workspace"
-        className="text-destructive focus:text-destructive"
-        data-testid="workspace-leave-action"
-        disabled={isLeaving}
-        onSelect={(event) => {
-          event.preventDefault();
-          onLeaveWorkspace();
-        }}
-      >
-        <LogOut aria-hidden="true" className="h-4 w-4" />
-        <span>{isLeaving ? "Leaving workspace…" : "Leave workspace"}</span>
-      </DropdownMenuItem>
-      {leaveError ? (
-        <p
-          className="px-2 py-2 text-xs text-destructive"
-          data-testid="workspace-leave-error"
-          role="alert"
-        >
-          {leaveError}
-        </p>
-      ) : null}
     </>
   );
 }
@@ -297,12 +233,9 @@ export function WorkspaceSwitcherMenu({
   onOpenWorkspaceSettings,
   onInvitePeople,
   onCopyWorkspaceLink,
-  onRemoveWorkspace,
 }: WorkspaceSwitcherMenuProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
-  const [leaveError, setLeaveError] = React.useState<string | null>(null);
-  const [isLeaving, setIsLeaving] = React.useState(false);
   const menuContentRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -320,31 +253,6 @@ export function WorkspaceSwitcherMenu({
     [onSwitchWorkspace],
   );
 
-  const leaveWorkspace = React.useCallback(async () => {
-    if (!activeWorkspace || isLeaving) return;
-    setIsLeaving(true);
-    setLeaveError(null);
-    try {
-      const result = await onRemoveWorkspace(activeWorkspace.id);
-      setOpen(false);
-      if (result?.status === "already-absent") {
-        toast("Workspace removed", {
-          description:
-            "You were no longer a member, so Colony removed the workspace from this device.",
-        });
-      }
-    } catch (error) {
-      setLeaveError(
-        error instanceof Error
-          ? error.message
-          : "Couldn't leave the workspace. Try again.",
-      );
-      setOpen(true);
-    } finally {
-      setIsLeaving(false);
-    }
-  }, [activeWorkspace, isLeaving, onRemoveWorkspace]);
-
   const renderActions = (mobile = false) => (
     <WorkspaceActions
       mobile={mobile}
@@ -360,9 +268,6 @@ export function WorkspaceSwitcherMenu({
         setOpen(false);
         onOpenWorkspaceSettings();
       }}
-      onLeaveWorkspace={() => void leaveWorkspace()}
-      leaveError={leaveError}
-      isLeaving={isLeaving}
     />
   );
 
@@ -397,6 +302,7 @@ export function WorkspaceSwitcherMenu({
             <div className="flex flex-col gap-1 px-1 pb-1">
               <WorkspaceAction
                 description="A separate space for another business"
+                iconContainerClassName="border border-dashed border-border bg-background"
                 icon={<Plus className="h-5 w-5" />}
                 onSelect={() => {
                   setOpen(false);
@@ -408,6 +314,7 @@ export function WorkspaceSwitcherMenu({
               </WorkspaceAction>
               <WorkspaceAction
                 description="Paste a link someone sent you"
+                iconContainerClassName="bg-muted"
                 icon={<Link2 className="h-5 w-5" />}
                 onSelect={() => {
                   setOpen(false);
@@ -478,11 +385,10 @@ export function WorkspaceSwitcherMenu({
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator className="my-1.5" />
         <DropdownMenuItem asChild>
           <button
             aria-label="Create a workspace. A separate space for another business"
-            className="flex w-full items-center gap-3"
+            className="flex min-h-16 w-full items-center justify-start gap-3 text-left"
             data-testid="workspace-create-action"
             onClick={() => {
               setOpen(false);
@@ -490,7 +396,9 @@ export function WorkspaceSwitcherMenu({
             }}
             type="button"
           >
-            <Plus aria-hidden="true" className="h-4 w-4" />
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-dashed border-border bg-background">
+              <Plus aria-hidden="true" className="h-5 w-5" />
+            </span>
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="text-sm font-semibold">Create a workspace</span>
               <span className="text-xs text-muted-foreground">
@@ -502,7 +410,7 @@ export function WorkspaceSwitcherMenu({
         <DropdownMenuItem asChild>
           <button
             aria-label="Join with an invite link. Paste a link someone sent you"
-            className="flex w-full items-center gap-3"
+            className="flex min-h-16 w-full items-center justify-start gap-3 text-left"
             data-testid="workspace-join-action"
             onClick={() => {
               setOpen(false);
@@ -510,7 +418,9 @@ export function WorkspaceSwitcherMenu({
             }}
             type="button"
           >
-            <Link2 aria-hidden="true" className="h-4 w-4" />
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-muted">
+              <Link2 aria-hidden="true" className="h-5 w-5" />
+            </span>
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="text-sm font-semibold">
                 Join with an invite link

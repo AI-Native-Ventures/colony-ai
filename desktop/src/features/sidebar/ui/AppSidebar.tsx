@@ -123,7 +123,6 @@ export function AppSidebar({
   onMarkAllChannelsRead,
   onBrowseChannels,
   onOpenDm,
-  onRemoveCommunity,
   onCreateAgent,
   onSelectToday,
   onSelectAgents,
@@ -572,7 +571,6 @@ export function AppSidebar({
           onInvitePeople={() => onSelectSettings("community-members")}
           onJoinWorkspace={() => onOpenWorkspaceDialog("join")}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-          onRemoveWorkspace={onRemoveCommunity}
           onSelectChannel={onSelectChannel}
           onSwitchWorkspace={onSwitchCommunity}
           searchChannels={searchChannels}
