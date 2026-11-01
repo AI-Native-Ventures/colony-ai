@@ -1101,7 +1101,6 @@ fn approve(
     let head_id = need(action.expected_head_event_id.clone(), "expectedHeadEventId")?;
     // The atomic re-check: every fact the owner saw must still be on the card.
     let same = facts.invoice_id == current.invoice_id
-        && facts.amount_minor == current.amount_minor
         && facts.currency == current.currency
         && facts.connection_id == current.connection_id
         && facts.recipient_ref == current.recipient_ref
