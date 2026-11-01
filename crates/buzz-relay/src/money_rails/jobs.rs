@@ -35,7 +35,9 @@ const MAX_ATTEMPTS: i32 = 6;
 const MAX_SEND_POLLS: i32 = 150;
 /// Tries of an evidence write before the runner stops retrying (15 minutes apart).
 const MAX_EVIDENCE_ATTEMPTS: i32 = 100;
-/// Seconds between ticks that reduce old notice bodies.
+/// Failed steps of any job before the runner stops retrying it (rule 4: a terminal state).
+const MAX_JOB_ATTEMPTS: i32 = 60;
+/// Ticks between passes that reduce old notice bodies.
 const REDUCE_EVERY_TICKS: u32 = 120;
 
 /// Seconds to wait before try number `attempts`: 15, 30, 60 ... at most 15 minutes.
@@ -135,6 +137,30 @@ pub async fn process_job(state: &Arc<AppState>, http: &dyn ProviderHttp, job: &M
         other => Err(format!("unknown job kind {other}")),
     };
     if let Err(error) = result {
+        if job.attempts >= MAX_JOB_ATTEMPTS {
+            tracing::error!(
+                community = %tenant.community(),
+                kind = %job.kind,
+                "money rails job gave up after repeated failures: {error}"
+            );
+            // The card shows where it is and the owner can try again.
+            let _ = apply_system_op(
+                &tenant,
+                state,
+                job.link_id,
+                SystemOp::Fail {
+                    code: "job_failed".to_owned(),
+                    reason: "Colony could not finish this step. Try again.".to_owned(),
+                    retryable: true,
+                },
+            )
+            .await;
+            let _ = state
+                .db
+                .money_complete_job(tenant.community(), job.link_id, &job.kind)
+                .await;
+            return;
+        }
         tracing::warn!(
             community = %tenant.community(),
             kind = %job.kind,

@@ -58,7 +58,8 @@ spec section 10).
 | run an approved recipe on an approved card | yes | yes | no |
 | record a created link (browser route), report a payment | yes | yes | no |
 | read connections and cards (heads) | yes | yes | yes (heads are company records and carry no secret, address or notice URL) |
-| read notice address, full recipient, notices | yes | no | no |
+| read the notice address (non secret, Scout pastes it into the provider after the owner approves) | yes | yes | no |
+| read the full recipient and raw notices | yes | no | no |
 
 "Owned agent" is resolved exactly like WhatsApp: `users.agent_owner_pubkey` (from the
 verified NIP-OA tag) is a current owner or admin. Display names are never used. A managed
@@ -468,7 +469,7 @@ randomness. An unknown id, or an id on the wrong host, is a plain 404.
   returns `200` with `{ "ok": true, "duplicate": true }` and changes nothing.
 * The route answers `200 {"ok": true, "duplicate": bool}` for a stored notice, whatever its
   signature state, so a provider does not retry a forged one forever. Limits per connection:
-  60 posts a minute and 5,000 notices holding a raw body (`429` above either).
+  60 posts a minute and 1,000 notices holding a raw body (`429` above either).
 * Not found (unknown id, or an id on the wrong host) is `404`, a body over 64 KiB is `413`,
   and a relay fault is `500` so the provider redelivers (the dedupe row keeps that safe).
 * A notice never creates or changes a card by itself except as in 8.3.
@@ -525,7 +526,7 @@ A replayed verified notice is a duplicate (dedupe), so it cannot write evidence 
 
 | `what` | Roles | Result |
 | --- | --- | --- |
-| `connections` | owner, admin, owned agent | `{ "connections": [Summary] }`. Each summary is `{ "connection": <head>, "headEventId": hex }` and, for owner or admin only, also `noticeAddress`, `signature` (header and format, no secret) and `noticeMap`. |
+| `connections` | owner, admin, owned agent | `{ "connections": [Summary] }`. Each summary is `{ "connection": <head>, "headEventId": hex }` and, for owner, admin or owned agent, also `noticeAddress`, `signature` (header and format, no secret) and `noticeMap`. |
 | `connection` `connectionId` | owner, admin | the summary plus the full recipe bodies (never a secret) |
 | `links` `linkId?`, `state?`, `partyId?`, `invoiceId?`, `limit?` | owner, admin, owned agent | `{ "links": [{ "headEventId": hex, "link": <head> }] }`, most recently changed first. `headEventId` is the head event id the next command on that card must name. |
 | `link` `linkId` | owner, admin | `{ headEventId, link, recipient { channel, address, name }, notices }` (the only place the full address is returned) |

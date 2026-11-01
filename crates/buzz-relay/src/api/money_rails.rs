@@ -309,7 +309,7 @@ pub async fn query(
             for row in rows {
                 let notice_id = row.notice_id;
                 let loaded = parse_connection(row).map_err(|reason| internal_error(&reason))?;
-                let mut view = if role.is_owner_admin() {
+                let mut view = if role.may_prepare() {
                     private_view(&loaded.config, notice_id, &host)
                 } else {
                     public_view(&loaded.config)

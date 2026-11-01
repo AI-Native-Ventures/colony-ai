@@ -28,7 +28,7 @@ use crate::state::AppState;
 /// Notices a connection may post per minute.
 const MAX_PER_MINUTE: i64 = 60;
 /// Notices with a raw body a connection may hold at once.
-const MAX_HELD: i64 = 5_000;
+const MAX_HELD: i64 = 1_000;
 
 /// Why the inbox refused a post.
 #[derive(Debug, Clone, PartialEq, Eq)]
