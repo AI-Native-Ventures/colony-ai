@@ -1233,4 +1233,148 @@ mod postgres_tests {
             .expect("next day sweep");
         assert_eq!(pending_count(&fixture).await, 2);
     }
+
+    /// A managed agent called `name`, owned by `owner`, with no position head and
+    /// no onboarding: Scout as the 3.0.29 desktop creates it at first run.
+    async fn add_named_agent(fixture: &Fixture, owner: &nostr::Keys, name: &str) -> nostr::Keys {
+        let agent = nostr::Keys::generate();
+        add_agent(fixture, owner, &agent).await;
+        fixture
+            .state
+            .db
+            .update_user_profile(
+                fixture.tenant.community(),
+                &agent.public_key().to_bytes(),
+                Some(name),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("agent profile");
+        agent
+    }
+
+    /// An owner with co-founder mode on and a Scout made the 3.0.29 way. No
+    /// onboarding head, no position head, no direct message yet.
+    async fn company_with_first_run_scout() -> (Fixture, nostr::Keys, nostr::Keys) {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        let scout = add_named_agent(&fixture, &owner, "Scout").await;
+        enable_cofounder(&fixture, &owner).await;
+        (fixture, owner, scout)
+    }
+
+    async fn dm_between(fixture: &Fixture, owner: &nostr::Keys, scout: &nostr::Keys) -> Uuid {
+        let owner_bytes = owner.public_key().to_bytes();
+        let scout_bytes = scout.public_key().to_bytes();
+        let hash = buzz_db::dm::compute_participant_hash(&[&scout_bytes[..], &owner_bytes[..]]);
+        fixture
+            .state
+            .db
+            .find_dm_by_participants(fixture.tenant.community(), &hash)
+            .await
+            .expect("dm lookup")
+            .expect("the relay opened the direct message")
+            .id
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_scout_made_the_first_run_way_gets_the_mode_on_wake_in_its_direct_message() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        assert_eq!(pending_count(&fixture).await, 1, "the switch queued a wake");
+
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+
+        assert_eq!(
+            pending_count(&fixture).await,
+            0,
+            "the mode_on wake must be delivered with no position head and no onboarding head"
+        );
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        let messages = wake_messages(&fixture, dm).await;
+        assert_eq!(messages.len(), 1, "one wake message in the Scout-owner DM");
+        assert!(
+            messages[0]
+                .event
+                .content
+                .contains("start or resume onboarding"),
+            "{}",
+            messages[0].event.content
+        );
+        let tags = messages[0]
+            .event
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .collect::<Vec<_>>();
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "buzz:workflow-mention" && tag[1] == scout.public_key().to_hex()));
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "buzz:cofounder-wake" && tag.contains(&"mode_on".to_string())));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_mode_on_wake_that_was_already_skipped_is_recovered_by_the_sweep() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        // What production holds: the start-up wake ended unsent.
+        let first = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(community(&fixture), soon(), 10)
+            .await
+            .expect("pending wakes");
+        let ids = first.iter().map(|wake| wake.id).collect::<Vec<_>>();
+        fixture
+            .state
+            .db
+            .cofounder_wakes_skipped(community(&fixture), &ids, "no Scout to wake yet")
+            .await
+            .expect("skip the wake");
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        // Early in the UTC day, so the daily start is not queued as well.
+        let early = Utc::now()
+            .date_naive()
+            .and_hms_opt(4, 0, 0)
+            .expect("time")
+            .and_utc();
+        for _ in 0..3 {
+            sweep_one(&fixture.state, fixture.tenant.community(), early)
+                .await
+                .expect("sweep");
+        }
+        let recovered = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(community(&fixture), soon(), 10)
+            .await
+            .expect("pending wakes");
+        assert_eq!(
+            recovered.len(),
+            1,
+            "one fresh start-up wake, not one per sweep"
+        );
+        assert_eq!(recovered[0].reason, "mode_on");
+
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        assert_eq!(wake_messages(&fixture, dm).await.len(), 1);
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        // Delivered: the sweep leaves it alone for a day.
+        sweep_one(&fixture.state, fixture.tenant.community(), early)
+            .await
+            .expect("sweep after delivery");
+        assert_eq!(pending_count(&fixture).await, 0, "no second start-up wake");
+    }
 }
