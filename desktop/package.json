@@ -1,7 +1,7 @@
 {
   "name": "buzz",
   "private": true,
-  "version": "3.0.25",
+  "version": "3.0.27",
   "type": "module",
   "scripts": {
     "dev": "vite",

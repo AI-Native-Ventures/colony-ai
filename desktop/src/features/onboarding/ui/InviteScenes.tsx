@@ -35,11 +35,16 @@ const EMPTY_DATA = {
 export function InviteBrand({
   invite,
 }: {
-  invite: Pick<FirstRunInvite, "businessName" | "initial">;
+  invite: Pick<FirstRunInvite, "businessName" | "initial" | "relayUrl">;
 }) {
   return (
     <div className="c3fr-invite-brand" data-testid="invite-brand">
-      <BusinessMark dot="#c6b3f4" name={invite.businessName} size="small" />
+      <BusinessMark
+        dot="#c6b3f4"
+        name={invite.businessName}
+        relayUrl={invite.relayUrl}
+        size="small"
+      />
       <span className="c3fr-invite-brand-text">
         <strong>{invite.businessName}</strong>
         <small>You’ve been invited</small>

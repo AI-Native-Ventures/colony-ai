@@ -547,6 +547,8 @@ export function AppSidebar({
         <ColonyField />
         <AppSidebarPinnedHeader
           activeCommunityName={activeCommunity?.name ?? ""}
+          activeCommunityId={activeCommunity?.id}
+          activeCommunityRelayUrl={activeCommunity?.relayUrl}
           channelLabels={dmChannelLabels}
           currentPubkey={currentPubkey}
           currentChannelId={

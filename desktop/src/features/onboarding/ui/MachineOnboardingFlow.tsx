@@ -453,6 +453,7 @@ export function MachineOnboardingFlow({
       (community) => ({
         id: community.id,
         name: community.name || community.slug,
+        relayUrl: businessCommunityRelayUrl(community),
         role: "Owner",
         lastVisited: lastVisitedLabel(community.id),
         logoUrl: readOnboardingBusinessProfile(community.id)?.logoUrl ?? null,
