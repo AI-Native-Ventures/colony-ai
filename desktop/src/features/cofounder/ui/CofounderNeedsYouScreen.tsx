@@ -10,6 +10,8 @@ import type {
 } from "../needsYou";
 import type { PlanView } from "../planRecords";
 import { CofounderRelayPlanCard } from "./CofounderRelayPlanCard";
+import { MoneyRailPaymentCard } from "./MoneyRailPaymentCard";
+import { useMoneyRailsSnapshot } from "../moneyRailsBridge";
 
 function PlanStepNeedsYouCard({
   item,
@@ -483,6 +485,10 @@ export function CofounderNeedsYouScreen({
   ) => void | Promise<void>;
   onOpenCapabilityGapBrowser: (url: string) => void | Promise<void>;
 }) {
+  const moneyRails = useMoneyRailsSnapshot();
+  const moneyApprovals = moneyRails.paymentLinks.filter(
+    (card) => card.state === "needs_you",
+  );
   const liveCapabilityGapApprovals = liveCapabilityGaps.filter(
     (item) => item.group === "approve",
   );
@@ -490,7 +496,9 @@ export function CofounderNeedsYouScreen({
     (item) => item.group === "do",
   );
   const approvalCount =
-    liveNeedsYou.approve.length + liveCapabilityGapApprovals.length;
+    liveNeedsYou.approve.length +
+    liveCapabilityGapApprovals.length +
+    moneyApprovals.length;
   const doCount = liveNeedsYou.do.length + liveCapabilityGapDoItems.length;
   const decideCount = liveNeedsYou.decide.length;
   const total = approvalCount + doCount + decideCount;
@@ -517,6 +525,22 @@ export function CofounderNeedsYouScreen({
 
         <section aria-label="Approve" className="cf2-needs-group">
           <h2>Approve · {approvalCount}</h2>
+          {moneyRails.availability === "loading" ? (
+            <p className="cf2-error-note" role="status">
+              Loading payment approvals…
+            </p>
+          ) : moneyRails.availability === "not_ready" ? (
+            <p className="cf2-error-note" role="status">
+              Money connections are not enabled on this relay yet.
+            </p>
+          ) : moneyRails.availability === "error" ? (
+            <p className="cf2-error-note" role="alert">
+              Payment approvals could not be loaded. Refresh to try again.
+            </p>
+          ) : null}
+          {moneyApprovals.map((card) => (
+            <MoneyRailPaymentCard card={card} key={card.id} />
+          ))}
           {liveNeedsYou.approve.map((item) => {
             if (item.source.kind === "plan") {
               if (item.source.stepId !== null) {

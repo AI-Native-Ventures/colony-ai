@@ -427,6 +427,7 @@ export function useCommunityInit(
           startAgentBrowserAccess({
             businessId: activeCommunity.id,
             communityOrigin: browserCommunityOrigin(activeCommunity.relayUrl),
+            relayWsUrl: activeCommunity.relayUrl,
           });
         } catch {
           // A community without a usable relay address cannot host a task.

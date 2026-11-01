@@ -328,6 +328,18 @@ function labelOf(element) {
     .join(" ");
 }
 
+/** The single payment-link creation control that an owner may preapprove. */
+export function isPaymentLinkCreateControl(element = {}) {
+  const role = String(element?.role ?? "").toLowerCase();
+  const name = fold(element?.name ?? "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return (
+    (role === "button" || role === "link") &&
+    (name === "create payment link" || name === "create a payment link")
+  );
+}
+
 function isSubmitControl(element, form) {
   if (!form) return false;
   const role = String(element?.role ?? "").toLowerCase();
@@ -432,8 +444,20 @@ export function classifyAction({
     (isTyping && submit === true && form !== null);
 
   if (action === "click" || (isTyping && submit === true)) {
+    const paymentLinkCreate =
+      action === "click" && isPaymentLinkCreateControl(element);
+    if (paymentLinkCreate) {
+      category = "payment_link_create";
+      add(
+        confirm,
+        "payment_link_create",
+        "Creating a payment link requires approval for this exact provider action",
+      );
+    }
     const named =
-      action === "click" ? consequentialCategory(labelOf(element)) : null;
+      action === "click" && !paymentLinkCreate
+        ? consequentialCategory(labelOf(element))
+        : null;
     if (named) {
       category = named;
       add(confirm, named, "The control name indicates a consequential action");

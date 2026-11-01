@@ -418,6 +418,64 @@ test("a consequential click waits for the person and runs once after confirm", a
   assert.equal(env.broker.confirm(request.actionId), false);
 });
 
+test("payment-link Create keeps the ordinary confirmation and emits scoped step facts", async () => {
+  const env = setup({
+    url: "https://shop.example/payments/new?token=secret#receipt",
+    elements: [
+      { backend: 31, role: "button", name: "Create payment link" },
+    ],
+  });
+  const snap = await snapshotRefs(env);
+  const pending = env.call("browser_click", {
+    tab: "tab-1",
+    ref: env.refOf(snap, "Create payment link"),
+  });
+  const request = await until(() =>
+    env.events.find(
+      (event) =>
+        event.type === "confirmation-requested" &&
+        event.category === "payment_link_create",
+    ),
+  );
+  assert.deepEqual(request.paymentLinkStep, {
+    host: "shop.example",
+    url: "https://shop.example/payments/new",
+    label: "Create payment link",
+    kind: "create",
+  });
+  assert.equal(JSON.stringify(request).includes("token=secret"), false);
+  assert.equal(env.driver.count("click"), 0);
+  assert.equal(env.broker.confirm(request.actionId), true);
+  assert.equal((await pending).ok, true);
+  assert.equal(env.driver.count("click"), 1);
+});
+
+test("payment-link Create on another approved origin still waits for confirmation", async () => {
+  const env = setup({
+    origins: ["https://shop.example", "https://other.example"],
+    url: "https://other.example/payments",
+    elements: [{ backend: 41, role: "button", name: "Create payment link" }],
+  });
+  const snap = await snapshotRefs(env);
+  const pending = env.call("browser_click", {
+    tab: "tab-1",
+    ref: env.refOf(snap, "Create payment link"),
+  });
+  const request = await until(() =>
+    env.events.find(
+      (event) =>
+        event.type === "confirmation-requested" &&
+        event.category === "payment_link_create",
+    ),
+  );
+  assert.equal(request.paymentLinkStep.host, "other.example");
+  assert.equal(request.paymentLinkStep.url, "https://other.example/payments");
+  assert.equal(env.driver.count("click"), 0);
+  env.broker.reject(request.actionId);
+  assert.equal((await pending).ok, false);
+  assert.equal(env.driver.count("click"), 0);
+});
+
 test("rejecting a confirmation cancels the action", async () => {
   const env = setup();
   const snap = await snapshotRefs(env);

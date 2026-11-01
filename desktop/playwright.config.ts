@@ -330,6 +330,7 @@ export default defineConfig({
         "**/w10-discovery-sales.spec.ts",
         "**/w11-clients-work.spec.ts",
         "**/money.spec.ts",
+        "**/money-rails-pay-ui.spec.ts",
         "**/cofounder-map.spec.ts",
         "**/cofounder-customer-record.spec.ts",
         "**/cofounder-phase2.spec.ts",
