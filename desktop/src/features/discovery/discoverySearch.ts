@@ -41,8 +41,26 @@ export type DiscoverySearchResponse = {
   nextSkip: number | null;
 };
 
-/** Page size the app asks the server for. The server accepts 1 to 50. */
+/**
+ * Page size the app asks the server for. Google Maps pages in steps of 20 (its
+ * skip "should be multiple to 20"), so every request is a full page at a skip
+ * that is a multiple of it. Anything else returns repeats that are paid for.
+ */
 export const SEARCH_PAGE_SIZE = 20;
+
+/** Google gives at most 400 places for one query; skip 400 is its end. */
+export const QUERY_PLACE_CEILING = 400;
+
+/** The nearest page start at or below `skip`, never negative. */
+export function alignSkip(skip: number): number {
+  const whole = Number.isFinite(skip) ? Math.max(0, Math.floor(skip)) : 0;
+  return whole - (whole % SEARCH_PAGE_SIZE);
+}
+
+/** True while a query's cursor still points at a page worth asking for. */
+export function cursorHasPages(cursor: number | null | undefined): boolean {
+  return cursor !== null && (cursor ?? 0) < QUERY_PLACE_CEILING;
+}
 
 export const NETWORK_ERROR_MESSAGE =
   "Could not reach the server. Check your connection and retry.";
@@ -217,7 +235,6 @@ export function buildSearchRequest(input: {
   query: string;
   location: string;
   skip: number;
-  limit?: number;
 }): DiscoverySearchRequest {
   const location = input.location.trim();
   const country = countryForLocation(location);
@@ -225,8 +242,8 @@ export function buildSearchRequest(input: {
     query: input.query.trim(),
     location,
     ...(country ? { country } : {}),
-    limit: input.limit ?? SEARCH_PAGE_SIZE,
-    skip: Math.max(0, Math.floor(input.skip)),
+    limit: SEARCH_PAGE_SIZE,
+    skip: alignSkip(input.skip),
     language: "en",
   };
 }
@@ -243,24 +260,19 @@ export function normalizePickedTags(pickedTags: string[] = []): string[] {
   ].slice(0, 3);
 }
 
-/** Split a page evenly, giving leftover results to earlier requests. */
-export function splitSearchLimit(limit: number, count: number): number[] {
-  if (count <= 0) return [];
-  const whole = Math.floor(limit / count);
-  const remainder = limit % count;
-  return Array.from(
-    { length: count },
-    (_, index) => whole + (index < remainder ? 1 : 0),
-  );
-}
-
-/** One result page's provider requests. Picked tags share the original budget. */
+/**
+ * One result page's provider request. Without picked tags it is the plain
+ * search. With picked tags the tags take turns, one full 20-place page each
+ * (never a page split between tags, which made skips that are not multiples
+ * of 20). `turn` is the number of pages already fetched, so the tags rotate.
+ */
 export function buildDiscoverySearchPlan(input: {
   verticalName: string;
   location: string;
   skip: number;
   pickedTags?: string[];
   tagCursors?: Array<number | null>;
+  turn?: number;
 }): {
   requests: PlannedDiscoverySearch[];
   totalRequestedResults: number;
@@ -283,18 +295,24 @@ export function buildDiscoverySearchPlan(input: {
   const active = pickedTags.flatMap((tag, index) => {
     const providedCursor = input.tagCursors?.[index];
     const cursor = providedCursor === undefined ? 0 : providedCursor;
-    return cursor === null ? [] : [{ tag, index, cursor }];
+    return cursor !== null && cursorHasPages(cursor)
+      ? [{ tag, index, cursor }]
+      : [];
   });
-  const limits = splitSearchLimit(SEARCH_PAGE_SIZE, active.length);
-  const requests = active.map(({ tag, index, cursor }, requestIndex) => ({
-    tagIndex: index,
-    request: buildSearchRequest({
-      query: buildTagSearchQuery(tag, input.verticalName),
-      location: input.location,
-      skip: cursor,
-      limit: limits[requestIndex],
-    }),
-  }));
+  const turn = Math.max(0, Math.floor(input.turn ?? 0));
+  const next = active[turn % Math.max(1, active.length)];
+  const requests = next
+    ? [
+        {
+          tagIndex: next.index,
+          request: buildSearchRequest({
+            query: buildTagSearchQuery(next.tag, input.verticalName),
+            location: input.location,
+            skip: next.cursor,
+          }),
+        },
+      ]
+    : [];
   return {
     requests,
     totalRequestedResults: requests.reduce(

@@ -66,7 +66,9 @@ export function runDescription(campaign: DiscoveryCampaign): string {
   if (campaign.status === "running")
     return "You can keep working. Results appear as they arrive.";
   if (campaign.status === "complete") {
-    return `${campaign.count} prospects found · ${campaign.target} requested`;
+    const found = `${campaign.count} prospects found · ${campaign.target} requested`;
+    const note = campaign.endNote?.trim();
+    return note ? `${found}. ${note}` : found;
   }
   if (campaign.status === "paused")
     return "Your results are saved. Resume when you’re ready.";

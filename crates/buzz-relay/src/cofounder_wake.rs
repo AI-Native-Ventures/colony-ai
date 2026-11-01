@@ -16,6 +16,10 @@
 //!   carrying everything pending (at most ten reasons), never one per event.
 //! - **Bounded retry.** A failed delivery backs off and ends after eight
 //!   attempts; a wake older than a day is closed as stale.
+//! - **Never silent.** After three failed attempts the lead status record says
+//!   Scout could not be reached and why, and the sweep queues a fresh start-up
+//!   wake each day while onboarding has not started, so a business whose wake
+//!   ended is recovered without the owner doing anything.
 //!
 //! A wake carries a reason and ids only, never text that came from outside the
 //! company (a contact's name or message), so a stranger cannot put instructions
@@ -30,13 +34,16 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use buzz_core::business_records::{CompanyWorkItemHead, CompanyWorkStatus};
-use buzz_core::company_members::{MemberKind, MemberPositionHead, MemberStatus};
-use buzz_core::company_onboarding::{OnboardingHead, ONBOARDING_D_TAG};
-use buzz_core::kind::{KIND_MEMBER_POSITION_HEAD, KIND_ONBOARDING_HEAD, KIND_WORK_ITEM_HEAD};
+use buzz_core::company_cofounder::{LeadProblem, LeadState};
+use buzz_core::company_onboarding::ONBOARDING_D_TAG;
+use buzz_core::kind::{KIND_ONBOARDING_HEAD, KIND_WORK_ITEM_HEAD};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::cofounder_wakes::PendingWake;
 use buzz_db::EventQuery;
 
+use crate::handlers::company_cofounder_lead::{
+    current_status, find_lead, record_status, Lead, LeadUpdate,
+};
 use crate::handlers::company_initiative::{cofounder_settings, load_head};
 use crate::state::AppState;
 
@@ -48,6 +55,10 @@ pub const MAX_WAKES_PER_MESSAGE: i64 = 10;
 pub const WAKE_STALE_SECS: i64 = 86_400;
 /// Delivery attempts before a wake ends.
 pub const MAX_DELIVERY_ATTEMPTS: i32 = 8;
+/// Failed attempts after which the owner is told Scout could not be reached
+/// (the lead status record). The wake keeps retrying until it ends. The backoff
+/// is one, two and four minutes, so this is about seven minutes after the first.
+pub const UNREACHABLE_AFTER_ATTEMPTS: u32 = 3;
 /// Companies delivered to per worker pass.
 const DELIVERY_BATCH: i64 = 50;
 /// How often the worker looks for due wakes.
@@ -290,19 +301,27 @@ async fn deliver_locked(
     let ids = fresh.iter().map(|wake| wake.id).collect::<Vec<_>>();
     let attempts = fresh.iter().map(|wake| wake.attempts).max().unwrap_or(0);
     let target = match resolve_target(state, community_id).await {
-        Ok(Some(target)) => target,
-        Ok(None) => {
-            return retry(
+        Ok(Resolved::Target(target)) => target,
+        Ok(Resolved::Lead(lead)) => {
+            let problem = lead.problem().unwrap_or(LeadProblem::NoScout);
+            let outcome = match lead {
+                Lead::Several => "several possible Scouts, woke none",
+                _ => "no Scout to wake yet",
+            };
+            return fail(state, community, &ids, attempts, now, problem, outcome).await;
+        }
+        Err(error) => {
+            return fail(
                 state,
                 community,
                 &ids,
                 attempts,
                 now,
-                "no Scout to wake yet",
+                LeadProblem::DeliveryFailed,
+                &error,
             )
             .await;
         }
-        Err(error) => return retry(state, community, &ids, attempts, now, &error).await,
     };
     let (weekly, regular): (Vec<&PendingWake>, Vec<&PendingWake>) = fresh
         .iter()
@@ -324,10 +343,52 @@ async fn deliver_locked(
                 .await
                 .map_err(|error| format!("could not mark wakes delivered: {error}"))?;
             info!(%community, wakes = ids.len(), "woke Scout");
-            Ok(())
+            // Scout was reached: take back an earlier "could not be reached".
+            record_status(state, community_id, LeadUpdate::Reached)
+                .await
+                .map(|_| ())
         }
-        Err(error) => retry(state, community, &ids, attempts, now, &error).await,
+        Err(error) => {
+            fail(
+                state,
+                community,
+                &ids,
+                attempts,
+                now,
+                LeadProblem::DeliveryFailed,
+                &error,
+            )
+            .await
+        }
     }
+}
+
+/// A failed delivery: the retry record first (it is what keeps the wake alive),
+/// then, once the failure has lasted long enough, the lead status the owner can
+/// see. A status write that fails is returned so the next attempt writes it again.
+async fn fail(
+    state: &Arc<AppState>,
+    community: Uuid,
+    ids: &[Uuid],
+    attempts: i32,
+    now: DateTime<Utc>,
+    problem: LeadProblem,
+    outcome: &str,
+) -> Result<(), String> {
+    retry(state, community, ids, attempts, now, outcome).await?;
+    let failures = u32::try_from(attempts).unwrap_or(0).saturating_add(1);
+    if failures >= UNREACHABLE_AFTER_ATTEMPTS {
+        record_status(
+            state,
+            CommunityId::from_uuid(community),
+            LeadUpdate::Unreachable {
+                problem,
+                attempts: failures,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn close(
@@ -376,12 +437,21 @@ struct Target {
     dm_channel: Uuid,
 }
 
+/// What looking for Scout found.
+enum Resolved {
+    /// Scout, its owner and their direct message.
+    Target(Target),
+    /// No single lead to wake.
+    Lead(Lead),
+}
+
 async fn resolve_target(
     state: &Arc<AppState>,
     community_id: CommunityId,
-) -> Result<Option<Target>, String> {
-    let Some(scout_hex) = lead_pubkey(state, community_id).await? else {
-        return Ok(None);
+) -> Result<Resolved, String> {
+    let scout_hex = match find_lead(state, community_id).await? {
+        Lead::Found(scout_hex) => scout_hex,
+        other => return Ok(Resolved::Lead(other)),
     };
     let scout = nostr::PublicKey::from_hex(&scout_hex)
         .map_err(|_| "the lead public key is invalid".to_string())?
@@ -394,55 +464,29 @@ async fn resolve_target(
         .and_then(|(_, owner)| owner)
         .ok_or_else(|| "Scout has no owner to talk to".to_string())?;
     let hash = buzz_db::dm::compute_participant_hash(&[&scout[..], &owner[..]]);
-    let dm = state
+    let existing = state
         .db
         .find_dm_by_participants(community_id, &hash)
         .await
-        .map_err(|error| format!("could not look up the direct message: {error}"))?
-        .ok_or_else(|| "no direct message between Scout and its owner yet".to_string())?;
-    Ok(Some(Target {
+        .map_err(|error| format!("could not look up the direct message: {error}"))?;
+    let dm_channel = match existing {
+        Some(dm) => dm.id,
+        // The owner never opened Scout's direct message. It is the same
+        // idempotent create the owner's own "message Scout" does.
+        None => {
+            state
+                .db
+                .create_dm(community_id, &[&scout[..], &owner[..]], &owner)
+                .await
+                .map_err(|error| format!("could not open the direct message: {error}"))?
+                .id
+        }
+    };
+    Ok(Resolved::Target(Target {
         scout_hex,
         owner_hex: hex::encode(&owner),
-        dm_channel: dm.id,
+        dm_channel,
     }))
-}
-
-/// The agent that leads co-founder work: the one onboarding recorded, else the
-/// only active Chief of Staff on the team.
-async fn lead_pubkey(
-    state: &Arc<AppState>,
-    community_id: CommunityId,
-) -> Result<Option<String>, String> {
-    let onboarding = load_head(state, community_id, KIND_ONBOARDING_HEAD, ONBOARDING_D_TAG)
-        .await
-        .map_err(|error| format!("could not read onboarding: {error:?}"))?;
-    if let Some(stored) = onboarding {
-        let head = serde_json::from_str::<OnboardingHead>(&stored.event.content)
-            .map_err(|error| format!("stored onboarding head is invalid: {error}"))?;
-        return Ok(Some(head.lead_pubkey));
-    }
-    let mut query = EventQuery::for_community(community_id);
-    query.kinds = Some(vec![KIND_MEMBER_POSITION_HEAD as i32]);
-    query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
-    query.global_only = true;
-    query.limit = Some(500);
-    let rows = state
-        .db
-        .query_events_for_maintenance(&query)
-        .await
-        .map_err(|error| format!("could not read member positions: {error}"))?;
-    let mut leads = rows
-        .iter()
-        .filter_map(|stored| serde_json::from_str::<MemberPositionHead>(&stored.event.content).ok())
-        .filter(|head| {
-            head.kind == MemberKind::Employee
-                && head.status == MemberStatus::Active
-                && head.title.trim().eq_ignore_ascii_case("chief of staff")
-        })
-        .map(|head| head.pubkey);
-    let first = leads.next();
-    // Two Chiefs of Staff is ambiguous: wake nobody rather than guess.
-    Ok(first.filter(|_| leads.next().is_none()))
 }
 
 /// The lines of the wake message for these reasons.
@@ -578,6 +622,7 @@ pub(crate) async fn sweep_one(
     if !settings.enabled {
         return Ok(());
     }
+    ensure_onboarding_started(state, community_id, now).await?;
     if now.hour() >= DAILY_START_HOUR_UTC {
         enqueue(
             state,
@@ -638,6 +683,50 @@ pub(crate) async fn sweep_one(
             WakeReason::DeadlineNear,
             &format!("deadline:{}:{}", due.work_item_id, due.due_at),
             &format!("work item {} is due {}", due.work_item_id, due.due_at),
+        )
+        .await;
+    }
+    Ok(())
+}
+
+/// A business with co-founder mode on must get its onboarding started. While no
+/// onboarding head exists and no start-up wake is pending or was delivered in
+/// the last day, queue a fresh one (one per day at most). That recovers a
+/// business whose start-up wake was closed without reaching Scout, with no
+/// action from the owner. Once onboarding exists, a stale "could not be reached"
+/// is taken back, because Scout is plainly there.
+async fn ensure_onboarding_started(
+    state: &Arc<AppState>,
+    community_id: CommunityId,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
+    let onboarding = load_head(state, community_id, KIND_ONBOARDING_HEAD, ONBOARDING_D_TAG)
+        .await
+        .map_err(|error| format!("could not read onboarding: {error:?}"))?;
+    if onboarding.is_some() {
+        let unreachable = current_status(state, community_id)
+            .await?
+            .is_some_and(|status| status.state == LeadState::Unreachable);
+        if unreachable {
+            record_status(state, community_id, LeadUpdate::Reached).await?;
+        }
+        return Ok(());
+    }
+    let in_flight = state
+        .db
+        .cofounder_mode_on_in_flight(
+            *community_id.as_uuid(),
+            now - chrono::Duration::seconds(WAKE_STALE_SECS),
+        )
+        .await
+        .map_err(|error| format!("could not read the start-up wakes: {error}"))?;
+    if !in_flight {
+        enqueue(
+            state,
+            community_id,
+            WakeReason::ModeOn,
+            &format!("mode_on_recover:{}", now.format("%Y-%m-%d")),
+            "",
         )
         .await;
     }
@@ -1104,40 +1193,13 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn without_a_direct_message_the_wake_backs_off_and_then_ends() {
+    async fn without_a_scout_the_wake_backs_off_and_then_ends() {
         let fixture = fixture().await;
         let owner = nostr::Keys::generate();
-        let scout = nostr::Keys::generate();
         add_member(&fixture, &owner, "owner").await;
-        add_agent(&fixture, &owner, &scout).await;
         enable_cofounder(&fixture, &owner).await;
-        let start = OnboardingAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            kind: OnboardingActionKind::Start,
-            step: None,
-            text: None,
-            account: None,
-            map: None,
-            skipped: false,
-            money_preference: None,
-            approval_switches: None,
-            lead_pubkey: None,
-            expected_head_event_id: None,
-        };
-        let event = buzz_sdk::company_initiative::build_onboarding_action(&start)
-            .expect("build start")
-            .sign_with_keys(&scout)
-            .expect("sign start");
-        crate::handlers::company_onboarding::handle(
-            &fixture.tenant,
-            &fixture.state,
-            event,
-            auth(&scout),
-        )
-        .await
-        .expect("Scout starts onboarding");
 
-        // No direct message exists. The wake is retried later, not lost and not
+        // No Scout exists. The wake is retried later, not lost and not
         // retried at once.
         let base = Utc::now();
         deliver_one(
@@ -1232,5 +1294,420 @@ mod postgres_tests {
             .await
             .expect("next day sweep");
         assert_eq!(pending_count(&fixture).await, 2);
+    }
+    /// A managed agent called `name`, owned by `owner`, with no position head and
+    /// no onboarding: Scout as the 3.0.29 desktop creates it at first run.
+    async fn add_named_agent(fixture: &Fixture, owner: &nostr::Keys, name: &str) -> nostr::Keys {
+        let agent = nostr::Keys::generate();
+        add_agent(fixture, owner, &agent).await;
+        fixture
+            .state
+            .db
+            .update_user_profile(
+                fixture.tenant.community(),
+                &agent.public_key().to_bytes(),
+                Some(name),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("agent profile");
+        agent
+    }
+
+    /// An owner with co-founder mode on and a Scout made the 3.0.29 way. No
+    /// onboarding head, no position head, no direct message yet.
+    async fn company_with_first_run_scout() -> (Fixture, nostr::Keys, nostr::Keys) {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        let scout = add_named_agent(&fixture, &owner, "Scout").await;
+        enable_cofounder(&fixture, &owner).await;
+        (fixture, owner, scout)
+    }
+
+    async fn dm_between(fixture: &Fixture, owner: &nostr::Keys, scout: &nostr::Keys) -> Uuid {
+        let owner_bytes = owner.public_key().to_bytes();
+        let scout_bytes = scout.public_key().to_bytes();
+        let hash = buzz_db::dm::compute_participant_hash(&[&scout_bytes[..], &owner_bytes[..]]);
+        fixture
+            .state
+            .db
+            .find_dm_by_participants(fixture.tenant.community(), &hash)
+            .await
+            .expect("dm lookup")
+            .expect("the relay opened the direct message")
+            .id
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_scout_made_the_first_run_way_gets_the_mode_on_wake_in_its_direct_message() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        assert_eq!(pending_count(&fixture).await, 1, "the switch queued a wake");
+
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+
+        assert_eq!(
+            pending_count(&fixture).await,
+            0,
+            "the mode_on wake must be delivered with no position head and no onboarding head"
+        );
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        let messages = wake_messages(&fixture, dm).await;
+        assert_eq!(messages.len(), 1, "one wake message in the Scout-owner DM");
+        assert!(
+            messages[0]
+                .event
+                .content
+                .contains("start or resume onboarding"),
+            "{}",
+            messages[0].event.content
+        );
+        let tags = messages[0]
+            .event
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .collect::<Vec<_>>();
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "buzz:workflow-mention" && tag[1] == scout.public_key().to_hex()));
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "buzz:cofounder-wake" && tag.contains(&"mode_on".to_string())));
+        assert!(
+            current_status(&fixture.state, fixture.tenant.community())
+                .await
+                .expect("status")
+                .is_none(),
+            "a wake that worked leaves no lead status"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_mode_on_wake_that_was_already_skipped_is_recovered_by_the_sweep() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        // What production holds: the start-up wake ended unsent.
+        let first = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(community(&fixture), soon(), 10)
+            .await
+            .expect("pending wakes");
+        let ids = first.iter().map(|wake| wake.id).collect::<Vec<_>>();
+        fixture
+            .state
+            .db
+            .cofounder_wakes_skipped(community(&fixture), &ids, "no Scout to wake yet")
+            .await
+            .expect("skip the wake");
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        // Early in the UTC day, so the daily start is not queued as well.
+        let early = Utc::now()
+            .date_naive()
+            .and_hms_opt(4, 0, 0)
+            .expect("time")
+            .and_utc();
+        for _ in 0..3 {
+            sweep_one(&fixture.state, fixture.tenant.community(), early)
+                .await
+                .expect("sweep");
+        }
+        let recovered = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(community(&fixture), soon(), 10)
+            .await
+            .expect("pending wakes");
+        // A sweep inside the Friday review window also queues the weekly review; only the
+        // start-up wakes are under test.
+        let recovered = recovered
+            .into_iter()
+            .filter(|wake| wake.reason == "mode_on")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            recovered.len(),
+            1,
+            "one fresh start-up wake, not one per sweep"
+        );
+
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        assert_eq!(wake_messages(&fixture, dm).await.len(), 1);
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        // Delivered: the sweep leaves it alone for a day.
+        sweep_one(&fixture.state, fixture.tenant.community(), early)
+            .await
+            .expect("sweep after delivery");
+        assert_eq!(mode_on_count(&fixture).await, 0, "no second start-up wake");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_started_onboarding_is_never_asked_to_start_again() {
+        let (fixture, _owner, _scout, _dm) = company_with_scout().await;
+        let early = Utc::now()
+            .date_naive()
+            .and_hms_opt(4, 0, 0)
+            .expect("time")
+            .and_utc();
+        sweep_one(&fixture.state, fixture.tenant.community(), early)
+            .await
+            .expect("sweep");
+        assert_eq!(mode_on_count(&fixture).await, 0);
+    }
+
+    /// Pending start-up wakes, whatever else the sweep queued.
+    async fn mode_on_count(fixture: &Fixture) -> usize {
+        fixture
+            .state
+            .db
+            .cofounder_pending_wakes(
+                community(fixture),
+                Utc::now() + chrono::Duration::days(30),
+                100,
+            )
+            .await
+            .expect("pending wakes")
+            .iter()
+            .filter(|wake| wake.reason == "mode_on")
+            .count()
+    }
+
+    /// Three failed attempts, ten minutes apart (past each backoff).
+    async fn fail_three_times(fixture: &Fixture) -> DateTime<Utc> {
+        let base = Utc::now();
+        for step in 0..i64::from(UNREACHABLE_AFTER_ATTEMPTS) {
+            deliver_one(
+                &fixture.state,
+                community(fixture),
+                base + chrono::Duration::minutes(10 * step) + chrono::Duration::seconds(2),
+            )
+            .await
+            .expect("attempt");
+        }
+        base + chrono::Duration::minutes(10 * i64::from(UNREACHABLE_AFTER_ATTEMPTS))
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn two_possible_scouts_wake_nobody_and_the_status_says_why() {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        let one = add_named_agent(&fixture, &owner, "Scout").await;
+        let two = add_named_agent(&fixture, &owner, "Scout").await;
+        enable_cofounder(&fixture, &owner).await;
+
+        // Two attempts: still quiet, the owner is not alarmed yet.
+        let base = Utc::now();
+        for step in 0..2_i64 {
+            deliver_one(
+                &fixture.state,
+                community(&fixture),
+                base + chrono::Duration::minutes(10 * step) + chrono::Duration::seconds(2),
+            )
+            .await
+            .expect("attempt");
+        }
+        assert!(current_status(&fixture.state, fixture.tenant.community())
+            .await
+            .expect("status")
+            .is_none());
+
+        fail_three_times_from(&fixture, base, 2).await;
+        let status = current_status(&fixture.state, fixture.tenant.community())
+            .await
+            .expect("status")
+            .expect("a lead status after three failures");
+        assert_eq!(status.state, LeadState::Unreachable);
+        assert_eq!(
+            status.problem,
+            Some(buzz_core::company_cofounder::LeadProblem::SeveralScouts)
+        );
+        assert!(!status.detail.is_empty());
+        for scout in [&one, &two] {
+            let owner_bytes = owner.public_key().to_bytes();
+            let scout_bytes = scout.public_key().to_bytes();
+            let hash = buzz_db::dm::compute_participant_hash(&[&scout_bytes[..], &owner_bytes[..]]);
+            assert!(
+                fixture
+                    .state
+                    .db
+                    .find_dm_by_participants(fixture.tenant.community(), &hash)
+                    .await
+                    .expect("dm lookup")
+                    .is_none(),
+                "neither candidate was woken"
+            );
+        }
+        assert_eq!(
+            pending_count(&fixture).await,
+            1,
+            "the wake is still retrying"
+        );
+    }
+
+    /// Runs the attempts from step `from` up to the unreachable threshold.
+    async fn fail_three_times_from(fixture: &Fixture, base: DateTime<Utc>, from: i64) {
+        for step in from..i64::from(UNREACHABLE_AFTER_ATTEMPTS) {
+            deliver_one(
+                &fixture.state,
+                community(fixture),
+                base + chrono::Duration::minutes(10 * step) + chrono::Duration::seconds(2),
+            )
+            .await
+            .expect("attempt");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn no_scout_is_recorded_and_try_again_reaches_the_scout_that_appears() {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        enable_cofounder(&fixture, &owner).await;
+
+        let after = fail_three_times(&fixture).await;
+        let status = current_status(&fixture.state, fixture.tenant.community())
+            .await
+            .expect("status")
+            .expect("a lead status");
+        assert_eq!(status.state, LeadState::Unreachable);
+        assert_eq!(
+            status.problem,
+            Some(buzz_core::company_cofounder::LeadProblem::NoScout)
+        );
+
+        // Scout appears; the owner presses Try again, which saves the same
+        // settings again.
+        let scout = add_named_agent(&fixture, &owner, "Scout").await;
+        save_cofounder_settings(
+            &fixture,
+            &owner,
+            &CofounderSettings {
+                enabled: true,
+                ..CofounderSettings::default()
+            },
+        )
+        .await;
+        let pending = fixture
+            .state
+            .db
+            .cofounder_pending_wakes(
+                community(&fixture),
+                after + chrono::Duration::minutes(10),
+                20,
+            )
+            .await
+            .expect("pending wakes");
+        assert!(
+            pending
+                .iter()
+                .any(|wake| wake.reason == "mode_on" && wake.attempts == 0),
+            "Try again queued a fresh start-up wake: {pending:?}"
+        );
+
+        deliver_one(
+            &fixture.state,
+            community(&fixture),
+            after + chrono::Duration::minutes(10),
+        )
+        .await
+        .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        assert_eq!(wake_messages(&fixture, dm).await.len(), 1);
+        let status = current_status(&fixture.state, fixture.tenant.community())
+            .await
+            .expect("status")
+            .expect("the status is kept, now reached");
+        assert_eq!(status.state, LeadState::Reached);
+        assert_eq!(status.problem, None);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn saving_the_settings_again_while_scout_is_reachable_queues_nothing() {
+        let (fixture, owner, _scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        assert_eq!(pending_count(&fixture).await, 0);
+        save_cofounder_settings(
+            &fixture,
+            &owner,
+            &CofounderSettings {
+                enabled: true,
+                ..CofounderSettings::default()
+            },
+        )
+        .await;
+        assert_eq!(pending_count(&fixture).await, 0, "only Try again re-wakes");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_started_onboarding_takes_back_could_not_be_reached() {
+        let fixture = fixture().await;
+        let owner = nostr::Keys::generate();
+        add_member(&fixture, &owner, "owner").await;
+        enable_cofounder(&fixture, &owner).await;
+        fail_three_times(&fixture).await;
+        assert_eq!(
+            current_status(&fixture.state, fixture.tenant.community())
+                .await
+                .expect("status")
+                .map(|status| status.state),
+            Some(LeadState::Unreachable)
+        );
+
+        // Scout starts onboarding on its own (the owner mentioned it).
+        let scout = add_named_agent(&fixture, &owner, "Scout").await;
+        let start = OnboardingAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            kind: OnboardingActionKind::Start,
+            step: None,
+            text: None,
+            account: None,
+            map: None,
+            skipped: false,
+            money_preference: None,
+            approval_switches: None,
+            lead_pubkey: None,
+            expected_head_event_id: None,
+        };
+        let event = buzz_sdk::company_initiative::build_onboarding_action(&start)
+            .expect("build start")
+            .sign_with_keys(&scout)
+            .expect("sign start");
+        crate::handlers::company_onboarding::handle(
+            &fixture.tenant,
+            &fixture.state,
+            event,
+            auth(&scout),
+        )
+        .await
+        .expect("Scout starts onboarding");
+
+        sweep_one(&fixture.state, fixture.tenant.community(), Utc::now())
+            .await
+            .expect("sweep");
+        assert_eq!(
+            current_status(&fixture.state, fixture.tenant.community())
+                .await
+                .expect("status")
+                .map(|status| status.state),
+            Some(LeadState::Reached)
+        );
     }
 }

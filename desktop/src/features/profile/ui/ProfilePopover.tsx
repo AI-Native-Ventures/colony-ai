@@ -34,6 +34,7 @@ interface ProfilePopoverProps {
   /** The person's own job title, shown under their name. */
   jobTitle?: string | null;
   avatarUrl: string | null;
+  pubkey?: string | null;
   avatarDataUrl?: string | null;
   currentStatus: PresenceStatus;
   isStatusPending?: boolean;
@@ -70,6 +71,7 @@ export function ProfilePopover({
   displayName,
   jobTitle,
   avatarUrl,
+  pubkey,
   avatarDataUrl,
   currentStatus,
   isStatusPending,
@@ -142,6 +144,7 @@ export function ProfilePopover({
                     <ProfileAvatar
                       avatarDataUrl={avatarDataUrl}
                       avatarUrl={avatarUrl}
+                      pubkey={pubkey}
                       className="pm-avatar-image"
                       label={displayName}
                     />

@@ -255,6 +255,7 @@ export function ProfileSummaryView({
         activeTurns={isBot ? activeTurns : []}
         channelIdToName={channelIdToName}
         displayName={displayName}
+        pubkey={pubkey}
         isBot={isBot}
         notManagedOnDevice={notManagedOnDevice}
         onEditAgent={canEditAgent ? handleEditAgent : undefined}
@@ -381,6 +382,7 @@ function ProfileHero({
   activeTurns,
   channelIdToName,
   displayName,
+  pubkey,
   isBot,
   notManagedOnDevice,
   onEditAgent,
@@ -392,6 +394,7 @@ function ProfileHero({
   activeTurns: Array<{ channelId: string; anchorAt: number }>;
   channelIdToName: Record<string, string>;
   displayName: string;
+  pubkey: string | null;
   isBot: boolean;
   notManagedOnDevice?: boolean;
   onEditAgent?: () => void;
@@ -418,6 +421,7 @@ function ProfileHero({
           className="pp-avatar-image"
           iconClassName="h-8 w-8"
           label={displayName}
+          pubkey={pubkey}
           shape={isBot ? "squircle" : "circle"}
           testId="user-profile-avatar"
         />

@@ -29,6 +29,7 @@
       "account-auth.spec.ts",
       "workspace-header-icon.spec.ts",
       "workspace-switcher.spec.ts",
+      "agent-avatar-everywhere.spec.ts",
       "connect-polish.spec.ts",
       "start-free-opencode.spec.ts",
       "colony3-first-run-proof.spec.ts",
@@ -43,6 +44,7 @@
       "cofounder-map.spec.ts",
       "edit-agent.spec.ts",
       "w10-discovery-sales.spec.ts",
+      "leads-table-polish.spec.ts",
       "colony3-discovery-run.spec.ts",
       "colony3-lead-reference.spec.ts",
       "colony3-sales-setup.spec.ts",
@@ -92,7 +94,8 @@
         "rejected and fully sent batches have no actions",
         "genuinely missing batch is one plain line with no actions",
         "cannot use send now on an approved card",
-        "channel content and actions stay reachable beside the dock at owner size"
+        "channel content and actions stay reachable beside the dock at owner size",
+        "whatsapp header keeps the label and unread badge inside the action at every requested width"
       ]
     }
   },
@@ -100,6 +103,7 @@
     {
       "paths": ["desktop/src/features/cofounder/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "cofounder-playbooks.spec.ts",
         "cofounder-map.spec.ts",
         "cofounder-customer-record.spec.ts",
@@ -151,7 +155,8 @@
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
         "mention-wake-stop-race.spec.ts",
-        "agent-working-indicator.spec.ts"
+        "agent-working-indicator.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {
@@ -252,6 +257,7 @@
       ],
       "specs": [
         "w10-discovery-sales.spec.ts",
+        "leads-table-polish.spec.ts",
         "colony3-discovery-run.spec.ts",
         "colony3-discovery-leads-proof.spec.ts",
         "colony3-lead-reference.spec.ts",
@@ -339,7 +345,8 @@
         "colony3-conv-dialogs-proof.spec.ts",
         "agent-start-watch.spec.ts",
         "mention-wake-after-launch.spec.ts",
-        "mention-wake-stop-race.spec.ts"
+        "mention-wake-stop-race.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {
@@ -389,11 +396,16 @@
     },
     {
       "paths": ["desktop/src/features/search/**"],
-      "specs": ["search-scope-screenshots.spec.ts", "smoke.spec.ts"]
+      "specs": [
+        "search-scope-screenshots.spec.ts",
+        "smoke.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/settings/**"],
       "specs": [
+        "cofounder-phase2.spec.ts",
         "colony3-settings.spec.ts",
         "money-rails-pay-ui.spec.ts",
         "settings-section-layout.spec.ts",
@@ -423,7 +435,8 @@
         "navigation.spec.ts",
         "shell-design.spec.ts",
         "money-rails-pay-ui.spec.ts",
-        "top-chrome-zoom-clearance.spec.ts"
+        "top-chrome-zoom-clearance.spec.ts",
+        "agent-avatar-everywhere.spec.ts"
       ]
     },
     {

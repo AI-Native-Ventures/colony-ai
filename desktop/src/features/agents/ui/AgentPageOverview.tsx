@@ -1,10 +1,11 @@
 import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastError";
 import type { ActiveTurnSummary } from "@/features/agents/activeAgentTurnsStore";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type { Channel, ManagedAgent } from "@/shared/api/types";
 import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 import { AgentStatusChip } from "./AgentStatusChip";
-import { formatStartedAt, personInitials } from "./agentPageModel";
+import { formatStartedAt } from "./agentPageModel";
 
 export type AgentChannelOption = {
   id: string;
@@ -35,15 +36,13 @@ function PeopleChips({ pubkeys }: { pubkeys: readonly string[] }) {
         return (
           <span className="agents-c3-person" key={pubkey}>
             <span aria-hidden="true" className="agents-c3-person-avatar">
-              {profile?.avatarUrl ? (
-                <img
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  src={profile.avatarUrl}
-                />
-              ) : (
-                personInitials(name)
-              )}
+              <ProfileAvatar
+                avatarUrl={profile?.avatarUrl ?? null}
+                className="size-full"
+                label={name}
+                pubkey={pubkey}
+                shape={profile?.isAgent ? "squircle" : "circle"}
+              />
             </span>
             {name}
           </span>

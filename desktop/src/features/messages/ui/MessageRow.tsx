@@ -539,6 +539,7 @@ export const MessageRow = React.memo(
       <MessageAvatar
         author={message.author}
         avatarUrl={message.avatarUrl ?? null}
+        pubkey={message.pubkey}
         hideAgentAccessBadge={hideAgentAccessBadge}
         isAgent={Boolean(message.isAgent)}
         isThreadReply={isThreadReplyLayout}

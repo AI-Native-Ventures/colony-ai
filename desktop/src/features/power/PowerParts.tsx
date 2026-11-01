@@ -40,18 +40,22 @@ export function EmployeeAvatar({
   avatarUrl,
   className,
   label,
+  pubkey,
   role,
 }: {
   avatarUrl: string | null | undefined;
   className?: string;
   label: string;
+  pubkey?: string;
   role?: string | null;
 }) {
   return (
     <ProfileAvatar
-      avatarUrl={avatarUrl ?? agentAntAvatarDataUrl(role)}
+      avatarUrl={avatarUrl ?? null}
+      fallbackAvatarUrl={agentAntAvatarDataUrl(role)}
       className={className}
       label={label}
+      pubkey={pubkey}
       shape="squircle"
     />
   );

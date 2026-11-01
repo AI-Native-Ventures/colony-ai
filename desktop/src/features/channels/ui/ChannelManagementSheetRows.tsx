@@ -498,6 +498,7 @@ export function SettingsMemberStack({
               avatarUrl={profile?.avatarUrl ?? null}
               className="!size-[1.625rem] text-3xs ring-2 ring-colony-pop"
               displayName={label}
+              pubkey={member.pubkey}
               fallbackDelayMs={0}
               shape={profile?.isAgent ? "squircle" : "circle"}
             />

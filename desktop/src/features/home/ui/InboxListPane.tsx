@@ -260,6 +260,7 @@ export function InboxListPane({
                   avatarUrl={item.avatarUrl}
                   className="ca-row-avatar"
                   label={item.senderLabel}
+                  pubkey={item.item.pubkey}
                   shape={isSenderAgent ? "squircle" : "circle"}
                 />
               </span>

@@ -127,7 +127,7 @@ export function CommunityOnboardingFlow({
       if (!isCurrent()) return;
       if (snapshotFound && membership === null)
         throw new Error("relay_membership_required");
-      await ensureOnboardingProfile(isCurrent);
+      await ensureOnboardingProfile(isCurrent, undefined, relayUrl);
       if (!isCurrent()) return;
       if (transaction?.inviteCode) {
         // Joined by invite: land in the workspace's shared channels. The

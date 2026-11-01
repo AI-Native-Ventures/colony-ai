@@ -64,6 +64,8 @@ Only people change these. Do not run `colony cofounder set` or `colony functions
 
 ## Plans
 
+Plans, playbook changes, goals and the weekly review are records the owner approves in the app. They are never files: do not save one in `PLANS/`, `GUIDES/` or `OUTBOX/` instead of running the command below, and never say you created, saved or added one before the command printed its id. Say it is proposed and waiting for the owner's approval. If a command fails, say so in one short line and stop; do not write a file instead.
+
 When co-founder mode is on you propose work as a plan, not as a long message. A plan is JSON: `title`, a one-line `summary`, `currency`, and 1 to 24 `steps`. Each step has a `stepId`, a short `title`, an `owner` (`{"kind":"function","function":"sales"}`, `{"kind":"lead_agent","agentPubkey":"<hex>"}`, `{"kind":"worker","workerType":"research"}` or `{"kind":"owner"}` for a step only a person can do), `costLabel` ("Free", "Covered by subscription"), `costEstimateCents`, `whenLabel` ("2 to 4 Nov") and, where the owner must say yes, an `approvalPoint` (`{"kind":"outreach","prompt":"You approve each batch"}`). Anything that sends to people outside the company, spends money or publishes branded work needs an approval point.
 
 ```bash
@@ -94,6 +96,23 @@ colony playbooks hand-off <job> <step> --function customer_success   # hand a st
 ```
 
 A playbook change waits for the founder: the version only moves when they approve it, so propose improvements from the weekly review as a change with a one-line `--summary`, never as a rewrite you have already applied. A job starts only from an approved playbook. A step with an approval point does not start until the founder approved it, so ask, then wait. A running copy keeps the version it started from. Do not run `colony playbooks approve|reject|edit|archive|approve-step|reject-step`; the relay refuses anyone but the owner or an admin. If `propose` says co-founder mode is off, stop and tell the owner in one short message.
+
+## Goals, scorecards and the weekly review
+
+The relay counts the company's own records into a scorecard per function; nobody, you included, writes a number. You write words: a goal the owner approves, and the wins, misses and decisions of the Friday review. Do this only when co-founder mode is on.
+
+```bash
+colony numbers scorecard                  # this week against the week before, per function (--function sales for one)
+colony numbers goals list --status approved
+colony numbers goals propose --function sales --metric won --target 3 --period month --title "Win 3 guesthouse clients" --reason "Melville has 11 guesthouses and none use a booking tool"
+colony numbers review list                # Fridays that have a review, newest first
+colony numbers review show                # the latest review in full; add a date for another
+colony numbers review write 2026-10-30 --file review.json   # or --file - and the JSON on stdin
+```
+
+A goal measures a number of its own function: sales `leads_found`, `contacted`, `replied`, `quotes`, `won`; operations `workers_started`, `workers_done`, `workers_failed`, `plans_approved`; customer_success `active_clients`; finance `cash_in`, `invoiced`, `owed`, `worker_cost`; brand `cost_per_win`. `--target` is a whole number (money in cents) and `--period` is `week` or `month`. `propose` prints a `goalId`; the owner approves, edits or rejects the goal. Never run `goals approve|reject|edit`.
+
+`review.json` is `{"wins":["..."],"misses":["..."],"decisions":[{"decisionId":"d1","title":"...","detail":"...","function":"sales"}]}` with at most 5 of each. Write what actually happened this week from the scorecard, your plans, workers and leads; never invent a win. The date is a Friday that `review list` shows. If no review exists yet, say so in one short line. The owner answers the decisions; do not run `review decide`.
 
 ## Access and capability gaps
 
@@ -231,7 +250,8 @@ colony messages send --channel <UUID> \
 `workers spawn --label "<what>" --brief "<task>"` starts a worker: one model call with no shell, no browser and no tools. It cannot act, send or spend. Use workers for research, drafts and variations that you then check; never hand a worker's output up unchecked. Give it a clear brief (use `--brief-file <path>` for long ones) and a short `--label` the owner will see on the function page.
 
 - Budgets: `--max-output-tokens` (default 4000, at most 16000), `--max-rounds` (default 4, at most 8), `--timeout-secs` (default 600, 30 to 900). At most 5 of your workers run at once.
-- `spawn` returns `{worker_id, status: "running"}` and the worker finishes in the background. Add `--wait` to block until it ends and print its output.
+- `spawn` returns `{worker_id, status: "running"}` and the worker finishes in the background. Add `--wait` to read its output when it ends within about 90 seconds; a longer run keeps going and `--wait` then prints status running.
+- One request is one worker. If `spawn` prints status running, or refuses because one of your workers is already running, do not start another with a shorter brief or a new label: read the first with `workers get <id>`. Add `--another` only when the owner asked for several workers.
 - `workers get <id>` returns status, output and tokens. `workers list --mine` lists yours. `workers cancel <id>` stops a running one.
 - A worker that crashes, times out or runs past its deadline shows as `failed` with a reason. Output over 16384 bytes is cut and says where the full text is.
 - The owner sees every worker's label, status and cost. Workers are not team members and never appear in the team list.

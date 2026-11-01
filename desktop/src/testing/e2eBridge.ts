@@ -1,4 +1,5 @@
 import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -689,8 +690,14 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
-    /** Seed one deliberately long lead name for picker overflow assertions. */
+    /** Rename the active reference business for a focused visual fixture. */
+    referenceWorkspaceBusinessName?: string;
+    /** Seed long lead names for row and picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
+    /** Add bounded synthetic lead rows for dense Leads screen proof. */
+    referenceWorkspaceLeadCount?: number;
+    /** Leave one reference lead's contact and value blank for visual proof. */
+    referenceWorkspaceMissingLeadFields?: boolean;
     whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
@@ -5801,7 +5808,10 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       pubkey: agent.pubkey,
       display_name: agent.name,
       name: agent.name,
-      avatar_url: null,
+      avatar_url:
+        agent.pubkey === REFERENCE_AGENTS.scout.pubkey
+          ? agentAntAvatarDataUrl("Other", "green")
+          : null,
       about: null,
       nip05_handle: null,
       owner_pubkey: null,
@@ -5952,9 +5962,11 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, {
     sidebarShell,
     colony3,
-    ...(config.mock?.whatsappGuesthouses
-      ? { businessName: "Horizon Labs" }
-      : {}),
+    ...(config.mock?.referenceWorkspaceBusinessName
+      ? { businessName: config.mock.referenceWorkspaceBusinessName }
+      : config.mock?.whatsappGuesthouses
+        ? { businessName: "Horizon Labs" }
+        : {}),
   });
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
@@ -5962,6 +5974,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
+      leadCount: config.mock?.referenceWorkspaceLeadCount,
+      missingLeadFields:
+        config.mock?.referenceWorkspaceMissingLeadFields === true,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;

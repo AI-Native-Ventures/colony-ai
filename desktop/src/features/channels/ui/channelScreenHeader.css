@@ -12,6 +12,10 @@
   flex: none;
 }
 
+.c3c-whatsapp-chats-icon {
+  flex: none;
+}
+
 .c3c-whatsapp-unread-badge {
   position: absolute;
   top: -0.25rem;
@@ -29,6 +33,13 @@
 @container c3c-channel-header (min-width: 64rem) {
   .c3c-header-action-label {
     display: inline;
+  }
+
+  .c3c-whatsapp-chats-button {
+    display: inline-flex;
+    width: auto;
+    min-width: calc(40 * var(--colony-px));
+    flex: 0 0 auto;
   }
 }
 

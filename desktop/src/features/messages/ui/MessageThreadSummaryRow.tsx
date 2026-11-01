@@ -51,6 +51,7 @@ function ParticipantAvatar({
       avatarUrl={participant.avatarUrl}
       className="h-6 w-6 text-3xs"
       label={participant.author}
+      pubkey={participant.pubkey}
       shape={participant.isAgent ? "squircle" : "circle"}
       testId={`message-thread-summary-avatar-${index}`}
     />

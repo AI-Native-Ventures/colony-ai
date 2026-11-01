@@ -218,6 +218,29 @@ pub async fn retry_later(
     Ok(result.rows_affected())
 }
 
+/// Whether a start-up (`mode_on`) wake is still pending, or was delivered at or
+/// after `delivered_since`. A company without one has had its start-up wake end
+/// without reaching Scout (or never had one), and the sweep queues a new one.
+#[datastore_span(name = "cofounder_mode_on_in_flight", system = "postgresql")]
+pub async fn mode_on_in_flight(
+    pool: &PgPool,
+    community_id: Uuid,
+    delivered_since: DateTime<Utc>,
+) -> Result<bool> {
+    let mut tx = writer_transaction(pool).await?;
+    let found: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM cofounder_wakes \
+         WHERE community_id = $1 AND reason = 'mode_on' \
+           AND (status = 'pending' OR (status = 'delivered' AND delivered_at >= $2)))",
+    )
+    .bind(community_id)
+    .bind(delivered_since)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(found)
+}
+
 /// Delete wakes that are no longer pending and were queued before `before`.
 #[datastore_span(name = "cofounder_wakes_prune", system = "postgresql")]
 pub async fn prune_wakes(pool: &PgPool, before: DateTime<Utc>) -> Result<u64> {
@@ -326,6 +349,15 @@ impl Db {
             max_attempts,
         )
         .await
+    }
+
+    /// Whether a start-up wake is pending or was delivered since `delivered_since`.
+    pub async fn cofounder_mode_on_in_flight(
+        &self,
+        community_id: Uuid,
+        delivered_since: DateTime<Utc>,
+    ) -> Result<bool> {
+        mode_on_in_flight(&self.pool, community_id, delivered_since).await
     }
 
     /// Delete old finished wakes.
@@ -471,6 +503,56 @@ mod postgres_tests {
             .unwrap();
         assert_eq!(due.iter().filter(|id| **id == a).count(), 1);
         assert_eq!(due.iter().filter(|id| **id == b).count(), 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_start_up_wake_is_in_flight_while_pending_or_recently_delivered() {
+        let (pool, a, b) = fixture().await;
+        let now = Utc::now();
+        let since = now - Duration::days(1);
+        assert!(!mode_on_in_flight(&pool, a, since).await.unwrap());
+        enqueue_wake(&pool, a, "mode_on", "mode_on:1", "")
+            .await
+            .unwrap();
+        assert!(mode_on_in_flight(&pool, a, since).await.unwrap(), "pending");
+        assert!(
+            !mode_on_in_flight(&pool, b, since).await.unwrap(),
+            "other company"
+        );
+        let ids = pending_wakes(&pool, a, now + Duration::seconds(1), 10)
+            .await
+            .unwrap()
+            .iter()
+            .map(|wake| wake.id)
+            .collect::<Vec<_>>();
+        mark_skipped(&pool, a, &ids, "no Scout to wake yet")
+            .await
+            .unwrap();
+        assert!(
+            !mode_on_in_flight(&pool, a, since).await.unwrap(),
+            "a skipped start-up wake is not in flight"
+        );
+        enqueue_wake(&pool, a, "mode_on", "mode_on:2", "")
+            .await
+            .unwrap();
+        let ids = pending_wakes(&pool, a, now + Duration::seconds(1), 10)
+            .await
+            .unwrap()
+            .iter()
+            .map(|wake| wake.id)
+            .collect::<Vec<_>>();
+        mark_delivered(&pool, a, &ids, b"event", now).await.unwrap();
+        assert!(
+            mode_on_in_flight(&pool, a, since).await.unwrap(),
+            "delivered today"
+        );
+        assert!(
+            !mode_on_in_flight(&pool, a, now + Duration::days(1))
+                .await
+                .unwrap(),
+            "delivered more than a day ago"
+        );
     }
 
     #[tokio::test]

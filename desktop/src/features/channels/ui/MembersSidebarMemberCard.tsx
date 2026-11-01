@@ -202,6 +202,7 @@ export function MembersSidebarMemberCard({
       <div className="relative shrink-0">
         <ProfileAvatar
           avatarUrl={profileAvatarUrl ?? null}
+          pubkey={member.pubkey}
           className={cn(
             "text-xs shadow-none",
             memberIsBot ? "size-10" : "size-[2.375rem]",

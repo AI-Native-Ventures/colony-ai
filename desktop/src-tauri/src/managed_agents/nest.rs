@@ -62,7 +62,10 @@ const COLONY_CLI_SKILL_MD: &str = concat!(
 /// Version 7 renamed the managed-section markers (see [`BEGIN_MARKER`]); the
 /// refresh rewrites the markers of an existing block in place, so every
 /// install ends up with the current markers and keeps the text below them.
-const NEST_AGENTS_VERSION: u32 = 7;
+/// Version 8 stopped the folder table and the guidelines from presenting
+/// `PLANS/`, `GUIDES/` and `OUTBOX/` as the place for plans, playbook changes,
+/// goals and the weekly review: those are `colony` commands.
+const NEST_AGENTS_VERSION: u32 = 8;
 
 /// Template content version for SKILL.md.
 /// Bump this when changing `nest_skill.md` to trigger refresh on existing installs.
@@ -85,7 +88,9 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Version 21 adds the Playbooks section (`colony playbooks`) to that skill.
 /// Version 22 adds the Private folders rule (no whole-home scans, no Photos,
 /// Music, Mail or Messages) so existing nests regenerate the skill with it.
-const NEST_SKILL_VERSION: u32 = 22;
+/// Version 23 adds the Goals and weekly review section (`colony numbers`), the
+/// Company Records rule and the one-worker-per-request rule.
+const NEST_SKILL_VERSION: u32 = 23;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
@@ -697,7 +702,13 @@ pub fn render_dynamic_section(
     // The web task rules ride in the managed section, which every launch
     // rewrites, so existing nests pick up a change without a template bump.
     let web_task_rules = buzz_acp::WEB_TASK_RULES.trim_end();
-    format!("{active_agents}\n\n## Workspace\n- Relay: {relay_url}\n\n{web_task_rules}")
+    // So do the company record rules: an employee that reads the nest folders
+    // `PLANS/`, `GUIDES/` and `OUTBOX/` as the place for a plan, a playbook or the
+    // weekly review must also read, in the same file, that those are commands.
+    let company_record_rules = buzz_acp::COMPANY_RECORD_RULES.trim_end();
+    format!(
+        "{active_agents}\n\n## Workspace\n- Relay: {relay_url}\n\n{company_record_rules}\n\n{web_task_rules}"
+    )
 }
 
 /// Find a marker that appears at the start of a line (position 0 or preceded by `\n`).
@@ -1043,6 +1054,8 @@ pub fn try_regenerate_nest<R: tauri::Runtime>(app: &AppHandle<R>) {
 
 #[cfg(test)]
 mod brand_guard_tests;
+#[cfg(test)]
+mod company_record_rules_tests;
 #[cfg(test)]
 mod marker_tests;
 #[cfg(test)]

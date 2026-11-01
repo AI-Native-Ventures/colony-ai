@@ -19,6 +19,18 @@ pub const WEB_TASK_RULES: &str = include_str!("web_tasks.md");
 /// into the employee's skill and the managed section of `AGENTS.md`.
 pub const VOICE_RULES: &str = include_str!("voice.md");
 
+/// What an employee does when the owner asks for a plan, a playbook change, a
+/// goal, a weekly review or a worker: run the `colony` command that records it,
+/// and never save it as a file or say it exists before the command printed its
+/// id. A model reads the nest's `PLANS/`, `GUIDES/` and `OUTBOX/` folders as the
+/// place to put such work, so the rule has to ride in the standing prompt, not
+/// only in a skill the model may never load (GATE-329-COF).
+///
+/// `company_records.md` is the one copy. The base prompt below carries it after
+/// `base_prompt.md`, and the host writes the same text into the managed section
+/// of `AGENTS.md`.
+pub const COMPANY_RECORD_RULES: &str = include_str!("company_records.md");
+
 /// Base prompt every agent receives when no custom base file is configured.
 ///
 /// The one production read of `base_prompt.md`: both the runtime and the brand
@@ -27,6 +39,8 @@ pub const VOICE_RULES: &str = include_str!("voice.md");
 /// [`WEB_TASK_RULES`].
 pub(crate) const DEFAULT_BASE_PROMPT: &str = concat!(
     include_str!("base_prompt.md"),
+    "\n",
+    include_str!("company_records.md"),
     "\n",
     include_str!("voice.md"),
     "\n",
@@ -303,6 +317,7 @@ mod tests {
         for (name, text) in [
             ("web task rules", WEB_TASK_RULES),
             ("voice rules", VOICE_RULES),
+            ("company record rules", COMPANY_RECORD_RULES),
             ("default base prompt", DEFAULT_BASE_PROMPT),
         ] {
             assert!(!text.contains('\u{2014}'), "{name} contains an em dash");
@@ -352,6 +367,118 @@ mod tests {
             assert!(
                 DEFAULT_BASE_PROMPT.contains(current),
                 "base prompt is missing the worker rule: {current}"
+            );
+        }
+    }
+
+    #[test]
+    fn company_record_rules_reach_every_framed_system_prompt_once() {
+        let rules = COMPANY_RECORD_RULES.trim_end();
+        for policy in [
+            crate::scope::SessionPolicy::Channel,
+            crate::scope::SessionPolicy::Thread,
+        ] {
+            let base = policy.append_session_model(DEFAULT_BASE_PROMPT);
+            let session_new = crate::pool::framed_system_prompt(
+                "/Users/test/.colony",
+                Some(&base),
+                Some("You are Scout."),
+            )
+            .expect("a base and instructions frame a system prompt");
+            let first_turn = crate::queue::StandingContext {
+                base_prompt: Some(&base),
+                system_prompt: Some("You are Scout."),
+                ..Default::default()
+            }
+            .sections()
+            .join("\n\n");
+            for (path, prompt) in [("session/new", &session_new), ("first turn", &first_turn)] {
+                assert_eq!(
+                    prompt.matches(rules).count(),
+                    1,
+                    "{policy:?} {path}: the company record rules appear exactly once"
+                );
+                let records = prompt
+                    .find(rules)
+                    .expect("company record rules are present");
+                let instructions = prompt
+                    .find("You are Scout.")
+                    .expect("agent instructions are present");
+                assert!(
+                    records < instructions,
+                    "{policy:?} {path}: the rules belong to the standing base"
+                );
+            }
+        }
+    }
+
+    /// GATE-329-COF: Scout was asked for a plan, a playbook change, a goal and the
+    /// weekly review, saved each as a file in `PLANS/`, `GUIDES/` or `OUTBOX/` and
+    /// said it had created them. The standing prompt now names the command for
+    /// each, so the model has no reason to reach for a file.
+    #[test]
+    fn company_record_rules_name_the_command_for_every_record() {
+        for command in [
+            "colony plans propose --file plan.json",
+            "colony playbooks propose --playbook <id> --file new.json --summary",
+            "colony numbers goals propose --function sales --metric won --target 3 --period month",
+            "colony numbers review list",
+            "colony numbers review write <that Friday as YYYY-MM-DD> --file review.json",
+            "colony workers spawn",
+            "colony whatsapp status",
+        ] {
+            assert!(
+                COMPANY_RECORD_RULES.contains(command),
+                "the company record rules are missing: {command}"
+            );
+        }
+        for rule in [
+            "They are not files and they are not chat text.",
+            "never save one of these there instead of proposing it",
+            "only then say in one short line that it is waiting for their approval",
+            "never \"created\", \"saved\" or \"added\"",
+            "Never fall back to writing a file.",
+            "When WhatsApp is not connected, say so in one line and stop.",
+        ] {
+            assert!(
+                COMPANY_RECORD_RULES.contains(rule),
+                "the company record rules are missing: {rule}"
+            );
+        }
+    }
+
+    /// The plan example in the rules is the shape the relay accepts: a model that
+    /// copies it must not be refused for a field the example got wrong.
+    #[test]
+    fn company_record_plan_example_is_a_valid_plan() {
+        let start = COMPANY_RECORD_RULES
+            .find("`{\"title\":\"Win 3 Melville guesthouses\"")
+            .expect("the plan example is in the rules")
+            + 1;
+        let end = start
+            + COMPANY_RECORD_RULES[start..]
+                .find("}]}`")
+                .expect("the plan example ends")
+            + 3;
+        let plan: buzz_core::company_plans::PlanProposal =
+            serde_json::from_str(&COMPANY_RECORD_RULES[start..end])
+                .expect("the example parses as a plan");
+        buzz_core::company_plans::validate_plan_proposal(&plan, true)
+            .expect("the example is a valid plan");
+    }
+
+    #[test]
+    fn base_prompt_asks_for_one_worker_and_a_separate_reply() {
+        for current in [
+            "One request is one worker: run `spawn` once.",
+            "do not start a second one with a shorter brief or a new label",
+            "A message that arrives while you are working is a new request from a person",
+            "Do not fold it into the earlier answer",
+            "Plans the owner approves are not files: see Company Records",
+        ] {
+            assert!(
+                DEFAULT_BASE_PROMPT.contains(current),
+                "base prompt is missing: {current}"
             );
         }
     }
