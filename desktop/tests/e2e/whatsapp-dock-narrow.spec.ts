@@ -34,6 +34,51 @@ const viewportCases = [
   { label: "390x844", width: 390, height: 844 },
 ] as const;
 
+const headerViewportCases = [
+  { label: "2000x1100", width: 2000, height: 1100, workAreaOpen: false },
+  { label: "1440x900", width: 1440, height: 900, workAreaOpen: false },
+  { label: "1000x650", width: 1000, height: 650, workAreaOpen: true },
+  { label: "390x844", width: 390, height: 844, workAreaOpen: true },
+] as const;
+
+async function openSocketWelcomeHeader(
+  page: Page,
+  theme: "light" | "dark",
+  viewport: (typeof headerViewportCases)[number],
+) {
+  await page.setViewportSize(viewport);
+  await installWhatsAppMockBridge(page, theme, { workspaceName: "Socket" });
+
+  if (viewport.width < 600) {
+    await gotoWhatsAppScreen(
+      page,
+      `/channels/${REFERENCE_CHANNEL_IDS.welcome}`,
+    );
+  } else {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("home-inbox")).toBeVisible();
+    await expect(page.getByTestId("channel-Welcome")).toBeVisible();
+    await page.getByTestId("channel-Welcome").click();
+  }
+
+  await expect(page.getByTestId("chat-title")).toContainText("Welcome");
+  await expect(page.locator("body")).toContainText("Socket");
+
+  const whatsAppButton = page.getByTestId("channel-whatsapp-chats-trigger");
+  await whatsAppButton.click();
+  const panel = page.getByTestId("work-area-panel");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+  const badge = page.getByTestId("channel-whatsapp-unread-count");
+  await expect(badge).toBeVisible();
+
+  if (!viewport.workAreaOpen) {
+    await page.getByTestId("channel-work-area-trigger").click();
+    await expect(panel).toHaveCount(0);
+    await expect(badge).toBeVisible();
+  }
+}
+
 async function openApprovedChannelWithDock(
   page: Page,
   theme: "light" | "dark",
@@ -262,6 +307,167 @@ test.describe("WhatsApp dock narrow layout", () => {
         await captureOwnerView(browser, theme, viewport, artifactDir);
       }
     }
+    testInfo.annotations.push({
+      type: "artifact-dir",
+      description: artifactDir,
+    });
+  });
+
+  test("whatsapp header keeps the label and unread badge inside the action at every requested width", async ({
+    browser,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    const artifactDir = resolve(
+      process.env.HEADER_WA_BUTTON_SCREENSHOT_DIR ??
+        "output/playwright/header-wa-button",
+    );
+    mkdirSync(artifactDir, { recursive: true });
+
+    for (const theme of ["light", "dark"] as const) {
+      for (const viewport of headerViewportCases) {
+        const context = await browser.newContext({
+          colorScheme: theme,
+          viewport: { width: viewport.width, height: viewport.height },
+        });
+        try {
+          const page = await context.newPage();
+          await openSocketWelcomeHeader(page, theme, viewport);
+
+          const geometry = await page.evaluate(() => {
+            const rect = (element: Element | null) => {
+              if (!element) return null;
+              const box = element.getBoundingClientRect();
+              return {
+                x: box.x,
+                y: box.y,
+                right: box.right,
+                bottom: box.bottom,
+                width: box.width,
+                height: box.height,
+              };
+            };
+            const button = document.querySelector(
+              '[data-testid="channel-whatsapp-chats-trigger"]',
+            );
+            const icon = button?.querySelector("svg") ?? null;
+            const label =
+              button?.querySelector(".c3c-header-action-label") ?? null;
+            const badge =
+              button?.querySelector(
+                '[data-testid="channel-whatsapp-unread-count"]',
+              ) ?? null;
+            const actions = Array.from(
+              document.querySelectorAll<HTMLButtonElement>(
+                ".c3c-header-actions button",
+              ),
+            )
+              .map((action) => ({
+                name:
+                  action.getAttribute("aria-label") ??
+                  action.getAttribute("data-testid") ??
+                  action.textContent?.trim() ??
+                  "header action",
+                box: rect(action),
+              }))
+              .filter((action) => action.box !== null);
+
+            return {
+              button: rect(button),
+              icon: rect(icon),
+              label: rect(label),
+              badge: rect(badge),
+              labelDisplay: label ? getComputedStyle(label).display : null,
+              buttonDisplay: button ? getComputedStyle(button).display : null,
+              actions,
+            };
+          });
+
+          expect(geometry.button, "WhatsApp action has bounds").not.toBeNull();
+          expect(geometry.icon, "WhatsApp icon has bounds").not.toBeNull();
+          expect(geometry.label, "WhatsApp label has bounds").not.toBeNull();
+          expect(
+            geometry.badge,
+            "WhatsApp unread badge has bounds",
+          ).not.toBeNull();
+          if (
+            !geometry.button ||
+            !geometry.icon ||
+            !geometry.label ||
+            !geometry.badge
+          ) {
+            throw new Error("WhatsApp header action is missing visual bounds");
+          }
+
+          if (!viewport.workAreaOpen) {
+            expect(geometry.labelDisplay).not.toBe("none");
+            expect(
+              Math.abs(
+                geometry.icon.y +
+                  geometry.icon.height / 2 -
+                  (geometry.label.y + geometry.label.height / 2),
+              ),
+              "WhatsApp label shares a row with its icon",
+            ).toBeLessThanOrEqual(1);
+            expect(geometry.label.x).toBeGreaterThanOrEqual(
+              geometry.icon.right,
+            );
+            expect(geometry.buttonDisplay).toBe("flex");
+          } else {
+            expect(geometry.labelDisplay).toBe("none");
+          }
+
+          for (const part of [geometry.icon, geometry.label]) {
+            if (geometry.labelDisplay === "none" && part === geometry.label) {
+              continue;
+            }
+            expect(part.x).toBeGreaterThanOrEqual(geometry.button.x - 1);
+            expect(part.right).toBeLessThanOrEqual(geometry.button.right + 1);
+            expect(part.y).toBeGreaterThanOrEqual(geometry.button.y - 1);
+            expect(part.bottom).toBeLessThanOrEqual(geometry.button.bottom + 1);
+          }
+
+          expect(geometry.badge.x).toBeGreaterThan(geometry.icon.x);
+          expect(geometry.badge.x).toBeLessThan(geometry.icon.right);
+          expect(geometry.badge.y).toBeLessThan(
+            geometry.icon.y + geometry.icon.height / 2,
+          );
+          expect(geometry.badge.right).toBeGreaterThan(geometry.icon.right);
+          if (geometry.labelDisplay !== "none") {
+            expect(geometry.badge.right).toBeLessThanOrEqual(geometry.label.x);
+          }
+
+          const actions = geometry.actions
+            .filter((action) => action.box !== null)
+            .sort((left, right) => (left.box?.x ?? 0) - (right.box?.x ?? 0));
+          for (let index = 1; index < actions.length; index += 1) {
+            const previous = actions[index - 1];
+            const current = actions[index];
+            if (!previous?.box || !current?.box) continue;
+            const horizontalOverlap =
+              Math.min(previous.box.right, current.box.right) -
+              Math.max(previous.box.x, current.box.x);
+            const verticalOverlap =
+              Math.min(previous.box.bottom, current.box.bottom) -
+              Math.max(previous.box.y, current.box.y);
+            expect(
+              horizontalOverlap > 1 && verticalOverlap > 1,
+              `${previous.name} overlaps ${current.name}`,
+            ).toBe(false);
+          }
+
+          await waitForAnimations(page);
+          await page.screenshot({
+            path: resolve(
+              artifactDir,
+              `header-wa-button-${viewport.label}-${theme}.png`,
+            ),
+          });
+        } finally {
+          await context.close();
+        }
+      }
+    }
+
     testInfo.annotations.push({
       type: "artifact-dir",
       description: artifactDir,
