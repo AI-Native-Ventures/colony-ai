@@ -212,3 +212,11 @@ Exact recipe format and how Scout learns one from docs; HMAC header conventions 
 3. **Signing page branding.** Show "Signed electronically through Colony" with the Colony mark on the signing page and certificate (free marketing, as the mockups show), or only the business's own name and logo?
 
 Answers will be folded in here before building starts.
+
+## 17. Owner answers (1 Nov 2026, ~09:10 SAST)
+
+- Mockups on the canvas page "Money rails": **build as shown.**
+- Signer check: **link plus typed name is enough** (no one-time code in v1).
+- Call times: **Scout offers 3 times** the owner approved; the client replies with one. No public booking page in v1.
+- Signing page and certificate: **business brand on top, a small "Signed electronically through Colony" at the bottom**, as in the boards.
+- Build order: payment links first, then signing, then booking.
