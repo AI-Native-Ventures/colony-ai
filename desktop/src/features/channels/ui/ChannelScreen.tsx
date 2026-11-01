@@ -17,7 +17,10 @@ import {
   THREAD_PREFIX,
 } from "@/features/channels/readState/readStateFormat";
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
+import { KeyRescueCard } from "@/features/agents/ui/KeyRescueCard";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
+import type { OutreachDeskTab } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import { OutreachDeskWorkspace } from "@/features/whatsapp-outreach/OutreachDeskWorkspace";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
 import {
@@ -94,6 +97,7 @@ export function ChannelScreen({
   currentIdentity,
   currentProfile,
   initialWhatsAppContactWaId,
+  initialWhatsAppDeskTab,
   headerEndActions, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
@@ -145,6 +149,7 @@ export function ChannelScreen({
     defaultWidthPx: CHANNEL_PANEL_DEFAULT_WIDTH_PX,
   });
   const [isMembersSidebarOpen, setIsMembersSidebarOpen] = React.useState(false);
+  const [outreachTab, setOutreachTab] = React.useState<OutreachDeskTab>("needs-you");
   const [isAddBotOpen, setIsAddBotOpen] = React.useState(false);
   const [expandedThreadReplyIds, setExpandedThreadReplyIds] = React.useState(
     () => new Set<string>(),
@@ -164,6 +169,17 @@ export function ChannelScreen({
   const mainInsetRef = useMainInsetRef();
   const currentPubkey = currentIdentity?.pubkey;
   const activeChannelId = activeChannel?.id ?? null;
+  const isOutreachChannel =
+    activeChannel?.channelType === "stream" &&
+    activeChannel.name.trim().toLocaleLowerCase() === "outreach";
+  React.useEffect(() => {
+    // Reset the channel-scoped tab when the active route changes.
+    void activeChannelId;
+    setOutreachTab(
+      initialWhatsAppDeskTab ??
+        (initialWhatsAppContactWaId ? "chats" : "needs-you"),
+    );
+  }, [activeChannelId, initialWhatsAppContactWaId, initialWhatsAppDeskTab]);
   const relaySelfPubkey = useRelaySelfQuery(activeChannel !== null).data;
   const effectiveOpenThreadHeadId =
     optimisticOpenThreadHeadId === undefined
@@ -674,6 +690,8 @@ export function ChannelScreen({
         activeDmPresenceStatus={activeDmPresenceStatus}
         chromeWrapperRef={channelHeaderChromeRef}
         {...{ currentPubkey, headerEndActions }}
+        onOutreachTabChange={setOutreachTab}
+        outreachTab={outreachTab}
         isAddBotOpen={isAddBotOpen}
         isJoining={joinChannelMutation.isPending}
         members={channelMembers ?? EMPTY_CHANNEL_MEMBERS}
@@ -698,6 +716,7 @@ export function ChannelScreen({
       channelHeaderChromeRef,
       currentPubkey,
       headerEndActions,
+      outreachTab,
       isAddBotOpen,
       channelMembers,
       joinChannelMutation.isPending,
@@ -707,6 +726,19 @@ export function ChannelScreen({
       isSinglePanelView,
     ],
   );
+  const outreachWorkspaceContent =
+    isOutreachChannel &&
+    (outreachTab === "needs-you" ||
+      outreachTab === "pipeline" ||
+      outreachTab === "chats") ? (
+      <OutreachDeskWorkspace
+        activeTab={outreachTab}
+        channelId={activeChannel.id}
+        channelIsMember={activeChannel.isMember}
+        initialContactWaId={initialWhatsAppContactWaId ?? null}
+        onTabChange={setOutreachTab}
+      />
+    ) : undefined;
   return (
     <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
         <DeleteMessageConfirmDialog
@@ -742,12 +774,20 @@ export function ChannelScreen({
                 : undefined
             }
             channelId={activeChannel?.id ?? null}
-            initialWhatsAppContactWaId={initialWhatsAppContactWaId}
+            initialWhatsAppContactWaId={
+              isOutreachChannel ? null : initialWhatsAppContactWaId
+            }
           >
           <div
             className="colony-channel-route-content"
             ref={channelContentRef}
           >
+          {activeDmParticipantPubkeys.length > 0 ? (
+            <KeyRescueCard
+              className="mx-5 mt-3"
+              scopePubkeys={activeDmParticipantPubkeys}
+            />
+          ) : null}
           {activeChannel ? (
               <React.Suspense
                 fallback={<ViewLoadingFallback includeHeader kind="channel" />}
@@ -765,6 +805,8 @@ export function ChannelScreen({
                   canResetThreadPanelWidth={canResetThreadPanelWidth}
                   fetchOlder={fetchOlder}
                   header={channelHeader}
+                  workspaceContent={outreachWorkspaceContent}
+                  foldWhatsAppActivity={isOutreachChannel && outreachTab === "discussion"}
                   {...{ idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread, idleAuxiliaryPanel, idleAuxiliaryTitle, hasOlderMessages, historyExhausted }}
                   onOpenMembers={handleOpenMembersSidebar}
                   isFetchingOlder={isFetchingOlder}

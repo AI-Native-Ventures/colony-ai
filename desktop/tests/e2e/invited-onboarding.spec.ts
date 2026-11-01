@@ -13,6 +13,8 @@ const INVITE_LINK = `https://${RELAY_HOST}/invite/v2.abc`;
 const TRANSACTION_KEY = "buzz-community-onboarding-transaction.v1";
 const BUSINESS_DOMAIN = "accounts-test.colony.ainative.ventures";
 const MOCK_ACCOUNT_PUBKEY = "deadbeef".repeat(8);
+const WORKSPACE_ICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23f5a4d5'/%3E%3C/svg%3E";
 const JOIN_LINK = {
   id: "dl-join-1",
   kind: "join" as const,
@@ -167,6 +169,14 @@ async function expectLandedInGeneral(page: Page) {
 test("Have an invite link? opens the invite scene and a pasted link joins without a business", async ({
   page,
 }) => {
+  await page.addInitScript(
+    ({ icon, relayUrl }) =>
+      window.localStorage.setItem(
+        "buzz-community-icons",
+        JSON.stringify({ [relayUrl]: icon }),
+      ),
+    { icon: WORKSPACE_ICON, relayUrl: RELAY_WS },
+  );
   const { counts, claimBodies } = await startFirstRun(page);
   await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
 
@@ -201,6 +211,13 @@ test("Have an invite link? opens the invite scene and a pasted link joins withou
   ).toBeVisible();
   await expect(page.getByTestId("onboarding-scene-business")).toHaveCount(0);
   await expect(page.getByText("lerato@example.com")).toBeVisible();
+  const inviteCardMark = page.getByTestId("invite-brand").locator(".c3fr-mark");
+  await expect(inviteCardMark).toHaveAttribute("data-source", "community");
+  await expect(inviteCardMark.locator("img")).toHaveAttribute(
+    "src",
+    WORKSPACE_ICON,
+  );
+  await expect(inviteCardMark.locator("img")).toBeVisible();
   expect(counts.claims).toBe(0);
   await page.getByTestId("invite-join").click();
 

@@ -211,6 +211,9 @@ pub struct EventQueue {
     /// `FlushBatch` for that channel as `cancelled_events` so `format_prompt()`
     /// can produce annotated "[Previous request — interrupted]" sections.
     cancelled_batches: HashMap<SessionScope, Vec<BatchEvent>>,
+    /// Turns that ended since the listener last looked, with whether the people
+    /// who started them were answered. The wake ledger settles them.
+    finished_turns: Vec<(String, bool)>,
     /// Why each scope's cancelled batch was cancelled (steer vs interrupt).
     /// Set by `requeue_as_cancelled`, consumed by `flush_next` to set
     /// `FlushBatch::cancel_reason`. Keyed by scope, cleared on flush.
@@ -248,6 +251,7 @@ impl EventQueue {
             retry_counts: HashMap::new(),
             dedup_mode,
             cancelled_batches: HashMap::new(),
+            finished_turns: Vec::new(),
             cancel_reasons: HashMap::new(),
             withheld_native_steer: HashMap::new(),
             in_flight_deadline: Duration::from_secs(DEFAULT_IN_FLIGHT_DEADLINE_SECS),
@@ -790,6 +794,31 @@ impl EventQueue {
     /// were already committed when their turn started and are not listed.
     pub(crate) fn pending_events(&self) -> impl Iterator<Item = &Event> {
         self.queues.values().flatten().map(|queued| &queued.event)
+    }
+
+    /// Whether the event with this hex id still waits to be prompted: queued,
+    /// held for a retry, or carried over from a cancelled batch.
+    pub(crate) fn holds_event(&self, event_id: &str) -> bool {
+        self.queues
+            .values()
+            .flatten()
+            .any(|queued| queued.event.id.to_hex() == event_id)
+            || self
+                .cancelled_batches
+                .values()
+                .flatten()
+                .any(|batch| batch.event.id.to_hex() == event_id)
+    }
+
+    /// Note that turn `turn_id` ended; `answered` says whether the people who
+    /// started it were answered, or told why not.
+    pub(crate) fn record_finished_turn(&mut self, turn_id: String, answered: bool) {
+        self.finished_turns.push((turn_id, answered));
+    }
+
+    /// Turns that ended since the last call, oldest first.
+    pub(crate) fn take_finished_turns(&mut self) -> Vec<(String, bool)> {
+        std::mem::take(&mut self.finished_turns)
     }
 
     /// Whether `scope` still has work that can be reconstructed into a batch.

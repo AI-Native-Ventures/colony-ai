@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import type { LeaveCommunityResult } from "@/features/communities/leaveCommunity";
 import type { Community } from "@/features/communities/types";
+import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,14 +26,12 @@ import {
 } from "@/shared/ui/sidebar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { cn } from "@/shared/lib/cn";
 import type { ConnectionState } from "@/shared/api/relayClientShared";
 import {
   isRelayConnectionDegraded,
   useRelayConnection,
 } from "@/shared/api/useRelayConnection";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
-import { useActiveCommunityIcon } from "@/features/communities/useCommunityIcons";
 import { EditCommunityDialog } from "./EditCommunityDialog";
 import "@/features/profile/ui/ProfileMenus.css";
 
@@ -66,35 +65,6 @@ type CommunitySwitcherProps = {
   onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
 };
 
-export function CommunityEmojiIcon({
-  className,
-  iconUrl,
-}: {
-  className: string;
-  iconUrl?: string | null;
-}) {
-  if (iconUrl) {
-    return (
-      <span
-        aria-hidden="true"
-        className={cn(className, "h-5 overflow-hidden rounded-md")}
-      >
-        <img
-          alt=""
-          className="h-full w-full object-cover"
-          draggable={false}
-          src={iconUrl}
-        />
-      </span>
-    );
-  }
-  return (
-    <span aria-hidden="true" className={className}>
-      <span className="-translate-y-px leading-normal">C</span>
-    </span>
-  );
-}
-
 export function CommunitySwitcher({
   activeCommunity,
   communities,
@@ -118,8 +88,6 @@ export function CommunitySwitcher({
   const connectionState = useRelayConnection();
   const degraded = isRelayConnectionDegraded(connectionState);
   const connectionLabel = CONNECTION_STATE_LABEL[connectionState];
-  const activeIconQuery = useActiveCommunityIcon(activeCommunity?.relayUrl);
-  const activeIcon = activeIconQuery.data ?? null;
   const isProfileVariant = variant === "profile";
 
   function clearProfileMenuHoverTimer() {
@@ -236,13 +204,17 @@ export function CommunitySwitcher({
           </TooltipContent>
         </Tooltip>
       ) : (
-        <CommunityEmojiIcon
+        <WorkspaceMark
           className={
             isProfileVariant
-              ? "flex w-5 shrink-0 items-center justify-center rounded-md border border-sidebar-border/70 bg-sidebar-accent/40 text-2xs"
-              : "flex w-5 shrink-0 items-center justify-center text-xs"
+              ? "grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-md border border-sidebar-border/70 bg-sidebar-accent/40 text-2xs"
+              : "grid h-5 w-5 shrink-0 place-items-center overflow-hidden text-xs"
           }
-          iconUrl={activeIcon}
+          communityIconFit="cover"
+          communityId={activeCommunity?.id}
+          imageFit="contain"
+          name={activeCommunity?.name ?? "C"}
+          relayUrl={activeCommunity?.relayUrl}
         />
       )}
       <span
@@ -286,13 +258,14 @@ export function CommunitySwitcher({
           <TooltipContent side="top">{connectionLabel}</TooltipContent>
         </Tooltip>
       ) : (
-        <span aria-hidden="true" className="pm-community-mark">
-          {activeIcon ? (
-            <img alt="" draggable={false} src={activeIcon} />
-          ) : (
-            (activeCommunity?.name ?? "C").slice(0, 1).toUpperCase()
-          )}
-        </span>
+        <WorkspaceMark
+          className="pm-community-mark"
+          communityIconFit="cover"
+          communityId={activeCommunity?.id}
+          imageFit="contain"
+          name={activeCommunity?.name ?? "C"}
+          relayUrl={activeCommunity?.relayUrl}
+        />
       )}
       <span className="pm-community-copy">
         <span className="pm-community-name">
@@ -471,6 +444,18 @@ export function CommunitySwitcher({
                 <Check className="h-4 w-4 text-primary" />
               ) : null}
             </span>
+            <WorkspaceMark
+              className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-md text-2xs"
+              communityIconFit="cover"
+              communityId={community.id}
+              dataTestId={`community-switcher-mark-${community.id}`}
+              fallbackText={
+                community.name.trim().slice(0, 1).toUpperCase() || "C"
+              }
+              imageFit="contain"
+              name={community.name}
+              relayUrl={community.relayUrl}
+            />
             <span className="min-w-0 flex-1 truncate">{community.name}</span>
             <button
               aria-label={`Edit ${community.name}`}

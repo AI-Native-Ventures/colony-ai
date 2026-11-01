@@ -1159,6 +1159,8 @@ type E2eConfig = {
     companySecretBindingHeads?: RelayEvent[];
     /** Fail the native secret-store boundary with a generic error. */
     companySecretStoreError?: boolean;
+    /** What `get_key_rescue_status` returns; absent means nothing to rescue. */
+    keyRescueStatus?: unknown;
     /** Reject secret-binding activation publishes in order. */
     companySecretActivationErrors?: string[];
     /** Relay-signed standing permission heads used by company permission E2E. */
@@ -22231,6 +22233,27 @@ export function maybeInstallE2eTauriMocks() {
           reset_failed: resetFailed,
         };
       }
+      case "get_key_rescue_status":
+        return (
+          activeConfig?.mock?.keyRescueStatus ?? {
+            offer: false,
+            lockedAgents: [],
+            attempt: null,
+          }
+        );
+      case "rescue_legacy_keys":
+        // The owner clicked "Move my agents' keys": every locked agent moved.
+        return {
+          offer: false,
+          lockedAgents: [],
+          attempt: {
+            attemptedAtUnix: 1,
+            outcome: "rescued",
+            agentsMoved: ["0".repeat(64)],
+            deviceSecretsMoved: 0,
+            identity: "keptCurrent",
+          },
+        };
       case "is_shared_identity":
         // Match the default Rust command: the E2E identity is local to the
         // mocked desktop and is not sourced from BUZZ_SHARE_IDENTITY.

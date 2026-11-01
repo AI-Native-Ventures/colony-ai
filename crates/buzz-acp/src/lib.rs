@@ -658,7 +658,7 @@ impl QueuedNormalListenerEvent {
         pool: &mut AgentPool,
         queue: &mut EventQueue,
         steer_ack_tx: &mpsc::UnboundedSender<SteerAckEvent>,
-        ledger: Option<&mut wake_ledger::WakeLedger>,
+        mut ledger: Option<&mut wake_ledger::WakeLedger>,
     ) {
         if !self.accepted || !queue.is_scope_in_flight(&self.scope) {
             return;
@@ -669,10 +669,21 @@ impl QueuedNormalListenerEvent {
         // Restart catch-up: a steered event reaches the running turn now, so it
         // is recorded as handled first. When the ledger cannot be saved it stays
         // queued and runs after this turn instead.
-        if matches!(signal, ControlSignal::Steer)
-            && !commit_to_wake_ledger(ledger, [&self.event_for_steer], queue)
-        {
-            return;
+        if matches!(signal, ControlSignal::Steer) {
+            if !commit_to_wake_ledger(ledger.as_deref_mut(), [&self.event_for_steer], queue) {
+                return;
+            }
+            // The steered event is answered, or not, with the turn it joins.
+            if let Some(ledger) = ledger {
+                if let Some(turn_id) = pool
+                    .task_map()
+                    .values()
+                    .find(|meta| meta.scope.as_ref() == Some(&self.scope))
+                    .map(|meta| meta.turn_id.clone())
+                {
+                    ledger.attach_to_turn(&turn_id, [self.event_id_hex.as_str()]);
+                }
+            }
         }
         let native_attempted = matches!(signal, ControlSignal::Steer)
             && try_native_steer(
@@ -2607,6 +2618,22 @@ async fn tokio_main() -> Result<()> {
         now_unix,
         startup_watermark,
     );
+    // "Try again" passes the oldest unanswered mention as the replay floor:
+    // bring back every mention the restarts gave up on or paused, so it is
+    // delivered now with a fresh count.
+    if let (Some(ledger), Some(floor)) = (handled_wakes.as_mut(), config.replay_floor_unix) {
+        let reopened = ledger.reopen_for_retry(floor);
+        if reopened > 0 {
+            tracing::info!(
+                floor,
+                reopened,
+                "replay floor brought back mentions the agent had stopped on"
+            );
+            if !ledger.sync(std::iter::empty(), now_unix).is_saved() {
+                tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+            }
+        }
+    }
     let catch_up_since = handled_wakes
         .as_ref()
         .and_then(wake_ledger::WakeLedger::catch_up_since);
@@ -3469,6 +3496,32 @@ async fn tokio_main() -> Result<()> {
                                 continue;
                             }
 
+                            // A mention this start gave up on after repeated
+                            // tries: say so once, in its conversation, and
+                            // leave it. "Try again" brings it back.
+                            if handled_wakes.as_mut().is_some_and(|ledger| {
+                                ledger.take_stopped_event(&buzz_event.event.id.to_hex())
+                            }) {
+                                let rest_client = ctx.rest_client.clone();
+                                let channel_id = buzz_event.channel_id;
+                                let thread_tags = queue::parse_thread_tags(&buzz_event.event);
+                                tracing::warn!(
+                                    channel_id = %channel_id,
+                                    event_id = %buzz_event.event.id.to_hex(),
+                                    "giving up on a mention after repeated interrupted turns"
+                                );
+                                tokio::spawn(async move {
+                                    pool::post_failure_notice(
+                                        &rest_client,
+                                        channel_id,
+                                        &thread_tags,
+                                        STOPPED_ON_MENTION_NOTICE,
+                                    )
+                                    .await;
+                                });
+                                continue;
+                            }
+
                             // Restart catch-up: skip an event this employee
                             // already handled, and drop a control command that
                             // only arrived because the subscription replayed
@@ -3491,6 +3544,41 @@ async fn tokio_main() -> Result<()> {
                             if config.ignore_self && buzz_event.event.pubkey.to_hex() == pubkey_hex {
                                 tracing::debug!(channel_id = %buzz_event.channel_id, "dropping self-authored event");
                                 continue;
+                            }
+
+                            // A restart delivered this mention again because its
+                            // turn was cut off. If the agent had already answered
+                            // before the process went away, settle it instead of
+                            // answering twice. A relay that cannot be asked means
+                            // one possible duplicate, never silence.
+                            let event_id_hex = buzz_event.event.id.to_hex();
+                            if handled_wakes
+                                .as_ref()
+                                .is_some_and(|ledger| ledger.is_redelivery(&event_id_hex))
+                            {
+                                let is_dm =
+                                    is_dm_channel(buzz_event.channel_id, &ctx.channel_info).await;
+                                let answered = turn_reply::agent_answered_event(
+                                    &ctx.rest_client,
+                                    &buzz_event.event,
+                                    buzz_event.channel_id,
+                                    is_dm,
+                                )
+                                .await;
+                                if answered == Some(true) {
+                                    tracing::info!(
+                                        event_id = %event_id_hex,
+                                        "redelivered mention was already answered - settled without running it again"
+                                    );
+                                    if let Some(ledger) = handled_wakes.as_mut() {
+                                        ledger.settle_answered(
+                                            &event_id_hex,
+                                            queue.pending_events(),
+                                            wake_ledger::unix_now(),
+                                        );
+                                    }
+                                    continue;
+                                }
                             }
 
                             // Check: kind:9, content "!shutdown", from owner, mentions THIS agent.
@@ -4205,7 +4293,9 @@ async fn tokio_main() -> Result<()> {
         }
     }
 
-    // Events still queued stay replayable on the next start.
+    // Events still queued stay replayable on the next start, and so do events
+    // whose turn was cut off by this shutdown: they stay in flight.
+    settle_finished_turns(handled_wakes.as_mut(), &mut queue);
     if let Some(ledger) = handled_wakes.as_mut() {
         ledger.sync(queue.pending_events(), wake_ledger::unix_now());
     }
@@ -4406,7 +4496,32 @@ fn open_wake_ledger(
     Some(ledger)
 }
 
-/// Record events as handled in the wake ledger before a turn sees them.
+/// What the agent says in a conversation when it gave up on a mention after
+/// repeated interrupted turns. Plain words for the person.
+const STOPPED_ON_MENTION_NOTICE: &str =
+    "I stopped on this message after a few tries. Say it again and I will take another look.";
+
+/// Tell the wake ledger which turns ended and whether their people were
+/// answered. Events of a turn that was not answered stay in flight.
+fn settle_finished_turns(ledger: Option<&mut wake_ledger::WakeLedger>, queue: &mut EventQueue) {
+    let finished = queue.take_finished_turns();
+    let Some(ledger) = ledger else {
+        return;
+    };
+    for (turn_id, answered) in finished {
+        let outcome = ledger.finish_turn(
+            &turn_id,
+            answered,
+            queue.pending_events(),
+            wake_ledger::unix_now(),
+        );
+        if !outcome.is_saved() {
+            tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+        }
+    }
+}
+
+/// Record events as in flight in the wake ledger before a turn sees them.
 ///
 /// Returns `true` when there is no ledger, or when the ledger now holds the
 /// events on disk. Returns `false` when it could not be saved: the caller must
@@ -4706,11 +4821,19 @@ mod wake_ledger_dispatch_tests {
         );
         assert!(queue.is_scope_in_flight(&scope));
         assert_eq!(pool.task_map().len(), 1);
-        let mut reopened = wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), now, now);
-        assert_eq!(
-            reopened.admit(&event, now),
+        // A restart after the turn started (and was cut off): the event was
+        // saved in flight before its turn, so it is delivered again.
+        let later = now + 60;
+        let mut reopened =
+            wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), later, later);
+        assert_ne!(
+            reopened.admit(&event, later),
             wake_ledger::Admission::Duplicate,
-            "the event was saved before its turn started"
+            "an unanswered event is delivered again"
+        );
+        assert!(
+            reopened.is_redelivery(&event.id.to_hex()),
+            "the event was saved in flight before its turn started"
         );
         pool.join_set.abort_all();
         let _ = std::fs::remove_dir_all(dir);
@@ -5679,6 +5802,9 @@ fn dispatch_pending(
     observer: Option<&observer::ObserverHandle>,
     mut ledger: Option<&mut wake_ledger::WakeLedger>,
 ) -> Vec<(scope::SessionScope, ThreadTags)> {
+    // Turns that ended since the last dispatch settle their events first, so
+    // the snapshot below already shows what is still unanswered.
+    settle_finished_turns(ledger.as_deref_mut(), queue);
     // Keyed by the exact session scope, not the channel: two threads dispatching
     // concurrently in one channel get distinct typing entries so completing one
     // never clears the other's indicator.
@@ -5846,6 +5972,20 @@ fn dispatch_pending(
         let (control_tx, control_rx) = tokio::sync::oneshot::channel::<ControlSignal>();
         let turn_id = Uuid::new_v4().to_string();
         let task_turn_id = turn_id.clone();
+        // The batch is in flight until this turn ends with an answer.
+        if let Some(ledger) = ledger.as_deref_mut() {
+            ledger.attach_to_turn(
+                &turn_id,
+                batch
+                    .events
+                    .iter()
+                    .chain(batch.cancelled_events.iter())
+                    .map(|queued| queued.event.id.to_hex())
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .map(String::as_str),
+            );
+        }
 
         // Assign ownership before moving the worker into the task. If this is
         // a bounded-hold fork, the new generation immediately invalidates the
@@ -5982,8 +6122,72 @@ fn silent_free_limit_notice(config: &Config, outcome: &PromptOutcome) -> Option<
     .then(|| format!("⚠️ {}", provider_failure::FREE_LIMIT_COPY))
 }
 
+/// Handle a finished prompt and note, for the wake ledger, whether the people
+/// who started the turn were answered.
+///
+/// A mention is handled only when its turn ended with an answer in the
+/// conversation, a deliberate decision that none was needed, or a failure
+/// notice the person can see. A turn that was cut off, cancelled, crashed or
+/// timed out and whose events went back to the queue leaves them in flight:
+/// the next start delivers them again (see `wake_ledger`).
 #[allow(clippy::too_many_arguments)]
 fn handle_prompt_result(
+    pool: &mut AgentPool,
+    queue: &mut EventQueue,
+    config: &Config,
+    mut result: PromptResult,
+    heartbeat_in_flight: &mut bool,
+    removed_channels: &HashSet<Uuid>,
+    crash_history: &mut [SlotCircuit],
+    respawn_tx: &mpsc::Sender<RespawnResult>,
+    respawn_tasks: &mut tokio::task::JoinSet<()>,
+    observer: Option<observer::ObserverHandle>,
+    rest_client: Option<&relay::RestClient>,
+) -> LoopAction {
+    let turn_id = result.turn_id.clone();
+    let channel_turn = matches!(result.source, PromptSource::Channel(_));
+    let finished_ok = matches!(result.outcome, PromptOutcome::Ok(_));
+    let reply_unconfirmed = result.agent.acp.take_reply_unconfirmed();
+    let batch_event_ids: Vec<String> = result
+        .batch
+        .as_ref()
+        .map(|batch| {
+            batch
+                .events
+                .iter()
+                .chain(batch.cancelled_events.iter())
+                .map(|batched| batched.event.id.to_hex())
+                .collect()
+        })
+        .unwrap_or_default();
+    let action = handle_prompt_result_inner(
+        pool,
+        queue,
+        config,
+        result,
+        heartbeat_in_flight,
+        removed_channels,
+        crash_history,
+        respawn_tx,
+        respawn_tasks,
+        observer,
+        rest_client,
+    );
+    if channel_turn {
+        // A failed turn is settled only when nothing will run its events again:
+        // a dead-lettered batch told the person, a removed channel is stale.
+        let answered = if finished_ok {
+            !reply_unconfirmed
+        } else {
+            !batch_event_ids.iter().any(|id| queue.holds_event(id))
+        };
+        queue.record_finished_turn(turn_id, answered);
+    }
+    action
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_prompt_result_inner(
     pool: &mut AgentPool,
     queue: &mut EventQueue,
     config: &Config,
@@ -11609,6 +11813,132 @@ mod error_outcome_emission_tests {
             "cancel_drain_timeout",
         )
         .await;
+    }
+
+    /// The wake ledger settles a turn's mention only when the person was
+    /// answered (or told why not): a turn that was cut off, cancelled, crashed
+    /// or timed out and whose events went back to the queue leaves them pending.
+    #[tokio::test]
+    async fn finished_turn_settles_only_when_the_person_was_answered() {
+        let make_batch = || {
+            let keys = Keys::generate();
+            let event = EventBuilder::new(Kind::Custom(9), "@Scout let's discuss")
+                .sign_with_keys(&keys)
+                .unwrap();
+            let cid = Uuid::new_v4();
+            FlushBatch {
+                channel_id: cid,
+                scope: scope::SessionScope::Conversation { channel_id: cid },
+                events: vec![BatchEvent {
+                    event,
+                    prompt_tag: "test".into(),
+                    received_at: std::time::Instant::now(),
+                }],
+                cancelled_events: vec![],
+                cancel_reason: None,
+            }
+        };
+
+        // Returns what the queue told the ledger about the finished turn.
+        let run = |outcome: PromptOutcome, batch: Option<FlushBatch>, reply_unconfirmed: bool| async move {
+            let channel_id = batch.as_ref().map_or_else(Uuid::new_v4, |b| b.channel_id);
+            let mut agent = dummy_agent(0).await;
+            agent.acp.set_reply_unconfirmed(reply_unconfirmed);
+            let mut pool = AgentPool::from_slots(vec![None]);
+            let task_id = pool.join_set.spawn(async {}).id();
+            pool.task_map_mut().insert(
+                task_id,
+                crate::pool::TaskMeta {
+                    agent_index: 0,
+                    channel_id: None,
+                    scope: None,
+                    turn_id: "turn-1".to_string(),
+                    recoverable_batch: None,
+                    control_tx: None,
+                    steer_tx: None,
+                    successful_steer_deliveries: HashSet::new(),
+                },
+            );
+            let mut queue = EventQueue::new(config::DedupMode::Queue);
+            let config = test_config();
+            let mut heartbeat_in_flight = false;
+            let removed_channels = HashSet::new();
+            let mut crash_history = vec![SlotCircuit {
+                crash_times: Vec::new(),
+                open_until: None,
+                respawn_in_flight: false,
+            }];
+            let (respawn_tx, _respawn_rx) = mpsc::channel(8);
+            let mut respawn_tasks = tokio::task::JoinSet::new();
+            let result = PromptResult {
+                agent,
+                source: PromptSource::Channel(scope::SessionScope::Conversation { channel_id }),
+                turn_id: "turn-1".to_string(),
+                outcome,
+                batch,
+            };
+            handle_prompt_result(
+                &mut pool,
+                &mut queue,
+                &config,
+                result,
+                &mut heartbeat_in_flight,
+                &removed_channels,
+                &mut crash_history,
+                &respawn_tx,
+                &mut respawn_tasks,
+                None,
+                None,
+            );
+            queue.take_finished_turns()
+        };
+        let finished = |answered: bool| vec![("turn-1".to_string(), answered)];
+
+        // An answered turn is settled.
+        assert_eq!(
+            run(
+                PromptOutcome::Ok(crate::acp::StopReason::EndTurn),
+                None,
+                false
+            )
+            .await,
+            finished(true)
+        );
+        // The turn ended but the person was left without an answer.
+        assert_eq!(
+            run(
+                PromptOutcome::Ok(crate::acp::StopReason::EndTurn),
+                None,
+                true
+            )
+            .await,
+            finished(false)
+        );
+        // Cut off, cancelled, crashed or timed out: the events went back to the
+        // queue, so the mention stays pending.
+        for (label, outcome) in [
+            ("cancelled", PromptOutcome::Cancelled),
+            ("agent exited", PromptOutcome::AgentExited),
+            ("idle timeout", PromptOutcome::Timeout(TimeoutKind::Idle)),
+        ] {
+            assert_eq!(
+                run(outcome, Some(make_batch()), false).await,
+                finished(false),
+                "{label} must leave the mention pending"
+            );
+        }
+        // A batch told to the person and dropped is settled: nothing will run it.
+        assert_eq!(
+            run(
+                PromptOutcome::Timeout(TimeoutKind::Hard {
+                    recently_active: false
+                }),
+                Some(make_batch()),
+                false
+            )
+            .await,
+            finished(true)
+        );
     }
 
     /// hard-cap timeout dead-letters immediately (no requeue); idle timeout is requeued.

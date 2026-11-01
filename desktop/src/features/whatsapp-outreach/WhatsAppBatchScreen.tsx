@@ -186,8 +186,9 @@ function BatchRow({
         </span>
         <div className="c3wa-batch-row-contact">
           <strong>
-            {contact?.displayName ??
+            {contact?.businessName ??
               leadName ??
+              contact?.displayName ??
               (row.leadId ? "Linked lead" : `WhatsApp contact ${index + 1}`)}
           </strong>
           <span>{maskWhatsAppNumber(row.to)}</span>

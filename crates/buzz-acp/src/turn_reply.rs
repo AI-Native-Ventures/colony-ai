@@ -148,6 +148,10 @@ pub(crate) struct ReplyPlan {
     /// as this turn's answer when it is top level or rooted in one of these;
     /// a message in some other thread belongs to a different session.
     roots: HashSet<String>,
+    /// Whether a top level agent message counts as an answer. True for a turn
+    /// (a DM answer is top level); false when asking about one mention in a
+    /// channel, where only a message in that mention's thread is its answer.
+    top_level_counts: bool,
 }
 
 impl ReplyPlan {
@@ -193,13 +197,27 @@ impl ReplyPlan {
             channel_id: batch.channel_id,
             destination,
             roots,
+            top_level_counts: true,
         })
+    }
+
+    /// A plan that only asks whether the agent answered `event`.
+    fn for_event(event: &nostr::Event, channel_id: Uuid, is_dm: bool) -> Self {
+        let root = queue::parse_thread_tags(event)
+            .root_event_id
+            .unwrap_or_else(|| event.id.to_hex());
+        Self {
+            channel_id,
+            destination: ReplyDestination::TopLevel,
+            roots: HashSet::from([root]),
+            top_level_counts: is_dm,
+        }
     }
 
     /// Whether an event the agent published counts as its answer to this turn.
     fn is_answer(&self, event: &nostr::Event) -> bool {
         match queue::parse_thread_tags(event).root_event_id {
-            None => true,
+            None => self.top_level_counts,
             Some(root) => self.roots.contains(&root),
         }
     }
@@ -337,6 +355,23 @@ fn build_reply(rest: &RestClient, plan: &ReplyPlan, content: &str) -> Result<nos
     .map_err(|error| format!("build failed: {error}"))?
     .sign_with_keys(&rest.keys)
     .map_err(|error| format!("sign failed: {error}"))
+}
+
+/// Did the agent already answer `event`, a mention it was woken for, before its
+/// process went away? `None` when the relay could not be asked.
+///
+/// A restart delivers an unanswered mention again; this keeps a mention whose
+/// turn did publish before the process died from being answered twice.
+pub(crate) async fn agent_answered_event(
+    rest: &RestClient,
+    event: &nostr::Event,
+    channel_id: Uuid,
+    is_dm: bool,
+) -> Option<bool> {
+    let plan = ReplyPlan::for_event(event, channel_id, is_dm);
+    agent_replied_since(rest, &plan, event.created_at.as_secs())
+        .await
+        .ok()
 }
 
 /// Did the agent publish an answer into this conversation since `since`?
@@ -688,6 +723,7 @@ mod tests {
             channel_id: Uuid::new_v4(),
             destination: ReplyDestination::TopLevel,
             roots: roots.iter().map(|root| root.to_string()).collect(),
+            top_level_counts: true,
         }
     }
 
