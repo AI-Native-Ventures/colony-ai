@@ -176,7 +176,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             api::money_rails::CONNECT_PATH,
             post(api::money_rails::connect),
         )
-        .route(api::money_rails::SECRET_PATH, post(api::money_rails::secret))
+        .route(
+            api::money_rails::SECRET_PATH,
+            post(api::money_rails::secret),
+        )
         .route(
             api::money_rails::DISCONNECT_PATH,
             post(api::money_rails::disconnect),
