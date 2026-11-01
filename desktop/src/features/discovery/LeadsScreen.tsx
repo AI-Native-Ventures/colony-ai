@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { useCustomerRecords } from "@/features/cofounder/customerHooks";
+import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { formatZar } from "./BusinessCommon";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import { useDiscoveryCampaign } from "./discoveryProvider";
@@ -25,12 +27,24 @@ import "./colony3-leads.css";
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
   const { campaign } = useDiscoveryCampaign();
+  const customerAccess = useCustomerRecordCapabilities();
+  const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
   const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const [query, setQuery] = React.useState("");
   const [stage, setStage] = React.useState("all");
   const [whatsappFilter, setWhatsappFilter] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
+  const customerRecordByPartyId = React.useMemo(
+    () =>
+      new Map(
+        (customerRecordsQuery.data ?? []).map((record) => [
+          record.partyId,
+          record,
+        ]),
+      ),
+    [customerRecordsQuery.data],
+  );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const activeProspects = context.records.prospects.filter(
     ({ record }) => record.status === "active",
@@ -165,6 +179,9 @@ export function LeadsScreen(context: LeadContext) {
               <tbody>
                 {prospects.map(({ record, eventId }) => {
                   const prospect = record.prospect;
+                  const customerRecord = customerRecordByPartyId.get(
+                    prospect.party.partyId,
+                  );
                   return (
                     <tr className="c3l-row" key={eventId}>
                       <td className="c3l-cell-business">
