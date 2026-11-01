@@ -38,6 +38,8 @@ pub mod feed;
 pub mod git_repo;
 /// Community moderation: reports, bans/timeouts, audit actions.
 pub mod moderation;
+/// Money rails: provider connections, recipients, jobs and payment notices.
+pub mod money_rails;
 /// Monthly table partition management.
 pub mod partition;
 /// Deployment-global payment intents, credit ledger, and subscriptions.

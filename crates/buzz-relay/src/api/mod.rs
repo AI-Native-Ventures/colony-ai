@@ -17,6 +17,7 @@ pub mod git;
 pub mod invites;
 pub mod media;
 pub mod mesh_demo;
+pub mod money_rails;
 pub mod nip05;
 pub mod operator;
 pub mod payments;
