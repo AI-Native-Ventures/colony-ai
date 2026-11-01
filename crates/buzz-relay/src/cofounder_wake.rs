@@ -1710,4 +1710,71 @@ mod postgres_tests {
             Some(LeadState::Reached)
         );
     }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn the_direct_message_the_relay_opens_names_only_the_owner_and_scout() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+
+        let mut query = EventQuery::for_community(fixture.tenant.community());
+        query.channel_id = Some(dm);
+        query.kinds = Some(vec![buzz_core::kind::KIND_NIP29_GROUP_METADATA as i32]);
+        query.limit = Some(10);
+        let metadata = fixture
+            .state
+            .db
+            .query_events_for_event_write(&query)
+            .await
+            .expect("metadata events");
+        assert_eq!(metadata.len(), 1, "the direct message was announced");
+        let participants = metadata[0]
+            .event
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .filter(|tag| tag[0] == "p")
+            .map(|tag| tag[1].clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = [owner.public_key().to_hex(), scout.public_key().to_hex()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            participants, expected,
+            "the relay key must never be a participant of the owner's direct message"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_wake_never_mentions_the_owner() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        let messages = wake_messages(&fixture, dm).await;
+        assert_eq!(messages.len(), 1);
+        let tags = messages[0]
+            .event
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .collect::<Vec<_>>();
+        assert!(
+            !tags
+                .iter()
+                .any(|tag| tag[0] == "p" && tag[1] == owner.public_key().to_hex()),
+            "a p tag on the owner makes the wake a mention in Activity and notifications"
+        );
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "p" && tag[1] == scout.public_key().to_hex()));
+        assert!(tags
+            .iter()
+            .any(|tag| tag[0] == "buzz:workflow-owner" && tag[1] == owner.public_key().to_hex()));
+    }
 }

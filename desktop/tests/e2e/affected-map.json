@@ -413,6 +413,15 @@
       ]
     },
     {
+      "paths": [
+        "desktop/src/shared/lib/cofounderWake.ts",
+        "desktop/src/shared/api/relayClientSession.ts",
+        "desktop/src/shared/api/tauri.ts",
+        "desktop/src-tauri/src/cofounder_wake_filter.rs"
+      ],
+      "specs": ["cofounder-wake-hidden.spec.ts", "badge.spec.ts"]
+    },
+    {
       "paths": ["desktop/src/features/sidebar/**"],
       "specs": [
         "sidebar-full-app.spec.ts",
