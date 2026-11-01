@@ -73,6 +73,14 @@ async function installPolishFixture(
   theme: "light" | "dark",
   viewport: { width: number; height: number },
 ) {
+  const clockTime = process.env.WA_POLISH_CLOCK;
+  if (clockTime) {
+    const time = new Date(clockTime);
+    if (Number.isNaN(time.getTime())) {
+      throw new Error(`Invalid WA_POLISH_CLOCK value: ${clockTime}`);
+    }
+    await page.clock.install({ time });
+  }
   await page.setViewportSize(viewport);
   await installWhatsAppMockBridge(page, theme);
   await page.addInitScript((waId) => {
@@ -247,13 +255,21 @@ async function emitRejectedBatchNotice(page: Page, index: 0 | 1) {
     ).__BUZZ_E2E_WHATSAPP_STATE__ as MockState | undefined;
     const batch = batchIndex === 0 ? state?.batch : state?.secondPendingBatch;
     if (!batch) throw new Error("Mock WhatsApp batch is missing");
+    // The reference Sales channel seeds messages through 09:50 local time.
+    // Keep these notices after that fixture when a run starts before 10:00.
+    const latestFixtureMessageAt = new Date();
+    latestFixtureMessageAt.setHours(10, 0, 0, 0);
     return (window as WhatsAppEventWindow).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
       channelName: "Sales",
       content: `Scout prepared batch ${batch.batchId} using ${batch.template}.`,
       pubkey: "deadbeef".repeat(8),
       kind: 9,
       extraTags: [["wa-notice", "batch_pending"]],
-      createdAt: Math.floor(Date.now() / 1000) + batchIndex,
+      createdAt:
+        Math.max(
+          Math.floor(Date.now() / 1000),
+          Math.floor(latestFixtureMessageAt.getTime() / 1000),
+        ) + batchIndex,
     });
   }, index);
   if (!event) throw new Error("Mock WhatsApp notice was not emitted");
