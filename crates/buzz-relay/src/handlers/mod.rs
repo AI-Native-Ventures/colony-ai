@@ -20,6 +20,8 @@ pub mod company_asks;
 pub mod company_brief;
 /// Nostr-first broker for the per-company co-founder settings record.
 pub mod company_cofounder;
+/// Who leads co-founder work, and whether the relay can reach them.
+pub(crate) mod company_cofounder_lead;
 /// Broker for the customer record (kind 47069, head kind 30679).
 pub mod company_customers;
 pub mod company_duties;

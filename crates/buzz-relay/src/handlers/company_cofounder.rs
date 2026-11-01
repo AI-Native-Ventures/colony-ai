@@ -206,7 +206,23 @@ pub(super) async fn handle(
         None,
     )
     .await;
-    if action.settings.enabled && !was_enabled {
+    // Saving the settings again while Scout is marked unreachable is the owner's
+    // "Try again": it queues a fresh start-up wake, exactly as switching on does.
+    let try_again = action.settings.enabled
+        && was_enabled
+        && match super::company_cofounder_lead::current_status(state, community_id).await {
+            Ok(status) => status.is_some_and(|status| {
+                status.state == buzz_core::company_cofounder::LeadState::Unreachable
+            }),
+            Err(error) => {
+                tracing::warn!(
+                    community = %community_id.as_uuid(),
+                    "co-founder try again: could not read the lead status: {error}"
+                );
+                false
+            }
+        };
+    if action.settings.enabled && (!was_enabled || try_again) {
         // Scout starts (or resumes) onboarding as soon as the mode goes on.
         crate::cofounder_wake::enqueue(
             state,
