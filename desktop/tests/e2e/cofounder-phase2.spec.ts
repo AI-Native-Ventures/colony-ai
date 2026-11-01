@@ -380,7 +380,9 @@ async function boot(
     companyNumbers?: MockNumbers;
     enabled?: boolean;
     identity?: RelayBridgeIdentity;
+    referenceWorkspace?: boolean;
     scoutDmChannelName?: string;
+    withoutBrief?: boolean;
     step?: CofounderOnboardingStep;
     theme?: "light" | "dark";
   } = {},
@@ -414,22 +416,27 @@ async function boot(
   );
   const relaySecret = generateSecretKey();
   const initiative = companyInitiativeRecords(options.step);
+  const referenceWorkspace = options.referenceWorkspace ?? true;
   await installMockBridge(
     page,
     {
       relaySelf: getPublicKey(relaySecret),
       companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
-      referenceWorkspace: true,
-      colony3Sidebar: true,
-      ...(options.scoutDmChannelName
+      referenceWorkspace,
+      colony3Sidebar: referenceWorkspace,
+      ...(referenceWorkspace
         ? {
             colony3Extras: {
-              patchChannels: [
-                {
-                  id: REFERENCE_CHANNEL_IDS.scoutDm,
-                  name: options.scoutDmChannelName,
-                },
-              ],
+              ...(options.scoutDmChannelName
+                ? {
+                    patchChannels: [
+                      {
+                        id: REFERENCE_CHANNEL_IDS.scoutDm,
+                        name: options.scoutDmChannelName,
+                      },
+                    ],
+                  }
+                : {}),
             },
           }
         : {}),
@@ -445,7 +452,7 @@ async function boot(
         moneyPreference: "cheapest_first",
         approvalSwitches: APPROVAL_SWITCHES,
       },
-      companyBriefRecord: initiative.brief,
+      companyBriefRecord: options.withoutBrief ? null : initiative.brief,
       companyOnboardingRecord: initiative.onboarding,
       companyOnboardingAutoAdvance: true,
       companyFunctionActionErrors: options.companyFunctionActionErrors,
@@ -665,8 +672,25 @@ test.describe("Co-founder mode Phase 2", () => {
   test("enabled co-founder mode opens the Scout direct message from settings", async ({
     page,
   }) => {
-    await boot(page, { scoutDmChannelName: "Lerato and Scout", step: "map" });
+    await boot(page, {
+      scoutDmChannelName: "Lerato and Scout",
+      step: "brief",
+      withoutBrief: true,
+    });
     await page.goto("/#/settings?section=experimental");
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(card).toBeVisible();
+    await expect(
+      card.getByText("Scout is getting to know Lerato Social", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(card).toContainText(
+      "Reading your website, leads, chats and connected tools. Scout will message you a short brief to check.",
+    );
+    const avatar = page.getByTestId("cofounder-scout-avatar-image");
+    await expect(avatar).toBeVisible();
+    await expect(avatar).toHaveAttribute("alt", "Scout avatar");
     const openScout = page.getByTestId("cofounder-open-scout");
     await expect(openScout).toBeVisible();
     await expect(openScout).toBeEnabled();
@@ -674,7 +698,40 @@ test.describe("Co-founder mode Phase 2", () => {
     await expect(page).toHaveURL(
       new RegExp(`#\\/channels\\/${REFERENCE_CHANNEL_IDS.scoutDm}$`, "u"),
     );
-    await expect(page.getByTestId("cofounder-chat-surface")).toBeVisible();
+  });
+
+  test("enabled co-founder mode creates a Scout direct message when none exists", async ({
+    page,
+  }) => {
+    await boot(page, {
+      referenceWorkspace: false,
+      step: "brief",
+      withoutBrief: true,
+    });
+    await page.goto("/#/settings?section=experimental");
+    const openScout = page.getByTestId("cofounder-open-scout");
+    await expect(openScout).toBeEnabled();
+    await openScout.click();
+    await expect(page).toHaveURL(/#\/channels\/[0-9a-f-]{36}$/u);
+    await expect(page).not.toHaveURL(
+      new RegExp(`#\\/channels\\/${REFERENCE_CHANNEL_IDS.scoutDm}$`, "u"),
+    );
+  });
+
+  test("co-founder settings hides the getting to know card after Scout sends a brief", async ({
+    page,
+  }) => {
+    await boot(page, { step: "brief" });
+    await page.goto("/#/settings?section=experimental");
+    await expect(page.getByTestId("cofounder-scout-entry")).toHaveCount(0);
+  });
+
+  test("co-founder settings hides the getting to know card after onboarding completes", async ({
+    page,
+  }) => {
+    await boot(page, { step: "complete" });
+    await page.goto("/#/settings?section=experimental");
+    await expect(page.getByTestId("cofounder-scout-entry")).toHaveCount(0);
   });
 
   test("Scout guides onboarding one step at a time and then shows a plan in chat", async ({
@@ -1104,7 +1161,8 @@ test.describe("Co-founder mode Phase 2", () => {
       {
         surface: "settings",
         route: "/#/settings?section=experimental",
-        step: "complete" as const,
+        step: "brief" as const,
+        withoutBrief: true,
       },
       {
         surface: "plan",
@@ -1150,6 +1208,7 @@ test.describe("Co-founder mode Phase 2", () => {
             await boot(page, {
               theme,
               step: item.step,
+              ...(item.surface === "settings" ? { withoutBrief: true } : {}),
               identity: TEST_IDENTITIES.tyler,
               ...(needsYouPreview
                 ? {
@@ -1190,6 +1249,9 @@ test.describe("Co-founder mode Phase 2", () => {
                 await boot(viewportPage, {
                   theme,
                   step: item.step,
+                  ...(item.surface === "settings"
+                    ? { withoutBrief: true }
+                    : {}),
                   identity: TEST_IDENTITIES.tyler,
                   ...(needsYouPreview
                     ? {
