@@ -625,6 +625,8 @@ pub fn run() {
             get_profile,
             update_profile,
             update_profile_at_relay,
+            get_profile_at_relay,
+            copy_avatar_to_active_community,
             get_user_profile,
             get_users_batch,
             get_user_notes,
