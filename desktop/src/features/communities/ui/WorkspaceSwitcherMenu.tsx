@@ -238,7 +238,7 @@ export function WorkspaceSwitcherMenu({
   const [open, setOpen] = React.useState(false);
   const menuContentRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!open || isMobile) return;
     menuContentRef.current
       ?.querySelector<HTMLElement>("[role='menuitem']")
