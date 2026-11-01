@@ -17,13 +17,14 @@ const CARD_QUERY_LIMIT = 200;
 type ScopeCheck = () => void;
 
 export class MoneyRailsApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string | null = null,
-  ) {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null = null) {
     super(message);
     this.name = "MoneyRailsApiError";
+    this.status = status;
+    this.code = code;
   }
 }
 
