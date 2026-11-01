@@ -1249,7 +1249,7 @@ const WHATSAPP_EXTRA_GUESTHOUSE_LEADS = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.map(
       location,
       "Guesthouse",
       contactName,
-      name + " is an independently run stay with a warm local welcome.",
+      `${name} is an independently run stay with a warm local welcome.`,
       index % 2 === 0 ? "Public website" : "Business directory",
       74 - index,
       "new",
@@ -1336,6 +1336,7 @@ export function referenceSalesRecordEvents(
     longLeadNames?: boolean;
     whatsappGuesthouses?: boolean;
     leadCount?: number;
+    missingLeadFields?: boolean;
   } = {},
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
@@ -1403,8 +1404,12 @@ export function referenceSalesRecordEvents(
         : `${name} ${String(index + 1).padStart(3, "0")}`
       : name;
     const displayName =
-      options.longLeadNames && !isSyntheticLead && slug === "cedar-co"
-        ? REFERENCE_LONG_LEAD_NAME
+      options.longLeadNames &&
+      !isSyntheticLead &&
+      (slug === "cedar-co" || slug === "sunday-edit")
+        ? slug === "sunday-edit"
+          ? `${REFERENCE_LONG_LEAD_NAME} collection`
+          : REFERENCE_LONG_LEAD_NAME
         : generatedName;
     const generatedSlug = isSyntheticLead
       ? `${slug}-${String(index + 1).padStart(3, "0")}`
@@ -1442,14 +1447,19 @@ export function referenceSalesRecordEvents(
       industry: options.whatsappGuesthouses ? "Hospitality" : "Home & Living",
       vertical,
       fitScore: score,
-      potentialMonthlyValueMinor: options.whatsappGuesthouses
-        ? null
-        : value * 100,
+      potentialMonthlyValueMinor:
+        options.whatsappGuesthouses ||
+        (options.missingLeadFields && slug === "gather-house")
+          ? null
+          : value * 100,
       website:
         options.whatsappGuesthouses && slug === "gather-house"
           ? null
           : `https://${generatedSlug}.example`,
-      contactName,
+      contactName:
+        options.missingLeadFields && slug === "gather-house"
+          ? null
+          : contactName,
       location,
       email: `hello@${generatedSlug}.example`,
       phone: null,

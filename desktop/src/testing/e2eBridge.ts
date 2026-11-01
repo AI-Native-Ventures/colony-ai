@@ -692,10 +692,12 @@ type E2eConfig = {
     referenceWorkspace?: boolean;
     /** Rename the active reference business for a focused visual fixture. */
     referenceWorkspaceBusinessName?: string;
-    /** Seed one deliberately long lead name for picker overflow assertions. */
+    /** Seed long lead names for row and picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
     /** Add bounded synthetic lead rows for dense Leads screen proof. */
     referenceWorkspaceLeadCount?: number;
+    /** Leave one reference lead's contact and value blank for visual proof. */
+    referenceWorkspaceMissingLeadFields?: boolean;
     whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
@@ -5973,6 +5975,8 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
       leadCount: config.mock?.referenceWorkspaceLeadCount,
+      missingLeadFields:
+        config.mock?.referenceWorkspaceMissingLeadFields === true,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;

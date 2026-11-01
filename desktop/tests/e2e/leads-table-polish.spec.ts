@@ -1,17 +1,17 @@
-import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
-import { planeTreeCustomerRecord } from "../../src/testing/cofounderCustomerFixtures";
-import { REFERENCE_PROSPECT_IDS } from "../../src/testing/e2eReferenceWorkspace";
+import { cedarCafeLeadRecord } from "../../src/testing/cofounderCustomerFixtures";
+import {
+  REFERENCE_LONG_LEAD_NAME,
+  REFERENCE_PROSPECT_IDS,
+} from "../../src/testing/e2eReferenceWorkspace";
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const FORM_FIELD_ID = REFERENCE_PROSPECT_IDS["form-field"];
-const PROOF_DIR = "test-results/leads-table-proof";
-
 function leadsFixture() {
   const relaySecret = generateSecretKey();
   const input = {
@@ -19,7 +19,7 @@ function leadsFixture() {
     ayaPubkey: TEST_IDENTITIES.bob.pubkey,
     ownerPubkey: OWNER_PUBKEY,
   };
-  const formField = planeTreeCustomerRecord(input);
+  const formField = cedarCafeLeadRecord(input);
   formField.partyId = FORM_FIELD_ID;
   formField.leadId = FORM_FIELD_ID;
   formField.displayName = "Form & Field";
@@ -31,6 +31,7 @@ function leadsFixture() {
     referenceWorkspaceRole: "owner" as const,
     referenceWorkspaceLongLeadNames: true,
     referenceWorkspaceLeadCount: 108,
+    referenceWorkspaceMissingLeadFields: true,
     relayRole: "owner" as const,
     relayRequiresMembership: true,
     relayMembers: [{ pubkey: OWNER_PUBKEY, role: "owner" as const }],
@@ -72,7 +73,7 @@ async function openLeads(page: Page) {
 }
 
 test.describe("Leads table polish", () => {
-  test.use({ viewport: { width: 1440, height: 900 } });
+  test.use({ viewport: { width: 1440, height: 960 } });
 
   test("renders the 108 lead proof fixture in the approved five-column rhythm", async ({
     page,
@@ -92,11 +93,21 @@ test.describe("Leads table polish", () => {
 
     const longName = table
       .locator("tbody tr")
-      .filter({ hasText: "Cedar & Co." })
+      .filter({ hasText: REFERENCE_LONG_LEAD_NAME })
       .first()
       .locator(".c3l-business-text strong");
     await expect(longName).toHaveCSS("white-space", "nowrap");
     await expect(longName).toHaveCSS("text-overflow", "ellipsis");
+
+    const unsetLead = table
+      .locator("tbody tr")
+      .filter({ hasText: "Gather House" })
+      .first();
+    await expect(unsetLead.locator(".c3l-cell-contact")).toHaveText("Not set");
+    await expect(unsetLead.locator(".c3l-cell-amount")).toHaveText("Not set");
+    await expect(
+      unsetLead.locator(".c3l-cell-contact .c3l-empty-value"),
+    ).toHaveCSS("font-weight", "500");
 
     const formField = table
       .locator("tbody tr")
@@ -114,7 +125,6 @@ test.describe("Leads table polish", () => {
       }),
     ).toBeVisible();
 
-    mkdirSync(PROOF_DIR, { recursive: true });
     const lightPath = testInfo.outputPath("1440-light.png");
     await page.screenshot({ path: lightPath });
     await testInfo.attach("leads-1440-light", {
@@ -145,7 +155,12 @@ test.describe("Leads table polish", () => {
       .filter({ hasText: "Form & Field" })
       .first();
 
-    await row.locator("td").nth(3).click();
+    const emptyCell = await row.locator("td").nth(3).boundingBox();
+    if (!emptyCell) throw new Error("The lead row amount cell is unavailable.");
+    await page.mouse.click(
+      emptyCell.x + emptyCell.width / 2,
+      emptyCell.y + emptyCell.height / 2,
+    );
 
     await expect(page).toHaveURL(new RegExp(`/sales/lead/${FORM_FIELD_ID}$`));
     await expect(
