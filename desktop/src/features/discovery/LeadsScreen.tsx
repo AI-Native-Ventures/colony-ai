@@ -79,11 +79,14 @@ export function LeadsScreen(context: LeadContext) {
         .join(" ")
         .toLocaleLowerCase()
         .includes(normalizedQuery);
+    const customerRecord = customerRecordByPartyId.get(prospect.party.partyId);
     const matchesStage =
       stage === "all" ||
-      (stage === "new"
-        ? prospect.qualification === "unreviewed"
-        : prospect.stage === stage);
+      (customerRecord?.stage === "client"
+        ? stage === "client"
+        : stage === "new"
+          ? prospect.qualification === "unreviewed"
+          : prospect.stage === stage);
     const contact = findWhatsAppContactForLead(
       record.prospectId,
       contactsQuery.data ?? [],
@@ -169,6 +172,7 @@ export function LeadsScreen(context: LeadContext) {
           >
             <option value="all">All stages</option>
             <option value="new">New</option>
+            <option value="client">Client</option>
             {STAGES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -301,18 +305,22 @@ export function LeadsScreen(context: LeadContext) {
                         )}
                       </td>
                       <td>
-                        <LeadPill
-                          tone={toneForStage(
-                            prospect.stage,
-                            prospect.qualification,
-                          )}
-                        >
-                          {labelForStage(
-                            prospect.stage,
-                            prospect.qualification,
-                            "New",
-                          )}
-                        </LeadPill>
+                        {customerRecord?.stage === "client" ? (
+                          <LeadPill tone="green">Client</LeadPill>
+                        ) : (
+                          <LeadPill
+                            tone={toneForStage(
+                              prospect.stage,
+                              prospect.qualification,
+                            )}
+                          >
+                            {labelForStage(
+                              prospect.stage,
+                              prospect.qualification,
+                              "New",
+                            )}
+                          </LeadPill>
+                        )}
                       </td>
                       <td className="c3l-cell-amount">
                         {formatZar(prospect.potentialMonthlyValueMinor)}

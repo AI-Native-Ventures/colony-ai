@@ -114,8 +114,15 @@ async function emitDiscussionFixture(page: Page) {
   });
 }
 
-async function openDesk(page: Page, theme: WhatsAppProofTheme) {
-  await installWhatsAppMockBridge(page, theme, { deskFixture: true });
+async function openDesk(
+  page: Page,
+  theme: WhatsAppProofTheme,
+  businessName = "Horizon Labs",
+) {
+  await installWhatsAppMockBridge(page, theme, {
+    businessName,
+    deskFixture: true,
+  });
   await installLogoPreview(page);
   if ((page.viewportSize()?.width ?? 1440) < 600) {
     await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
@@ -162,7 +169,7 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         { label: "1440", width: 1440, height: 1600 },
       ]) {
         await page.setViewportSize(viewport);
-        await openDesk(page, theme);
+        await openDesk(page, theme, "Northbank Studio");
         await expect(page.locator(".c3wa-desk-page-head")).toBeVisible();
         await expect(page.locator(".c3wa-desk-page-head")).toBeInViewport();
         await expect(
@@ -188,8 +195,25 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
         await page.getByTestId("channel-view-tab-chats").click();
         await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
         await capture(page, `chats-${suffix}.png`, viewport.width);
+        if (viewport.width === 1440) {
+          await page.getByTestId("whatsapp-contact-27821237135").click();
+          await expect(
+            page.getByTestId("whatsapp-reply-input"),
+          ).toHaveAttribute(
+            "placeholder",
+            "Reply on WhatsApp as Northbank Studio",
+          );
+          await capture(
+            page,
+            `chats-conversation-${suffix}.png`,
+            viewport.width,
+          );
+        }
         if (viewport.width === 390) {
           await page.getByTestId("whatsapp-contact-27821237135").click();
+          await expect(
+            page.getByTestId("whatsapp-reply-input"),
+          ).toHaveAttribute("placeholder", "Reply on WhatsApp…");
           const openRecord = page.getByRole("button", {
             name: "Record",
             exact: true,
@@ -242,6 +266,70 @@ test("captures every Outreach desk tab at phone and desktop sizes in both themes
       }
     } finally {
       await context.close();
+    }
+  }
+});
+
+test("captures the C11 connect state with the active business name", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  await mkdir(proofDirectory, { recursive: true });
+
+  for (const theme of ["light", "dark"] as const) {
+    for (const viewport of [
+      { label: "390", width: 390, height: 844 },
+      { label: "1440", width: 1440, height: 900 },
+    ]) {
+      const context = await browser.newContext({ viewport });
+      try {
+        const page = await context.newPage();
+        await installWhatsAppMockBridge(page, theme, {
+          businessName: "Northbank Studio",
+          connected: false,
+        });
+        await gotoWhatsAppScreen(
+          page,
+          `/channels/${OUTREACH_CHANNEL_ID}`,
+          "whatsapp=disconnected",
+        );
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () =>
+                (
+                  window as Window & {
+                    __BUZZ_E2E_WHATSAPP_STATE__?: {
+                      status?: { connected?: boolean };
+                    };
+                  }
+                ).__BUZZ_E2E_WHATSAPP_STATE__?.status?.connected,
+            ),
+          )
+          .toBe(false);
+        await page.getByTestId("channel-view-tab-chats").click();
+        const connectState = page.locator(".c3wa-outreach-empty");
+        await expect(
+          connectState.getByRole("heading", {
+            name: "WhatsApp is not connected",
+          }),
+        ).toBeVisible();
+        await expect(connectState).toContainText(
+          "Connect your Northbank Studio number in Settings to open Outreach.",
+        );
+        await expect(connectState).not.toContainText("Horizon Labs");
+        await waitForAnimations(page);
+        await page.screenshot({
+          path: path.join(
+            proofDirectory,
+            `c11-connect-${viewport.label}-${theme}.png`,
+          ),
+          fullPage: true,
+          animations: "disabled",
+        });
+      } finally {
+        await context.close();
+      }
     }
   }
 });
