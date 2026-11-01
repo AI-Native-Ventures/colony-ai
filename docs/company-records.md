@@ -56,6 +56,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30675 | Co-founder onboarding head | Relay signed, replaceable | Co-founder onboarding |
 | 30678 | Scorecard, function goal and weekly review head | Relay signed, replaceable | Co-founder numbers |
 | 30679 | Customer record head | Relay signed, replaceable | Co-founder customer record |
+| 30680 | Co-founder lead status head | Relay signed, replaceable | Co-founder mode |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
