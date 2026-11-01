@@ -4953,8 +4953,11 @@ async fn guarantee_turn_reply(
     stop_reason: &StopReason,
 ) {
     let final_text = agent.acp.take_final_assistant_text();
+    // A turn nobody waits on, or one the agent or the harness answered, is
+    // done. Only a person left with nothing keeps the mention in flight.
+    let mut unconfirmed = false;
     if let Some(plan) = plan {
-        crate::turn_reply::ensure_reply(
+        let outcome = crate::turn_reply::ensure_reply(
             &ctx.rest_client,
             plan,
             turn_started_unix,
@@ -4962,7 +4965,9 @@ async fn guarantee_turn_reply(
             &final_text,
         )
         .await;
+        unconfirmed = outcome == crate::turn_reply::ReplyOutcome::Failed;
     }
+    agent.acp.set_reply_unconfirmed(unconfirmed);
 }
 
 fn log_stop_reason(source: &PromptSource, stop_reason: &StopReason) {

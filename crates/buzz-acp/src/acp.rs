@@ -155,6 +155,10 @@ pub struct AcpClient {
     first_token_ms: Option<u64>,
     /// The assistant message the running turn ended on (see `turn_reply`).
     final_text: crate::turn_reply::FinalTextCapture,
+    /// The turn ended and the person was left without an answer: the agent
+    /// published nothing and the harness could not post one either. The wake
+    /// ledger keeps the mention in flight so a restart delivers it again.
+    reply_unconfirmed: bool,
     own_process_group: bool,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
@@ -614,6 +618,7 @@ impl AcpClient {
             prompt_started: None,
             first_token_ms: None,
             final_text: crate::turn_reply::FinalTextCapture::default(),
+            reply_unconfirmed: false,
             own_process_group,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
@@ -658,6 +663,17 @@ impl AcpClient {
     /// its final tool call, never thinking or earlier narration.
     pub(crate) fn take_final_assistant_text(&mut self) -> String {
         self.final_text.take()
+    }
+
+    /// Record whether the turn that just ended left the person unanswered.
+    pub(crate) fn set_reply_unconfirmed(&mut self, unconfirmed: bool) {
+        self.reply_unconfirmed = unconfirmed;
+    }
+
+    /// Whether the turn that just ended left the person unanswered. Reading it
+    /// clears it.
+    pub(crate) fn take_reply_unconfirmed(&mut self) -> bool {
+        std::mem::take(&mut self.reply_unconfirmed)
     }
 
     /// Take the bounded assistant reply captured by the connection proof.

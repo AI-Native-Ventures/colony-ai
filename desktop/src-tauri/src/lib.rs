@@ -620,6 +620,8 @@ pub fn run() {
             persist_current_identity,
             store_company_secret,
             delete_company_secret,
+            get_key_rescue_status,
+            rescue_legacy_keys,
             get_profile,
             update_profile,
             update_profile_at_relay,
