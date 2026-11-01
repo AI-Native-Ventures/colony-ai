@@ -85,6 +85,7 @@ function MapFunctionNode({
               className="size-full rounded-full"
               instance={member.managedAgent?.avatarUrl}
               name={name}
+              pubkey={member.pubkey}
               personaId={member.managedAgent?.personaId}
               profile={avatarUrl}
             />
@@ -93,6 +94,7 @@ function MapFunctionNode({
               avatarUrl={avatarUrl}
               className="size-full rounded-full"
               label={name}
+              pubkey={member.pubkey}
             />
           )}
           <span

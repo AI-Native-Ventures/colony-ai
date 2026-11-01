@@ -15,6 +15,7 @@ export type AskThreadOption = {
   startedBy: string;
   startedByAvatarUrl: string | null;
   startedByIsAgent: boolean;
+  startedByPubkey: string;
   when: string;
 };
 
@@ -292,6 +293,7 @@ export function AskDestinationStep({
                         avatarUrl={thread.startedByAvatarUrl}
                         isAgent={thread.startedByIsAgent}
                         label={thread.startedBy}
+                        pubkey={thread.startedByPubkey}
                         size={thread.startedByIsAgent ? 30 : 28}
                       />
                     </label>

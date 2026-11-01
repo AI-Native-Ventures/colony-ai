@@ -820,6 +820,7 @@ export function TopbarSearch({
               resultProfiles?.[result.hit.pubkey.toLowerCase()]?.avatarUrl ??
               null
             }
+            pubkey={result.hit.pubkey}
             className="c3s-avatar c3s-avatar-message"
             label={messageAuthorLabel ?? ""}
             shape={
@@ -832,6 +833,7 @@ export function TopbarSearch({
         ) : result.kind === "user" ? (
           <ProfileAvatar
             avatarUrl={result.user.avatarUrl}
+            pubkey={result.user.pubkey}
             className="c3s-avatar"
             label={userDisplayName ?? result.user.pubkey}
             shape={result.user.isAgent ? "squircle" : "circle"}
@@ -839,6 +841,16 @@ export function TopbarSearch({
         ) : result.kind === "channel" && result.channel.channelType === "dm" ? (
           <ProfileAvatar
             avatarUrl={null}
+            pubkey={
+              result.channel.participantPubkeys.find((pubkey) =>
+                knownAgentPubkeys.has(normalizePubkey(pubkey)),
+              ) ??
+              result.channel.participantPubkeys.find(
+                (pubkey) =>
+                  normalizePubkey(pubkey) !==
+                  normalizePubkey(currentPubkey ?? ""),
+              )
+            }
             className="c3s-avatar"
             label={channelDisplayName ?? ""}
             shape={dmChannelHasAgent(result.channel) ? "squircle" : "circle"}

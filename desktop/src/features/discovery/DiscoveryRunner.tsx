@@ -42,6 +42,7 @@ export function RunnerAvatar({
         avatarUrl={profile.avatarUrl}
         className="h-full w-full"
         displayName={runner.name}
+        pubkey={runner.pubkey}
         shape={profile.isAgent ? "squircle" : "circle"}
       />
     </span>

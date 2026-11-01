@@ -123,6 +123,7 @@ export function RunnerMark({
       avatarUrl={profile?.avatarUrl ?? null}
       className={`c3l-runner-avatar c3l-runner-avatar-${size}`}
       displayName={runner.name}
+      pubkey={runner.pubkey}
       shape={profile?.isAgent ? "squircle" : "circle"}
       size="sm"
     />

@@ -200,6 +200,9 @@ export async function setup({ lifecycle = false, ...startup } = {}) {
     "@/features/channels/useCanAddChannelMembers": {
       useCanAddChannelMembers: () => true,
     },
+    "@/features/profile/hooks": {
+      useUsersBatchQuery: () => ({ data: { profiles: {} } }),
+    },
     "@/features/channels/lib/channelMemberAdmission": {},
     "@/features/messages/lib/dmThreadAgentMentionError": {
       dmThreadAgentMentionError: () => null,

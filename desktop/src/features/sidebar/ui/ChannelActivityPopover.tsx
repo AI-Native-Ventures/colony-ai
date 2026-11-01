@@ -79,6 +79,7 @@ function ThreadPreviewRow({
           avatarUrl={item.avatarUrl}
           className="size-7 shrink-0"
           displayName={item.senderLabel}
+          pubkey={item.item.pubkey}
           shape={isAgent ? "squircle" : "circle"}
           size="md"
         />
@@ -145,6 +146,7 @@ function WorkingAgentRow({
         className="size-8.5 shrink-0"
         displayName={name}
         initialsLabel={initialsLabel}
+        pubkey={pubkey}
         shape="squircle"
         size="md"
       />

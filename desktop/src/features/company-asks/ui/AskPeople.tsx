@@ -30,11 +30,13 @@ const AVATAR_SIZE_CLASS = {
  */
 export function AskAvatar({
   avatarUrl,
+  pubkey,
   isAgent = false,
   label,
   size = 28,
 }: {
   avatarUrl?: string | null;
+  pubkey?: string | null;
   isAgent?: boolean;
   label: string;
   size?: 24 | 28 | 30;
@@ -45,6 +47,7 @@ export function AskAvatar({
         avatarUrl={avatarUrl ?? null}
         className={cn("ask3-av", AVATAR_SIZE_CLASS[size])}
         label={label}
+        pubkey={pubkey}
         shape={isAgent ? "squircle" : "circle"}
       />
     </span>
