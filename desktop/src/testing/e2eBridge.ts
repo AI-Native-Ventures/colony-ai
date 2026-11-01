@@ -689,6 +689,8 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
+    /** Override the active workspace name in the reference mock. */
+    referenceWorkspaceBusinessName?: string;
     /** Seed one deliberately long lead name for picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
     whatsappGuesthouses?: boolean;
@@ -5952,9 +5954,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, {
     sidebarShell,
     colony3,
-    ...(config.mock?.whatsappGuesthouses
-      ? { businessName: "Horizon Labs" }
-      : {}),
+    businessName:
+      config.mock?.referenceWorkspaceBusinessName ??
+      (config.mock?.whatsappGuesthouses ? "Horizon Labs" : undefined),
   });
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
