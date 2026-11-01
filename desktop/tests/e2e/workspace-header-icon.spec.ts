@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings } from "../helpers/settings";
 
 const MOCK_PUBKEY = "deadbeef".repeat(8);
 const RELAY_URL = (
@@ -334,6 +335,19 @@ test("header falls back to the saved business logo when the community icon fails
   await expect(fallbackLogo).toBeVisible();
   await expect(brandMark).toHaveAttribute("data-source", "profile");
   await expect(brandMark.locator(".colony-sidebar-brand-dot")).toHaveCount(0);
+});
+
+test("red proof: Settings Account business card renders the cached workspace icon", async ({
+  page,
+}) => {
+  await seedWorkspace(page, { icon: COMMUNITY_ICON });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await openSettings(page, "profile");
+
+  const businessCard = page.getByTestId("settings-account-business-card");
+  await expect(businessCard).toBeVisible();
+  await expect(businessCard.locator(".cs-business-mark img")).toHaveCount(1);
 });
 
 test("returning-user business list prefers the cached community icon over its saved logo", async ({
