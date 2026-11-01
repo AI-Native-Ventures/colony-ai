@@ -60,7 +60,7 @@ test("owner hires from a role and the configured draft survives reload", async (
   });
 
   await page.goto("/#/team");
-  await page.getByRole("button", { name: "Hire employee" }).click();
+  await page.getByRole("button", { name: "Hire an agent" }).click();
   await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit pack" })).toHaveCount(0);
   await expect(
@@ -72,18 +72,28 @@ test("owner hires from a role and the configured draft survives reload", async (
     .click();
 
   const name = page.getByTestId("hire-employee-name");
-  const allowance = page.getByTestId("hire-weekly-allowance");
-  const workerModel = page.getByTestId("hire-worker-model");
+  const title = page.getByTestId("hire-title");
+  const instructionScope = page.getByTestId("hire-respond-to");
+  const workerModel = page.locator(
+    '[data-testid="hire-ai-model-option"]:checked',
+  );
   await expect(name).toBeVisible();
   await name.fill("Mina");
-  await allowance.fill("8");
+  await title.fill("Hospitality research lead");
+  await instructionScope.selectOption("anyone");
   await expect(workerModel).toHaveValue(
     JSON.stringify(["buzz-agent", "openai", "gpt-5.5"]),
   );
 
   await page.reload();
   await expect(page.getByTestId("hire-employee-name")).toHaveValue("Mina");
-  await expect(page.getByTestId("hire-weekly-allowance")).toHaveValue("8");
+  await expect(page.getByTestId("hire-title")).toHaveValue(
+    "Hospitality research lead",
+  );
+  await expect(page.getByTestId("hire-respond-to")).toHaveValue("anyone");
+  await expect(
+    page.locator('[data-testid="hire-ai-model-option"]:checked'),
+  ).toHaveValue(JSON.stringify(["buzz-agent", "openai", "gpt-5.5"]));
   await page.getByTestId("hire-review").click();
 
   await expect(page.getByTestId("hire-review-form")).toBeVisible();
@@ -143,9 +153,9 @@ test("a business with no role personas is offered the built-in roles", async ({
   const socialCard = page.getByTestId(
     "hire-role-built-in-role-social-media-manager",
   );
-  await expect(socialCard).toContainText("Client social content");
-  await expect(socialCard).toContainText("Social publishing");
-  await expect(socialCard).toContainText("External action");
+  await expect(socialCard).toContainText(
+    "Plans, writes and schedules social content for the company's clients.",
+  );
 
   const rolePersonas = () =>
     page.evaluate(async () => {
@@ -163,7 +173,10 @@ test("a business with no role personas is offered the built-in roles", async ({
       }>;
       return personas
         .filter((persona) => persona.company_role)
-        .map((persona) => persona.display_name);
+        .map((persona) => ({
+          display_name: persona.display_name,
+          company_role: persona.company_role,
+        }));
     });
   expect(await rolePersonas()).toEqual([]);
 
@@ -171,7 +184,20 @@ test("a business with no role personas is offered the built-in roles", async ({
   await socialCard.getByRole("button", { name: "Configure" }).dblclick();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
   await expect(page).toHaveURL(/#\/hire\/configure\?.*personaId=/);
-  expect(await rolePersonas()).toEqual(["Social media manager"]);
+  const configuredRoles = await rolePersonas();
+  expect(configuredRoles.map((persona) => persona.display_name)).toEqual([
+    "Social media manager",
+  ]);
+  expect(configuredRoles[0]?.company_role).toEqual(
+    expect.objectContaining({
+      job: "Client social content",
+      skills: ["Content planning", "Captions", "Scheduling"],
+      tools: [
+        { name: "Web search", risk: "low" },
+        { name: "Social publishing", risk: "high" },
+      ],
+    }),
+  );
 
   // The role is now the business's own: it is listed once, and a second hire
   // reuses the persona instead of adding another.
@@ -191,7 +217,10 @@ test("a business with no role personas is offered the built-in roles", async ({
     .getByRole("button", { name: "Configure" })
     .click();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
-  expect(await rolePersonas()).toEqual(["Social media manager"]);
+  const reusedRoles = await rolePersonas();
+  expect(reusedRoles.map((persona) => persona.display_name)).toEqual([
+    "Social media manager",
+  ]);
 });
 
 test("a member cannot open the role catalog", async ({ page }) => {
