@@ -94,6 +94,7 @@ Searches are not a company spend (spec section 14). They are bounded by the mont
 | --- | --- | --- |
 | `buzz-agent run-once` | The only model call passes an empty tool list; no MCP server, no browser, no shell, no relay client is built. A tool call the model makes anyway is refused and costs a round; the refused call is never replayed. At most 8 rounds, 16000 tokens, 900 seconds. The only side effect is the output file. | **unit `a_worker_run_offers_no_tools_and_refuses_a_tool_call` and `a_worker_run_that_only_calls_tools_ends_failed` (new)**, driving the real `run_once::answer` against a stub provider and reading the posted request bodies |
 | `colony workers spawn` | at most 5 running per employee; record written before launch | `spawn_rejects_sixth_concurrent_worker` |
+| `colony workers spawn` | one request is one run: a second spawn while one of the employee's runs is live is refused unless `--another`; `--wait` reads the run for at most 90 seconds and the run is always supervised by a detached process, so a cut-off shell cannot leave a run looking alive | `a_second_run_is_refused_while_one_is_running`, `wait_returns_the_result_once_the_run_ends` |
 | Worker record 47062 | signer is the employee or an owner or admin; creates no member, position or agent | e2e `agent_writes_own_worker_record`, `agent_cannot_write_another_agents_worker_record` |
 | Worker steps in a plan | cannot spend, cannot carry an outreach or spend approval point | unit `a_worker_step_can_never_spend_or_send` |
 

@@ -7,10 +7,10 @@ Your persistent workspace. Created once by the Colony desktop app. The static co
 | Dir | Purpose |
 |-----|---------|
 | `GUIDES/` | Actionable runbooks synthesized from research |
-| `PLANS/` | Planning documents for work in progress |
+| `PLANS/` | Your own working notes. A plan, playbook, goal or weekly review the owner approves is a record, not a file: see Company Records below |
 | `RESEARCH/` | Findings, notes, and reference material |
 | `WORK_LOGS/` | Session logs , what was tried, learned, decided |
-| `OUTBOX/` | Shareable docs for external readers (no frontmatter) |
+| `OUTBOX/` | Shareable docs for external readers (no frontmatter). Never a plan, goal, playbook or weekly review |
 | `REPOS/` | Source checkouts. Work in an existing local checkout when one exists; clone here only when none does |
 | `.scratch/` | Temporary working files , treat as disposable between sessions |
 
@@ -43,6 +43,7 @@ created: 2026-01-15
 - **Don't overwrite** , append or create new files; don't silently clobber existing work
 - **`.scratch/` is disposable** , don't rely on it across sessions
 - **Stay on task** , only stage files relevant to your current work
+- **Company records are commands, not files** , plans, playbook changes, goals and the weekly review are proposed with `colony` (see Company Records below). A file in `PLANS/`, `GUIDES/` or `OUTBOX/` never reaches the owner
 
 ## Git Commit Attribution
 
