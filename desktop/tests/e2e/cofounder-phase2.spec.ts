@@ -23,6 +23,7 @@ import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { TEST_IDENTITIES } from "../helpers/bridge";
 import type {
   MockCofounderLeadStatus,
+  MockManagedAgentSeed,
   MockNumbers,
 } from "../../src/testing/e2eBridge";
 
@@ -388,6 +389,12 @@ async function boot(
     referenceWorkspace?: boolean;
     scoutDmChannelName?: string;
     withoutBrief?: boolean;
+    /** Scout has not begun: there is no onboarding record yet. */
+    withoutOnboarding?: boolean;
+    /** Agents on this computer, as the host lists them. */
+    managedAgents?: MockManagedAgentSeed[];
+    /** Errors the next starts of a managed agent fail with, in order. */
+    startManagedAgentErrors?: string[];
     step?: CofounderOnboardingStep;
     theme?: "light" | "dark";
   } = {},
@@ -462,8 +469,16 @@ async function boot(
       },
       companyLeadStatus: options.companyLeadStatus,
       companyBriefRecord: options.withoutBrief ? null : initiative.brief,
-      companyOnboardingRecord: initiative.onboarding,
+      companyOnboardingRecord: options.withoutOnboarding
+        ? null
+        : initiative.onboarding,
       companyOnboardingAutoAdvance: true,
+      ...(options.managedAgents
+        ? { managedAgents: options.managedAgents }
+        : {}),
+      ...(options.startManagedAgentErrors
+        ? { startManagedAgentErrors: options.startManagedAgentErrors }
+        : {}),
       companyFunctionActionErrors: options.companyFunctionActionErrors,
       companyPlans: [
         novemberPlan({
@@ -662,6 +677,62 @@ async function capture(page: Page, name: string, fullPage = true) {
   await page.screenshot({ fullPage, path: file });
 }
 
+/** A stopped Scout made by the Welcome flow, with "start with the app" off. */
+function stoppedScout(): MockManagedAgentSeed {
+  return {
+    pubkey: REFERENCE_AGENTS.scout.pubkey,
+    name: "Scout",
+    personaId: "builtin:fizz",
+    status: "stopped",
+    startOnAppLaunch: false,
+  };
+}
+
+async function commandCalls(page: Page, command: string) {
+  return page.evaluate((commandName) => {
+    const bridgeWindow = window as Window & {
+      __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{ command: string }>;
+    };
+    return (
+      bridgeWindow.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+        (entry) => entry.command === commandName,
+      ).length ?? 0
+    );
+  }, command);
+}
+
+async function expectCofounderSettingsPublished(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const events =
+          (
+            window as Window & {
+              __BUZZ_E2E_SIGNED_EVENTS__?: Array<{
+                kind: number;
+                content?: string;
+              }>;
+            }
+          ).__BUZZ_E2E_SIGNED_EVENTS__ ?? [];
+        return events.some((event) => {
+          if (event.kind !== 47060 || !event.content) return false;
+          try {
+            return (
+              (
+                JSON.parse(event.content) as {
+                  settings?: { enabled?: boolean };
+                }
+              ).settings?.enabled === true
+            );
+          } catch {
+            return false;
+          }
+        });
+      }),
+    )
+    .toBe(true);
+}
+
 async function expectNeedsYouContentLoaded(page: Page) {
   await expect(
     page.getByTestId(`cofounder-plan-${NOVEMBER_PLAN_ID}`),
@@ -781,6 +852,124 @@ test.describe("Co-founder mode Phase 2", () => {
         }),
       )
       .toBe(true);
+  });
+
+  test("co-founder mode starts a stopped Scout by itself and shows the card before Scout has begun", async ({
+    page,
+  }) => {
+    // 2 Nov 2026: Scout was stopped by an update and nothing started it, so
+    // the owner had to message Scout. Here nothing is sent and nothing clicked.
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      step: "brief",
+      withoutBrief: true,
+      withoutOnboarding: true,
+      businessName: "Colony",
+      managedAgents: [stoppedScout()],
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    // The card is there although no onboarding record exists yet.
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(
+      card.getByText("Scout is getting to know Colony", { exact: true }),
+    ).toBeVisible();
+    // Scout was started, and told to start with the app from now on.
+    await expect
+      .poll(() => commandCalls(page, "start_managed_agent"))
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => commandCalls(page, "set_managed_agent_start_on_app_launch"))
+      .toBeGreaterThan(0);
+  });
+
+  test("a stalled Scout card with no onboarding record retries by publishing co-founder mode as enabled", async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "brief",
+      withoutBrief: true,
+      withoutOnboarding: true,
+      businessName: "Colony",
+      managedAgents: [{ ...stoppedScout(), status: "running" }],
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(
+      card.getByText("Scout is getting to know Colony"),
+    ).toBeVisible();
+    await page.clock.fastForward(3 * 60 * 1000);
+    await expect(card.getByText("Scout has not started yet")).toBeVisible();
+    await page.getByTestId("cofounder-retry-scout").click();
+    await expectCofounderSettingsPublished(page);
+  });
+
+  test("a Scout that cannot start says so with one Try again, which starts it", async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "brief",
+      withoutBrief: true,
+      withoutOnboarding: true,
+      businessName: "Colony",
+      managedAgents: [stoppedScout()],
+      startManagedAgentErrors: ["Claude Code is not installed."],
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(card.getByText("Scout could not start")).toBeVisible();
+    await expect(card).toContainText("Claude Code is not installed.");
+    const startsBefore = await commandCalls(page, "start_managed_agent");
+
+    await page.getByTestId("cofounder-retry-scout").click();
+
+    // One press: co-founder mode is saved again (a fresh wake) and Scout starts.
+    await expectCofounderSettingsPublished(page);
+    await expect
+      .poll(() => commandCalls(page, "start_managed_agent"))
+      .toBeGreaterThan(startsBefore);
+    await expect(card.getByText("Scout could not start")).toHaveCount(0);
+    await expect(
+      card.getByText("Scout is getting to know Colony"),
+    ).toBeVisible();
+  });
+
+  test("switching co-founder mode off and on again starts a Scout that could not start", async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "brief",
+      withoutBrief: true,
+      withoutOnboarding: true,
+      businessName: "Colony",
+      managedAgents: [stoppedScout()],
+      startManagedAgentErrors: ["Claude Code is not installed."],
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(card.getByText("Scout could not start")).toBeVisible();
+    const startsBefore = await commandCalls(page, "start_managed_agent");
+
+    const toggle = page.getByTestId("cofounder-mode-toggle");
+    await toggle.click();
+    await expect(card).toHaveCount(0);
+    await expect(toggle).toBeEnabled();
+    await toggle.click();
+
+    // No click on the card and no message to Scout: the switch is enough.
+    await expect
+      .poll(() => commandCalls(page, "start_managed_agent"))
+      .toBeGreaterThan(startsBefore);
+    await expect(card.getByText("Scout could not start")).toHaveCount(0);
   });
 
   test("the durable wake status explains why Scout could not be reached", async ({
