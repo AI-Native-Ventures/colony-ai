@@ -1160,10 +1160,7 @@ async function newProject(flags) {
     fail("Pass --name with a title under 120 characters.", "BAD_NAME");
   const runtime = String(flags.runtime ?? "");
   if (!RUNTIMES.has(runtime))
-    fail(
-      "Runtime must be claude, codex, opencode, or colony.",
-      "BAD_RUNTIME",
-    );
+    fail("Runtime must be claude, codex, opencode, or colony.", "BAD_RUNTIME");
   const brief = String(flags.brief ?? "");
   if (!brief.trim() || Buffer.byteLength(brief) > 16 * 1024)
     fail(
@@ -1292,10 +1289,7 @@ async function runProject(id, flags) {
       "DESIGN_APPROVED",
     );
   }
-  if (
-    manifest.status === "ready_for_review" &&
-    manifest.review === "pending"
-  ) {
+  if (manifest.status === "ready_for_review" && manifest.review === "pending") {
     if (!manifest.channel) {
       fail(
         "Create the project with --channel <current-channel-uuid> so Colony can post the owner review card.",
