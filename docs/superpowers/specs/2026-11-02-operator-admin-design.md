@@ -76,3 +76,8 @@ Proposed: extend `admin-web` (it already has the NIP-98 operator login and the r
 1. Where should the admin live: the existing admin web app on its own operator address (recommended), or an owner-only section inside the Colony app?
 2. People who bring their own AI (Claude Code, Codex, OpenCode) run it on their Mac, so the server never sees those tokens or sessions. Should the desktop send anonymous daily counts (sessions, tokens, model; never content), or do we measure only the free AI gateway?
 3. Should anyone besides you get admin access at launch?
+
+## Owner answers (2 Nov 2026)
+
+- Boards approved: "happy with the UI mockups". Build as shown.
+- Coordinator defaults until the owner says otherwise: the admin lives in the existing admin web app at its own operator-only address (not inside the Colony app); AI usage counts the free AI gateway only, no new usage reporting from desktops (own-AI use stays uncounted).

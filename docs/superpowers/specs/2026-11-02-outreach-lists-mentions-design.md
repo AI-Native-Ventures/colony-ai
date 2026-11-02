@@ -125,3 +125,10 @@ Skill (`nest_skill.md`): a short "Mentions" section: every `buzz://list|campaign
 2. May Scout make a list on its own when it helps (for example "the 20 best fits from this campaign"), or only when you ask?
 3. Is it right to number templates in the picker by their order in Settings > WhatsApp > Templates, so "template 1" always means the first one there?
 4. Is moving Service / month off the Leads table to the lead page fine, so Phone and WhatsApp status fit?
+
+## Owner answers (2 Nov 2026)
+
+- Boards approved: "happy with the UI mockups". Build as shown.
+- Outreach lists are visible and editable by everyone with Sales access (people and agents).
+- Scout may create and name a list on its own when it helps, and says so; sending still always needs the owner's approval.
+- Templates are referenced by NAME only (mention or pick by name). No numbering such as "template 1".
