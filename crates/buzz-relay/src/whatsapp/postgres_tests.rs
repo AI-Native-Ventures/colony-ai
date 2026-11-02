@@ -760,11 +760,7 @@ async fn an_unopenable_token_is_recorded_with_backoff_inline_and_in_sender_repai
     assert_eq!(second.error.as_deref(), Some("token_unavailable"));
     assert!(second.retry_at.is_some_and(|at| at > repair_at));
     assert_eq!(
-        fx.graph
-            .tokens_seen
-            .lock()
-            .expect("token lock")
-            .len(),
+        fx.graph.tokens_seen.lock().expect("token lock").len(),
         1,
         "media is not sent to Graph without an opened token"
     );
