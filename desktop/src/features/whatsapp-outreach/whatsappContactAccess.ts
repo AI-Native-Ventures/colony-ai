@@ -11,3 +11,7 @@ export function canManageWhatsAppContact(input: {
       (input.isManagedAgent && input.ownerPubkey?.trim()),
   );
 }
+
+/** Shown beside a batch's Approve and Reject when the person cannot use them. */
+export const BATCH_MANAGE_NOTE =
+  "Only owners and admins can approve or reject a batch.";
