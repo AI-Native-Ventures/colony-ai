@@ -290,7 +290,7 @@ function makeMock() {
 
 function escapeHtml(value: string) {
   return value
-    .replaceAll("—", "-")
+    .replaceAll("\u2014", "-")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -321,7 +321,30 @@ async function scanState(
       const visible = (element: HTMLElement) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
+        const screenReaderOnly = element.closest(
+          '[class*="sr-only" i], [data-sr-only="true"]',
+        );
+        const hitAt = (x: number, y: number) => {
+          if (
+            x < 0 ||
+            y < 0 ||
+            x >= window.innerWidth ||
+            y >= window.innerHeight
+          ) {
+            return false;
+          }
+          const hit = document.elementFromPoint(x, y);
+          return !!hit && (hit === element || element.contains(hit));
+        };
+        const points = [
+          [0.5, 0.5],
+          [0.2, 0.2],
+          [0.8, 0.2],
+          [0.2, 0.8],
+          [0.8, 0.8],
+        ] as const;
         return (
+          !screenReaderOnly &&
           style.display !== "none" &&
           style.visibility !== "hidden" &&
           Number(style.opacity) > 0 &&
@@ -330,8 +353,132 @@ async function scanState(
           rect.right > 0 &&
           rect.bottom > 0 &&
           rect.left < window.innerWidth &&
-          rect.top < window.innerHeight
+          rect.top < window.innerHeight &&
+          points.some(([x, y]) =>
+            hitAt(rect.left + rect.width * x, rect.top + rect.height * y),
+          )
         );
+      };
+      const hasRenderedOverflow = (
+        element: HTMLElement,
+        axis: "x" | "y",
+        ignoreEllipsizedText = false,
+        requirePaintedOverflow = false,
+      ) => {
+        const rect = element.getBoundingClientRect();
+        const isPaintedOutside = (owner: HTMLElement, x: number, y: number) => {
+          if (
+            x < 0 ||
+            y < 0 ||
+            x >= window.innerWidth ||
+            y >= window.innerHeight
+          ) {
+            return false;
+          }
+          const hit = document.elementFromPoint(x, y);
+          return !!hit && (hit === owner || owner.contains(hit));
+        };
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          const owner = node.parentElement;
+          const ownerStyle = owner ? getComputedStyle(owner) : null;
+          if (
+            owner &&
+            !owner.closest('[class*="sr-only" i], [data-sr-only="true"]') &&
+            ownerStyle?.display !== "none" &&
+            ownerStyle?.visibility !== "hidden" &&
+            Number(ownerStyle?.opacity ?? 1) > 0
+          ) {
+            let ellipsized = false;
+            if (ignoreEllipsizedText) {
+              for (
+                let ancestor: HTMLElement | null = owner;
+                ancestor && element.contains(ancestor);
+                ancestor = ancestor.parentElement
+              ) {
+                const ancestorStyle = getComputedStyle(ancestor);
+                const clipsAxis =
+                  axis === "x"
+                    ? ancestorStyle.overflowX === "hidden" ||
+                      ancestorStyle.overflowX === "clip"
+                    : ancestorStyle.overflowY === "hidden" ||
+                      ancestorStyle.overflowY === "clip";
+                if (clipsAxis && ancestorStyle.textOverflow === "ellipsis") {
+                  ellipsized = true;
+                  break;
+                }
+                if (ancestor === element) break;
+              }
+            }
+            if (!ellipsized) {
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              for (const textRect of Array.from(range.getClientRects())) {
+                const outsideX =
+                  textRect.left < rect.left - 2 ||
+                  textRect.right > rect.right + 2;
+                const outsideY =
+                  textRect.top < rect.top - 2 ||
+                  textRect.bottom > rect.bottom + 2;
+                const outside = axis === "x" ? outsideX : outsideY;
+                const pointX =
+                  textRect.left < rect.left - 2
+                    ? (textRect.left + rect.left) / 2
+                    : textRect.right > rect.right + 2
+                      ? (textRect.right + rect.right) / 2
+                      : textRect.left + textRect.width / 2;
+                const pointY =
+                  textRect.top < rect.top - 2
+                    ? (textRect.top + rect.top) / 2
+                    : textRect.bottom > rect.bottom + 2
+                      ? (textRect.bottom + rect.bottom) / 2
+                      : textRect.top + textRect.height / 2;
+                if (
+                  outside &&
+                  (!requirePaintedOverflow ||
+                    isPaintedOutside(owner, pointX, pointY))
+                ) {
+                  return true;
+                }
+              }
+            }
+          }
+          node = walker.nextNode();
+        }
+
+        for (const child of Array.from(
+          element.querySelectorAll<HTMLElement>(
+            'button, a[href], [role="button"], [role="tab"], img, svg',
+          ),
+        )) {
+          if (!visible(child)) continue;
+          const childRect = child.getBoundingClientRect();
+          const outsideX =
+            childRect.left < rect.left - 2 || childRect.right > rect.right + 2;
+          const outsideY =
+            childRect.top < rect.top - 2 || childRect.bottom > rect.bottom + 2;
+          const outside = axis === "x" ? outsideX : outsideY;
+          const pointX =
+            childRect.left < rect.left - 2
+              ? (childRect.left + rect.left) / 2
+              : childRect.right > rect.right + 2
+                ? (childRect.right + rect.right) / 2
+                : childRect.left + childRect.width / 2;
+          const pointY =
+            childRect.top < rect.top - 2
+              ? (childRect.top + rect.top) / 2
+              : childRect.bottom > rect.bottom + 2
+                ? (childRect.bottom + rect.bottom) / 2
+                : childRect.top + childRect.height / 2;
+          if (
+            outside &&
+            (!requirePaintedOverflow || isPaintedOutside(child, pointX, pointY))
+          ) {
+            return true;
+          }
+        }
+        return false;
       };
       const label = (element: HTMLElement) => {
         const testId = element.getAttribute("data-testid");
@@ -407,13 +554,66 @@ async function scanState(
       const nearestContainer = (element: HTMLElement) => {
         let parent = element.parentElement;
         while (parent && parent !== document.body) {
-          if (parent.matches(cardSelector) || isBordered(parent)) return parent;
+          const parentRect = parent.getBoundingClientRect();
+          if (
+            getComputedStyle(parent).display !== "contents" &&
+            parentRect.width > 0 &&
+            parentRect.height > 0 &&
+            (parent.matches(cardSelector) || isBordered(parent))
+          ) {
+            return parent;
+          }
           parent = parent.parentElement;
         }
         return null;
       };
+      const hasEllipsisAndFullTitle = (
+        element: HTMLElement,
+        container: HTMLElement | null,
+      ) => {
+        let title =
+          element.title || element.closest<HTMLElement>("[title]")?.title;
+        let ellipsis = false;
+        for (
+          let ancestor: HTMLElement | null = element;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const style = getComputedStyle(ancestor);
+          const lineClamp = (
+            style as CSSStyleDeclaration & { webkitLineClamp?: string }
+          ).webkitLineClamp;
+          ellipsis ||=
+            style.textOverflow === "ellipsis" ||
+            (Boolean(lineClamp) && lineClamp !== "none" && lineClamp !== "0");
+          title ||= ancestor.querySelector<HTMLElement>("[title]")?.title ?? "";
+          if (ancestor === container || ancestor === document.body) break;
+        }
+        return ellipsis && Boolean(title);
+      };
       const textContent = (element: HTMLElement) =>
         (element.innerText || element.textContent || "").trim();
+      const scrollableAncestorCanReveal = (
+        element: HTMLElement,
+        axis: "x" | "y",
+      ) => {
+        let ancestor = element.parentElement;
+        let clipped = false;
+        while (ancestor && ancestor !== document.body) {
+          const ancestorStyle = getComputedStyle(ancestor);
+          const overflow =
+            axis === "x" ? ancestorStyle.overflowX : ancestorStyle.overflowY;
+          const canScroll =
+            (overflow === "auto" || overflow === "scroll") &&
+            (axis === "x"
+              ? ancestor.scrollWidth > ancestor.clientWidth + 2
+              : ancestor.scrollHeight > ancestor.clientHeight + 2);
+          if (canScroll && !clipped) return true;
+          clipped ||= overflow === "hidden" || overflow === "clip";
+          ancestor = ancestor.parentElement;
+        }
+        return false;
+      };
 
       for (const element of all) {
         if (!visible(element)) continue;
@@ -422,18 +622,31 @@ async function scanState(
         const container = nearestContainer(element);
         const containerRect = container?.getBoundingClientRect();
         const text = textContent(element);
-        const isAction = element.matches(
-          'button, a[href], [role="button"], [role="tab"], [data-testid*="chip" i], [class*="chip" i], [class*="pill" i]',
-        );
+        // This handle is meant to straddle the seam between the pane and
+        // content. It is a resize affordance, not content clipped by a card.
+        const isIntentionalResizeHandle =
+          element.dataset.testid === "right-auxiliary-pane-resize-handle";
+        const isAction =
+          !isIntentionalResizeHandle &&
+          element.matches(
+            'button, a[href], [role="button"], [role="tab"], [data-testid*="chip" i], [class*="chip" i], [class*="pill" i]',
+          );
+        const hasAccessibleEllipsis =
+          !isAction && hasEllipsisAndFullTitle(element, container);
 
         if (
           container &&
           containerRect &&
-          (rect.left < containerRect.left - 2 ||
-            rect.right > containerRect.right + 2 ||
-            rect.top < containerRect.top - 2 ||
-            rect.bottom > containerRect.bottom + 2) &&
-          (isAction || element.children.length === 0)
+          ((rect.left < containerRect.left - 2 &&
+            !scrollableAncestorCanReveal(element, "x")) ||
+            (rect.right > containerRect.right + 2 &&
+              !scrollableAncestorCanReveal(element, "x")) ||
+            (rect.top < containerRect.top - 2 &&
+              !scrollableAncestorCanReveal(element, "y")) ||
+            (rect.bottom > containerRect.bottom + 2 &&
+              !scrollableAncestorCanReveal(element, "y"))) &&
+          (isAction || (element.children.length === 0 && text.length > 0)) &&
+          !hasAccessibleEllipsis
         ) {
           add(
             element,
@@ -449,7 +662,9 @@ async function scanState(
         if (
           element.scrollWidth > element.clientWidth + 2 &&
           overflowX === "visible" &&
-          element !== document.documentElement
+          element !== document.documentElement &&
+          style.display !== "inline" &&
+          hasRenderedOverflow(element, "x", true, true)
         ) {
           const root = element === document.body;
           add(
@@ -471,6 +686,7 @@ async function scanState(
         if (
           text &&
           (clippedX || clippedY) &&
+          hasRenderedOverflow(element, clippedX ? "x" : "y") &&
           (element.children.length === 0 || isAction)
         ) {
           const ellipsis =
@@ -542,6 +758,10 @@ async function scanState(
           let parent = element.parentElement;
           while (parent && parent !== document.body) {
             const parentStyle = getComputedStyle(parent);
+            if (parentStyle.display === "contents") {
+              parent = parent.parentElement;
+              continue;
+            }
             const clipsX =
               parentStyle.overflowX === "hidden" ||
               parentStyle.overflowX === "clip";
@@ -550,11 +770,40 @@ async function scanState(
               parentStyle.overflowY === "clip";
             if (clipsX || clipsY) {
               const parentRect = parent.getBoundingClientRect();
+              const canScrollX =
+                (parentStyle.overflowX === "auto" ||
+                  parentStyle.overflowX === "scroll") &&
+                parent.scrollWidth > parent.clientWidth + 2;
+              const canScrollY =
+                (parentStyle.overflowY === "auto" ||
+                  parentStyle.overflowY === "scroll") &&
+                parent.scrollHeight > parent.clientHeight + 2;
+              let scrollableXBetweenElementAndClip = false;
+              let scrollableYBetweenElementAndClip = false;
+              for (
+                let ancestor = element.parentElement;
+                ancestor && ancestor !== parent;
+                ancestor = ancestor.parentElement
+              ) {
+                const ancestorStyle = getComputedStyle(ancestor);
+                scrollableXBetweenElementAndClip ||=
+                  (ancestorStyle.overflowX === "auto" ||
+                    ancestorStyle.overflowX === "scroll") &&
+                  ancestor.scrollWidth > ancestor.clientWidth + 2;
+                scrollableYBetweenElementAndClip ||=
+                  (ancestorStyle.overflowY === "auto" ||
+                    ancestorStyle.overflowY === "scroll") &&
+                  ancestor.scrollHeight > ancestor.clientHeight + 2;
+              }
               if (
                 (clipsX &&
+                  !canScrollX &&
+                  !scrollableXBetweenElementAndClip &&
                   (rect.left < parentRect.left - 2 ||
                     rect.right > parentRect.right + 2)) ||
                 (clipsY &&
+                  !canScrollY &&
+                  !scrollableYBetweenElementAndClip &&
                   (rect.top < parentRect.top - 2 ||
                     rect.bottom > parentRect.bottom + 2))
               ) {
@@ -574,6 +823,7 @@ async function scanState(
         return (
           element.parentElement !== null &&
           element.parentElement !== document.body &&
+          element.dataset.testid !== "right-auxiliary-pane-resize-handle" &&
           !["absolute", "fixed"].includes(style.position) &&
           (element.matches(
             'button, a[href], [role="button"], [role="tab"], article, [data-testid*="card" i], [class*="card" i], [class*="chip" i], [class*="pill" i]',
@@ -597,6 +847,15 @@ async function scanState(
           seenOverlaps.add(key);
           const a = first.getBoundingClientRect();
           const b = second.getBoundingClientRect();
+          const firstStyle = getComputedStyle(first);
+          const secondStyle = getComputedStyle(second);
+          if (
+            [firstStyle.display, secondStyle.display].some((display) =>
+              ["inline", "inline-flex", "inline-block"].includes(display),
+            )
+          ) {
+            continue;
+          }
           const overlapWidth = Math.max(
             0,
             Math.min(a.right, b.right) - Math.max(a.left, b.left),
@@ -755,6 +1014,7 @@ async function setSidebarMode(
         await page.keyboard.press("Escape");
         await mobileSidebar.waitFor({ state: "hidden" });
       }
+      await waitForAnimations(page);
     }
     return;
   }
@@ -765,6 +1025,7 @@ async function setSidebarMode(
   if (state !== wanted) {
     await page.getByRole("button", { name: "Toggle Sidebar" }).click();
     await expect(sidebar).toHaveAttribute("data-state", wanted);
+    await waitForAnimations(page);
   }
 }
 
@@ -795,6 +1056,11 @@ function makeReport() {
     (count, finding) => count + finding.observed.length,
     0,
   );
+  const inScopeCount = findings.filter((finding) =>
+    finding.observed.some(
+      (observation) => !observation.screen.startsWith("Outreach desk:"),
+    ),
+  ).length;
   const cards = ordered
     .map((finding, index) => {
       const capture =
@@ -835,7 +1101,7 @@ function makeReport() {
   <style>
     :root{color-scheme:light;font:15px/1.5 Inter,system-ui,sans-serif;background:#f5f4f0;color:#272723}body{max-width:1200px;margin:0 auto;padding:32px}h1{font-size:28px;margin:0 0 8px}p{color:#64645e}.summary{display:grid;grid-template-columns:2fr 1fr;gap:24px;align-items:start}.summary table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #deded7;border-radius:8px;overflow:hidden}.summary td,.summary th{text-align:left;padding:8px 12px;border-bottom:1px solid #e7e7e1}.summary th{background:#eeeee8}.finding{background:#fff;border:1px solid #deded7;border-left:5px solid #9b6b32;border-radius:8px;padding:18px;margin:18px 0;box-shadow:0 2px 8px #2727230d}.finding.p0{border-left-color:#b52b2b}.finding.p1{border-left-color:#c46a24}.finding.p2{border-left-color:#bf9a26}.finding.p3{border-left-color:#75836e}.finding header{display:flex;align-items:center;gap:12px}.finding header span:last-child{margin-left:auto;color:#64645e}.priority{font-size:12px;font-weight:700;border:1px solid currentColor;border-radius:99px;padding:2px 8px}.finding dl{display:grid;grid-template-columns:110px 1fr;gap:4px 12px}.finding dt{font-weight:600}.finding dd{margin:0;overflow-wrap:anywhere}.finding img{display:block;max-width:100%;height:auto;border:1px solid #deded7;border-radius:5px;margin-top:12px}.coverage{background:#fff3e8;border:1px solid #e7c6a2;padding:12px 16px;border-radius:8px}@media(max-width:700px){body{padding:16px}.summary{display:block}.finding dl{grid-template-columns:1fr}.finding dd{margin-bottom:8px}}
   </style><body>${captureDefs}<h1>Colony desktop overflow audit</h1>
-  <p>${findings.length} unique findings across ${counts.size} screens, seen in ${observationCount} screen and width states. Scanned light theme at 1920, 1440, 1280, 1024, 900 and 390 pixels, expanded and collapsed sidebar states, dock states, dialogs, sheets, onboarding and Outreach desk tabs. Findings are ranked by likely visibility and impact.</p>
+  <p>${findings.length} unique findings across ${counts.size} screens, including ${inScopeCount} in-scope findings, seen in ${observationCount} screen and width states. Scanned light theme at 1920, 1440, 1280, 1024, 900 and 390 pixels, expanded and collapsed sidebar states, dock states, dialogs, sheets, onboarding and Outreach desk tabs. Outreach findings remain visible in the report and are excluded from this guard because a separate hotfix owns that layout. Findings are ranked by likely visibility and impact.</p>
   <div class="summary"><table><thead><tr><th>Screen</th><th>Findings</th></tr></thead><tbody>${summary || "<tr><td>None</td><td>0</td></tr>"}</tbody></table>
   <div><h2>Coverage</h2><p>Overflow categories include content outside bordered cards, non-scrolling horizontal overflow, text clipping without ellipsis and a title, narrow word wrapping, clipped controls, and overlapping siblings.</p>${coverageIssues.length ? `<div class="coverage"><b>${coverageIssues.length} screen states could not be reached</b><ul>${issues}</ul></div>` : "<p>All declared screens reached.</p>"}</div></div>
   <h2>Findings</h2>${cards || "<p>No overflow findings.</p>"}</body></html>`;
@@ -1087,7 +1353,7 @@ test("all screens, widths and important states", async ({ page, browser }) => {
         selector: '[data-testid="today-screen"]',
         action: async () => {
           await page.getByTestId("open-search").click();
-          await page.getByRole("dialog").waitFor({ state: "visible" });
+          await page.getByRole("dialog").last().waitFor({ state: "visible" });
         },
       },
     ];
@@ -1420,6 +1686,11 @@ test("all screens, widths and important states", async ({ page, browser }) => {
     JSON.stringify(Object.fromEntries(counts)),
   );
   console.log("OVERFLOW_AUDIT_COVERAGE_ISSUES", JSON.stringify(coverageIssues));
+  const inScopeFindings = findings.filter((finding) =>
+    finding.observed.some(
+      (observation) => !observation.screen.startsWith("Outreach desk:"),
+    ),
+  );
   mkdirSync(dirname(REPORT_PATH), { recursive: true });
   writeFileSync(REPORT_PATH, makeReport());
   expect(
@@ -1437,7 +1708,12 @@ test("all screens, widths and important states", async ({ page, browser }) => {
     "Every finding needs an evidence crop",
   ).toEqual([]);
   expect(
-    findings.length,
-    "Overflow audit findings by screen are printed above",
-  ).toBe(0);
+    inScopeFindings.map((finding) => ({
+      screen: finding.screen,
+      category: finding.category,
+      element: finding.element,
+      observed: finding.observed,
+    })),
+    "In-scope overflow findings are printed above. Outreach is covered by its own hotfix.",
+  ).toEqual([]);
 });

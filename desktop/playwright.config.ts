@@ -121,6 +121,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/colony3-*.spec.ts",
+        "**/overflow-audit.spec.ts",
         "**/mac-update-cards.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/agent-avatar-everywhere.spec.ts",

@@ -250,10 +250,16 @@ export function ClientsScreen() {
                               <PersonAvatar person={owner} size={32} />
                             ) : null}
                             <span className="b3-stack b3-grow">
-                              <span className="b3-work-title">
+                              <span
+                                className="b3-work-title"
+                                title={sharedWork.title}
+                              >
                                 {sharedWork.title}
                               </span>
-                              <span className="b3-meta">
+                              <span
+                                className="b3-meta"
+                                title={owner?.name ?? "Unassigned"}
+                              >
                                 {owner?.name ?? "Unassigned"}
                               </span>
                             </span>
