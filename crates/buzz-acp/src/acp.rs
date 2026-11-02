@@ -823,6 +823,8 @@ impl AcpClient {
             params["_meta"]["sessionTitle"] = serde_json::Value::String(title.to_owned());
         }
         if self.standard_adapter == Some(StandardAdapterKind::Claude) {
+            // Intentional red proof: simulate a regression that drops Colony MCP.
+            params["mcpServers"] = serde_json::json!([]);
             // Keep agents out of macOS privacy-protected folders. claude-agent-acp
             // merges these with its own disallowed tools, and deny rules win even
             // under bypassPermissions.
