@@ -226,6 +226,7 @@ export default defineConfig({
         "**/voice-note.spec.ts",
         "**/agent-readiness-screenshots.spec.ts",
         "**/edit-agent.spec.ts",
+        "**/agent-runtime-switch.spec.ts",
         "**/doctor-cta-screenshots.spec.ts",
         "**/pubkey-display-screenshots.spec.ts",
         "**/file-attachment.spec.ts",
