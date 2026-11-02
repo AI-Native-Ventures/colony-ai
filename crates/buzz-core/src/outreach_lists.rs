@@ -172,7 +172,7 @@ pub enum ListOp {
 impl ListOp {
     /// Operations that only a person may perform; agents hold the `bot` role and may not.
     pub fn people_only(self) -> bool {
-        matches!(self, ListOp::Archive | ListOp::Unarchive)
+        matches!(self, ListOp::Unarchive)
     }
 
     fn label(self) -> &'static str {
