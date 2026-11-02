@@ -12,7 +12,7 @@ The exact `claude-artifacts` and DesignSync tools were not observed from a logge
 
 - Desktop starts the configured ACP harness with no extra command-line flags. For a Claude runtime it sets `BUZZ_ACP_AGENT_COMMAND` to the resolved `claude-agent-acp` executable and `BUZZ_ACP_AGENT_ARGS` to an empty string. When `claude` is found, it also sets `CLAUDE_CODE_EXECUTABLE` to that path. See [runtime.rs](../desktop/src-tauri/src/managed_agents/runtime.rs#L375) and [runtime.rs](../desktop/src-tauri/src/managed_agents/runtime.rs#L619).
 - The runtime catalog recognizes `claude-agent-acp` and `claude-code-acp`, uses `claude` as the underlying CLI, and does not configure a separate MCP command for Claude. See [catalog.rs](../desktop/src-tauri/src/managed_agents/discovery/catalog.rs#L50).
-- In this environment the resolved adapter is `@agentclientprotocol/claude-agent-acp` 0.74.0, installed as a Node script, and its dependency is `@anthropic-ai/claude-agent-sdk` 0.3.257. The resolved Claude Code CLI is 2.1.316. The adapter receives no launch flags in Colony's managed path.
+- In this environment the resolved adapter is `@agentclientprotocol/claude-agent-acp` 0.74.0, installed as a Node script, and its dependency is `@anthropic-ai/claude-agent-sdk` 0.3.257. The resolved Claude Code CLI is 2.1.316. The adapter receives no launch flags in Colony's managed path. The adapter [v0.74.0 source](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.74.0/src/acp-agent.ts) and [package manifest](https://github.com/agentclientprotocol/claude-agent-acp/blob/v0.74.0/package.json) identify the inspected implementation and dependency.
 - The adapter's SDK options use `settingSources: ["user", "project", "local"]`. Its MCP map merges servers configured by the user with servers sent in ACP `session/new`. It does not set `strictMCPConfig`. The same source version preserves ACP `disallowedTools` and appends its own restrictions.
 - `buzz-acp` sends Colony MCP servers in `session/new`. The scoped Colony browser server is added when the managed browser runtime is available. The Claude runtime has no global `buzz-dev-mcp` command today, so the claim here is limited to servers that Colony actually passes into the session. See [pool.rs](../crates/buzz-acp/src/pool.rs#L1556) and [acp.rs](../crates/buzz-acp/src/acp.rs#L797).
 - Colony does not select Claude OAuth or API-key mode in the launch builder. The child inherits the desktop process environment and home directory; the adapter passes that environment to the Claude Agent SDK. The active auth method is therefore resolved by Claude Code from the user's normal environment and settings.
@@ -30,10 +30,10 @@ ACP initialize/session/new: completed
 Session MCP tools/list: colony_probe
 Tool listing prompt: no model response; network is intentionally denied
 Auth: dummy API key, disposable HOME, outbound network denied
-Owner Claude files and Keychain: sandbox denied access
+Owner Claude, Colony, OpenCode, Keychain, Application Support, and app paths: sandbox denied access
 ```
 
-The fixture proves the adapter starts and connects to an ACP-provided MCP server. It does not prove the signed-in account's Claude Design tools are visible. The harness did not copy or read owner credentials, `.claude` files, Keychain entries, or Colony application data. It made no Anthropic API request, spent nothing, and published nothing.
+The fixture proves the adapter starts and connects to an ACP-provided MCP server. It does not prove the signed-in account's Claude Design tools are visible. The harness did not copy or read owner credentials, `.claude` files, Keychain entries, or Colony application data. Its sandbox denies reads and writes to the owner's Claude files, Colony data directories, OpenCode data directories, Keychain, Application Support and `/Applications/Colony.app`. It made no Anthropic API request, spent nothing, and published nothing.
 
 ## What the owner would need for a live check
 

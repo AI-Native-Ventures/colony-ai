@@ -87,8 +87,13 @@ if (!isolated) {
   const claude = findExecutable("claude");
   const blockedPaths = [
     join(hostHome, ".claude"),
+    join(hostHome, ".colony"),
+    join(hostHome, ".buzz"),
+    join(hostHome, ".config", "opencode"),
+    join(hostHome, ".local", "share", "opencode"),
     join(hostHome, "Library", "Keychains"),
     join(hostHome, "Library", "Application Support"),
+    "/Applications/Colony.app",
   ];
   const profile = [
     "(version 1)",
@@ -283,4 +288,7 @@ console.log(`ACP initialize/session/new: ${sessionId ? "completed" : "failed"}`)
 console.log(`Session MCP tools/list: ${listedTools}`);
 console.log(`Tool listing prompt: ${promptStatus}`);
 console.log("Auth: dummy API key, disposable HOME, outbound network denied");
-console.log("Owner Claude files and Keychain: sandbox denied access");
+console.log("Owner Claude, Colony, OpenCode, Keychain, Application Support, and app paths: sandbox denied access");
+if (!sessionId || !mcpCalls.includes("tools/list")) {
+  process.exitCode = 1;
+}
