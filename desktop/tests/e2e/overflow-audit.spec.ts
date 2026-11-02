@@ -741,12 +741,13 @@ async function setSidebarMode(
     const open = await mobileSidebar.isVisible().catch(() => false);
     const shouldOpen = mode === "expanded";
     if (open !== shouldOpen) {
-      const trigger = page.locator(
-        '[data-testid="app-top-chrome"] [data-sidebar="trigger"]',
-      );
-      await trigger.click();
-      if (shouldOpen) await mobileSidebar.waitFor({ state: "visible" });
-      else await mobileSidebar.waitFor({ state: "hidden" });
+      if (shouldOpen) {
+        await page.getByTestId("mobile-open-navigation").click();
+        await mobileSidebar.waitFor({ state: "visible" });
+      } else {
+        await page.keyboard.press("Escape");
+        await mobileSidebar.waitFor({ state: "hidden" });
+      }
     }
     return;
   }
