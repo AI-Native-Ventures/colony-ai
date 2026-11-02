@@ -1,12 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
+} from "../../src/testing/e2eReferenceWorkspace";
+import { installMockBridge } from "../helpers/bridge";
 
 test("Scout switches from Claude Code to Codex and the DM header reports the running runtime", async ({
   page,
 }) => {
-  const scout = TEST_IDENTITIES.tyler.pubkey;
+  const scout = REFERENCE_AGENTS.scout.pubkey;
   await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
     updateManagedAgentDelayMs: 700,
     managedAgents: [
       {
@@ -16,7 +22,7 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
         runtime: "claude",
         model: "claude-sonnet-4-5",
         status: "running",
-        channelNames: ["agents"],
+        channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
       },
     ],
     personas: [
@@ -85,7 +91,7 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
       () => false,
     );
   await expect(editDialog).toBeHidden();
-  await page.getByRole("button", { name: "Message" }).click();
+  await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
   await expect(page.getByTestId("chat-header")).toBeVisible();
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
     "Codex",
