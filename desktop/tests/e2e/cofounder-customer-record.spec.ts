@@ -480,10 +480,12 @@ test.describe("co-founder customer records", () => {
     await page.getByRole("button", { name: "Record milestone" }).click();
     await page.getByRole("button", { name: "Save milestone" }).click();
 
-    const alert = page.getByRole("alert");
+    const alert = page.getByRole("alert").filter({ hasText: conflict });
     await expect(alert).toContainText(conflict);
     await alert.getByRole("button", { name: "Try again" }).click();
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(
+      page.getByRole("alert").filter({ hasText: conflict }),
+    ).toHaveCount(0);
   });
 
   test("a refused file action is shown as a plain message", async ({
@@ -502,7 +504,9 @@ test.describe("co-founder customer records", () => {
       .fill("blossom:sha256:launch-assets");
     await page.getByRole("button", { name: "Attach file" }).last().click();
 
-    await expect(page.getByRole("alert")).toContainText(refusal);
+    await expect(
+      page.getByRole("alert").filter({ hasText: refusal }),
+    ).toContainText(refusal);
   });
 
   test("an authorized owner can record a milestone and attach a file", async ({

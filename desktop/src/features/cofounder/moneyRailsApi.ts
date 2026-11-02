@@ -1,5 +1,9 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
 import { signRelayEvent } from "@/shared/api/tauri";
+import {
+  KIND_MONEY_CONNECTION_ACTION,
+  KIND_PAYMENT_LINK_ACTION,
+} from "@/shared/constants/kinds";
 
 import type {
   MoneyLinkBrowserGrant,
@@ -598,7 +602,7 @@ export async function executeLiveMoneyRailsAction(
   const event = await signRelayEvent(
     action.type === "connect"
       ? {
-          kind: 47074,
+          kind: KIND_MONEY_CONNECTION_ACTION,
           content: JSON.stringify({
             schemaVersion: 1,
             op: "add_browser",
@@ -611,7 +615,7 @@ export async function executeLiveMoneyRailsAction(
           tags: [["d", dTag]],
         }
       : {
-          kind: 47070,
+          kind: KIND_PAYMENT_LINK_ACTION,
           content: JSON.stringify(actionContent(action)),
           tags: [["d", dTag]],
         },
