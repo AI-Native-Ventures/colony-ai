@@ -11,7 +11,8 @@
     "check": "biome check . && pnpm typecheck && pnpm test",
     "format": "biome format --write .",
     "test": "vitest run src --passWithNoTests",
-    "test:e2e": "pnpm build && playwright test"
+    "build:e2e": "tsc && vite build --mode e2e",
+    "test:e2e": "pnpm build:e2e && playwright test"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.0",
