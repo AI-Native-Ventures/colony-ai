@@ -1175,6 +1175,15 @@ button.c3d-search-chip {
   background: var(--colony-overlay);
 }
 
+.c3d-selection-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--c3d-surface);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  opacity: 0.85;
+}
+
 .c3d-selection-clear {
   display: grid;
   width: 2.375rem;
@@ -2322,6 +2331,16 @@ button.c3d-search-chip {
   color: var(--c3d-muted);
   font-size: calc(14.5 * var(--colony-px));
   font-weight: 500;
+}
+
+.c3d-notice {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--c3d-card);
+  box-shadow: var(--c3d-card-shadow);
+  color: var(--c3d-ink);
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
 }
 
 .c3d-error {

@@ -23,11 +23,11 @@ if the UI needs a different shape, say so in the PR before the relay code lands.
 
 ## 2. Event kinds
 
-Added to `crates/buzz-core/src/kind.rs`. All four are free on main `510cb1010`. They were first
-drafted as 30680, 30683, 47070 and 47074; 30680 clashed with `KIND_COFOUNDER_LEAD_HEAD`
-(PR 669), so all four moved to the numbers below. 30684, 30685, 47075 and 47076 belong to the
-outreach lists design and are NOT used here. Signing and booking will get their own numbers
-in their own PRs and are NOT defined here.
+Added to `crates/buzz-core/src/kind.rs`. Current main `781e1306a` assigns 30680 to
+`KIND_COFOUNDER_LEAD_HEAD` and 30684, 30685, 47075 and 47076 to the outreach lists design.
+Money rails therefore uses the following free assignments. Earlier drafts used 30680, 30683,
+47070 and 47074; none of those values are used by this contract. Signing and booking will get
+their own numbers in their own PRs and are NOT defined here.
 
 | Kind | Const | Who writes | Notes |
 | --- | --- | --- | --- |

@@ -40,6 +40,7 @@ import {
 } from "@/features/agents/activeAgentTurnsStore";
 import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
+import { resetScoutStartState } from "@/features/cofounder/scoutKeepAlive";
 import { setStartFloorLookup } from "@/features/agents/startFloorLookup";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
@@ -91,6 +92,9 @@ async function resetCommunityState({
   // from reaching the next one.
   resetAgentStartWatches();
   resetMentionReconciler();
+  // The Scout start state (failures, back-off) belongs to the community it was
+  // counted in.
+  resetScoutStartState();
   setStartFloorLookup(null);
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();

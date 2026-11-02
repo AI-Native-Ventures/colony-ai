@@ -78,6 +78,9 @@ pub mod moderation_notices;
 pub mod money_connections;
 /// Money rails payment link cards (draft, approve, record, report), kind 47077.
 pub mod money_pay_links;
+
+/// Outreach list and Discovery campaign planners for the business broker.
+pub mod outreach_lists;
 /// Product-feedback validation + deployment sidecar persistence.
 pub mod product_feedback;
 #[allow(dead_code, missing_docs)]

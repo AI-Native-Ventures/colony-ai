@@ -290,6 +290,8 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+  /** "Start with the app"; on unless the seed says otherwise. */
+  startOnAppLaunch?: boolean;
 };
 
 /** Narrow live-config values that a mock runtime reports for one agent. */
@@ -3532,7 +3534,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     needs_restart: seed.needsRestart ?? false,
     restart_diff: seed.restartDiff ?? [],
     log_path: `/tmp/mock-agent-${seed.pubkey}.log`,
-    start_on_app_launch: true,
+    start_on_app_launch: seed.startOnAppLaunch ?? true,
     auto_restart_on_config_change: seed.autoRestartOnConfigChange ?? true,
     backend: seed.backend ?? { type: "local" },
     backend_agent_id: null,
