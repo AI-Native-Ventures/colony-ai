@@ -387,7 +387,7 @@ test.describe("WhatsApp inbound media", () => {
       .slice(-3),
   );
   for (const [index, ids] of phoneGroups.entries()) {
-    test(`phone: ${ids.join(", ")} stay inside their cards at 390x844`, async ({
+    test(`phone: every type stays inside its card at 390x844, group ${index + 1} (${ids.join(", ")})`, async ({
       page,
     }) => {
       mkdirSync(SCREENSHOT_DIR, { recursive: true });

@@ -100,8 +100,7 @@
         "channel content and actions stay reachable beside the dock at owner size",
         "whatsapp header keeps the label and unread badge inside the action at every requested width",
         "every type shows properly in the chat and stays inside its card at 1440x900",
-        "phone: wa-media-sticker",
-        "phone: wa-media-failed",
+        "phone: every type stays inside its card at 390x844",
         "Retry on a failed download asks the relay to try again",
         "the desk shows the sticker the customer sent"
       ]
