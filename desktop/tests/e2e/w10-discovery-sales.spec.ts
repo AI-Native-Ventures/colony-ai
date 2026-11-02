@@ -251,7 +251,7 @@ test.describe("W10 discovery and sales", () => {
       .check();
     await campaign.getByRole("button", { name: "Accept as lead" }).click();
     await expect(
-      campaign.locator("tbody tr").getByText("Qualified"),
+      campaign.getByText("Accepted 1 prospect as a lead.", { exact: true }),
     ).toBeVisible();
 
     await campaign.getByRole("link", { name: /Form & Field/ }).click();
