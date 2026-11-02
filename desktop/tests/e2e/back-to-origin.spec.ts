@@ -37,10 +37,12 @@ test.describe("Back to origin", () => {
     await expect
       .poll(() => campaign.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
+    const openLead = campaign.getByRole("link", { name: /Open Form & Field/ });
+    await openLead.scrollIntoViewIfNeeded();
     const sourceScrollTop = await campaign.evaluate(
       (element) => element.scrollTop,
     );
-    await campaign.getByRole("link", { name: /Open Form & Field/ }).click();
+    await openLead.click();
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
