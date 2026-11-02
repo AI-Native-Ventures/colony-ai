@@ -31,10 +31,7 @@ import {
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
-import {
-  BATCH_MANAGE_NOTE,
-  canManageWhatsAppContact,
-} from "./whatsappContactAccess";
+import { canManageWhatsAppContact } from "./whatsappContactAccess";
 import {
   getWhatsAppNeedsYouItems,
   WHATSAPP_STAGE_LABELS,
@@ -230,11 +227,6 @@ function BatchApprovalCard({
       {error ? (
         <p className="c3wa-desk-error" role="alert">
           {error}
-        </p>
-      ) : null}
-      {!canManage ? (
-        <p className="c3wa-desk-cap-note" role="note">
-          {BATCH_MANAGE_NOTE}
         </p>
       ) : null}
       <div className="c3wa-desk-actions">
