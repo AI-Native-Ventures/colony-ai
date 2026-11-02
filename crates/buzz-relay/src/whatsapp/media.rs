@@ -133,7 +133,7 @@ async fn store(
 async fn process_one(
     state: &Arc<AppState>,
     tenant: &TenantContext,
-    token: &str,
+    token: Result<&str, &'static str>,
     media: &WhatsappMedia,
     now: DateTime<Utc>,
 ) {
@@ -150,6 +150,13 @@ async fn process_one(
             return;
         }
     }
+    let token = match token {
+        Ok(token) => token,
+        Err(reason) => {
+            record_retry(state, tenant, media, reason, now).await;
+            return;
+        }
+    };
     let Some(media_id) = media.media.get("mediaId").and_then(Value::as_str) else {
         record_final(state, tenant, media, "failed", "no_media_id").await;
         return;
@@ -246,13 +253,16 @@ fn open_token(
     state: &Arc<AppState>,
     tenant: &TenantContext,
     connection: &WhatsappConnection,
-) -> Option<zeroize::Zeroizing<String>> {
-    let kek = state.config.accounts.account_kek()?;
+) -> Result<zeroize::Zeroizing<String>, &'static str> {
+    let Some(kek) = state.config.accounts.account_kek() else {
+        tracing::warn!("whatsapp media could not open the access token: account key unavailable");
+        return Err("token_unavailable");
+    };
     match open_secrets(kek, *tenant.community().as_uuid(), connection) {
-        Ok((token, _)) => Some(token),
+        Ok((token, _)) => Ok(token),
         Err(error) => {
             tracing::warn!("whatsapp media could not open the access token: {error}");
-            None
+            Err("token_unavailable")
         }
     }
 }
@@ -275,10 +285,12 @@ pub async fn fetch_inline(
             return;
         }
     };
-    let Some(token) = open_token(state, tenant, connection) else {
-        return;
-    };
-    let attempt = process_one(state, tenant, &token, &media, Utc::now());
+    let token = open_token(state, tenant, connection);
+    let token = token
+        .as_ref()
+        .map(|token| token.as_str())
+        .map_err(|reason| *reason);
+    let attempt = process_one(state, tenant, token, &media, Utc::now());
     if tokio::time::timeout(INLINE_DEADLINE, attempt)
         .await
         .is_err()
@@ -303,10 +315,13 @@ pub async fn repair(
         .await
     {
         Ok(due) if !due.is_empty() => {
-            if let Some(token) = open_token(state, tenant, connection) {
-                for media in &due {
-                    process_one(state, tenant, &token, media, now).await;
-                }
+            let token = open_token(state, tenant, connection);
+            let token = token
+                .as_ref()
+                .map(|token| token.as_str())
+                .map_err(|reason| *reason);
+            for media in &due {
+                process_one(state, tenant, token, media, now).await;
             }
         }
         Ok(_) => {}

@@ -32,6 +32,7 @@ use super::connect;
 use super::graph::{
     DownloadError, GraphApi, GraphError, MediaInfo, PhoneInfo, RemoteTemplate, SendRequest,
 };
+use super::media;
 use super::sender;
 use crate::handlers::ingest::{HttpAuthMethod, IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
@@ -708,6 +709,65 @@ async fn an_inbound_sticker_keeps_its_media_id_and_a_failed_download_leaves_a_re
             .expect("thread");
     assert_eq!(view["messages"][0]["media"]["type"], "sticker");
     assert_eq!(view["messages"][0]["media"]["state"], "pending");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_unopenable_token_is_recorded_with_backoff_inline_and_in_sender_repair() {
+    let mut fx = fixture().await;
+    let connection = fx
+        .state
+        .db
+        .whatsapp_get_connection(fx.community())
+        .await
+        .expect("connection lookup")
+        .expect("connected number");
+
+    // Keep the saved connection, but simulate the relay losing the key needed to open it.
+    let mut state = fx.state.as_ref().clone();
+    let mut config = state.config.as_ref().clone();
+    config.accounts = crate::config::AccountConfig::test_config(None, None, vec![], None);
+    state.config = Arc::new(config);
+    fx.state = Arc::new(state);
+
+    let wa = "27821239008";
+    assert_eq!(
+        fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK8", "MEDIA-84"))
+            .await,
+        StatusCode::OK
+    );
+    let first = media_of(&fx, wa).await;
+    assert_eq!(first.state.as_deref(), Some("pending"));
+    assert_eq!(first.attempts, 1);
+    assert_eq!(first.error.as_deref(), Some("token_unavailable"));
+    let first_retry_at = first.retry_at.expect("inline backoff scheduled");
+    assert!(first_retry_at > Utc::now());
+
+    // GUARD: a due retry with an unavailable key also advances the durable backoff instead of
+    // leaving this oldest row immediately due on every sender pass.
+    let repair_at = first_retry_at + Duration::seconds(1);
+    media::repair(
+        &fx.state,
+        &fx.tenant,
+        &connection,
+        None,
+        repair_at,
+    )
+    .await;
+    let second = media_of(&fx, wa).await;
+    assert_eq!(second.state.as_deref(), Some("pending"));
+    assert_eq!(second.attempts, 2);
+    assert_eq!(second.error.as_deref(), Some("token_unavailable"));
+    assert!(second.retry_at.is_some_and(|at| at > repair_at));
+    assert_eq!(
+        fx.graph
+            .tokens_seen
+            .lock()
+            .expect("token lock")
+            .len(),
+        1,
+        "media is not sent to Graph without an opened token"
+    );
 }
 
 #[tokio::test]
