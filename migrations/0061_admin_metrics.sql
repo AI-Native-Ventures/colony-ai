@@ -142,3 +142,19 @@ ALTER TABLE account_ai_requests
              THEN (usage ->> 'completion_tokens')::bigint END
     ) STORED;
 CREATE INDEX account_ai_requests_created ON account_ai_requests (created_at);
+
+-- The metrics tables carry a community_id for reporting but are operator-global: they
+-- hold counts only and must outlive a business's deletion (the totals stay true), so
+-- the deletion catalog and write fence treat them like the other billing and audit
+-- tables. Same list as migration 0055 plus these four.
+CREATE OR REPLACE FUNCTION community_write_fence_excluded_table(target NAME) RETURNS BOOLEAN
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
+    SELECT target::TEXT = ANY (ARRAY[
+        'community_deletion_requests', 'community_deletion_approvals',
+        'community_deletion_checkpoints', 'community_serving_write_leases',
+        'community_deletion_executor_heartbeats', 'product_feedback',
+        'metrics_person_daily', 'metrics_agent_daily', 'metrics_ai_daily',
+        'metrics_app_sessions_daily',
+        'rate_limit_violations', 'account_ai_sessions'
+    ]::TEXT[])
+$$;

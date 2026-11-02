@@ -1832,6 +1832,8 @@ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
         'community_deletion_requests', 'community_deletion_approvals',
         'community_deletion_checkpoints', 'community_serving_write_leases',
         'community_deletion_executor_heartbeats', 'product_feedback',
+        'metrics_person_daily', 'metrics_agent_daily', 'metrics_ai_daily',
+        'metrics_app_sessions_daily',
         'rate_limit_violations', 'account_ai_sessions'
     ]::TEXT[])
 $$;
