@@ -167,6 +167,8 @@ pub async fn handle(
             | BusinessCommand::ProspectAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::ProposalAcceptance(_)
+            | BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
         match community_business_channel {
             Some(expected_channel_id) if expected_channel_id == channel_id => {}
@@ -213,8 +215,14 @@ pub async fn handle(
             | BusinessCommand::PaymentEvidence(_)
             | BusinessCommand::MoneyAdjustment(_)
             | BusinessCommand::MoneyFollowUp(_)
+            | BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
         match &command {
+            BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_) => {
+                super::outreach_lists::require_outreach_actor(&role)?;
+            }
             BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
                 require_member_or_admin(&role)?;
             }
@@ -1334,6 +1342,30 @@ pub async fn handle(
                 kind: KIND_INVOICE_HEAD,
                 d_tag,
                 event_id: expected_id,
+            });
+        }
+        BusinessCommand::OutreachListAction(action) => {
+            let planned = super::outreach_lists::plan_list_action(
+                state, tenant, &event, &role, channel_id, d_tag, *action,
+            )
+            .await?;
+            heads.push(HeadWrite {
+                event: planned.event,
+                channel_id,
+                d_tag: planned.d_tag,
+                expected_event_id: planned.expected_event_id,
+            });
+        }
+        BusinessCommand::DiscoveryCampaignAction(action) => {
+            let planned = super::outreach_lists::plan_campaign_action(
+                state, tenant, &event, &role, channel_id, d_tag, *action,
+            )
+            .await?;
+            heads.push(HeadWrite {
+                event: planned.event,
+                channel_id,
+                d_tag: planned.d_tag,
+                expected_event_id: planned.expected_event_id,
             });
         }
         BusinessCommand::MoneyFollowUp(action) => {
@@ -4690,6 +4722,8 @@ mod postgres_tests {
     use serde::Serialize;
     use std::time::Duration;
     use tokio::sync::Notify;
+
+    mod outreach_lists;
 
     fn test_acceptance_evidence() -> buzz_core::business_records::ProposalAcceptanceEvidence {
         buzz_core::business_records::ProposalAcceptanceEvidence {

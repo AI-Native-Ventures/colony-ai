@@ -168,13 +168,13 @@ Messages are plain English and safe to show.
 
 | op | needs |
 |---|---|
-| `create` | `name`, `audience`, `industryName`, `verticalId`, `verticalName`, `area`, `target` (1 to 500), `status`; optional `pickedTags` (at most 20), `query`, `runBy` |
+| `create` | `name`, `audience`, `industryName`, `verticalId`, `verticalName`, `area`, `target` (1 to 500), `status`; optional `pickedTags` (at most 20), `query`, `runBy`, and for the backfill `found`, `skippedDuplicates`, `endNote` |
 | `progress` | `found`, `skippedDuplicates`, optional `status` (`running` or `paused`) |
 | `finish` | `status` (`complete`, `cancelled` or `failed`), `found`, `skippedDuplicates`, optional `endNote` |
 | `rename` | `name` |
 | `archive` | nothing (people only) |
 
-`progress` and `finish` never lower `found` or `skippedDuplicates`. Text limits: `name` 1 to 120,
+`progress` and `finish` never lower `found` or `skippedDuplicates`: a late or repeated update is accepted and the relay keeps the larger value. A run ends once: `progress` or `finish` on a finished campaign is a `conflict`. `archive` is final (there is no unarchive) and an archived campaign refuses every change. Text limits: `name` 1 to 120,
 `area`, `query`, `endNote` at most 300, tags at most 60 each. Prospect ids are NOT stored on the
 campaign: a campaign's leads are the lead heads whose party external ids contain
 `campaign:<campaignId>` (the existing rule), so the set can never go stale.
@@ -189,8 +189,8 @@ The same fields as the action minus `op` and `expectedHeadEventId`, plus
 
 On the first launch after the update, a desktop publishes one `create` for each campaign in its
 local store, keeping the id, then one `finish` or `progress` to bring `found`, `status` and
-`endNote` current. A `create` for an id that already has a head is answered `conflict:`; treat
-that as done. The local store stays a cache of the shared record afterwards.
+`endNote` current. A `create` that carries the final numbers and status needs no follow-up `finish`. A `create` for
+an id that already has a head is answered `conflict:`; treat that as done. The local store stays a cache of the shared record afterwards.
 
 ## 6. Entity links (what a message contains)
 
@@ -200,7 +200,7 @@ A mention is plain text in the message body, so any agent reads it with no clien
 |---|---|---|
 | list | `buzz://list/<listId>` | |
 | campaign | `buzz://campaign/<campaignId>` | |
-| template | `buzz://template/<url-encoded Meta template name>?lang=<code>` | By NAME. `lang` is optional (defaults to the template's only language, or `en`). The chip shows the Colony title. |
+| template | `buzz://template/<Meta template name>?lang=<code>` | By NAME. Meta names are `[a-z0-9_]`, so nothing is escaped (the CLI accepts `[A-Za-z0-9_.-]`). `lang` is optional. The chip shows the Colony title. |
 | lead | `buzz://lead/<leadId>` | Unchanged. |
 
 `buzz://` is what clients write (like `lead_link`), `colony://` is read as the same thing.
@@ -222,7 +222,7 @@ All commands return the normal JSON contract: reads are JSON arrays or objects, 
 `{event_id, accepted, message}` plus the entity id and `reference`.
 
 ```
-colony lists list [--query <text>] [--archived] [--limit N]
+colony lists list [--query <text>] [--archived] [--limit N]   # --archived shows only archived lists
 colony lists get <id|link>
 colony lists create --name <text> [--lead <id|link>]... [--from-campaign <id|link>]
                     [--note <text>] [--template <name|title|link>] [--language <code>]
@@ -234,6 +234,10 @@ colony campaigns get <id|link>
 colony whatsapp templates get <name|title|link>
 colony whatsapp batch create --list <id|link> --template <name|title|link> ... (existing flags)
 ```
+
+`lists create` from the CLI records `source.kind: agent`, or `campaign` with `--from-campaign`
+(which also adds that campaign's active leads). `lists add` and `lists remove` re-send up to 3
+times when another writer changed the list at the same moment.
 
 `lists list` row: `{listId, reference, name, note, status, size, source, defaultTemplate,
 updatedAt}`.
@@ -248,8 +252,9 @@ updatedAt}`.
   "createdByAgent": true, "updatedAt": 1762000100, "size": 12,
   "members": [{
     "leadId": "uuid", "reference": "buzz://lead/<id>", "name": "Rosebank Guest House",
-    "stage": "new", "phone": "+27 82 000 0000", "website": "https://...", "contactName": null,
-    "whatsapp": { "status": "none | queued | waiting_for_approval | sent | replied | opted_out | null",
+    "stage": "qualified", "status": "active", "phone": "+27 82 000 0000", "website": "https://...",
+    "contactName": null,
+    "whatsapp": { "status": "none | queued | waiting_for_approval | sent | replied | opted_out",
                   "optedOut": false },
     "addedByAgent": false, "addedAt": 1762000000
   }],
@@ -257,8 +262,11 @@ updatedAt}`.
 }
 ```
 
-`whatsapp` is matched by phone number and is `null` for a lead with no phone or when the caller
-cannot read WhatsApp contacts. Membership in `members` is never filtered by it.
+`size` counts every member. `members` holds only the leads that still exist; the rest are in
+`missing`. `whatsapp` comes from the lead's WhatsApp contact among the 200 most recent contacts
+(matched by lead id). `null` means "no contact found there" or "the caller cannot read WhatsApp
+contacts": it is NOT proof the lead was never contacted. Every batch skips opted-out contacts
+whatever this field says. Membership in `members` is never filtered by it.
 
 `campaigns get` returns the campaign head fields plus `reference`, `leadCount` and `leads`
 (`[{leadId, reference, name, stage, phone}]`, from the `campaign:<id>` external id).
@@ -266,9 +274,11 @@ cannot read WhatsApp contacts. Membership in `members` is never filtered by it.
 `colony whatsapp templates get` returns `{name, title, language, category, status, body, slots,
 buttons, reference}` for one template, or a usage error naming the matches when ambiguous.
 
-`whatsapp batch create --list` takes the rows from the list's active members. Members without a
-phone, opted out, or whose lead no longer exists are not sent; they are printed as `skipped`
-with a reason, and the batch still waits for owner approval. `--list` cannot be combined with
+`whatsapp batch create --list` takes the rows from the list's active members, in list order.
+Members whose lead no longer exists or is archived, who have no phone number, or who are known
+to have opted out are left out. The answer is the normal write answer plus
+`{list, rows, skipped: [{leadId, reference, name, reason}]}`, and the batch still waits for owner
+approval. If nobody can be messaged the command fails and says why. `--list` cannot be combined with
 `--lead` or `--stage`.
 
 ## 8. Agent skill

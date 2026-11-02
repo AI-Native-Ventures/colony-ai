@@ -162,6 +162,30 @@ Pass `--industry` and `--vertical` with `--save` so each lead is filed under wha
 
 Without `--save` it prints the places as JSON and saves nothing. With `--save` it creates one lead per place in the company's private Sales channel, skips places that are already leads (so a repeat never duplicates), and prints `{saved, skipped_existing, leads}`; each lead carries a `reference` link, so include it verbatim when you announce the leads. Searches are covered by the company's Discovery subscription and capped per month for the whole company. At the cap the command exits with code 2 and says `Discovery limit reached for this month, resets <date>`: stop searching, tell the person the date, and do not retry before it. Places fetched before the cap are still saved.
 
+## Lists, campaigns and templates
+
+A person can point at things in a message: a list of leads, a Discovery campaign, a WhatsApp template or a lead. Each one arrives as a link in the text, for example `...://list/<id>`, `...://campaign/<id>`, `...://template/<name>?lang=en` or `...://lead/<id>`. A link is something the person chose on purpose. Open it with the matching command before you answer, and never ask the person for an id or a link: they pick things from a picker, you resolve them.
+
+```bash
+colony lists get <list link or id>            # name, note, default template, and each member with stage, phone, website, WhatsApp status
+colony lists list [--query text]              # find a list by name when no link was given
+colony campaigns get <campaign link or id>    # the search (type, area, target, found) and the leads it found
+colony campaigns list [--query text]
+colony whatsapp templates get <template link, name or title>   # body with its slots, buttons, category, language, approval state
+colony leads get --lead <lead link or id>     # one lead in full
+```
+
+- "these", "them" or "their records" after a list chip means that list's members. After a campaign chip it means the leads that campaign found. Take them from `lists get` or `campaigns get`, not from memory.
+- A template is named, never numbered. If the person writes "template 1", say there are no numbered templates and run `colony whatsapp templates` to show the names. A template link carries the template name; run `templates get` to read its body before you fill its slots.
+- If a link does not resolve, say exactly why in one line (for example "that list was archived") and stop. Do not guess another list.
+- A lead that "no longer exists" shows up under `missing` in `lists get`: tell the person once, do not retry it.
+
+**Research and update records.** When asked to research the leads of a list or campaign, read them with `lists get` or `campaigns get`, look each business up (its website and public listings in the built-in browser), then write what you found back on the lead: `colony leads note --lead <id> --content "<what you found and where>"`, `colony leads qualify` and `colony leads stage`. If `colony leads update --help` works, use it for the phone, website, contact name or email you verified, and give the source. Report in one short message how many records changed and what, never paste the research.
+
+**Make a list when it helps.** You may create a list yourself when it makes the work clearer, for example the 20 best fits from a campaign: `colony lists create --name "Melville guesthouses, best fits" --from-campaign <campaign link>` or `--lead <id>` once per lead. Add `--template <name>` to set its default message. Always say so in your reply and include the `reference` link the command printed, so the person can open it. Use `colony lists add|remove <list> --lead <id>` and `colony lists rename <list> --name "..."` to keep a list tidy. You cannot archive a list; only people do.
+
+**Prepare WhatsApp messages for a list.** `colony whatsapp batch create --list <list link or id> --template <name or title> [--param "..."]`. It takes every member that has a phone number. Members with no number, who opted out, or whose lead is gone are skipped, and the command prints each one with the reason: pass that on in one line. The batch is only a draft: it waits for the owner or an admin to approve it, and nothing is sent before then. Say that the batch is waiting for approval. Read the template with `templates get` first so the parameters fit its slots, and never send, approve or retry a batch around the owner.
+
 ## Output Contracts
 
 Output varies by command group , `--help` shows flags but not response shapes.

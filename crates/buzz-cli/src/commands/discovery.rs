@@ -549,9 +549,9 @@ fn partition_new<'a>(
 
 /// Sales channel and tenant id a new lead is written under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SaveTarget {
-    channel_id: Uuid,
-    community_id: Uuid,
+pub(crate) struct SaveTarget {
+    pub(crate) channel_id: Uuid,
+    pub(crate) community_id: Uuid,
 }
 
 fn tag_values<'a>(event: &'a Value, name: &str) -> Vec<&'a str> {
@@ -625,7 +625,7 @@ fn pick_tenant_id(body: &str, relay_url: &str) -> Option<Uuid> {
 /// Where new leads go: the channel and tenant id of existing leads when there
 /// are any, otherwise the member's private Sales channel and the tenant id the
 /// relay reports for this host.
-async fn resolve_save_target(
+pub(crate) async fn resolve_save_target(
     client: &BuzzClient,
     leads: &[CurrentLead],
 ) -> Result<SaveTarget, CliError> {

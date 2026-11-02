@@ -359,7 +359,7 @@ fn build_update(
     })
 }
 
-fn normalize_relay_self_hex(self_hex: &str) -> Result<String, CliError> {
+pub(crate) fn normalize_relay_self_hex(self_hex: &str) -> Result<String, CliError> {
     if self_hex.len() != 64 || !self_hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(CliError::Other(
             "relay 'self' field is not a valid 64-hex pubkey".into(),

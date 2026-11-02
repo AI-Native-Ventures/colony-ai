@@ -27,10 +27,16 @@ use uuid::Uuid;
 
 use crate::client::{normalize_write_response, BuzzClient};
 use crate::commands::leads::load_leads;
+use crate::commands::lists::{find_list, load_lists, load_whatsapp_by_lead, WhatsappInfo};
 use crate::error::CliError;
-use crate::links::parse_lead_reference;
+use crate::links::{
+    list_link, parse_lead_reference, parse_list_reference, parse_template_reference, template_link,
+    TemplateReference,
+};
 
 const QUERY_PATH: &str = "/api/whatsapp/query";
+/// The same path, for the lists commands that read WhatsApp contacts.
+pub(crate) const WHATSAPP_QUERY_PATH: &str = QUERY_PATH;
 const MAX_BATCH_ROWS: usize = 500;
 const MAX_PARAMS_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -38,7 +44,17 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
     use crate::WhatsappCmd;
     match cmd {
         WhatsappCmd::Status => query(client, json!({ "what": "status" })).await,
-        WhatsappCmd::Templates { refresh } => {
+        WhatsappCmd::Templates {
+            cmd: Some(crate::WhatsappTemplatesCmd::Get { template }),
+            ..
+        } => {
+            let reference = parse_template_reference(&template)?;
+            let templates = fetch_templates(client).await?;
+            let found = resolve_template(&templates, &reference)?;
+            println!("{}", template_detail(&found));
+            Ok(())
+        }
+        WhatsappCmd::Templates { refresh, cmd: None } => {
             let raw = client
                 .post_json_authed(
                     QUERY_PATH,
@@ -152,8 +168,58 @@ async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Re
         WhatsappBatchCmd::Create {
             template,
             language,
+            list: Some(list),
+            param,
+            material,
+            note,
+            campaign,
+            batch_id,
+            ..
+        } => {
+            let list_id = parse_list_reference(&list)?;
+            let lists = load_lists(client).await?;
+            let stored = find_list(&lists, list_id)?;
+            let leads = load_leads(client).await?;
+            let contacts = load_whatsapp_by_lead(client).await;
+            let plan = plan_list_rows(&stored.head, &leads, &contacts, &param);
+            if plan.rows.is_empty() {
+                return Err(CliError::Usage(format!(
+                    "no one in list \"{}\" can be messaged: {}",
+                    stored.head.name,
+                    skipped_summary(&plan.skipped)
+                )));
+            }
+            if plan.rows.len() > MAX_BATCH_ROWS {
+                return Err(CliError::Usage(format!(
+                    "a batch has at most {MAX_BATCH_ROWS} rows"
+                )));
+            }
+            let list_note = match note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+                Some(note) => format!("List \"{}\". {note}", stored.head.name),
+                None => format!("List \"{}\".", stored.head.name),
+            };
+            let content = batch_content(
+                &template,
+                &language,
+                plan.rows.clone(),
+                &material,
+                Some(list_note.as_str()),
+                campaign.as_deref(),
+                batch_id.as_deref(),
+            )?;
+            let response = publish_raw(client, KIND_WHATSAPP_BATCH, content).await?;
+            println!(
+                "{}",
+                list_batch_output(&response, list_id, &plan.skipped, plan.rows.len())
+            );
+            Ok(())
+        }
+        WhatsappBatchCmd::Create {
+            template,
+            language,
             lead,
             stage,
+            list: None,
             params_file,
             param,
             material,
@@ -255,11 +321,16 @@ fn contact_rename_content(
 }
 
 async fn publish(client: &BuzzClient, kind: u32, content: Value) -> Result<(), CliError> {
-    let builder = EventBuilder::new(Kind::Custom(kind as u16), content.to_string());
-    let event = client.sign_event(builder)?;
-    let response = client.submit_event(event).await?;
+    let response = publish_raw(client, kind, content).await?;
     println!("{}", normalize_write_response(&response));
     Ok(())
+}
+
+/// Sign and send one command, returning the relay's answer.
+async fn publish_raw(client: &BuzzClient, kind: u32, content: Value) -> Result<String, CliError> {
+    let builder = EventBuilder::new(Kind::Custom(kind as u16), content.to_string());
+    let event = client.sign_event(builder)?;
+    client.submit_event(event).await
 }
 
 async fn cap_from_status(client: &BuzzClient) -> Result<(), CliError> {
@@ -580,6 +651,254 @@ pub(crate) fn send_content(
     Ok(content)
 }
 
+/// Every approved template the relay keeps.
+pub(crate) async fn fetch_templates(client: &BuzzClient) -> Result<Vec<Value>, CliError> {
+    let raw = client
+        .post_json_authed(
+            QUERY_PATH,
+            &json!({ "what": "templates", "refresh": false }),
+        )
+        .await?;
+    let value: Value = serde_json::from_str(&raw)
+        .map_err(|error| CliError::Other(format!("templates response was not JSON: {error}")))?;
+    value
+        .get("templates")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| CliError::Other("templates response has no template list".into()))
+}
+
+fn template_text<'a>(template: &'a Value, key: &str) -> Option<&'a str> {
+    template.get(key).and_then(Value::as_str)
+}
+
+/// Find the one template a reference points at. A reference is the Meta name or the Colony
+/// title in any case (a link carries the Meta name and may carry a language). It never reads a
+/// number: templates are named, not numbered.
+pub(crate) fn resolve_template(
+    templates: &[Value],
+    reference: &TemplateReference,
+) -> Result<Value, CliError> {
+    let needle = reference.name.trim().to_lowercase();
+    let language = reference.language.as_deref().map(str::to_lowercase);
+    let matches: Vec<&Value> = templates
+        .iter()
+        .filter(|template| {
+            let named = template_text(template, "name").map(str::to_lowercase);
+            let titled = template_text(template, "title").map(str::to_lowercase);
+            named.as_deref() == Some(needle.as_str()) || titled.as_deref() == Some(needle.as_str())
+        })
+        .filter(|template| match language.as_deref() {
+            Some(language) => {
+                template_text(template, "language")
+                    .map(str::to_lowercase)
+                    .as_deref()
+                    == Some(language)
+            }
+            None => true,
+        })
+        .collect();
+    match matches.as_slice() {
+        [one] => Ok((*one).clone()),
+        [] => {
+            let available: Vec<&str> = templates
+                .iter()
+                .filter_map(|template| {
+                    template_text(template, "title").or_else(|| template_text(template, "name"))
+                })
+                .take(10)
+                .collect();
+            Err(CliError::NotFound(format!(
+                "no approved template is called \"{}\". Available: {}",
+                reference.name.trim(),
+                if available.is_empty() {
+                    "none yet".to_owned()
+                } else {
+                    available.join(", ")
+                }
+            )))
+        }
+        many => {
+            let options: Vec<String> = many
+                .iter()
+                .map(|template| {
+                    format!(
+                        "{} ({})",
+                        template_text(template, "name").unwrap_or("?"),
+                        template_text(template, "language").unwrap_or("?")
+                    )
+                })
+                .collect();
+            Err(CliError::Usage(format!(
+                "\"{}\" matches more than one template: {}. Use the template name with its language (colony://template/<name>?lang=<code>)",
+                reference.name.trim(),
+                options.join(", ")
+            )))
+        }
+    }
+}
+
+/// The `templates get` answer for one template.
+fn template_detail(template: &Value) -> Value {
+    let field = |key: &str| template.get(key).cloned().unwrap_or(Value::Null);
+    let reference = match (
+        template_text(template, "name"),
+        template_text(template, "language"),
+    ) {
+        (Some(name), Some(language)) => template_link(name, language),
+        _ => None,
+    };
+    json!({
+        "name": field("name"),
+        "title": field("title"),
+        "language": field("language"),
+        "category": field("category"),
+        "status": field("status"),
+        "body": field("body"),
+        "slots": field("slots"),
+        "buttons": field("buttons"),
+        "reference": reference,
+    })
+}
+
+/// A list member that cannot be messaged, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkippedMember {
+    pub lead_id: Uuid,
+    pub name: Option<String>,
+    pub reason: &'static str,
+}
+
+/// The batch rows a list yields, and the members left out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListRows {
+    pub rows: Vec<Row>,
+    pub skipped: Vec<SkippedMember>,
+}
+
+/// Turn a list's members into batch rows. A member is skipped, with a reason, when its lead no
+/// longer exists, is archived, has no phone number, or is known to have opted out.
+pub(crate) fn plan_list_rows(
+    list: &buzz_core::outreach_lists::OutreachListHead,
+    leads: &[crate::commands::leads::CurrentLead],
+    contacts: &std::collections::HashMap<Uuid, WhatsappInfo>,
+    shared_params: &[String],
+) -> ListRows {
+    let by_id: std::collections::HashMap<Uuid, &crate::commands::leads::CurrentLead> = leads
+        .iter()
+        .map(|lead| (lead.head.prospect_id, lead))
+        .collect();
+    let mut rows = Vec::new();
+    let mut skipped = Vec::new();
+    for member in &list.members {
+        let Some(lead) = by_id.get(&member.lead_id) else {
+            skipped.push(SkippedMember {
+                lead_id: member.lead_id,
+                name: None,
+                reason: "the lead no longer exists",
+            });
+            continue;
+        };
+        let name = Some(lead.head.prospect.party.display_name.clone());
+        if lead.head.status != "active" {
+            skipped.push(SkippedMember {
+                lead_id: member.lead_id,
+                name,
+                reason: "the lead is archived",
+            });
+            continue;
+        }
+        if contacts
+            .get(&member.lead_id)
+            .is_some_and(|info| info.opted_out)
+        {
+            skipped.push(SkippedMember {
+                lead_id: member.lead_id,
+                name,
+                reason: "opted out of WhatsApp",
+            });
+            continue;
+        }
+        match lead
+            .head
+            .prospect
+            .phone
+            .as_deref()
+            .map(str::trim)
+            .filter(|phone| !phone.is_empty())
+        {
+            Some(phone) => rows.push(Row {
+                to: phone.to_owned(),
+                lead_id: Some(member.lead_id.to_string()),
+                name: None,
+                params: shared_params.to_vec(),
+            }),
+            None => skipped.push(SkippedMember {
+                lead_id: member.lead_id,
+                name,
+                reason: "no phone number",
+            }),
+        }
+    }
+    ListRows { rows, skipped }
+}
+
+fn skipped_summary(skipped: &[SkippedMember]) -> String {
+    if skipped.is_empty() {
+        return "the list is empty".to_owned();
+    }
+    let shown: Vec<String> = skipped
+        .iter()
+        .take(8)
+        .map(|member| {
+            format!(
+                "{}: {}",
+                member.name.as_deref().unwrap_or("a lead"),
+                member.reason
+            )
+        })
+        .collect();
+    let more = skipped.len().saturating_sub(shown.len());
+    if more > 0 {
+        format!("{} (and {more} more)", shown.join("; "))
+    } else {
+        shown.join("; ")
+    }
+}
+
+/// The normal write answer plus the list, the number of rows and the members left out.
+fn list_batch_output(
+    response: &str,
+    list_id: Uuid,
+    skipped: &[SkippedMember],
+    rows: usize,
+) -> String {
+    let normalized = normalize_write_response(response);
+    let mut output = match serde_json::from_str::<Value>(&normalized) {
+        Ok(Value::Object(object)) => object,
+        _ => return normalized,
+    };
+    output.insert("list".into(), json!(list_link(list_id)));
+    output.insert("rows".into(), json!(rows));
+    output.insert(
+        "skipped".into(),
+        Value::Array(
+            skipped
+                .iter()
+                .map(|member| {
+                    json!({
+                        "leadId": member.lead_id.to_string(),
+                        "reference": crate::links::lead_link(member.lead_id),
+                        "name": member.name,
+                        "reason": member.reason,
+                    })
+                })
+                .collect(),
+        ),
+    );
+    Value::Object(output).to_string()
+}
+
 /// Templates for people: the Colony title first, the Meta name second (it is the send key
 /// and only needed in details). The key order is fixed by hand because JSON maps sort keys.
 pub(crate) fn render_templates(raw: &str) -> Result<String, CliError> {
@@ -825,5 +1144,230 @@ mod tests {
         assert_eq!(content["dropRows"], json!([3, 7]));
         assert_eq!(content["editRows"][0]["idx"], 2);
         assert!(decision_content("nope", "approve", &[], vec![]).is_err());
+    }
+
+    fn template_fixture() -> Vec<Value> {
+        vec![
+            json!({"name":"built_a_site","title":"Built a site for you","language":"en","category":"MARKETING","status":"APPROVED","body":"Hi {{1}}, we built you a site.","slots":1,"buttons":[{"type":"QUICK_REPLY","text":"Not interested"}]}),
+            json!({"name":"built_a_site","title":"Built a site for you","language":"af","category":"MARKETING","status":"APPROVED","body":"Hallo {{1}}","slots":1,"buttons":[]}),
+            json!({"name":"hl_vb","title":"Voice note offer","language":"en","category":"MARKETING","status":"APPROVED","body":"Hi","slots":0,"buttons":[]}),
+            json!({"name":"plain_name","title":null,"language":"en","category":"UTILITY","status":"APPROVED","body":"Hello","slots":0,"buttons":[]}),
+        ]
+    }
+
+    fn reference(name: &str, language: Option<&str>) -> TemplateReference {
+        TemplateReference {
+            name: name.into(),
+            language: language.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_template_resolves_by_title_or_meta_name_in_any_case() {
+        let templates = template_fixture();
+        let by_title = resolve_template(&templates, &reference("voice NOTE offer", None)).unwrap();
+        assert_eq!(by_title["name"], "hl_vb");
+        let by_name = resolve_template(&templates, &reference("HL_VB", None)).unwrap();
+        assert_eq!(by_name["title"], "Voice note offer");
+        let untitled = resolve_template(&templates, &reference("plain_name", None)).unwrap();
+        assert_eq!(untitled["category"], "UTILITY");
+    }
+
+    #[test]
+    fn a_template_with_two_languages_needs_the_language() {
+        let templates = template_fixture();
+        let error = resolve_template(&templates, &reference("built_a_site", None)).unwrap_err();
+        assert!(matches!(error, CliError::Usage(_)), "{error}");
+        assert!(error.to_string().contains("built_a_site (af)"), "{error}");
+        let afrikaans =
+            resolve_template(&templates, &reference("built_a_site", Some("AF"))).unwrap();
+        assert_eq!(afrikaans["language"], "af");
+    }
+
+    #[test]
+    fn an_unknown_template_or_a_number_is_not_found_and_lists_what_exists() {
+        let templates = template_fixture();
+        for wrong in ["1", "template 1", "no such template"] {
+            let error = resolve_template(&templates, &reference(wrong, None)).unwrap_err();
+            assert!(matches!(error, CliError::NotFound(_)), "{wrong}: {error}");
+            assert!(error.to_string().contains("Voice note offer"), "{error}");
+        }
+        let error = resolve_template(&[], &reference("x", None)).unwrap_err();
+        assert!(error.to_string().contains("none yet"), "{error}");
+    }
+
+    #[test]
+    fn template_detail_carries_the_body_buttons_and_a_name_link() {
+        let templates = template_fixture();
+        let found = resolve_template(&templates, &reference("built_a_site", Some("en"))).unwrap();
+        let detail = template_detail(&found);
+        assert_eq!(detail["body"], "Hi {{1}}, we built you a site.");
+        assert_eq!(detail["slots"], 1);
+        assert_eq!(detail["buttons"][0]["text"], "Not interested");
+        assert_eq!(detail["status"], "APPROVED");
+        assert_eq!(detail["reference"], "buzz://template/built_a_site?lang=en");
+    }
+
+    fn list_lead(
+        n: u128,
+        name: &str,
+        phone: Option<&str>,
+        status: &str,
+    ) -> crate::commands::leads::CurrentLead {
+        use buzz_core::business_records::{
+            PartyRecord, ProspectHead, ProspectQualification, ProspectRecordInput, ProspectStage,
+            BUSINESS_RECORD_SCHEMA_VERSION,
+        };
+        let prospect_id = Uuid::from_u128(n);
+        crate::commands::leads::CurrentLead {
+            event_id: format!("{n:064x}"),
+            channel_id: Uuid::from_u128(2),
+            community_id: Uuid::from_u128(1),
+            created_at: 1_800_000_000,
+            head: ProspectHead {
+                schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+                prospect_id,
+                status: status.into(),
+                prospect: ProspectRecordInput {
+                    prospect_id,
+                    party: PartyRecord {
+                        party_id: prospect_id,
+                        party_type: "organization".into(),
+                        display_name: name.into(),
+                        external_ids: Vec::new(),
+                    },
+                    industry: "Tourism".into(),
+                    vertical: "Guesthouses".into(),
+                    fit_score: None,
+                    origin: None,
+                    discovery_tags: Vec::new(),
+                    potential_monthly_value_minor: None,
+                    website: None,
+                    contact_name: None,
+                    location: None,
+                    email: None,
+                    phone: phone.map(str::to_owned),
+                    evidence: Vec::new(),
+                    last_verified_at: None,
+                    qualification: ProspectQualification::Unreviewed,
+                    saved: false,
+                    stage: ProspectStage::Qualified,
+                    lost_reason: None,
+                },
+                activities: Vec::new(),
+                source_action_event_id: "0".repeat(64),
+            },
+        }
+    }
+
+    fn list_with(members: &[u128]) -> buzz_core::outreach_lists::OutreachListHead {
+        use buzz_core::outreach_lists::{
+            apply_list_action, ListActor, ListOp, ListSource, ListSourceKind, OutreachListAction,
+        };
+        let action = OutreachListAction {
+            schema_version: 1,
+            list_id: Uuid::from_u128(900),
+            op: ListOp::Create,
+            expected_head_event_id: None,
+            name: Some("Melville guesthouses, Nov".into()),
+            note: None,
+            lead_ids: members.iter().map(|n| Uuid::from_u128(*n)).collect(),
+            source: Some(ListSource {
+                kind: ListSourceKind::Manual,
+                campaign_id: None,
+            }),
+            default_template: None,
+        };
+        apply_list_action(
+            None,
+            &action,
+            &ListActor {
+                pubkey: "aa".repeat(32),
+                is_agent: false,
+            },
+            1_800_000_100,
+            &"0".repeat(64),
+        )
+        .expect("list head")
+    }
+
+    #[test]
+    fn a_list_yields_rows_for_members_with_a_number_and_explains_every_skip() {
+        let list = list_with(&[1, 2, 3, 4, 5, 6]);
+        let leads = vec![
+            list_lead(
+                1,
+                "Rosebank Guest House",
+                Some(" +27 82 000 0000 "),
+                "active",
+            ),
+            list_lead(2, "Parkview Lodge", None, "active"),
+            list_lead(3, "Opted Out Inn", Some("+27 83 000 0000"), "active"),
+            list_lead(4, "Old Place", Some("+27 84 000 0000"), "archived"),
+            list_lead(5, "Blank Phone", Some("   "), "active"),
+        ];
+        let mut contacts = std::collections::HashMap::new();
+        contacts.insert(
+            Uuid::from_u128(3),
+            WhatsappInfo {
+                status: "opted_out".into(),
+                opted_out: true,
+            },
+        );
+        let plan = plan_list_rows(&list, &leads, &contacts, &["Thabo".to_owned()]);
+        assert_eq!(plan.rows.len(), 1);
+        assert_eq!(plan.rows[0].to, "+27 82 000 0000");
+        assert_eq!(
+            plan.rows[0].lead_id.as_deref(),
+            Some(Uuid::from_u128(1).to_string().as_str())
+        );
+        assert_eq!(plan.rows[0].params, vec!["Thabo".to_owned()]);
+        let reasons: Vec<(u128, &str)> = plan
+            .skipped
+            .iter()
+            .map(|member| (member.lead_id.as_u128(), member.reason))
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                (2, "no phone number"),
+                (3, "opted out of WhatsApp"),
+                (4, "the lead is archived"),
+                (5, "no phone number"),
+                (6, "the lead no longer exists"),
+            ]
+        );
+        assert!(skipped_summary(&plan.skipped).contains("Opted Out Inn: opted out of WhatsApp"));
+    }
+
+    #[test]
+    fn a_list_batch_answer_names_the_list_the_rows_and_the_skipped_members() {
+        let list = list_with(&[1, 2]);
+        let leads = vec![list_lead(1, "Rosebank", Some("+27 82 000 0000"), "active")];
+        let plan = plan_list_rows(&list, &leads, &std::collections::HashMap::new(), &[]);
+        let out: Value = serde_json::from_str(&list_batch_output(
+            r#"{"event_id":"ab","accepted":true,"message":""}"#,
+            Uuid::from_u128(900),
+            &plan.skipped,
+            plan.rows.len(),
+        ))
+        .unwrap();
+        assert_eq!(out["accepted"], true);
+        assert_eq!(out["rows"], 1);
+        assert_eq!(out["list"], list_link(Uuid::from_u128(900)));
+        assert_eq!(out["skipped"][0]["reason"], "the lead no longer exists");
+        assert_eq!(
+            out["skipped"][0]["reference"],
+            crate::links::lead_link(Uuid::from_u128(2))
+        );
+    }
+
+    #[test]
+    fn an_empty_or_unreachable_list_explains_itself() {
+        assert_eq!(skipped_summary(&[]), "the list is empty");
+        let list = list_with(&[1]);
+        let plan = plan_list_rows(&list, &[], &std::collections::HashMap::new(), &[]);
+        assert!(plan.rows.is_empty());
+        assert!(skipped_summary(&plan.skipped).contains("no longer exists"));
     }
 }
