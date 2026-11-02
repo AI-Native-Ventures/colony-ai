@@ -11,12 +11,6 @@ import {
   useStartManagedAgentMutation,
   useUpdateManagedAgentMutation,
 } from "@/features/agents/hooks";
-import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
-import {
-  beginAgentRuntimeSwitch,
-  failAgentRuntimeSwitch,
-  finishAgentRuntimeSwitch,
-} from "@/features/agents/agentRuntimeSwitchStore";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
 import type {
@@ -99,7 +93,7 @@ import { useProviderApiKeyFieldState } from "./providerApiKeyFieldState";
 import { resolveModelFieldStatusMessage } from "./agentConfigControls";
 import { showAgentProfileSyncWarning } from "./agentProfileSyncWarning";
 import { AddCustomHarnessDialog } from "./AddCustomHarnessDialog";
-import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
+import { useAgentRuntimeSwitchSave } from "./agentRuntimeSwitchSave";
 import {
   ADD_CUSTOM_HARNESS_OPTION,
   runtimeDropdownAction,
@@ -124,7 +118,11 @@ export function AgentInstanceEditDialog({
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const startMutation = useStartManagedAgentMutation();
-  const activeTurns = useActiveAgentTurns(agent.pubkey);
+  const saveWithRuntimeSwitch = useAgentRuntimeSwitchSave(
+    agent,
+    updateMutation.mutateAsync,
+    onOpenChange,
+  );
   const queryClient = useQueryClient();
   // Spans the COMPLETE Save sequence (locked update + standalone setters).
   // Every gate must key off this, not updateMutation.isPending alone.
@@ -704,17 +702,14 @@ export function AgentInstanceEditDialog({
           (resolvedAvatar ?? null) !== (agent.avatarUrl ?? null)
             ? (resolvedAvatar ?? null)
             : undefined,
-        // relayUrl deliberately never submitted: the legacy per-record pin is
-        // ignored (#2122) and the stored value is preserved as-is.
+        // Legacy relayUrl pins are ignored (#2122); omit it and preserve storage.
         acpCommand:
           acpCommand.trim() !== agent.acpCommand
             ? acpCommand.trim()
             : undefined,
         agentCommand: agentCommandUpdate,
-        // A non-inheriting selection is a deliberate pin — signal it so the
-        // backend preserves a Custom/runtime command even when it maps to the
-        // linked persona's own runtime (otherwise it would be dropped back to
-        // inherit). Omitted (falsy) when inheriting or on a name-only edit.
+        // Signal deliberate pins so Custom and persona-matching commands stay
+        // pinned. Omit this for inheritance and name-only edits.
         harnessOverride:
           agentCommandUpdate != null ? !inheritHarness : undefined,
         agentArgs:
@@ -738,9 +733,8 @@ export function AgentInstanceEditDialog({
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
               : undefined,
-        // Tri-state provider persistence keyed on providerRuntimeCapability
-        // (see the classification comment above for the capable/locked/unknown
-        // contract). llmProviderFieldVisible is UX visibility only; not used here.
+        // Persist by provider capability: capable writes, locked clears,
+        // unknown omits. Field visibility remains UX-only.
         provider:
           providerRuntimeCapability === "capable"
             ? normalizedSubmitProvider !== (agent.provider ?? null)
@@ -755,12 +749,8 @@ export function AgentInstanceEditDialog({
           ? undefined
           : submitEnvVars,
         respondTo: respondTo !== agent.respondTo ? respondTo : undefined,
-        // The allowlist is preserved across mode toggles in local UI state
-        // (so a user can flip away from allowlist and back without losing
-        // their entries), but we only send it on the wire when (a) it
-        // actually changed, AND (b) the saved mode will need it. Sending
-        // an allowlist while switching to a non-allowlist mode would be
-        // harmless server-side, but it's noise in the persisted record.
+        // Keep allowlist edits across mode toggles, but submit only changed
+        // entries when the saved mode uses them. Other modes get no update.
         respondToAllowlist:
           respondTo === "allowlist" &&
           respondToAllowlist.join(",") !== agent.respondToAllowlist.join(",")
@@ -768,70 +758,27 @@ export function AgentInstanceEditDialog({
             : undefined,
       };
 
-      // Resolve effort before the update so access-change restarts can
-      // snapshot and launch the NEW effort value atomically.
+      // Resolve effort first so access-change restarts snapshot its new value.
       const effortSubmission = resolveEffortSubmission({
         effortLevel,
         originalEffortLevel:
           configSurfaceQuery.data?.normalized.thinkingEffort?.value ?? null,
         inheritTransition: agentCommandUpdate === "",
       });
-      // Include effort in the locked update when touched (tri-state: absent =
-      // don't touch; null = clear; string = set). Only when effortSubmission.persist.
+      // Persist touched effort in the locked update: absent, clear, or set.
       if (effortTouched.current && effortSubmission.persist) {
         input.effortLevel = effortSubmission.level;
       }
 
-      const switchRequested =
-        input.agentCommand !== undefined ||
-        input.agentArgs !== undefined ||
-        input.model !== undefined ||
-        input.provider !== undefined;
-      const switchGeneration =
-        switchRequested &&
-        agent.backend.type === "local" &&
-        agent.status === "running"
-          ? beginAgentRuntimeSwitch(agent.pubkey, {
-              targetRuntimeId: prospectiveRuntimeId,
-              targetLabel: selectedRuntime?.label ?? prospectiveRuntimeId,
-              targetModel: normalizedModel,
-              activeTurn: activeTurns.length > 0,
-            })
-          : null;
+      const result = await saveWithRuntimeSwitch(input, {
+        runtimeId: prospectiveRuntimeId,
+        label: selectedRuntime?.label ?? prospectiveRuntimeId,
+        model: normalizedModel,
+      });
+      if (result === null) return;
 
-      let result: Awaited<ReturnType<typeof updateMutation.mutateAsync>>;
-      try {
-        result = await updateMutation.mutateAsync(input);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to save";
-        const restartFailurePrefix =
-          "Agent settings were saved, but its runtime failed to restart: ";
-        if (
-          switchGeneration !== null &&
-          message.startsWith(restartFailurePrefix)
-        ) {
-          failAgentRuntimeSwitch(
-            agent.pubkey,
-            switchGeneration,
-            message.slice(restartFailurePrefix.length),
-          );
-          onOpenChange(false);
-          return;
-        }
-        if (switchGeneration !== null) {
-          finishAgentRuntimeSwitch(agent.pubkey, switchGeneration);
-        }
-        throw error;
-      }
-      if (switchGeneration !== null) {
-        finishAgentRuntimeSwitch(agent.pubkey, switchGeneration);
-      }
-
-      // Standalone setters — sequenced after the locked update resolves so the
-      // dialog remains fully gated (isSaving) for the COMPLETE Save transaction.
-      // A failure here surfaces as setterError (retryable) and aborts before
-      // close, keeping the dialog open so the user can retry Save.
+      // Run standalone setters after the locked update inside the full save gate.
+      // Failures leave the dialog open so the user can retry.
       try {
         if (autoRestartOnConfigChange !== agent.autoRestartOnConfigChange) {
           // Mirrors start-on-app-launch; not part of UpdateManagedAgentInput so
@@ -1008,7 +955,6 @@ export function AgentInstanceEditDialog({
           </div>
         }
       >
-        <AgentRuntimeSwitchNotice pubkey={agent.pubkey} />
         <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
           <AgentAntPictureControl
             avatarUrl={previewAvatarUrl}
@@ -1125,6 +1071,7 @@ export function AgentInstanceEditDialog({
             ) : (
               <EditAgentProviderModelFields
                 disabled={isSaving}
+                runtimeSwitchPubkey={agent.pubkey}
                 llmProviderFieldVisible={llmProviderFieldVisible}
                 providerRequired={providerRequired}
                 providerDropdownOptions={providerDropdownOptions}
