@@ -457,6 +457,17 @@ pub async fn process_community(
     };
 
     repair_unposted(state, &tenant, settings.outreach_channel_id, now).await;
+    // Inbound pictures, stickers and voice notes whose first download did not finish, and the
+    // link for messages that were posted before their file arrived. Receiving never waits on
+    // the send pause, so this runs before the pause check below.
+    super::media::repair(
+        state,
+        &tenant,
+        &connection,
+        settings.outreach_channel_id,
+        now,
+    )
+    .await;
 
     for batch_id in state
         .db

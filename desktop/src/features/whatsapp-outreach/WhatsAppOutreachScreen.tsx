@@ -27,6 +27,7 @@ import {
   getWhatsAppDailyCapProgress,
   isWhatsAppPhoneLikeName,
   maskWhatsAppNumber,
+  whatsappLatestPreview,
   type WhatsAppBatchDetail,
   type WhatsAppContact,
   type WhatsAppTemplate,
@@ -664,7 +665,7 @@ export function WhatsAppOutreachScreen({
             const preview =
               rowBatch?.row.preview ??
               (isSelected
-                ? (chronologicalMessages.at(-1)?.text ?? null)
+                ? whatsappLatestPreview(chronologicalMessages.at(-1))
                 : null);
             const hasDraft = pendingDrafts.some(
               (draft) => draft.waId === contact.waId,

@@ -137,13 +137,13 @@ pub fn webhook_url(state: &AppState, tenant: &TenantContext, connection_id: Uuid
     )
 }
 
-/// Open both sealed secrets of a connection.
-pub fn open_secrets(
+/// Open only the sealed access token of a connection.
+pub fn open_access_token(
     kek: &[u8; 32],
     community: Uuid,
     connection: &WhatsappConnection,
-) -> Result<(Zeroizing<String>, Zeroizing<String>), String> {
-    let token = secrets::open(
+) -> Result<Zeroizing<String>, String> {
+    secrets::open(
         kek,
         &connection.kek_id,
         community,
@@ -152,8 +152,16 @@ pub fn open_secrets(
         &connection.sealed_token,
         &connection.token_nonce,
     )
-    .map_err(|error| error.to_string())?;
-    let app_secret = secrets::open(
+    .map_err(|error| error.to_string())
+}
+
+/// Open only the sealed app secret used to authenticate incoming webhooks.
+pub fn open_app_secret(
+    kek: &[u8; 32],
+    community: Uuid,
+    connection: &WhatsappConnection,
+) -> Result<Zeroizing<String>, String> {
+    secrets::open(
         kek,
         &connection.kek_id,
         community,
@@ -162,7 +170,17 @@ pub fn open_secrets(
         &connection.sealed_app_secret,
         &connection.app_secret_nonce,
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| error.to_string())
+}
+
+/// Open both sealed secrets of a connection.
+pub fn open_secrets(
+    kek: &[u8; 32],
+    community: Uuid,
+    connection: &WhatsappConnection,
+) -> Result<(Zeroizing<String>, Zeroizing<String>), String> {
+    let token = open_access_token(kek, community, connection)?;
+    let app_secret = open_app_secret(kek, community, connection)?;
     Ok((token, app_secret))
 }
 
