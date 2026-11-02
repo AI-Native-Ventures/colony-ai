@@ -940,6 +940,38 @@ test.describe("Co-founder mode Phase 2", () => {
     ).toBeVisible();
   });
 
+  test("switching co-founder mode off and on again starts a Scout that could not start", async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(1_791_273_600_000) });
+    await boot(page, {
+      identity: TEST_IDENTITIES.tyler,
+      step: "brief",
+      withoutBrief: true,
+      withoutOnboarding: true,
+      businessName: "Colony",
+      managedAgents: [stoppedScout()],
+      startManagedAgentErrors: ["Claude Code is not installed."],
+    });
+    await page.goto("/#/settings?section=experimental");
+
+    const card = page.getByTestId("cofounder-scout-entry");
+    await expect(card.getByText("Scout could not start")).toBeVisible();
+    const startsBefore = await commandCalls(page, "start_managed_agent");
+
+    const toggle = page.getByTestId("cofounder-mode-toggle");
+    await toggle.click();
+    await expect(card).toHaveCount(0);
+    await expect(toggle).toBeEnabled();
+    await toggle.click();
+
+    // No click on the card and no message to Scout: the switch is enough.
+    await expect
+      .poll(() => commandCalls(page, "start_managed_agent"))
+      .toBeGreaterThan(startsBefore);
+    await expect(card.getByText("Scout could not start")).toHaveCount(0);
+  });
+
   test("the durable wake status explains why Scout could not be reached", async ({
     page,
   }) => {

@@ -27,6 +27,7 @@ import {
   noteScoutStarting,
   noteScoutUp,
   planScoutStart,
+  resetScoutStartState,
   setScoutStartState,
   subscribeScoutStartState,
 } from "./scoutKeepAlive";
@@ -98,6 +99,15 @@ export function useCofounderScoutKeepAlive(): void {
   if (caughtUpRef.current === null) {
     caughtUpRef.current = createMentionCatchUpStore();
   }
+
+  // Switching co-founder mode off forgets earlier failures, so switching it on
+  // again starts Scout afresh instead of staying in an old "could not start".
+  React.useEffect(() => {
+    if (enabled) return;
+    resetScoutStartState();
+    quickStartsRef.current = [];
+    wakeLookupRef.current = null;
+  }, [enabled]);
 
   // The clock: look again while co-founder mode is on.
   React.useEffect(() => {
