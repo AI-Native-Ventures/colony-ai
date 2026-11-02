@@ -46,6 +46,12 @@
     --colony-activity-tools-surface: rgb(255 255 255 / 92%);
     --colony-accent-foreground: #fffdfa;
     --colony-state-foreground: #ffffff;
+    --colony-selection-bar: #25232a;
+    --colony-selection-bar-foreground: #ffffff;
+    --colony-selection-bar-action: rgb(255 255 255 / 12%);
+    --colony-selection-bar-primary: #ffffff;
+    --colony-selection-bar-primary-foreground: #25232a;
+    --colony-selection-bar-primary-border: #ffffff;
     --colony-warning-ink: #5f3a00;
     --colony-warning-surface: #fff6e6;
     --colony-warning-line: #f0d9a8;
@@ -477,6 +483,12 @@
     --colony-idle-bg: 255 10% 19%;
     --colony-accent-foreground: #1a1920;
     --colony-state-foreground: #1a1920;
+    --colony-selection-bar: hsl(var(--colony-accent));
+    --colony-selection-bar-foreground: var(--colony-accent-foreground);
+    --colony-selection-bar-action: rgb(255 255 255 / 22%);
+    --colony-selection-bar-primary: #24212b;
+    --colony-selection-bar-primary-foreground: hsl(var(--colony-accent));
+    --colony-selection-bar-primary-border: #24212b;
     --colony-warning-ink: #ffc76e;
     --colony-warning-surface: #49371d;
     --colony-warning-line: #846b46;

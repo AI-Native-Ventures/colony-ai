@@ -2966,7 +2966,7 @@
 .c3l-whatsapp-number-note {
   display: block;
   margin-top: 0.2rem;
-  color: var(--c3l-muted, #777);
+  color: var(--c3l-muted);
   font-size: 0.75rem;
 }
 
@@ -3188,8 +3188,8 @@
 
 .c3l-selection-bar {
   border-color: transparent;
-  background: #25232a;
-  color: #fff;
+  background: var(--colony-selection-bar);
+  color: var(--colony-selection-bar-foreground);
 }
 
 .c3l-selection-bar > strong {
@@ -3199,39 +3199,18 @@
 .c3l-selection-bar .c3l-selection-action,
 .c3l-selection-bar .c3l-selection-more summary {
   border-color: transparent !important;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff !important;
+  background: var(--colony-selection-bar-action);
+  color: var(--colony-selection-bar-foreground) !important;
 }
 
 .c3l-selection-bar .c3l-selection-action-primary {
-  border-color: #fff !important;
-  background: #fff;
-  color: #25232a !important;
+  border-color: var(--colony-selection-bar-primary-border) !important;
+  background: var(--colony-selection-bar-primary);
+  color: var(--colony-selection-bar-primary-foreground) !important;
 }
 
 .c3l-selection-bar .c3l-selection-clear {
-  color: #fff;
-}
-
-:root.dark .c3l-selection-bar {
-  background: hsl(var(--colony-accent));
-  color: var(--colony-accent-foreground);
-}
-
-:root.dark .c3l-selection-bar .c3l-selection-action,
-:root.dark .c3l-selection-bar .c3l-selection-more summary {
-  background: rgba(255, 255, 255, 0.22);
-  color: var(--colony-accent-foreground) !important;
-}
-
-:root.dark .c3l-selection-bar .c3l-selection-action-primary {
-  border-color: #24212b !important;
-  background: #24212b;
-  color: hsl(var(--colony-accent)) !important;
-}
-
-:root.dark .c3l-selection-bar .c3l-selection-clear {
-  color: var(--colony-accent-foreground);
+  color: var(--colony-selection-bar-foreground);
 }
 
 .c3l-mobile-lead-contact {
