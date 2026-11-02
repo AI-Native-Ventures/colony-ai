@@ -712,13 +712,11 @@ pub async fn webhook_receive(
             "whatsapp is not configured",
         ));
     };
-    let app_secret =
-        connect::open_app_secret(kek, *tenant.community().as_uuid(), &connection).map_err(
-            |reason| {
-                tracing::error!("whatsapp webhook could not open the app secret: {reason}");
-                api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
-            },
-        )?;
+    let app_secret = connect::open_app_secret(kek, *tenant.community().as_uuid(), &connection)
+        .map_err(|reason| {
+            tracing::error!("whatsapp webhook could not open the app secret: {reason}");
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        })?;
     let signature = headers
         .get(SIGNATURE_HEADER)
         .and_then(|value| value.to_str().ok());
