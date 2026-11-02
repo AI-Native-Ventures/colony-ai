@@ -146,6 +146,7 @@ function RelayMemberRow({
         <ProfileAvatar
           avatarUrl={profile?.avatarUrl ?? null}
           className="cs-member-avatar"
+          pubkey={member.pubkey}
           label={displayName}
           shape={profile?.isAgent === true ? "squircle" : "circle"}
         />

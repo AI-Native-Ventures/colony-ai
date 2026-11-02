@@ -45,6 +45,18 @@ const COST_PER_RECORD_USD: f64 = 0.003;
 const DEFAULT_LIMIT: u32 = 20;
 const MAX_LIMIT: u32 = 50;
 const MAX_SKIP: u32 = 1_000;
+/// Outscraper pages in steps of 20: its `skip` "should be multiple to 20", and a
+/// skip that is not one returns repeats of places already seen, which are paid
+/// for twice. The relay refuses any other skip so no client can burn credits
+/// that way.
+const SKIP_STEP: u32 = 20;
+/// Google Maps gives no more than 400 places for one query. A page that ends at
+/// or past this has no next page, so clients stop instead of paying for empty
+/// or repeated pages.
+const QUERY_PLACE_CEILING: u32 = 400;
+const SKIP_STEP_MESSAGE: &str = "This version of Colony asks for prospect pages in a way \
+     the search provider cannot serve, so the search was stopped before it was paid for. \
+     Update Colony and search again.";
 const DEFAULT_LANGUAGE: &str = "en";
 
 const MONTHLY_LIMIT_ERROR: &str = "monthly_limit";
@@ -250,6 +262,9 @@ fn validate_request(request: SearchRequest) -> Result<ValidatedSearch, String> {
     if skip > MAX_SKIP {
         return Err(format!("skip must be 0 through {MAX_SKIP}"));
     }
+    if !skip.is_multiple_of(SKIP_STEP) {
+        return Err(SKIP_STEP_MESSAGE.to_string());
+    }
     let language = match request.language.as_deref().map(str::trim) {
         None | Some("") => DEFAULT_LANGUAGE.to_string(),
         Some(language)
@@ -448,6 +463,16 @@ fn normalize_place(row: &Value) -> Option<Place> {
     })
 }
 
+/// Where the next page starts after a full page: a multiple of 20 (the
+/// provider's paging step) that is past `skip`, or `None` once the query's 400
+/// places are used up.
+fn next_page_skip(skip: u32, consumed: usize) -> Option<u64> {
+    let step = u64::from(SKIP_STEP);
+    let reached = u64::from(skip) + consumed as u64;
+    let aligned = (reached / step * step).max(u64::from(skip) + step);
+    (aligned < u64::from(QUERY_PLACE_CEILING)).then_some(aligned)
+}
+
 /// The 200 response body for one page of results.
 ///
 /// `nextSkip` and the cost use the rows the provider returned (capped at the
@@ -461,7 +486,7 @@ fn build_response(rows: &[&Value], limit: u32, skip: u32) -> Value {
         .collect();
     let consumed = considered.len();
     let next_skip = if consumed == limit as usize {
-        Some(u64::from(skip) + consumed as u64)
+        next_page_skip(skip, consumed)
     } else {
         None
     };
@@ -926,6 +951,20 @@ mod tests {
         last_skip.skip = Some(1_000);
         assert!(validate_request(last_skip).is_ok());
 
+        // Outscraper pages in steps of 20; any other skip returns repeats that
+        // are paid for twice, so it is refused before the provider is called.
+        for skip in [0, 20, 40, 380] {
+            let mut input = request("a");
+            input.skip = Some(skip);
+            assert!(validate_request(input).is_ok(), "skip {skip}");
+        }
+        for skip in [1, 7, 14, 21, 39, 41, 399] {
+            let mut input = request("a");
+            input.skip = Some(skip);
+            let error = validate_request(input).expect_err("off-step skip is refused");
+            assert_eq!(error, SKIP_STEP_MESSAGE, "skip {skip}");
+        }
+
         for language in ["e", "toolong", "e1", "en US"] {
             let mut input = request("a");
             input.language = Some(language.to_string());
@@ -1216,11 +1255,12 @@ mod tests {
             .collect();
         let refs: Vec<&Value> = rows.iter().collect();
 
-        // Six rows returned, limit 5: capped at five, a full page, so a next skip.
-        let full = build_response(&refs, 5, 10);
+        // Six rows returned, limit 5: capped at five, a full page. The next page
+        // always starts on a multiple of 20 past this one, never at skip + 5.
+        let full = build_response(&refs, 5, 20);
         assert_eq!(full["provider"], "outscraper");
         assert_eq!(full["places"].as_array().expect("places").len(), 5);
-        assert_eq!(full["nextSkip"], 15);
+        assert_eq!(full["nextSkip"], 40);
         assert_eq!(full["estimatedCostUsd"], 0.015);
 
         // Six rows with a blank name inside a limit of ten: not a full page.
@@ -1233,6 +1273,36 @@ mod tests {
         assert_eq!(empty["places"], serde_json::json!([]));
         assert!(empty["nextSkip"].is_null());
         assert_eq!(empty["estimatedCostUsd"], 0.0);
+    }
+
+    #[test]
+    fn next_skip_is_a_multiple_of_20_and_ends_at_the_query_ceiling() {
+        // Full pages of 20 step by 20 until the 400th place of the query.
+        assert_eq!(next_page_skip(0, 20), Some(20));
+        assert_eq!(next_page_skip(40, 20), Some(60));
+        assert_eq!(next_page_skip(360, 20), Some(380));
+        assert_eq!(next_page_skip(380, 20), None, "400 places is the end");
+        assert_eq!(next_page_skip(400, 20), None);
+        // Other page sizes still land on a multiple of 20 and always move on.
+        assert_eq!(next_page_skip(0, 50), Some(40));
+        assert_eq!(next_page_skip(0, 7), Some(20));
+        assert_eq!(next_page_skip(20, 7), Some(40));
+        for skip in (0..400).step_by(20) {
+            for consumed in [1usize, 7, 13, 20, 33, 50] {
+                if let Some(next) = next_page_skip(skip, consumed) {
+                    assert_eq!(next % 20, 0, "skip {skip} consumed {consumed}");
+                    assert!(next > u64::from(skip));
+                }
+            }
+        }
+
+        // The response carries the same rule: the last page of a query has no next.
+        let rows: Vec<Value> = (0..20)
+            .map(|index| serde_json::json!({ "name": format!("Place {index}") }))
+            .collect();
+        let refs: Vec<&Value> = rows.iter().collect();
+        assert_eq!(build_response(&refs, 20, 360)["nextSkip"], 380);
+        assert!(build_response(&refs, 20, 380)["nextSkip"].is_null());
     }
 
     #[test]

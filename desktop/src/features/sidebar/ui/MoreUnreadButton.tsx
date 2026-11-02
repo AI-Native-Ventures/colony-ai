@@ -8,6 +8,7 @@ export type UnreadDmPreview = {
   channelId: string;
   label: string;
   isAgent?: boolean;
+  pubkey: string;
 };
 
 export function canPreviewUnreadDm(
@@ -114,6 +115,7 @@ export function MoreUnreadButton({
                       avatarUrl={preview.avatarUrl}
                       className="ring-2 ring-primary"
                       displayName={preview.label}
+                      pubkey={preview.pubkey}
                       shape={preview.isAgent ? "squircle" : "circle"}
                       fallbackDelayMs={0}
                       size="xs"

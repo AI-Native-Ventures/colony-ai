@@ -389,6 +389,59 @@ pub async fn get_agent_channel_policy(
     .transpose()
 }
 
+/// An active managed agent whose owner is an owner or admin of the company.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAgentCandidate {
+    /// The agent's public key.
+    pub pubkey: Vec<u8>,
+    /// The name on the agent's profile, if it has one.
+    pub display_name: Option<String>,
+}
+
+/// Most managed agents read when looking for the company's lead. A company with
+/// more than this has no unambiguous lead anyway.
+pub const MANAGED_AGENT_CANDIDATE_LIMIT: i64 = 50;
+
+/// Active managed agents (an agent owner is recorded, not deactivated) whose
+/// owner holds the owner or admin role, oldest first.
+pub async fn list_admin_managed_agents(
+    pool: &PgPool,
+    community_id: CommunityId,
+) -> Result<Vec<ManagedAgentCandidate>> {
+    let mut connection = crate::observability::acquire_writer(
+        pool,
+        crate::observability::WriterOperation::Authorization,
+    )
+    .await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT u.pubkey, u.display_name
+        FROM users u
+        JOIN relay_members m
+          ON m.community_id = u.community_id
+         AND m.pubkey = encode(u.agent_owner_pubkey, 'hex')
+        WHERE u.community_id = $1
+          AND u.agent_owner_pubkey IS NOT NULL
+          AND u.deactivated_at IS NULL
+          AND m.role IN ('owner', 'admin')
+        ORDER BY u.created_at, u.pubkey
+        LIMIT $2
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(MANAGED_AGENT_CANDIDATE_LIMIT)
+    .fetch_all(&mut *connection)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            Ok(ManagedAgentCandidate {
+                pubkey: row.try_get("pubkey")?,
+                display_name: row.try_get("display_name")?,
+            })
+        })
+        .collect()
+}
+
 /// Check whether `actor_pubkey` is the `agent_owner_pubkey` of `target_pubkey`.
 /// Queries `agent_owner_pubkey` directly rather than going through
 /// `get_agent_channel_policy`, which would fetch unrelated fields.
@@ -566,6 +619,15 @@ impl Db {
         pubkey: &[u8],
     ) -> Result<Option<(String, Option<Vec<u8>>)>> {
         crate::user::get_agent_channel_policy(&self.pool, community_id, pubkey).await
+    }
+
+    /// Active managed agents owned by an owner or admin of the company.
+    #[datastore_span(name = "list_admin_managed_agents", system = "postgresql")]
+    pub async fn list_admin_managed_agents(
+        &self,
+        community_id: CommunityId,
+    ) -> Result<Vec<ManagedAgentCandidate>> {
+        crate::user::list_admin_managed_agents(&self.pool, community_id).await
     }
 
     /// Check whether `actor_pubkey` is the agent owner of `target_pubkey`.

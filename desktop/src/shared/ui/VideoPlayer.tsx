@@ -48,29 +48,8 @@ import {
   saveReviewPlaybackPosition,
   setVideoReviewOpen,
 } from "./videoPlayerState";
-type VideoReviewReaction = {
-  emoji: string;
-  emojiUrl?: string;
-  count: number;
-  reactedByCurrentUser?: boolean;
-  users: Array<{
-    pubkey: string;
-    displayName: string;
-    avatarUrl: string | null;
-  }>;
-};
-export type VideoReviewComment = {
-  id: string;
-  author: string;
-  avatarUrl?: string | null;
-  isAgent?: boolean;
-  body: string;
-  createdAt: number;
-  time: string;
-  /** Parent event id — when it points at another comment, this is a reply. */
-  parentId?: string | null;
-  reactions?: VideoReviewReaction[];
-};
+import type { VideoReviewComment } from "./videoReviewTypes";
+export type { VideoReviewComment } from "./videoReviewTypes";
 export type VideoReviewContext = {
   channelId?: string | null;
   channelName?: string;
@@ -1805,6 +1784,7 @@ function VideoReviewDialog({
                                   avatarUrl={item.comment.avatarUrl ?? null}
                                   className="h-4 w-4 shadow-none"
                                   displayName={item.comment.author}
+                                  pubkey={item.comment.pubkey}
                                   shape={
                                     item.comment.isAgent ? "squircle" : "circle"
                                   }
@@ -2138,6 +2118,7 @@ function VideoReviewCommentBody({
           avatarUrl={item.comment.avatarUrl ?? null}
           className="h-6 w-6 shadow-none"
           displayName={item.comment.author}
+          pubkey={item.comment.pubkey}
           shape={item.comment.isAgent ? "squircle" : "circle"}
           size="xs"
         />

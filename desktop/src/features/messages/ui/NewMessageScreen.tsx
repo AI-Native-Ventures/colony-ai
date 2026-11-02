@@ -604,6 +604,7 @@ export function NewMessageScreen() {
                   className="c3nm-hero-avatar"
                   key={user.pubkey}
                   label={formatRecipientName(user)}
+                  pubkey={user.pubkey}
                   shape={user.isAgent ? "squircle" : "circle"}
                 />
               ))}

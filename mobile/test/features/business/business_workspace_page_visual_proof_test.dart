@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:buzz/features/business/business_workspace_page.dart';
+import 'package:buzz/features/business/discovery_workspace_page.dart';
 import 'package:buzz/shared/business/mobile_business_records.dart';
 import 'package:buzz/shared/relay/nostr_models.dart';
 import 'package:buzz/shared/shell/mobile_shell.dart';
@@ -68,6 +69,7 @@ void main() {
             final populated = screen.needsRecords;
             final gateway = _BusinessProofGateway(
               populated: populated,
+              includeLeadProof: screen == _BusinessProofScreen.leads,
               publishFailure: screen == _BusinessProofScreen.adjustmentFailed
                   ? StateError('Relay unavailable')
                   : screen == _BusinessProofScreen.denied
@@ -123,13 +125,19 @@ void main() {
                 destination: MobileShellDestination.company,
                 onDestinationSelected: (_) {},
                 showBrandBar: false,
-                child: BusinessWorkspacePage(
-                  channelDirectory: directory,
-                  communityId: _communityId,
-                  communityName: 'Lerato Studio',
-                  onRetryChannelDirectory: () {},
-                  onOpenChat: () {},
-                ),
+                child: screen == _BusinessProofScreen.leads
+                    ? DiscoveryWorkspacePage(
+                        channelDirectory: directory,
+                        communityId: _communityId,
+                        onRetryChannelDirectory: () {},
+                      )
+                    : BusinessWorkspacePage(
+                        channelDirectory: directory,
+                        communityId: _communityId,
+                        communityName: 'Lerato Studio',
+                        onRetryChannelDirectory: () {},
+                        onOpenChat: () {},
+                      ),
               ),
             );
             await tester.pumpWidget(
@@ -182,6 +190,7 @@ Future<void> _openProofScreen(
 ) async {
   switch (screen) {
     case _BusinessProofScreen.home:
+    case _BusinessProofScreen.leads:
     case _BusinessProofScreen.loading:
     case _BusinessProofScreen.unavailable:
       return;
@@ -274,6 +283,7 @@ class _BusinessCaptureComparator extends LocalFileComparator {
 
 enum _BusinessProofScreen {
   home('mobile-b2_business_home'),
+  leads('mobile-c3_leads'),
   proposals('mobile-b2_business_proposals'),
   proposalsEmpty('mobile-b2_business_proposals-empty'),
   proposal('mobile-b2_business_proposal'),
@@ -307,19 +317,28 @@ enum _BusinessProofScreen {
     adjustmentFailed ||
     denied => true,
     invoiceDetail => true,
+    leads => true,
     _ => false,
   };
 }
 
 class _BusinessProofGateway implements MobileBusinessRecordGateway {
-  _BusinessProofGateway({required this.populated, this.publishFailure});
+  _BusinessProofGateway({
+    required this.populated,
+    this.includeLeadProof = false,
+    this.publishFailure,
+  });
 
   final bool populated;
+  final bool includeLeadProof;
   final Object? publishFailure;
 
   @override
   Future<List<NostrEvent>> fetch(NostrFilter filter) async {
     if (!populated) return const [];
+    if (filter.kinds.contains(EventKind.prospectHead)) {
+      return includeLeadProof ? _leadsProofEvents : _discoveryEvents;
+    }
     if (filter.kinds.contains(EventKind.proposalVersion)) {
       return _discoveryEvents;
     }
@@ -414,6 +433,25 @@ final _discoveryEvents = [
   ),
 ];
 
+final _leadsProofEvents = List.generate(108, (index) {
+  final sequence = index + 16;
+  const stages = ['new', 'qualified', 'in_conversation', 'proposal', 'won'];
+  final sequenceText = sequence.toString().padLeft(3, '0');
+  final uuidTail = sequence.toRadixString(16).padLeft(12, '0');
+  return _prospectEvent(
+    id: sequence.toRadixString(16).padLeft(64, '0'),
+    prospectId: 'd23e4567-e89b-12d3-a456-$uuidTail',
+    partyId: 'd23e4567-e89b-12d3-a456-$uuidTail',
+    displayName: index % 12 == 3
+        ? 'Cedar & Co. Independent Homeware and Interiors $sequenceText'
+        : 'Prospect $sequenceText',
+    stage: stages[index % stages.length],
+    fitScore: 98 - index % 40,
+    vertical: 'Independent homeware boutique',
+    location: 'Parkhurst, Johannesburg',
+  );
+});
+
 final _moneyEvents = [_clientEvent(), _invoiceEvent()];
 
 NostrEvent _prospectEvent({
@@ -421,6 +459,10 @@ NostrEvent _prospectEvent({
   required String prospectId,
   required String partyId,
   required String displayName,
+  String stage = 'new',
+  int fitScore = 90,
+  String vertical = 'Independent homeware boutique',
+  String location = 'Parkhurst, Johannesburg',
 }) => _businessEvent(
   id: id,
   kind: EventKind.prospectHead,
@@ -433,6 +475,10 @@ NostrEvent _prospectEvent({
     'prospectId': prospectId,
     'prospect': {
       'party': {'partyId': partyId, 'displayName': displayName},
+      'vertical': vertical,
+      'location': location,
+      'stage': stage,
+      'fitScore': fitScore,
     },
   },
 );

@@ -75,6 +75,7 @@ export function AgentWorkingIndicatorRow({
               avatarUrl={
                 profiles?.[agent.pubkey.toLowerCase()]?.avatarUrl ?? null
               }
+              pubkey={agent.pubkey}
               className={cn(
                 "size-5 text-3xs ring-1 ring-background",
                 index > 0 && "-ml-1.5",

@@ -272,6 +272,7 @@ export function AskCreateScreen({
       startedBy,
       startedByAvatarUrl: profiles?.[thread.pubkey]?.avatarUrl ?? null,
       startedByIsAgent: agentPubkeys.has(normalizePubkey(thread.pubkey)),
+      startedByPubkey: thread.pubkey,
       when: formatThreadWhen(thread.created_at, nowForThreads),
     };
   });
@@ -1126,6 +1127,7 @@ export function AskCreateScreen({
                   raisedBy={{
                     label: raisedByLabel,
                     avatarUrl: profiles?.[currentPubkey]?.avatarUrl,
+                    pubkey: currentPubkey,
                   }}
                   responseFrom={
                     addresseeLabel
@@ -1134,6 +1136,7 @@ export function AskCreateScreen({
                           avatarUrl:
                             profiles?.[addressee?.pubkey ?? ""]?.avatarUrl,
                           isAgent: addressee?.isAgent,
+                          pubkey: addressee?.pubkey,
                         }
                       : null
                   }

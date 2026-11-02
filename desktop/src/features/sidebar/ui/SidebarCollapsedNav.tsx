@@ -146,6 +146,7 @@ export function SidebarCollapsedNav({
             >
               <ProfileAvatar
                 avatarUrl={primary?.avatarUrl ?? null}
+                pubkey={primary?.pubkey}
                 className="colony-collapsed-avatar"
                 label={label}
                 shape={primary?.isAgent ? "squircle" : "circle"}

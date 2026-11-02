@@ -328,6 +328,7 @@ function UserProfilePopoverBody({
       <ProfileAvatarWithStatus
         avatarClassName="text-base"
         avatarUrl={profile?.avatarUrl ?? null}
+        pubkey={pubkey}
         className="h-12.5 w-12.5"
         geometry={scaleProfileAvatarStatusGeometry(
           DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,

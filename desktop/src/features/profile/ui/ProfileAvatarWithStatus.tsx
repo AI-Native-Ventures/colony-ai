@@ -18,6 +18,7 @@ export type ProfileAvatarStatusGeometry = {
 type ProfileAvatarWithStatusProps = {
   avatarClassName?: string;
   avatarUrl: string | null;
+  pubkey?: string | null;
   className?: string;
   geometry?: ProfileAvatarStatusGeometry;
   iconClassName?: string;
@@ -53,6 +54,7 @@ export function scaleProfileAvatarStatusGeometry(
 export function ProfileAvatarWithStatus({
   avatarClassName,
   avatarUrl,
+  pubkey,
   className,
   geometry = DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
   iconClassName,
@@ -107,6 +109,7 @@ export function ProfileAvatarWithStatus({
     >
       <ProfileAvatar
         avatarUrl={avatarUrl}
+        pubkey={pubkey}
         className={cn("h-full w-full", avatarClassName)}
         iconClassName={iconClassName}
         label={label}

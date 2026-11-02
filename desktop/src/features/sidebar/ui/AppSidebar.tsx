@@ -140,6 +140,7 @@ export function AppSidebar({
   onSetUserStatus,
   onClearUserStatus,
   onSwitchCommunity,
+  onRemoveWorkspace,
   selfUserStatus,
   isPresencePending,
   onNewMessage,
@@ -465,6 +466,7 @@ export function AppSidebar({
             channelId,
             isAgent: participant.isAgent,
             label: dmChannelLabels[channelId] ?? participant.label,
+            pubkey: participant.pubkey,
           },
         ];
       }),
@@ -571,6 +573,7 @@ export function AppSidebar({
           onInvitePeople={() => onSelectSettings("community-members")}
           onJoinWorkspace={() => onOpenWorkspaceDialog("join")}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+          onRemoveWorkspace={onRemoveWorkspace}
           onSelectChannel={onSelectChannel}
           onSwitchWorkspace={onSwitchCommunity}
           searchChannels={searchChannels}

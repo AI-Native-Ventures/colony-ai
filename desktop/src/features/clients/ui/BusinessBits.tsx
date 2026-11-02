@@ -147,6 +147,7 @@ export function PersonAvatar({
       avatarUrl={person.avatarUrl}
       className={cn(AVATAR_CLASS[size])}
       label={person.name}
+      pubkey={person.pubkey}
       shape={person.isAgent ? "squircle" : "circle"}
     />
   );

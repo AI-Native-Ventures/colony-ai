@@ -330,6 +330,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                               member.displayName
                             }
                             label={member.displayName}
+                            pubkey={member.pubkey}
                             shape="squircle"
                           />
                         ))}
@@ -343,6 +344,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                           : "c3c-mention-avatar c3c-mention-avatar-person"
                       }
                       label={suggestion.displayName}
+                      pubkey={suggestion.pubkey}
                       shape={
                         suggestion.isAgent || suggestion.kind === "persona"
                           ? "squircle"

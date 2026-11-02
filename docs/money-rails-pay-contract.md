@@ -17,23 +17,24 @@ if the UI needs a different shape, say so in the PR before the relay code lands.
 | Rule | Enforced by | Proven by |
 | --- | --- | --- |
 | Scout can only ask for money. A recipe or browser step that refunds, pays out, transfers, withdraws or moves balance is refused, whatever was approved. | `buzz_core::money_rails::refusal` runs at recipe propose, at recipe approve, at every recipe run and at every browser step check. | Postgres test `refund_recipe_is_refused_even_when_approved`; red proof. |
-| Nothing reaches a client before the owner approves the card. Approve is one atomic relay command that re-checks amount, currency, recipient and message against the card head. Edit after approval voids it. | Kind 47070 `approve` under the head row lock; the sender and the recipe runner read the approval digest, never the action. | `approve_after_edit_is_refused_and_edit_voids_the_approval`; red proof. |
+| Nothing reaches a client before the owner approves the card. Approve is one atomic relay command that re-checks amount, currency, recipient and message against the card head. Edit after approval voids it. | Kind 47077 `approve` under the head row lock; the sender and the recipe runner read the approval digest, never the action. | `approve_after_edit_is_refused_and_edit_voids_the_approval`; red proof. |
 | Provider keys are pasted in a Colony dialog only, sealed at the relay (KEK + community + connection id as AAD), locked to the provider API host(s), never returned in any response, event, log or agent output, and responses are scrubbed by exact match. | `money_rails::vault` (same envelope as `whatsapp::secrets`), `money_rails::runner` host lock and scrub. | `vault_key_never_appears_in_any_output` greps every response, event and captured log line for the key. |
 | A payment notice alone never marks Paid. Only an HMAC-verified notice, a matching API lookup, or the owner's tick does. Otherwise "Payment reported, check". | `money_rails::notices::classify` is the only writer of `paid`. | `unverified_notice_never_marks_paid`, `spoofed_and_replayed_notices_are_not_paid_and_a_signed_one_is_paid_once`, `a_signed_notice_for_another_amount_is_a_report_not_a_payment`; red proof. |
 
 ## 2. Event kinds
 
-Added to `crates/buzz-core/src/kind.rs`. All four are free on main `a3490b3b0`.
-Money rails owns heads 30680 to 30689 and actions 47070 to 47079. This PR uses only the
-payment ones; signing (30681, 47071, 47072) and booking (30682, 47073) are reserved for
-their own PRs and are NOT defined here.
+Added to `crates/buzz-core/src/kind.rs`. All four are free on main `510cb1010`. They were first
+drafted as 30680, 30683, 47070 and 47074; 30680 clashed with `KIND_COFOUNDER_LEAD_HEAD`
+(PR 669), so all four moved to the numbers below. 30684, 30685, 47075 and 47076 belong to the
+outreach lists design and are NOT used here. Signing and booking will get their own numbers
+in their own PRs and are NOT defined here.
 
 | Kind | Const | Who writes | Notes |
 | --- | --- | --- | --- |
-| 30680 | `KIND_PAYMENT_LINK_HEAD` | relay only | One per card. d tag `paylink:<linkId>`. Parameterized replaceable. |
-| 47070 | `KIND_PAYMENT_LINK_ACTION` | member or owned agent | Commands of section 6. d tag `paylink:<linkId>`. |
-| 30683 | `KIND_MONEY_CONNECTION_HEAD` | relay only | One per connection. d tag `payconn:<connectionId>`. Never holds a secret value, a notice address or a recipient. |
-| 47074 | `KIND_MONEY_CONNECTION_ACTION` | member or owned agent | Commands of section 4. d tag `payconn:<connectionId>`. |
+| 30686 | `KIND_PAYMENT_LINK_HEAD` | relay only | One per card. d tag `paylink:<linkId>`. Parameterized replaceable. |
+| 47077 | `KIND_PAYMENT_LINK_ACTION` | member or owned agent | Commands of section 6. d tag `paylink:<linkId>`. |
+| 30687 | `KIND_MONEY_CONNECTION_HEAD` | relay only | One per connection. d tag `payconn:<connectionId>`. Never holds a secret value, a notice address or a recipient. |
+| 47078 | `KIND_MONEY_CONNECTION_ACTION` | member or owned agent | Commands of section 4. d tag `payconn:<connectionId>`. |
 
 Both action kinds and both head kinds are community-wide company records: global only,
 no `h` tag, scope `messages:write`, no channel-scoped tokens, same as kinds 30679 and 47069.
@@ -42,7 +43,7 @@ Wired in `is_global_only_kind`, `required_scope_for_kind`, the company-record ro
 
 Reused unchanged: invoices 30641/47026, payment evidence 47027, adjustments 47028, customer
 record 30679/47069. Secret bindings 30647/47036 are NOT used: connection metadata lives in
-30683 only and the sealed values live in the relay table (decision for the builder item in
+30687 only and the sealed values live in the relay table (decision for the builder item in
 spec section 10).
 
 ## 3. Roles
@@ -65,11 +66,11 @@ spec section 10).
 verified NIP-OA tag) is a current owner or admin. Display names are never used. A managed
 agent never counts as owner or admin. (Spec coordinator call 1.)
 
-## 4. Connections (kind 30683 head, 47074 actions, HTTP intake)
+## 4. Connections (kind 30687 head, 47078 actions, HTTP intake)
 
 A connection is one payment provider for one business. Any number per business.
 
-### 4.1 Head content (30683)
+### 4.1 Head content (30687)
 
 ```json
 {
@@ -174,7 +175,7 @@ The vault is `money_rails::vault`, the same AES-256-GCM envelope as
 `whatsapp::secrets`, AAD `colony-money-v1:<community>:<connectionId>:<field>`, plaintext in
 `Zeroizing`. A sealed value cannot be moved to another connection or community.
 
-### 4.3 Actions (47074)
+### 4.3 Actions (47078)
 
 Content: `{ "schemaVersion": 1, "op": "...", "connectionId": "uuid", "expectedHeadEventId": "hex|null", ... }`.
 
@@ -261,7 +262,7 @@ A recipe is a named request shape Colony runs for Scout. Scout never calls the p
 The same check runs on a browser step (section 7): the step label, button text and URL
 path are the input. The word list is one constant, `FORBIDDEN_WORDS`, so the UI can show it.
 
-## 6. Payment link cards (kind 30680 head, 47070 actions)
+## 6. Payment link cards (kind 30686 head, 47077 actions)
 
 ### 6.1 States
 
@@ -294,7 +295,7 @@ failed -> creating_link (retry, approval still valid) | needs_you (approval void
 Every failure leaves a durable record and a visible state (review-proven rule 1). A job
 that dies half way is picked up again by the sweeper (section 6.5).
 
-### 6.2 Head content (30680)
+### 6.2 Head content (30686)
 
 ```json
 {
@@ -369,7 +370,7 @@ that dies half way is picked up again by the sweeper (section 6.5).
   `browser_step_refused`, `message_window_closed`, `message_failed`, `evidence_pending`,
   `key_unavailable`.
 
-### 6.3 Actions (47070)
+### 6.3 Actions (47077)
 
 Content: `{ "schemaVersion": 1, "op": "...", "linkId": "uuid", "expectedHeadEventId": "hex|null", ... }`.
 Every op after `draft` names the head it saw. A stale head is refused with `conflict`.
@@ -532,7 +533,7 @@ A replayed verified notice is a duplicate (dedupe), so it cannot write evidence 
 | `link` `linkId` | owner, admin | `{ headEventId, link, recipient { channel, address, name }, notices }` (the only place the full address is returned) |
 | `notices` `connectionId?`, `linkId?`, `unmatched?`, `limit?` | owner, admin | `{ "notices": [{ id, connectionId, receivedAt, signature, reference, amountMinor, currency, matchedLinkId, judgement, excerpt }] }` with the excerpt cut at 512 bytes |
 
-The desktop can also read the heads directly as events: a REQ for kind 30680 and 30683
+The desktop can also read the heads directly as events: a REQ for kind 30686 and 30687
 authored by the relay (community-wide company records, no secret in them) and filter by the
 `partyId` or `invoiceId` inside. The customer record head (30679) is NOT changed by this PR:
 the customer record's Money section reads the card heads of its `partyId`.
@@ -573,7 +574,7 @@ writes return `{event_id, accepted, message}`; a refusal prints the relay's plai
 | `colony pay connections` | Lists connections (provider, route, status, default, recipes and their approval). No secret ever. |
 | `colony pay cards [--state S] [--party P] [--invoice I] [--limit N]` | Lists cards, most recently changed first. |
 | `colony pay card --card <id>` | Shows one card and its `headEventId`. |
-| `colony pay draft --party P --invoice I --amount <minor> --currency ZAR --purpose "..." (--to-whatsapp N \| --to-email E) --name "..." --message "...{link}..." [--connection C] [--expires-days 14] [--card-id ID]` | Drafts a card (47070 `draft`). Prints the card id on stderr. `--card-id` makes a retry safe. |
+| `colony pay draft --party P --invoice I --amount <minor> --currency ZAR --purpose "..." (--to-whatsapp N \| --to-email E) --name "..." --message "...{link}..." [--connection C] [--expires-days 14] [--card-id ID]` | Drafts a card (47077 `draft`). Prints the card id on stderr. `--card-id` makes a retry safe. |
 | `colony pay edit --card ID [--amount] [--purpose] [--message] [--to-whatsapp\|--to-email --name] [--expires-days] [--expected H]` | Edits a card; voids an approval. |
 | `colony pay submit --card ID` / `colony pay cancel --card ID [--reason]` | Sends a complete draft to the owner / cancels your own draft. |
 | `colony pay recipe-propose --connection C --file recipe.json` | Proposes a recipe from the provider's public docs. |

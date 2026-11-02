@@ -15,11 +15,11 @@ import type { PresenceStatus } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Spinner } from "@/shared/ui/spinner";
 import { agentPresenceStartBlockReason } from "../lib/useAgentAvailability";
-import { IdentityInitialsAvatar } from "./IdentityInitialsAvatar";
 
 type AgentRuntimeAvatarControlProps = {
   activeTestId: string;
   avatarUrl?: string | null;
+  pubkey?: string | null;
   errorLabel?: string | null;
   errorTestId?: string;
   /** Lifecycle bookkeeping controls actions, not the availability dot. */
@@ -136,6 +136,7 @@ const MASK_TRANSITION = {
 export function AgentRuntimeAvatarControl({
   activeTestId,
   avatarUrl,
+  pubkey,
   availability,
   errorLabel,
   errorTestId,
@@ -262,16 +263,19 @@ export function AgentRuntimeAvatarControl({
       {trimmedAvatarUrl ? (
         <ProfileAvatar
           avatarUrl={trimmedAvatarUrl}
+          pubkey={pubkey}
           className="h-full w-full bg-muted shadow-none"
           iconClassName="h-8 w-8"
           label={label}
           shape="squircle"
         />
       ) : (
-        <IdentityInitialsAvatar
+        <ProfileAvatar
+          avatarUrl={null}
+          pubkey={pubkey}
           className="border-0 shadow-none"
           label={label}
-          size={AGENT_AVATAR_SIZE}
+          shape="squircle"
         />
       )}
     </MaskedAvatarBadgeFrame>

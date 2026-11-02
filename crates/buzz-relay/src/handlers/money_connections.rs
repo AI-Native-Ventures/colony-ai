@@ -1,4 +1,4 @@
-//! Broker for money rails connections (kind 47074, relay-signed head kind 30683), plus the
+//! Broker for money rails connections (kind 47078, relay-signed head kind 30687), plus the
 //! transactional pieces the HTTP secret intake uses.
 //!
 //! A connection is one payment provider. Its non secret configuration lives as JSON next to the
@@ -72,7 +72,7 @@ async fn fenced_tx(
     Ok(tx)
 }
 
-/// Handles a connection command (kind 47074).
+/// Handles a connection command (kind 47078).
 pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,

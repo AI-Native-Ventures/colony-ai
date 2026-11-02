@@ -88,6 +88,82 @@ pub struct CofounderHead {
     pub updated_at: i64,
 }
 
+/// Relay-authored lead status head (community-wide).
+pub const KIND_COFOUNDER_LEAD_HEAD: u32 = crate::kind::KIND_COFOUNDER_LEAD_HEAD;
+/// The single d-tag of the lead status record.
+pub const COFOUNDER_LEAD_D_TAG: &str = "company:cofounder-lead";
+/// Longest `detail` text of a lead status.
+pub const MAX_LEAD_DETAIL_CHARS: usize = 200;
+
+/// Whether the relay can reach Scout while co-founder mode is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeadState {
+    /// The last wake reached Scout. Nothing for the owner to do.
+    Reached,
+    /// Wakes to Scout keep failing. The owner sees "Scout could not be reached"
+    /// with a Try again that saves the co-founder settings again.
+    Unreachable,
+}
+
+/// Why Scout could not be reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeadProblem {
+    /// The business has no Scout the relay can identify.
+    NoScout,
+    /// The business has more than one possible Scout, so nobody was woken.
+    SeveralScouts,
+    /// A Scout was found but the message to it could not be delivered.
+    DeliveryFailed,
+}
+
+/// Relay-authored lead status (kind 30680). It records the relay's honest view
+/// of whether it can wake Scout, so the desktop can say so instead of waiting
+/// for ever. Only the relay writes it, and only when the state changes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct LeadStatusHead {
+    /// Schema version.
+    pub schema_version: u8,
+    /// Reached or unreachable.
+    pub state: LeadState,
+    /// Why, while unreachable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<LeadProblem>,
+    /// One short plain sentence for the owner (system written, no outside text).
+    #[serde(default)]
+    pub detail: String,
+    /// Failed wake attempts behind this status.
+    #[serde(default)]
+    pub attempts: u32,
+    /// Unix seconds the current state began.
+    pub since: i64,
+    /// Unix seconds of the last change.
+    pub updated_at: i64,
+}
+
+/// Validate a lead status head.
+pub fn validate_lead_status_head(head: &LeadStatusHead) -> Result<(), CompanyRecordError> {
+    if head.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
+        return Err(CompanyRecordError::UnsupportedSchemaVersion);
+    }
+    if head.since < 0 || head.updated_at < 0 {
+        return Err(CompanyRecordError::Invalid("lead status needs valid times"));
+    }
+    if head.detail.chars().count() > MAX_LEAD_DETAIL_CHARS {
+        return Err(CompanyRecordError::Invalid(
+            "lead status detail is at most 200 characters",
+        ));
+    }
+    if (head.state == LeadState::Unreachable) != head.problem.is_some() {
+        return Err(CompanyRecordError::Invalid(
+            "lead status names a problem exactly when Scout is unreachable",
+        ));
+    }
+    Ok(())
+}
+
 /// Validate a co-founder settings action.
 pub fn validate_cofounder_action(action: &CofounderAction) -> Result<(), CompanyRecordError> {
     if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
@@ -136,6 +212,47 @@ mod tests {
             settings: CofounderSettings::default(),
             expected_head_event_id: None,
         }
+    }
+
+    fn lead_status(state: LeadState, problem: Option<LeadProblem>) -> LeadStatusHead {
+        LeadStatusHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            state,
+            problem,
+            detail: String::new(),
+            attempts: 3,
+            since: 10,
+            updated_at: 20,
+        }
+    }
+
+    #[test]
+    fn a_lead_status_names_a_problem_exactly_when_unreachable() {
+        assert!(validate_lead_status_head(&lead_status(LeadState::Reached, None)).is_ok());
+        assert!(validate_lead_status_head(&lead_status(
+            LeadState::Unreachable,
+            Some(LeadProblem::NoScout)
+        ))
+        .is_ok());
+        assert!(validate_lead_status_head(&lead_status(LeadState::Unreachable, None)).is_err());
+        assert!(validate_lead_status_head(&lead_status(
+            LeadState::Reached,
+            Some(LeadProblem::SeveralScouts)
+        ))
+        .is_err());
+        let mut long = lead_status(LeadState::Reached, None);
+        long.detail = "x".repeat(MAX_LEAD_DETAIL_CHARS + 1);
+        assert!(validate_lead_status_head(&long).is_err());
+    }
+
+    #[test]
+    fn a_lead_status_uses_the_camel_case_wire_form() {
+        let head = lead_status(LeadState::Unreachable, Some(LeadProblem::SeveralScouts));
+        let json = serde_json::to_value(&head).expect("json");
+        assert_eq!(json["state"], "unreachable");
+        assert_eq!(json["problem"], "several_scouts");
+        assert_eq!(json["updatedAt"], 20);
+        assert!(serde_json::from_value::<LeadStatusHead>(json).is_ok());
     }
 
     #[test]

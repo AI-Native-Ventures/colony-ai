@@ -93,6 +93,7 @@ export function ChannelMemberAvatarStack({
             {size === "header" ? (
               <ProfileAvatar
                 avatarUrl={profile?.avatarUrl ?? null}
+                pubkey={member.pubkey}
                 className={cn(
                   "text-3xs ring-2 ring-colony-surface",
                   profile?.isAgent
@@ -107,6 +108,7 @@ export function ChannelMemberAvatarStack({
                 avatarUrl={profile?.avatarUrl ?? null}
                 className={`${avatarSizeClass} border-2 border-background text-2xs`}
                 displayName={avatarLabel}
+                pubkey={member.pubkey}
                 fallbackDelayMs={0}
                 shape={profile?.isAgent ? "squircle" : "circle"}
               />

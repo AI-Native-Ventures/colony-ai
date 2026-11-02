@@ -103,6 +103,7 @@ export function SidebarProfileCard({
             <ProfileAvatar
               avatarDataUrl={selfProfileCache?.avatarDataUrl ?? null}
               avatarUrl={profile?.avatarUrl ?? null}
+              pubkey={profile?.pubkey}
               className="size-full text-sm"
               iconClassName="h-4 w-4"
               label={resolvedDisplayName}
@@ -125,6 +126,7 @@ export function SidebarProfileCard({
             onOpenChange={setProfilePopoverOpen}
             avatarDataUrl={selfProfileCache?.avatarDataUrl ?? null}
             avatarUrl={profile?.avatarUrl ?? null}
+            pubkey={profile?.pubkey}
             currentStatus={selfPresenceStatus}
             displayName={resolvedDisplayName}
             jobTitle={profile?.jobTitle ?? null}

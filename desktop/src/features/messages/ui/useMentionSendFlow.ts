@@ -13,6 +13,7 @@ import {
 import { resolvePersonaRuntime } from "@/features/agents/lib/resolvePersonaRuntime";
 import { useAddChannelMembersMutation } from "@/features/channels/hooks";
 import { useCanAddChannelMembers } from "@/features/channels/useCanAddChannelMembers";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useNonMemberInvite } from "./useNonMemberInvite";
 import { dmThreadAgentMentionError } from "@/features/messages/lib/dmThreadAgentMentionError";
 import {
@@ -947,13 +948,29 @@ export function useMentionSendFlow({
       activePreparedLinkPreviews,
     ],
   );
-  const pendingNonMemberNames = React.useMemo(() => {
+  const pendingNonMemberPubkeys = React.useMemo(
+    () => pendingNonMemberSend?.nonMemberPubkeys ?? [],
+    [pendingNonMemberSend],
+  );
+  const pendingNonMemberProfiles = useUsersBatchQuery(pendingNonMemberPubkeys, {
+    enabled: pendingNonMemberPubkeys.length > 0,
+  });
+  const pendingNonMemberRecipients = React.useMemo(() => {
     if (!pendingNonMemberSend) return [];
-    return pendingNonMemberSend.nonMemberPubkeys.map(
-      (pubkey) =>
-        mentions.getMentionDisplayName(pubkey) ?? truncateNpub(pubkey),
-    );
-  }, [mentions.getMentionDisplayName, pendingNonMemberSend]);
+    const profiles = pendingNonMemberProfiles.data?.profiles;
+    return pendingNonMemberPubkeys.map((pubkey) => ({
+      avatarUrl: profiles?.[pubkey.toLowerCase()]?.avatarUrl ?? null,
+      isAgent: mentions.isAgentPubkey(pubkey),
+      label: mentions.getMentionDisplayName(pubkey) ?? truncateNpub(pubkey),
+      pubkey,
+    }));
+  }, [
+    mentions.getMentionDisplayName,
+    mentions.isAgentPubkey,
+    pendingNonMemberProfiles.data?.profiles,
+    pendingNonMemberPubkeys,
+    pendingNonMemberSend,
+  ]);
   const invitation = useNonMemberInvite({
     sourceOwner,
     draft: pendingNonMemberSend,
@@ -996,7 +1013,7 @@ export function useMentionSendFlow({
         isCompleteSendPending ||
         attachAgentMutation.isPending ||
         createPersonaAgentMutation.isPending,
-      names: pendingNonMemberNames,
+      recipients: pendingNonMemberRecipients,
       onDismiss: dismissNonMemberPrompt,
       onDoNothing: handleSendWithoutInviting,
       onInvite: invitation.invite,

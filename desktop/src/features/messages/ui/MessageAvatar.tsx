@@ -11,6 +11,7 @@ import { cn } from "@/shared/lib/cn";
 export function MessageAvatar({
   author,
   avatarUrl,
+  pubkey,
   hideAgentAccessBadge = false,
   isAgent,
   isThreadReply = false,
@@ -19,6 +20,7 @@ export function MessageAvatar({
 }: {
   author: string;
   avatarUrl: string | null;
+  pubkey?: string;
   hideAgentAccessBadge?: boolean;
   isAgent: boolean;
   isThreadReply?: boolean;
@@ -36,6 +38,7 @@ export function MessageAvatar({
     <div className="relative shrink-0">
       <ProfileAvatar
         avatarUrl={avatarUrl}
+        pubkey={pubkey}
         className={cn(
           "c3c-avatar",
           sizePx === undefined &&

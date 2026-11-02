@@ -25,6 +25,7 @@ import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { useIdentityQuery } from "@/shared/api/hooks";
 
 type DraftDetailPaneProps = {
   item: DraftViewItem | null;
@@ -38,6 +39,7 @@ export function DraftDetailPane({
   onDelete,
 }: DraftDetailPaneProps) {
   const { goChannel } = useAppNavigation();
+  const identity = useIdentityQuery();
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
 
   if (!item) {
@@ -135,6 +137,7 @@ export function DraftDetailPane({
               avatarUrl={null}
               className="h-9 w-9 shrink-0"
               displayName="You"
+              pubkey={identity.data?.pubkey}
               size="md"
             />
 

@@ -243,6 +243,7 @@ export function PinnedMessagesList({
                   avatarUrl={authorProfile?.avatarUrl ?? null}
                   className="c3pin-avatar"
                   label={label(author)}
+                  pubkey={author}
                   shape={authorProfile?.isAgent ? "squircle" : "circle"}
                 />
                 <div className="c3pin-card-body">

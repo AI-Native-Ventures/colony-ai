@@ -818,6 +818,8 @@ pub async fn cmd_send_message(
         validate_content_size(&p.content)?;
         buzz_core::chat_limits::check_chat_length(&p.content)
             .map_err(|e| CliError::Usage(e.to_string()))?;
+        buzz_core::chat_limits::check_no_record_file(&p.content)
+            .map_err(|e| CliError::Usage(e.to_owned()))?;
     }
     if let Some(ref r) = p.reply_to {
         validate_hex64(r)?;
@@ -1111,6 +1113,8 @@ pub async fn cmd_edit_message(
         content = &repaired;
         buzz_core::chat_limits::check_chat_length(content)
             .map_err(|e| CliError::Usage(e.to_string()))?;
+        buzz_core::chat_limits::check_no_record_file(content)
+            .map_err(|e| CliError::Usage(e.to_owned()))?;
     }
     let target_eid = parse_event_id(event_id)?;
 
@@ -2314,6 +2318,67 @@ mod tests {
         assert!(text.starts_with("Too long for chat: 61 words."), "{text}");
         assert!(text.contains("Rewrite in under 50 words"), "{text}");
         assert!(text.contains("```doc fence"), "{text}");
+        assert_eq!(relay.submitted().len(), 0);
+    }
+
+    /// GATE-329-COF: Scout told the owner it had saved the weekly review as a
+    /// file; the Weekly review page never changed. A chat message that names a
+    /// file in a record folder is refused before anything is sent, and the error
+    /// names the commands that really record it.
+    #[tokio::test]
+    async fn an_agent_message_naming_a_record_file_is_refused_before_anything_is_sent() {
+        let relay = guard_relay(vec![]).await;
+        let client = agent_client(&relay.url, Keys::generate());
+
+        let error = cmd_send_message(
+            &client,
+            send_params("Done. I saved the review to OUTBOX/WEEKLY_REVIEW_2026-11-01.md."),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(error, CliError::Usage(_)), "{error:?}");
+        assert_eq!(crate::error::exit_code(&error), 1);
+        let text = error.to_string();
+        assert!(text.contains("colony numbers review write"), "{text}");
+        assert!(text.contains("colony playbooks propose"), "{text}");
+        assert_eq!(relay.submitted().len(), 0);
+
+        // The plain proposal line goes out, and a person may name any file.
+        cmd_send_message(
+            &client,
+            send_params("Proposed. It is waiting for your approval."),
+        )
+        .await
+        .unwrap();
+        cmd_send_message(
+            &person_client(&relay.url),
+            send_params("Please open OUTBOX/NOTES.md"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(relay.submitted().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn an_agent_cannot_edit_a_chat_message_to_name_a_record_file() {
+        let keys = Keys::generate();
+        let me = keys.public_key().to_hex();
+        let relay = guard_relay(vec![event_json(
+            ID_B,
+            &me,
+            9,
+            110,
+            json!([["h", SEND_TEST_CHANNEL]]),
+        )])
+        .await;
+        let client = agent_client(&relay.url, keys);
+
+        let error = super::cmd_edit_message(&client, ID_B, "Saved to PLANS/MELVILLE_PLAN.md")
+            .await
+            .unwrap_err();
+        assert!(matches!(error, CliError::Usage(_)), "{error:?}");
+        assert!(error.to_string().contains("colony plans propose"));
         assert_eq!(relay.submitted().len(), 0);
     }
 

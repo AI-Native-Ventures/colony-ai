@@ -180,6 +180,7 @@ export function DutyAskCard({
                 <UserAvatar
                   avatarUrl={askerProfile?.avatarUrl ?? null}
                   displayName={asker}
+                  pubkey={head.askerPubkey}
                   size="md"
                 />
               </span>

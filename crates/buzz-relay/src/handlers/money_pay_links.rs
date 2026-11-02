@@ -1,4 +1,4 @@
-//! Broker for payment link cards (kind 47070, relay-signed head kind 30680).
+//! Broker for payment link cards (kind 47077, relay-signed head kind 30686).
 //!
 //! Contract: `docs/money-rails-pay-contract.md`. The relay resolves who the caller is and reads
 //! the invoice and the connection; `buzz_core::money_rails::link` owns every rule (atomic
@@ -80,7 +80,7 @@ pub(crate) async fn read_link(
         .transpose()
 }
 
-/// Handles a payment link command (kind 47070).
+/// Handles a payment link command (kind 47077).
 pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,

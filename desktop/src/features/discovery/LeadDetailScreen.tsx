@@ -19,6 +19,12 @@ import {
   whatsappLeadStatusLabel,
 } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import { useWhatsAppThreadQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { customerActions } from "@/features/cofounder/customerActions";
+import {
+  useCustomerRecordAction,
+  useCustomerRecords,
+} from "@/features/cofounder/customerHooks";
+import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { CloseOpportunityDialog } from "./LeadDialogs";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import {
@@ -114,6 +120,9 @@ export function LeadDetailScreen({
   const navigate = useNavigate();
   const { campaign, provider } = useDiscoveryCampaign();
   const { statusQuery, contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
+  const customerAccess = useCustomerRecordCapabilities();
+  const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
+  const customerAction = useCustomerRecordAction();
   const whatsappContact = prospect
     ? findWhatsAppContactForLead(
         prospect.record.prospectId,
@@ -141,6 +150,7 @@ export function LeadDetailScreen({
   const [error, setError] = React.useState("");
   const [lostError, setLostError] = React.useState("");
   const [activity, setActivity] = React.useState("");
+  const [conversionError, setConversionError] = React.useState("");
   const [activityType, setActivityType] = React.useState<string>(
     ACTIVITY_TYPES[0],
   );
@@ -170,6 +180,9 @@ export function LeadDetailScreen({
   const record = prospect.record;
   const person = record.prospect;
   const name = person.party.displayName;
+  const customerRecord = customerRecordsQuery.data?.find(
+    (candidate) => candidate.partyId === person.party.partyId,
+  );
   const whatsappStatus = getWhatsAppLeadStatus(
     whatsappContact,
     inBatchLeadIds.has(record.prospectId),
@@ -254,6 +267,22 @@ export function LeadDetailScreen({
     person.qualification !== "qualified" &&
     person.stage !== "won" &&
     person.stage !== "lost";
+
+  async function makeClient() {
+    if (!customerRecord) return;
+    setConversionError("");
+    try {
+      await customerAction.mutateAsync(
+        customerActions.convertToClient(customerRecord),
+      );
+    } catch (convertError) {
+      setConversionError(
+        convertError instanceof Error && convertError.message.trim()
+          ? convertError.message
+          : "The lead could not be converted. Open the customer record and try again.",
+      );
+    }
+  }
 
   return (
     <main className="c3l-page" data-testid="w10-prospect-page">
@@ -651,7 +680,33 @@ export function LeadDetailScreen({
                     Mark as lost
                   </button>
                 ) : null}
+                {customerAccess.enabled && customerRecord ? (
+                  <a
+                    className="c3l-btn c3l-btn-outline c3l-btn-block c3l-customer-record-action"
+                    href={`#/clients/record/${person.party.partyId}`}
+                  >
+                    Customer record
+                  </a>
+                ) : null}
+                {customerAccess.enabled &&
+                customerAccess.canConvert &&
+                customerRecord?.stage === "lead" ? (
+                  <button
+                    className="c3l-btn c3l-btn-outline c3l-btn-block c3l-make-client"
+                    data-testid={`lead-make-client-${person.party.partyId}`}
+                    disabled={customerAction.isPending}
+                    onClick={() => void makeClient()}
+                    type="button"
+                  >
+                    Make client
+                  </button>
+                ) : null}
               </div>
+              {conversionError ? (
+                <p className="c3l-conversion-error" role="alert">
+                  {conversionError}
+                </p>
+              ) : null}
               {person.lostReason ? (
                 <p className="c3l-note">{person.lostReason}</p>
               ) : null}

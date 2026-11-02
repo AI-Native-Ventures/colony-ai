@@ -75,6 +75,7 @@ function AddressedAgentAvatar({
         avatarUrl={agent.avatarUrl}
         className="c3c-chip-avatar"
         label={agent.displayName}
+        pubkey={agent.pubkey}
         shape="squircle"
         testId="composer-address-lock-avatar"
       />

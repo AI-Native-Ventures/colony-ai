@@ -542,6 +542,7 @@ function AgentIdentityButton({
     >
       <EmployeeAvatar
         name={agent.name}
+        pubkey={agent.pubkey}
         role={persona?.companyRole?.job ?? positionTitle}
         profile={profileQuery.data?.avatarUrl}
         instance={agent.avatarUrl}

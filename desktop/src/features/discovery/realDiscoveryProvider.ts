@@ -33,7 +33,9 @@ import type {
   DiscoveryCampaignProvider,
 } from "./discoveryProvider";
 import {
+  SEARCH_PAGE_SIZE,
   buildDiscoverySearchPlan,
+  cursorHasPages,
   isTransientSearchError,
   mergeDiscoverySearchResponses,
   normalizePickedTags,
@@ -115,7 +117,8 @@ type PreparedSearchPage = {
 type CampaignSearchSpec = Pick<
   StoredCampaign,
   "verticalName" | "location" | "skip" | "pickedTags" | "tagCursors"
->;
+> &
+  Partial<Pick<StoredCampaign, "pagesFetched">>;
 
 async function fetchCampaignPage(
   campaign: CampaignSearchSpec,
@@ -131,7 +134,9 @@ async function fetchCampaignPage(
     skip: campaign.skip,
     pickedTags: campaign.pickedTags,
     tagCursors: campaign.tagCursors,
+    turn: campaign.pagesFetched ?? 0,
   });
+  // One full page per turn: with tags they take turns, never share a page.
   const responses = await Promise.all(
     plan.requests.map(({ request }) => search(request, signal)),
   );
@@ -148,16 +153,38 @@ async function fetchCampaignPage(
   for (const [index, planned] of plan.requests.entries()) {
     const response = responses[index];
     if (planned.tagIndex !== null && response) {
-      tagCursors[planned.tagIndex] = response.nextSkip;
+      tagCursors[planned.tagIndex] = usableCursor(response.nextSkip);
     }
   }
-  const nextSkip = tagCursors.some((cursor) => cursor !== null)
-    ? campaign.skip + plan.totalRequestedResults
+  const nextSkip = tagCursors.some(cursorHasPages)
+    ? campaign.skip + SEARCH_PAGE_SIZE
     : null;
   return {
     response: mergeDiscoverySearchResponses(responses, nextSkip),
     tagCursors,
   };
+}
+
+/** A next offset the provider can still serve; the 400 place ceiling ends it. */
+function usableCursor(nextSkip: number | null): number | null {
+  return cursorHasPages(nextSkip) ? nextSkip : null;
+}
+
+/**
+ * The tag whose turn it is for the next page, from saved state alone. The cursor
+ * and page count only move once a page is fully saved, so this names the tag
+ * that the page being saved (even after a restart) was asked for.
+ */
+function requestedTagIndex(campaign: CampaignSearchSpec): number | null {
+  const plan = buildDiscoverySearchPlan({
+    verticalName: campaign.verticalName,
+    location: campaign.location,
+    skip: campaign.skip,
+    pickedTags: campaign.pickedTags,
+    tagCursors: campaign.tagCursors,
+    turn: campaign.pagesFetched ?? 0,
+  });
+  return plan.requests[0]?.tagIndex ?? null;
 }
 
 export const FIRST_START_ERROR =
@@ -197,7 +224,8 @@ export function buildResultsMessage(
   campaign: Pick<
     StoredCampaign,
     "name" | "verticalName" | "location" | "count" | "topFits"
-  >,
+  > &
+    Partial<Pick<StoredCampaign, "endNote">>,
   kind: "final" | "stopped",
   leadLink: (prospectId: string) => string,
 ): string {
@@ -207,12 +235,50 @@ export function buildResultsMessage(
     kind === "final"
       ? `Found ${campaign.count} ${noun} for "${label}" (${campaign.verticalName} · ${campaign.location}).`
       : `The search "${label}" stopped after finding ${campaign.count} ${noun}.`;
-  if (campaign.topFits.length === 0) return headline;
+  const note = kind === "final" ? campaign.endNote?.trim() : null;
+  const head = note ? `${headline} ${note}` : headline;
+  if (campaign.topFits.length === 0) return head;
   const lines = campaign.topFits.map(
     (fit) => `- [${escapeLinkText(fit.name)}](${leadLink(fit.id)})`,
   );
   const lead = kind === "final" ? "Best fits:" : "Best fits so far:";
-  return [`${headline} ${lead}`, ...lines].join("\n");
+  return [`${head} ${lead}`, ...lines].join("\n");
+}
+
+/** The vertical as it reads inside a sentence ("Restaurants" to "restaurants"). */
+function inSentence(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length > 1 && trimmed[1] === trimmed[1]?.toLocaleUpperCase()) {
+    return trimmed;
+  }
+  return `${trimmed.charAt(0).toLocaleLowerCase()}${trimmed.slice(1)}`;
+}
+
+/**
+ * Why a finished run is below its target, in plain words; null when the target
+ * was reached. Shown on the campaign card and in the Sales message.
+ */
+export function buildEndNote(
+  campaign: Pick<
+    StoredCampaign,
+    | "count"
+    | "target"
+    | "exhausted"
+    | "pagesFetched"
+    | "verticalName"
+    | "location"
+    | "pickedTags"
+  >,
+): string | null {
+  if (campaign.count >= campaign.target) return null;
+  const what = inSentence(campaign.verticalName) || "results";
+  if (campaign.exhausted) {
+    const tagged = (campaign.pickedTags ?? []).length > 0;
+    return tagged
+      ? `Google has no more ${what} for these tags in ${campaign.location}. Add another area or tag to find more.`
+      : `Google has no more ${what} in ${campaign.location}. Add another area or tag to find more.`;
+  }
+  return `The search stopped after ${campaign.pagesFetched} pages to protect your search budget. Start another search in a nearby area to find more.`;
 }
 
 export function createDiscoveryController(
@@ -337,7 +403,10 @@ export function createDiscoveryController(
     );
   }
 
-  type PageOutcome = { ok: true } | { ok: false; error: unknown };
+  /** `fresh` is how many places on the page were new to the campaign and Leads. */
+  type PageOutcome =
+    | { ok: true; fresh: number }
+    | { ok: false; error: unknown };
 
   /**
    * Saves one page of places. Results that reach the relay are recorded on the
@@ -350,7 +419,7 @@ export function createDiscoveryController(
     response: DiscoverySearchResponse,
   ): Promise<PageOutcome> {
     const campaign = findCampaign(state, run.campaignId);
-    if (!campaign) return { ok: true };
+    if (!campaign) return { ok: true, fresh: 0 };
     const nowSeconds = deps.nowSeconds();
     const own = new Set(campaign.prospectIds);
     const seen = new Set<string>();
@@ -425,7 +494,7 @@ export function createDiscoveryController(
     if (failure !== null && !isAbortError(failure)) {
       return { ok: false, error: failure };
     }
-    return { ok: true };
+    return { ok: true, fresh: fresh.length };
   }
 
   // ---- the run loop --------------------------------------------------------
@@ -493,16 +562,30 @@ export function createDiscoveryController(
           return;
         }
         // Only a fully saved page moves the cursor, so a retry never skips
-        // places that were found but not saved.
-        patch(run.campaignId, (existing) => ({
-          ...existing,
-          skip: response.nextSkip ?? existing.skip + response.places.length,
-          exhausted: response.nextSkip === null,
-          pagesFetched: existing.pagesFetched + 1,
-          pendingPage: null,
-          tagCursors: existing.pendingTagCursors ?? page.tagCursors,
-          pendingTagCursors: null,
-        }));
+        // places that were found but not saved. A page that added no new place
+        // (repeats of this campaign or of existing leads) ends its query: the
+        // next page would be paid for and most likely repeat as well.
+        const repeats = outcome.fresh === 0;
+        const next = usableCursor(response.nextSkip);
+        patch(run.campaignId, (existing) => {
+          const moved = existing.pendingTagCursors ?? page.tagCursors;
+          const asked = requestedTagIndex(existing);
+          const tagCursors = moved.map((cursor, index) =>
+            repeats && index === asked ? null : cursor,
+          );
+          const tagged = (existing.pickedTags ?? []).length > 0;
+          return {
+            ...existing,
+            skip: next ?? existing.skip + response.places.length,
+            exhausted: tagged
+              ? !tagCursors.some(cursorHasPages)
+              : repeats || next === null,
+            pagesFetched: existing.pagesFetched + 1,
+            pendingPage: null,
+            tagCursors,
+            pendingTagCursors: null,
+          };
+        });
       }
     } catch (error) {
       if (!isLive(run) || isAbortError(error)) return;
@@ -516,6 +599,7 @@ export function createDiscoveryController(
       ...campaign,
       status: "complete",
       failureReason: null,
+      endNote: buildEndNote(campaign),
       pendingPost:
         campaign.count > 0 && campaign.postState !== "posted"
           ? true
@@ -753,6 +837,7 @@ export function createDiscoveryController(
         pendingTagCursors: first.tagCursors,
         pagesFetched: 0,
         exhausted: false,
+        endNote: null,
         pendingPost: false,
         postState: "none",
         stopNotePosted: false,

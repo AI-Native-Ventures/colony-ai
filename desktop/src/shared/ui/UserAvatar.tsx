@@ -1,6 +1,8 @@
 import * as React from "react";
 
 import { avatarSourceUrlForShape } from "@/features/profile/ui/ProfileAvatarEditor.utils";
+import { useManagedAgentAvatarUrl } from "@/features/agents/useKnownAgentPubkeys";
+import { resolveAvatarUrl } from "@/features/profile/lib/avatarResolver";
 import { parseAnimatedAvatarUrl } from "@/shared/lib/animatedAvatar";
 import { cn } from "@/shared/lib/cn";
 import { getInitials } from "@/shared/lib/initials";
@@ -35,6 +37,8 @@ function fallbackColorClass(displayName: string) {
 
 type UserAvatarProps = {
   avatarUrl: string | null;
+  pubkey?: string | null;
+  fallbackAvatarUrl?: string | null;
   displayName: string;
   /**
    * Label used to derive fallback initials; defaults to `displayName`.
@@ -59,6 +63,8 @@ type UserAvatarProps = {
 
 export function UserAvatar({
   avatarUrl,
+  pubkey,
+  fallbackAvatarUrl,
   displayName,
   initialsLabel,
   size = "md",
@@ -70,10 +76,16 @@ export function UserAvatar({
   imageDraggable,
   testId,
 }: UserAvatarProps) {
+  const knownManagedAgentAvatarUrl = useManagedAgentAvatarUrl(pubkey);
+  const resolvedAvatarUrl = resolveAvatarUrl(
+    avatarUrl,
+    knownManagedAgentAvatarUrl,
+    fallbackAvatarUrl,
+  );
   const initials = getInitials(initialsLabel ?? displayName);
   const resolvedShape = shape ?? "circle";
   const shapedAvatarUrl = avatarSourceUrlForShape(
-    avatarUrl,
+    resolvedAvatarUrl,
     resolvedShape === "circle" ? "circle" : "squircle",
   );
   // Animated avatars show their static poster frame until hovered, then play

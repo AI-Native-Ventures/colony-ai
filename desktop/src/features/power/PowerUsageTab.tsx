@@ -89,6 +89,7 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
           avatarUrl: profiles[key]?.avatarUrl ?? null,
           bucket,
           name,
+          pubkey: agentUsage.agentPubkey,
         }));
     });
     // Newest day first; within a day the reports keep the series order.
@@ -172,7 +173,7 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ agent, avatarUrl, bucket, name }) => {
+            {rows.map(({ agent, avatarUrl, bucket, name, pubkey }) => {
               const detail = detailOf(bucket);
               const cost = bucket.usage.estimatedCostUsd;
               const reported = !(cost.value === null || cost.incomplete);
@@ -199,6 +200,7 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
                         avatarUrl={avatarUrl}
                         className="pw-agent-avatar"
                         label={name}
+                        pubkey={pubkey}
                         role={detail.workTitle}
                       />
                       {name}

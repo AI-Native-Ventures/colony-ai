@@ -166,6 +166,7 @@ function TeamMemberRow({
             definition={definitionAvatar}
             instance={member.managedAgent?.avatarUrl}
             name={name}
+            pubkey={member.pubkey}
             personaId={member.managedAgent?.personaId}
             profile={avatarUrl}
             role={jobTitle}
@@ -176,6 +177,7 @@ function TeamMemberRow({
             avatarUrl={avatarUrl ?? null}
             className="team-person-avatar"
             label={name}
+            pubkey={member.pubkey}
             testId={`team-avatar-${member.pubkey}`}
           />
         )}

@@ -226,6 +226,7 @@ export function InboxMessageRow({
                   avatarUrl={message.avatarUrl}
                   className="ca-msg-avatar"
                   label={message.authorLabel}
+                  pubkey={message.authorPubkey}
                   shape={isAuthorAgent ? "squircle" : "circle"}
                 />
               </span>

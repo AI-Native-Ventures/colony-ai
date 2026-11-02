@@ -122,6 +122,7 @@ export function NewMessageResultRow({
         avatarUrl={user.avatarUrl}
         className="c3nm-row-avatar"
         label={name}
+        pubkey={user.pubkey}
         shape={user.isAgent ? "squircle" : "circle"}
       />
       <span className="c3nm-row-text">

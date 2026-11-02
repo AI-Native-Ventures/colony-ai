@@ -7,11 +7,12 @@ export function AskWhoCanAnswer({
   responseFrom,
 }: {
   channelName: string;
-  raisedBy: { label: string; avatarUrl?: string | null };
+  raisedBy: { label: string; avatarUrl?: string | null; pubkey?: string };
   responseFrom: {
     label: string;
     avatarUrl?: string | null;
     isAgent?: boolean;
+    pubkey?: string;
   } | null;
 }) {
   return (
@@ -23,7 +24,11 @@ export function AskWhoCanAnswer({
         <div className="ask3-fact" data-gap="6">
           <dt>Raised by</dt>
           <dd data-strong="true">
-            <AskAvatar avatarUrl={raisedBy.avatarUrl} label={raisedBy.label} />
+            <AskAvatar
+              avatarUrl={raisedBy.avatarUrl}
+              label={raisedBy.label}
+              pubkey={raisedBy.pubkey}
+            />
             {raisedBy.label}
           </dd>
         </div>
@@ -35,6 +40,7 @@ export function AskWhoCanAnswer({
                 avatarUrl={responseFrom.avatarUrl}
                 isAgent={responseFrom.isAgent}
                 label={responseFrom.label}
+                pubkey={responseFrom.pubkey}
               />
               {responseFrom.label}
             </dd>

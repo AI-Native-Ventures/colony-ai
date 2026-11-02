@@ -146,9 +146,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Your leads'), findsOneWidget);
+    expect(find.text('Company'), findsOneWidget);
+    expect(find.text('Leads'), findsOneWidget);
+    expect(find.text('Every relationship. One place.'), findsOneWidget);
     expect(find.text('Olive Studio'), findsOneWidget);
-    expect(find.text('1 prospect'), findsOneWidget);
+    expect(find.text('1 PROSPECT'), findsOneWidget);
+    expect(find.text('Best fit first'), findsOneWidget);
+    expect(find.text('Qualified'), findsOneWidget);
+    expect(find.text('82'), findsOneWidget);
+    expect(find.text('Customer record'), findsNothing);
+    expect(find.text('Make client'), findsNothing);
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     await tester.tap(find.byKey(ValueKey(_eventId)));
     await tester.pumpAndSettle();
@@ -512,7 +519,7 @@ NostrEvent _prospectEvent({String? dTag, List<List<String>>? tags}) => _event(
     'prospectId': _prospectId,
     'prospect': {
       'party': {'displayName': 'Olive Studio'},
-      'industry': 'Design',
+      'vertical': 'Design-led home and living store',
       'location': 'Cape Town',
       'fitScore': 82,
       'stage': 'qualified',

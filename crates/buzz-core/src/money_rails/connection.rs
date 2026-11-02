@@ -1,7 +1,7 @@
 //! A money rails connection: one payment provider for one business.
 //!
 //! The relay keeps the full [`ConnectionConfig`] (non secret) in a table next to the sealed
-//! secrets, and publishes [`ConnectionHead`] (kind 30683) as the community-wide projection.
+//! secrets, and publishes [`ConnectionHead`] (kind 30687) as the community-wide projection.
 //! The head never carries a key, a signing secret, a notice address or a full recipe body.
 
 use serde::{Deserialize, Serialize};
@@ -228,7 +228,7 @@ pub struct NoticeMapSummary {
     pub map_hash: String,
 }
 
-/// Relay-authored connection head (kind 30683).
+/// Relay-authored connection head (kind 30687).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ConnectionHead {
@@ -433,7 +433,7 @@ pub fn validate_new_connection(
     }
 }
 
-/// The commands on a connection (kind 47074).
+/// The commands on a connection (kind 47078).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionOp {

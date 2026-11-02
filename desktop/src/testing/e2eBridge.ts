@@ -1,4 +1,5 @@
 import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
+import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -18,6 +19,7 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
+import { KIND_COFOUNDER_LEAD_HEAD } from "@/shared/constants/kinds";
 import {
   KIND_COMPANY_ACCESS_ACTION,
   KIND_COMPANY_ACCESS_HEAD,
@@ -408,6 +410,16 @@ export type MockCofounderSettings = {
   };
 };
 
+export type MockCofounderLeadStatus = {
+  schemaVersion: 1;
+  state: "reached" | "unreachable";
+  problem: "no_scout" | "several_scouts" | "delivery_failed" | null;
+  detail: string;
+  attempts: number;
+  since: number;
+  updatedAt: number;
+};
+
 export type MockCompanyFunctionHead = {
   function: "sales" | "operations" | "customer_success" | "finance" | "brand";
   state: "empty" | "covered_by_scout" | "filled";
@@ -689,8 +701,14 @@ type E2eConfig = {
     userStatus?: string;
     /** Visual harness: reproduce the reference "Lerato Social" workspace. */
     referenceWorkspace?: boolean;
-    /** Seed one deliberately long lead name for picker overflow assertions. */
+    /** Rename the active reference business for a focused visual fixture. */
+    referenceWorkspaceBusinessName?: string;
+    /** Seed long lead names for row and picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
+    /** Add bounded synthetic lead rows for dense Leads screen proof. */
+    referenceWorkspaceLeadCount?: number;
+    /** Leave one reference lead's contact and value blank for visual proof. */
+    referenceWorkspaceMissingLeadFields?: boolean;
     whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
@@ -1127,6 +1145,8 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
+    /** Relay-signed kind 30680 wake status used by Scout setup E2E coverage. */
+    companyLeadStatus?: MockCofounderLeadStatus | null;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     /** Reject function slot writes in order, then accept them. */
     companyFunctionActionErrors?: string[];
@@ -5801,7 +5821,10 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       pubkey: agent.pubkey,
       display_name: agent.name,
       name: agent.name,
-      avatar_url: null,
+      avatar_url:
+        agent.pubkey === REFERENCE_AGENTS.scout.pubkey
+          ? agentAntAvatarDataUrl("Other", "green")
+          : null,
       about: null,
       nip05_handle: null,
       owner_pubkey: null,
@@ -5952,9 +5975,11 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, {
     sidebarShell,
     colony3,
-    ...(config.mock?.whatsappGuesthouses
-      ? { businessName: "Horizon Labs" }
-      : {}),
+    ...(config.mock?.referenceWorkspaceBusinessName
+      ? { businessName: config.mock.referenceWorkspaceBusinessName }
+      : config.mock?.whatsappGuesthouses
+        ? { businessName: "Horizon Labs" }
+        : {}),
   });
   mockBusinessRecordEvents.clear();
   const communityId = referenceTenantCommunityId();
@@ -5962,6 +5987,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
+      leadCount: config.mock?.referenceWorkspaceLeadCount,
+      missingLeadFields:
+        config.mock?.referenceWorkspaceMissingLeadFields === true,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;
@@ -7000,6 +7028,27 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function filterMockCompanyLeadStatus(filter: MockFilter): RelayEvent[] {
+  const status = getConfig()?.mock?.companyLeadStatus;
+  if (!status) return [];
+  const head = createSignedMockCompanyHead(
+    KIND_COFOUNDER_LEAD_HEAD,
+    status,
+    "company:cofounder-lead",
+    status.updatedAt,
+  );
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return [head]
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .slice(0, filter.limit ?? 1);
 }
 
 function filterMockInitiativeHead(
@@ -19682,6 +19731,14 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_COFOUNDER_HEAD)) {
       for (const event of filterMockCofounderHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_COFOUNDER_LEAD_HEAD)) {
+      for (const event of filterMockCompanyLeadStatus(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);

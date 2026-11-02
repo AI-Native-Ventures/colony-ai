@@ -40,6 +40,14 @@ const SLOT_PRUNE_GRACE_SECS: i64 = 60;
 const RUN_DIR_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// Most heads `list` reads.
 const LIST_LIMIT: u32 = 200;
+/// Longest `spawn --wait` holds the shell. The shell tool an employee runs this
+/// in stops a command after 120 seconds and kills it, so waiting for the whole
+/// run (up to 900 seconds) used to cut the command off and leave the run
+/// looking alive. The run itself is supervised by a detached process and keeps
+/// going; `--wait` only reads its result when it ends within this budget.
+const WAIT_BUDGET: Duration = Duration::from_secs(90);
+/// How often `spawn --wait` reads the run's record.
+const WAIT_POLL: Duration = Duration::from_secs(3);
 
 pub async fn dispatch(command: WorkersCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
@@ -52,6 +60,7 @@ pub async fn dispatch(command: WorkersCmd, client: &BuzzClient) -> Result<(), Cl
             max_rounds,
             timeout_secs,
             wait,
+            another,
         } => {
             let brief = read_brief(brief, brief_file)?;
             let args = SpawnArgs {
@@ -62,7 +71,7 @@ pub async fn dispatch(command: WorkersCmd, client: &BuzzClient) -> Result<(), Cl
                 max_rounds,
                 timeout_secs,
             };
-            spawn(client, &args, wait).await
+            spawn(client, &args, wait, another).await
         }
         WorkersCmd::List { mine } => list(client, mine).await,
         WorkersCmd::Get { id } => get(client, &id).await,
@@ -253,6 +262,86 @@ fn acquire_slot(
         return Err(too_many());
     }
     Ok(guard)
+}
+
+/// Refuse a second concurrent run unless the caller says it wants another one.
+///
+/// One request from a person is one worker. A model that sees its first
+/// `workers spawn` cut off or slow starts a second, shorter run, then a third
+/// (GATE-329-COF: three runs for one ask, two left failed). The running slots
+/// are local files, so the check needs no relay read. `--another` is for a
+/// person who asked for several workers.
+pub(crate) fn guard_single_run(state_dir: &Path, now: i64, another: bool) -> Result<(), CliError> {
+    if another {
+        return Ok(());
+    }
+    let Ok(entries) = std::fs::read_dir(state_dir.join("running")) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let live = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|value| value.get("deadlineAt").and_then(Value::as_i64))
+            .is_some_and(|deadline| deadline + SLOT_PRUNE_GRACE_SECS >= now);
+        if !live {
+            continue;
+        }
+        let id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        let label = std::fs::read_to_string(state_dir.join("runs").join(&id).join("spec.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|value| {
+                value
+                    .pointer("/run/label")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| "a worker".to_owned());
+        return Err(CliError::Usage(format!(
+            "You already have a worker running: \"{label}\" ({id}). Do not start a second one for the same request. Read it later with `colony workers get {id}`. If the person asked for several workers, add --another."
+        )));
+    }
+    Ok(())
+}
+
+/// Read a run's record until it ends or `budget` is used up. `Ok(None)` means it
+/// is still running; the run is not stopped. A relay that cannot be read for the
+/// whole budget is an error, because the caller then knows nothing about the run.
+pub(crate) async fn wait_for_end<S: WorkerStore>(
+    store: &S,
+    worker_id: &str,
+    budget: Duration,
+    poll: Duration,
+) -> Result<Option<WorkerRun>, CliError> {
+    let started = std::time::Instant::now();
+    let mut read_once = false;
+    let mut last_error = None;
+    loop {
+        match store.head(worker_id).await {
+            Ok(Some((_, head))) => {
+                read_once = true;
+                if head.run.status != WorkerStatus::Running {
+                    return Ok(Some(head.run));
+                }
+            }
+            Ok(None) => read_once = true,
+            Err(error) => last_error = Some(error),
+        }
+        let elapsed = started.elapsed();
+        if elapsed >= budget {
+            return match (read_once, last_error) {
+                (false, Some(error)) => Err(error),
+                _ => Ok(None),
+            };
+        }
+        tokio::time::sleep(poll.min(budget - elapsed)).await;
+    }
 }
 
 fn prune_old_runs(runs_dir: &Path) {
@@ -745,25 +834,35 @@ fn detach_supervisor(spec_path: &Path) -> Result<(), String> {
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-async fn spawn(client: &BuzzClient, args: &SpawnArgs, wait: bool) -> Result<(), CliError> {
+async fn spawn(
+    client: &BuzzClient,
+    args: &SpawnArgs,
+    wait: bool,
+    another: bool,
+) -> Result<(), CliError> {
     let store = RelayStore { client };
     let parent = client.keys().public_key().to_hex();
     let state_dir = worker_state_dir(&parent);
+    args.validate()?;
+    guard_single_run(&state_dir, now(), another)?;
     let (spec, slot) = start_worker(&store, &state_dir, &parent, args, now()).await?;
     let worker_id = spec.run.worker_id.clone();
 
-    if wait {
-        let result =
-            supervise_worker(&store, &ProcessLauncher, &spec, &now, Timing::production()).await;
-        drop(slot);
-        let run = result?;
-        println!("{}", run_summary(&worker_id, &run, true));
-        return Ok(());
-    }
-
+    // The run is always supervised by a detached process, so cutting this
+    // command off (the shell tool does after 120 seconds) cannot end it.
     match detach_supervisor(&spec.dir.join("spec.json")) {
         Ok(()) => {
             slot.hand_over();
+            if wait {
+                let ended = wait_for_end(&store, &worker_id, WAIT_BUDGET, WAIT_POLL)
+                    .await
+                    .ok()
+                    .flatten();
+                if let Some(run) = ended {
+                    println!("{}", run_summary(&worker_id, &run, true));
+                    return Ok(());
+                }
+            }
             println!(
                 "{}",
                 json!({
@@ -771,6 +870,9 @@ async fn spawn(client: &BuzzClient, args: &SpawnArgs, wait: bool) -> Result<(), 
                     "worker_id": worker_id,
                     "status": WorkerStatus::Running,
                     "deadline_at": spec.run.deadline_at,
+                    "note": format!(
+                        "The worker is running. Do not start another one for this request. Say so in one short line; its output appears on the function page and in Company Work, and `colony workers get {worker_id}` reads it."
+                    ),
                 })
             );
             Ok(())
@@ -1091,6 +1193,78 @@ mod tests {
             poll: Duration::from_millis(20),
             retry: Duration::from_millis(1),
         }
+    }
+
+    #[tokio::test]
+    async fn a_second_run_is_refused_while_one_is_running() {
+        let state = tempfile::tempdir().unwrap();
+        let store = FakeStore::default();
+        let (_, slot) = start_worker(&store, state.path(), &parent(), &args(), 1_000)
+            .await
+            .expect("start");
+        // The supervising process owns the slot after a spawn.
+        slot.hand_over();
+
+        let refused = guard_single_run(state.path(), 1_100, false).expect_err("one run at a time");
+        let message = refused.to_string();
+        assert!(
+            message.contains("Research: Melville guesthouses"),
+            "{message}"
+        );
+        assert!(message.contains("--another"), "{message}");
+        assert!(matches!(refused, CliError::Usage(_)));
+
+        guard_single_run(state.path(), 1_100, true).expect("--another allows a second run");
+        // Past its deadline and the prune grace, the slot no longer counts.
+        guard_single_run(state.path(), 1_600 + SLOT_PRUNE_GRACE_SECS + 1, false)
+            .expect("an expired run does not block");
+    }
+
+    #[test]
+    fn the_first_run_is_never_refused() {
+        let state = tempfile::tempdir().unwrap();
+        guard_single_run(state.path(), 1_000, false).expect("no run yet");
+    }
+
+    #[tokio::test]
+    async fn wait_returns_the_result_once_the_run_ends() {
+        let state = tempfile::tempdir().unwrap();
+        let store = FakeStore::default();
+        let (spec, _slot) = start_worker(&store, state.path(), &parent(), &args(), 1_000)
+            .await
+            .expect("start");
+        let id = spec.run.worker_id.clone();
+
+        let still_running = wait_for_end(
+            &store,
+            &id,
+            Duration::from_millis(60),
+            Duration::from_millis(10),
+        )
+        .await
+        .expect("reading works");
+        assert!(
+            still_running.is_none(),
+            "a run that is still going is not an error"
+        );
+
+        store.set_status(&id, WorkerStatus::Done);
+        let ended = wait_for_end(
+            &store,
+            &id,
+            Duration::from_millis(60),
+            Duration::from_millis(10),
+        )
+        .await
+        .expect("reading works")
+        .expect("the run ended");
+        assert_eq!(ended.status, WorkerStatus::Done);
+    }
+
+    #[test]
+    fn wait_budget_stays_inside_the_shell_timeout() {
+        // buzz-dev-mcp stops a shell command after 120 seconds by default.
+        assert!(WAIT_BUDGET < Duration::from_secs(120));
     }
 
     #[tokio::test]

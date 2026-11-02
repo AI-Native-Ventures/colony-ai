@@ -37,6 +37,7 @@ function campaign(id, overrides = {}) {
     runBy: { name: "Lerato", pubkey: "f".repeat(64) },
     failureReason: null,
     postedInSales: true,
+    endNote: null,
     createdAt: 1_000,
     skippedDuplicates: 0,
     skip: 20,
@@ -70,6 +71,14 @@ test("a saved list round-trips", () => {
   assert.equal(restored.currentId, "one");
   assert.equal(restored.ownerPubkey, "owner");
   assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
+});
+
+test("the end note survives a restart", () => {
+  const note =
+    "Google has no more restaurants in Johannesburg. Add another area or tag to find more.";
+  const state = withCampaigns(campaign("one", { endNote: note }));
+  const restored = parseStoredState(serializeState(state));
+  assert.equal(restored.campaigns[0].endNote, note);
 });
 
 test("picked tags and their independent cursors survive a restart", () => {

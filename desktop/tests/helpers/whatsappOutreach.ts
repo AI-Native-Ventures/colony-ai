@@ -80,9 +80,12 @@ function deskCustomerRecordMock() {
 
 export type WhatsAppProofTheme = "light" | "dark";
 type WhatsAppMockActor = {
+  businessName?: string;
+  connected?: boolean;
   relayRole?: "owner" | "admin" | "member" | null;
   profileIsAgent?: boolean;
   profileOwnerPubkey?: string | null;
+  workspaceName?: string;
   /** Seed the approved desk states without changing legacy inbox fixtures. */
   deskFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
@@ -98,13 +101,14 @@ type WhatsAppMockActor = {
 export async function setWhatsAppProofTheme(
   page: Page,
   theme: WhatsAppProofTheme,
+  businessName = "Horizon Labs",
 ) {
   const relayUrl = (
     process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
   ).replace(/^http/u, "ws");
   await page.emulateMedia({ colorScheme: theme });
   await page.addInitScript(
-    ({ selectedTheme, scopedRelayUrl }) => {
+    ({ selectedTheme, scopedRelayUrl, selectedBusinessName }) => {
       const themeName = selectedTheme === "dark" ? "buzz-dark" : "buzz";
       const pubkey = "deadbeef".repeat(8);
       // Appearance snapshots are newer durable preferences than the theme key.
@@ -140,14 +144,18 @@ export async function setWhatsAppProofTheme(
         communities.find((community) => community.id === activeId) ??
         communities[0];
       if (active) {
-        active.name = "Horizon Labs";
+        active.name = selectedBusinessName;
         window.localStorage.setItem(
           "buzz-communities",
           JSON.stringify(communities),
         );
       }
     },
-    { selectedTheme: theme, scopedRelayUrl: relayUrl },
+    {
+      selectedTheme: theme,
+      scopedRelayUrl: relayUrl,
+      selectedBusinessName: businessName,
+    },
   );
 }
 
@@ -1021,6 +1029,8 @@ export async function installWhatsAppMockBridge(
   await page.emulateMedia({ colorScheme: theme });
   await installMockBridge(page, {
     referenceWorkspace: true,
+    referenceWorkspaceBusinessName:
+      actor.businessName ?? actor.workspaceName ?? "Horizon Labs",
     colony3Sidebar: true,
     whatsappGuesthouses: true,
     referenceWorkspaceRole: "owner",
@@ -1046,7 +1056,7 @@ export async function installWhatsAppMockBridge(
         {
           id: OUTREACH_CHANNEL_ID,
           name: "Outreach",
-          description: "Private WhatsApp conversations for Horizon Labs.",
+          description: `Private WhatsApp conversations for ${actor.businessName ?? "your business"}.`,
           visibility:
             actor.outreachChannelMember === false ? "open" : "private",
           selfIsMember: actor.outreachChannelMember !== false,
@@ -1073,7 +1083,11 @@ export async function installWhatsAppMockBridge(
       ],
     },
   });
-  await setWhatsAppProofTheme(page, theme);
+  await setWhatsAppProofTheme(
+    page,
+    theme,
+    actor.businessName ?? actor.workspaceName,
+  );
   await page.addInitScript(
     (seed) => {
       const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -1094,6 +1108,7 @@ export async function installWhatsAppMockBridge(
         deskFollowUpRows,
         deskPipelineAdditionalContacts,
         templates: templateSeed,
+        initiallyConnected,
         ...baseSeed
       } = seed;
       const state = clone(baseSeed);
@@ -1104,7 +1119,9 @@ export async function installWhatsAppMockBridge(
         seededBatchVariant ??
         new URLSearchParams(window.location.search).get("__waBatch") ??
         routeSearch.get("batch");
-      const disconnected = routeSearch.get("whatsapp") === "disconnected";
+      const disconnected =
+        initiallyConnected === false ||
+        routeSearch.get("whatsapp") === "disconnected";
       const approvedBatch = batchVariant === "approved";
       const sendNowBatch = batchVariant === "send-now";
       const leadsBatch = batchVariant === "leads";
@@ -1876,6 +1893,7 @@ export async function installWhatsAppMockBridge(
     },
     {
       ...fixture,
+      initiallyConnected: actor.connected,
       selfPubkey: E2E_SELF_PUBKEY,
       canManageContacts,
       activeLeadIds: Object.values(REFERENCE_PROSPECT_IDS),

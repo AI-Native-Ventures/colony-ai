@@ -163,6 +163,49 @@ pub fn check_chat_length(content: &str) -> Result<(), ChatTooLong> {
     }
 }
 
+/// Nest folders an employee saved owner-approved records in instead of proposing
+/// them (GATE-329-COF: a plan in `PLANS/`, a playbook change in `GUIDES/`, the
+/// weekly review in `OUTBOX/`, each announced in chat as created).
+const RECORD_FOLDERS: [&str; 3] = ["PLANS/", "GUIDES/", "OUTBOX/"];
+
+/// What the `colony messages send` guard says when chat text names a file in
+/// one of the [`RECORD_FOLDERS`]. It carries the fix, because a refusal the
+/// model cannot act on is just retried with the path reworded.
+pub const NAMES_A_RECORD_FILE: &str = "Do not name files in a message to a person, and a plan, a playbook change, a goal or the weekly review is never a file. Propose it with `colony plans propose`, `colony playbooks propose`, `colony numbers goals propose` or `colony numbers review write`, wait for the command to print an id, then say in one short line that it is waiting for their approval. If you did not run one of those commands, say what you did instead, without the file name.";
+
+/// Whether `text` names a file inside one of the [`RECORD_FOLDERS`], as in
+/// `OUTBOX/WEEKLY_REVIEW.md` or `~/.colony/PLANS/CLIENTS.md`.
+fn names_a_record_file(text: &str) -> bool {
+    RECORD_FOLDERS.iter().any(|folder| {
+        text.match_indices(folder).any(|(at, _)| {
+            let starts_a_word = text[..at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+            let has_a_name = text[at + folder.len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+            starts_a_word && has_a_name
+        })
+    })
+}
+
+/// Refuse a chat message whose text outside fenced blocks names a file in a
+/// record folder. A fenced block is a deliverable and is not looked at.
+pub fn check_no_record_file(content: &str) -> Result<(), &'static str> {
+    let (segments, _) = segments(content);
+    let names_one = segments.iter().any(|segment| match segment {
+        Segment::Prose(text) => names_a_record_file(text),
+        Segment::Fence(_) => false,
+    });
+    if names_one {
+        Err(NAMES_A_RECORD_FILE)
+    } else {
+        Ok(())
+    }
+}
+
 /// Words a heading-led reply must have, from its heading on, before it counts
 /// as a document rather than a chat message that happens to start with `#`.
 const DOCUMENT_MIN_WORDS: usize = 40;
@@ -856,5 +899,58 @@ mod tests {
         }
         let error = check_chat_length(&words(75)).unwrap_err().to_string();
         assert!(!error.contains('\u{2014}'));
+    }
+
+    #[test]
+    fn chat_that_names_a_record_file_is_refused() {
+        for text in [
+            "I saved the weekly review to OUTBOX/WEEKLY_REVIEW_2026-11-01.md.",
+            "Created the playbook in GUIDES/OPERATIONS_PLAYBOOK.md",
+            "The plan is at ~/.colony/PLANS/MELVILLE_CLIENT_ACQUISITION.md now.",
+            "Done: (PLANS/plan.md)",
+        ] {
+            assert_eq!(
+                check_no_record_file(text),
+                Err(NAMES_A_RECORD_FILE),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn chat_that_does_not_name_a_record_file_is_accepted() {
+        for text in [
+            "Proposed the plan. It is waiting for your approval.",
+            "I put it in the plans folder.",
+            "Check SUBPLANS/ for the old ones.",
+            "The OUTBOX/ folder is empty.",
+            "RESEARCH/MELVILLE_GUESTHOUSES.md has the list.",
+        ] {
+            assert_eq!(check_no_record_file(text), Ok(()), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_fenced_deliverable_may_name_a_record_file() {
+        let text = "Here is the note.\n\n```doc\n# Layout\nSave it in OUTBOX/NOTE.md\n```";
+        assert_eq!(check_no_record_file(text), Ok(()));
+        // The same words outside a fence are refused.
+        assert_eq!(
+            check_no_record_file("Save it in OUTBOX/NOTE.md"),
+            Err(NAMES_A_RECORD_FILE)
+        );
+    }
+
+    #[test]
+    fn the_record_file_refusal_names_every_command_and_has_no_em_dash() {
+        for command in [
+            "colony plans propose",
+            "colony playbooks propose",
+            "colony numbers goals propose",
+            "colony numbers review write",
+        ] {
+            assert!(NAMES_A_RECORD_FILE.contains(command), "{command}");
+        }
+        assert!(!NAMES_A_RECORD_FILE.contains('\u{2014}'));
     }
 }

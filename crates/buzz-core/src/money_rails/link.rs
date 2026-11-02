@@ -1,4 +1,4 @@
-//! The payment link card and its state machine (kind 30680 head, 47070 actions).
+//! The payment link card and its state machine (kind 30686 head, 47077 actions).
 //!
 //! Every rule of spec section 7 lives here as a pure function, so it can be tested without a
 //! database: who may do what, the atomic approve that re-checks every fact against the head,
@@ -216,7 +216,7 @@ pub struct Failure {
     pub at: i64,
 }
 
-/// Relay-authored payment link card head (kind 30680).
+/// Relay-authored payment link card head (kind 30686).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct LinkHead {
@@ -363,7 +363,7 @@ impl LinkHead {
     }
 }
 
-/// The commands on a card (kind 47070). The relay's own transitions are [`SystemOp`] and are
+/// The commands on a card (kind 47077). The relay's own transitions are [`SystemOp`] and are
 /// never accepted from a member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

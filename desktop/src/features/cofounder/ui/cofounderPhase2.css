@@ -17,18 +17,6 @@
   background: hsl(var(--colony-track));
 }
 
-.cf-setting-cofounder-scout-mark {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 0.75rem;
-  background: hsl(var(--colony-accent) / 0.14);
-  color: hsl(var(--colony-accent));
-  font-weight: 800;
-}
-
 .cf-setting-cofounder-scout p {
   display: flex;
   min-width: 0;

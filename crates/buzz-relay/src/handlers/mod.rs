@@ -20,6 +20,8 @@ pub mod company_asks;
 pub mod company_brief;
 /// Nostr-first broker for the per-company co-founder settings record.
 pub mod company_cofounder;
+/// Who leads co-founder work, and whether the relay can reach them.
+pub(crate) mod company_cofounder_lead;
 /// Broker for the customer record (kind 47069, head kind 30679).
 pub mod company_customers;
 pub mod company_duties;
@@ -72,9 +74,9 @@ pub mod moderation_authz;
 pub mod moderation_commands;
 /// Relay-signed moderation notice DMs.
 pub mod moderation_notices;
-/// Money rails connections (provider recipes, notice map, default), kind 47074.
+/// Money rails connections (provider recipes, notice map, default), kind 47078.
 pub mod money_connections;
-/// Money rails payment link cards (draft, approve, record, report), kind 47070.
+/// Money rails payment link cards (draft, approve, record, report), kind 47077.
 pub mod money_pay_links;
 /// Product-feedback validation + deployment sidecar persistence.
 pub mod product_feedback;

@@ -92,7 +92,7 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
             place("pl-nameless", ""),
           ],
           estimatedCostUsd: 0.012,
-          nextSkip: 5,
+          nextSkip: 20,
         };
       }
       if (stubMode === "gated" && !gated) {
@@ -200,7 +200,7 @@ test.describe("Real discovery run", () => {
     // The search went out as the design's flow asks: vertical, location,
     // pages of 20, the second page from the first page's cursor.
     const calls = await searchCalls(page);
-    expect(calls.map((call) => call.skip)).toEqual([0, 5]);
+    expect(calls.map((call) => call.skip)).toEqual([0, 20]);
     expect(calls[0]).toMatchObject({
       location: "South Africa",
       country: "South Africa",
@@ -301,6 +301,6 @@ test.describe("Real discovery run", () => {
     // The page that arrived after the pause was already paid for, so Resume
     // saves it instead of asking for it again.
     const calls = await searchCalls(page);
-    expect(calls.map((call) => call.skip)).toEqual([0, 5]);
+    expect(calls.map((call) => call.skip)).toEqual([0, 20]);
   });
 });

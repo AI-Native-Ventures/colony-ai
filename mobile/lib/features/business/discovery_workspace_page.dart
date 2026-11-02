@@ -46,7 +46,7 @@ class DiscoveryWorkspacePage extends HookConsumerWidget {
       child: Column(
         children: [
           _BusinessPageHeader(
-            title: 'Your leads',
+            title: 'Company',
             onBack: () => unawaited(Navigator.of(context).maybePop()),
           ),
           Expanded(

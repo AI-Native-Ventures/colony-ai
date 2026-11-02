@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=390">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Colony phone demo</title>
+  <link rel="preload" href="../assets/manrope-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="demo.css?v=2">
+  <script src="demo.js?v=2" defer></script>
+</head>
+<body data-layout="phone">
+<div class="screen" data-scene="customers" aria-hidden="true">
+  <div class="status">
+    <span>9:41</span>
+    <span>
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="#25222c"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#25222c" stroke-width="2" stroke-linecap="round"><path d="M1.5 4.5a9.5 9.5 0 0 1 13 0"/><path d="M4.2 7.4a5.6 5.6 0 0 1 7.6 0"/><circle cx="8" cy="10.2" r="1" fill="#25222c" stroke="none"/></svg>
+      <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x="0.75" y="0.75" width="22" height="10.5" rx="3" stroke="#25222c" stroke-width="1.5" opacity=".45"/><rect x="2.5" y="2.5" width="17" height="7" rx="1.6" fill="#25222c"/><path d="M24.5 4.2v3.6" stroke="#25222c" stroke-width="1.5" stroke-linecap="round" opacity=".45"/></svg>
+    </span>
+  </div>
+
+  <!-- Find customers: a WhatsApp reply, and a draft that waits for your OK -->
+  <section class="ph-scene" data-id="customers">
+    <div class="ph-head">
+      <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span>
+      <span class="person p34" style="background: #f3d9df;">LK</span>
+      <span class="grow"><b>Little Kin</b><small>WhatsApp · Maya · Replied</small></span>
+      <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg></span>
+    </div>
+    <div class="ph-banner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4b4654" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="12.5" rx="2.5"/><path d="M9 7.5V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5v2"/><path d="M3.5 12.5h17"/></svg>
+      <span class="grow"><b>Lead · In conversation</b>Opener: Sample posts</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#68626f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+    </div>
+    <div class="ph-body" data-chat>
+      <div class="day">Today</div>
+      <div class="ph-msg">
+        <span class="ant a36 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>
+        <div class="msg-body">
+          <div class="msg-meta"><b>Aya</b><span class="chip chip-accent" style="height: 20px; padding: 0 7px;">AI</span><span>10:55</span></div>
+          <p class="msg-text">Hey, my name’s Lerato from Lerato Social 👋 I made three sample posts for Little Kin. Take a look: <span class="link">preview.lerato.social/little-kin</span></p>
+          <span class="sent-note">✓✓ Read · approved by Lerato in a batch</span>
+        </div>
+      </div>
+    </div>
+    <div class="reply-window"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#2e9a62"/></svg>Reply window open, 23 h left</div>
+    <div class="ph-composer">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#68626f" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Reply on WhatsApp…</span>
+      <i><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg></i>
+    </div>
+  </section>
+
+  <!-- Revenue & costs: Money on the phone -->
+  <section class="ph-scene" data-id="money">
+    <div class="ph-head"><span class="ph-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>Company</span></div>
+    <div class="ph-body">
+      <div class="ph-title"><h1>Money</h1><p>Invoices and payments from your client channels</p></div>
+      <div class="seg" style="display: flex;"><span class="on" style="flex: 1;">Overview</span><span style="flex: 1;">Revenue</span></div>
+      <span class="select">Client <b>All clients</b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25222c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="margin-left: auto;"><path d="m6 9 6 6 6-6"/></svg></span>
+      <div class="eyebrow-row"><span>The business picture</span><span>October 2026</span></div>
+      <div class="card ph-kpi"><span>Invoiced revenue</span><b>R 14 200</b><small>Issued invoices, drafts excluded</small></div>
+      <div class="ph-two">
+        <div class="card ph-kpi"><span>Cash received</span><b data-collected>R 8 000</b><small>Payments recorded</small></div>
+        <div class="card ph-kpi"><span>Outstanding</span><b data-outstanding>R 6 200</b><small>Unpaid balances</small></div>
+      </div>
+      <div class="ph-section">Needs attention <span class="badge" data-attn-count>1</span></div>
+      <div class="card" style="padding: 14px;">
+        <div data-attn style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="attn-item"><span class="client">CC</span><span class="grow"><b>Cedar Café</b><small>Invoice 0027 · R 3 000 · due 20 Oct</small></span><span class="chip chip-bad">Overdue</span></div>
+          <div class="ask-box" data-ask><span class="ant a28 t-noor"><img src="../assets/agents/noor.svg" alt=""></span><span class="grow"><b>Noor</b> drafted a reminder</span><button tabindex="-1" class="btn btn-line" type="button" data-review style="height: 34px; padding: 0 12px;">Review</button></div>
+        </div>
+      </div>
+      <div class="ph-pad"></div>
+    </div>
+    <div class="tabbar">
+      <span><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg>Today</span>
+      <span><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.6A8 8 0 1 1 20.5 11.5z"/></svg>Chat</span>
+      <span class="on"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20.5V8.5l8-5 8 5v12"/><path d="M9.5 20.5v-6h5v6"/></svg>Company</span>
+    </div>
+    <div class="scrim" data-scrim></div>
+    <div class="sheet" data-sheet>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="client">CC</span>
+        <span style="flex: 1;"><b style="display: block; font-size: 17px; font-weight: 800;">Reminder for Cedar Café</b><small style="display: block; font-size: 13px; font-weight: 600; color: var(--muted);">Invoice 0027 · R 3 000 · 11 days overdue</small></span>
+      </div>
+      <span class="chip chip-accent" data-sheet-state style="align-self: flex-start;">In review · drafted by Noor</span>
+      <div class="letter">Hi Thandi, a friendly reminder that invoice 0027 for R 3 000 was due on 20 October. You can pay by EFT with the details on the invoice, or reply here if anything looks wrong. Thank you!<br>Lerato</div>
+      <p class="drawer-note">Colony saves reminder drafts only. Nothing is sent until you send it.</p>
+      <div class="ph-actions" data-sheet-actions><button tabindex="-1" class="btn btn-ink" type="button" data-approve-reminder>Approve</button><button tabindex="-1" class="btn btn-line" type="button">Edit</button></div>
+      <div class="ph-actions" data-sheet-done hidden><button tabindex="-1" class="btn btn-ink" type="button" data-copy>Copy reminder</button></div>
+    </div>
+    <div class="toast" data-toast style="left: 12px; right: 12px; bottom: 84px;">
+      <span class="ant a40 t-noor"><img src="../assets/agents/noor.svg" alt=""></span>
+      <span><b>Noor recorded a payment</b><span>Cedar Café paid R 3 000 for invoice 0027.</span></span>
+    </div>
+  </section>
+
+  <!-- Grow your team: the new hire shows up on the phone -->
+  <section class="ph-scene" data-id="team">
+    <div data-team-page style="display: contents;">
+      <div class="ph-head">
+        <span class="ph-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>Company</span>
+        <span class="grow"></span>
+        <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg></span>
+        <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      </div>
+      <div class="ph-body">
+        <div class="ph-title"><h1>Team</h1><p data-team-sub>5 AI employees and 2 people</p></div>
+        <div class="card team-list" data-team-list>
+          <div class="team-row"><span class="ant a40"><img src="../assets/agents/scout.svg" alt=""></span><span class="grow"><b>Scout</b><small>Chief of Staff · Reports to Lerato Molefe</small></span><span class="chip chip-accent">Working</span></div>
+          <div class="team-row"><span class="ant a40 t-aya"><img src="../assets/agents/aya.svg" alt=""></span><span class="grow"><b>Aya</b><small>Business development · Reports to Scout</small></span><span class="chip chip-ok">Ready</span></div>
+          <div class="team-row"><span class="person p40">LM</span><span class="grow"><b>Lerato Molefe (you)</b><small>Founder · Company owner</small></span></div>
+          <div class="team-row"><span class="ant a40 t-mina"><img src="../assets/agents/mina.svg" alt=""></span><span class="grow"><b>Mina</b><small>Designer · Reports to Scout</small></span><span class="chip chip-soft">Paused</span></div>
+          <div class="team-row"><span class="ant a40 t-noor"><img src="../assets/agents/noor.svg" alt=""></span><span class="grow"><b>Noor</b><small>Bookkeeper · Reports to Lerato Molefe</small></span><span class="chip chip-need">Needs you</span></div>
+          <div class="team-row"><span class="ant a40 t-theo"><img src="../assets/agents/theo.svg" alt=""></span><span class="grow"><b>Theo</b><small>Operations · Reports to Scout</small></span><span class="chip chip-ok">Ready</span></div>
+          <div class="team-row"><span class="person p40">JA</span><span class="grow"><b>Jules Adams</b><small>Client partner · Reports to Lerato Molefe</small></span></div>
+        </div>
+        <div class="ph-pad"></div>
+      </div>
+    </div>
+    <div data-member hidden style="display: contents;">
+      <div class="ph-head"><span class="ph-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>Team</span></div>
+      <div class="ph-body">
+        <div class="member-top appear">
+          <span class="ant a56 t-birch"><img src="../assets/agents/birch.svg" alt=""></span>
+          <div><span class="eyebrow">AI employee</span><h1>Birch</h1><p>Hospitality researcher <span class="chip chip-accent">Working</span></p></div>
+        </div>
+        <div class="ph-actions"><span class="btn btn-ink">Message Birch</span><span class="btn btn-line">Edit position</span></div>
+        <div class="card">
+          <div class="kv"><span>Reports to</span><b>Scout · Chief of Staff</b></div>
+          <div class="kv"><span>Status</span><b>Active</b></div>
+          <div class="kv"><span>Channels</span><b>#Sales</b></div>
+        </div>
+        <div class="card">
+          <div class="kv"><span>Doing now</span><b data-doing-count>Starting up</b></div>
+          <div class="doing" data-doing></div>
+        </div>
+        <p class="sent-note" style="justify-content: center;">More setup is on desktop</p>
+        <div class="ph-pad"></div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <span><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg>Today</span>
+      <span><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.6A8 8 0 1 1 20.5 11.5z"/></svg>Chat</span>
+      <span class="on"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20.5V8.5l8-5 8 5v12"/><path d="M9.5 20.5v-6h5v6"/></svg>Company</span>
+    </div>
+    <div class="toast" data-toast style="left: 12px; right: 12px; top: 96px;">
+      <span class="ant a40 t-birch"><img src="../assets/agents/birch.svg" alt=""></span>
+      <span><b>Birch joined the team</b><span>Hospitality researcher, hired on desktop</span></span>
+    </div>
+  </section>
+
+  <span class="cursor" data-cursor><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4.5 2.8 19.4 13l-7.1 1.3-3.9 6.9z" fill="#25222c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+</div>
+
+<template id="t-ph-yes">
+  <div class="ph-msg appear">
+    <span class="person p36" style="background: #f3d9df;">M</span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Maya</b><span>Little Kin · 10:58</span></div>
+      <div class="bubble-in">Yes, tell me more</div>
+      <span class="sent-note">Tapped a reply button</span>
+    </div>
+  </div>
+</template>
+
+<template id="t-ph-cost">
+  <div class="ph-msg appear">
+    <span class="person p36" style="background: #f3d9df;">M</span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Maya</b><span>Little Kin · 11:02</span></div>
+      <div class="bubble-in">These look lovely! What would it cost?</div>
+    </div>
+  </div>
+</template>
+
+<template id="t-ph-typing">
+  <div class="ph-msg appear">
+    <span class="ant a36 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Aya</b><span class="chip chip-accent" style="height: 20px; padding: 0 7px;">AI</span></div>
+      <span class="typing"><i></i><i></i><i></i></span>
+    </div>
+  </div>
+</template>
+
+<template id="t-ph-draft">
+  <div class="ph-msg appear">
+    <span class="ant a36 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Aya</b><span class="chip chip-accent" style="height: 20px; padding: 0 7px;">AI</span><span>11:03</span></div>
+      <div class="draft">
+        <span class="chip chip-need" style="align-self: flex-start;">Draft by Aya, needs your OK</span>
+        <p>Hi Maya, glad you like them! Our starter plan is R 4 500 a month for 12 posts and replies to comments. Lerato can call you at 14:00 to walk you through it. Does that work?</p>
+        <div class="draft-actions"><button tabindex="-1" class="btn btn-ink" type="button" data-send-draft>Send</button><button tabindex="-1" class="btn btn-line" type="button">Edit</button><button tabindex="-1" class="btn btn-bad" type="button">Discard</button></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="t-ph-sent">
+  <div class="ph-msg appear">
+    <span class="ant a36 t-aya"><img src="../assets/agents/aya.svg" alt=""></span>
+    <div class="msg-body">
+      <div class="msg-meta"><b>Aya</b><span class="chip chip-accent" style="height: 20px; padding: 0 7px;">AI</span><span>11:04</span></div>
+      <p class="msg-text">Hi Maya, glad you like them! Our starter plan is R 4 500 a month for 12 posts and replies to comments. Lerato can call you at 14:00 to walk you through it. Does that work?</p>
+      <span class="sent-note">✓ Sent · you, as Lerato Social</span>
+    </div>
+  </div>
+</template>
+
+<template id="t-ph-birch">
+  <div class="team-row appear flash"><span class="ant a40 t-birch"><img src="../assets/agents/birch.svg" alt=""></span><span class="grow"><b>Birch</b><small>Hospitality researcher · Reports to Scout</small></span><span class="chip chip-accent">New</span></div>
+</template>
+</body>
+</html>

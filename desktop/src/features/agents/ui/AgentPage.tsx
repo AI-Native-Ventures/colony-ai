@@ -347,6 +347,7 @@ export function AgentPage({
                 <EmployeeAvatar
                   className="agents-c3-hero-avatar"
                   name={name}
+                  pubkey={member.pubkey}
                   role={title}
                   profile={profileQuery.data?.avatarUrl}
                 />
@@ -466,6 +467,7 @@ export function AgentPage({
             definition={persona?.avatarUrl}
             instance={agent.avatarUrl}
             name={agent.name}
+            pubkey={agent.pubkey}
             personaId={agent.personaId}
             role={title || persona?.companyRole?.job}
             profile={profileQuery.data?.avatarUrl}

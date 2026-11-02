@@ -111,6 +111,7 @@ export function TypingIndicatorRow({
                   <ProfileAvatar
                     avatarUrl={profile?.avatarUrl ?? null}
                     label={label}
+                    pubkey={pubkey}
                     className={cn(
                       isActivityVariant
                         ? "h-4 w-4 text-3xs"

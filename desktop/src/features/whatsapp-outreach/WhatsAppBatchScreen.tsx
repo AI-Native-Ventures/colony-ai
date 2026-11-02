@@ -11,6 +11,7 @@ import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 import {
   maskWhatsAppNumber,
@@ -578,9 +579,9 @@ export function WhatsAppBatchScreen({
           </span>
           <h1>
             {pending
-              ? `${total} guesthouses in Melville`
+              ? `${total} businesses`
               : approved
-                ? `Messaging ${total} guesthouses in Melville`
+                ? `Messaging ${total} businesses`
                 : "Batch rejected"}
           </h1>
           {pending ? (
@@ -601,7 +602,7 @@ export function WhatsAppBatchScreen({
                     </div>
                     <div className="c3wa-template-buttons">
                       {template.buttons.map((button) => (
-                        <span key={button.type + ":" + button.text}>
+                        <span key={`${button.type}:${button.text}`}>
                           ↶ {button.text}
                         </span>
                       ))}
@@ -609,7 +610,7 @@ export function WhatsAppBatchScreen({
                     <p className="c3wa-mobile-template-label">
                       Template: {whatsappTemplateDisplayTitle(template)}.{" "}
                       {displayTemplateCategory(template.category)}, approved by
-                      Meta. The preview link is filled in per guesthouse.
+                      Meta. The preview link is filled in per contact.
                     </p>
                   </>
                 ) : (
@@ -771,9 +772,13 @@ export function WhatsAppBatchScreen({
           </div>
           <div className="c3wa-owner-message">
             <span aria-hidden="true" className="c3wa-owner-message-avatar">
-              {(profileQuery.data?.displayName ?? "Owner")
-                .slice(0, 1)
-                .toUpperCase()}
+              <UserAvatar
+                avatarUrl={profileQuery.data?.avatarUrl ?? null}
+                className="size-full"
+                displayName={profileQuery.data?.displayName ?? "Owner"}
+                fallbackDelayMs={0}
+                pubkey={currentPubkey}
+              />
             </span>
             <div>
               <div className="c3wa-owner-message-meta">
@@ -781,8 +786,7 @@ export function WhatsAppBatchScreen({
                 <span>10:31</span>
               </div>
               <p>
-                Line up the Melville guesthouses for WhatsApp. Use the Built a
-                site for you template.
+                Prepare these contacts for WhatsApp. Use the selected template.
               </p>
             </div>
           </div>
@@ -862,9 +866,7 @@ export function WhatsAppBatchScreen({
                   >
                     {pending ? (
                       <>
-                        <h2>
-                          Scout wants to message {total} guesthouses in Melville
-                        </h2>
+                        <h2>Scout wants to message {total} businesses</h2>
                         <p className="c3wa-batch-template-label">
                           Template: {whatsappTemplateDisplayTitle(template)} ·{" "}
                           {displayTemplateCategory(template.category)} ·
@@ -874,7 +876,7 @@ export function WhatsAppBatchScreen({
                           <strong>
                             First message, as{" "}
                             {firstRowContact?.displayName ??
-                              "the first guesthouse"}{" "}
+                              "the first contact"}{" "}
                             will see it
                           </strong>
                           <p>
@@ -885,7 +887,7 @@ export function WhatsAppBatchScreen({
                           </p>
                           <div className="c3wa-template-buttons">
                             {template.buttons.map((button) => (
-                              <span key={button.type + ":" + button.text}>
+                              <span key={`${button.type}:${button.text}`}>
                                 ↶ {button.text}
                               </span>
                             ))}
@@ -894,7 +896,7 @@ export function WhatsAppBatchScreen({
                       </>
                     ) : approved ? (
                       <>
-                        <h2>Messaging {total} guesthouses in Melville</h2>
+                        <h2>Messaging {total} businesses</h2>
                         <div
                           className="c3wa-batch-progress is-approved"
                           data-testid="whatsapp-batch-progress"
@@ -1080,7 +1082,7 @@ export function WhatsAppBatchScreen({
                   </span>
                 </div>
                 <p>
-                  Jacaranda Lane read it already. Replies land in{" "}
+                  The approved batch is ready. Replies land in{" "}
                   <button onClick={openOutreach} type="button">
                     #Outreach
                   </button>

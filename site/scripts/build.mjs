@@ -19,6 +19,8 @@ const allowedHtml = new Set([
   "hero-10/helix.html",
   "product-reference/workspace/demo-r23.html",
   "product-reference/mobile-r21/demo-r23.html",
+  "demos/desktop.html",
+  "demos/phone.html",
 ]);
 const allowedText = new Set([
   "robots.txt",
