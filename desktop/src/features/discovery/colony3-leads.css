@@ -87,7 +87,17 @@
 }
 
 .c3l-head-back {
+  min-width: 0;
+  max-width: min(40vw, 24rem);
   margin-left: auto;
+}
+
+.c3l-head-back-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .c3l-page .c3l-title {
@@ -1100,8 +1110,13 @@
 }
 
 .c3l-crumb-link {
+  padding: 0;
+  border: 0;
+  background: none;
   color: inherit;
+  font: inherit;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .c3l-crumb-link:hover {

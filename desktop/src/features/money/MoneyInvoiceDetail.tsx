@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { useRouteBack } from "@/app/navigation/RouteOriginContext";
 import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { usePeople } from "@/features/clients/lib/usePeople";
 import {
@@ -28,7 +29,6 @@ import {
   invoiceNumber,
   isOverdue,
   lineTotalMinor,
-  navigateMoney,
   totalLinesMinor,
 } from "./moneyUtils";
 
@@ -65,6 +65,11 @@ export function MoneyInvoiceDetail({
   const service = head.lines.map((line) => line.description).join(" · ");
   const number = `Invoice ${invoiceNumber(head.invoiceId)}`;
   const listPath = fromRevenue ? "/money/revenue" : "/money/invoices";
+  const routeBack = useRouteBack({
+    to: listPath,
+    label: fromRevenue ? "All revenue" : "All invoices",
+    breadcrumbs: ["Business", "Money", fromRevenue ? "Revenue" : "Invoices"],
+  });
   const overdue = isOverdue(head);
   const savedVersions = records.invoiceVersions.filter(
     ({ value }) => value.invoiceId === head.invoiceId,
@@ -86,12 +91,14 @@ export function MoneyInvoiceDetail({
           </div>
           <div className="b3-head-actions">
             <button
+              aria-label={`Back to ${routeBack.backLabel}`}
               className="b3-btn"
-              onClick={() => navigateMoney(listPath)}
+              onClick={routeBack.goBack}
+              title={routeBack.backLabel}
               type="button"
             >
               <ChevronLeftIcon size={17} />
-              All {fromRevenue ? "revenue" : "invoices"}
+              <span className="max-w-64 truncate">{routeBack.backLabel}</span>
             </button>
           </div>
         </div>
@@ -100,12 +107,13 @@ export function MoneyInvoiceDetail({
     >
       <BusinessTrail
         crumbs={[
-          { label: "Business" },
-          { label: "Money" },
-          {
-            label: fromRevenue ? "Revenue" : "Invoices",
-            onClick: () => navigateMoney(listPath),
-          },
+          ...routeBack.breadcrumbs.map((label, index) => ({
+            label,
+            onClick:
+              index === routeBack.breadcrumbs.length - 1
+                ? routeBack.goBack
+                : undefined,
+          })),
           { label: number },
         ]}
       />

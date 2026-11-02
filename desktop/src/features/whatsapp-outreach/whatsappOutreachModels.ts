@@ -105,6 +105,53 @@ export type WhatsAppContact = Readonly<{
   awaitingApproval: boolean;
 }>;
 
+export type WhatsAppMediaType =
+  | "image"
+  | "video"
+  | "audio"
+  | "voice"
+  | "document"
+  | "sticker"
+  | "location"
+  | "contacts";
+
+/** `none` is a location or contact card: there is nothing to download. */
+export type WhatsAppMediaState =
+  | "stored"
+  | "pending"
+  | "failed"
+  | "gone"
+  | "none";
+
+export type WhatsAppMediaContactCard = Readonly<{
+  name: string | null;
+  phones: readonly string[];
+}>;
+
+/** The picture, sticker, voice note, file, location or contact card of a message. */
+export type WhatsAppMedia = Readonly<{
+  type: WhatsAppMediaType;
+  state: WhatsAppMediaState;
+  /** Relay media URL, set once the file is stored. */
+  url: string | null;
+  mime: string | null;
+  size: number | null;
+  /** The relay kept the exact bytes as a download (it could not check them as media). */
+  opaque: boolean;
+  caption: string | null;
+  filename: string | null;
+  animated: boolean;
+  /** Short reason code when the download stopped (`too_large`, `not_found`, ...). */
+  error: string | null;
+  canRetry: boolean;
+  description: string;
+  latitude: number | null;
+  longitude: number | null;
+  name: string | null;
+  address: string | null;
+  contacts: readonly WhatsAppMediaContactCard[];
+}>;
+
 export type WhatsAppMessage = Readonly<{
   id: string;
   waId: string;
@@ -119,6 +166,8 @@ export type WhatsAppMessage = Readonly<{
   senderPubkey: string | null;
   createdAt: string;
   sendsAt?: string | null;
+  /** Present on a message that carries media. Absent from older relays. */
+  media?: WhatsAppMedia | null;
 }>;
 
 export type WhatsAppThread = Readonly<{
@@ -416,6 +465,87 @@ function parseWhatsAppMessageState(
   return null;
 }
 
+const MEDIA_TYPES = new Set<WhatsAppMediaType>([
+  "image",
+  "video",
+  "audio",
+  "voice",
+  "document",
+  "sticker",
+  "location",
+  "contacts",
+]);
+const MEDIA_STATES = new Set<WhatsAppMediaState>([
+  "stored",
+  "pending",
+  "failed",
+  "gone",
+  "none",
+]);
+
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Read a message's media. Forgiving on purpose: a media record the app cannot read must never
+ * hide the conversation, so it reads as `null` and the message shows its text.
+ */
+export function parseWhatsAppMedia(value: unknown): WhatsAppMedia | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const media = value as Record<string, unknown>;
+  const type = media.type;
+  if (typeof type !== "string" || !MEDIA_TYPES.has(type as WhatsAppMediaType)) {
+    return null;
+  }
+  const state =
+    typeof media.state === "string" &&
+    MEDIA_STATES.has(media.state as WhatsAppMediaState)
+      ? (media.state as WhatsAppMediaState)
+      : "failed";
+  const contacts = Array.isArray(media.contacts)
+    ? media.contacts.flatMap((card): WhatsAppMediaContactCard[] => {
+        if (typeof card !== "object" || card === null) return [];
+        const record = card as Record<string, unknown>;
+        return [
+          {
+            name: optionalText(record.name),
+            phones: Array.isArray(record.phones)
+              ? record.phones.filter(
+                  (phone): phone is string => typeof phone === "string",
+                )
+              : [],
+          },
+        ];
+      })
+    : [];
+  return {
+    type: type as WhatsAppMediaType,
+    state,
+    url: optionalText(media.url),
+    mime: optionalText(media.mime),
+    size: optionalNumber(media.size),
+    opaque: media.opaque === true,
+    caption: optionalText(media.caption),
+    filename: optionalText(media.filename),
+    animated: media.animated === true,
+    error: optionalText(media.error),
+    canRetry: media.canRetry === true,
+    description: optionalText(media.description) ?? "",
+    latitude: optionalNumber(media.latitude),
+    longitude: optionalNumber(media.longitude),
+    name: optionalText(media.name),
+    address: optionalText(media.address),
+    contacts,
+  };
+}
+
 export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
   const message = record(value, "message");
   const direction = stringValue(message.direction, "message direction");
@@ -448,6 +578,9 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     ...(message.sendsAt === undefined
       ? {}
       : { sendsAt: nullableString(message.sendsAt, "message send time") }),
+    ...(message.media === undefined || message.media === null
+      ? {}
+      : { media: parseWhatsAppMedia(message.media) }),
   };
 }
 
@@ -764,4 +897,34 @@ export function contactWhatsAppStatus(input: {
   if (input.inBatch) return "in-batch";
   if (input.sent) return "sent";
   return "not-contacted";
+}
+
+/**
+ * One line for a list or a quote: what the customer wrote, or a plain sentence about the
+ * picture, sticker or voice note they sent. Never the bracket placeholder.
+ */
+export function whatsappMessagePreview(message: WhatsAppMessage): string {
+  const media = message.media;
+  if (!media) return message.text;
+  const caption = media.caption?.trim();
+  const sentence: Record<WhatsAppMediaType, string> = {
+    image: "Sent a photo",
+    video: "Sent a video",
+    audio: "Sent an audio file",
+    voice: "Sent a voice note",
+    document: media.filename ? `Sent ${media.filename}` : "Sent a document",
+    sticker: "Sent a sticker",
+    location: media.name
+      ? `Shared a location: ${media.name}`
+      : "Shared a location",
+    contacts: "Shared a contact card",
+  };
+  return caption ? `${sentence[media.type]}: ${caption}` : sentence[media.type];
+}
+
+/** The list line for a chat: its latest message in words, or `null` for an empty chat. */
+export function whatsappLatestPreview(
+  message: WhatsAppMessage | undefined,
+): string | null {
+  return message ? whatsappMessagePreview(message) : null;
 }

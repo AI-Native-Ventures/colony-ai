@@ -14,7 +14,10 @@ import {
   Send,
 } from "lucide-react";
 
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import {
+  useRouteBack,
+  useRouteOrigin,
+} from "@/app/navigation/RouteOriginContext";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
   BusinessTrail,
@@ -113,7 +116,12 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
   const whatsappStatus = useWhatsAppStatusQuery(
     Boolean(recordQuery.record?.chats.whatsapp),
   );
-  const { goClients } = useAppNavigation();
+  const routeBack = useRouteBack({
+    to: "/clients",
+    label: "All clients",
+    breadcrumbs: ["Business", "Clients"],
+  });
+  const routeOrigin = useRouteOrigin();
   const [actionError, setActionError] = useState<string | null>(null);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
   const [fileOpen, setFileOpen] = useState(false);
@@ -158,11 +166,29 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
     .join(" · ");
   const chatEmails = record ? emailAttachments(record) : [];
   const files = record ? fileAttachments(record) : [];
+  const currentBreadcrumb = routeBack.origin?.pathname.startsWith(
+    "/sales/lead/",
+  )
+    ? "Customer record"
+    : name;
   const crumbs: TrailCrumb[] = [
-    { label: "Business" },
-    { label: "Clients", onClick: () => void goClients() },
-    { label: name },
+    ...routeBack.breadcrumbs.map((label, index) => ({
+      label,
+      onClick:
+        index === routeBack.breadcrumbs.length - 1
+          ? routeBack.goBack
+          : undefined,
+    })),
+    { label: currentBreadcrumb },
   ];
+
+  useEffect(() => {
+    routeOrigin.savePageSnapshot({
+      backLabel: name,
+      breadcrumbs: ["Business", "Clients", name],
+      scrollY: window.scrollY,
+    });
+  }, [name, routeOrigin.savePageSnapshot]);
 
   async function applyAction(
     action: Parameters<typeof recordAction.mutateAsync>[0],

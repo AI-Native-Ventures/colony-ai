@@ -222,6 +222,21 @@ test.describe("co-founder customer records", () => {
     await expect(convert).toHaveCount(0);
     await detail.getByRole("link", { name: "Customer record" }).click();
 
+    const customerTrail = page.locator(
+      "nav.b3-trail[data-testid='top-bar-breadcrumb']",
+    );
+    await expect(customerTrail).toContainText(
+      "Business/Sales/Leads/Melville Manor Guesthouse/Customer record",
+    );
+    await customerTrail
+      .getByRole("button", { name: "Melville Manor Guesthouse", exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/sales/lead/${MELVILLE_PARTY_ID}$`),
+    );
+    await detail.getByRole("link", { name: "Customer record" }).click();
+    await expect(page.getByTestId("customer-record-screen")).toBeVisible();
+
     const timeline = page
       .getByTestId("customer-record-screen")
       .locator("ol li");
@@ -260,6 +275,7 @@ test.describe("co-founder customer records", () => {
     await expect(page).toHaveURL(
       new RegExp(`/clients/record/${MELVILLE_PARTY_ID}$`),
     );
+
     const timeline = page
       .getByTestId("customer-record-screen")
       .locator("ol li");

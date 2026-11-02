@@ -20,6 +20,11 @@ pub const MAX_DAILY_NEW_CHAT_CAP: i32 = 1000;
 pub const DEFAULT_DAILY_NEW_CHAT_CAP: i32 = 30;
 /// Failed Colony posts of one message before the repair loop gives up on it.
 pub const POST_MAX_ATTEMPTS: i32 = 24;
+/// Failed downloads of one inbound media file before the owner has to press Retry.
+pub const MEDIA_MAX_ATTEMPTS: i32 = 8;
+/// Failed follow-up posts (the link added to an already posted message) before the repair
+/// loop stops trying. Counted together with the download attempts of the same row.
+pub const MEDIA_LINK_MAX_ATTEMPTS: i32 = 40;
 
 async fn begin(pool: &PgPool) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
     let connection = crate::observability::acquire_writer(
@@ -369,6 +374,64 @@ pub struct RowEdit {
     pub params: Value,
     /// Re-rendered text.
     pub body: String,
+}
+
+/// An inbound media message: what the webhook said and where the download stands.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WhatsappMedia {
+    /// Message row id.
+    pub message_id: Uuid,
+    /// Contact.
+    pub wa_id: String,
+    /// What the webhook said (`type`, `mediaId`, `mime`, `caption`, ...).
+    pub media: Value,
+    /// `pending`, `stored`, `failed`, `gone`, or `None` when there is nothing to download.
+    pub state: Option<String>,
+    /// The stored blob: `{sha256, ext, mime, size, opaque}`.
+    pub stored: Option<Value>,
+    /// Failed download attempts.
+    pub attempts: i32,
+    /// Next download attempt.
+    pub retry_at: Option<DateTime<Utc>>,
+    /// Why the download stopped, in a short code.
+    pub error: Option<String>,
+    /// The Colony message event already carries the media link.
+    pub linked: bool,
+    /// Colony message event, once posted.
+    pub event_id: Option<Vec<u8>>,
+    /// When the customer sent it.
+    pub created_at: DateTime<Utc>,
+}
+
+/// `SELECT` of the media columns plus a fixed tail, as one string literal (sqlx takes only
+/// static SQL; there is no dynamic text here).
+macro_rules! media_select {
+    ($tail:literal) => {
+        concat!(
+            "SELECT id, wa_id, media, media_state, media_stored, media_attempts, \
+             media_retry_at, media_error, media_linked, event_id, created_at \
+             FROM whatsapp_messages ",
+            $tail
+        )
+    };
+}
+
+fn row_to_media(row: &PgRow) -> Result<WhatsappMedia> {
+    Ok(WhatsappMedia {
+        message_id: row.try_get("id")?,
+        wa_id: row.try_get("wa_id")?,
+        media: row
+            .try_get::<Option<Value>, _>("media")?
+            .unwrap_or(Value::Null),
+        state: row.try_get("media_state")?,
+        stored: row.try_get("media_stored")?,
+        attempts: row.try_get("media_attempts")?,
+        retry_at: row.try_get("media_retry_at")?,
+        error: row.try_get("media_error")?,
+        linked: row.try_get("media_linked")?,
+        event_id: row.try_get("event_id")?,
+        created_at: row.try_get("created_at")?,
+    })
 }
 
 fn row_to_message(row: &PgRow) -> Result<WhatsappMessage> {
@@ -1449,6 +1512,282 @@ impl Db {
         .execute(&self.pool)
         .await?;
         Ok((result.rows_affected() == 1).then_some(id))
+    }
+
+    // ── inbound media ──────────────────────────────────────────────────────────
+
+    /// Remember what the webhook said about a message's media. Only the first call per message
+    /// writes (a redelivery repeats it harmlessly). `state` is `pending` when there are bytes
+    /// to download, `failed` (with `error`) when the payload gave no usable media id, `None`
+    /// for a location or contact card.
+    pub async fn whatsapp_set_inbound_media(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        media: &Value,
+        state: Option<&str>,
+        error: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE whatsapp_messages SET media = $3, media_state = $4, media_error = $5, \
+                 media_retry_at = CASE WHEN $4 = 'pending' THEN $6::timestamptz END, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media IS NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(media)
+        .bind(state)
+        .bind(error)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Take the right to download one pending file for `lease_secs`, so two relays (or the
+    /// webhook and the sender loop) never fetch the same file at once. A crashed holder is
+    /// retried after the lease runs out.
+    pub async fn whatsapp_media_claim(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+        lease_secs: f64,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages \
+             SET media_retry_at = $3::timestamptz + make_interval(secs => $4) \
+             WHERE community_id = $1 AND id = $2 AND media_state = 'pending' \
+               AND (media_retry_at IS NULL OR media_retry_at <= $3)",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(now)
+        .bind(lease_secs)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// The media record of one message, if it has any.
+    pub async fn whatsapp_get_media(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+    ) -> Result<Option<WhatsappMedia>> {
+        let row = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND id = $2 AND media IS NOT NULL"
+        ))
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_media).transpose()
+    }
+
+    /// The media records of several messages (one thread), by message id.
+    pub async fn whatsapp_media_for_messages(
+        &self,
+        community: CommunityId,
+        message_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, WhatsappMedia>> {
+        if message_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND id = ANY($2) AND media IS NOT NULL"
+        ))
+        .bind(community.as_uuid())
+        .bind(message_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = std::collections::HashMap::new();
+        for row in &rows {
+            let media = row_to_media(row)?;
+            out.insert(media.message_id, media);
+        }
+        Ok(out)
+    }
+
+    /// Downloads that are due: pending and past their retry time, oldest first.
+    pub async fn whatsapp_media_list_due(
+        &self,
+        community: CommunityId,
+        limit: i64,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<WhatsappMedia>> {
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND media_state = 'pending' \
+               AND (media_retry_at IS NULL OR media_retry_at <= $3) \
+             ORDER BY created_at LIMIT $2"
+        ))
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 50))
+        .bind(now)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_media).collect()
+    }
+
+    /// Record a finished download. Only a row still waiting for it changes.
+    pub async fn whatsapp_media_set_stored(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        stored: &Value,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages SET media_state = 'stored', media_stored = $3, \
+                 media_error = NULL, media_retry_at = NULL, updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media_state IN ('pending', 'failed')",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(stored)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Record a download that will not be tried again by itself (`failed`, the owner may retry,
+    /// or `gone`, Meta no longer has the file).
+    pub async fn whatsapp_media_set_final_failure(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        state: &str,
+        error: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE whatsapp_messages SET media_state = $3, media_error = $4, \
+                 media_attempts = media_attempts + 1, media_retry_at = NULL, updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media_state = 'pending'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(state)
+        .bind(error.chars().take(200).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Record a failed download that may work later: 30 s doubling to a cap of 1 h. After
+    /// [`MEDIA_MAX_ATTEMPTS`] failures the row becomes `failed` and waits for the owner's
+    /// Retry. Returns the attempt count and whether the row gave up.
+    pub async fn whatsapp_media_note_failure(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+        error: &str,
+    ) -> Result<(i32, bool)> {
+        let row = sqlx::query(
+            "UPDATE whatsapp_messages SET media_attempts = media_attempts + 1, \
+                 media_error = $4, \
+                 media_retry_at = $3::timestamptz + LEAST(interval '1 hour', \
+                     interval '30 seconds' * power(2, LEAST(media_attempts, 11))), \
+                 media_state = CASE WHEN media_attempts + 1 >= $5 THEN 'failed' ELSE 'pending' END, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media_state = 'pending' \
+             RETURNING media_attempts, media_state = 'failed'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(now)
+        .bind(error.chars().take(200).collect::<String>())
+        .bind(MEDIA_MAX_ATTEMPTS)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(match row {
+            Some(row) => (row.try_get(0)?, row.try_get(1)?),
+            None => (0, false),
+        })
+    }
+
+    /// The owner pressed Retry on a download that gave up. Only `failed` rows restart.
+    pub async fn whatsapp_media_reset(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages SET media_state = 'pending', media_attempts = 0, \
+                 media_error = NULL, media_retry_at = $3, updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media_state = 'failed' \
+               AND media_error IS DISTINCT FROM 'too_large'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// The Colony message event carries the media link now.
+    pub async fn whatsapp_media_mark_linked(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE whatsapp_messages SET media_linked = true, updated_at = now() \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Stored media whose message was posted before the download finished, so no event
+    /// carries the link yet. The repair loop adds one follow-up message for each.
+    pub async fn whatsapp_media_list_unlinked(
+        &self,
+        community: CommunityId,
+        limit: i64,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<WhatsappMedia>> {
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND media_state = 'stored' AND NOT media_linked \
+               AND event_id IS NOT NULL AND media_attempts < $4 \
+               AND (media_retry_at IS NULL OR media_retry_at <= $3) \
+             ORDER BY created_at LIMIT $2"
+        ))
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 50))
+        .bind(now)
+        .bind(MEDIA_LINK_MAX_ATTEMPTS)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_media).collect()
+    }
+
+    /// A follow-up post failed: back off before the next try (30 s doubling to 1 h).
+    pub async fn whatsapp_media_note_link_failure(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE whatsapp_messages SET media_attempts = media_attempts + 1, \
+                 media_retry_at = $3::timestamptz + LEAST(interval '1 hour', \
+                     interval '30 seconds' * power(2, LEAST(media_attempts, 11))), \
+                 updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND media_state = 'stored'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Attach the Colony message event to a stored message.

@@ -170,6 +170,10 @@ struct ContactUpdateCommand {
     /// `Some(Some(text))` sets the label, `Some(None)` (JSON `null`) clears it, absent leaves it.
     #[serde(default, deserialize_with = "present_or_null")]
     label: Option<Option<String>>,
+    /// Message id whose inbound media download should be started again (the owner pressed
+    /// Retry on a picture, sticker or voice note that could not be loaded). Sent on its own.
+    #[serde(default)]
+    retry_media: Option<String>,
 }
 
 /// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
@@ -906,6 +910,33 @@ async fn handle_contact_update(
     let community = tenant.community();
     let wa_id =
         normalize_wa_id(&command.wa_id).ok_or_else(|| invalid("waId must be a phone number"))?;
+    if let Some(message_id) = command.retry_media.as_deref() {
+        if command.stage.is_some() || command.label.is_some() {
+            return Err(invalid("retryMedia is sent on its own"));
+        }
+        let message_id = parse_uuid(message_id, "retryMedia").map_err(invalid)?;
+        let media = state
+            .db
+            .whatsapp_get_media(community, message_id)
+            .await
+            .map_err(internal)?
+            .filter(|media| media.wa_id == wa_id)
+            .ok_or_else(|| invalid("no such media"))?;
+        // The sender loop picks the row up on its next pass and downloads it again.
+        let restarted = state
+            .db
+            .whatsapp_media_reset(community, media.message_id, Utc::now())
+            .await
+            .map_err(internal)?;
+        return Ok(ok(
+            event,
+            if restarted {
+                "media download restarted"
+            } else {
+                "nothing to retry: the file is not waiting for a retry"
+            },
+        ));
+    }
     let stage = command
         .stage
         .as_deref()

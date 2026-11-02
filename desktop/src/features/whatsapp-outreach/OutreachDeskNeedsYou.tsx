@@ -35,6 +35,7 @@ import {
   BATCH_MANAGE_NOTE,
   canManageWhatsAppContact,
 } from "./whatsappContactAccess";
+import { WhatsAppMessagePreview } from "./WhatsAppMessageMedia";
 import {
   getWhatsAppNeedsYouItems,
   WHATSAPP_STAGE_LABELS,
@@ -348,14 +349,17 @@ function NeedsContactCard({
           {dateLabel ? ` · ${dateLabel}` : ""}
         </p>
         <p className="c3wa-desk-contact-preview">
-          {lastInbound?.text ??
-            (threadQuery.isError
-              ? "Latest message unavailable"
-              : threadQuery.isPending
-                ? "Loading latest message…"
-                : wantsCall
-                  ? "They asked to speak with you"
-                  : "Reply needed")}
+          {lastInbound ? (
+            <WhatsAppMessagePreview message={lastInbound} />
+          ) : threadQuery.isError ? (
+            "Latest message unavailable"
+          ) : threadQuery.isPending ? (
+            "Loading latest message…"
+          ) : wantsCall ? (
+            "They asked to speak with you"
+          ) : (
+            "Reply needed"
+          )}
         </p>
         {hasDraft && !wantsCall && draft ? (
           <div className="c3wa-desk-draft-preview">
