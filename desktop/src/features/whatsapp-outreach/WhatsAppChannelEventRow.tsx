@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, MessageCircle, Send, XCircle } from "lucide-react";
 
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -17,6 +18,8 @@ import {
   useWhatsAppBatchQuery,
   useWhatsAppBatchesQuery,
   useWhatsAppCommand,
+  useWhatsAppContactsQuery,
+  useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
 import { whatsappQueuedScheduleLabel } from "./whatsappOutreachModels";
@@ -53,15 +56,17 @@ function ChannelCard({
   children,
   label,
   testId,
+  wide = false,
 }: {
   children: React.ReactNode;
   label: string;
   testId: string;
+  wide?: boolean;
 }) {
   return (
     <article
       aria-label={label}
-      className="mx-2 mb-3 flex max-w-3xl flex-col gap-2 rounded-xl border border-colony-border bg-colony-pop p-3 text-colony-fg shadow-sm"
+      className={`mx-2 mb-3 flex flex-col gap-3 rounded-xl border border-colony-border bg-colony-pop text-colony-fg shadow-sm ${wide ? "max-w-4xl p-5 sm:p-6" : "max-w-3xl p-3"}`}
       data-testid={testId}
     >
       {children}
@@ -124,9 +129,14 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
   const [decision, setDecision] = React.useState<"approve" | "reject" | null>(
     null,
   );
+  const [showAllRows, setShowAllRows] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState("");
-  const prefix = batchPrefix(message.body);
+  const businessRecords = useBusinessRecords({ createIfMissing: false });
+  const taggedBatchId = tagValue(message, "wa-batch");
+  const prefix = taggedBatchId
+    ? taggedBatchId.replaceAll("-", "").toLocaleLowerCase()
+    : batchPrefix(message.body);
   const matches = (batchesQuery.data ?? []).filter((batch) =>
     prefix
       ? batch.batchId.replaceAll("-", "").toLocaleLowerCase().startsWith(prefix)
@@ -141,16 +151,10 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
       : decision === "reject"
         ? "rejected"
         : batch?.status;
-  const batchDetailsQuery = useWhatsAppBatchQuery(
-    batch && initialDisplayStatus && initialDisplayStatus !== "pending"
-      ? batch.batchId
-      : null,
-  );
-  const templatesQuery = useWhatsAppTemplatesQuery(
-    Boolean(
-      batch && initialDisplayStatus && initialDisplayStatus !== "pending",
-    ),
-  );
+  const batchDetailsQuery = useWhatsAppBatchQuery(batch?.batchId ?? null);
+  const contactsQuery = useWhatsAppContactsQuery(Boolean(batch));
+  const templatesQuery = useWhatsAppTemplatesQuery(Boolean(batch));
+  const statusQuery = useWhatsAppStatusQuery(Boolean(batch));
   const approvedDetailsQuery = useWhatsAppApprovedBatchDetailsQuery(
     initialDisplayStatus === "approved",
   );
@@ -221,6 +225,43 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
       ? batchDetailsQuery.data
       : null);
   const canSendNow = canSendNowWhatsAppBatch(sendNowBatch, canUseSendNow);
+  const listId = tagValue(message, "list");
+  const outreachList = listId
+    ? businessRecords.records?.outreachLists.find(
+        ({ record }) => record.listId === listId,
+      )?.record
+    : null;
+  const detail = batchDetailsQuery.data;
+  const template = templatesQuery.data?.find(
+    (candidate) =>
+      candidate.name.toLocaleLowerCase() ===
+        batch?.template.toLocaleLowerCase() &&
+      candidate.language.toLocaleLowerCase() ===
+        batch?.language.toLocaleLowerCase(),
+  );
+  const previewRow = detail?.rows.find((row) => row.state === "ready") ?? null;
+  const leadNameForRow = (row: { leadId: string | null; to: string }) => {
+    const digits = row.to.replace(/\D/gu, "");
+    const contact = contactsQuery.data?.find(
+      (candidate) => candidate.waId === digits,
+    );
+    if (contact?.businessName) return contact.businessName;
+    return row.leadId
+      ? (businessRecords.records?.prospects.find(
+          ({ record }) => record.prospectId === row.leadId,
+        )?.record.prospect.party.displayName ?? null)
+      : null;
+  };
+  const previewLead = previewRow ? leadNameForRow(previewRow) : null;
+  const skippedSummary = tagValue(message, "wa-skipped");
+  const visibleRows = detail?.rows.filter((row) => row.state === "ready") ?? [];
+  const displayedRows = showAllRows ? visibleRows : visibleRows.slice(0, 4);
+
+  function maskedNumber(value: string): string {
+    const digits = value.replace(/\D/gu, "");
+    if (digits.length < 7) return value;
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} *** ${digits.slice(-4)}`;
+  }
 
   async function decide(nextDecision: "approve" | "reject") {
     if (!batch || !canManage || busy) return;
@@ -290,126 +331,252 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         : "whatsapp-channel-batch-approved";
 
   return (
-    <ChannelCard label={cardLabel} testId={testId}>
-      <div className="flex items-start gap-3">
-        <span
-          aria-hidden="true"
-          className={`mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ${
-            isRejected
-              ? "bg-colony-danger-bg text-colony-danger"
-              : isPending
-                ? "bg-colony-need-bg text-colony-need"
-                : "bg-colony-success-bg text-colony-success"
-          }`}
-        >
-          {isRejected ? (
-            <XCircle size={17} />
-          ) : isSent ? (
-            <Send size={16} />
-          ) : isPending ? (
-            <MessageCircle size={17} />
-          ) : (
-            <CheckCircle2 size={17} />
-          )}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="m-0 text-sm font-bold">{title}</h3>
-          {isRejected || isSent ? (
-            <p
-              className="m-0 mt-1 text-sm text-colony-fg-secondary"
-              data-testid="whatsapp-channel-batch-summary"
-            >
-              {decisionSummary}
-            </p>
-          ) : null}
-          {isPending ? (
-            <p className="mb-0 mt-1 whitespace-pre-wrap text-sm text-colony-fg-secondary">
-              {message.body}
-            </p>
-          ) : null}
-        </div>
-      </div>
+    <>
       {isPending ? (
-        <>
-          {batchesQuery.isError ? (
-            <p className="m-0 text-sm text-colony-danger" role="alert">
-              {batchesQuery.error.message}
-            </p>
-          ) : ambiguousPendingMatches ? (
-            <p className="m-0 text-sm text-colony-danger" role="alert">
-              This notice matches more than one pending batch. Refresh the
-              channel before deciding.
-            </p>
-          ) : null}
-          {actionError ? (
-            <p className="m-0 text-sm text-colony-danger" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              disabled={!batch || !canManage || busy || decision !== null}
-              onClick={() => void decide("approve")}
-              size="sm"
-              type="button"
-            >
-              Approve and send
-            </Button>
-            <Button
-              disabled={!batch || busy || decision !== null}
-              onClick={() => {
-                if (batch) {
-                  void navigate({
-                    to: "/whatsapp/batches/$batchId",
-                    params: { batchId: batch.batchId },
-                  });
-                }
-              }}
-              size="sm"
-              variant="outline"
-              type="button"
-            >
-              Review each message
-            </Button>
-            <Button
-              disabled={!batch || !canManage || busy || decision !== null}
-              onClick={() => void decide("reject")}
-              size="sm"
-              variant="ghost"
-              type="button"
-            >
-              <XCircle aria-hidden="true" />
-              Reject
-            </Button>
-            {!canManage ? (
-              <span className="text-xs text-colony-fg-muted">
-                Only the owner or an admin can decide.
-              </span>
+        <p className="mx-2 mb-2 max-w-4xl whitespace-pre-wrap text-sm text-colony-fg-secondary">
+          {message.body}
+        </p>
+      ) : null}
+      <ChannelCard label={cardLabel} testId={testId} wide>
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className={`mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ${
+              isRejected
+                ? "bg-colony-danger-bg text-colony-danger"
+                : isPending
+                  ? "bg-colony-need-bg text-colony-need"
+                  : "bg-colony-success-bg text-colony-success"
+            }`}
+          >
+            {isRejected ? (
+              <XCircle size={17} />
+            ) : isSent ? (
+              <Send size={16} />
+            ) : isPending ? (
+              <MessageCircle size={17} />
+            ) : (
+              <CheckCircle2 size={17} />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            {!isPending ? (
+              <h3 className="m-0 text-sm font-bold">{title}</h3>
+            ) : null}
+            {isRejected || isSent ? (
+              <p
+                className="m-0 mt-1 text-sm text-colony-fg-secondary"
+                data-testid="whatsapp-channel-batch-summary"
+              >
+                {decisionSummary}
+              </p>
+            ) : null}
+            {isPending ? (
+              <div className="mt-3 flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-colony-need-bg px-3 py-1 text-colony-need">
+                    Needs you
+                  </span>
+                  <span className="rounded-full bg-colony-bg-secondary px-3 py-1 text-colony-fg-secondary">
+                    WhatsApp batch
+                  </span>
+                  {statusQuery.data?.displayPhoneNumber ? (
+                    <span className="text-colony-fg-muted">
+                      Sends from {statusQuery.data.displayPhoneNumber}
+                    </span>
+                  ) : null}
+                </div>
+                <h3 className="m-0 text-base font-bold">
+                  {detail?.note ||
+                    `Scout wants to message ${batch?.rows.ready ?? 0} ${outreachList?.name ?? "leads"}`}
+                </h3>
+                {outreachList || template ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    {outreachList && listId ? (
+                      <a
+                        className="rounded-full bg-violet-100 px-3 py-1 text-violet-800 hover:underline dark:bg-violet-950 dark:text-violet-200"
+                        href={`#/lists/${listId}`}
+                      >
+                        For · {outreachList.name}
+                      </a>
+                    ) : null}
+                    {template ? (
+                      <span className="rounded-full bg-violet-100 px-3 py-1 text-violet-800 dark:bg-violet-950 dark:text-violet-200">
+                        Template · {template.title}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {previewRow ? (
+                  <section
+                    aria-label="First WhatsApp message preview"
+                    className="flex max-w-2xl flex-col gap-2"
+                  >
+                    <h4 className="m-0 text-sm font-semibold">
+                      First message, as {previewLead ?? "the business"} will see
+                      it
+                    </h4>
+                    <p className="m-0 whitespace-pre-wrap rounded-xl bg-colony-bg-secondary p-4 text-sm leading-relaxed text-colony-fg-secondary">
+                      {previewRow.preview}
+                    </p>
+                  </section>
+                ) : batchDetailsQuery.isError ? (
+                  <p className="m-0 text-sm text-colony-danger" role="alert">
+                    The message preview could not be loaded. Open the batch to
+                    review it.
+                  </p>
+                ) : null}
+                {skippedSummary ? (
+                  <p className="m-0 rounded-lg bg-colony-need-bg px-3 py-2 text-sm font-medium text-colony-need">
+                    Skipped {skippedSummary}
+                  </p>
+                ) : null}
+                {displayedRows.length ? (
+                  <section aria-label="Ready to send" className="flex flex-col">
+                    <div className="flex items-center justify-between gap-3 border-b border-colony-border pb-2 text-xs font-semibold uppercase tracking-wide text-colony-fg-muted">
+                      <span>
+                        {outreachList?.name ?? "Ready to send"} ·{" "}
+                        {visibleRows.length}
+                      </span>
+                      <span>Preview each message before approval</span>
+                    </div>
+                    <ul className="m-0 list-none divide-y divide-colony-border p-0">
+                      {displayedRows.map((row) => {
+                        const name = leadNameForRow(row);
+                        return (
+                          <li
+                            className="flex min-w-0 items-center gap-3 py-3"
+                            key={`${row.idx}:${row.to}`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-colony-success-bg text-sm font-semibold text-colony-success"
+                            >
+                              {(name ?? "?").slice(0, 1).toLocaleUpperCase()}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-colony-fg">
+                                {name ?? `Lead ${row.idx + 1}`}
+                              </span>
+                              <span className="block text-xs text-colony-fg-muted">
+                                {maskedNumber(row.to)}
+                              </span>
+                            </span>
+                            <span className="hidden max-w-48 truncate text-xs text-colony-fg-secondary sm:block">
+                              {row.preview}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {visibleRows.length > 4 ? (
+                      <Button
+                        className="self-start"
+                        onClick={() => setShowAllRows((shown) => !shown)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        {showAllRows
+                          ? "Show fewer"
+                          : `Show all ${visibleRows.length}`}
+                      </Button>
+                    ) : null}
+                  </section>
+                ) : null}
+                {batch && statusQuery.data ? (
+                  <p className="m-0 rounded-lg bg-colony-bg-secondary px-3 py-2 text-sm text-colony-fg-secondary">
+                    {statusQuery.data.newChatsSentToday} of{" "}
+                    {statusQuery.data.dailyNewChatCap} new chats used today.{" "}
+                    {batch.rows.ready} send today. Replies are never capped.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
-        </>
-      ) : isRejected || isSent ? null : (
-        <>
-          <p className="m-0 text-sm text-colony-fg-secondary">
-            Approved by {approvedByName}. {scheduleLabel}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {batch && canSendNow ? (
-              <WhatsAppSendNowAction batchId={batch.batchId} />
+        </div>
+        {isPending ? (
+          <>
+            {batchesQuery.isError ? (
+              <p className="m-0 text-sm text-colony-danger" role="alert">
+                {batchesQuery.error.message}
+              </p>
+            ) : ambiguousPendingMatches ? (
+              <p className="m-0 text-sm text-colony-danger" role="alert">
+                This notice matches more than one pending batch. Refresh the
+                channel before deciding.
+              </p>
             ) : null}
-            <Button
-              onClick={() => requestWorkAreaTab("whatsapp")}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <MessageCircle aria-hidden="true" />
-              Open chats
-            </Button>
-          </div>
-        </>
-      )}
-    </ChannelCard>
+            {actionError ? (
+              <p className="m-0 text-sm text-colony-danger" role="alert">
+                {actionError}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                disabled={!batch || !canManage || busy || decision !== null}
+                onClick={() => void decide("approve")}
+                size="sm"
+                type="button"
+              >
+                Approve all {batch?.rows.ready ?? 0}
+              </Button>
+              <Button
+                disabled={!batch || busy || decision !== null}
+                onClick={() => {
+                  if (batch) {
+                    void navigate({
+                      to: "/whatsapp/batches/$batchId",
+                      params: { batchId: batch.batchId },
+                    });
+                  }
+                }}
+                size="sm"
+                variant="outline"
+                type="button"
+              >
+                Review each message
+              </Button>
+              <Button
+                disabled={!batch || !canManage || busy || decision !== null}
+                onClick={() => void decide("reject")}
+                size="sm"
+                variant="ghost"
+                type="button"
+              >
+                <XCircle aria-hidden="true" />
+                Reject
+              </Button>
+              {!canManage ? (
+                <span className="text-xs text-colony-fg-muted">
+                  Only the owner or an admin can decide.
+                </span>
+              ) : null}
+            </div>
+          </>
+        ) : isRejected || isSent ? null : (
+          <>
+            <p className="m-0 text-sm text-colony-fg-secondary">
+              Approved by {approvedByName}. {scheduleLabel}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {batch && canSendNow ? (
+                <WhatsAppSendNowAction batchId={batch.batchId} />
+              ) : null}
+              <Button
+                onClick={() => requestWorkAreaTab("whatsapp")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <MessageCircle aria-hidden="true" />
+                Open chats
+              </Button>
+            </div>
+          </>
+        )}
+      </ChannelCard>
+    </>
   );
 }
 

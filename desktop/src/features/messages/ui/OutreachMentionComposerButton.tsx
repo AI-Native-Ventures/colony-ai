@@ -1,0 +1,584 @@
+import * as React from "react";
+import type { Editor } from "@tiptap/react";
+import {
+  Compass,
+  Link2,
+  List,
+  MessageCircle,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+
+import type { MentionSuggestion } from "./MentionAutocomplete";
+import { COMPOSER_MESSAGE_LINK_NODE_NAME } from "@/features/messages/lib/composerMessageLinkNode";
+import {
+  leadReferenceContent,
+  summarizeLead,
+} from "@/features/leads/leadReferenceModel";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
+import type { OutreachListHead } from "@/features/discovery/businessRecordContract";
+import type { DiscoveryCampaignHead } from "@/features/discovery/businessRecordContract";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
+import {
+  buildDiscoveryCampaignLink,
+  buildLeadLink,
+  buildOutreachListLink,
+  buildWhatsAppTemplateLink,
+} from "@/shared/lib/entityLink";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import {
+  useWhatsAppStatusQuery,
+  useWhatsAppTemplatesQuery,
+} from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/ui/popover";
+
+import "@/features/leads/colony3-lead-reference.css";
+
+type EntityChoice = {
+  key: string;
+  title: string;
+  detail?: string;
+  href: string;
+  icon: LucideIcon;
+  testId?: string;
+};
+
+function matching<T extends { title: string; detail?: string }>(
+  choices: readonly T[],
+  query: string,
+): T[] {
+  const needle = query.trim().toLocaleLowerCase();
+  return needle
+    ? choices.filter((item) =>
+        `${item.title} ${item.detail ?? ""}`
+          .toLocaleLowerCase()
+          .includes(needle),
+      )
+    : [...choices];
+}
+
+function EntityGroup({
+  title,
+  choices,
+  onSelect,
+  onKeyDown,
+}: {
+  title: string;
+  choices: EntityChoice[];
+  onSelect: (choice: EntityChoice) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  if (choices.length === 0) return null;
+  return (
+    <section aria-label={title} className="c3r-mention-group">
+      <h3 className="c3r-mention-group-title">{title}</h3>
+      <ul className="c3r-picker-list">
+        {choices.map((choice) => (
+          <li key={choice.key}>
+            <button
+              className="c3r-picker-item"
+              data-testid={choice.testId}
+              onClick={() => onSelect(choice)}
+              onKeyDown={onKeyDown}
+              type="button"
+            >
+              <span aria-hidden="true" className="c3r-mark">
+                <choice.icon size={15} strokeWidth={2.2} />
+              </span>
+              <span className="c3r-copy">
+                <span className="c3r-name" title={choice.title}>
+                  {choice.title}
+                </span>
+                {choice.detail ? (
+                  <span className="c3r-meta">{choice.detail}</span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function MentionIdentityGroup({
+  title,
+  choices,
+  onSelect,
+  onKeyDown,
+}: {
+  title: string;
+  choices: Array<{
+    key: string;
+    title: string;
+    detail: string;
+    person: MentionSuggestion;
+  }>;
+  onSelect: (person: MentionSuggestion) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  if (choices.length === 0) return null;
+  return (
+    <section aria-label={title} className="c3r-mention-group">
+      <h3 className="c3r-mention-group-title">{title}</h3>
+      <ul className="c3r-picker-list">
+        {choices.map(({ key, title: label, detail, person }) => (
+          <li key={key}>
+            <button
+              className="c3r-picker-item"
+              onClick={() => onSelect(person)}
+              onKeyDown={onKeyDown}
+              type="button"
+            >
+              <span aria-hidden="true" className="c3r-mention-avatar">
+                {person.avatarUrl ? (
+                  <img alt="" src={person.avatarUrl} />
+                ) : (
+                  label.trim().slice(0, 1).toLocaleUpperCase() || "•"
+                )}
+              </span>
+              <span className="c3r-copy">
+                <span className="c3r-name">{label}</span>
+                <span className="c3r-meta">{detail}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function OutreachMentionPickerContent({
+  initialQuery,
+  currentPubkey,
+  peopleAndAgents,
+  onSelectEntity,
+  onSelectPerson,
+}: {
+  initialQuery: string;
+  currentPubkey: string | null;
+  peopleAndAgents: MentionSuggestion[];
+  onSelectEntity: (choice: EntityChoice) => void;
+  onSelectPerson: (person: MentionSuggestion) => void;
+}) {
+  const business = useBusinessRecords({ createIfMissing: false });
+  const statusQuery = useWhatsAppStatusQuery(true);
+  const templatesQuery = useWhatsAppTemplatesQuery(
+    statusQuery.data?.connected === true,
+  );
+  const personPubkeys = React.useMemo(
+    () =>
+      peopleAndAgents
+        .filter((item) => !item.isAgent && item.kind !== "team")
+        .flatMap((item) => (item.pubkey ? [item.pubkey] : [])),
+    [peopleAndAgents],
+  );
+  const personProfilesQuery = useUsersBatchQuery(personPubkeys);
+  const [query, setQuery] = React.useState(initialQuery);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const records = business.records;
+  const currentPubkeyNormalized = currentPubkey
+    ? normalizePubkey(currentPubkey)
+    : null;
+  const people = peopleAndAgents
+    .filter(
+      (item) =>
+        !item.isAgent &&
+        item.kind !== "team" &&
+        (!item.pubkey ||
+          !currentPubkeyNormalized ||
+          normalizePubkey(item.pubkey) !== currentPubkeyNormalized),
+    )
+    .map((item) => ({
+      key: `person:${item.pubkey ?? item.displayName}`,
+      title: item.displayName,
+      detail:
+        item.jobTitle ??
+        (item.pubkey
+          ? personProfilesQuery.data?.profiles[normalizePubkey(item.pubkey)]
+              ?.jobTitle
+          : null) ??
+        item.ownerLabel ??
+        "Person",
+      person: item,
+    }));
+  const agents = peopleAndAgents
+    .filter((item) => item.isAgent)
+    .map((item) => ({
+      key: `agent:${item.pubkey ?? item.displayName}`,
+      title: item.displayName,
+      detail: "AI employee",
+      person: item,
+    }));
+  const teams = peopleAndAgents
+    .filter((item) => item.kind === "team")
+    .map((item) => ({
+      key: `team:${item.teamId ?? item.displayName}`,
+      title: item.displayName,
+      detail: "Team",
+      person: item,
+    }));
+  const identities = [...agents, ...people, ...teams];
+  const lists: EntityChoice[] = [...(records?.outreachLists ?? [])]
+    .filter(({ record }) => record.status === "active")
+    .sort((left, right) => right.record.updatedAt - left.record.updatedAt)
+    .map(({ record }: { record: OutreachListHead }) => ({
+      key: `list:${record.listId}`,
+      title: record.name,
+      detail: `${record.members.length} ${record.members.length === 1 ? "lead" : "leads"}`,
+      href: buildOutreachListLink(record.listId),
+      icon: List,
+      testId: `outreach-mention-list-${record.listId}`,
+    }));
+  const campaigns: EntityChoice[] = (records?.discoveryCampaigns ?? [])
+    .filter(({ record }) => !record.archived)
+    .map(({ record }: { record: DiscoveryCampaignHead }) => ({
+      key: `campaign:${record.campaignId}`,
+      title: record.name,
+      detail: `Discovery · ${record.found} found`,
+      href: buildDiscoveryCampaignLink(record.campaignId),
+      icon: Compass,
+      testId: `outreach-mention-campaign-${record.campaignId}`,
+    }));
+  const templates: EntityChoice[] = (
+    templatesQuery.data ??
+    statusQuery.data?.templates ??
+    []
+  )
+    .filter((item) => item.status.toLocaleUpperCase() === "APPROVED")
+    .map((item) => {
+      const category = item.category.toLocaleLowerCase();
+      const categoryLabel = `${category.slice(0, 1).toLocaleUpperCase()}${category.slice(1)}`;
+      return {
+        key: `template:${item.name}:${item.language}`,
+        title: item.title,
+        detail: `${categoryLabel} · ${item.status.toLocaleLowerCase()}`,
+        href: buildWhatsAppTemplateLink(item.name, item.language),
+        icon: MessageCircle,
+        testId: `outreach-mention-template-${item.name}-${item.language}`,
+      };
+    });
+  const leads = (records?.prospects ?? [])
+    .flatMap(({ record }) => {
+      const summary = summarizeLead(record);
+      return summary ? [summary] : [];
+    })
+    .map((lead) => ({
+      key: `lead:${lead.leadId}`,
+      title: lead.name,
+      detail: `Lead · ${lead.stageLabel}`,
+      href: buildLeadLink(lead.leadId),
+      icon: UserRound,
+      testId: `lead-reference-option-${lead.leadId}`,
+      lead,
+    }));
+
+  const visibleIdentities = matching(identities, query);
+  const visibleLists = matching(lists, query);
+  const visibleCampaigns = matching(campaigns, query);
+  const visibleTemplates = matching(templates, query);
+  const visibleLeads = matching(leads, query);
+  const hasChoices = Boolean(
+    visibleIdentities.length ||
+      visibleLists.length ||
+      visibleCampaigns.length ||
+      visibleTemplates.length ||
+      visibleLeads.length,
+  );
+
+  React.useEffect(() => setQuery(initialQuery), [initialQuery]);
+  React.useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  function handlePickerKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    const picker = event.currentTarget.closest<HTMLElement>(
+      ".c3r-mention-picker",
+    );
+    if (!picker) return;
+    if (
+      event.key === "Enter" &&
+      event.target instanceof HTMLInputElement &&
+      !event.nativeEvent.isComposing
+    ) {
+      const first = picker.querySelector<HTMLButtonElement>(
+        "button.c3r-picker-item",
+      );
+      if (first) {
+        event.preventDefault();
+        first.click();
+      }
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const items = Array.from(
+      picker.querySelectorAll<HTMLButtonElement>("button.c3r-picker-item"),
+    );
+    if (items.length === 0) return;
+    const activeIndex = items.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const nextIndex =
+      event.key === "ArrowDown"
+        ? activeIndex < 0 || activeIndex === items.length - 1
+          ? 0
+          : activeIndex + 1
+        : activeIndex <= 0
+          ? items.length - 1
+          : activeIndex - 1;
+    event.preventDefault();
+    items[nextIndex]?.focus();
+  }
+
+  function selectPerson(person: MentionSuggestion) {
+    onSelectPerson(person);
+  }
+
+  return (
+    <div className="c3r-picker c3r-mention-picker">
+      <label
+        className="c3r-mention-search-wrap"
+        data-query-empty={query.length === 0 ? "true" : "false"}
+      >
+        <Users aria-hidden="true" size={15} />
+        <input
+          aria-label="Search mentions and references"
+          autoComplete="off"
+          className="c3r-picker-search"
+          data-testid="lead-reference-search"
+          onKeyDown={handlePickerKeyDown}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder="Find people, lists, campaigns, templates or leads"
+          ref={searchInputRef}
+          value={query}
+        />
+      </label>
+      {business.recordsLoading ? (
+        <p className="c3r-note" role="status">
+          Loading shared references
+        </p>
+      ) : business.recordsError ? (
+        <p className="c3r-picker-empty" role="alert">
+          Shared references could not be loaded. Close and open the picker to
+          retry.
+        </p>
+      ) : null}
+      {!statusQuery.data?.connected && statusQuery.isSuccess ? (
+        <p className="c3r-note">
+          Connect WhatsApp to browse approved templates.
+        </p>
+      ) : null}
+      {statusQuery.data?.connected && templatesQuery.isError ? (
+        <p className="c3r-picker-empty" role="alert">
+          Approved templates could not be loaded.
+        </p>
+      ) : null}
+      {hasChoices ? (
+        <div className="c3r-mention-groups">
+          <MentionIdentityGroup
+            title="People and agents"
+            choices={visibleIdentities}
+            onKeyDown={handlePickerKeyDown}
+            onSelect={selectPerson}
+          />
+          <EntityGroup
+            title="Lists"
+            choices={visibleLists}
+            onKeyDown={handlePickerKeyDown}
+            onSelect={onSelectEntity}
+          />
+          <EntityGroup
+            title="Campaigns"
+            choices={visibleCampaigns}
+            onKeyDown={handlePickerKeyDown}
+            onSelect={onSelectEntity}
+          />
+          {visibleTemplates.length ? (
+            <EntityGroup
+              title="Templates"
+              choices={visibleTemplates}
+              onKeyDown={handlePickerKeyDown}
+              onSelect={onSelectEntity}
+            />
+          ) : null}
+          <EntityGroup
+            title="Leads"
+            choices={visibleLeads}
+            onKeyDown={handlePickerKeyDown}
+            onSelect={onSelectEntity}
+          />
+        </div>
+      ) : !business.recordsLoading && !business.recordsError ? (
+        <div className="c3r-picker-empty" data-testid="lead-reference-empty">
+          <span>
+            {records?.prospects.length
+              ? `No mentions or references match “${query.trim()}”.`
+              : "No leads yet. Find prospects in Discovery first."}
+          </span>
+        </div>
+      ) : null}
+      <div className="c3r-picker-footer">
+        <span>Arrows to move</span>
+        <span>
+          <kbd>Enter</kbd> to pick
+        </span>
+        <span>
+          <kbd>Esc</kbd> to close
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function OutreachMentionComposerButton({
+  editor,
+  getCursor,
+  mentionQuery,
+  mentionStartIndex,
+  currentPubkey,
+  onCancelPeople,
+  onOpenChange,
+  onPreparePeople,
+  onSelectPerson,
+  peopleAndAgents,
+  replacePlainTextRange,
+}: {
+  editor: Editor | null;
+  getCursor: () => number;
+  mentionQuery: string | null;
+  mentionStartIndex: number;
+  currentPubkey: string | null;
+  onCancelPeople: () => void;
+  onOpenChange: (open: boolean) => void;
+  onPreparePeople: (cursor: number) => void;
+  onSelectPerson: (person: MentionSuggestion) => void;
+  peopleAndAgents: MentionSuggestion[];
+  replacePlainTextRange: (
+    fromOffset: number,
+    toOffset: number,
+    text: string,
+  ) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (mentionQuery === null) return;
+    setOpen(true);
+    onOpenChange(true);
+  }, [mentionQuery, onOpenChange]);
+
+  function closePicker(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange(nextOpen);
+    if (!nextOpen) onCancelPeople();
+  }
+
+  function insertReference(choice: EntityChoice) {
+    if (!editor || editor.isDestroyed) return;
+    if (mentionQuery !== null) {
+      replacePlainTextRange(mentionStartIndex, getCursor(), "");
+    }
+    const caret = editor.state.selection.from;
+    const textBeforeCaret = editor.state.doc.textBetween(
+      Math.max(0, caret - 1),
+      caret,
+      "\n",
+      "￼",
+    );
+    const insertsLeadingSpace =
+      textBeforeCaret.length > 0 && !/\s$/.test(textBeforeCaret);
+    const insertedContentSize =
+      (insertsLeadingSpace ? 1 : 0) +
+      1 + // composer message links are inline atom nodes
+      1; // keep the caret after the trailing separator
+    editor
+      .chain()
+      .focus()
+      .insertContent(
+        leadReferenceContent({
+          textBeforeCaret,
+          chipNodeName: COMPOSER_MESSAGE_LINK_NODE_NAME,
+          attrs: { channelName: choice.title, href: choice.href },
+        }),
+      )
+      .setTextSelection(caret + insertedContentSize)
+      .run();
+    closePicker(false);
+  }
+
+  function choosePerson(person: MentionSuggestion) {
+    onSelectPerson(person);
+    closePicker(false);
+  }
+
+  const virtualAnchor = React.useMemo(
+    () => ({
+      current: {
+        getBoundingClientRect: () => {
+          const composer = editor?.view.dom.closest<HTMLElement>(
+            '[data-testid="message-composer"]',
+          );
+          return (
+            composer?.getBoundingClientRect() ??
+            editor?.view.dom.getBoundingClientRect() ??
+            new DOMRect()
+          );
+        },
+      },
+    }),
+    [editor],
+  );
+
+  return (
+    <Popover onOpenChange={closePicker} open={open}>
+      <PopoverTrigger asChild>
+        <button
+          aria-label="Mention a person, agent or shared reference"
+          className="c3r-composer-button"
+          data-testid="reference-lead-button"
+          onClick={() => {
+            onPreparePeople(getCursor());
+            setOpen(true);
+            onOpenChange(true);
+          }}
+          type="button"
+        >
+          <Link2 aria-hidden="true" size={12} strokeWidth={2.4} />
+          Reference
+        </button>
+      </PopoverTrigger>
+      <PopoverAnchor virtualRef={virtualAnchor} />
+      <PopoverContent
+        align="start"
+        aria-label="Mention or reference"
+        data-testid="lead-reference-picker"
+        side="top"
+        sideOffset={8}
+        collisionPadding={12}
+        className="c3r-mention-popover"
+        style={{ width: "min(28.75rem, calc(100vw - 1.5rem))" }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (editor && !editor.isDestroyed) editor.commands.focus();
+        }}
+      >
+        {open ? (
+          <OutreachMentionPickerContent
+            initialQuery={mentionQuery ?? ""}
+            currentPubkey={currentPubkey}
+            onSelectEntity={insertReference}
+            onSelectPerson={choosePerson}
+            peopleAndAgents={peopleAndAgents}
+          />
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}

@@ -74,7 +74,7 @@ import { ComposerReferenceSlot } from "./ComposerReferenceSlot";
 import { ComposerSendButton } from "./ComposerAddressControls";
 import { FormattingToolbar } from "./FormattingToolbar";
 import { SelectionFormattingTray } from "./SelectionFormattingTray";
-import { LeadReferenceComposerButton } from "@/features/leads/LeadReferenceComposerButton";
+import { OutreachMentionComposerButton } from "./OutreachMentionComposerButton";
 function MessageComposerImpl({
   audienceContext = null,
   channelId = null,
@@ -129,6 +129,8 @@ function MessageComposerImpl({
   } = useComposerLinkPreviews(previewContent, editTarget == null);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = React.useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = React.useState(false);
+  const [outreachMentionPickerOpen, setOutreachMentionPickerOpen] =
+    React.useState(false);
   const handleFormattingToggle = React.useCallback((pressed: boolean) => {
     if (pressed) setIsEmojiPickerOpen(false);
     setIsFormattingOpen(pressed);
@@ -156,6 +158,7 @@ function MessageComposerImpl({
     spoileredAttachmentUrls: Set<string>;
   } | null>(null);
   const mentions = useMentions(channelId, undefined, profiles, {
+    allowUnknownQuery: showLeadReference,
     channelType,
     recentMentionPubkeys,
   });
@@ -930,6 +933,7 @@ function MessageComposerImpl({
               keepMentionedAgentsPinned={keepMentionedAgentsPinned}
               lockedAgentPubkeys={lockedAgentPubkeys}
               mentions={mentions}
+              outreachMentionPickerOpen={outreachMentionPickerOpen}
               openOptionsRequest={openMentionOptionsRequest}
               onChannelSelect={applyChannelInsert}
               onEmojiSelect={applyEmojiInsert}
@@ -1048,7 +1052,23 @@ function MessageComposerImpl({
                 referenceSlot={
                   <ComposerReferenceSlot>
                     {showLeadReference && channelId && editTarget == null ? (
-                      <LeadReferenceComposerButton editor={richText.editor} />
+                      <OutreachMentionComposerButton
+                        editor={richText.editor}
+                        getCursor={() =>
+                          richText.getPlainTextAndCursor().cursor
+                        }
+                        mentionQuery={mentions.mentionQuery}
+                        mentionStartIndex={mentions.mentionStartIndex}
+                        currentPubkey={ownerPubkey}
+                        onCancelPeople={mentions.cancelMentionAutocomplete}
+                        onOpenChange={setOutreachMentionPickerOpen}
+                        onPreparePeople={(cursor) =>
+                          mentions.openMentionPicker(cursor, "first-agent")
+                        }
+                        onSelectPerson={selectMentionSuggestion}
+                        peopleAndAgents={mentions.suggestions}
+                        replacePlainTextRange={richText.replacePlainTextRange}
+                      />
                     ) : null}
                   </ComposerReferenceSlot>
                 }

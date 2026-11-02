@@ -73,7 +73,36 @@ const MENTION_DEBOUNCE_MS = 120,
 type UseMentionsOptions = {
   channelType?: ChannelType | null;
   recentMentionPubkeys?: readonly string[];
+  allowUnknownQuery?: boolean;
 };
+
+function detectMentionQuery(
+  value: string,
+  cursorPosition: number,
+  knownNamesLower: string[],
+  allowUnknownQuery: boolean,
+) {
+  const knownQuery = detectPrefixQuery(
+    "@",
+    value,
+    cursorPosition,
+    knownNamesLower,
+  );
+  if (knownQuery || !allowUnknownQuery) return knownQuery;
+
+  const beforeCursor = value.slice(0, cursorPosition);
+  const startIndex = beforeCursor.lastIndexOf("@");
+  if (
+    startIndex < 0 ||
+    (startIndex > 0 && !/[\s([{]/.test(beforeCursor[startIndex - 1]))
+  ) {
+    return null;
+  }
+  const query = beforeCursor.slice(startIndex + 1);
+  if (query.includes("\n")) return null;
+  return { query, startIndex };
+}
+
 export function useMentions(
   channelId: string | null,
   externalMembers?: ChannelMember[],
@@ -97,7 +126,8 @@ export function useMentions(
   const personaMentionMapRef = React.useRef<Map<string, string>>(new Map());
   const previousSuggestionsRef = React.useRef<MentionSuggestion[]>([]);
   const mentionSearchQuery = mentionQuery?.trim() ?? "";
-  const canSearchGlobalPeople = mentionSearchQuery.length > 0;
+  const canSearchGlobalPeople =
+    mentionSearchQuery.length > 0 || mentionQuery === "";
   const identityQuery = useIdentityQuery();
   const currentPubkey = identityQuery.data?.pubkey
     ? normalizePubkey(identityQuery.data.pubkey)
@@ -697,11 +727,11 @@ export function useMentions(
       const generation = ++autocompleteGenerationRef.current;
       latestValueRef.current = value;
       latestCursorRef.current = cursorPosition;
-      const activeInlineMention = detectPrefixQuery(
-        "@",
+      const activeInlineMention = detectMentionQuery(
         value,
         cursorPosition,
         searchableNamesLowerRef.current,
+        options?.allowUnknownQuery === true,
       );
       if (activeInlineMention) {
         mentionPickerOriginRef.current = "inline";
@@ -714,11 +744,11 @@ export function useMentions(
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
         if (generation !== autocompleteGenerationRef.current) return;
-        const mention = detectPrefixQuery(
-          "@",
+        const mention = detectMentionQuery(
           latestValueRef.current,
           latestCursorRef.current,
           searchableNamesLowerRef.current,
+          options?.allowUnknownQuery === true,
         );
         if (mention) {
           mentionPickerOriginRef.current = "inline";
@@ -730,7 +760,11 @@ export function useMentions(
         }
       }, MENTION_DEBOUNCE_MS);
     },
-    [mentionSelection.clearAgentSelectionPreference, setSelected],
+    [
+      mentionSelection.clearAgentSelectionPreference,
+      options?.allowUnknownQuery,
+      setSelected,
+    ],
   );
   const openMentionPicker = React.useCallback(
     (cursorPosition: number, preference: MentionPickerMode = null) => {
@@ -942,6 +976,7 @@ export function useMentions(
     isManagedAgentPubkey,
     isInlineMentionSelection,
     isMentionOpen,
+    mentionQuery,
     knownNames: highlightNames,
     memberPubkeys,
     mentionSelectedIndex,

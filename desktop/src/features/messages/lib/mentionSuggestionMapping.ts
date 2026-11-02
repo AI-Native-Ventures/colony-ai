@@ -40,6 +40,9 @@ export function mapMentionCandidateToSuggestion(opts: {
     ownerProfiles,
     profiles,
   } = opts;
+  const profile = candidate.pubkey
+    ? profiles?.[normalizePubkey(candidate.pubkey)]
+    : undefined;
   const ownerLabel = candidate.isAgent
     ? formatOwnerLabel(candidate.ownerPubkey, currentPubkey, ownerProfiles)
     : null;
@@ -77,6 +80,7 @@ export function mapMentionCandidateToSuggestion(opts: {
       candidate.isMember === false,
     ownerLabel,
     role: !candidate.isAgent && candidate.role === "admin" ? "admin" : null,
+    jobTitle: profile?.jobTitle ?? null,
   };
 }
 

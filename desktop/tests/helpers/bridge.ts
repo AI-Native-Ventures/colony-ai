@@ -200,6 +200,14 @@ type MockBridgeOptions = {
   referenceWorkspaceLongLeadNames?: boolean;
   /** Add bounded synthetic lead rows for dense Leads screen proof. */
   referenceWorkspaceLeadCount?: number;
+  /** Give Form & Field a phone for outreach-list mock browser flows. */
+  referenceWorkspaceOutreachReady?: boolean;
+  /** Seed the approved dense Leads selection board fixture. */
+  referenceWorkspaceOutreachBoard?: boolean;
+  /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
+  referenceWorkspaceOutreachSidebar?: boolean;
+  /** Limit global people search to explicitly seeded board identities. */
+  searchProfilesOnly?: boolean;
   /** Leave one reference lead's contact and value blank for visual proof. */
   referenceWorkspaceMissingLeadFields?: boolean;
   /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */

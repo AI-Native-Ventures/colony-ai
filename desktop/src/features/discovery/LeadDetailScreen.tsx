@@ -1,12 +1,12 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-
+import { ListPlus, MessageCircle, Sparkles } from "lucide-react";
+import { useChannelsQuery } from "@/features/channels/hooks";
 import {
   useRouteBack,
   useRouteOrigin,
 } from "@/app/navigation/RouteOriginContext";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { useIdentityQuery } from "@/shared/api/hooks";
+
 import { errorMessage, formatDate, formatZar } from "./BusinessCommon";
 import {
   publishProspectAction,
@@ -18,12 +18,7 @@ import {
   getWhatsAppLeadStatus,
   useWhatsAppLeadData,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
-import {
-  maskWhatsAppNumber,
-  whatsappLeadStatusLabel,
-} from "@/features/whatsapp-outreach/whatsappOutreachModels";
-import { WhatsAppMessagePreview } from "@/features/whatsapp-outreach/WhatsAppMessageMedia";
-import { useWhatsAppThreadQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import { customerActions } from "@/features/cofounder/customerActions";
 import {
   useCustomerRecordAction,
@@ -32,19 +27,31 @@ import {
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { CloseOpportunityDialog } from "./LeadDialogs";
 import { BusinessLogoMark } from "./BusinessLogoMark";
+import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
+import { OutreachBatchDialog } from "./OutreachBatchDialog";
 import {
-  ArrowLeftGlyph,
   campaignFor,
   ChatGlyph,
   LeadBreadcrumb,
   LeadPill,
   RunnerMark,
 } from "./LeadParts";
+import { buildLeadLink } from "@/shared/lib/entityLink";
+import type { OutreachBatchLead } from "./outreachBatch";
+import { normalizeOutreachPhone } from "./outreachBatch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
 import { discoveryTagFitLabel, groupDiscoveryTags } from "./discoveryTags";
 import {
   canEdit,
   displayWebsite,
+  findScoutDirectMessage,
   isIllustrativeEvidence,
   labelForStage,
   toneForStage,
@@ -68,56 +75,6 @@ function monthlyValue(minor: number | null | undefined): string {
     : `${formatZar(minor)} / month`;
 }
 
-function whatsAppTime(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-ZA", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Africa/Johannesburg",
-  }).format(date);
-}
-
-function whatsAppDay(value: string): string {
-  const date = new Date(value);
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Johannesburg",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const messageDay = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Johannesburg",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-  if (messageDay === today) return "today";
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayDay = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Africa/Johannesburg",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(yesterday);
-  return messageDay === yesterdayDay
-    ? "yesterday"
-    : new Intl.DateTimeFormat("en-ZA", {
-        timeZone: "Africa/Johannesburg",
-        day: "numeric",
-        month: "short",
-      }).format(date);
-}
-
-function replyWindowRemaining(closesAt: string | null | undefined): string {
-  if (!closesAt) return "";
-  const remainingMs = Date.parse(closesAt) - Date.now();
-  if (remainingMs <= 0) return "Closed";
-  return `${Math.ceil(remainingMs / 3_600_000)} h left`;
-}
-
 export function LeadDetailScreen({
   prospect,
   ...context
@@ -129,6 +86,7 @@ export function LeadDetailScreen({
     breadcrumbs: ["Business", "Sales", "Leads"],
   });
   const routeOrigin = useRouteOrigin();
+  const channelsQuery = useChannelsQuery();
   const { campaign, provider } = useDiscoveryCampaign();
   const { statusQuery, contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const customerAccess = useCustomerRecordCapabilities();
@@ -140,43 +98,32 @@ export function LeadDetailScreen({
         contactsQuery.data ?? [],
       )
     : null;
-  const whatsappThreadQuery = useWhatsAppThreadQuery(
-    whatsappContact?.waId ?? null,
-  );
-  const identityQuery = useIdentityQuery();
-  const whatsappMessages = whatsappThreadQuery.data?.messages ?? [];
-  const whatsappAgentPubkeys = [
-    ...new Set(
-      whatsappMessages
-        .map((message) => message.senderPubkey)
-        .filter((pubkey): pubkey is string =>
-          Boolean(pubkey && pubkey !== identityQuery.data?.pubkey),
-        ),
-    ),
-  ];
-  const whatsappAgentProfilesQuery = useUsersBatchQuery(whatsappAgentPubkeys, {
-    enabled: whatsappAgentPubkeys.length > 0,
-  });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [lostError, setLostError] = React.useState("");
   const [activity, setActivity] = React.useState("");
   const [conversionError, setConversionError] = React.useState("");
+  const [scoutMessage, setScoutMessage] = React.useState("");
+  const [addToListOpen, setAddToListOpen] = React.useState(false);
+  const [batchOpen, setBatchOpen] = React.useState(false);
+  const [whatsAppNumberOpen, setWhatsAppNumberOpen] = React.useState(false);
+  const [whatsAppNumberDraft, setWhatsAppNumberDraft] = React.useState("");
+  const [whatsAppNumberError, setWhatsAppNumberError] = React.useState("");
   const [activityType, setActivityType] = React.useState<string>(
     ACTIVITY_TYPES[0],
   );
   const [lostOpen, setLostOpen] = React.useState(false);
   const canWrite = canEdit(context.role) && Boolean(context.currentPubkey);
-  const name = prospect?.record.prospect.party.displayName ?? "Lead";
 
   React.useEffect(() => {
     if (!prospect) return;
+    const name = prospect.record.prospect.party.displayName;
     routeOrigin.savePageSnapshot({
       backLabel: name,
       breadcrumbs: [...routeBack.breadcrumbs, name],
       scrollY: window.scrollY,
     });
-  }, [name, prospect, routeBack.breadcrumbs, routeOrigin.savePageSnapshot]);
+  }, [prospect, routeBack.breadcrumbs, routeOrigin.savePageSnapshot]);
 
   if (!prospect) {
     return (
@@ -200,6 +147,7 @@ export function LeadDetailScreen({
 
   const record = prospect.record;
   const person = record.prospect;
+  const name = person.party.displayName;
   const customerRecord = customerRecordsQuery.data?.find(
     (candidate) => candidate.partyId === person.party.partyId,
   );
@@ -213,42 +161,26 @@ export function LeadDetailScreen({
   const discoveryFit = discoveryTagFitLabel(discoveryMatches);
   const discoveryTagGroups = groupDiscoveryTags(discoveryMatches);
   const outreachChannelId = statusQuery.data?.outreachChannelId;
-  const sortedWhatsAppMessages = [...whatsappMessages].sort(
-    (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
+  const memberLists = context.records.outreachLists.filter(
+    ({ record: list }) =>
+      list.status === "active" &&
+      list.members.some((member) => member.leadId === record.prospectId),
   );
-  const lastInboundWhatsApp = [...sortedWhatsAppMessages]
-    .reverse()
-    .find((message) => message.direction === "in");
-  const lastOwnerWhatsAppReply = [...sortedWhatsAppMessages]
-    .reverse()
-    .find(
-      (message) =>
-        message.direction === "out" &&
-        message.senderPubkey === identityQuery.data?.pubkey,
-    );
-  const firstTemplateWhatsApp = sortedWhatsAppMessages.find(
-    (message) => message.templateName,
-  );
-  const firstTemplateTitle = statusQuery.data?.templates.find(
-    (template) => template.name === firstTemplateWhatsApp?.templateName,
+  const batchLead: OutreachBatchLead = {
+    leadId: record.prospectId,
+    name,
+    contactName: person.contactName,
+    phone: person.phone,
+    whatsappPhone: person.whatsappPhone,
+  };
+  const whatsappNumber =
+    person.whatsappPhone?.trim() ||
+    person.phone?.trim() ||
+    whatsappContact?.e164 ||
+    "";
+  const phoneSource = person.evidence.find((item) =>
+    /google maps/i.test(item.title),
   )?.title;
-  const firstTemplateAgent = firstTemplateWhatsApp?.senderPubkey
-    ? whatsappAgentProfilesQuery.data?.profiles[
-        firstTemplateWhatsApp.senderPubkey.toLowerCase()
-      ]?.displayName?.trim()
-    : null;
-  const whatsappProgressStep = whatsappContact?.optedOut
-    ? whatsappContact.lastInboundAt
-      ? 3
-      : 2
-    : whatsappStatus === "replied"
-      ? 3
-      : whatsappStatus === "sent"
-        ? 2
-        : whatsappStatus === "in-batch"
-          ? 1
-          : 0;
-  const whatsAppSteps = ["Not contacted", "In batch", "Sent", "Replied"];
 
   async function saveProspect(
     changes: ProspectChanges,
@@ -304,6 +236,78 @@ export function LeadDetailScreen({
     }
   }
 
+  async function askScout() {
+    setScoutMessage("");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(
+        `Please research this lead and update its record: ${buildLeadLink(record.prospectId)}`,
+      );
+      copied = true;
+    } catch {
+      copied = false;
+    }
+    try {
+      const channels =
+        channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
+      const scoutDm = findScoutDirectMessage(channels);
+      if (!scoutDm) {
+        setScoutMessage(
+          copied
+            ? "Lead reference copied. Scout's chat is unavailable."
+            : "Scout's chat is unavailable and the lead reference could not be copied.",
+        );
+        return;
+      }
+      setScoutMessage(
+        copied
+          ? "Lead reference copied."
+          : "Could not copy the lead reference.",
+      );
+      void navigate({
+        to: "/channels/$channelId",
+        params: { channelId: scoutDm.id },
+      });
+    } catch {
+      setScoutMessage(
+        copied
+          ? "Lead reference copied. Scout's chat could not be opened."
+          : "Could not copy the lead reference or open Scout's chat.",
+      );
+    }
+  }
+
+  async function saveWhatsAppNumber(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = normalizeOutreachPhone(whatsAppNumberDraft);
+    if (!normalized) {
+      setWhatsAppNumberError(
+        "Enter a valid phone number with its country code.",
+      );
+      return;
+    }
+    setWhatsAppNumberError("");
+    const saved = await saveProspect(
+      { ...currentChanges, whatsappPhone: normalized },
+      { activityKind: "contact", content: "WhatsApp number updated." },
+      setWhatsAppNumberError,
+    );
+    if (saved) setWhatsAppNumberOpen(false);
+  }
+
+  async function resetWhatsAppNumber() {
+    setWhatsAppNumberError("");
+    const saved = await saveProspect(
+      { ...currentChanges, whatsappPhone: null },
+      {
+        activityKind: "contact",
+        content: "WhatsApp number reset to the business phone.",
+      },
+      setWhatsAppNumberError,
+    );
+    if (saved) setWhatsAppNumberOpen(false);
+  }
+
   return (
     <main className="c3l-page" data-testid="w10-prospect-page">
       <LeadBreadcrumb
@@ -323,151 +327,197 @@ export function LeadDetailScreen({
               <h1 className="c3l-title">{name}</h1>
               <span className="c3l-subtitle">
                 {person.vertical} · {person.location ?? "Location not set"}
+                <LeadPill
+                  tone={toneForStage(person.stage, person.qualification)}
+                >
+                  {labelForStage(person.stage, person.qualification, "New")}
+                </LeadPill>
               </span>
             </div>
           </div>
-          <button
-            aria-label={`Back to ${routeBack.backLabel}`}
-            className="c3l-btn c3l-btn-outline c3l-head-back"
-            onClick={routeBack.goBack}
-            title={routeBack.backLabel}
-            type="button"
-          >
-            <ArrowLeftGlyph />
-            <span className="c3l-head-back-label">{routeBack.backLabel}</span>
-          </button>
+          <div className="c3l-head-actions">
+            <button
+              className="c3l-btn c3l-btn-outline"
+              onClick={() => void askScout()}
+              type="button"
+            >
+              <Sparkles aria-hidden="true" size={15} /> Ask Scout
+            </button>
+            {customerAccess.enabled &&
+            customerAccess.canConvert &&
+            customerRecord?.stage === "lead" ? (
+              <button
+                className="c3l-btn c3l-btn-primary"
+                data-testid={`lead-make-client-${person.party.partyId}`}
+                disabled={customerAction.isPending}
+                onClick={() => void makeClient()}
+                type="button"
+              >
+                Make client
+              </button>
+            ) : null}
+          </div>
         </div>
+        {conversionError ? (
+          <p className="c3l-conversion-error" role="alert">
+            {conversionError}
+          </p>
+        ) : null}
+
+        <div className="c3l-contact-whatsapp-grid">
+          <section
+            aria-labelledby="c3l-contact-title"
+            className="c3l-card c3l-panel c3l-contact-panel"
+          >
+            <h2 className="c3l-panel-title-sm" id="c3l-contact-title">
+              Contact
+            </h2>
+            <dl className="c3l-contact-facts">
+              <div>
+                <dt>Phone</dt>
+                <dd>
+                  {person.phone?.trim() ? (
+                    <a href={`tel:${person.phone}`}>{person.phone}</a>
+                  ) : (
+                    "Not set"
+                  )}
+                  {phoneSource ? <small>from {phoneSource}</small> : null}
+                </dd>
+              </div>
+              <div>
+                <dt>Contact person</dt>
+                <dd>{person.contactName ?? "Not set"}</dd>
+              </div>
+              <div>
+                <dt>Website</dt>
+                <dd>
+                  {person.website ? (
+                    <a
+                      href={person.website}
+                      rel="noreferrer noopener"
+                      target="_blank"
+                    >
+                      {displayWebsite(person.website)}
+                    </a>
+                  ) : (
+                    "Not set"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Address</dt>
+                <dd>{person.location ?? "Not set"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section
+            aria-labelledby="c3l-whatsapp-title"
+            className="c3l-card c3l-panel c3l-contact-panel c3l-whatsapp-summary"
+            data-testid="whatsapp-lead-detail-card"
+          >
+            <h2 className="c3l-panel-title-sm" id="c3l-whatsapp-title">
+              WhatsApp
+            </h2>
+            <dl className="c3l-contact-facts c3l-whatsapp-summary-facts">
+              <div>
+                <dt>Number</dt>
+                <dd>
+                  <strong>{whatsappNumber || "Not set"}</strong>
+                  <small>
+                    {person.whatsappPhone
+                      ? "Using the saved WhatsApp number."
+                      : person.phone
+                        ? "Uses the business phone."
+                        : whatsappContact?.e164
+                          ? "WhatsApp contact number"
+                          : "Add a business phone to prepare a message."}{" "}
+                    <button
+                      className="c3l-inline-link"
+                      disabled={!canWrite}
+                      onClick={() => {
+                        setWhatsAppNumberDraft(person.whatsappPhone ?? "");
+                        setWhatsAppNumberError("");
+                        setWhatsAppNumberOpen(true);
+                      }}
+                      type="button"
+                    >
+                      Use another number
+                    </button>
+                  </small>
+                </dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <span className={`c3l-whatsapp-status is-${whatsappStatus}`}>
+                    {whatsappLeadStatusLabel(whatsappStatus)}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Lists</dt>
+                <dd className="c3l-lead-list-memberships">
+                  {memberLists.length ? (
+                    memberLists.map(({ record: list }) => (
+                      <a
+                        className="c3l-lead-list-chip"
+                        href={`#/lists/${list.listId}`}
+                        key={list.listId}
+                      >
+                        <ListPlus aria-hidden="true" size={13} />
+                        {list.name}
+                      </a>
+                    ))
+                  ) : (
+                    <span className="c3l-muted">Not in a list</span>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <div className="c3l-contact-actions">
+              <button
+                className="c3l-btn c3l-btn-primary"
+                disabled={!canWrite || !whatsappNumber}
+                onClick={() => setBatchOpen(true)}
+                type="button"
+              >
+                <MessageCircle aria-hidden="true" size={15} /> Prepare a message
+              </button>
+              <button
+                className="c3l-btn c3l-btn-outline"
+                disabled={!canWrite}
+                onClick={() => setAddToListOpen(true)}
+                type="button"
+              >
+                <ListPlus aria-hidden="true" size={15} /> Add to outreach list
+              </button>
+              {whatsappContact && outreachChannelId ? (
+                <button
+                  className="c3l-btn c3l-btn-outline c3l-contact-open-chat"
+                  onClick={() =>
+                    void navigate({
+                      to: "/channels/$channelId",
+                      params: { channelId: outreachChannelId },
+                      search: { whatsappContactWaId: whatsappContact.waId },
+                    })
+                  }
+                  type="button"
+                >
+                  <ChatGlyph size={16} /> Open chat
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
+        {scoutMessage ? (
+          <p className="c3l-outreach-note" role="status">
+            {scoutMessage}
+          </p>
+        ) : null}
 
         <div className="c3l-columns">
           <div className="c3l-column-main">
-            <section
-              aria-labelledby="c3l-whatsapp-title"
-              className="c3l-card c3l-panel c3l-whatsapp-panel c3l-whatsapp-detail"
-              data-testid="whatsapp-lead-detail-card"
-            >
-              <div className="c3l-whatsapp-panel-head">
-                <h2 className="c3l-panel-title-sm" id="c3l-whatsapp-title">
-                  WhatsApp
-                </h2>
-                <span className={`c3l-whatsapp-status is-${whatsappStatus}`}>
-                  {whatsappLeadStatusLabel(whatsappStatus)}
-                </span>
-                {whatsappContact && outreachChannelId ? (
-                  <button
-                    className="c3l-btn c3l-btn-primary c3l-btn-small c3l-whatsapp-detail-open"
-                    onClick={() =>
-                      void navigate({
-                        to: "/channels/$channelId",
-                        params: { channelId: outreachChannelId },
-                        search: {
-                          whatsappContactWaId: whatsappContact.waId,
-                        },
-                      })
-                    }
-                    type="button"
-                  >
-                    <ChatGlyph size={17} />
-                    Open chat
-                  </button>
-                ) : null}
-              </div>
-
-              <ol aria-label="WhatsApp status" className="c3l-whatsapp-steps">
-                {whatsAppSteps.map((step, index) => {
-                  const stepState =
-                    index < whatsappProgressStep
-                      ? "complete"
-                      : index === whatsappProgressStep
-                        ? "current"
-                        : "upcoming";
-                  return (
-                    <React.Fragment key={step}>
-                      <li
-                        aria-current={
-                          stepState === "current" ? "step" : undefined
-                        }
-                        className={`c3l-whatsapp-step is-${stepState}`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="c3l-whatsapp-step-mark"
-                        >
-                          {stepState === "complete" ? "✓" : index + 1}
-                        </span>
-                        {step}
-                      </li>
-                      {index < whatsAppSteps.length - 1 ? (
-                        <li
-                          aria-hidden="true"
-                          className={`c3l-whatsapp-step-connector ${index < whatsappProgressStep ? "is-complete" : ""}`}
-                        />
-                      ) : null}
-                    </React.Fragment>
-                  );
-                })}
-              </ol>
-
-              {lastInboundWhatsApp ? (
-                <blockquote className="c3l-whatsapp-last-message">
-                  <p>
-                    {lastInboundWhatsApp.media ? (
-                      <WhatsAppMessagePreview message={lastInboundWhatsApp} />
-                    ) : (
-                      `“${lastInboundWhatsApp.text}”`
-                    )}
-                  </p>
-                  <span>
-                    Last message · {person.contactName ?? "Contact"},{" "}
-                    {whatsAppDay(lastInboundWhatsApp.createdAt)}{" "}
-                    {whatsAppTime(lastInboundWhatsApp.createdAt)}
-                    {lastOwnerWhatsAppReply
-                      ? ` · you replied at ${whatsAppTime(lastOwnerWhatsAppReply.createdAt)}`
-                      : ""}
-                  </span>
-                </blockquote>
-              ) : (
-                <p className="c3l-note">
-                  {whatsappContact
-                    ? "No reply has arrived yet."
-                    : "No WhatsApp conversation is linked to this lead."}
-                </p>
-              )}
-
-              <dl className="c3l-whatsapp-facts">
-                <dt>Number</dt>
-                <dd>
-                  {whatsappContact
-                    ? maskWhatsAppNumber(whatsappContact.e164)
-                    : "Not set"}
-                </dd>
-                <dt>First message</dt>
-                <dd>
-                  {firstTemplateWhatsApp
-                    ? `${firstTemplateTitle ?? "First message"} · sent by ${firstTemplateAgent ?? "an agent"} ${whatsAppDay(firstTemplateWhatsApp.createdAt)} at ${whatsAppTime(firstTemplateWhatsApp.createdAt)}`
-                    : "No first message sent"}
-                </dd>
-                <dt>Reply window</dt>
-                <dd
-                  className={
-                    whatsappContact?.windowOpen
-                      ? "is-window-open"
-                      : "is-window-closed"
-                  }
-                >
-                  {whatsappContact?.optedOut
-                    ? "Opted out"
-                    : whatsappContact?.windowOpen
-                      ? `Open, ${replyWindowRemaining(whatsappContact.windowClosesAt)}`
-                      : "Closed"}
-                </dd>
-              </dl>
-              <span className="c3l-whatsapp-opt-out-note">
-                {whatsappContact?.optedOut
-                  ? "This contact opted out. Future WhatsApp messages are locked."
-                  : "If they reply stop or no thanks, the lead moves to Opted out and is never messaged again."}
-              </span>
-            </section>
-
             <section
               aria-labelledby="c3l-why-title"
               className="c3l-card c3l-panel"
@@ -720,19 +770,6 @@ export function LeadDetailScreen({
                     Customer record
                   </a>
                 ) : null}
-                {customerAccess.enabled &&
-                customerAccess.canConvert &&
-                customerRecord?.stage === "lead" ? (
-                  <button
-                    className="c3l-btn c3l-btn-outline c3l-btn-block c3l-make-client"
-                    data-testid={`lead-make-client-${person.party.partyId}`}
-                    disabled={customerAction.isPending}
-                    onClick={() => void makeClient()}
-                    type="button"
-                  >
-                    Make client
-                  </button>
-                ) : null}
               </div>
               {conversionError ? (
                 <p className="c3l-conversion-error" role="alert">
@@ -800,6 +837,96 @@ export function LeadDetailScreen({
             : `${name} · ${monthlyValue(person.potentialMonthlyValueMinor)}`
         }
       />
+      <AddToOutreachListDialog
+        context={context}
+        defaultName={`Selected leads, ${new Intl.DateTimeFormat("en-ZA", {
+          day: "numeric",
+          month: "short",
+        }).format(new Date())}`}
+        leadIds={[record.prospectId]}
+        onOpenChange={setAddToListOpen}
+        open={addToListOpen}
+      />
+      <OutreachBatchDialog
+        leads={[batchLead]}
+        listName={name}
+        onOpenChange={setBatchOpen}
+        open={batchOpen}
+      />
+      <Dialog
+        onOpenChange={(open) => {
+          setWhatsAppNumberOpen(open);
+          if (!open) setWhatsAppNumberError("");
+        }}
+        open={whatsAppNumberOpen}
+      >
+        <DialogContent
+          className="c3l-dialog-content"
+          data-testid="whatsapp-number-dialog"
+        >
+          <DialogHeader>
+            <DialogTitle>Use another WhatsApp number</DialogTitle>
+            <DialogDescription>
+              Save a WhatsApp number for this lead. It will be used instead of
+              the business phone when preparing a message.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="c3l-outreach-dialog-form"
+            onSubmit={(event) => void saveWhatsAppNumber(event)}
+          >
+            <label
+              className="c3l-outreach-dialog-field"
+              htmlFor="lead-whatsapp-number"
+            >
+              WhatsApp number
+              <input
+                autoFocus
+                id="lead-whatsapp-number"
+                inputMode="tel"
+                maxLength={40}
+                onChange={(event) =>
+                  setWhatsAppNumberDraft(event.currentTarget.value)
+                }
+                placeholder="+27 82 555 4410"
+                required
+                type="tel"
+                value={whatsAppNumberDraft}
+              />
+            </label>
+            {whatsAppNumberError ? (
+              <p className="c3l-outreach-error" role="alert">
+                {whatsAppNumberError}
+              </p>
+            ) : null}
+            <div className="c3l-outreach-dialog-actions">
+              <button
+                className="c3l-btn c3l-btn-outline c3l-btn-small"
+                disabled={saving || !canWrite || !person.phone?.trim()}
+                onClick={() => void resetWhatsAppNumber()}
+                type="button"
+              >
+                Use business phone
+              </button>
+              <button
+                className="c3l-btn c3l-btn-outline c3l-btn-small"
+                disabled={saving}
+                onClick={() => setWhatsAppNumberOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="c3l-btn c3l-btn-primary c3l-btn-small"
+                disabled={saving || !canWrite}
+                type="submit"
+              >
+                {saving ? "Saving..." : "Save number"}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

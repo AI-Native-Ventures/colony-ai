@@ -302,6 +302,9 @@ function createPreview(
 export function buzzEntityFallbackTitle(link: ParsedEntityLink): string {
   if (link.type === "goal") return `Goal ${link.id.slice(0, 8)}`;
   if (link.type === "lead") return `Lead ${link.id.slice(0, 8)}`;
+  if (link.type === "list") return `List ${link.id.slice(0, 8)}`;
+  if (link.type === "campaign") return `Campaign ${link.id.slice(0, 8)}`;
+  if (link.type === "template") return link.name;
   if (link.type === "repo" || link.type === "project") return link.dtag;
   return `${link.dtag} #${link.id.slice(0, 8)}`;
 }
@@ -316,7 +319,15 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
   if (!parsed.ok) return null;
 
   const link = parsed.value;
-  if (link.type === "goal" || link.type === "lead") return null;
+  if (
+    link.type === "goal" ||
+    link.type === "lead" ||
+    link.type === "list" ||
+    link.type === "campaign" ||
+    link.type === "template"
+  ) {
+    return null;
+  }
   const title = buzzEntityFallbackTitle(link);
   if (link.type === "pr") {
     return {
