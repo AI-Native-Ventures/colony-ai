@@ -8,17 +8,17 @@
 
 use std::collections::{HashMap, HashSet};
 
-use buzz_core::company_onboarding::{ONBOARDING_D_TAG, OnboardingHead, StepState};
+use buzz_core::company_onboarding::{OnboardingHead, StepState, ONBOARDING_D_TAG};
 use buzz_core::kind::KIND_ONBOARDING_HEAD;
 use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Datelike, Days, NaiveDate, Utc};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::Row as _;
 use uuid::Uuid;
 
 use super::admin_metrics::day_start;
-use crate::Db;
 use crate::error::Result;
+use crate::Db;
 
 /// Largest page of the businesses table.
 pub const MAX_BUSINESS_PAGE: i64 = 200;

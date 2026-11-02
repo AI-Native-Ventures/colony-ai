@@ -10,8 +10,8 @@ use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Days, NaiveDate, NaiveTime, Utc};
 use sqlx::PgPool;
 
-use crate::Db;
 use crate::error::Result;
+use crate::Db;
 
 /// Deployment-global advisory lock so one relay pod runs the rollup at a time.
 pub const METRICS_ROLLUP_LOCK_KEY: i64 = 0x4255_5a5a_4d45_5452;
@@ -416,13 +416,13 @@ impl Db {
 mod postgres_tests {
     use super::*;
     use buzz_core::company_onboarding::{
-        ONBOARDING_D_TAG, OnboardingHead, OnboardingStatus, OnboardingStep, OpenQuestion,
-        StepState, StepStatus,
+        OnboardingHead, OnboardingStatus, OnboardingStep, OpenQuestion, StepState, StepStatus,
+        ONBOARDING_D_TAG,
     };
     use buzz_core::company_records::COMPANY_RECORD_SCHEMA_VERSION;
     use serde_json::Value;
-    use sqlx::Row as _;
     use sqlx::postgres::PgPoolOptions;
+    use sqlx::Row as _;
     use uuid::Uuid;
 
     type AiDailyRow = (String, i64, i64, i64, i64, i64, i64, i64);
