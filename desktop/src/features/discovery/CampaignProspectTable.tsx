@@ -16,6 +16,7 @@ import {
   type CampaignProspect,
   type ProspectFilter,
 } from "./CampaignHelpers";
+import type { AcceptButtonState } from "./bulkAccept";
 import type { DiscoveryRunner } from "./discoveryProvider";
 import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
 import { discoveryTagFitLabel } from "./discoveryTags";
@@ -103,18 +104,23 @@ export function CampaignToolbar({
 
 /** The dark bar that appears once rows are selected. */
 export function CampaignSelectionBar({
-  canAccept,
+  accept,
   count,
+  matching,
   onAccept,
   onClear,
   onDiscuss,
+  onSelectAll,
   runner,
 }: {
-  canAccept: boolean;
+  accept: AcceptButtonState;
   count: number;
+  /** Rows that match the current search and filter. */
+  matching: number;
   onAccept: () => void;
   onClear: () => void;
   onDiscuss: () => void;
+  onSelectAll: () => void;
   runner: DiscoveryRunner | null;
 }) {
   const runnerProfile = useRunnerProfile(runner);
@@ -126,13 +132,23 @@ export function CampaignSelectionBar({
       role="toolbar"
     >
       <strong>{count} selected</strong>
+      {count < matching ? (
+        <button
+          className="c3d-selection-action"
+          onClick={onSelectAll}
+          type="button"
+        >
+          Select all {matching} matching
+        </button>
+      ) : null}
       <button
+        aria-describedby={accept.note ? "c3d-selection-note" : undefined}
         className="c3d-selection-action c3d-selection-action--light"
-        disabled={!canAccept}
+        disabled={accept.disabled}
         onClick={onAccept}
         type="button"
       >
-        <CheckGlyph /> Accept as lead
+        <CheckGlyph /> {accept.label}
       </button>
       <button
         className="c3d-selection-action"
@@ -158,6 +174,11 @@ export function CampaignSelectionBar({
       >
         <CloseGlyph />
       </button>
+      {accept.note ? (
+        <p className="c3d-selection-note" id="c3d-selection-note">
+          {accept.note}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -183,7 +204,7 @@ export function CampaignTable({
           <tr {...ROW_ROLE}>
             <th {...COLUMN_HEADER_ROLE}>
               <input
-                aria-label="Select all visible prospects"
+                aria-label={`Select all ${rows.length} matching prospects`}
                 checked={allSelected}
                 onChange={(event) => onToggleAll(event.currentTarget.checked)}
                 type="checkbox"

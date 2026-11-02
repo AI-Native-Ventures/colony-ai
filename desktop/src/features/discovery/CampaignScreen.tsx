@@ -7,6 +7,13 @@ import type { BusinessRecords } from "./businessRecordRelay";
 import { publishProspectAction } from "./businessRecordMutations";
 import { errorMessage } from "./BusinessCommon";
 import {
+  acceptButtonState,
+  acceptProspects,
+  acceptSummary,
+  reconcileAccepted,
+  type BulkAcceptProgress,
+} from "./bulkAccept";
+import {
   acceptChanges,
   exportProspects,
   isAccepted,
@@ -89,8 +96,13 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenOpen, setWidenOpen] = React.useState(false);
   const [widenLocation, setWidenLocation] = React.useState("");
   const [, setTagsReady] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
+  const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
+    null,
+  );
   const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+  const recordsRef = React.useRef(context.records);
+  recordsRef.current = context.records;
 
   React.useEffect(() => {
     if (!campaign) return;
@@ -202,24 +214,48 @@ export function CampaignScreen(context: CampaignContext) {
     context.role === "member";
 
   async function acceptSelected() {
-    if (selectedRows.length !== 1 || !canWrite) return;
-    const row = selectedRows[0];
-    if (!row) return;
-    setSaving(true);
+    if (!canWrite || progress || selectedRows.length === 0) return;
+    const rows = selectedRows;
     setError("");
+    setNotice("");
+    setProgress({ done: 0, total: rows.length });
     try {
-      await publishProspectAction({
-        channelId: context.channelId,
-        communityId: context.communityId,
-        current: { eventId: row.eventId, record: row.record },
-        changes: acceptChanges(row),
+      const first = await acceptProspects({
+        rows,
+        publish: (row) =>
+          publishProspectAction({
+            channelId: context.channelId,
+            communityId: context.communityId,
+            current: { eventId: row.eventId, record: row.record },
+            changes: acceptChanges(row),
+          }),
+        onProgress: setProgress,
       });
-      await context.refresh();
-      setSelected(new Set());
-    } catch (saveError) {
-      setError(errorMessage(saveError));
+      // One refresh for the whole action: statuses update in place.
+      try {
+        await context.refresh();
+      } catch {
+        // The saves are done; the list refreshes on its own later.
+      }
+      if (first.failed.length > 0) {
+        // Let the refreshed list render before checking which failed rows
+        // were in fact saved (a write can land and only its answer be lost).
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      const result = reconcileAccepted(first, recordsRef.current.prospects);
+      const summary = acceptSummary(result);
+      if (result.failed.length === 0) {
+        setSelected(new Set());
+        setNotice(summary);
+      } else {
+        // Only the rows that failed stay selected, ready for another try.
+        setSelected(
+          new Set(result.failed.map((failure) => failure.prospectId)),
+        );
+        setError(summary);
+      }
     } finally {
-      setSaving(false);
+      setProgress(null);
     }
   }
 
@@ -331,13 +367,24 @@ export function CampaignScreen(context: CampaignContext) {
           />
           {selectedRows.length ? (
             <CampaignSelectionBar
-              canAccept={canWrite && selectedRows.length === 1 && !saving}
+              accept={acceptButtonState({
+                rows: selectedRows,
+                canWrite,
+                progress,
+              })}
               count={selectedRows.length}
+              matching={visibleRows.length}
               onAccept={() => void acceptSelected()}
               onClear={() => setSelected(new Set())}
               onDiscuss={shareInSales}
+              onSelectAll={() => toggleAll(true)}
               runner={campaign.runBy ?? null}
             />
+          ) : null}
+          {notice ? (
+            <p className="c3d-notice" role="status">
+              {notice}
+            </p>
           ) : null}
           {error ? (
             <p className="c3d-error" role="alert">

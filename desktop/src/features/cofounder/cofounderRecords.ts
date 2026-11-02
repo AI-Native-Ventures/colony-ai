@@ -40,12 +40,16 @@ export type CofounderSettings = {
 export type CofounderSettingsHead = {
   settings: CofounderSettings;
   eventId: string;
+  /** Unix seconds the settings were last saved. */
+  updatedAt: number;
 };
 
 export type CofounderSettingsView = {
   exists: boolean;
   eventId: string | null;
   settings: CofounderSettings;
+  /** Unix seconds the settings were last saved, or `null` when never saved. */
+  updatedAt: number | null;
 };
 
 export type FunctionId =
@@ -236,12 +240,13 @@ export function parseCofounderSettingsHead(
   const schemaVersion = pick(content, "schemaVersion");
   const settings = parseSettings(pick(content, "settings"));
   const updatedByPubkey = pick(content, "updatedByPubkey");
+  const updatedAt = readNumber(content, "updatedAt");
   return schemaVersion === COMPANY_RECORD_SCHEMA_VERSION &&
     settings &&
     typeof updatedByPubkey === "string" &&
     PUBKEY_PATTERN.test(updatedByPubkey) &&
-    readNumber(content, "updatedAt") !== null
-    ? { settings, eventId: event.id }
+    updatedAt !== null
+    ? { settings, eventId: event.id, updatedAt }
     : null;
 }
 
