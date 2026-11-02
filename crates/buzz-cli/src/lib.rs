@@ -916,7 +916,7 @@ pub enum DesignRuntime {
     Claude,
     Codex,
     Opencode,
-    #[value(name = "colony-buzz-agent")]
+    #[value(name = "colony")]
     ColonyBuzzAgent,
 }
 
@@ -4627,7 +4627,7 @@ mod tests {
             "--brief",
             "Design a private landing page",
             "--runtime",
-            "colony-buzz-agent",
+            "colony",
             "--channel",
             "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
         ])

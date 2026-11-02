@@ -21,14 +21,6 @@ const BRAND_MAX_BYTES: usize = 3 * 1024 * 1024;
 const THUMBNAIL_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_THUMBNAILS: usize = 2;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ColonyDesignBrandProfile {
-    community_id: String,
-    relay_url: String,
-    profile: BrandFields,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrandFields {
@@ -141,7 +133,7 @@ pub fn review_colony_design(
     action: String,
     feedback: Option<String>,
 ) -> Result<ColonyDesignReview, String> {
-    let (root, project_dir, manifest_path) = project_paths(&project_id)?;
+    let (_, _, manifest_path) = project_paths(&project_id)?;
     let raw = read_bounded(&manifest_path, 1024 * 1024)?;
     let mut manifest: Value =
         serde_json::from_slice(&raw).map_err(|_| "Design metadata is invalid.")?;
@@ -243,7 +235,7 @@ fn read_bounded(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
     if !metadata.is_file() || metadata.len() > max_bytes {
         return Err("Design file exceeds its size limit.".into());
     }
-    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.take(max_bytes + 1)
         .read_to_end(&mut bytes)

@@ -1161,7 +1161,7 @@ async function newProject(flags) {
   const runtime = String(flags.runtime ?? "");
   if (!RUNTIMES.has(runtime))
     fail(
-      "Runtime must be claude, codex, opencode, or colony-buzz-agent.",
+      "Runtime must be claude, codex, opencode, or colony.",
       "BAD_RUNTIME",
     );
   const brief = String(flags.brief ?? "");
