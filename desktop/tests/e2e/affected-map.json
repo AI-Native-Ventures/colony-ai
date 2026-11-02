@@ -48,6 +48,7 @@
       "leads-table-polish.spec.ts",
       "colony3-discovery-run.spec.ts",
       "colony3-lead-reference.spec.ts",
+      "colony3-lead-logo-everywhere.spec.ts",
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
       "cofounder-phase2.spec.ts",
