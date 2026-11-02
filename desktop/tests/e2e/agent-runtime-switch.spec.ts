@@ -67,17 +67,23 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
   await expect(page.getByTestId("edit-agent-dialog-submit")).toBeEnabled();
   await page.getByTestId("edit-agent-dialog-submit").click();
 
-  await expect
-    .soft(editDialog.getByText("Switching to Codex...", { exact: true }))
-    .toBeVisible({ timeout: 1500 });
-  await expect
-    .soft(
-      editDialog.getByText(
-        "The current turn will stop. Queued mentions will remain queued.",
-        { exact: true },
-      ),
+  const switchingNoticeSeen = await editDialog
+    .getByText("Switching to Codex...", { exact: true })
+    .waitFor({ state: "visible", timeout: 1500 })
+    .then(
+      () => true,
+      () => false,
+    );
+  const queueNoticeSeen = await editDialog
+    .getByText(
+      "The current turn will stop. Queued mentions will remain queued.",
+      { exact: true },
     )
-    .toBeVisible({ timeout: 1500 });
+    .waitFor({ state: "visible", timeout: 1500 })
+    .then(
+      () => true,
+      () => false,
+    );
   await expect(editDialog).toBeHidden();
   await page.getByRole("button", { name: "Message" }).click();
   await expect(page.getByTestId("chat-header")).toBeVisible();
@@ -87,4 +93,6 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
     "GPT-5.5",
   );
+  expect(switchingNoticeSeen).toBe(true);
+  expect(queueNoticeSeen).toBe(true);
 });
