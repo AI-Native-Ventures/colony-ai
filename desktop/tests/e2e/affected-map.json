@@ -33,6 +33,7 @@
       "connect-polish.spec.ts",
       "start-free-opencode.spec.ts",
       "colony3-first-run-proof.spec.ts",
+      "overflow-audit.spec.ts",
       "smoke.spec.ts",
       "navigation.spec.ts",
       "colony3-today.spec.ts",
