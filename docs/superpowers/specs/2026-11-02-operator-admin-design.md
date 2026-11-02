@@ -81,3 +81,4 @@ Proposed: extend `admin-web` (it already has the NIP-98 operator login and the r
 
 - Boards approved: "happy with the UI mockups". Build as shown.
 - Coordinator defaults until the owner says otherwise: the admin lives in the existing admin web app at its own operator-only address (not inside the Colony app); AI usage counts the free AI gateway only, no new usage reporting from desktops (own-AI use stays uncounted).
+- Access (owner, 2 Nov): its own web address, admin.colony.global (replacing the unused admin.colony.ainative.ventures host, which returns 404 today). Coordinator call on sign-in: "Sign in with your Colony account" (the same Google sign-in Colony accounts use, server custody), allowed only when the account's pubkey is in RELAY_OPERATOR_PUBKEYS; NIP-98 via a browser extension stays as a fallback for operators. No shared passwords or tokens.
