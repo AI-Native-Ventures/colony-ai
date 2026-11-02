@@ -419,6 +419,8 @@ mod postgres_tests {
     use sqlx::Row as _;
     use uuid::Uuid;
 
+    type AiDailyRow = (String, i64, i64, i64, i64, i64, i64, i64);
+
     const SECRET: &str = "TOP-SECRET-MESSAGE-BODY-7f3c";
 
     fn key() -> Vec<u8> {
@@ -804,7 +806,7 @@ mod postgres_tests {
         db.rollup_metrics_day(day, true, at(day, 23, 0) + Days::new(1))
             .await
             .expect("rollup");
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
+        let rows: Vec<AiDailyRow> = sqlx::query_as(
             "SELECT model, requests, settled, estimated, rejected, input_tokens, output_tokens, charged_nanousd \
                FROM metrics_ai_daily WHERE day = $1 AND community_id = $2 ORDER BY model",
         )
