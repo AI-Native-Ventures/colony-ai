@@ -8,7 +8,7 @@ import {
 } from "@/features/agents/hooks";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import { discoverAgentModels } from "@/shared/api/agentModels";
-import { installAcpRuntime } from "@/shared/api/tauri";
+import { invokeTauri } from "@/shared/api/tauri";
 import type {
   GlobalAgentConfig,
   AcpRuntimeCatalogEntry,
@@ -51,6 +51,7 @@ import {
 import { runtimeIsReadyForOnboarding } from "./onboardingRuntimeSelection";
 import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime";
 import { thisComputer } from "./OnboardingResultScenes";
+import { connectColonyFreeAi } from "@/features/credits/creditsGateway";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
 import {
   buildStartFreeConfig,
@@ -193,6 +194,40 @@ export function ConnectSetupStep({
     description: business.description,
     logoUrl: business.logoUrl,
   };
+  const designBrandSaveQueue = React.useRef(Promise.resolve());
+
+  React.useEffect(() => {
+    if (!relayUrl) return;
+    designBrandSaveQueue.current = designBrandSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        await invokeTauri("save_colony_design_brand_profile", {
+          communityId,
+          relayUrl,
+          profile: {
+            name: business.name,
+            website: business.website,
+            description: business.description,
+            logoDataUrl: business.logoDataUrl,
+            logoUrl: business.logoUrl,
+          },
+        });
+      })
+      .catch((failure) => {
+        console.warn(
+          "[design] could not sync the saved business brand profile",
+          failure,
+        );
+      });
+  }, [
+    business.description,
+    business.logoDataUrl,
+    business.logoUrl,
+    business.name,
+    business.website,
+    communityId,
+    relayUrl,
+  ]);
 
   const { globalConfig } = useGlobalAgentConfig();
   const gitBashQuery = useGitBashPrerequisiteQuery();
@@ -345,7 +380,7 @@ export function ConnectSetupStep({
         candidateOverride?.runtimeId === START_FREE_RUNTIME_ID &&
         startFreeFailureKind(failure) === "ended"
       ) {
-        // OpenCode no longer offers the free model: say so on Connect.
+        // The Colony gateway has no configured free model: say so on Connect.
         setFreeState("ended");
         setTestState("connect");
         return;
@@ -362,8 +397,8 @@ export function ConnectSetupStep({
   };
 
   const startFree = async () => {
-    // Fence the install like a connection attempt: unmount or a choice change
-    // bumps the generation, so a late install result cannot save Start free.
+    // Fence the gateway check like a connection attempt: a late result cannot
+    // save Start free after the owner changes businesses or choices.
     const attempt = ++generation.current;
     const isCurrent = () => generation.current === attempt;
     setFreeHint(null);
@@ -371,27 +406,22 @@ export function ConnectSetupStep({
     setFreeCanRetry(true);
     setFreeState("installing");
     try {
-      const result = await installAcpRuntime(START_FREE_RUNTIME_ID);
-      if (!isCurrent()) return;
-      if (!result.success) {
-        const failed = result.steps.at(-1);
-        setFreeHint(failed?.hint ?? null);
-        setFreeReason(failed?.stderr.trim().split("\n")[0] || null);
-        setFreeCanRetry(failed?.step !== "opencode-unsupported");
-        setFreeState("install-failed");
-        return;
-      }
-      const refreshed = await runtimes.refetch();
-      if (!isCurrent()) return;
-      setFreeState("idle");
-      await continueWithRuntime({
-        config: buildStartFreeConfig(globalConfig),
-        runtimeId: START_FREE_RUNTIME_ID,
-        runtimes: refreshed.data,
-      });
+      if (!bundled)
+        throw new Error("Colony Agent is not available on this computer.");
+      await connectColonyFreeAi(async (config) => {
+        if (!isCurrent()) return;
+        setFreeState("idle");
+        await continueWithRuntime({
+          config: buildStartFreeConfig(config, config.model ?? ""),
+          runtimeId: START_FREE_RUNTIME_ID,
+          runtimes: runtimes.data,
+        });
+      }, isCurrent);
+      if (isCurrent()) setFreeState("idle");
     } catch (failure) {
       if (!isCurrent()) return;
       setFreeHint(failure instanceof Error ? failure.message : null);
+      setFreeReason(null);
       setFreeState("install-failed");
     }
   };
@@ -566,7 +596,7 @@ export function ConnectSetupStep({
           ) : null}
         </ConnectCard>
         <ConnectCard
-          description="Free AI on your computer. No account, no card."
+          description="Free AI from Colony. No subscription or API key."
           disabled={freeInstalling}
           id="free"
           onSelect={() => choose("free")}
@@ -616,7 +646,7 @@ export function ConnectSetupStep({
         ...data,
         harnessLabel:
           choice === "free"
-            ? "OpenCode"
+            ? "Colony free AI"
             : colonyPath
               ? "Colony Agent"
               : undefined,

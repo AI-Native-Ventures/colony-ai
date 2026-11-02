@@ -124,6 +124,35 @@ test("state survives a reload of the store (persistence is real)", () => {
   assert.equal(state.activeTabId, "files");
 });
 
+test("design review tabs keep their project id across reloads", () => {
+  const projectId = "b9517e2d-46d3-493d-9e46-aed2c6320505";
+  openWorkArea("chan-1", "design", `design:${projectId}`, {
+    designProjectId: projectId,
+  });
+  assert.deepEqual(getWorkAreaState("chan-1").tabs, [
+    { id: `design:${projectId}`, kind: "design", designProjectId: projectId },
+  ]);
+
+  resetWorkAreaStore();
+  initWorkAreaStore(COMMUNITY_A);
+  assert.deepEqual(getWorkAreaState("chan-1").tabs, [
+    { id: `design:${projectId}`, kind: "design", designProjectId: projectId },
+  ]);
+
+  const malformed = parseWorkAreaSnapshot(
+    JSON.stringify({
+      version: 1,
+      channels: {
+        "chan-2": {
+          open: true,
+          tabs: [{ id: "design:bad", kind: "design", designProjectId: "../" }],
+        },
+      },
+    }),
+  );
+  assert.deepEqual(malformed["chan-2"].tabs, []);
+});
+
 test("each channel keeps its own layout", () => {
   openWorkArea("chan-1", "files");
   openWorkArea("chan-2", "terminal");

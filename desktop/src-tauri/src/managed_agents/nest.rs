@@ -92,8 +92,8 @@ const NEST_AGENTS_VERSION: u32 = 8;
 /// Company Records rule and the one-worker-per-request rule.
 /// Version 24 adds the Lists, campaigns and templates section (`colony lists`,
 /// `colony campaigns`, `colony whatsapp templates get`, `batch create --list`).
-/// Version 25 adds the Claude Design and cross-runtime visual review workflow.
-const NEST_SKILL_VERSION: u32 = 25;
+/// Version 26 makes Open Design the default visual workflow for every runtime.
+const NEST_SKILL_VERSION: u32 = 26;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

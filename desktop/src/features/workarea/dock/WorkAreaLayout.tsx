@@ -223,6 +223,16 @@ export function WorkAreaLayout({
       listenForWorkAreaTabRequests((kind, options) => {
         if (!channelId) return;
         const definition = getWorkAreaTabDefinition(kind);
+        if (kind === "design" && options?.designProjectId) {
+          openWorkAreaFrom(
+            channelId,
+            kind,
+            document.activeElement,
+            `design:${options.designProjectId}`,
+            options,
+          );
+          return;
+        }
         if (!definition.multiple) {
           openWorkAreaFrom(
             channelId,

@@ -31,7 +31,8 @@
       "workspace-switcher.spec.ts",
       "agent-avatar-everywhere.spec.ts",
       "connect-polish.spec.ts",
-      "start-free-opencode.spec.ts",
+      "start-free-gateway.spec.ts",
+      "open-design-review.spec.ts",
       "colony3-first-run-proof.spec.ts",
       "smoke.spec.ts",
       "navigation.spec.ts",
@@ -244,7 +245,11 @@
     },
     {
       "paths": ["desktop/src/features/credits/**"],
-      "specs": ["stripe-credits.spec.ts", "credits-gateway-option.spec.ts"]
+      "specs": [
+        "stripe-credits.spec.ts",
+        "credits-gateway-option.spec.ts",
+        "start-free-gateway.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/custom-emoji/**"],
@@ -304,6 +309,7 @@
     {
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
+        "open-design-review.spec.ts",
         "whatsapp-outreach-desk.spec.ts",
         "messaging.spec.ts",
         "link-preview-bare-domain.spec.ts",
@@ -362,7 +368,7 @@
         "workspace-header-icon.spec.ts",
         "colony3-first-run-proof.spec.ts",
         "connect-polish.spec.ts",
-        "start-free-opencode.spec.ts",
+        "start-free-gateway.spec.ts",
         "start-free-screenshots.spec.ts",
         "first-reply-runtime.spec.ts",
         "onboarding-agent-defaults.spec.ts",
@@ -473,6 +479,7 @@
     {
       "paths": ["desktop/src/features/workarea/**"],
       "specs": [
+        "open-design-review.spec.ts",
         "whatsapp-work-area.spec.ts",
         "work-area-dock.spec.ts",
         "work-area-dock-screenshots.spec.ts",

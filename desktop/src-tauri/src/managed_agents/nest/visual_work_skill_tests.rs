@@ -3,7 +3,7 @@
 use super::*;
 
 #[test]
-fn visual_work_skill_requires_a_claude_design_board_and_owner_review() {
+fn visual_work_skill_makes_open_design_default_and_claude_design_optional() {
     let skill = COLONY_CLI_SKILL_MD;
     let start = skill
         .find("## Visual work")
@@ -15,17 +15,25 @@ fn visual_work_skill_requires_a_claude_design_board_and_owner_review() {
     let section = &section[..end];
     for line in [
         "crawl the relevant public pages in the built-in browser",
-        "Claude Design tools are available",
-        "start with a Claude Design canvas",
-        "share its review link in the current Colony chat",
-        "ask the owner to approve the board before implementation",
-        "Do not use `publish_version`",
-        "use a Colony-managed OpenDesign board only when an isolated instance is provided for this run",
-        "prepare a private local draft, render it for review",
-        "wait for owner approval before continuing",
-        "publishing or sending the finished work still needs the owner's approval",
+        "Open Design is the default design engine for every Colony user and every runtime, including Start free through Colony's free AI gateway.",
+        "The owner reviews the preview and thumbnails in the Colony Work Area",
+        "An approved design is the source for implementation and export.",
+        "Claude Design is an optional extra only when the user's Claude account exposes it",
+        "It never replaces Open Design as Colony's default.",
+        "Keep Claude Design drafts private.",
+        "Do not export until approval",
     ] {
         assert!(section.contains(line), "visual workflow lacks: {line}");
+    }
+    for stale in [
+        "start with a Claude Design canvas",
+        "share its review link in the current Colony chat",
+        "use a Colony-managed OpenDesign board only when an isolated instance is provided",
+    ] {
+        assert!(
+            !section.contains(stale),
+            "stale visual workflow remains: {stale}"
+        );
     }
     assert!(
         !section.contains('\u{2014}'),
@@ -41,15 +49,13 @@ fn visual_work_skill_teaches_both_viewports_for_every_runtime() {
         .expect("the visual work section exists");
     let section = &skill[start..];
     for line in [
-        "For non-Claude runtimes",
-        "render and review loop without Claude Design",
-        "capture screenshots at 1440px and 390px widths",
-        "compare both against the intended design and brand",
-        "Claude runtimes must use this same screenshot loop",
-        "Do not claim visual verification unless you inspected the screenshots",
+        "Before asking the owner to review, render and inspect the result at 1440px and 390px widths.",
+        "Compare both screenshots against the brief and brand",
+        "fix visible differences, and capture both sizes again.",
     ] {
         assert!(section.contains(line), "visual workflow lacks: {line}");
     }
+    assert!(!section.contains("For non-Claude runtimes"));
 }
 
 #[test]
@@ -68,6 +74,6 @@ fn previous_nest_skill_is_refreshed_with_the_visual_workflow() {
     assert!(refreshed.contains("## Visual work"));
     assert_eq!(
         fs::read_to_string(skill_dir.join(".skill-version")).unwrap(),
-        "25\n"
+        "26\n"
     );
 }
