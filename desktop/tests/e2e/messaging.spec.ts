@@ -11,6 +11,7 @@ const LINK_PREVIEW_IMAGE = readFileSync(
   new URL("../fixtures/github-pr-5629-og.png", import.meta.url),
 );
 const LINK_PREVIEW_IMAGE_DATA_URL = `data:image/png;base64,${LINK_PREVIEW_IMAGE.toString("base64")}`;
+const THREAD_SUMMARY_AGENT_PUBKEY = "f".repeat(64);
 
 async function waitForReadyComposerSnapshots(
   page: import("@playwright/test").Page,
@@ -122,6 +123,23 @@ async function measureThreadSummaryGeometry(summaryRow: Locator) {
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  if (
+    testInfo.title.includes(
+      "opens a single-level thread panel with inline expansion",
+    )
+  ) {
+    await installMockBridge(page, {
+      searchProfiles: [
+        {
+          pubkey: THREAD_SUMMARY_AGENT_PUBKEY,
+          displayName: "Thread Agent",
+          isAgent: true,
+        },
+      ],
+    });
+    return;
+  }
+
   const baseMock = testInfo.title.includes("agent owner label")
     ? {
         searchProfiles: [
@@ -3111,7 +3129,7 @@ test("opens a single-level thread panel with inline expansion", async ({
     {
       content: nestedReplyFromAgent,
       parentEventId: firstReplyId,
-      pubkey: TEST_IDENTITIES.alice.pubkey,
+      pubkey: THREAD_SUMMARY_AGENT_PUBKEY,
     },
   );
   const nestedReplyFromAgentRow = threadReplies

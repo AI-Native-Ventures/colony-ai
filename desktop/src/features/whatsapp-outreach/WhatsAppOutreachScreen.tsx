@@ -184,9 +184,10 @@ export function WhatsAppOutreachScreen({
       return;
     }
     lastContactRequestRef.current = initialContactWaId;
+    if (initialContactWaId === selectedWaId) return;
     setSelectedWaId(initialContactWaId);
-    setShowContactList(false);
-  }, [initialContactWaId]);
+    setShowContactList(hideSelectedConversation);
+  }, [hideSelectedConversation, initialContactWaId, selectedWaId]);
 
   React.useEffect(() => {
     if (mode !== "desk" || !hideSelectedConversation) return;
