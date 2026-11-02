@@ -1540,6 +1540,18 @@
   gap: 0.5rem;
 }
 
+.c3wa-contact-subtitle {
+  overflow: hidden;
+}
+
+.c3wa-contact-subtitle > span:not(.c3wa-unread-dot) {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .c3wa-contact-title strong {
   min-width: 0;
   flex: 1;
@@ -1576,15 +1588,20 @@
 
 .c3wa-contact-chip {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
   min-height: 1.375rem;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
+  overflow: hidden;
   padding: 0 0.4375rem;
   border-radius: 999px;
   background: var(--c3wa-info-bg, hsl(var(--colony-info-bg)));
   color: var(--c3wa-info, hsl(var(--colony-info)));
   font-size: calc(10.5 * var(--colony-px));
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .c3wa-contact-chip.is-replied {
@@ -2101,6 +2118,8 @@
 .c3wa-composer-area {
   position: relative;
   display: flex;
+  width: 100%;
+  min-width: 0;
   flex: none;
   flex-direction: column;
   gap: 0.5rem;
@@ -2110,7 +2129,10 @@
 
 .c3wa-window-status {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
   min-height: 1.75rem;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
   align-self: flex-start;
@@ -2118,6 +2140,9 @@
   border-radius: 0.625rem;
   font-size: calc(11.5 * var(--colony-px));
   font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .c3wa-window-status.is-open {
@@ -2291,6 +2316,8 @@
 
 .c3wa-composer {
   display: flex;
+  width: 100%;
+  min-width: 0;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem 0.75rem 0.5rem;
@@ -2303,6 +2330,7 @@
 
 .c3wa-composer textarea {
   width: 100%;
+  min-width: 0;
   min-height: 2.75rem;
   max-height: 10rem;
   resize: vertical;
@@ -3288,18 +3316,22 @@
 .c3wa-pipeline-stage-chip,
 .c3wa-contact-stage-chip,
 .c3wa-contact-unlinked-chip {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
   background: var(--c3wa-wash);
   color: var(--c3wa-ink2);
   font-size: calc(10.5 * var(--colony-px));
   font-weight: 800;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .c3wa-contact-unlinked-chip {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
 }
 
 .c3wa-desk-contact-title > .is-call,
@@ -3624,6 +3656,11 @@
   padding: 0.875rem;
 }
 
+.c3wa-outreach-desk .c3wa-contact-filters {
+  flex-wrap: wrap;
+  overflow-x: hidden;
+}
+
 .c3wa-outreach-desk .c3wa-outreach-title-row h1 {
   font-size: calc(20 * var(--colony-px));
 }
@@ -3785,9 +3822,17 @@
 
 .c3wa-record-facts a {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 0.25rem;
   color: var(--c3wa-accent-ink);
+}
+
+.c3wa-record-phone {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .c3wa-record-mobile-open,
@@ -5498,5 +5543,163 @@
 
   .c3wa-outreach[data-mode="dock"] .c3wa-mobile-back {
     display: block;
+  }
+}
+
+.c3wa-desk-container {
+  container: outreach-desk / inline-size;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@container outreach-desk (max-width: 639px) {
+  .c3wa-outreach-desk {
+    position: relative;
+    display: block;
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel,
+  .c3wa-outreach-desk .c3wa-thread-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel {
+    z-index: 1;
+    display: none;
+    border-right: 0;
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel.is-mobile-visible {
+    display: flex;
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel.is-mobile-hidden,
+  .c3wa-outreach-desk .c3wa-thread-panel.is-mobile-hidden {
+    display: none;
+  }
+
+  .c3wa-outreach-desk[data-dock-whatsapp-open="true"] .c3wa-contact-panel {
+    display: flex;
+  }
+
+  .c3wa-outreach-desk .c3wa-thread-panel {
+    display: flex;
+    min-width: 0;
+  }
+
+  .c3wa-outreach-desk .c3wa-record-panel {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: none;
+    border-left: 0;
+  }
+
+  .c3wa-outreach-desk .c3wa-record-panel.is-mobile-visible {
+    display: flex;
+  }
+
+  .c3wa-outreach-desk .c3wa-mobile-back,
+  .c3wa-outreach-desk .c3wa-record-mobile-open,
+  .c3wa-outreach-desk .c3wa-record-mobile-back {
+    display: inline-flex;
+  }
+}
+
+@container outreach-desk (min-width: 640px) and (max-width: 1023px) {
+  .c3wa-outreach-desk {
+    --c3wa-desk-list-width: clamp(14rem, 31cqw, 20rem);
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--c3wa-desk-list-width) minmax(0, 1fr);
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel {
+    position: relative;
+    display: flex;
+    width: auto;
+    height: auto;
+    border-right: 1px solid var(--c3wa-line);
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel.is-mobile-hidden,
+  .c3wa-outreach-desk .c3wa-thread-panel.is-mobile-hidden {
+    display: flex;
+  }
+
+  .c3wa-outreach-desk .c3wa-thread-panel {
+    position: relative;
+    display: flex;
+    width: auto;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .c3wa-outreach-desk .c3wa-record-panel {
+    position: absolute;
+    z-index: 3;
+    inset: 0 0 0 var(--c3wa-desk-list-width);
+    display: none;
+    border-left: 1px solid var(--c3wa-line);
+    box-shadow: -0.75rem 0 2rem -1.5rem rgb(0 0 0 / 35%);
+  }
+
+  .c3wa-outreach-desk .c3wa-record-panel.is-mobile-visible {
+    display: flex;
+  }
+
+  .c3wa-outreach-desk .c3wa-mobile-back,
+  .c3wa-outreach-desk .c3wa-record-mobile-open,
+  .c3wa-outreach-desk .c3wa-record-mobile-back {
+    display: inline-flex;
+  }
+}
+
+@container outreach-desk (min-width: 1024px) {
+  .c3wa-outreach-desk {
+    position: relative;
+    display: grid;
+    grid-template-columns:
+      minmax(14rem, 20rem)
+      minmax(0, 1fr)
+      minmax(14rem, 20rem);
+  }
+
+  .c3wa-outreach-desk .c3wa-contact-panel {
+    position: relative;
+    display: flex;
+    width: auto;
+    height: auto;
+    border-right: 1px solid var(--c3wa-line);
+  }
+
+  .c3wa-outreach-desk .c3wa-thread-panel,
+  .c3wa-outreach-desk .c3wa-thread-panel.is-mobile-hidden {
+    position: relative;
+    display: flex;
+    width: auto;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .c3wa-outreach-desk .c3wa-record-panel {
+    position: relative;
+    inset: auto;
+    display: flex;
+    border-left: 1px solid var(--c3wa-line);
+    box-shadow: none;
+  }
+
+  .c3wa-outreach-desk .c3wa-mobile-back,
+  .c3wa-outreach-desk .c3wa-record-mobile-open,
+  .c3wa-outreach-desk .c3wa-record-mobile-back {
+    display: none;
   }
 }

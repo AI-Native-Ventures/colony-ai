@@ -69,6 +69,7 @@ pub mod network;
 pub mod nip10;
 /// Agent observer frame helpers.
 pub mod observer;
+pub mod outreach_lists;
 /// NIP-AB device pairing — crypto primitives, message types, and errors.
 pub mod pairing;
 /// Presence status types shared across crates.
