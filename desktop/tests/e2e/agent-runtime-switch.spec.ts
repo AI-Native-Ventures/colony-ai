@@ -57,7 +57,8 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
       turnId: "runtime-switch-active-turn",
     });
   }, scout);
-  await expect(page.getByText("Working", { exact: true })).toBeVisible();
+  const workingOn = page.getByRole("region", { name: "Working on" });
+  await expect(workingOn.getByText("Working", { exact: true })).toBeVisible();
   await page.getByTestId("agent-edit-configuration").click();
   const editDialog = page.getByTestId("edit-agent-dialog");
   await expect(editDialog).toBeVisible();
@@ -66,15 +67,17 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
   await expect(page.getByTestId("edit-agent-dialog-submit")).toBeEnabled();
   await page.getByTestId("edit-agent-dialog-submit").click();
 
-  await expect(
-    editDialog.getByText("Switching to Codex...", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    editDialog.getByText(
-      "The current turn will stop. Queued mentions will remain queued.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect
+    .soft(editDialog.getByText("Switching to Codex...", { exact: true }))
+    .toBeVisible({ timeout: 1500 });
+  await expect
+    .soft(
+      editDialog.getByText(
+        "The current turn will stop. Queued mentions will remain queued.",
+        { exact: true },
+      ),
+    )
+    .toBeVisible({ timeout: 1500 });
   await expect(editDialog).toBeHidden();
   await page.getByRole("button", { name: "Message" }).click();
   await expect(page.getByTestId("chat-header")).toBeVisible();
