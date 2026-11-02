@@ -403,8 +403,18 @@ pub struct WhatsappMedia {
     pub created_at: DateTime<Utc>,
 }
 
-const MEDIA_COLUMNS: &str = "id, wa_id, media, media_state, media_stored, media_attempts, \
-     media_retry_at, media_error, media_linked, event_id, created_at";
+/// `SELECT` of the media columns plus a fixed tail, as one string literal (sqlx takes only
+/// static SQL; there is no dynamic text here).
+macro_rules! media_select {
+    ($tail:literal) => {
+        concat!(
+            "SELECT id, wa_id, media, media_state, media_stored, media_attempts, \
+             media_retry_at, media_error, media_linked, event_id, created_at \
+             FROM whatsapp_messages ",
+            $tail
+        )
+    };
+}
 
 fn row_to_media(row: &PgRow) -> Result<WhatsappMedia> {
     Ok(WhatsappMedia {
@@ -1567,9 +1577,8 @@ impl Db {
         community: CommunityId,
         message_id: Uuid,
     ) -> Result<Option<WhatsappMedia>> {
-        let row = sqlx::query(&format!(
-            "SELECT {MEDIA_COLUMNS} FROM whatsapp_messages \
-             WHERE community_id = $1 AND id = $2 AND media IS NOT NULL"
+        let row = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND id = $2 AND media IS NOT NULL"
         ))
         .bind(community.as_uuid())
         .bind(message_id)
@@ -1587,9 +1596,8 @@ impl Db {
         if message_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
-        let rows = sqlx::query(&format!(
-            "SELECT {MEDIA_COLUMNS} FROM whatsapp_messages \
-             WHERE community_id = $1 AND id = ANY($2) AND media IS NOT NULL"
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND id = ANY($2) AND media IS NOT NULL"
         ))
         .bind(community.as_uuid())
         .bind(message_ids)
@@ -1610,9 +1618,8 @@ impl Db {
         limit: i64,
         now: DateTime<Utc>,
     ) -> Result<Vec<WhatsappMedia>> {
-        let rows = sqlx::query(&format!(
-            "SELECT {MEDIA_COLUMNS} FROM whatsapp_messages \
-             WHERE community_id = $1 AND media_state = 'pending' \
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND media_state = 'pending' \
                AND (media_retry_at IS NULL OR media_retry_at <= $3) \
              ORDER BY created_at LIMIT $2"
         ))
@@ -1746,9 +1753,8 @@ impl Db {
         limit: i64,
         now: DateTime<Utc>,
     ) -> Result<Vec<WhatsappMedia>> {
-        let rows = sqlx::query(&format!(
-            "SELECT {MEDIA_COLUMNS} FROM whatsapp_messages \
-             WHERE community_id = $1 AND media_state = 'stored' AND NOT media_linked \
+        let rows = sqlx::query(media_select!(
+            "WHERE community_id = $1 AND media_state = 'stored' AND NOT media_linked \
                AND event_id IS NOT NULL AND media_attempts < $4 \
                AND (media_retry_at IS NULL OR media_retry_at <= $3) \
              ORDER BY created_at LIMIT $2"
