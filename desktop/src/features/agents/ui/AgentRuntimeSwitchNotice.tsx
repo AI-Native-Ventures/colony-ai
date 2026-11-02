@@ -17,14 +17,15 @@ export function AgentRuntimeSwitchNotice({
   const status = useAgentRuntimeSwitchStatus(pubkey);
   const startMutation = useStartManagedAgentMutation();
   if (!status) return null;
+  const retryTarget = {
+    targetRuntimeId: status.targetRuntimeId,
+    targetLabel: status.targetLabel,
+    targetModel: status.targetModel,
+    activeTurn: status.activeTurn,
+  };
 
   async function retry() {
-    const generation = beginAgentRuntimeSwitch(pubkey, {
-      targetRuntimeId: status.targetRuntimeId,
-      targetLabel: status.targetLabel,
-      targetModel: status.targetModel,
-      activeTurn: status.activeTurn,
-    });
+    const generation = beginAgentRuntimeSwitch(pubkey, retryTarget);
     try {
       await startMutation.mutateAsync(pubkey);
       finishAgentRuntimeSwitch(pubkey, generation);
