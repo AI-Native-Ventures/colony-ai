@@ -685,9 +685,12 @@ async fn an_inbound_sticker_keeps_its_media_id_and_a_failed_download_leaves_a_re
     // The chat still has its Colony message, flagged as not downloaded yet.
     let channel = fx.outreach_channel().await;
     let events = channel_events(&fx, channel, wa).await;
-    let last = events.last().expect("the sticker was posted");
-    assert!(last.2.to_string().contains("wa-media"), "{}", last.2);
-    assert!(last.0.contains("still downloading"), "{}", last.0);
+    // The thread root and the sticker can share a second, so find the sticker by its tag.
+    let posted = events
+        .iter()
+        .find(|event| event.2.to_string().contains("wa-media"))
+        .expect("the sticker was posted");
+    assert!(posted.0.contains("still downloading"), "{}", posted.0);
 
     // A redelivery of the same webhook changes nothing.
     assert_eq!(
