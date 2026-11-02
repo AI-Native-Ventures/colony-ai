@@ -22,6 +22,7 @@ function StatusChip({ status }: { status: string }) {
         status === "Replied" && "is-replied",
         status === "Waiting for your approval" && "is-awaiting",
       )}
+      title={status}
     >
       {status}
     </span>
@@ -92,22 +93,30 @@ export function WhatsAppOutreachContactRow({
         </span>
         <span className="c3wa-contact-main">
           <span className="c3wa-contact-title">
-            <strong>{businessName}</strong>
+            <strong title={businessName}>{businessName}</strong>
             <time>
               {lastMessageAt ? formatWhatsAppDateTime(lastMessageAt) : ""}
             </time>
           </span>
           <span className="c3wa-contact-subtitle">
-            {personName && isDesk ? <span>{personName}</span> : null}
+            {personName && isDesk ? (
+              <span title={personName}>{personName}</span>
+            ) : null}
             {isDesk ? (
-              <span className="c3wa-contact-stage-chip">
+              <span
+                className="c3wa-contact-stage-chip"
+                title={WHATSAPP_STAGE_LABELS[contact.stage]}
+              >
                 {WHATSAPP_STAGE_LABELS[contact.stage]}
               </span>
             ) : (
               <StatusChip status={status} />
             )}
             {isDesk && !isLinked ? (
-              <span className="c3wa-contact-unlinked-chip">
+              <span
+                className="c3wa-contact-unlinked-chip"
+                title="Not linked to a business"
+              >
                 Not linked to a business
               </span>
             ) : null}
@@ -124,7 +133,9 @@ export function WhatsAppOutreachContactRow({
             {!isDesk ? <span>{maskWhatsAppNumber(contact.e164)}</span> : null}
           </span>
           {preview ? (
-            <span className="c3wa-contact-preview">{preview}</span>
+            <span className="c3wa-contact-preview" title={preview}>
+              {preview}
+            </span>
           ) : null}
         </span>
       </button>

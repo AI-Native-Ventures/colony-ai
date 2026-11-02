@@ -19,6 +19,7 @@ pub mod goals;
 pub mod initiative;
 pub mod issues;
 pub mod leads;
+pub mod lists;
 pub mod mem;
 pub mod messages;
 pub mod moderation;

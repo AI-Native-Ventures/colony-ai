@@ -1722,7 +1722,7 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn saving_the_settings_again_while_scout_is_reachable_queues_nothing() {
+    async fn changing_a_preference_while_scout_is_reachable_queues_nothing() {
         let (fixture, owner, _scout) = company_with_first_run_scout().await;
         deliver_one(&fixture.state, community(&fixture), soon())
             .await
@@ -1733,11 +1733,99 @@ mod postgres_tests {
             &owner,
             &CofounderSettings {
                 enabled: true,
+                money_preference: buzz_core::company_cofounder::MoneyPreference::BestOption,
                 ..CofounderSettings::default()
             },
         )
         .await;
-        assert_eq!(pending_count(&fixture).await, 0, "only Try again re-wakes");
+        assert_eq!(
+            pending_count(&fixture).await,
+            0,
+            "changing a preference is not a Try again"
+        );
+    }
+
+    /// 2 Nov 2026: the start-up wake was delivered while Scout was not running.
+    /// Nothing failed, so there was no lead status and "Try again" (the same
+    /// settings saved again) queued nothing. It must wake Scout again for as
+    /// long as onboarding has not finished.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn try_again_before_scout_began_onboarding_queues_a_fresh_wake() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        assert_eq!(pending_count(&fixture).await, 0, "the first wake went out");
+
+        save_cofounder_settings(
+            &fixture,
+            &owner,
+            &CofounderSettings {
+                enabled: true,
+                ..CofounderSettings::default()
+            },
+        )
+        .await;
+        assert_eq!(
+            mode_on_count(&fixture).await,
+            1,
+            "Try again queued a fresh start-up wake"
+        );
+
+        // Delivered once the five minute interval has passed.
+        deliver_one(
+            &fixture.state,
+            community(&fixture),
+            Utc::now() + chrono::Duration::seconds(MIN_WAKE_INTERVAL_SECS + 5),
+        )
+        .await
+        .expect("deliver again");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        assert_eq!(wake_messages(&fixture, dm).await.len(), 2);
+        assert_eq!(pending_count(&fixture).await, 0);
+    }
+
+    /// Off then on again is a new start-up wake every time while onboarding has
+    /// not finished, even when the earlier one was delivered.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn switching_off_and_on_again_queues_a_fresh_wake_each_time() {
+        let (fixture, owner, _scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        for round in 1..=2 {
+            save_cofounder_settings(&fixture, &owner, &CofounderSettings::default()).await;
+            assert_eq!(
+                mode_on_count(&fixture).await,
+                0,
+                "off queues nothing (round {round})"
+            );
+            enable_cofounder(&fixture, &owner).await;
+            assert_eq!(
+                mode_on_count(&fixture).await,
+                1,
+                "on queued a fresh start-up wake (round {round})"
+            );
+            // Close it unsent, as a delivered one would be, so the next round
+            // starts from nothing pending.
+            let pending = fixture
+                .state
+                .db
+                .cofounder_pending_wakes(community(&fixture), soon(), 10)
+                .await
+                .expect("pending wakes");
+            let ids = pending.iter().map(|wake| wake.id).collect::<Vec<_>>();
+            fixture
+                .state
+                .db
+                .cofounder_wakes_skipped(community(&fixture), &ids, "test setup")
+                .await
+                .expect("close the wake");
+        }
     }
 
     #[tokio::test]
