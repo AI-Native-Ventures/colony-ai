@@ -91,7 +91,12 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
       () => false,
     );
   await expect(editDialog).toBeHidden();
-  await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
+  await page.evaluate((channelId) => {
+    window.location.hash = `/channels/${channelId}`;
+  }, REFERENCE_CHANNEL_IDS.scoutDm);
+  await expect(page).toHaveURL(
+    new RegExp(`#\\/channels\\/${REFERENCE_CHANNEL_IDS.scoutDm}$`, "u"),
+  );
   await expect(page.getByTestId("chat-header")).toBeVisible();
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
     "Codex",
