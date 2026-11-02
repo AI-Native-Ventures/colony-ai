@@ -39,12 +39,7 @@ fn runtime_model_provider_state(
     record: &ManagedAgentRecord,
     personas: &[crate::managed_agents::AgentDefinition],
     global_config: &crate::managed_agents::GlobalAgentConfig,
-) -> (
-    String,
-    Vec<String>,
-    Option<String>,
-    Option<String>,
-) {
+) -> (String, Vec<String>, Option<String>, Option<String>) {
     let command = crate::managed_agents::record_agent_command(record, personas);
     let (model, provider) = match crate::managed_agents::effective_config::resolve_effective_config(
         record,
@@ -54,9 +49,9 @@ fn runtime_model_provider_state(
         crate::managed_agents::effective_config::EffectiveConfigResult::Resolved(config) => {
             (config.model.value, config.provider.value)
         }
-        crate::managed_agents::effective_config::EffectiveConfigResult::OrphanedInstance { .. } => {
-            (record.model.clone(), record.provider.clone())
-        }
+        crate::managed_agents::effective_config::EffectiveConfigResult::OrphanedInstance {
+            ..
+        } => (record.model.clone(), record.provider.clone()),
     };
     (command, record.agent_args.clone(), model, provider)
 }

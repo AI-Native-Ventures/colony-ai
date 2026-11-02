@@ -1,9 +1,9 @@
 //! Explicit per-agent runtime pins remain authoritative across persona snapshots.
 
 use super::tests::{sample_persona, sample_record};
-use crate::managed_agents::{apply_agent_command_update, record_agent_command};
 use crate::managed_agents::persona_events::apply_persona_snapshot;
 use crate::managed_agents::types::AgentDefinition;
+use crate::managed_agents::{apply_agent_command_update, record_agent_command};
 
 #[test]
 fn explicit_codex_pin_beats_persona_default_after_store_reload() {
