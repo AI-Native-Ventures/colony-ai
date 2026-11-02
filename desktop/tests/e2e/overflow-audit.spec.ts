@@ -16,7 +16,11 @@ import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, openChannelBrowser } from "../helpers/bridge";
 import { COLONY3_NOW, seedColony3Activity } from "../helpers/colony3Fixture";
 import { colony3TodayMockOptions } from "../helpers/colony3HomeFixture";
-import { installWhatsAppMockBridge } from "../helpers/whatsappOutreach";
+import {
+  gotoWhatsAppScreen,
+  installWhatsAppMockBridge,
+  OUTREACH_CHANNEL_ID,
+} from "../helpers/whatsappOutreach";
 import {
   completeR17BusinessSetup,
   openR17BusinessSetup,
@@ -538,18 +542,21 @@ async function scanState(
           let parent = element.parentElement;
           while (parent && parent !== document.body) {
             const parentStyle = getComputedStyle(parent);
-            if (
+            const clipsX =
               parentStyle.overflowX === "hidden" ||
-              parentStyle.overflowX === "clip" ||
+              parentStyle.overflowX === "clip";
+            const clipsY =
               parentStyle.overflowY === "hidden" ||
-              parentStyle.overflowY === "clip"
-            ) {
+              parentStyle.overflowY === "clip";
+            if (clipsX || clipsY) {
               const parentRect = parent.getBoundingClientRect();
               if (
-                rect.left < parentRect.left - 2 ||
-                rect.right > parentRect.right + 2 ||
-                rect.top < parentRect.top - 2 ||
-                rect.bottom > parentRect.bottom + 2
+                (clipsX &&
+                  (rect.left < parentRect.left - 2 ||
+                    rect.right > parentRect.right + 2)) ||
+                (clipsY &&
+                  (rect.top < parentRect.top - 2 ||
+                    rect.bottom > parentRect.bottom + 2))
               ) {
                 add(element, "button-or-chip-cut-by-parent", parent, 8);
               }
@@ -991,7 +998,14 @@ test("all screens, widths and important states", async ({ page, browser }) => {
         route: "/#/today",
         selector: '[data-testid="today-screen"]',
         action: async () => {
-          await openChannelBrowser(page);
+          if (width < 768) {
+            await page.getByTestId("section-actions-channels").click();
+            await page
+              .getByRole("menuitem", { name: /^Browse channels/ })
+              .click();
+          } else {
+            await openChannelBrowser(page);
+          }
           await page
             .getByTestId("channel-browser-dialog")
             .waitFor({ state: "visible" });
@@ -1094,7 +1108,14 @@ test("all screens, widths and important states", async ({ page, browser }) => {
       }
       try {
         if (dialog.screen !== "Settings status dialog") {
-          await setSidebarMode(page, width, "collapsed");
+          const needsSidebar =
+            width < 768 &&
+            ["Channel browser dialog", "Search dialog"].includes(dialog.screen);
+          await setSidebarMode(
+            page,
+            width,
+            needsSidebar ? "expanded" : "collapsed",
+          );
         }
         await dialog.action();
         await waitForAnimations(page);
@@ -1112,6 +1133,15 @@ test("all screens, widths and important states", async ({ page, browser }) => {
           .last()
           .waitFor({ state: "hidden", timeout: 750 })
           .catch(() => {});
+        if (width < 768) {
+          const mobileSidebar = page.locator(
+            '[data-sidebar="sidebar"][data-mobile="true"]',
+          );
+          if (await mobileSidebar.isVisible().catch(() => false)) {
+            await page.keyboard.press("Escape");
+            await mobileSidebar.waitFor({ state: "hidden" }).catch(() => {});
+          }
+        }
       }
     }
 
@@ -1242,13 +1272,19 @@ test("all screens, widths and important states", async ({ page, browser }) => {
     });
     const outreachPage = await context.newPage();
     outreachPage.setDefaultTimeout(2_000);
+    let outreachStep = "install mock fixture";
     try {
       await installWhatsAppMockBridge(outreachPage, "light", {
         deskFixture: true,
       });
-      await outreachPage.goto("/");
-      await setSidebarMode(outreachPage, width, "expanded");
-      await outreachPage.getByTestId("channel-Outreach").click();
+      outreachStep = "open Outreach channel";
+      await gotoWhatsAppScreen(
+        outreachPage,
+        `/channels/${OUTREACH_CHANNEL_ID}`,
+      );
+      await expect(outreachPage.getByTestId("chat-title")).toHaveText(
+        "Outreach",
+      );
       await outreachPage
         .getByTestId("outreach-desk-needs-you")
         .waitFor({ state: "visible" });
@@ -1260,19 +1296,40 @@ test("all screens, widths and important states", async ({ page, browser }) => {
             .filter((value): value is string => value !== null),
         );
       for (const tabId of tabs) {
+        outreachStep = `select ${tabId}`;
+        await setSidebarMode(outreachPage, width, "collapsed");
         await outreachPage.getByTestId(tabId).click();
         await waitForAnimations(outreachPage);
         await scanState(
           outreachPage,
           `Outreach desk: ${tabId.replace("channel-view-tab-", "")}`,
           width,
-          "desk-tab",
+          "desk-tab/sidebar-collapsed",
           "light",
         );
+        const workAreaPanel = outreachPage.getByTestId("work-area-panel");
+        if (await workAreaPanel.isVisible().catch(() => false)) {
+          outreachStep = `close work area after ${tabId}`;
+          await outreachPage
+            .getByTestId("work-area-close")
+            .evaluate((button) => (button as HTMLButtonElement).click());
+          await workAreaPanel.waitFor({ state: "hidden" });
+        }
+        outreachStep = `open expanded sidebar for ${tabId}`;
+        await setSidebarMode(outreachPage, width, "expanded");
+        await scanState(
+          outreachPage,
+          `Outreach desk: ${tabId.replace("channel-view-tab-", "")}`,
+          width,
+          "desk-tab/sidebar-expanded",
+          "light",
+        );
+        outreachStep = `close expanded sidebar for ${tabId}`;
+        await setSidebarMode(outreachPage, width, "collapsed");
       }
     } catch (error) {
       coverageIssues.push({
-        screen: "Outreach desk tabs",
+        screen: `Outreach desk tabs: ${outreachStep}`,
         width,
         error: String(error).split("\n")[0].slice(0, 240),
       });
