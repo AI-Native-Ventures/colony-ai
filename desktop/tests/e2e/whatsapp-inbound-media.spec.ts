@@ -108,6 +108,11 @@ function fixtures(): MediaFixture[] {
       media: base({ type: "voice", url: silentWav(), mime: "audio/ogg" }),
     },
     {
+      id: "wa-media-audio",
+      text: "[audio]",
+      media: base({ type: "audio", url: silentWav(), mime: "audio/wav" }),
+    },
+    {
       id: "wa-media-document",
       text: "[document]",
       media: base({
@@ -310,6 +315,9 @@ const CHECKS: Record<string, Check> = {
   "wa-media-voice": async (_page, message) => {
     await expect(message.getByTestId("whatsapp-media-audio")).toBeVisible();
   },
+  "wa-media-audio": async (_page, message) => {
+    await expect(message.getByTestId("whatsapp-media-audio")).toBeVisible();
+  },
   "wa-media-document": async (_page, message) => {
     await expect(message.getByTestId("file-card")).toContainText(
       "Kensington-Guest-House-quote-request",
@@ -380,11 +388,10 @@ test.describe("WhatsApp inbound media", () => {
 
   // A phone shows only the last three messages of a chat (older ones are folded away by
   // design), so the types are checked three at a time, each group as the newest messages.
-  const phoneGroups = [0, 3, 6, 8].map((from, index, starts) =>
-    fixtures()
-      .map((fixture) => fixture.id)
-      .slice(from, starts[index + 1] ?? undefined)
-      .slice(-3),
+  const allPhoneFixtureIds = fixtures().map((fixture) => fixture.id);
+  const phoneGroups = Array.from(
+    { length: Math.ceil(allPhoneFixtureIds.length / 3) },
+    (_, index) => allPhoneFixtureIds.slice(index * 3, index * 3 + 3),
   );
   for (const [index, ids] of phoneGroups.entries()) {
     test(`phone: every type stays inside its card at 390x844, group ${index + 1} (${ids.join(", ")})`, async ({
@@ -443,24 +450,61 @@ test.describe("WhatsApp inbound media", () => {
       ]);
   });
 
-  test("the desk shows the sticker the customer sent, not the bracket text", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await installWhatsAppMockBridge(page, "light", { deskFixture: true });
-    await seedMedia(page, [fixtures()[0]]);
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("home-inbox")).toBeVisible();
-    await page.getByTestId("channel-Outreach").click();
-    const card = page.getByTestId(`outreach-needs-contact-${PLANE_TREE_WA_ID}`);
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId("whatsapp-media-thumb")).toBeVisible();
-    await expect(card).toContainText("Sent a sticker");
-    await expect(card).not.toContainText("[sticker]");
-    mkdirSync(SCREENSHOT_DIR, { recursive: true });
-    await waitForAnimations(page);
-    await card.screenshot({
-      path: resolve(SCREENSHOT_DIR, "desk-card-1440x900.png"),
+  const deskPreviews = [
+    { id: "wa-media-sticker", text: "Sent a sticker", thumbnail: true },
+    {
+      id: "wa-media-image",
+      text: "Sent a photo: Our front desk and the garden, as it looks today",
+      thumbnail: true,
+    },
+    { id: "wa-media-video", text: "Sent a video", thumbnail: false },
+    { id: "wa-media-voice", text: "Sent a voice note", thumbnail: false },
+    { id: "wa-media-audio", text: "Sent an audio file", thumbnail: false },
+    {
+      id: "wa-media-document",
+      text: "Sent Kensington-Guest-House-quote-request-with-a-very-long-name-2026.pdf",
+      thumbnail: false,
+    },
+    {
+      id: "wa-media-location",
+      text: "Shared a location: Kensington Guest House",
+      thumbnail: false,
+    },
+    { id: "wa-media-contacts", text: "Shared a contact card", thumbnail: false },
+  ] as const;
+
+  for (const preview of deskPreviews) {
+    test(`desk preview shows each inbound media type: ${preview.id}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installWhatsAppMockBridge(page, "light", { deskFixture: true });
+      const fixture = fixtures().find((item) => item.id === preview.id);
+      if (!fixture) throw new Error(`Missing media fixture ${preview.id}`);
+      await seedMedia(page, [fixture]);
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await expect(page.getByTestId("home-inbox")).toBeVisible();
+      await page.getByTestId("channel-Outreach").click();
+      const card = page.getByTestId(
+        `outreach-needs-contact-${PLANE_TREE_WA_ID}`,
+      );
+      await expect(card).toBeVisible();
+      await expect(card).toContainText(preview.text);
+      if (fixture.text.startsWith("[")) {
+        await expect(card).not.toContainText(fixture.text);
+      }
+      if (preview.thumbnail) {
+        await expect(card.getByTestId("whatsapp-media-thumb")).toBeVisible();
+      } else {
+        await expect(card.getByTestId("whatsapp-media-thumb")).toHaveCount(0);
+      }
+      if (preview.id === "wa-media-sticker") {
+        mkdirSync(SCREENSHOT_DIR, { recursive: true });
+        await waitForAnimations(page);
+        await card.screenshot({
+          path: resolve(SCREENSHOT_DIR, "desk-card-1440x900.png"),
+        });
+      }
     });
-  });
+  }
 });

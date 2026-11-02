@@ -103,7 +103,7 @@
         "every type shows properly in the chat and stays inside its card at 1440x900",
         "phone: every type stays inside its card at 390x844",
         "Retry on a failed download asks the relay to try again",
-        "the desk shows the sticker the customer sent"
+        "desk preview shows each inbound media type"
       ]
     }
   },
