@@ -14,6 +14,26 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
     referenceWorkspace: true,
     colony3Sidebar: true,
     updateManagedAgentDelayMs: 700,
+    acpRuntimesCatalog: [
+      {
+        id: "codex",
+        label: "Codex",
+        avatar_url: "",
+        availability: "available",
+        command: "codex-acp",
+        binary_path: "/usr/local/bin/codex-acp",
+        default_args: [],
+        mcp_command: "buzz-dev-mcp",
+        install_hint: "Install the Codex CLI and ACP adapter.",
+        install_instructions_url: "https://developers.openai.com/codex/cli/",
+        can_auto_install: false,
+        requires_external_cli: true,
+        underlying_cli_path: "/usr/local/bin/codex",
+        node_required: false,
+        auth_status: { status: "logged_in" },
+        source: "builtin",
+      },
+    ],
     managedAgents: [
       {
         pubkey: scout,
