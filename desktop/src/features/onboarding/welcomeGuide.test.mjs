@@ -210,7 +210,8 @@ test("all Welcome starters override a bundled persona with the chosen CLI harnes
     assert.equal(input.teamId, WELCOME_TEAM_ID);
     assert.equal(input.relayUrl, RELAY_A);
     assert.equal(input.spawnAfterCreate, false);
-    assert.equal(input.startOnAppLaunch, false);
+    // Scout is restored at launch, so a relay wake always finds it running.
+    assert.equal(input.startOnAppLaunch, true);
   }
 });
 

@@ -54,6 +54,7 @@
       "cofounder-phase2.spec.ts",
       "cofounder-customer-record.spec.ts",
       "whatsapp-outreach-desk.visual.spec.ts",
+      "whatsapp-outreach-desk-narrow.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
@@ -177,6 +178,7 @@
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
         "whatsapp-outreach-desk.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-polish.spec.ts",
         "whatsapp-dock-narrow.spec.ts",
@@ -470,7 +472,8 @@
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
         "whatsapp-dock-narrow.spec.ts",
-        "colony3-lead-logo-everywhere.spec.ts"
+        "colony3-lead-logo-everywhere.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts"
       ]
     },
     {
@@ -493,8 +496,13 @@
         "whatsapp-dock-narrow.spec.ts",
         "workspace-file-links.spec.ts",
         "browser-profile-forget.spec.ts",
-        "colony3-conv-workarea-proof.spec.ts"
+        "colony3-conv-workarea-proof.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts"
       ]
+    },
+    {
+      "paths": ["desktop/tests/e2e/whatsapp-outreach-desk-narrow.spec.ts"],
+      "specs": ["whatsapp-outreach-desk-narrow.spec.ts"]
     }
   ]
 }

@@ -142,6 +142,7 @@ export default defineConfig({
         "**/whatsapp-work-area.spec.ts",
         "**/whatsapp-outreach-desk.spec.ts",
         "**/whatsapp-outreach-desk.visual.spec.ts",
+        "**/whatsapp-outreach-desk-narrow.spec.ts",
         "**/whatsapp-decided-card.spec.ts",
         "**/whatsapp-polish.spec.ts",
         "**/whatsapp-dock-narrow.spec.ts",

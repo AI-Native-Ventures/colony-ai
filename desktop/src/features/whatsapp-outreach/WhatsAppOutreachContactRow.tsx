@@ -12,7 +12,6 @@ import {
   formatWhatsAppDateTime,
   whatsappInitials,
 } from "./WhatsAppThreadMessage";
-import type { resolveOutreachContactIdentity } from "./outreachDeskUtils";
 
 function StatusChip({ status }: { status: string }) {
   return (
@@ -23,6 +22,7 @@ function StatusChip({ status }: { status: string }) {
         status === "Replied" && "is-replied",
         status === "Waiting for your approval" && "is-awaiting",
       )}
+      title={status}
     >
       {status}
     </span>
@@ -31,7 +31,7 @@ function StatusChip({ status }: { status: string }) {
 
 export function WhatsAppOutreachContactRow({
   contact,
-  identity,
+  businessName,
   hasDraft,
   preview,
   waitingForApproval,
@@ -40,10 +40,14 @@ export function WhatsAppOutreachContactRow({
   onSelect,
   onReviewBatch,
   personName,
+  website,
+  logoUrl,
+  placePhotoUrl,
   isDesk = false,
+  isLinked = Boolean(contact.leadId || contact.businessName),
 }: {
   contact: WhatsAppContact;
-  identity: ReturnType<typeof resolveOutreachContactIdentity>;
+  businessName: string;
   hasDraft: boolean;
   preview: string | null;
   waitingForApproval: boolean;
@@ -52,7 +56,11 @@ export function WhatsAppOutreachContactRow({
   onSelect: () => void;
   onReviewBatch: () => void;
   personName: string | null;
+  website: string | null;
+  logoUrl?: string | null;
+  placePhotoUrl?: string | null;
   isDesk?: boolean;
+  isLinked?: boolean;
 }) {
   const status = contactStatus(contact, waitingForApproval);
   const lastMessageAt = [
@@ -74,47 +82,55 @@ export function WhatsAppOutreachContactRow({
       >
         <span aria-hidden="true" className="c3wa-contact-avatar">
           {isDesk ? (
-            identity.isLinked ? (
+            isLinked ? (
               <BusinessLogoMark
                 className="c3wa-desk-logo-mark"
-                logoUrl={identity.logoUrl}
-                name={identity.displayName}
-                placePhotoUrl={identity.placePhotoUrl}
-                website={identity.website}
+                logoUrl={logoUrl}
+                name={businessName}
+                placePhotoUrl={placePhotoUrl}
+                website={website}
               />
             ) : (
               <UserRound aria-hidden="true" size={18} />
             )
-          ) : identity.isLinked ? (
+          ) : isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
-              logoUrl={identity.logoUrl}
-              name={identity.displayName}
-              placePhotoUrl={identity.placePhotoUrl}
-              website={identity.website}
+              logoUrl={logoUrl}
+              name={businessName}
+              placePhotoUrl={placePhotoUrl}
+              website={website}
             />
           ) : (
-            whatsappInitials(identity.displayName)
+            whatsappInitials(businessName)
           )}
         </span>
         <span className="c3wa-contact-main">
           <span className="c3wa-contact-title">
-            <strong>{identity.displayName}</strong>
+            <strong title={businessName}>{businessName}</strong>
             <time>
               {lastMessageAt ? formatWhatsAppDateTime(lastMessageAt) : ""}
             </time>
           </span>
           <span className="c3wa-contact-subtitle">
-            {personName && isDesk ? <span>{personName}</span> : null}
+            {personName && isDesk ? (
+              <span title={personName}>{personName}</span>
+            ) : null}
             {isDesk ? (
-              <span className="c3wa-contact-stage-chip">
+              <span
+                className="c3wa-contact-stage-chip"
+                title={WHATSAPP_STAGE_LABELS[contact.stage]}
+              >
                 {WHATSAPP_STAGE_LABELS[contact.stage]}
               </span>
             ) : (
               <StatusChip status={status} />
             )}
-            {isDesk && !identity.isLinked ? (
-              <span className="c3wa-contact-unlinked-chip">
+            {isDesk && !isLinked ? (
+              <span
+                className="c3wa-contact-unlinked-chip"
+                title="Not linked to a business"
+              >
                 Not linked to a business
               </span>
             ) : null}
@@ -131,13 +147,15 @@ export function WhatsAppOutreachContactRow({
             {!isDesk ? <span>{maskWhatsAppNumber(contact.e164)}</span> : null}
           </span>
           {preview ? (
-            <span className="c3wa-contact-preview">{preview}</span>
+            <span className="c3wa-contact-preview" title={preview}>
+              {preview}
+            </span>
           ) : null}
         </span>
       </button>
       {waitingForApproval ? (
         <button
-          aria-label={`Review batch for ${identity.displayName}`}
+          aria-label={`Review batch for ${businessName}`}
           className="c3wa-contact-review"
           disabled={!canReviewBatch}
           onClick={onReviewBatch}
