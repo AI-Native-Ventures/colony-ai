@@ -771,12 +771,12 @@ impl Db {
             });
         }
         match sort {
-            "people" => lines.sort_by(|a, b| b.sort_people.cmp(&a.sort_people)),
-            "agents" => lines.sort_by(|a, b| b.sort_agents.cmp(&a.sort_agents)),
-            "ai" => lines.sort_by(|a, b| b.sort_ai.cmp(&a.sort_ai)),
-            "discovery" => lines.sort_by(|a, b| b.sort_discovery.cmp(&a.sort_discovery)),
-            "whatsapp" => lines.sort_by(|a, b| b.sort_whatsapp.cmp(&a.sort_whatsapp)),
-            "created" => lines.sort_by(|a, b| b.sort_created.cmp(&a.sort_created)),
+            "people" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_people)),
+            "agents" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_agents)),
+            "ai" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_ai)),
+            "discovery" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_discovery)),
+            "whatsapp" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_whatsapp)),
+            "created" => lines.sort_by_key(|b| std::cmp::Reverse(b.sort_created)),
             "name" => lines.sort_by(|a, b| a.sort_name.cmp(&b.sort_name)),
             _ => lines.sort_by(|a, b| {
                 b.sort_active
