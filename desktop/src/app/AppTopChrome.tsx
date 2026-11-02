@@ -1,6 +1,10 @@
 import * as React from "react";
 import { useLocation } from "@tanstack/react-router";
 
+import {
+  routeBackFallback,
+  useRouteBack,
+} from "@/app/navigation/RouteOriginContext";
 import { breadcrumbForPath } from "@/app/topBarBreadcrumbs";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
@@ -35,8 +39,12 @@ export function AppTopChrome({
   onGoForward,
 }: AppTopChromeProps) {
   const topChromeRef = React.useRef<HTMLDivElement>(null);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const breadcrumb = breadcrumbForPath(pathname);
+  const fallback = routeBackFallback({ pathname, search });
+  const routeBack = useRouteBack(fallback ?? undefined);
+  const hasOriginAwareBack = Boolean(routeBack.origin || fallback);
+  const backEnabled = hasOriginAwareBack ? routeBack.canGoBack : canGoBack;
   const sidebar = useOptionalSidebar();
   // On a narrow window the sidebar is a drawer, and this is its only handle.
   const isMobile = useIsMobile();
@@ -78,8 +86,8 @@ export function AppTopChrome({
         aria-label="Go back"
         className="colony-topbar-button"
         data-testid="global-back"
-        disabled={!canGoBack}
-        onClick={onGoBack}
+        disabled={!backEnabled}
+        onClick={hasOriginAwareBack ? routeBack.goBack : onGoBack}
         type="button"
       >
         <ChevronLeftIcon size={17} />
