@@ -359,6 +359,9 @@ async function scanState(
           )
         );
       };
+      const isIntentionalResizeHandle = (element: HTMLElement) =>
+        element.dataset.testid === "right-auxiliary-pane-resize-handle" ||
+        element.dataset.sidebar === "rail";
       const hasRenderedOverflow = (
         element: HTMLElement,
         axis: "x" | "y",
@@ -452,7 +455,7 @@ async function scanState(
             'button, a[href], [role="button"], [role="tab"], img, svg',
           ),
         )) {
-          if (!visible(child)) continue;
+          if (!visible(child) || isIntentionalResizeHandle(child)) continue;
           const childRect = child.getBoundingClientRect();
           const outsideX =
             childRect.left < rect.left - 2 || childRect.right > rect.right + 2;
@@ -622,12 +625,11 @@ async function scanState(
         const container = nearestContainer(element);
         const containerRect = container?.getBoundingClientRect();
         const text = textContent(element);
-        // This handle is meant to straddle the seam between the pane and
-        // content. It is a resize affordance, not content clipped by a card.
-        const isIntentionalResizeHandle =
-          element.dataset.testid === "right-auxiliary-pane-resize-handle";
+        // Resize handles can straddle a pane seam by design. They are
+        // interaction affordances, not content clipped by a card.
+        const intentionalResizeHandle = isIntentionalResizeHandle(element);
         const isAction =
-          !isIntentionalResizeHandle &&
+          !intentionalResizeHandle &&
           element.matches(
             'button, a[href], [role="button"], [role="tab"], [data-testid*="chip" i], [class*="chip" i], [class*="pill" i]',
           );
@@ -823,7 +825,7 @@ async function scanState(
         return (
           element.parentElement !== null &&
           element.parentElement !== document.body &&
-          element.dataset.testid !== "right-auxiliary-pane-resize-handle" &&
+          !isIntentionalResizeHandle(element) &&
           !["absolute", "fixed"].includes(style.position) &&
           (element.matches(
             'button, a[href], [role="button"], [role="tab"], article, [data-testid*="card" i], [class*="card" i], [class*="chip" i], [class*="pill" i]',
@@ -983,6 +985,21 @@ async function visit(
     );
     await page.locator(selector).waitFor({ state: "visible", timeout: 8_000 });
     await waitForAnimations(page, 100);
+    if (route.startsWith("/#/settings")) {
+      await page
+        .locator('[data-testid="settings-sidebar"]')
+        .evaluate(async (element) => {
+          const transition = Promise.all(
+            element
+              .getAnimations({ subtree: true })
+              .map((animation) => animation.finished.catch(() => undefined)),
+          );
+          const ceiling = new Promise<void>((resolve) =>
+            setTimeout(resolve, 750),
+          );
+          await Promise.race([transition, ceiling]);
+        });
+    }
     return true;
   } catch (error) {
     coverageIssues.push({
