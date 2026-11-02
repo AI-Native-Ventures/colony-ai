@@ -460,7 +460,8 @@
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
-        "whatsapp-dock-narrow.spec.ts"
+        "whatsapp-dock-narrow.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts"
       ]
     },
     {
@@ -483,8 +484,13 @@
         "whatsapp-dock-narrow.spec.ts",
         "workspace-file-links.spec.ts",
         "browser-profile-forget.spec.ts",
-        "colony3-conv-workarea-proof.spec.ts"
+        "colony3-conv-workarea-proof.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts"
       ]
+    },
+    {
+      "paths": ["desktop/tests/e2e/whatsapp-outreach-desk-narrow.spec.ts"],
+      "specs": ["whatsapp-outreach-desk-narrow.spec.ts"]
     }
   ]
 }
