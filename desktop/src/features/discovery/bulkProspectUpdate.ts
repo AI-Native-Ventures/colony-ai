@@ -167,7 +167,9 @@ function targetAlreadyApplied(
       prospect.lostReason === "Not a fit"
     );
   }
-  return prospect.stage === target.stage;
+  return (
+    prospect.stage === target.stage && prospect.qualification === "qualified"
+  );
 }
 
 /**

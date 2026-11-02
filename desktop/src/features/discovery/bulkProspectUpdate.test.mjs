@@ -42,6 +42,8 @@ function harness({ failPublish = null, throwAfterPublish = false } = {}) {
       if (failPublish === attempts) throw new Error("relay unavailable");
       const nextStage = target.kind === "mark-lost" ? "lost" : target.stage;
       current.record.prospect.stage = nextStage;
+      current.record.prospect.qualification =
+        target.kind === "mark-lost" ? "not_fit" : "qualified";
       if (target.kind === "mark-lost") {
         current.record.prospect.qualification = "not_fit";
         current.record.prospect.lostReason = "Not a fit";
@@ -154,4 +156,20 @@ test("storage must persist the journal before the first relay write", async () =
     /Could not save a retry record/,
   );
   assert.deepEqual(state.published, []);
+});
+
+test("stage update publishes when the stage matches but the lead is still unreviewed", async () => {
+  const state = harness();
+  const lead = state.heads.get("lead-a");
+  lead.record.prospect.qualification = "unreviewed";
+  const qualifyInput = {
+    ...input,
+    prospectIds: ["lead-a"],
+    target: { kind: "stage", stage: "qualified" },
+  };
+
+  await applyBulkProspectUpdate(qualifyInput, state.dependencies);
+
+  assert.deepEqual(state.published, ["lead-a"]);
+  assert.equal(lead.record.prospect.qualification, "qualified");
 });

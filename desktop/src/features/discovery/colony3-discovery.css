@@ -177,8 +177,8 @@
 }
 
 .c3d-btn--ink {
-  background: var(--c3d-ink);
-  color: var(--c3d-surface);
+  background: var(--colony-selection-bar);
+  color: var(--colony-selection-bar-foreground);
 }
 
 .c3d-btn--ink:not(:disabled):hover {
@@ -1238,8 +1238,8 @@ button.c3d-search-chip {
   padding: 0 0.65rem;
   border: 0;
   border-radius: 0.625rem;
-  background: var(--colony-discovery-action-surface);
-  color: var(--c3d-surface);
+  background: var(--colony-selection-bar-action);
+  color: var(--colony-selection-bar-foreground);
   font-size: calc(14 * var(--colony-px));
   font-weight: 700;
   white-space: nowrap;
@@ -1256,8 +1256,8 @@ button.c3d-search-chip {
 }
 
 .c3d-selection-action--light {
-  background: var(--c3d-surface);
-  color: var(--colony-ink-button);
+  background: var(--colony-selection-bar-primary);
+  color: var(--colony-selection-bar-primary-foreground);
 }
 
 .c3d-selection-action--light:not(:disabled):hover {
@@ -1338,7 +1338,7 @@ button.c3d-search-chip {
 }
 
 .c3d-table tbody tr.is-selected {
-  background: var(--colony-row-hover);
+  background: hsl(var(--colony-accent-soft));
 }
 
 .c3d-table th,
@@ -2855,14 +2855,17 @@ button.c3d-search-chip {
   font-weight: 500;
 }
 .c3d-table {
-  min-width: 72rem;
+  min-width: 64rem;
 }
 
 .c3d-table tr {
-  grid-template-columns: 2.5rem minmax(13rem, 2fr) minmax(8rem, 1.1fr) minmax(
-      9rem,
-      1.3fr
-    ) 7.5rem minmax(9rem, 1.1fr) 8.5rem 1.75rem;
+  grid-template-columns:
+    2.5rem
+    minmax(13rem, 2fr)
+    minmax(8rem, 1.1fr)
+    minmax(9rem, 1.3fr)
+    minmax(10rem, 1.35fr)
+    minmax(9rem, 1.1fr);
 }
 
 .c3d-phone {

@@ -131,6 +131,18 @@ function autocomplete(page: import("@playwright/test").Page) {
     .getByTestId("mention-autocomplete");
 }
 
+async function selectUnifiedMention(
+  page: import("@playwright/test").Page,
+  name: string,
+) {
+  const peopleAndAgents = page
+    .getByTestId("lead-reference-picker")
+    .getByRole("region", { name: "People and agents" });
+  const choice = peopleAndAgents.getByRole("button").filter({ hasText: name });
+  await expect(choice).toBeVisible();
+  await choice.click();
+}
+
 async function readCommandLog(page: import("@playwright/test").Page) {
   return page.evaluate(() => {
     return (
@@ -1521,10 +1533,9 @@ test("selecting a managed agent mention inserts @Name into input", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  const dropdown = autocomplete(page);
   for (let attempt = 0; attempt < 5; attempt++) {
     await input.fill("Hey @ali");
-    await dropdown.getByText("alice").click();
+    await selectUnifiedMention(page, "alice");
     await page.keyboard.type("hello");
     await expect(input).toHaveText("Hey @alice hello");
   }
@@ -2764,10 +2775,13 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
   const input = page.getByTestId("message-input");
   await input.fill("Hey @scout");
 
-  const dropdown = autocomplete(page);
-  await expect(dropdown.getByText("scout")).toBeVisible();
-  await expect(dropdown.getByText("agent")).toBeVisible();
-  await input.press("Enter");
+  const scoutChoice = page
+    .getByTestId("lead-reference-picker")
+    .getByRole("region", { name: "People and agents" })
+    .getByRole("button")
+    .filter({ hasText: "scout" });
+  await expect(scoutChoice).toContainText("AI employee");
+  await selectUnifiedMention(page, "scout");
   await page.keyboard.type(" can you help?");
 
   const baselineCommands = await readCommandLog(page);
@@ -2859,7 +2873,6 @@ test("a second mention while the first wake is in flight does not start the agen
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  const dropdown = autocomplete(page);
   const baselineCommands = await readCommandLog(page);
   const baselineStartCount = commandCount(
     baselineCommands,
@@ -2867,8 +2880,7 @@ test("a second mention while the first wake is in flight does not start the agen
   );
 
   await input.fill("Hey @scout");
-  await expect(dropdown.getByText("scout")).toBeVisible();
-  await input.press("Enter");
+  await selectUnifiedMention(page, "scout");
   await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("do X");
   await expect(input).toHaveText("Hey @scout do X");
@@ -2883,8 +2895,7 @@ test("a second mention while the first wake is in flight does not start the agen
     .toBe(baselineStartCount + 1);
 
   await input.fill("Hey @scout");
-  await expect(dropdown.getByText("scout")).toBeVisible();
-  await input.press("Enter");
+  await selectUnifiedMention(page, "scout");
   await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("also Y");
   await expect(input).toHaveText("Hey @scout also Y");
@@ -2981,8 +2992,7 @@ test("a failed publish drops the queued agent wake and never claims the message 
 
   const input = page.getByTestId("message-input");
   await input.fill("Hey @scout");
-  await expect(autocomplete(page).getByText("scout")).toBeVisible();
-  await input.press("Enter");
+  await selectUnifiedMention(page, "scout");
   await page.keyboard.type(" do X");
 
   const baselineStartCount = commandCount(
@@ -3398,11 +3408,13 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   const input = page.getByTestId("message-input");
   await input.fill("Loop in @scout");
 
-  const dropdown = autocomplete(page);
-  const fizzRow = dropdown.locator("button", { hasText: "scout" });
-  await expect(fizzRow).toBeVisible();
-  await expect(fizzRow.getByText("not in channel")).toBeVisible();
-  await input.press("Enter");
+  const scoutChoice = page
+    .getByTestId("lead-reference-picker")
+    .getByRole("region", { name: "People and agents" })
+    .getByRole("button")
+    .filter({ hasText: "scout" });
+  await expect(scoutChoice).toContainText("AI employee");
+  await scoutChoice.click();
 
   const baselineCommands = await readCommandLog(page);
   const baselineAddCount = commandCount(

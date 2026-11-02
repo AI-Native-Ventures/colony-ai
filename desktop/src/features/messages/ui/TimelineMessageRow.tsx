@@ -13,6 +13,7 @@ import { MessageThreadSummaryRow } from "./MessageThreadSummaryRow";
 import { SystemMessageRow } from "./SystemMessageRow";
 import { WhatsAppChannelEventRow } from "@/features/whatsapp-outreach/WhatsAppChannelEventRow";
 import { WhatsAppDiscussionActivity } from "@/features/whatsapp-outreach/WhatsAppDiscussionActivityRow";
+import { LeadUpdateSummaryCard } from "@/features/discovery/LeadUpdateSummaryCard";
 
 type ToggleReaction = (
   message: TimelineMessage,
@@ -250,6 +251,7 @@ export function MessageRowItem({
         showDepthGuides={false}
         videoReviewContext={videoReviewContext}
       />
+      <LeadUpdateSummaryCard message={message} />
       {footer ? <div className="relative z-20">{footer}</div> : null}
     </div>
   );

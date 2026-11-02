@@ -148,11 +148,16 @@ export function OutreachReferenceCard({
   let referenceError: unknown = null;
   let missing = false;
   if (link.type === "template") {
-    const template = templatesQuery.data?.find(
-      (candidate) =>
-        candidate.name === link.name &&
-        (link.language === undefined || candidate.language === link.language),
-    );
+    const templates = [
+      ...(templatesQuery.data ?? []),
+      ...(statusQuery.data?.templates ?? []),
+    ];
+    const matchesTemplate = (candidate: { name: string; language: string }) =>
+      candidate.name === link.name &&
+      (link.language === undefined || candidate.language === link.language);
+    const template =
+      templates.find(matchesTemplate) ??
+      templates.find((candidate) => candidate.name === link.name);
     reference = template
       ? {
           title: template.title,
@@ -166,6 +171,7 @@ export function OutreachReferenceCard({
       (statusQuery.data?.connected === true && templatesQuery.isPending);
     referenceError = templatesQuery.error ?? statusQuery.error;
     missing =
+      !reference &&
       !loading &&
       !referenceError &&
       statusQuery.data?.connected === true &&

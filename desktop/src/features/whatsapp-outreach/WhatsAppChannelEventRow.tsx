@@ -12,6 +12,7 @@ import { Button } from "@/shared/ui/button";
 import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 import type { TimelineMessage } from "@/features/messages/types";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
+import { WhatsAppBatchReviewRow } from "./WhatsAppBatchReviewRow";
 import { useWhatsAppSendNowAccess } from "./whatsappSendNowHooks";
 import {
   useWhatsAppApprovedBatchDetailsQuery,
@@ -22,7 +23,12 @@ import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
-import { whatsappQueuedScheduleLabel } from "./whatsappOutreachModels";
+import {
+  renderWhatsAppTemplate,
+  whatsappQueuedScheduleLabel,
+  type WhatsAppBatchRow,
+  type WhatsAppContact,
+} from "./whatsappOutreachModels";
 import { canSendNowWhatsAppBatch } from "./whatsappSendNowEligibility";
 
 function tagValue(message: TimelineMessage, name: string): string | null {
@@ -35,6 +41,19 @@ function batchPrefix(content: string): string | null {
       .exec(content)?.[1]
       ?.replaceAll("-", "")
       .toLocaleLowerCase() ?? null
+  );
+}
+
+function contactForRow(
+  row: Pick<WhatsAppBatchRow, "to">,
+  contacts: readonly WhatsAppContact[],
+): WhatsAppContact | null {
+  const digits = row.to.replace(/\D/gu, "");
+  return (
+    contacts.find(
+      (contact) =>
+        contact.e164.replace(/\D/gu, "") === digits || contact.waId === digits,
+    ) ?? null
   );
 }
 
@@ -121,7 +140,6 @@ function NoticeCard({
 }
 
 function PendingBatchCard({ message }: { message: TimelineMessage }) {
-  const navigate = useNavigate();
   const batchesQuery = useWhatsAppBatchesQuery();
   const membershipQuery = useMyRelayMembershipLookupQuery();
   const identityQuery = useIdentityQuery();
@@ -130,6 +148,10 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     null,
   );
   const [showAllRows, setShowAllRows] = React.useState(false);
+  const [editedRows, setEditedRows] = React.useState<Record<number, string[]>>(
+    {},
+  );
+  const [removedRows, setRemovedRows] = React.useState<number[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState("");
   const businessRecords = useBusinessRecords({ createIfMissing: false });
@@ -256,11 +278,21 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
   const skippedSummary = tagValue(message, "wa-skipped");
   const visibleRows = detail?.rows.filter((row) => row.state === "ready") ?? [];
   const displayedRows = showAllRows ? visibleRows : visibleRows.slice(0, 4);
+  const remainingReadyCount = Math.max(
+    0,
+    visibleRows.length - removedRows.length,
+  );
 
-  function maskedNumber(value: string): string {
-    const digits = value.replace(/\D/gu, "");
-    if (digits.length < 7) return value;
-    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} *** ${digits.slice(-4)}`;
+  function updateRowParams(idx: number, params: string[]) {
+    setEditedRows((current) => ({ ...current, [idx]: params }));
+  }
+
+  function toggleRemoved(idx: number) {
+    setRemovedRows((current) =>
+      current.includes(idx)
+        ? current.filter((value) => value !== idx)
+        : [...current, idx],
+    );
   }
 
   async function decide(nextDecision: "approve" | "reject") {
@@ -272,7 +304,14 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         v: 1,
         batchId: batch.batchId,
         decision: nextDecision,
-        ...(nextDecision === "approve" ? { dropRows: [], editRows: [] } : {}),
+        ...(nextDecision === "approve"
+          ? {
+              dropRows: [...removedRows].sort((a, b) => a - b),
+              editRows: Object.entries(editedRows)
+                .filter(([idx]) => !removedRows.includes(Number(idx)))
+                .map(([idx, params]) => ({ idx: Number(idx), params })),
+            }
+          : {}),
       });
       setDecision(nextDecision);
     } catch (error) {
@@ -339,27 +378,29 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
       ) : null}
       <ChannelCard label={cardLabel} testId={testId} wide>
         <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className={`mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ${
-              isRejected
-                ? "bg-colony-danger-bg text-colony-danger"
-                : isPending
-                  ? "bg-colony-need-bg text-colony-need"
-                  : "bg-colony-success-bg text-colony-success"
-            }`}
-          >
-            {isRejected ? (
-              <XCircle size={17} />
-            ) : isSent ? (
-              <Send size={16} />
-            ) : isPending ? (
-              <MessageCircle size={17} />
-            ) : (
-              <CheckCircle2 size={17} />
-            )}
-          </span>
-          <div className="min-w-0 flex-1">
+          {!isPending ? (
+            <span
+              aria-hidden="true"
+              className={`mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ${
+                isRejected
+                  ? "bg-colony-danger-bg text-colony-danger"
+                  : isPending
+                    ? "bg-colony-need-bg text-colony-need"
+                    : "bg-colony-success-bg text-colony-success"
+              }`}
+            >
+              {isRejected ? (
+                <XCircle size={17} />
+              ) : isSent ? (
+                <Send size={16} />
+              ) : isPending ? (
+                <MessageCircle size={17} />
+              ) : (
+                <CheckCircle2 size={17} />
+              )}
+            </span>
+          ) : null}
+          <div className={`min-w-0 ${isPending ? "w-full" : "flex-1"}`}>
             {!isPending ? (
               <h3 className="m-0 text-sm font-bold">{title}</h3>
             ) : null}
@@ -372,7 +413,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
               </p>
             ) : null}
             {isPending ? (
-              <div className="mt-3 flex flex-col gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
                   <span className="rounded-full bg-colony-need-bg px-3 py-1 text-colony-need">
                     Needs you
@@ -440,35 +481,39 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
                       </span>
                       <span>Preview each message before approval</span>
                     </div>
-                    <ul className="m-0 list-none divide-y divide-colony-border p-0">
-                      {displayedRows.map((row) => {
-                        const name = leadNameForRow(row);
-                        return (
-                          <li
-                            className="flex min-w-0 items-center gap-3 py-3"
-                            key={`${row.idx}:${row.to}`}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-colony-success-bg text-sm font-semibold text-colony-success"
-                            >
-                              {(name ?? "?").slice(0, 1).toLocaleUpperCase()}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold text-colony-fg">
-                                {name ?? `Lead ${row.idx + 1}`}
-                              </span>
-                              <span className="block text-xs text-colony-fg-muted">
-                                {maskedNumber(row.to)}
-                              </span>
-                            </span>
-                            <span className="hidden max-w-48 truncate text-xs text-colony-fg-secondary sm:block">
-                              {row.preview}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <div className="c3wa-batch-row-list">
+                      {displayedRows.map((row, index) => (
+                        <WhatsAppBatchReviewRow
+                          contact={contactForRow(row, contactsQuery.data ?? [])}
+                          editable={isPending && canManage}
+                          index={index}
+                          isNext={false}
+                          isRemoved={removedRows.includes(row.idx)}
+                          key={`channel:${row.idx}:${row.to}`}
+                          leadName={leadNameForRow(row)}
+                          materialLink={
+                            detail?.materialLinks[row.idx] ??
+                            detail?.materialLinks[index] ??
+                            null
+                          }
+                          onRemove={() => toggleRemoved(row.idx)}
+                          onSave={(params) => updateRowParams(row.idx, params)}
+                          params={editedRows[row.idx] ?? row.params}
+                          preview={
+                            editedRows[row.idx] && template
+                              ? renderWhatsAppTemplate(
+                                  template.body,
+                                  editedRows[row.idx],
+                                )
+                              : row.preview
+                          }
+                          row={row}
+                          template={template ?? null}
+                          testIdPrefix="whatsapp-channel-batch-row"
+                          variant="channel"
+                        />
+                      ))}
+                    </div>
                     {visibleRows.length > 4 ? (
                       <Button
                         className="self-start"
@@ -488,7 +533,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
                   <p className="m-0 rounded-lg bg-colony-bg-secondary px-3 py-2 text-sm text-colony-fg-secondary">
                     {statusQuery.data.newChatsSentToday} of{" "}
                     {statusQuery.data.dailyNewChatCap} new chats used today.{" "}
-                    {batch.rows.ready} send today. Replies are never capped.
+                    {remainingReadyCount} send today. Replies are never capped.
                   </p>
                 ) : null}
               </div>
@@ -519,23 +564,7 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
                 size="sm"
                 type="button"
               >
-                Approve all {batch?.rows.ready ?? 0}
-              </Button>
-              <Button
-                disabled={!batch || busy || decision !== null}
-                onClick={() => {
-                  if (batch) {
-                    void navigate({
-                      to: "/whatsapp/batches/$batchId",
-                      params: { batchId: batch.batchId },
-                    });
-                  }
-                }}
-                size="sm"
-                variant="outline"
-                type="button"
-              >
-                Review each message
+                Approve all {remainingReadyCount}
               </Button>
               <Button
                 disabled={!batch || !canManage || busy || decision !== null}

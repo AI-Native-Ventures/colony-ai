@@ -756,7 +756,7 @@ export function LeadsScreen(context: LeadContext) {
             {selectionError}
           </p>
         ) : null}
-        {canWrite ? (
+        {canWrite && !listDialogOpen ? (
           <OutreachSelectionBar
             count={selected.size}
             onAddToList={() => setListDialogOpen(true)}

@@ -107,7 +107,7 @@ function runUpdate(
             partyType: prospect.party.partyType as "person" | "organization",
             externalIds: prospect.party.externalIds,
             qualification:
-              action.kind === "mark-lost" ? "not_fit" : prospect.qualification,
+              action.kind === "mark-lost" ? "not_fit" : "qualified",
             stage,
             lostReason:
               stage === "lost"

@@ -4493,6 +4493,29 @@
   margin-left: 3rem;
 }
 
+.c3wa-channel-batch-row .c3wa-batch-row-head {
+  flex-wrap: wrap;
+}
+
+.c3wa-channel-batch-row .c3wa-contact-avatar {
+  border-radius: 0.5rem;
+}
+
+.c3wa-channel-batch-row .c3wa-batch-row-contact {
+  flex: 1 1 12rem;
+}
+
+.c3wa-channel-batch-row .c3wa-row-preview-link {
+  max-width: 100%;
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+
+.c3wa-channel-batch-row .c3wa-batch-row-actions {
+  flex: none;
+  margin-left: 0;
+}
+
 .c3wa-batch-row-actions button,
 .c3wa-batch-show-all {
   padding: 0;
@@ -4503,6 +4526,35 @@
   font-size: calc(12.5 * var(--colony-px));
   font-weight: 800;
   cursor: pointer;
+}
+
+@media (max-width: 48rem) {
+  .c3wa-channel-batch-row .c3wa-batch-row-head {
+    display: grid;
+    grid-template-columns: 2.125rem minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .c3wa-channel-batch-row .c3wa-contact-avatar {
+    grid-row: 1 / span 2;
+  }
+
+  .c3wa-channel-batch-row .c3wa-batch-row-contact {
+    min-width: 0;
+  }
+
+  .c3wa-channel-batch-row .c3wa-row-preview-link {
+    grid-column: 2;
+    margin-left: 0;
+  }
+
+  .c3wa-channel-batch-row .c3wa-batch-row-actions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
 }
 
 .c3wa-batch-edit-fields {

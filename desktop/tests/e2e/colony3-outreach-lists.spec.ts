@@ -27,6 +27,7 @@ const RELAY_SECRET = generateSecretKey();
 const RELAY_SELF = getPublicKey(RELAY_SECRET);
 const LIST_NAME = "Melville guesthouses, Nov";
 const appPort = Number(process.env.COLONY_E2E_PORT ?? 4173);
+let scoutMessageSequence = 0;
 const test = base.extend({
   // Playwright requires the fixture argument to use object destructuring.
   // biome-ignore lint/correctness/noEmptyPattern: This fixture creates its own context.
@@ -144,6 +145,20 @@ type ReferenceOptions = {
   restaurantsBoard?: boolean;
 };
 
+function johannesburgTodayAt(hour: number, minute: number): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Africa/Johannesburg",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const read = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return new Date(
+    `${read("year")}-${read("month")}-${read("day")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+02:00`,
+  );
+}
+
 async function openReference(
   page: Page,
   route: string,
@@ -152,6 +167,7 @@ async function openReference(
   options: ReferenceOptions = {},
 ) {
   mkdirSync(OUT, { recursive: true });
+  await page.clock.setFixedTime(johannesburgTodayAt(10, 0));
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1200 });
   await page.emulateMedia({ colorScheme: theme });
   const outreachMessageAt = Math.floor(
@@ -270,7 +286,10 @@ async function openReference(
           template: "hl_vb",
           language: "en",
           note: "Scout wants to message 10 guesthouses in Melville",
-          materialLinks: [],
+          materialLinks: readyBatchRows.map(
+            ([businessName]) =>
+              `https://preview.example.com/${businessName.toLocaleLowerCase().replace(/[^a-z0-9]+/gu, "-")}`,
+          ),
           decidedBy: null,
           decidedAt: null,
           createdAt: "2026-11-02T10:46:00+02:00",
@@ -624,15 +643,49 @@ async function capture(
   }
 }
 
-async function waitForMockLiveSubscription(page: Page, channelName: string) {
+async function jumpTimelineToLatest(page: Page) {
+  const jumpToLatest = page.getByTestId("message-scroll-to-latest");
+  const timeline = page.getByTestId("message-timeline");
+  const isTimelineAtBottom = () =>
+    timeline.evaluate(
+      (element) =>
+        element.scrollTop + element.clientHeight >= element.scrollHeight - 2,
+    );
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!(await jumpToLatest.isVisible())) break;
+    await jumpToLatest.click();
+    await expect.poll(isTimelineAtBottom, { timeout: 3_000 }).toBe(true);
+    await page.waitForTimeout(120);
+    if (await jumpToLatest.isVisible()) {
+      const bounds = await timeline.boundingBox();
+      if (bounds) {
+        await page.mouse.move(
+          bounds.x + bounds.width / 2,
+          bounds.y + bounds.height / 2,
+        );
+        await page.mouse.wheel(0, -160);
+        await page.mouse.wheel(0, 4_000);
+      }
+    }
+  }
+  await expect(jumpToLatest).toBeHidden();
+}
+
+async function waitForMockLiveSubscription(
+  page: Page,
+  channelName: string,
+  kind?: number,
+) {
   await expect
     .poll(() =>
       page.evaluate(
-        (name) =>
+        ({ channelName: name, kind: subscribedKind }) =>
           window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
             channelName: name,
+            kind: subscribedKind,
           }) ?? false,
-        channelName,
+        { channelName, kind },
       ),
     )
     .toBe(true);
@@ -644,13 +697,19 @@ async function seedOutreachUnread(page: Page) {
   }, REFERENCE_CHANNEL_IDS.outreach);
   await page.getByRole("button", { name: "Discussion", exact: true }).click();
   await expect(page.getByTestId("message-input")).toBeVisible();
-  await waitForMockLiveSubscription(page, "Outreach");
+  await waitForMockLiveSubscription(page, "Outreach", 40002);
   await page.evaluate((channelId) => {
     window.location.hash = `/channels/${channelId}`;
   }, REFERENCE_CHANNEL_IDS.general);
   await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await waitForMockLiveSubscription(page, "Outreach");
-  const firstCreatedAt = Math.floor(Date.now() / 1_000) + 60;
+  await waitForMockLiveSubscription(page, "Outreach", 40002);
+  const latestFixtureMessageAt = Math.floor(
+    Date.parse(referenceChannelLastMessageAt(20)) / 1_000,
+  );
+  const firstCreatedAt = Math.max(
+    Math.floor(Date.now() / 1_000) + 60,
+    latestFixtureMessageAt + 120,
+  );
   for (const [index, content] of [
     "WhatsApp batch ready for review.",
     "Two replies came in overnight.",
@@ -661,6 +720,7 @@ async function seedOutreachUnread(page: Page) {
           channelName: "Outreach",
           content: body,
           pubkey: author,
+          kind: 40002,
           createdAt,
         })?.id,
       {
@@ -671,6 +731,9 @@ async function seedOutreachUnread(page: Page) {
     );
     expect(eventId).toBeTruthy();
   }
+  await expect(page.getByTestId("channel-unread-Outreach")).toHaveText(
+    "2 unread notifications",
+  );
   await page.evaluate(() => {
     window.location.hash = "/leads";
   });
@@ -685,27 +748,42 @@ async function emitScoutMessage(
   page: Page,
   content: string,
   extraTags: string[][] = [],
+  createdAtOverride?: Date,
 ) {
   await waitForMockLiveSubscription(page, "Scout");
+  const latestFixtureMessageAt = Math.floor(
+    Date.parse(referenceChannelLastMessageAt(48)) / 1_000,
+  );
+  const pageNow = await page.evaluate(() => Math.floor(Date.now() / 1_000));
+  const createdAt = createdAtOverride
+    ? Math.floor(createdAtOverride.getTime() / 1_000)
+    : Math.max(pageNow + 60, latestFixtureMessageAt + 120) +
+      scoutMessageSequence++;
   const eventId = await page.evaluate(
-    ({ scoutPubkey, body, tags }) =>
+    ({ scoutPubkey, body, tags, createdAt: eventCreatedAt }) =>
       window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
         channelName: "Scout",
         content: body,
         pubkey: scoutPubkey,
         extraTags: tags,
+        createdAt: eventCreatedAt,
       })?.id,
     {
       scoutPubkey: REFERENCE_AGENTS.scout.pubkey,
       body: content,
       tags: extraTags,
+      createdAt,
     },
   );
   expect(eventId).toBeTruthy();
   return eventId;
 }
 
-async function emitPendingBatchNotice(page: Page, listId: string) {
+async function emitPendingBatchNotice(
+  page: Page,
+  listId: string,
+  createdAtOverride?: Date,
+) {
   await emitScoutMessage(
     page,
     "10 are ready, each with a website preview. Nothing goes out until you approve.",
@@ -719,6 +797,7 @@ async function emitPendingBatchNotice(page: Page, listId: string) {
         "2 of 12: Melville Manor B&B has no WhatsApp number, Hillside Hideaway opted out.",
       ],
     ],
+    createdAtOverride,
   );
   await expect(
     page.getByTestId("whatsapp-channel-batch-pending"),
@@ -836,6 +915,22 @@ test.describe("Outreach lists", () => {
       "41 leads · from Restaurants prospects",
     );
     await expect(leadAddDialog).toContainText("6 leads · used 3 weeks ago");
+    const newListName = leadAddDialog.getByRole("textbox", {
+      name: "New list name",
+    });
+    await expect(newListName).toBeVisible();
+    const newListOption = leadAddDialog.locator(".c3l-outreach-new-option");
+    await expect(newListOption).toHaveClass(/c3l-outreach-list-option/);
+    await expect(newListOption).toHaveClass(/is-selected/);
+    await expect(newListOption).toHaveCSS("border-top-width", "2px");
+    const newListOptionBackground = await newListOption.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
+    expect(newListOptionBackground).not.toBe("rgb(255, 255, 255)");
+    const newListNameBox = await newListName.boundingBox();
+    if (!newListNameBox) throw new Error("New list name has no bounds");
+    expect(newListNameBox.width).toBeGreaterThan(400);
+    await newListName.evaluate((input) => input.blur());
     await capture(page, "OLAddToList");
     await leadAddDialog.getByRole("button", { name: "Cancel" }).click();
     await selectionToolbar.getByRole("button", { name: "Ask Scout" }).click();
@@ -994,8 +1089,14 @@ test.describe("Outreach lists", () => {
     await capture(page, "OLListBatchApproval");
     await page.keyboard.press("Escape");
 
-    await detail
-      .getByRole("link", { name: "Jacaranda Lane Guesthouse" })
+    await page.evaluate(() => {
+      window.location.hash = "/leads";
+    });
+    await expect(leads).toBeVisible();
+    await leads
+      .locator("tbody tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" })
+      .getByRole("link", { name: "Review lead" })
       .click();
     const lead = page.getByTestId("w10-prospect-page");
     await expect(
@@ -1012,6 +1113,9 @@ test.describe("Outreach lists", () => {
     await expect(whatsApp).toContainText("Uses the business phone.");
     await expect(whatsApp).toContainText("+27 82 555 4410");
     await expect(whatsApp).toContainText(LIST_NAME);
+    await expect(page.getByTestId("lead-breadcrumb")).toContainText(
+      /Business\s*\/\s*Sales\s*\/\s*Leads\s*\/\s*Jacaranda Lane Guesthouse/,
+    );
     await capture(page, "OLLeadPhone");
     await whatsApp.getByRole("button", { name: "Use another number" }).click();
     const numberDialog = page.getByTestId("whatsapp-number-dialog");
@@ -1036,15 +1140,6 @@ test.describe("Outreach lists", () => {
     const composer = page.getByTestId("message-input");
     await page.getByTestId("reference-lead-button").click();
     await expect(picker).toBeVisible();
-    for (const group of [
-      "People and agents",
-      "Lists",
-      "Campaigns",
-      "Templates",
-      "Leads",
-    ]) {
-      await expect(picker.getByRole("region", { name: group })).toBeVisible();
-    }
     const identities = picker.getByRole("region", {
       name: "People and agents",
     });
@@ -1054,13 +1149,6 @@ test.describe("Outreach lists", () => {
     await expect(
       identities.getByRole("button", { name: /Scout/ }),
     ).toContainText("AI employee");
-    await expect(
-      identities.getByRole("button", { name: /Aya Molefe/ }),
-    ).toBeVisible();
-    await expect(
-      identities.getByRole("button", { name: /Aya Molefe/ }),
-    ).toContainText("Sales");
-    await capture(page, "OLMentionPicker");
     await page.keyboard.press("Escape");
     await composer.pressSequentially("@", { delay: 60 });
     await expect(picker).toBeVisible();
@@ -1084,12 +1172,42 @@ test.describe("Outreach lists", () => {
     );
     await expect(chip).toContainText(LIST_NAME);
     await page.keyboard.type(" more and update their records");
+    await page.clock.setFixedTime(johannesburgTodayAt(10, 12));
     await page.getByTestId("send-message").click();
     await emitScoutMessage(
       page,
       "Done for 12 guesthouses. 9 records now have a website, phone or contact name added.",
-      [["list", listId]],
+      [
+        ["list", listId],
+        [
+          "lead-update-summary",
+          JSON.stringify({
+            schemaVersion: 1,
+            listId,
+            listName: LIST_NAME,
+            updatedCount: 9,
+            updatedFields: "website, phone or contact name added",
+            missingWebsite: [
+              "Melville Manor B&B",
+              "Hillside Hideaway",
+              "Fourth Avenue Rooms",
+            ],
+            source: "Each change shows on the lead with the page Scout used",
+          }),
+        ],
+      ],
+      johannesburgTodayAt(10, 19),
     );
+    const updateSummary = page.getByTestId("lead-update-summary");
+    await expect(updateSummary).toContainText(
+      "9 records: website, phone or contact name added",
+    );
+    await expect(updateSummary).toContainText(
+      "Melville Manor B&B, Hillside Hideaway, Fourth Avenue Rooms",
+    );
+    await expect(
+      updateSummary.getByRole("button", { name: "Open the list" }),
+    ).toBeVisible();
     await composer.pressSequentially("@Scout");
     await picker
       .getByRole("region", { name: "People and agents" })
@@ -1105,13 +1223,39 @@ test.describe("Outreach lists", () => {
       .getByRole("region", { name: "Templates" })
       .getByRole("button", { name: /Built a site for you/ })
       .click();
+    await expect(
+      composer.locator(
+        '[data-composer-buzz-link][data-buzz-link-kind="template"]',
+      ),
+    ).toHaveAttribute("data-href", "buzz://template/hl_vb?lang=en");
+    await page.clock.setFixedTime(johannesburgTodayAt(10, 24));
     await page.getByTestId("send-message").click();
-    await emitPendingBatchNotice(page, listId);
+    const templateReference = page
+      .locator(".c3o-reference")
+      .filter({
+        hasText: /Built a site for you|This template is no longer available/,
+      })
+      .last();
+    await expect(templateReference).toHaveAttribute("data-state", "ready");
+    await expect(templateReference).toContainText("Built a site for you");
+    await emitPendingBatchNotice(page, listId, johannesburgTodayAt(10, 31));
     const pendingCard = page.getByTestId("whatsapp-channel-batch-pending");
     await expect(pendingCard).toContainText(LIST_NAME);
     await expect(pendingCard).toContainText("Built a site for you");
     await expect(pendingCard).toContainText("Skipped 2 of 12");
     await expect(pendingCard).toContainText("Jacaranda Lane Guesthouse");
+    const firstPendingRow = pendingCard.getByTestId(
+      "whatsapp-channel-batch-row-0",
+    );
+    await expect(
+      firstPendingRow.getByRole("link", { name: /Website preview/ }),
+    ).toBeVisible();
+    await expect(
+      firstPendingRow.getByRole("button", { name: "Edit" }),
+    ).toBeVisible();
+    await expect(
+      firstPendingRow.getByRole("button", { name: "Remove" }),
+    ).toBeVisible();
     await expect(
       pendingCard.getByRole("button", { name: "Approve all 10" }),
     ).toBeEnabled();
@@ -1121,6 +1265,8 @@ test.describe("Outreach lists", () => {
       })
       .last();
     await expect(reference).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 1800 });
+    await jumpTimelineToLatest(page);
     await capture(page, "OLChatResolved");
     await reference.click();
     await expect(page.getByTestId("outreach-list-detail")).toBeVisible();
@@ -1169,6 +1315,7 @@ test.describe("Outreach lists", () => {
     await expect(
       boardPicker.getByRole("region", { name: "Templates" }),
     ).toContainText("Marketing · approved");
+    await capture(page, "OLMentionPicker");
     const boardPeople = boardPicker.getByRole("region", {
       name: "People and agents",
     });
@@ -1279,6 +1426,12 @@ test.describe("Outreach lists", () => {
       .selectOption("hl_vb:en");
     await expect(mobileList).toContainText("Built a site for you");
     await expect(mobileList.getByRole("status")).toBeHidden();
+    const firstMobileMember = mobileList
+      .locator(".c3l-list-members tbody tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" });
+    await expect(
+      firstMobileMember.locator(".c3l-list-status-badge:visible"),
+    ).toHaveCount(1);
     await mobileList.evaluate((element) => element.scrollTo({ top: 0 }));
     await capture(page, "OLMobileList");
     const overflow = await page.evaluate(
@@ -1286,10 +1439,24 @@ test.describe("Outreach lists", () => {
     );
     expect(overflow).toBeLessThanOrEqual(2);
 
-    await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
+    await page.evaluate((channelId) => {
+      window.location.hash = `/channels/${channelId}`;
+    }, REFERENCE_CHANNEL_IDS.scoutDm);
     await expect(page.getByTestId("message-input")).toBeVisible();
+    const composer = page.getByTestId("message-input");
     const picker = page.getByTestId("lead-reference-picker");
-    await page.getByTestId("message-input").pressSequentially("@bui");
+    await composer.pressSequentially("@Scout");
+    await picker
+      .getByRole("region", { name: "People and agents" })
+      .getByRole("button", { name: /Scout/ })
+      .click();
+    await composer.pressSequentially(" prepare messages for ");
+    await composer.pressSequentially(`@${LIST_NAME}`);
+    await picker
+      .getByRole("region", { name: "Lists" })
+      .getByRole("button", { name: new RegExp(LIST_NAME) })
+      .click();
+    await composer.pressSequentially(" with @bui");
     await expect(picker).toBeVisible();
     await expect(
       picker.getByLabel("Search mentions and references"),
@@ -1445,8 +1612,8 @@ test.describe("Outreach lists", () => {
     const lists = page.getByTestId("outreach-lists-page");
     const createdDarkList = lists.getByRole("link", { name: LIST_NAME });
     const darkListHref = await createdDarkList.getAttribute("href");
-    const darkListId = darkListHref?.split("/").at(-1);
-    expect(darkListId).toBeTruthy();
+    const createdDarkListId = darkListHref?.split("/").at(-1);
+    expect(createdDarkListId).toBeTruthy();
     await createdDarkList.click();
     const darkList = page.getByTestId("outreach-list-detail");
     await darkList
@@ -1455,8 +1622,15 @@ test.describe("Outreach lists", () => {
     await expect(darkList).toContainText("Built a site for you");
     await expect(darkList.getByRole("status")).toBeHidden();
     await capture(page, "OLListPageDark");
-    await darkList
-      .getByRole("link", { name: "Jacaranda Lane Guesthouse" })
+    await page.evaluate(() => {
+      window.location.hash = "/leads";
+    });
+    const darkLeads = page.getByTestId("w10-leads-page");
+    await expect(darkLeads).toBeVisible();
+    await darkLeads
+      .locator("tbody tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" })
+      .getByRole("link", { name: "Review lead" })
       .click();
     const darkLead = page.getByTestId("w10-prospect-page");
     await expect(
@@ -1465,25 +1639,10 @@ test.describe("Outreach lists", () => {
     await expect(
       darkLead.getByTestId("whatsapp-lead-detail-card"),
     ).toContainText(LIST_NAME);
+    await expect(page.getByTestId("lead-breadcrumb")).toContainText(
+      /Business\s*\/\s*Sales\s*\/\s*Leads\s*\/\s*Jacaranda Lane Guesthouse/,
+    );
     await capture(page, "OLLeadPhoneDark");
-    await darkLead.getByRole("link", { name: LIST_NAME }).click();
-
-    await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
-    await expect(page.getByTestId("message-input")).toBeVisible();
-    await page.getByTestId("reference-lead-button").click();
-    const picker = page.getByTestId("lead-reference-picker");
-    await expect(picker).toBeVisible();
-    const listChoice = picker.getByRole("button", { name: LIST_NAME });
-    await expect(listChoice).toBeVisible();
-    await capture(page, "OLMentionPickerDark");
-    await listChoice.click();
-    await page.keyboard.type("Review this shared lead list.");
-    await page.getByTestId("send-message").click();
-    await emitPendingBatchNotice(page, darkListId as string);
-    await expect(
-      page.getByRole("button", { name: `Open outreach list: ${LIST_NAME}` }),
-    ).toBeVisible();
-    await capture(page, "OLChatResolvedDark");
 
     await openReference(page, "/leads", 390, "dark", {
       whatsappGuesthouses: true,
@@ -1538,6 +1697,12 @@ test.describe("Outreach lists", () => {
       .selectOption("hl_vb:en");
     await expect(mobileList).toContainText("Built a site for you");
     await expect(mobileList.getByRole("status")).toBeHidden();
+    const firstMobileMember = mobileList
+      .locator(".c3l-list-members tbody tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" });
+    await expect(
+      firstMobileMember.locator(".c3l-list-status-badge:visible"),
+    ).toHaveCount(1);
     await mobileList.evaluate((element) => element.scrollTo({ top: 0 }));
     await capture(page, "OLMobileListDark");
     expect(
@@ -1553,12 +1718,118 @@ test.describe("Outreach lists", () => {
       "dark",
       { mockWhatsApp: true, outreachMentionBoard: true },
     );
-    await page.getByTestId("reference-lead-button").click();
-    const darkPicker = page.getByTestId("lead-reference-picker");
-    await expect(darkPicker).toBeVisible();
     await expect(
-      darkPicker.getByRole("region", { name: "Lists" }),
-    ).toContainText("Melville guesthouses, follow up");
+      page.getByText(
+        "Morning. 3 replies came in overnight on WhatsApp; Seventh Street Rooms wants a call.",
+      ),
+    ).toBeVisible();
+    const darkListId = "3f1a7000-0000-4000-9000-000000000001";
+    const composer = page.getByTestId("message-input");
+    const picker = page.getByTestId("lead-reference-picker");
+    await composer.pressSequentially("@Scout");
+    await expect(picker).toBeVisible();
+    await picker
+      .getByRole("region", { name: "People and agents" })
+      .getByRole("button", { name: /Scout/ })
+      .click();
+    await composer.pressSequentially(" research ");
+    await composer.pressSequentially(`@${LIST_NAME}`);
+    const search = picker.getByRole("textbox", {
+      name: "Search mentions and references",
+    });
+    await expect(search).toHaveValue(LIST_NAME);
+    await expect(
+      picker.getByTestId(`outreach-mention-list-${darkListId}`),
+    ).toBeVisible();
+    await search.press("Enter");
+    const listChip = composer.locator(
+      `[data-composer-buzz-link][data-href="buzz://list/${darkListId}"]`,
+    );
+    await expect(listChip).toContainText(LIST_NAME);
+    await page.keyboard.type(" more and update their records");
+    await page.clock.setFixedTime(johannesburgTodayAt(10, 12));
+    await page.getByTestId("send-message").click();
+    await emitScoutMessage(
+      page,
+      "Done for 12 guesthouses. 9 records now have a website, phone or contact name added.",
+      [
+        ["list", darkListId],
+        [
+          "lead-update-summary",
+          JSON.stringify({
+            schemaVersion: 1,
+            listId: darkListId,
+            listName: LIST_NAME,
+            updatedCount: 9,
+            updatedFields: "website, phone or contact name added",
+            missingWebsite: [
+              "Melville Manor B&B",
+              "Hillside Hideaway",
+              "Fourth Avenue Rooms",
+            ],
+            source: "Each change shows on the lead with the page Scout used",
+          }),
+        ],
+      ],
+      johannesburgTodayAt(10, 19),
+    );
+    const darkUpdateSummary = page.getByTestId("lead-update-summary");
+    await expect(darkUpdateSummary).toContainText(
+      "9 records: website, phone or contact name added",
+    );
+    await expect(
+      darkUpdateSummary.getByRole("button", { name: "Open the list" }),
+    ).toBeVisible();
+
+    await composer.pressSequentially("@Scout");
+    await picker
+      .getByRole("region", { name: "People and agents" })
+      .getByRole("button", { name: /Scout/ })
+      .click();
+    await composer.pressSequentially(" prepare WhatsApp messages for ");
+    await composer.pressSequentially(`@${LIST_NAME}`);
+    await expect(search).toHaveValue(LIST_NAME);
+    await search.press("Enter");
+    await composer.pressSequentially(" with @");
+    await expect(picker).toBeVisible();
+    const darkLists = picker.getByRole("region", { name: "Lists" });
+    await expect(darkLists).toContainText("Melville guesthouses, follow up");
+    await expect(darkLists.locator(".c3r-name")).toHaveText([
+      LIST_NAME,
+      "Melville guesthouses, follow up",
+    ]);
+    await expect(
+      picker.getByRole("region", { name: "Campaigns" }),
+    ).toContainText("Discovery · 24 found");
+    await expect(
+      picker.getByRole("region", { name: "Templates" }),
+    ).toContainText("New site follow up");
+    await expect(picker.getByRole("region", { name: "Leads" })).toContainText(
+      "Melville Manor B&B",
+    );
     await capture(page, "OLMentionPickerDark");
+    await composer.pressSequentially("Built a site for you");
+    await expect(search).toHaveValue("Built a site for you");
+    await picker
+      .getByRole("region", { name: "Templates" })
+      .getByRole("button", { name: /Built a site for you/ })
+      .click();
+    await page.clock.setFixedTime(johannesburgTodayAt(10, 24));
+    await page.getByTestId("send-message").click();
+    await emitPendingBatchNotice(page, darkListId, johannesburgTodayAt(10, 31));
+    const pendingCard = page.getByTestId("whatsapp-channel-batch-pending");
+    await expect(pendingCard).toContainText(LIST_NAME);
+    await expect(pendingCard).toContainText("Built a site for you");
+    await expect(pendingCard).toContainText("Skipped 2 of 12");
+    await expect(
+      pendingCard.getByRole("button", { name: "Approve all 10" }),
+    ).toBeEnabled();
+    const darkReference = page
+      .getByRole("button", { name: `Open outreach list: ${LIST_NAME}` })
+      .last();
+    await expect(darkReference).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 1800 });
+    await jumpTimelineToLatest(page);
+    await capture(page, "OLChatResolvedDark");
   });
 });

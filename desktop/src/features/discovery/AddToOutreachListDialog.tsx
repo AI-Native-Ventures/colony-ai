@@ -155,20 +155,21 @@ export function AddToOutreachListDialog({
                 />
                 <span className="c3l-outreach-list-option-copy">
                   <strong>New list</strong>
-                  <small>{leadIds.length} leads · created today</small>
                 </span>
               </label>
               {target === NEW_LIST ? (
-                <input
-                  aria-label="New list name"
-                  autoFocus
-                  disabled={busy}
-                  id="outreach-list-name"
-                  maxLength={80}
-                  onChange={(event) => setName(event.currentTarget.value)}
-                  required
-                  value={name}
-                />
+                <div className="c3l-outreach-dialog-field">
+                  <input
+                    aria-label="New list name"
+                    autoFocus
+                    disabled={busy}
+                    id="outreach-list-name"
+                    maxLength={80}
+                    onChange={(event) => setName(event.currentTarget.value)}
+                    required
+                    value={name}
+                  />
+                </div>
               ) : null}
             </div>
             {lists.map((list) => {
