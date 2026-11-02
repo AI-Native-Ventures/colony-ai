@@ -612,6 +612,25 @@ mod tests {
     }
 
     #[test]
+    fn a_sticker_keeps_its_media_id_so_the_picture_can_be_fetched() {
+        // RED PROOF: on main the sticker became the text "[sticker]" and the Meta media id was
+        // dropped, so the file could never be downloaded (media ids expire after 30 days).
+        let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
+            "metadata": {"phone_number_id": "111"},
+            "messages": [{"from": "27821234567", "id": "wamid.S", "timestamp": "1800000000",
+                          "type": "sticker",
+                          "sticker": {"id": "MEDIA_ID_123", "mime_type": "image/webp"}}]
+        }}]}]});
+        let parsed = parse_payload(&payload, "111");
+        assert_eq!(parsed.messages.len(), 1);
+        assert!(
+            format!("{:?}", parsed.messages[0]).contains("MEDIA_ID_123"),
+            "the media id was lost: {:?}",
+            parsed.messages[0]
+        );
+    }
+
+    #[test]
     fn statuses_carry_the_meta_error_code() {
         let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
         "metadata": {"phone_number_id": "111"},
