@@ -4,7 +4,6 @@ import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
-import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import {
   useAcpRuntimesQuery,
   useAgentConfigSurface,
@@ -41,6 +40,7 @@ import {
 } from "./AgentPageOverview";
 import { AgentPageRuntime } from "./AgentPageRuntime";
 import { AgentStatusChip } from "./AgentStatusChip";
+import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
 import { useManagedAgentActions } from "./useManagedAgentActions";
 import "./agentsColony3.css";
 
@@ -199,7 +199,9 @@ export function AgentPage({
   const [opening, setOpening] = React.useState(false);
 
   const runtimes = runtimesQuery.data ?? [];
-  const runtime = agent ? runtimeForAgent(agent, runtimes) : undefined;
+  const runtime = agent?.runningRuntimeId
+    ? runtimes.find((candidate) => candidate.id === agent.runningRuntimeId)
+    : undefined;
   const persona = personasQuery.data?.find(
     (candidate) => candidate.id === agent?.personaId,
   );
@@ -442,7 +444,7 @@ export function AgentPage({
     ? "loading"
     : runtimesQuery.isError
       ? "error"
-      : runtime
+      : agent.status === "running" && runtime
         ? runtime.availability
         : "unknown";
   const positionChip =
@@ -604,8 +606,6 @@ export function AgentPage({
               configQuery.error instanceof Error ? configQuery.error : null
             }
             configLoading={configQuery.isLoading}
-            inheritedModel={persona?.model ?? globalConfig.model}
-            inheritedProvider={persona?.provider ?? globalConfig.provider}
             providerEnvVars={{
               ...globalConfig.env_vars,
               ...(persona?.envVars ?? {}),
@@ -616,6 +616,7 @@ export function AgentPage({
             onRetryConfiguration={() => void configQuery.refetch()}
             runtime={runtime}
           />
+          <AgentRuntimeSwitchNotice pubkey={agent.pubkey} />
           <AgentPageOverview
             activeTurns={activeTurns}
             agent={agent}

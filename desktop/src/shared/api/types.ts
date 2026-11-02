@@ -390,6 +390,10 @@ export type ManagedAgent = {
   systemPrompt: string | null;
   avatarUrl: string | null;
   model: string | null;
+  /** Runtime observed from the tracked process that is currently running. */
+  runningRuntimeId?: string | null;
+  /** Model reported by the live ACP session or captured at spawn. */
+  runningModel?: string | null;
   modelSource: "definition" | "global" | "instance_legacy" | null;
   /** LLM inference provider, from the agent's pinned record snapshot. */
   provider: string | null;

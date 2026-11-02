@@ -295,6 +295,23 @@ pub fn build_managed_agent_summary(
         .and_then(|r| r.mcp_command)
         .unwrap_or("")
         .to_string();
+    let (running_runtime_id, running_model) =
+        match pair_runtime.filter(|_| status == "running") {
+            Some(runtime) => {
+                let runtime_id = known_acp_runtime(&runtime.spawn_config.command)
+                    .map(|runtime| runtime.id.to_string());
+                let live_model = pair_key
+                    .as_ref()
+                    .and_then(|key| {
+                        app.state::<crate::app_state::AppState>()
+                            .get_session_cache(key)
+                    })
+                    .and_then(|cache| cache.current_model)
+                    .or_else(|| runtime.spawn_config.model.clone());
+                (runtime_id, live_model)
+            }
+            None => (None, None),
+        };
 
     Ok(ManagedAgentSummary {
         pubkey: record.pubkey.clone(),
@@ -316,6 +333,8 @@ pub fn build_managed_agent_summary(
         system_prompt: effective_prompt,
         avatar_url: record.avatar_url.clone(),
         model: effective_model,
+        running_runtime_id,
+        running_model,
         model_source,
         provider: effective_provider,
         persona_out_of_date,

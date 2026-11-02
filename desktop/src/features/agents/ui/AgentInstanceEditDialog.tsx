@@ -11,6 +11,12 @@ import {
   useStartManagedAgentMutation,
   useUpdateManagedAgentMutation,
 } from "@/features/agents/hooks";
+import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
+import {
+  beginAgentRuntimeSwitch,
+  failAgentRuntimeSwitch,
+  finishAgentRuntimeSwitch,
+} from "@/features/agents/agentRuntimeSwitchStore";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
 import type {
@@ -93,6 +99,7 @@ import { useProviderApiKeyFieldState } from "./providerApiKeyFieldState";
 import { resolveModelFieldStatusMessage } from "./agentConfigControls";
 import { showAgentProfileSyncWarning } from "./agentProfileSyncWarning";
 import { AddCustomHarnessDialog } from "./AddCustomHarnessDialog";
+import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
 import {
   ADD_CUSTOM_HARNESS_OPTION,
   runtimeDropdownAction,
@@ -117,6 +124,7 @@ export function AgentInstanceEditDialog({
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const startMutation = useStartManagedAgentMutation();
+  const activeTurns = useActiveAgentTurns(agent.pubkey);
   const queryClient = useQueryClient();
   // Spans the COMPLETE Save sequence (locked update + standalone setters).
   // Every gate must key off this, not updateMutation.isPending alone.
@@ -774,7 +782,51 @@ export function AgentInstanceEditDialog({
         input.effortLevel = effortSubmission.level;
       }
 
-      const result = await updateMutation.mutateAsync(input);
+      const switchRequested =
+        input.agentCommand !== undefined ||
+        input.agentArgs !== undefined ||
+        input.model !== undefined ||
+        input.provider !== undefined;
+      const switchGeneration =
+        switchRequested &&
+        agent.backend.type === "local" &&
+        agent.status === "running"
+          ? beginAgentRuntimeSwitch(agent.pubkey, {
+              targetRuntimeId: prospectiveRuntimeId,
+              targetLabel: selectedRuntime?.label ?? prospectiveRuntimeId,
+              targetModel: normalizedModel,
+              activeTurn: activeTurns.length > 0,
+            })
+          : null;
+
+      let result: Awaited<ReturnType<typeof updateMutation.mutateAsync>>;
+      try {
+        result = await updateMutation.mutateAsync(input);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to save";
+        const restartFailurePrefix =
+          "Agent settings were saved, but its runtime failed to restart: ";
+        if (
+          switchGeneration !== null &&
+          message.startsWith(restartFailurePrefix)
+        ) {
+          failAgentRuntimeSwitch(
+            agent.pubkey,
+            switchGeneration,
+            message.slice(restartFailurePrefix.length),
+          );
+          onOpenChange(false);
+          return;
+        }
+        if (switchGeneration !== null) {
+          finishAgentRuntimeSwitch(agent.pubkey, switchGeneration);
+        }
+        throw error;
+      }
+      if (switchGeneration !== null) {
+        finishAgentRuntimeSwitch(agent.pubkey, switchGeneration);
+      }
 
       // Standalone setters — sequenced after the locked update resolves so the
       // dialog remains fully gated (isSaving) for the COMPLETE Save transaction.
@@ -956,6 +1008,7 @@ export function AgentInstanceEditDialog({
           </div>
         }
       >
+        <AgentRuntimeSwitchNotice pubkey={agent.pubkey} />
         <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
           <AgentAntPictureControl
             avatarUrl={previewAvatarUrl}

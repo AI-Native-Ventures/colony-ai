@@ -35,6 +35,44 @@ fn ensure_access_policy_change_supported(
     Ok(())
 }
 
+fn runtime_model_provider_state(
+    record: &ManagedAgentRecord,
+    personas: &[crate::managed_agents::AgentDefinition],
+    global_config: &crate::managed_agents::GlobalAgentConfig,
+) -> (
+    String,
+    Vec<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let command = crate::managed_agents::record_agent_command(record, personas);
+    let (model, provider) = match crate::managed_agents::effective_config::resolve_effective_config(
+        record,
+        personas,
+        global_config,
+    ) {
+        crate::managed_agents::effective_config::EffectiveConfigResult::Resolved(config) => {
+            (config.model.value, config.provider.value)
+        }
+        crate::managed_agents::effective_config::EffectiveConfigResult::OrphanedInstance { .. } => {
+            (record.model.clone(), record.provider.clone())
+        }
+    };
+    (command, record.agent_args.clone(), model, provider)
+}
+
+/// The restart decision used by `update_managed_agent` for runtime/model edits.
+/// Kept pure so tests bind directly to the production predicate.
+pub(crate) fn managed_agent_runtime_or_model_changed(
+    before: &ManagedAgentRecord,
+    after: &ManagedAgentRecord,
+    personas: &[crate::managed_agents::AgentDefinition],
+    global_config: &crate::managed_agents::GlobalAgentConfig,
+) -> bool {
+    runtime_model_provider_state(before, personas, global_config)
+        != runtime_model_provider_state(after, personas, global_config)
+}
+
 /// Reject an effort mutation for a non-local record. Remote effort is
 /// deployment-owned (set via `policy_env` at deploy time); persisting locally
 /// would make the canonical column diverge from the deployed runtime's actual
@@ -136,9 +174,8 @@ pub(crate) async fn flush_managed_agent_policy(
 
 /// Update mutable fields on an existing managed agent record.
 ///
-/// Most runtime config changes take effect on the next agent spawn. Access
-/// policy changes stop active local pairs before saving and restart those exact
-/// pairs after the relay policy is flushed.
+/// Runtime, model, provider, and access-policy changes stop active local pairs
+/// before saving and restart those exact pairs after the relay policy is flushed.
 #[tauri::command]
 pub async fn update_managed_agent(
     input: UpdateManagedAgentRequest,
@@ -146,7 +183,14 @@ pub async fn update_managed_agent(
     state: State<'_, AppState>,
 ) -> Result<UpdateManagedAgentResponse, String> {
     // Phase 1: local save (synchronous, under lock)
-    let (mut summary, sync_params, rollback, access_policy_changed, access_restart_relays) = {
+    let (
+        mut summary,
+        sync_params,
+        rollback,
+        access_policy_changed,
+        runtime_config_changed,
+        restart_relays,
+    ) = {
         let _store_guard = state
             .managed_agents_store_lock
             .lock()
@@ -164,6 +208,21 @@ pub async fn update_managed_agent(
 
         let record = find_managed_agent_mut(&mut records, &input.pubkey)?;
         let previous_record = record.clone();
+        let config_update_requested = input.persona_id.is_some()
+            || input.agent_command.is_some()
+            || input.agent_args.is_some()
+            || input.model.is_some()
+            || input.provider.is_some();
+        let personas = if config_update_requested {
+            load_personas(&app)?
+        } else {
+            Vec::new()
+        };
+        let global_config = if config_update_requested {
+            crate::managed_agents::load_global_agent_config(&app)?
+        } else {
+            crate::managed_agents::GlobalAgentConfig::default()
+        };
 
         // Relink to another definition (copy-on-write edits of a shared
         // definition). The target must exist and be active, like at create.
@@ -173,7 +232,6 @@ pub async fn update_managed_agent(
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let personas = load_personas(&app)?;
             crate::managed_agents::ensure_persona_is_active(&personas, persona_id)?;
             record.persona_id = Some(persona_id.to_string());
         }
@@ -229,7 +287,6 @@ pub async fn update_managed_agent(
         // rules.
         let mut inherit_transition = false;
         if let Some(agent_command) = input.agent_command {
-            let personas = load_personas(&app).unwrap_or_default();
             inherit_transition = crate::managed_agents::apply_agent_command_update(
                 record,
                 &personas,
@@ -295,34 +352,6 @@ pub async fn update_managed_agent(
         );
         ensure_access_policy_change_supported(record, access_policy_changed)?;
 
-        // Revoke the currently running local gate before persisting or
-        // advertising the replacement policy. Keeping this inside the same
-        // store/process critical section prevents another command or a status
-        // refresh from observing a saved narrow policy while the old broad
-        // process is still alive. A stop failure aborts before mutation.
-        let mut access_restart_relays = Vec::new();
-        if access_policy_changed && record.backend == crate::managed_agents::BackendKind::Local {
-            access_restart_relays =
-                crate::managed_agents::managed_agent_runtime_keys(&runtimes, &record.pubkey)
-                    .into_iter()
-                    .map(|key| key.relay_url)
-                    .collect();
-            if access_restart_relays.is_empty() && record.runtime_pid.is_some() {
-                access_restart_relays.push(crate::relay::effective_agent_relay_url(
-                    &record.relay_url,
-                    &relay_ws_url_with_override(&state),
-                ));
-            }
-            if !access_restart_relays.is_empty() {
-                crate::managed_agents::stop_managed_agent_process(
-                    &app,
-                    record,
-                    &mut runtimes,
-                    "access policy changed: restarting on the new policy",
-                )?;
-            }
-        }
-
         record.respond_to = prospective_mode;
         // Preserve the persisted allowlist across mode toggles — only replace
         // when the caller explicitly supplied a new list.
@@ -345,6 +374,45 @@ pub async fn update_managed_agent(
             inherit_transition,
             input.effort_level,
         )?;
+
+        let runtime_config_changed = managed_agent_runtime_or_model_changed(
+            &previous_record,
+            record,
+            &personas,
+            &global_config,
+        );
+        let restart_required = access_policy_changed || runtime_config_changed;
+
+        // Stop while the store/process locks still fence readers, before the
+        // new config is persisted. SIGTERM gives an active turn a clean cancel
+        // path; the queued mention journal remains owned by the relay queue.
+        let mut restart_relays = Vec::new();
+        if restart_required && record.backend == crate::managed_agents::BackendKind::Local {
+            restart_relays =
+                crate::managed_agents::managed_agent_runtime_keys(&runtimes, &record.pubkey)
+                    .into_iter()
+                    .map(|key| key.relay_url)
+                    .collect();
+            if restart_relays.is_empty() && record.runtime_pid.is_some() {
+                restart_relays.push(crate::relay::effective_agent_relay_url(
+                    &record.relay_url,
+                    &relay_ws_url_with_override(&state),
+                ));
+            }
+            if !restart_relays.is_empty() {
+                let reason = if access_policy_changed {
+                    "agent access or runtime config changed: restarting"
+                } else {
+                    "agent runtime or model changed: restarting"
+                };
+                crate::managed_agents::stop_managed_agent_process(
+                    &app,
+                    record,
+                    &mut runtimes,
+                    reason,
+                )?;
+            }
+        }
 
         stamp_record_updated_at(record, applied);
 
@@ -402,7 +470,8 @@ pub async fn update_managed_agent(
             sync_params,
             rollback,
             access_policy_changed,
-            access_restart_relays,
+            runtime_config_changed,
+            restart_relays,
         )
     }; // lock dropped here
 
@@ -451,21 +520,19 @@ pub async fn update_managed_agent(
                 "missing local rollback state after relay profile sync failure".to_string()
             })?;
             rollback_failed_agent_update(&app, &state, &summary.pubkey, rollback)?;
-            let restart_suffix = if access_restart_relays.is_empty() {
+            let restart_suffix = if restart_relays.is_empty() {
                 String::new()
             } else {
                 match super::super::agents::start_local_agent_pairs_with_preflight(
                     &app,
                     &state,
                     &summary.pubkey,
-                    &access_restart_relays,
+                    &restart_relays,
                 )
                 .await
                 {
                     Ok(_) => String::new(),
-                    Err(error) => format!(
-                        " The runtime also failed to restart with the kept access policy: {error}"
-                    ),
+                    Err(error) => format!(" The runtime also failed to restart: {error}"),
                 }
             };
             let rollback_message = if access_policy_changed {
@@ -479,18 +546,22 @@ pub async fn update_managed_agent(
         }
     }
 
-    if !access_restart_relays.is_empty() {
+    if !restart_relays.is_empty() {
         summary = super::super::agents::start_local_agent_pairs_with_preflight(
             &app,
             &state,
             &summary.pubkey,
-            &access_restart_relays,
+            &restart_relays,
         )
         .await
         .map_err(|error| {
-            format!(
-                "Agent access was saved and published, but its runtime failed to restart with the new policy: {error}"
-            )
+            if runtime_config_changed {
+                format!("Agent settings were saved, but its runtime failed to restart: {error}")
+            } else {
+                format!(
+                    "Agent access was saved and published, but its runtime failed to restart with the new policy: {error}"
+                )
+            }
         })?;
     }
 
