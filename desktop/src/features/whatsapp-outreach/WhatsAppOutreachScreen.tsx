@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings, UserRound } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import {
   customerRecordForContact,
@@ -10,7 +10,6 @@ import { useCustomerRecordCapabilities } from "@/features/cofounder/customerReco
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -43,12 +42,10 @@ import {
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import {
-  whatsappInitials,
-  WhatsAppThreadMessage,
-} from "./WhatsAppThreadMessage";
+import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
+import { WhatsAppThreadAvatar } from "./WhatsAppThreadAvatar";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
 import {
   useWhatsAppCommand,
@@ -698,38 +695,30 @@ export function WhatsAppOutreachScreen({
             );
             return mode === "desk" ? (
               <WhatsAppOutreachContactRow
-                businessName={identity.displayName}
                 canReviewBatch={Boolean(rowBatch)}
                 contact={rowContact}
                 hasDraft={hasDraft}
+                identity={identity}
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
                 personName={identity.personName}
                 preview={preview}
                 selected={isSelected}
-                logoUrl={identity.logoUrl}
-                placePhotoUrl={identity.placePhotoUrl}
-                website={identity.website}
                 isDesk
-                isLinked={identity.isLinked}
                 waitingForApproval={rowMatches.length > 0}
               />
             ) : (
               <WhatsAppContactRow
-                businessName={identity.displayName}
                 canReviewBatch={Boolean(rowBatch)}
                 contact={rowContact}
                 hasDraft={hasDraft}
-                isLinked={identity.isLinked}
-                logoUrl={identity.logoUrl}
+                identity={identity}
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
-                placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
                 selected={isSelected}
-                website={identity.website}
                 waitingForApproval={rowMatches.length > 0}
               />
             );
@@ -758,21 +747,10 @@ export function WhatsAppOutreachScreen({
             >
               ‹
             </button>
-            <span aria-hidden="true" className="c3wa-thread-avatar">
-              {selectedIdentity?.isLinked ? (
-                <BusinessLogoMark
-                  className="c3wa-desk-logo-mark"
-                  logoUrl={selectedIdentity.logoUrl}
-                  name={selectedIdentity.displayName}
-                  placePhotoUrl={selectedIdentity.placePhotoUrl}
-                  website={selectedIdentity.website}
-                />
-              ) : selectedContactIsAnonymous ? (
-                <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
-              ) : (
-                whatsappInitials(selectedIdentity?.displayName ?? "WhatsApp")
-              )}
-            </span>
+            <WhatsAppThreadAvatar
+              identity={selectedIdentity}
+              isAnonymous={selectedContactIsAnonymous}
+            />
             <div className="c3wa-thread-head-copy">
               <strong>
                 {selectedIdentity?.displayName ?? "WhatsApp contact"}

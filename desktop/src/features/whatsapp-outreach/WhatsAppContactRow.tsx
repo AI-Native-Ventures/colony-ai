@@ -11,6 +11,7 @@ import {
   isWhatsAppPhoneLikeName,
   type WhatsAppContact,
 } from "./whatsappOutreachModels";
+import type { resolveOutreachContactIdentity } from "./outreachDeskUtils";
 
 function StatusChip({ status }: { status: string }) {
   return (
@@ -29,11 +30,7 @@ function StatusChip({ status }: { status: string }) {
 
 export function WhatsAppContactRow({
   contact,
-  businessName,
-  website,
-  logoUrl,
-  placePhotoUrl,
-  isLinked,
+  identity,
   hasDraft,
   preview,
   waitingForApproval,
@@ -43,11 +40,7 @@ export function WhatsAppContactRow({
   onReviewBatch,
 }: {
   contact: WhatsAppContact;
-  businessName: string;
-  website: string | null;
-  logoUrl: string | null;
-  placePhotoUrl: string | null;
-  isLinked: boolean;
+  identity: ReturnType<typeof resolveOutreachContactIdentity>;
   hasDraft: boolean;
   preview: string | null;
   waitingForApproval: boolean;
@@ -67,23 +60,23 @@ export function WhatsAppContactRow({
         type="button"
       >
         <span aria-hidden="true" className="c3wa-contact-avatar">
-          {isLinked ? (
+          {identity.isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
-              logoUrl={logoUrl}
-              name={businessName}
-              placePhotoUrl={placePhotoUrl}
-              website={website}
+              logoUrl={identity.logoUrl}
+              name={identity.displayName}
+              placePhotoUrl={identity.placePhotoUrl}
+              website={identity.website}
             />
-          ) : isWhatsAppPhoneLikeName(businessName) ? (
+          ) : isWhatsAppPhoneLikeName(identity.displayName) ? (
             <UserRound aria-hidden="true" size={17} strokeWidth={1.8} />
           ) : (
-            whatsappInitials(businessName)
+            whatsappInitials(identity.displayName)
           )}
         </span>
         <span className="c3wa-contact-main">
           <span className="c3wa-contact-title">
-            <strong>{businessName}</strong>
+            <strong>{identity.displayName}</strong>
             <time>
               {contact.lastInboundAt
                 ? formatWhatsAppDateTime(contact.lastInboundAt)
@@ -110,7 +103,7 @@ export function WhatsAppContactRow({
       </button>
       {waitingForApproval ? (
         <button
-          aria-label={`Review batch for ${businessName}`}
+          aria-label={`Review batch for ${identity.displayName}`}
           className="c3wa-contact-review"
           disabled={!canReviewBatch}
           onClick={onReviewBatch}
