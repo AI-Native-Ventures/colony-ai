@@ -470,7 +470,11 @@ test.describe("WhatsApp inbound media", () => {
       text: "Shared a location: Kensington Guest House",
       thumbnail: false,
     },
-    { id: "wa-media-contacts", text: "Shared a contact card", thumbnail: false },
+    {
+      id: "wa-media-contacts",
+      text: "Shared a contact card",
+      thumbnail: false,
+    },
   ] as const;
 
   for (const preview of deskPreviews) {
