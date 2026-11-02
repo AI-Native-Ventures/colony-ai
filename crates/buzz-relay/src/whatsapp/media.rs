@@ -20,7 +20,7 @@ use buzz_core::TenantContext;
 use buzz_db::whatsapp::{WhatsappConnection, WhatsappMedia};
 
 use super::channel;
-use super::connect::{note_token_expired, open_secrets};
+use super::connect::{note_token_expired, open_access_token};
 use super::graph::{DownloadError, GraphApi, GraphError};
 use crate::state::AppState;
 
@@ -258,8 +258,8 @@ fn open_token(
         tracing::warn!("whatsapp media could not open the access token: account key unavailable");
         return Err("token_unavailable");
     };
-    match open_secrets(kek, *tenant.community().as_uuid(), connection) {
-        Ok((token, _)) => Ok(token),
+    match open_access_token(kek, *tenant.community().as_uuid(), connection) {
+        Ok(token) => Ok(token),
         Err(error) => {
             tracing::warn!("whatsapp media could not open the access token: {error}");
             Err("token_unavailable")

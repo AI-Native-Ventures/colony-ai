@@ -714,21 +714,14 @@ async fn an_inbound_sticker_keeps_its_media_id_and_a_failed_download_leaves_a_re
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
 async fn an_unopenable_token_is_recorded_with_backoff_inline_and_in_sender_repair() {
-    let mut fx = fixture().await;
-    let connection = fx
-        .state
-        .db
-        .whatsapp_get_connection(fx.community())
+    let fx = fixture().await;
+    // Keep webhook authentication usable, but tamper only with the saved access-token envelope.
+    sqlx::query("UPDATE whatsapp_connections SET sealed_token = $2 WHERE community_id = $1")
+        .bind(fx.community().as_uuid())
+        .bind(vec![0_u8; 32])
+        .execute(&fx.pool)
         .await
-        .expect("connection lookup")
-        .expect("connected number");
-
-    // Keep the saved connection, but simulate the relay losing the key needed to open it.
-    let mut state = fx.state.as_ref().clone();
-    let mut config = state.config.as_ref().clone();
-    config.accounts = crate::config::AccountConfig::test_config(None, None, vec![], None);
-    state.config = Arc::new(config);
-    fx.state = Arc::new(state);
+        .expect("tamper access-token envelope");
 
     let wa = "27821239008";
     assert_eq!(
@@ -743,8 +736,15 @@ async fn an_unopenable_token_is_recorded_with_backoff_inline_and_in_sender_repai
     let first_retry_at = first.retry_at.expect("inline backoff scheduled");
     assert!(first_retry_at > Utc::now());
 
-    // GUARD: a due retry with an unavailable key also advances the durable backoff instead of
-    // leaving this oldest row immediately due on every sender pass.
+    // GUARD: an unopenable token also advances the durable backoff instead of leaving this
+    // oldest row immediately due on every sender pass.
+    let connection = fx
+        .state
+        .db
+        .whatsapp_get_connection(fx.community())
+        .await
+        .expect("connection lookup")
+        .expect("connected number");
     let repair_at = first_retry_at + Duration::seconds(1);
     media::repair(&fx.state, &fx.tenant, &connection, None, repair_at).await;
     let second = media_of(&fx, wa).await;
