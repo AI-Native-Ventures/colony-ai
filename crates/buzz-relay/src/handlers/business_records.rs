@@ -4723,8 +4723,6 @@ mod postgres_tests {
     use std::time::Duration;
     use tokio::sync::Notify;
 
-    mod outreach_lists;
-
     fn test_acceptance_evidence() -> buzz_core::business_records::ProposalAcceptanceEvidence {
         buzz_core::business_records::ProposalAcceptanceEvidence {
             accepted_by_name: "Test acceptor".into(),
@@ -4737,14 +4735,14 @@ mod postgres_tests {
     static BUSINESS_RECORDS_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
         std::sync::OnceLock::new();
 
-    struct Fixture {
-        pool: sqlx::PgPool,
-        state: Arc<AppState>,
-        tenant: TenantContext,
+    pub(super) struct Fixture {
+        pub(super) pool: sqlx::PgPool,
+        pub(super) state: Arc<AppState>,
+        pub(super) tenant: TenantContext,
         _serial_guard: tokio::sync::MutexGuard<'static, ()>,
     }
 
-    async fn fixture() -> Fixture {
+    pub(super) async fn fixture() -> Fixture {
         let serial_guard = BUSINESS_RECORDS_DB_TEST_LOCK
             .get_or_init(|| tokio::sync::Mutex::new(()))
             .lock()
@@ -4775,7 +4773,7 @@ mod postgres_tests {
         }
     }
 
-    async fn private_stream(fixture: &Fixture, name: &str, owner: &Keys) -> Uuid {
+    pub(super) async fn private_stream(fixture: &Fixture, name: &str, owner: &Keys) -> Uuid {
         let pubkey = owner.public_key().to_bytes();
         let channel = fixture
             .state
@@ -4794,7 +4792,7 @@ mod postgres_tests {
         channel.id
     }
 
-    async fn business_stream(fixture: &Fixture, owner: &Keys) -> Uuid {
+    pub(super) async fn business_stream(fixture: &Fixture, owner: &Keys) -> Uuid {
         let channel_id = private_stream(fixture, "business", owner).await;
         fixture
             .state
@@ -4810,7 +4808,7 @@ mod postgres_tests {
         channel_id
     }
 
-    fn auth(keys: &Keys) -> IngestAuth {
+    pub(super) fn auth(keys: &Keys) -> IngestAuth {
         IngestAuth::Http {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
@@ -4818,7 +4816,7 @@ mod postgres_tests {
         }
     }
 
-    fn scoped_nip42_auth(keys: &Keys, channel_ids: Vec<Uuid>) -> IngestAuth {
+    pub(super) fn scoped_nip42_auth(keys: &Keys, channel_ids: Vec<Uuid>) -> IngestAuth {
         IngestAuth::Nip42 {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
@@ -4827,7 +4825,7 @@ mod postgres_tests {
         }
     }
 
-    fn signed_command<T: Serialize>(
+    pub(super) fn signed_command<T: Serialize>(
         keys: &Keys,
         kind: u32,
         channel_id: Uuid,
@@ -5207,7 +5205,12 @@ mod postgres_tests {
         }
     }
 
-    async fn expect_duplicate(fixture: &Fixture, keys: &Keys, channel_id: Uuid, event: &Event) {
+    pub(super) async fn expect_duplicate(
+        fixture: &Fixture,
+        keys: &Keys,
+        channel_id: Uuid,
+        event: &Event,
+    ) {
         let replay = handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys))
             .await
             .expect("committed command retry must be accepted");
@@ -5220,7 +5223,7 @@ mod postgres_tests {
         );
     }
 
-    async fn expect_event_missing(fixture: &Fixture, event: &Event) {
+    pub(super) async fn expect_event_missing(fixture: &Fixture, event: &Event) {
         let stored = fixture
             .state
             .db
@@ -7406,3 +7409,6 @@ mod postgres_tests {
         assert_eq!(final_head.payment_evidence_count, 1);
     }
 }
+
+#[cfg(test)]
+mod outreach_lists_postgres_tests;

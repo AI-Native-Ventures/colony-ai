@@ -2,6 +2,10 @@
 //! business handler: who may change them, the lifecycle, agent access, replay and the head the
 //! relay signs. Run with the other Postgres tests (`BUZZ_TEST_DATABASE_URL`).
 
+use super::postgres_tests::{
+    auth, business_stream, expect_duplicate, expect_event_missing, fixture, private_stream,
+    scoped_nip42_auth, signed_command, Fixture,
+};
 use super::*;
 use buzz_core::channel::MemberRole;
 use buzz_core::outreach_lists::{
@@ -9,6 +13,7 @@ use buzz_core::outreach_lists::{
     DiscoveryCampaignAction, DiscoveryCampaignHead, ListOp, ListSource, ListSourceKind, ListStatus,
     OutreachListAction, OutreachListHead, TemplateRef,
 };
+use nostr::Keys;
 
 fn community(fixture: &Fixture) -> Uuid {
     *fixture.tenant.community().as_uuid()
