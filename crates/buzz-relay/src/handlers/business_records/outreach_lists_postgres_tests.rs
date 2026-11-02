@@ -646,6 +646,10 @@ async fn a_campaign_is_shared_with_agents_and_runs_through_its_lifecycle() {
     send_campaign(&fixture, &b.member, b.channel_id, &finish)
         .await
         .expect("finish");
+    // Make this a distinct command from the earlier found=5 update. If identical
+    // commands are signed in the same second, their Nostr event IDs match and
+    // replay handling accepts the duplicate before lifecycle validation runs.
+    progress.found = Some(6);
     let result = send_campaign(&fixture, &b.member, b.channel_id, &progress).await;
     assert!(
         matches!(&result, Err(IngestError::Rejected(message)) if message.starts_with("conflict:"))
