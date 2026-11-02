@@ -53,6 +53,7 @@
       "cofounder-phase2.spec.ts",
       "cofounder-customer-record.spec.ts",
       "whatsapp-outreach-desk.visual.spec.ts",
+      "whatsapp-outreach-desk-narrow.spec.ts",
       "w11-clients-work.spec.ts",
       "colony3-settings.spec.ts",
       "settings-section-layout.spec.ts",
