@@ -261,6 +261,7 @@
         "w10-discovery-sales.spec.ts",
         "leads-table-polish.spec.ts",
         "colony3-discovery-run.spec.ts",
+        "colony3-bulk-accept-redproof.spec.ts",
         "colony3-discovery-leads-proof.spec.ts",
         "colony3-lead-reference.spec.ts",
         "colony3-sales-setup.spec.ts",
