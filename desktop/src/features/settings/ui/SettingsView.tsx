@@ -18,6 +18,7 @@ import {
   SearchIcon,
 } from "@/shared/ui/colonyIcons";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useRouteBack } from "@/app/navigation/RouteOriginContext";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
@@ -155,6 +156,13 @@ export function SettingsView({
   const [remembered, setRemembered] = React.useState(safeReadLastSections);
   const { activeCommunity } = useCommunities();
   const { goTeam } = useAppNavigation();
+  const routeBack = useRouteBack({
+    to: "/today",
+    label: "Workspace",
+    breadcrumbs: ["Today"],
+  });
+  const handleSettingsBack = () =>
+    routeBack.origin || !canGoBack ? routeBack.goBack() : onGoBack();
   const profile = useProfileQuery();
   // Same source as the People panel, so the footer never claims a role the
   // person does not hold.
@@ -289,11 +297,11 @@ export function SettingsView({
             <button
               className="cs-back"
               data-testid="settings-back-to-app"
-              onClick={onClose}
+              onClick={handleSettingsBack}
               type="button"
             >
               <ChevronLeftIcon size={16} strokeWidth={2.4} />
-              Back to workspace
+              Back to {routeBack.backLabel}
             </button>
             <h1 className="cs-sidebar-title">Settings</h1>
             <label className="cs-search" htmlFor="settings-search-input">
@@ -401,11 +409,11 @@ export function SettingsView({
           data-testid="settings-top-chrome"
         >
           <button
-            aria-label="Back"
+            aria-label={`Back to ${routeBack.backLabel}`}
             className="colony-topbar-button"
             data-testid="settings-history-back"
-            disabled={!canGoBack}
-            onClick={onGoBack}
+            disabled={!canGoBack && !routeBack.canGoBack}
+            onClick={handleSettingsBack}
             type="button"
           >
             <ChevronLeftIcon size={17} strokeWidth={2.4} />

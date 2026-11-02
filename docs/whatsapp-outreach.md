@@ -143,6 +143,19 @@ moment the owner released it with `send_now`, else the start of the next send wi
 chat (the pacing gap and the daily cap can still delay it a little), else the next sender pass.
 Older apps ignore it.
 
+A message that carries media also has `media` (additive; older apps ignore it):
+`{ type: "image"|"video"|"audio"|"voice"|"document"|"sticker"|"location"|"contacts",
+state: "stored"|"pending"|"failed"|"gone"|"none", url, mime, size, opaque, caption, filename,
+animated, error, canRetry, description }` plus `latitude`, `longitude`, `name`, `address` for a
+location and `contacts: [{ name, phones }]` for a contact card. `url` is set when `state` is
+`stored`; it is a file on the company's own media host, read with the same member authorization as
+any other file. `none` means there is nothing to download (location, contact card). `failed` with
+`canRetry: true` offers Retry; `too_large` and a missing media id cannot be retried; `gone` means
+Meta no longer has the file. `opaque: true` means the exact bytes were kept as a download because
+the media checks refused them, so show a file card, not a picture. `description` is one plain
+sentence for agents (`Customer sent a sticker`); the same `thread` query is what `colony whatsapp
+thread` prints.
+
 BatchSummary: `{ batchId, status: "pending"|"approved"|"rejected"|"completed",
 createdBy, template, language, rows: {total, ready, sent, failed, dropped}, createdAt }`.
 BatchDetail adds `rows: [{ idx, to, leadId, params, preview, state, skipReason, sendsAt }]`
@@ -159,6 +172,22 @@ for an outbound message is immutable.
   body with the app secret, compared in constant time; wrong or missing signature is `401`
   and nothing is stored. Messages are deduped by WhatsApp message id.
 * The company is bound from the request host, then the connection id must belong to it.
+* **Inbound media.** Every inbound type is kept, never reduced to a placeholder: `image`, `video`,
+  `audio` and `voice`, `document` (with file name), `sticker` (with `animated`), `location`
+  (coordinates, name, address) and `contacts` (names and numbers, at most ten cards). Reactions
+  are not messages and are ignored; a button or list reply is the reply text; anything else is
+  `[unsupported message]`. For a file, the Meta media id, MIME type and caption are stored on the
+  message row (`whatsapp_messages.media`), and the relay downloads the bytes with the connection's
+  token while the webhook is open (20 s at most), then keeps them in the company's own media store
+  (host bound, 25 MiB cap, metadata stripped from JPEG and WebP, kept as a plain download when a
+  media check refuses the bytes). The Colony message carries a `wa-media` tag (`kind`, `state`)
+  and, once stored, an NIP-92 `imeta` tag and a markdown link in its text. A download that does
+  not finish leaves a durable record (`media_state = pending`, `media_attempts`,
+  `media_retry_at`): the sender loop retries it, 30 s doubling to 1 h, eight times, then marks it
+  `failed` for the owner to retry. A file Meta no longer has (404, or code 100) is `gone`; a file
+  over the cap is `failed` with `too_large`. When a file arrives after its message was posted, one
+  follow-up message in the thread adds the link (`wa-media-of` names the message). The access
+  token is never logged, and it is only sent to Meta's media hosts.
 
 ## Events (member signed commands, handled by the relay)
 
@@ -287,7 +316,12 @@ changes until an owner or admin renames. A `template_title_proposed` notice is p
 { "v": 1, "waId": "27821234567", "stage": "call_booked" }
 { "v": 1, "waId": "27821234567", "label": "Plane Tree Hotel" }
 { "v": 1, "waId": "27821234567", "label": null }
+{ "v": 1, "waId": "27821234567", "retryMedia": "<message id>" }
 ```
+
+`retryMedia` (sent on its own) restarts the download of an inbound file whose download gave up
+(`state: "failed"`, `canRetry: true`); the sender loop picks it up on its next pass. A file marked
+`too_large` or `gone`, or another contact's message id, is refused or reports nothing to retry.
 
 Sets the contact's pipeline stage and/or its label (owner's name, shown instead of the WhatsApp
 profile name; `null` clears it; 1 to 120 characters). Same access as replying (`Access::can_send`);

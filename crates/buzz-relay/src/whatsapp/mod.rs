@@ -8,6 +8,7 @@ pub mod connect;
 pub mod desk;
 pub mod graph;
 pub mod inbound;
+pub mod media;
 pub mod policy;
 pub mod secrets;
 pub mod sender;
