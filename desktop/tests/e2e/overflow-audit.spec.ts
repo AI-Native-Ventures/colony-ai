@@ -1679,8 +1679,13 @@ test("all screens, widths and important states", async ({ page, browser }) => {
   }
 
   const counts = new Map<string, number>();
-  for (const finding of findings)
-    counts.set(finding.screen, (counts.get(finding.screen) ?? 0) + 1);
+  for (const finding of findings) {
+    for (const screen of new Set(
+      finding.observed.map((observation) => observation.screen),
+    )) {
+      counts.set(screen, (counts.get(screen) ?? 0) + 1);
+    }
+  }
   console.log(
     "OVERFLOW_AUDIT_COUNTS_BY_SCREEN",
     JSON.stringify(Object.fromEntries(counts)),
