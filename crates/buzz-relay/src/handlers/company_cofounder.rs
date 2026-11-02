@@ -14,10 +14,11 @@ use buzz_core::company_cofounder::{
     validate_cofounder_action, validate_cofounder_d_tag, validate_cofounder_head, CofounderHead,
     COFOUNDER_D_TAG,
 };
+use buzz_core::company_onboarding::{OnboardingHead, OnboardingStatus, ONBOARDING_D_TAG};
 use buzz_core::company_records::{
     parse_company_command, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
 };
-use buzz_core::kind::{KIND_COFOUNDER_ACTION, KIND_COFOUNDER_HEAD};
+use buzz_core::kind::{KIND_COFOUNDER_ACTION, KIND_COFOUNDER_HEAD, KIND_ONBOARDING_HEAD};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
@@ -139,10 +140,13 @@ pub(super) async fn handle(
         return Err(error);
     }
 
-    let was_enabled = current_stored
+    let previous_settings = current_stored
         .as_ref()
         .and_then(|stored| serde_json::from_str::<CofounderHead>(&stored.event.content).ok())
-        .is_some_and(|head| head.settings.enabled);
+        .map(|head| head.settings);
+    let was_enabled = previous_settings.is_some_and(|settings| settings.enabled);
+    // Saving the settings again with nothing changed is the owner's "Try again".
+    let resaved_unchanged = previous_settings == Some(action.settings);
     let head = CofounderHead {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
         settings: action.settings,
@@ -206,22 +210,15 @@ pub(super) async fn handle(
         None,
     )
     .await;
-    // Saving the settings again while Scout is marked unreachable is the owner's
-    // "Try again": it queues a fresh start-up wake, exactly as switching on does.
+    // Saving the settings again is the owner's "Try again". It queues a fresh
+    // start-up wake while Scout is marked unreachable, and while onboarding has
+    // not finished: a wake that was delivered but never picked up (Scout was not
+    // running) leaves no failure behind, and without this the button did nothing
+    // (2 Nov 2026). Changing a preference is not a retry.
     let try_again = action.settings.enabled
         && was_enabled
-        && match super::company_cofounder_lead::current_status(state, community_id).await {
-            Ok(status) => status.is_some_and(|status| {
-                status.state == buzz_core::company_cofounder::LeadState::Unreachable
-            }),
-            Err(error) => {
-                tracing::warn!(
-                    community = %community_id.as_uuid(),
-                    "co-founder try again: could not read the lead status: {error}"
-                );
-                false
-            }
-        };
+        && (lead_unreachable(state, community_id).await
+            || (resaved_unchanged && onboarding_unfinished(state, community_id).await));
     if action.settings.enabled && (!was_enabled || try_again) {
         // Scout starts (or resumes) onboarding as soon as the mode goes on.
         crate::cofounder_wake::enqueue(
@@ -238,6 +235,51 @@ pub(super) async fn handle(
         accepted: true,
         message: String::new(),
     })
+}
+
+/// Whether the relay marked Scout as unreachable. A status that cannot be read
+/// counts as not unreachable: the other conditions of a retry still apply.
+async fn lead_unreachable(state: &Arc<AppState>, community_id: CommunityId) -> bool {
+    match super::company_cofounder_lead::current_status(state, community_id).await {
+        Ok(status) => status.is_some_and(|status| {
+            status.state == buzz_core::company_cofounder::LeadState::Unreachable
+        }),
+        Err(error) => {
+            tracing::warn!(
+                community = %community_id.as_uuid(),
+                "co-founder try again: could not read the lead status: {error}"
+            );
+            false
+        }
+    }
+}
+
+/// Whether onboarding has not finished: Scout never began (no onboarding
+/// record) or the record is still in progress. A record that cannot be read
+/// counts as unfinished, so a retry is queued rather than lost; the delivery
+/// worker checks again before anything is sent.
+async fn onboarding_unfinished(state: &Arc<AppState>, community_id: CommunityId) -> bool {
+    match super::company_initiative::load_head(
+        state,
+        community_id,
+        KIND_ONBOARDING_HEAD,
+        ONBOARDING_D_TAG,
+    )
+    .await
+    {
+        Ok(None) => true,
+        Ok(Some(stored)) => match serde_json::from_str::<OnboardingHead>(&stored.event.content) {
+            Ok(head) => head.status != OnboardingStatus::Complete,
+            Err(_) => true,
+        },
+        Err(error) => {
+            tracing::warn!(
+                community = %community_id.as_uuid(),
+                "co-founder try again: could not read onboarding: {error:?}"
+            );
+            true
+        }
+    }
 }
 
 /// Whether co-founder mode is on for this company. A company with no head is off.

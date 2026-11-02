@@ -296,7 +296,11 @@ export function WhatsAppContactRecordPanel({
             <div>
               <dt>Phone</dt>
               <dd>
-                <a href={`tel:+${contact.waId.replace(/\D/gu, "")}`}>
+                <a
+                  className="c3wa-record-phone"
+                  href={`tel:+${contact.waId.replace(/\D/gu, "")}`}
+                  title={identity.phone}
+                >
                   {identity.phone}
                 </a>
               </dd>

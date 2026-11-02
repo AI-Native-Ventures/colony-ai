@@ -182,6 +182,137 @@ pub fn parse_lead_reference(input: &str) -> Result<uuid::Uuid, CliError> {
     uuid::Uuid::parse_str(id).map_err(|_| invalid())
 }
 
+/// Build a `buzz://list/<uuid>` link for an outreach list.
+pub fn list_link(list_id: uuid::Uuid) -> String {
+    format!("buzz://list/{}", list_id.hyphenated())
+}
+
+/// Build a `buzz://campaign/<uuid>` link for a Discovery campaign.
+pub fn campaign_link(campaign_id: uuid::Uuid) -> String {
+    format!("buzz://campaign/{}", campaign_id.hyphenated())
+}
+
+/// Read a `<host>` entity reference: a bare UUID, or a `buzz://<host>/<uuid>` /
+/// `colony://<host>/<uuid>` link with nothing else in it.
+fn parse_uuid_reference(input: &str, host: &str, noun: &str) -> Result<uuid::Uuid, CliError> {
+    let input = input.trim();
+    if let Ok(id) = uuid::Uuid::parse_str(input) {
+        return Ok(id);
+    }
+    let invalid = || {
+        CliError::Usage(format!(
+            "expected a {noun} UUID or a colony://{host}/<uuid> link"
+        ))
+    };
+    let url = url::Url::parse(input).map_err(|_| invalid())?;
+    if !LEAD_LINK_SCHEMES.contains(&url.scheme())
+        || url.host_str() != Some(host)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid());
+    }
+    let id = url.path().strip_prefix('/').ok_or_else(invalid)?;
+    uuid::Uuid::parse_str(id).map_err(|_| invalid())
+}
+
+/// Read an outreach list reference: a UUID or a `buzz://list/<uuid>` link.
+pub fn parse_list_reference(input: &str) -> Result<uuid::Uuid, CliError> {
+    parse_uuid_reference(input, "list", "list")
+}
+
+/// Read a Discovery campaign reference: a UUID or a `buzz://campaign/<uuid>` link.
+pub fn parse_campaign_reference(input: &str) -> Result<uuid::Uuid, CliError> {
+    parse_uuid_reference(input, "campaign", "campaign")
+}
+
+/// A WhatsApp template named in a message or on the command line.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TemplateReference {
+    /// The Meta template name from a link, or the name or Colony title as typed.
+    pub name: String,
+    /// The language from a link's `lang` parameter.
+    pub language: Option<String>,
+}
+
+/// Whether `name` can sit in a template link without escaping. Meta template names are
+/// lowercase letters, digits and underscores, so every real name qualifies.
+fn is_template_link_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 512
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+/// Build a `buzz://template/<meta name>?lang=<code>` link, or `None` when the name needs
+/// escaping (a Colony title is never put in a link; only the Meta name is).
+pub fn template_link(name: &str, language: &str) -> Option<String> {
+    let language_ok = !language.is_empty()
+        && language.len() <= 16
+        && language
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    (is_template_link_name(name) && language_ok)
+        .then(|| format!("buzz://template/{name}?lang={language}"))
+}
+
+/// Read a template reference: a `buzz://template/<meta name>[?lang=<code>]` link, or plain text
+/// (the Meta name or the Colony title, any case). There is no numbered form.
+pub fn parse_template_reference(input: &str) -> Result<TemplateReference, CliError> {
+    let input = input.trim();
+    let invalid = || {
+        CliError::Usage(
+            "expected a template name, title or a colony://template/<name>?lang=<code> link".into(),
+        )
+    };
+    if input.is_empty() || input.chars().any(char::is_control) {
+        return Err(invalid());
+    }
+    if !input.contains("://") {
+        if input.chars().count() > 512 {
+            return Err(invalid());
+        }
+        return Ok(TemplateReference {
+            name: input.to_owned(),
+            language: None,
+        });
+    }
+    let url = url::Url::parse(input).map_err(|_| invalid())?;
+    if !LEAD_LINK_SCHEMES.contains(&url.scheme())
+        || url.host_str() != Some("template")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid());
+    }
+    let name = url.path().strip_prefix('/').ok_or_else(invalid)?;
+    if !is_template_link_name(name) {
+        return Err(invalid());
+    }
+    let mut language = None;
+    for (key, value) in url.query_pairs() {
+        let valid_language = !value.is_empty()
+            && value.len() <= 16
+            && value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if key != "lang" || language.is_some() || !valid_language {
+            return Err(invalid());
+        }
+        language = Some(value.into_owned());
+    }
+    Ok(TemplateReference {
+        name: name.to_owned(),
+        language,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +505,82 @@ mod tests {
         ] {
             assert!(parse_message_link(&link).is_err(), "accepted {link}");
         }
+    }
+
+    #[test]
+    fn list_and_campaign_links_have_the_documented_format() {
+        let id = uuid::Uuid::from_u128(0x1234);
+        assert_eq!(
+            list_link(id),
+            "buzz://list/00000000-0000-0000-0000-000000001234"
+        );
+        assert_eq!(
+            campaign_link(id),
+            "buzz://campaign/00000000-0000-0000-0000-000000001234"
+        );
+    }
+
+    #[test]
+    fn list_and_campaign_references_accept_uuid_or_either_scheme_only() {
+        let id = uuid::Uuid::from_u128(0x1234);
+        for input in [
+            id.to_string(),
+            list_link(id),
+            list_link(id).replace("buzz://", "colony://"),
+            format!("  {}  ", list_link(id)),
+        ] {
+            assert_eq!(parse_list_reference(&input).unwrap(), id, "{input}");
+        }
+        assert_eq!(parse_campaign_reference(&campaign_link(id)).unwrap(), id);
+        // A link for another thing is not a list.
+        assert!(parse_list_reference(&campaign_link(id)).is_err());
+        assert!(parse_campaign_reference(&list_link(id)).is_err());
+        assert!(parse_list_reference(&lead_link(id)).is_err());
+        for bad in [
+            "buzz://list/not-a-uuid",
+            "buzz://list/00000000-0000-0000-0000-000000001234?x=1",
+            "buzz://list/00000000-0000-0000-0000-000000001234#frag",
+            "buzz://user@list/00000000-0000-0000-0000-000000001234",
+            "https://list/00000000-0000-0000-0000-000000001234",
+            "",
+        ] {
+            assert!(parse_list_reference(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn template_reference_reads_a_link_or_plain_text_never_a_number_form() {
+        let linked = parse_template_reference("buzz://template/built_a_site?lang=en").unwrap();
+        assert_eq!(linked.name, "built_a_site");
+        assert_eq!(linked.language.as_deref(), Some("en"));
+        let no_lang = parse_template_reference("colony://template/built_a_site").unwrap();
+        assert_eq!(no_lang.language, None);
+        let title = parse_template_reference("  Built a site for you ").unwrap();
+        assert_eq!(title.name, "Built a site for you");
+        assert_eq!(title.language, None);
+        for bad in [
+            "",
+            "buzz://template/",
+            "buzz://template/has space",
+            "buzz://template/a?lang=",
+            "buzz://template/a?lang=en&lang=af",
+            "buzz://template/a?other=1",
+            "buzz://template/a#frag",
+            "buzz://list/00000000-0000-0000-0000-000000001234",
+            "https://template/a",
+        ] {
+            assert!(parse_template_reference(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn template_link_round_trips_through_the_parser() {
+        let link = template_link("built_a_site", "en_ZA").expect("link");
+        assert_eq!(link, "buzz://template/built_a_site?lang=en_ZA");
+        let parsed = parse_template_reference(&link).unwrap();
+        assert_eq!(parsed.name, "built_a_site");
+        assert_eq!(parsed.language.as_deref(), Some("en_ZA"));
+        assert_eq!(template_link("Built a site", "en"), None);
+        assert_eq!(template_link("built_a_site", ""), None);
     }
 }

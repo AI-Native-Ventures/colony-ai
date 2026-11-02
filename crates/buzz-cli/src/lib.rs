@@ -280,6 +280,15 @@ enum Cmd {
     /// Read leads found in Discovery, add notes and update their stage
     #[command(subcommand)]
     Leads(LeadsCmd),
+    /// Outreach lists: named groups of leads you or the owner can point at in chat
+    #[command(
+        subcommand,
+        long_about = "Outreach lists are named groups of leads (for example \"Melville guesthouses, Nov\"). A message that mentions a list holds a colony://list/<id> link: open it with `colony lists get <link>`, then act on its members. A list holds lead ids only, so changing a lead's record changes it everywhere. Anyone with Sales access, agents included, may create a list when it helps (say so in your reply and give the link), add or remove leads and rename it; only people archive. A list never sends anything: a WhatsApp batch for a list still waits for the owner (`colony whatsapp batch create --list <link> --template <name>`)."
+    )]
+    Lists(ListsCmd),
+    /// Discovery campaigns: the searches that found leads, shared with everyone
+    #[command(subcommand)]
+    Campaigns(CampaignsCmd),
     /// WhatsApp outreach: approved templates, batches the owner approves, replies and status
     #[command(
         subcommand,
@@ -1420,14 +1429,107 @@ pub enum LeadsCmd {
 }
 
 #[derive(Subcommand)]
+pub enum ListsCmd {
+    /// List outreach lists, newest change first
+    List {
+        /// Only lists whose name or note contains this text
+        #[arg(long)]
+        query: Option<String>,
+        /// Show archived lists instead of active ones
+        #[arg(long)]
+        archived: bool,
+        /// Maximum lists to return, 1 through 500 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one list with each member's stage, phone, website and WhatsApp status
+    Get {
+        /// List UUID or colony://list/<uuid> link
+        list: String,
+    },
+    /// Make a new list; give the leads it starts with
+    Create {
+        /// List name, for example "Melville guesthouses, Nov" (1 through 80 characters)
+        #[arg(long)]
+        name: String,
+        /// Lead UUID or lead link to put in the list; repeat for several
+        #[arg(long)]
+        lead: Vec<String>,
+        /// Start with every lead a Discovery campaign found (campaign UUID or link)
+        #[arg(long)]
+        from_campaign: Option<String>,
+        /// A note shown on the list (up to 500 characters)
+        #[arg(long)]
+        note: Option<String>,
+        /// Default WhatsApp template: its name, Colony title or template link
+        #[arg(long)]
+        template: Option<String>,
+        /// Template language code when the name has several languages
+        #[arg(long)]
+        language: Option<String>,
+    },
+    /// Add leads to a list; leads already in it are ignored
+    Add {
+        /// List UUID or link
+        list: String,
+        /// Lead UUID or lead link; repeat for several
+        #[arg(long, required = true)]
+        lead: Vec<String>,
+    },
+    /// Remove leads from a list; leads not in it are ignored
+    Remove {
+        /// List UUID or link
+        list: String,
+        /// Lead UUID or lead link; repeat for several
+        #[arg(long, required = true)]
+        lead: Vec<String>,
+    },
+    /// Change a list's name or note (an empty --note clears it)
+    Rename {
+        /// List UUID or link
+        list: String,
+        /// New name
+        #[arg(long)]
+        name: Option<String>,
+        /// New note
+        #[arg(long)]
+        note: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CampaignsCmd {
+    /// List Discovery campaigns, newest change first
+    List {
+        /// Only campaigns whose name, type, area or search text contains this text
+        #[arg(long)]
+        query: Option<String>,
+        /// Show archived campaigns instead of active ones
+        #[arg(long)]
+        archived: bool,
+        /// Maximum campaigns to return, 1 through 500 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one campaign with the leads it found
+    Get {
+        /// Campaign UUID or colony://campaign/<uuid> link
+        campaign: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum WhatsappCmd {
     /// Show the connected number, quality, daily cap, sends today and any issue
     Status,
     /// List approved templates: Colony title first, Meta name second, slots and buttons
+    #[command(args_conflicts_with_subcommands = true)]
     Templates {
         /// Ask WhatsApp for the current list first (owner or admin)
         #[arg(long)]
         refresh: bool,
+        #[command(subcommand)]
+        cmd: Option<WhatsappTemplatesCmd>,
     },
     /// Rename a template (owner or admin) or propose a better title (agents, with --propose)
     TemplateTitle {
@@ -1528,6 +1630,15 @@ pub enum WhatsappCmd {
 }
 
 #[derive(Subcommand)]
+pub enum WhatsappTemplatesCmd {
+    /// Get one template: body with its slots, buttons, category, language and approval state
+    Get {
+        /// Template name, Colony title, or a colony://template/<name>?lang=<code> link
+        template: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum WhatsappDraftCmd {
     /// Approve a draft so the relay sends it; optionally edit the text or template parameters
     Approve {
@@ -1565,6 +1676,10 @@ pub enum WhatsappBatchCmd {
         /// Every active lead at this stage: qualified, in_conversation, proposal or lost
         #[arg(long)]
         stage: Option<String>,
+        /// Every member of an outreach list (UUID or link). Members with no phone number,
+        /// opted out, or whose lead is gone are skipped and listed with the reason
+        #[arg(long, conflicts_with_all = ["lead", "stage", "params_file"])]
+        list: Option<String>,
         /// JSON file: [{"lead": "<uuid>", "params": ["Thabo"]}, {"to": "+27...", "params": [...]}]
         #[arg(long)]
         params_file: Option<String>,
@@ -4386,6 +4501,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Discovery(sub) => commands::discovery::dispatch(sub, &client).await,
         Cmd::Leads(sub) => commands::leads::dispatch(sub, &client).await,
+        Cmd::Lists(sub) => commands::lists::dispatch(sub, &client).await,
+        Cmd::Campaigns(sub) => commands::lists::dispatch_campaigns(sub, &client).await,
         Cmd::Whatsapp(sub) => commands::whatsapp::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
@@ -4573,6 +4690,7 @@ mod tests {
             "agents",
             "asks",
             "brief",
+            "campaigns",
             "canvas",
             "channels",
             "cofounder",
@@ -4590,6 +4708,7 @@ mod tests {
             "issues",
             "leads",
             "lessons",
+            "lists",
             "media",
             "mem",
             "messages",
@@ -4827,6 +4946,11 @@ mod tests {
             vec!["get", "list", "note", "qualify", "save", "stage"]
         );
         assert_eq!(
+            names(&cmd, "lists"),
+            vec!["add", "create", "get", "list", "remove", "rename"]
+        );
+        assert_eq!(names(&cmd, "campaigns"), vec!["get", "list"]);
+        assert_eq!(
             names(&cmd, "team"),
             vec!["get", "list", "set-manager", "set-position", "set-title"]
         );
@@ -4911,6 +5035,7 @@ mod tests {
         let expected: Vec<(&str, usize)> = vec![
             ("agents", 7),
             ("asks", 5),
+            ("campaigns", 2),
             ("canvas", 2),
             ("channels", 16),
             ("discovery", 1),
@@ -4921,6 +5046,7 @@ mod tests {
             ("goals", 9),
             ("issues", 6),
             ("leads", 6),
+            ("lists", 6),
             ("media", 1),
             ("messages", 8),
             ("money", 4),
