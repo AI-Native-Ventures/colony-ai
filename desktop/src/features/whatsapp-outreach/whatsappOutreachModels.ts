@@ -921,3 +921,10 @@ export function whatsappMessagePreview(message: WhatsAppMessage): string {
   };
   return caption ? `${sentence[media.type]}: ${caption}` : sentence[media.type];
 }
+
+/** The list line for a chat: its latest message in words, or `null` for an empty chat. */
+export function whatsappLatestPreview(
+  message: WhatsAppMessage | undefined,
+): string | null {
+  return message ? whatsappMessagePreview(message) : null;
+}
