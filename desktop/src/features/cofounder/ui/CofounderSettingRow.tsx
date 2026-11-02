@@ -15,9 +15,13 @@ import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 
 import { useCofounderSettingsQuery, useSetCofounderSettings } from "../hooks";
 import { useCofounderLeadStatusQuery } from "../leadStatusHooks";
+import {
+  cofounderScoutCardModel,
+  getScoutStartState,
+  requestScoutRestart,
+  subscribeScoutStartState,
+} from "../scoutKeepAlive";
 import "./cofounderPhase2.css";
-
-const SCOUT_STALL_AFTER_MS = 3 * 60 * 1000;
 
 export function CofounderSettingRow() {
   const { activeCommunity } = useCommunities();
@@ -57,28 +61,40 @@ export function CofounderSettingRow() {
       ),
   );
   const briefHead = briefQuery.data?.head;
+  const scoutStart = React.useSyncExternalStore(
+    subscribeScoutStartState,
+    getScoutStartState,
+  );
   const onboardingStartedAt =
     onboardingHead?.resumedAt ?? onboardingHead?.startedAt ?? null;
-  const showGettingToKnowCard =
-    cofounderEnabled &&
-    onboardingHead?.status === "in_progress" &&
-    briefHead?.pending == null &&
-    briefHead?.confirmed == null &&
-    !onboardingQuery.isError &&
-    !briefQuery.isError;
+  // Before Scout has begun there is no onboarding record: the wait runs from the
+  // moment the mode was switched on.
+  const waitingSince = onboardingHead
+    ? onboardingStartedAt
+    : (settingsQuery.data?.updatedAt ?? null);
+  const scoutCard = cofounderScoutCardModel({
+    enabled: cofounderEnabled,
+    recordsKnown:
+      onboardingQuery.data !== undefined &&
+      briefQuery.data !== undefined &&
+      !onboardingQuery.isError &&
+      !briefQuery.isError,
+    onboardingStatus: onboardingHead?.status ?? null,
+    briefExists: briefHead?.pending != null || briefHead?.confirmed != null,
+    waitingSince,
+    unreachable: leadStatusQuery.data?.state === "unreachable",
+    unreachableDetail: leadStatusQuery.data?.detail || null,
+    scoutStart,
+    companyName,
+    nowMs: now,
+  });
+  const showGettingToKnowCard = scoutCard !== null;
   React.useEffect(() => {
     if (!showGettingToKnowCard) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => window.clearInterval(timer);
   }, [showGettingToKnowCard]);
-  const hasDurableWakeFailure =
-    showGettingToKnowCard && leadStatusQuery.data?.state === "unreachable";
-  const isScoutStalled =
-    showGettingToKnowCard &&
-    (hasDurableWakeFailure ||
-      (onboardingStartedAt !== null &&
-        now - onboardingStartedAt * 1_000 >= SCOUT_STALL_AFTER_MS));
   const disabled =
     !activeCommunity ||
     !canChange ||
@@ -96,6 +112,13 @@ export function CofounderSettingRow() {
     } catch {
       toast.error("Could not update co-founder mode.");
     }
+  }
+
+  /** Try again: wake Scout (a fresh start-up wake from the relay) and start it
+   * on this computer if it is not running. One button, no other step. */
+  async function retryScout() {
+    requestScoutRestart(scoutPubkey);
+    await changeEnabled(true);
   }
 
   async function openScout() {
@@ -131,9 +154,10 @@ export function CofounderSettingRow() {
         onCheckedChange={(enabled) => void changeEnabled(enabled)}
         testId="cofounder-mode-toggle"
       />
-      {showGettingToKnowCard ? (
+      {scoutCard ? (
         <div
           className="cf-setting-cofounder-scout"
+          data-kind={scoutCard.kind}
           data-testid="cofounder-scout-entry"
         >
           <ProfileAvatar
@@ -145,35 +169,21 @@ export function CofounderSettingRow() {
             testId="cofounder-scout-avatar"
           />
           <p>
-            <strong>
-              {isScoutStalled
-                ? hasDurableWakeFailure
-                  ? "Scout could not be reached"
-                  : "Scout has not started yet"
-                : `Scout is getting to know ${companyName}`}
-            </strong>
-            <span>
-              {isScoutStalled
-                ? hasDurableWakeFailure && leadStatusQuery.data?.detail
-                  ? `${leadStatusQuery.data.detail} Try again to wake Scout and continue setup.`
-                  : `It has been a few minutes since ${companyName} was switched on. Try again to wake Scout and continue setup.`
-                : "Reading your website, leads, chats and connected tools. Scout will message you a short brief to check."}
-            </span>
+            <strong>{scoutCard.title}</strong>
+            <span>{scoutCard.body}</span>
           </p>
           <button
             className="cf-setting-cofounder-scout-button"
             data-testid={
-              isScoutStalled ? "cofounder-retry-scout" : "cofounder-open-scout"
+              scoutCard.retry ? "cofounder-retry-scout" : "cofounder-open-scout"
             }
             disabled={
-              isScoutStalled ? disabled : !scoutPubkey || openDm.isPending
+              scoutCard.retry ? disabled : !scoutPubkey || openDm.isPending
             }
-            onClick={() =>
-              void (isScoutStalled ? changeEnabled(true) : openScout())
-            }
+            onClick={() => void (scoutCard.retry ? retryScout() : openScout())}
             type="button"
           >
-            {isScoutStalled ? "Try again" : "Open Scout"}
+            {scoutCard.retry ? "Try again" : "Open Scout"}
           </button>
         </div>
       ) : null}

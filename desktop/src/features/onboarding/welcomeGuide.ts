@@ -263,7 +263,11 @@ export async function buildWelcomeStarterCreateInput(
     teamId: WELCOME_TEAM_ID,
     relayUrl: relayUrl ?? undefined,
     spawnAfterCreate: false,
-    startOnAppLaunch: false,
+    // Scout runs whenever Colony is open: a wake from the relay (co-founder
+    // mode) is work for it, and the launch restore and community fan-out only
+    // start agents marked this way. Made with this off on 3.0.30, Scout was
+    // never started after an update (2 Nov 2026).
+    startOnAppLaunch: true,
     respondTo: "owner-only",
     parallelism: 1,
   };

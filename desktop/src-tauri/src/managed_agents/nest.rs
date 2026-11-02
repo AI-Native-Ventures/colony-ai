@@ -90,7 +90,9 @@ const NEST_AGENTS_VERSION: u32 = 8;
 /// Music, Mail or Messages) so existing nests regenerate the skill with it.
 /// Version 23 adds the Goals and weekly review section (`colony numbers`), the
 /// Company Records rule and the one-worker-per-request rule.
-const NEST_SKILL_VERSION: u32 = 23;
+/// Version 24 adds the Lists, campaigns and templates section (`colony lists`,
+/// `colony campaigns`, `colony whatsapp templates get`, `batch create --list`).
+const NEST_SKILL_VERSION: u32 = 24;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
@@ -1058,6 +1060,8 @@ mod brand_guard_tests;
 mod company_record_rules_tests;
 #[cfg(test)]
 mod marker_tests;
+#[cfg(test)]
+mod outreach_lists_skill_tests;
 #[cfg(test)]
 mod render_tests;
 #[cfg(test)]

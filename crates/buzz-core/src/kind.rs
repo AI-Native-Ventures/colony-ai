@@ -837,6 +837,18 @@ pub const KIND_CUSTOMER_ACTION: u32 = 47069;
 /// Relay-authored record of whether Scout can be reached while co-founder mode is on (community-wide, one per business). Relay only: no member action writes it. The 30670 to 30679 co-founder block is full, so this is the first kind after it.
 pub const KIND_COFOUNDER_LEAD_HEAD: u32 = 30680;
 
+// Outreach lists and shared Discovery campaigns (Sales channel scope, business broker).
+// Contract: docs/outreach-lists-contract.md. 30681 to 30683 and 47070 to 47074 stay free;
+// money rails owns 30686, 30687, 47077 and 47078.
+/// Relay-authored outreach list head (business channel, one per list; `d` = the list's coordinate).
+pub const KIND_OUTREACH_LIST_HEAD: u32 = 30684;
+/// Member or agent outreach list change (create, rename, add or remove leads, archive), brokered.
+pub const KIND_OUTREACH_LIST_ACTION: u32 = 47075;
+/// Relay-authored Discovery campaign head (business channel, one per campaign).
+pub const KIND_DISCOVERY_CAMPAIGN_HEAD: u32 = 30685;
+/// Member or agent Discovery campaign change (create, progress, finish, rename, archive), brokered.
+pub const KIND_DISCOVERY_CAMPAIGN_ACTION: u32 = 47076;
+
 // WhatsApp outreach (official Cloud API). Member-authored commands handled by
 // `buzz-relay/src/handlers/whatsapp_commands.rs`; the relay is the only caller
 // of the Graph send API. Events are stored in the company's private Outreach
@@ -1023,6 +1035,8 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_PROSPECT_HEAD,
     KIND_MONEY_FOLLOW_UP_HEAD,
     KIND_COMPANY_WORK_TRACKING_HEAD,
+    KIND_OUTREACH_LIST_HEAD,
+    KIND_DISCOVERY_CAMPAIGN_HEAD,
     KIND_PARTY_ACTION,
     KIND_CLIENT_ACTION,
     KIND_SERVICE_ACTION,
@@ -1056,6 +1070,8 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_RECONCILIATION,
     KIND_MONEY_FOLLOW_UP,
     KIND_COMPANY_WORK_TRACKING_ACTION,
+    KIND_OUTREACH_LIST_ACTION,
+    KIND_DISCOVERY_CAMPAIGN_ACTION,
 ];
 
 /// Returns `true` for a kind allocated to the Phase 2 business-record contract.
@@ -1082,6 +1098,8 @@ pub const fn is_business_relay_only_kind(kind: u32) -> bool {
             | KIND_PROSPECT_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
             | KIND_COMPANY_WORK_TRACKING_HEAD
+            | KIND_OUTREACH_LIST_HEAD
+            | KIND_DISCOVERY_CAMPAIGN_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
     )
 }
@@ -1104,6 +1122,8 @@ pub const fn is_business_command_kind(kind: u32) -> bool {
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
             | KIND_COMPANY_WORK_TRACKING_ACTION
+            | KIND_OUTREACH_LIST_ACTION
+            | KIND_DISCOVERY_CAMPAIGN_ACTION
     )
 }
 
@@ -1334,6 +1354,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
     KIND_COFOUNDER_LEAD_HEAD,
+    KIND_OUTREACH_LIST_HEAD,
+    KIND_OUTREACH_LIST_ACTION,
+    KIND_DISCOVERY_CAMPAIGN_HEAD,
+    KIND_DISCOVERY_CAMPAIGN_ACTION,
     KIND_WHATSAPP_BATCH,
     KIND_WHATSAPP_BATCH_DECISION,
     KIND_WHATSAPP_SEND_REQUEST,
@@ -1414,6 +1438,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
             | KIND_COMPANY_WORK_TRACKING_ACTION
+            | KIND_OUTREACH_LIST_ACTION
+            | KIND_DISCOVERY_CAMPAIGN_ACTION
             | KIND_GOAL_ACTION
             | KIND_ASK_ACTION
             | KIND_ASK_RESPONSE
@@ -1468,6 +1494,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
+            | KIND_OUTREACH_LIST_HEAD
+            | KIND_DISCOVERY_CAMPAIGN_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
             | KIND_COMPANY_WORK_TRACKING_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
@@ -1550,6 +1578,8 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PLAYBOOK_HEAD)); // 3067
 const _: () = assert!(is_parameterized_replaceable(KIND_NUMBERS_HEAD)); // 30678 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_CUSTOMER_HEAD)); // 30679 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_LEAD_HEAD)); // 30680 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_OUTREACH_LIST_HEAD)); // 30684 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_DISCOVERY_CAMPAIGN_HEAD)); // 30685 ∈ 30000–39999
 
 // Compile-time: WhatsApp outreach kinds stay inside their reserved action block.
 const _: () = assert!(
@@ -1628,6 +1658,26 @@ mod tests {
         assert!(is_business_record_kind(KIND_MONEY_FOLLOW_UP_HEAD));
         assert!(is_business_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
         assert!(is_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+    }
+
+    #[test]
+    fn outreach_list_and_campaign_kinds_have_expected_write_authority() {
+        assert_eq!(KIND_OUTREACH_LIST_HEAD, 30684);
+        assert_eq!(KIND_OUTREACH_LIST_ACTION, 47075);
+        assert_eq!(KIND_DISCOVERY_CAMPAIGN_HEAD, 30685);
+        assert_eq!(KIND_DISCOVERY_CAMPAIGN_ACTION, 47076);
+        for head in [KIND_OUTREACH_LIST_HEAD, KIND_DISCOVERY_CAMPAIGN_HEAD] {
+            assert!(is_business_record_kind(head));
+            assert!(is_business_relay_only_kind(head));
+            assert!(is_relay_only_kind(head));
+            assert!(!is_command_kind(head));
+        }
+        for action in [KIND_OUTREACH_LIST_ACTION, KIND_DISCOVERY_CAMPAIGN_ACTION] {
+            assert!(is_business_record_kind(action));
+            assert!(is_business_command_kind(action));
+            assert!(is_command_kind(action));
+            assert!(!is_relay_only_kind(action));
+        }
     }
 
     #[test]
