@@ -15,7 +15,7 @@ This contract is the source of truth for field names. If the UI needs something 
   - Admin auth mode `disabled` (local dev): `403` for every metrics route. There is no anonymous read of metrics.
 - Audit: every successful read writes one row to `relay_operator_read_audit` (actor key, path, time). No query string values or response data are stored.
 - Privacy: counts, ids and timestamps only. No message text, no WhatsApp text, no lead data, no customer names. People appear as shortened keys (`pubkeyShort`, first 8 hex) and a business shows by its name and host (operators already see these). A relay test greps every response for event content.
-- Errors: same shape as the existing admin API: `{"error": {"code": "...", "message": "..."}}`.
+- Errors: same shape as the existing admin API: `{"error": {"code": "...", "message": "...", "requestId": "..."}}`. Codes used here: `invalid_days`, `invalid_sort`, `invalid_limit`, `invalid_offset`, `invalid_query`, `not_found`, `forbidden`. An unknown query parameter is `400`.
 - Caching: `Cache-Control: no-store` (existing admin middleware). Every number comes from a precomputed table, never from a live scan of `events`.
 - Dates: `day` is a UTC date `YYYY-MM-DD`; timestamps are RFC 3339 UTC. The UI formats to SAST. Money is a USD decimal **string** (`"12.340000"`, 6 places) so nothing rounds in transit. Token and request counts are JSON numbers (safe integers).
 - Range: `days` query parameter, one of `7`, `30`, `90`; default `30`; anything else is `400 invalid_days`.
@@ -99,7 +99,7 @@ Query: `q` (case-insensitive substring of business name or host or owner name), 
   "items": [
     {
       "communityId": "uuid",
-      "name": "Horizon Labs",             // business name; falls back to host when unnamed
+      "name": "Horizon Labs",             // name of the business channel; falls back to host when there is none
       "host": "horizonlabs.colony.global",
       "ownerName": "Basheer Phiri",       // owner display name, null when unknown
       "createdAt": "2026-10-03T08:00:00Z",
@@ -108,7 +108,7 @@ Query: `q` (case-insensitive substring of business name or host or owner name), 
       "activeDaysLast7": 7,
       "aiRequests": 9200,                 // in range
       "aiChargedUsd": "0.000000",
-      "discoveryResultsThisMonth": 500, "discoveryCap": 2000,
+      "discoveryResultsThisMonth": 500, "discoveryCap": 2000,   // cap from relay config (default 2000 per business per month)
       "whatsappSentInRange": 312,
       "cofounderOn": true,                // false/true; null when the settings record could not be read
       "health": "ok"                      // "ok" | "warn" | "bad", rules in section 4
@@ -147,11 +147,11 @@ Query: `q` (case-insensitive substring of business name or host or owner name), 
     {
       "pubkeyShort": "9f3a77c1", "name": "Scout",
       "runtime": "claude_code",           // agent_type as stored, null when unset
-      "status": "offline",                // "running" | "idle" | "offline" (running: published in last 15 min, idle: last 7 days, offline: older or never)
+      "status": "offline",                // "running" | "idle" | "offline" (running: published in the last 30 min, idle: in the last 7 days, offline: older or never; resolution is the 15 minute refresh)
       "lastEventAt": "...",               // null when it never published
       "offlineHours": 10,                 // whole hours since lastEventAt, null when never or status != offline
       "answerRatePct": 100.0,             // answered within 5 min, in range; null when no mentions
-      "medianAnswerSeconds": 60           // null when not enough pairs
+      "avgAnswerSeconds": 60              // mean seconds to answer, over answers inside 5 minutes; null when none. (Mean, not median: daily rollups cannot be merged into a median.)
     }
   ],
   "ai": {
@@ -208,7 +208,7 @@ Query: `q` (case-insensitive substring of business name or host or owner name), 
     "timedOut": 500,             // transport failure, timeout or 5xx (upstream_unclear)
     "other": 0                   // admission busy, unreadable answer, cost unusable, reply refused, database error
   },
-  "topBusinesses": [ { "communityId": "uuid", "name": "Horizon Labs", "requests": 9200, "agentName": "Scout" } ],   // top 10; agentName = agent with most requests, null if unknown
+  "topBusinesses": [ { "communityId": "uuid", "name": "Horizon Labs", "requests": 9200 } ],   // top 10 by requests
   "notCounted": "Own-AI use (Claude Code, Codex, OpenCode) runs on the person's Mac and never reaches Colony. Only the free AI gateway is counted.",
   "unavailable": []
 }
@@ -224,7 +224,7 @@ No `days` parameter: every figure is "now", "today" or "last 24 hours" as labell
 {
   "generatedAt": "...", "dataThrough": "2026-11-01",
   "relay": { "status": "up", "version": "f3841bd3", "startedAt": "...", "uptimePct7d": null },   // uptimePct7d not collected, null
-  "connections": { "now": 143 },
+  "connections": { "now": 143, "scope": "this_relay_instance" },   // WebSocket connections on the relay instance that answered; with several instances it is that one's count
   "cofounderWakes": {
     "last24h": { "delivered": 3, "skipped": 14, "pending": 0 },
     "allTime": { "delivered": 3, "skipped": 15, "pending": 0 },
@@ -264,25 +264,27 @@ All new tables are deployment-global (not per community), hold counts and ids on
 
 | Table | Grain | Written by |
 |---|---|---|
-| `metrics_daily_active` | one row per UTC day | rollup job |
-| `metrics_community_daily` | per business per day | rollup job |
-| `metrics_ai_daily` | per day per business per model | rollup job (from `account_ai_requests`) |
+| `metrics_daily_active` | one row per UTC day (DAU, WAU, MAU, people, businesses, agents; `is_final`) | rollup job |
+| `metrics_person_daily` | per human per business per day (count of events, last event time) | rollup job |
+| `metrics_agent_daily` | per agent per day (events, mentions, answered within 5 min, answer seconds) | rollup job |
+| `metrics_ai_daily` | per day per business per model (requests, outcomes, tokens, charge) | rollup job, from `account_ai_requests` |
 | `metrics_app_sessions_daily` | per person per business per day (sessions, connections, app version) | relay, on every authenticated WebSocket connection |
-| `metrics_http_hourly` | per hour per route (requests, 4xx, 5xx) | relay middleware, flushed every minute |
+| `metrics_http_hourly` | per hour per route template (requests, 4xx, 5xx) | relay middleware, flushed every minute |
 | `metrics_gateway_outcomes_hourly` | per hour per outcome per fallback flag | relay, when a gateway request finishes |
-| `relay_operator_read_audit` | one row per metrics read | admin API |
-| `account_ai_requests.model / input_tokens / output_tokens` | generated columns from the stored `usage` JSON (so old rows are backfilled by the migration) | database |
+| `relay_operator_read_audit` | one row per metrics read (actor, route, time) | admin API |
+| `account_ai_requests.model / input_tokens / output_tokens` | generated columns from the stored `usage` JSON, so old rows are backfilled by the migration itself | database |
 
 Rollup job: runs inside the relay (one pod at a time, Postgres advisory lock). On start it fills any missing days of the last 90 days. Every 15 minutes it recomputes today (partial). Once a day, after 00:10 UTC, it finalises yesterday. All recomputations are idempotent (same input, same rows).
 
 Definitions used by the rollup:
 
-- **Human activity**: an event authored by a pubkey that has a `users` row with `agent_type IS NULL` in that community, of any kind except ephemeral kinds (20000 to 29999, which covers AUTH and presence) and except kind 0.
+- **Human**: a `users` row with no `agent_type` and no `agent_owner_pubkey`. **Agent**: a `users` row with either set, except `agent_type = 'worker'` (hidden workers are not counted).
+- **Human activity**: an undeleted event authored by a human, of any kind except ephemeral kinds (20000 to 29999, which covers AUTH and presence) and except kind 0.
 - **DAU / WAU / MAU**: distinct such pubkeys across all communities in the UTC day / the 7 days ending that day / the 30 days ending that day. Stickiness = DAU / MAU.
 - **People**: distinct human pubkeys with a non-deactivated `users` row, created on or before that day.
 - **Active business (week)**: at least one human event in the 7 days ending that day.
-- **Agent**: `users` row with `agent_type IS NOT NULL`. Active = published an event in the window. Never started = no event ever.
-- **Answered within 5 minutes**: an `event_mentions` row naming an agent, for an event by someone else, with a reply by that agent in the same channel at most 5 minutes later. (Same channel, not same thread, in v1.)
+- **Agent active** = published an event in the window. **Never started** = no event in the retained rollup history.
+- **Answered within 5 minutes**: an `event_mentions` row naming an agent, for an event by someone else, with a reply by that agent in the same channel at most 5 minutes later. (Same channel, not same thread, in v1.) A mention only counts once it has had its 5 minutes, so a partial day never shows a mention as unanswered that simply has not had time.
 - **App session**: authenticated WebSocket connections by one pubkey in one business, where a new session starts when the previous connection was more than 30 minutes earlier.
 - **App version**: sent by the desktop in the AUTH event as a tag `["client", "colony-desktop", "<version>"]`. Only versions that include this change report; older apps show no version.
 
@@ -296,7 +298,7 @@ Needs attention items (`key`, severity, rule):
 | `cofounder_wakes_stuck` | red | a pending wake older than 1 hour |
 | `agents_not_answering` | red | at least 1 business with a mention that had no agent reply within 5 minutes in the last 24 h |
 | `ai_requests_stuck` | red | an AI request pending more than 15 minutes |
-| `gateway_refusals` | amber | refused or timed out share of today's gateway requests is 5 percent or more |
+| `gateway_refusals` | amber | refused or timed out share of today's gateway requests is 5 percent or more, with at least 20 requests today |
 | `relay_5xx` | amber | at least 1 server error in the last 24 h (red at 50 or more) |
 | `whatsapp_failed` | amber | at least 1 failed WhatsApp send today |
 | `old_app_versions` | amber | people (last 7 days) on a version older than the newest version seen by at least 2 people |

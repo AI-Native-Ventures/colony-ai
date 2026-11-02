@@ -6,6 +6,7 @@
 
 mod auth;
 mod error;
+mod metrics;
 
 use std::sync::Arc;
 
@@ -60,6 +61,7 @@ pub fn router(state: Arc<crate::state::AppState>) -> Router {
         .route("/operators", get(list_operators))
         .route("/operators/{pubkey}", put(upsert_operator))
         .route("/operators/{pubkey}", delete(delete_operator))
+        .merge(metrics::routes())
         .layer(middleware::from_fn(security_headers))
         // Mutation routes carry a JSON body (max ~4 KB); read-only routes have no body.
         .layer(RequestBodyLimitLayer::new(4096))
@@ -1331,6 +1333,8 @@ mod postgres_tests {
         Arc::new(state)
     }
 
+    mod metrics_tests;
+
     const HASH: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
     /// The GET (read) routes the admin API mounts. Each must reject a missing
@@ -1345,6 +1349,11 @@ mod postgres_tests {
             "/feedback".to_string(),
             format!("/feedback/{id}"),
             format!("/feedback/{id}/attachments/{HASH}"),
+            "/metrics/overview".to_string(),
+            "/metrics/businesses".to_string(),
+            format!("/metrics/businesses/{id}"),
+            "/metrics/ai-usage".to_string(),
+            "/metrics/health".to_string(),
         ]
     }
 

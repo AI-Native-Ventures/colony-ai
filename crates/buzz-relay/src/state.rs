@@ -251,6 +251,11 @@ impl ConnectionManager {
         }
     }
 
+    /// Number of connections currently registered on this pod.
+    pub fn connection_count(&self) -> usize {
+        self.connections.len()
+    }
+
     /// Registers a connection with its outbound sender, cancellation token,
     /// server-resolved community, shared backpressure counter, mutable
     /// subscription map, and grace limit.
