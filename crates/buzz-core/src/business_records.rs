@@ -11,6 +11,10 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::outreach_lists::{
+    discovery_campaign_d_tag, outreach_list_d_tag, DiscoveryCampaignAction, OutreachListAction,
+};
+
 /// Current business-record JSON schema version.
 pub const BUSINESS_RECORD_SCHEMA_VERSION: u8 = 1;
 /// Longest work item title, in characters.
@@ -80,6 +84,10 @@ pub enum BusinessCommand {
     MoneyAdjustment(MoneyAdjustment),
     /// Draft, review, or approval of an overdue follow-up intent.
     MoneyFollowUp(MoneyFollowUpAction),
+    /// Outreach list change (create, rename, add or remove leads, archive).
+    OutreachListAction(Box<OutreachListAction>),
+    /// Shared Discovery campaign change (create, progress, finish, rename, archive).
+    DiscoveryCampaignAction(Box<DiscoveryCampaignAction>),
 }
 
 /// A business or client record action.
@@ -248,6 +256,16 @@ pub struct ProspectEvidence {
     pub observed_at: i64,
 }
 
+/// How a prospect entered the company's pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProspectOrigin {
+    /// Added directly by a company member.
+    Manual,
+    /// Returned by a Discovery search.
+    Discovery,
+}
+
 /// A taxonomy tag matched against fields returned by the discovery provider.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -307,6 +325,9 @@ pub struct ProspectRecordInput {
     /// Provider or reviewer fit score from zero through one hundred.
     #[serde(default)]
     pub fit_score: Option<u8>,
+    /// Provenance of the prospect. Missing on older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ProspectOrigin>,
     /// Generated tag evidence matched from the provider listing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub discovery_tags: Vec<ProspectDiscoveryTagInput>,
@@ -1454,6 +1475,20 @@ pub fn validate_business_command_scope(
                 value.follow_up_id,
             )
         }
+        BusinessCommand::OutreachListAction(value) => {
+            if d_tag == outreach_list_d_tag(community_id, value.list_id) {
+                Ok(())
+            } else {
+                Err(BusinessRecordError::DTagMismatch)
+            }
+        }
+        BusinessCommand::DiscoveryCampaignAction(value) => {
+            if d_tag == discovery_campaign_d_tag(community_id, value.campaign_id) {
+                Ok(())
+            } else {
+                Err(BusinessRecordError::DTagMismatch)
+            }
+        }
     }
 }
 
@@ -1775,6 +1810,12 @@ pub fn parse_business_command(
         crate::kind::KIND_PAYMENT => parse!(PaymentEvidence, PaymentEvidence)?,
         crate::kind::KIND_MONEY_ADJUSTMENT => parse!(MoneyAdjustment, MoneyAdjustment)?,
         crate::kind::KIND_MONEY_FOLLOW_UP => parse!(MoneyFollowUpAction, MoneyFollowUp)?,
+        crate::kind::KIND_OUTREACH_LIST_ACTION => {
+            parse_boxed!(OutreachListAction, OutreachListAction)?
+        }
+        crate::kind::KIND_DISCOVERY_CAMPAIGN_ACTION => {
+            parse_boxed!(DiscoveryCampaignAction, DiscoveryCampaignAction)?
+        }
         _ => return Err(BusinessRecordError::UnsupportedKind),
     };
 
@@ -1793,6 +1834,8 @@ pub fn parse_business_command(
         BusinessCommand::PaymentEvidence(value) => value.schema_version,
         BusinessCommand::MoneyAdjustment(value) => value.schema_version,
         BusinessCommand::MoneyFollowUp(value) => value.schema_version,
+        BusinessCommand::OutreachListAction(value) => value.schema_version,
+        BusinessCommand::DiscoveryCampaignAction(value) => value.schema_version,
     };
     if schema_version != BUSINESS_RECORD_SCHEMA_VERSION {
         return Err(BusinessRecordError::UnsupportedSchemaVersion);
@@ -1837,6 +1880,7 @@ mod tests {
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
                 fit_score: None,
+                origin: None,
                 discovery_tags: Vec::new(),
                 potential_monthly_value_minor: None,
                 website: Some("https://example.test".into()),
@@ -2515,5 +2559,100 @@ mod tests {
         action.verification.as_mut().expect("verification").evidence = "Reviewed attachment".into();
         action.expected_head_event_id = None;
         assert!(validate_company_work_item_action(&action).is_err());
+    }
+
+    #[test]
+    fn outreach_list_and_campaign_commands_parse_and_bind_to_their_coordinates() {
+        use crate::outreach_lists::{
+            discovery_campaign_d_tag, outreach_list_d_tag, CampaignOp, DiscoveryCampaignAction,
+            ListOp, ListSource, ListSourceKind, OutreachListAction,
+        };
+        let community_id = Uuid::from_u128(30);
+        let list_id = Uuid::from_u128(31);
+        let list = OutreachListAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            list_id,
+            op: ListOp::Create,
+            expected_head_event_id: None,
+            name: Some("Melville guesthouses".into()),
+            note: None,
+            lead_ids: vec![Uuid::from_u128(1)],
+            source: Some(ListSource {
+                kind: ListSourceKind::Manual,
+                campaign_id: None,
+            }),
+            default_template: None,
+        };
+        let content = serde_json::to_string(&list).expect("serialize list action");
+        let parsed = parse_business_command(crate::kind::KIND_OUTREACH_LIST_ACTION, &content)
+            .expect("parse list action");
+        assert!(matches!(parsed, BusinessCommand::OutreachListAction(_)));
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &outreach_list_d_tag(community_id, list_id),
+                &parsed,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &outreach_list_d_tag(community_id, Uuid::from_u128(99)),
+                &parsed,
+            ),
+            Err(BusinessRecordError::DTagMismatch)
+        );
+        assert_eq!(
+            parse_business_command(crate::kind::KIND_DISCOVERY_CAMPAIGN_ACTION, &content),
+            Err(BusinessRecordError::InvalidContent)
+        );
+
+        let campaign_id = Uuid::from_u128(32);
+        let campaign = DiscoveryCampaignAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            campaign_id,
+            op: CampaignOp::Archive,
+            expected_head_event_id: None,
+            name: None,
+            audience: None,
+            industry_name: None,
+            vertical_id: None,
+            vertical_name: None,
+            picked_tags: None,
+            query: None,
+            area: None,
+            target: None,
+            found: None,
+            skipped_duplicates: None,
+            status: None,
+            end_note: None,
+            run_by: None,
+        };
+        let parsed = parse_business_command(
+            crate::kind::KIND_DISCOVERY_CAMPAIGN_ACTION,
+            &serde_json::to_string(&campaign).expect("serialize campaign action"),
+        )
+        .expect("parse campaign action");
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &discovery_campaign_d_tag(community_id, campaign_id),
+                &parsed,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate_business_command_scope(
+                community_id,
+                Uuid::nil(),
+                &outreach_list_d_tag(community_id, campaign_id),
+                &parsed,
+            ),
+            Err(BusinessRecordError::DTagMismatch)
+        );
     }
 }

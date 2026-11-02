@@ -23,6 +23,12 @@ pub use buzz_core::business_records::{
     WorkItemHead, WorkItemHeadInput,
 };
 use buzz_core::kind::*;
+use buzz_core::outreach_lists::{discovery_campaign_d_tag, outreach_list_d_tag};
+pub use buzz_core::outreach_lists::{
+    CampaignAudience, CampaignOp, CampaignRunBy, CampaignStatus, DiscoveryCampaignAction,
+    DiscoveryCampaignHead, ListMember, ListOp, ListSource, ListSourceKind, ListStatus,
+    OutreachListAction, OutreachListHead, RunnerKind, TemplateRef,
+};
 use nostr::{EventBuilder, Kind, Tag};
 use serde::Serialize;
 use uuid::Uuid;
@@ -191,6 +197,34 @@ pub fn build_money_follow_up(action: &MoneyFollowUpAction) -> Result<EventBuilde
     )
 }
 
+/// Build a member- or agent-signed outreach list action in the internal business channel.
+pub fn build_outreach_list_action(
+    community_id: Uuid,
+    business_channel_id: Uuid,
+    action: &OutreachListAction,
+) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_OUTREACH_LIST_ACTION,
+        business_channel_id,
+        outreach_list_d_tag(community_id, action.list_id),
+        action,
+    )
+}
+
+/// Build a member- or agent-signed Discovery campaign action in the internal business channel.
+pub fn build_discovery_campaign_action(
+    community_id: Uuid,
+    business_channel_id: Uuid,
+    action: &DiscoveryCampaignAction,
+) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_DISCOVERY_CAMPAIGN_ACTION,
+        business_channel_id,
+        discovery_campaign_d_tag(community_id, action.campaign_id),
+        action,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +288,7 @@ mod tests {
                 industry: "Home & Living".into(),
                 vertical: "Home Decor & Gift Shops".into(),
                 fit_score: Some(91),
+                origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
                 discovery_tags: Vec::new(),
                 potential_monthly_value_minor: None,
                 website: None,
@@ -467,5 +502,82 @@ mod tests {
             tags[1].content(),
             Some(company_work_d_tag(work_item_id).as_str())
         );
+    }
+
+    #[test]
+    fn outreach_builders_bind_kind_business_channel_and_coordinate() {
+        use buzz_core::business_records::{
+            parse_business_command, validate_business_command_scope, BusinessCommand,
+            BUSINESS_RECORD_SCHEMA_VERSION,
+        };
+
+        let community_id = Uuid::from_u128(1);
+        let channel_id = Uuid::from_u128(2);
+        let list_id = Uuid::from_u128(3);
+        let list = OutreachListAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            list_id,
+            op: ListOp::Create,
+            expected_head_event_id: None,
+            name: Some("Melville guesthouses".into()),
+            note: None,
+            lead_ids: vec![Uuid::from_u128(4)],
+            source: Some(ListSource {
+                kind: ListSourceKind::Agent,
+                campaign_id: None,
+            }),
+            default_template: None,
+        };
+        let event = build_outreach_list_action(community_id, channel_id, &list)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+        assert_eq!(event.kind, Kind::Custom(KIND_OUTREACH_LIST_ACTION as u16));
+        let tags = event.tags.iter().collect::<Vec<_>>();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].kind().to_string(), "h");
+        assert_eq!(tags[0].content(), Some(channel_id.to_string().as_str()));
+        let expected_d_tag = outreach_list_d_tag(community_id, list_id);
+        assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+        let command = parse_business_command(KIND_OUTREACH_LIST_ACTION, &event.content)
+            .expect("parse built list command");
+        assert!(matches!(command, BusinessCommand::OutreachListAction(_)));
+        assert_eq!(
+            validate_business_command_scope(community_id, channel_id, &expected_d_tag, &command),
+            Ok(())
+        );
+
+        let campaign_id = Uuid::from_u128(5);
+        let campaign = DiscoveryCampaignAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            campaign_id,
+            op: CampaignOp::Archive,
+            expected_head_event_id: Some("a".repeat(64)),
+            name: None,
+            audience: None,
+            industry_name: None,
+            vertical_id: None,
+            vertical_name: None,
+            picked_tags: None,
+            query: None,
+            area: None,
+            target: None,
+            found: None,
+            skipped_duplicates: None,
+            status: None,
+            end_note: None,
+            run_by: None,
+        };
+        let event = build_discovery_campaign_action(community_id, channel_id, &campaign)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+        assert_eq!(
+            event.kind,
+            Kind::Custom(KIND_DISCOVERY_CAMPAIGN_ACTION as u16)
+        );
+        let expected_d_tag = discovery_campaign_d_tag(community_id, campaign_id);
+        let tags = event.tags.iter().collect::<Vec<_>>();
+        assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
     }
 }

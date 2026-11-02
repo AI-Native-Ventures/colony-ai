@@ -482,11 +482,48 @@ async fn resolve_target(
                 .id
         }
     };
+    announce_dm(state, community_id, dm_channel, &scout, &owner).await?;
     Ok(Resolved::Target(Target {
         scout_hex,
         owner_hex: hex::encode(&owner),
         dm_channel,
     }))
+}
+
+/// Make the Scout-owner direct message known to its two members. A channel made
+/// without its discovery events (kind 39000 with both participants, kind 39002
+/// members) is invisible to the owner's app and to Scout's harness, and the
+/// harness only subscribes live when it is told Scout was added. Discovery
+/// events are replaceable, so they are written on every delivery: a direct
+/// message the relay made earlier without them is repaired by the next wake.
+/// Only Scout is told again each time (the harness subscribes idempotently).
+async fn announce_dm(
+    state: &Arc<AppState>,
+    community_id: CommunityId,
+    dm_channel: Uuid,
+    scout: &[u8],
+    owner: &[u8],
+) -> Result<(), String> {
+    let host = state
+        .db
+        .lookup_community_host(community_id)
+        .await
+        .map_err(|error| format!("community host lookup failed: {error}"))?
+        .ok_or_else(|| "community no longer exists".to_string())?;
+    let tenant = TenantContext::resolved(community_id, host);
+    crate::handlers::side_effects::emit_group_discovery_events(&tenant, state, dm_channel)
+        .await
+        .map_err(|error| format!("could not announce the direct message: {error}"))?;
+    crate::handlers::side_effects::emit_membership_notification(
+        &tenant,
+        state,
+        dm_channel,
+        scout,
+        owner,
+        buzz_core::kind::KIND_MEMBER_ADDED_NOTIFICATION,
+    )
+    .await
+    .map_err(|error| format!("could not tell Scout about the direct message: {error}"))
 }
 
 /// The lines of the wake message for these reasons.
@@ -556,8 +593,11 @@ async fn post_wake(
     }
     // Same provenance as a scheduled duty: the relay speaks for the owner's
     // standing choice to run co-founder mode, and the message names the agent.
+    // The owner is deliberately NOT `p`-tagged: a `p` tag makes a mention, which
+    // the owner's Activity feed, notifications and unread counts would show for a
+    // message that is meant for Scout alone. Authority comes from the
+    // `buzz:workflow-owner` tag, not from a `p` tag.
     let tags = vec![
-        vec!["p".to_string(), target.owner_hex.clone()],
         vec!["p".to_string(), target.scout_hex.clone()],
         vec!["buzz:workflow".to_string(), "true".to_string()],
         vec!["buzz:workflow-owner".to_string(), target.owner_hex.clone()],
@@ -1093,9 +1133,17 @@ mod postgres_tests {
         assert!(tags
             .iter()
             .any(|tag| tag[0] == "p" && tag[1] == scout.public_key().to_hex()));
+        // The owner is named as the workflow owner (authority) but never `p`
+        // tagged, so the wake is no mention in the owner's Activity or badges.
+        assert!(
+            !tags
+                .iter()
+                .any(|tag| tag[0] == "p" && tag[1] == owner.public_key().to_hex()),
+            "the owner must not be mentioned by a wake"
+        );
         assert!(tags
             .iter()
-            .any(|tag| tag[0] == "p" && tag[1] == owner.public_key().to_hex()));
+            .any(|tag| tag[0] == "buzz:workflow-owner" && tag[1] == owner.public_key().to_hex()));
         assert!(tags
             .iter()
             .any(|tag| tag[0] == "buzz:workflow-mention" && tag[1] == scout.public_key().to_hex()));
@@ -1390,6 +1438,43 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
+    async fn the_direct_message_the_relay_opens_names_only_the_owner_and_scout() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+
+        let mut query = EventQuery::for_community(fixture.tenant.community());
+        query.channel_id = Some(dm);
+        query.kinds = Some(vec![buzz_core::kind::KIND_NIP29_GROUP_METADATA as i32]);
+        query.limit = Some(10);
+        let metadata = fixture
+            .state
+            .db
+            .query_events_for_event_write(&query)
+            .await
+            .expect("metadata events");
+        assert_eq!(metadata.len(), 1, "the direct message was announced");
+        let participants = metadata[0]
+            .event
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .filter(|tag| tag[0] == "p")
+            .map(|tag| tag[1].clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = [owner.public_key().to_hex(), scout.public_key().to_hex()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            participants, expected,
+            "the relay key must never be a participant of the owner's direct message"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
     async fn a_mode_on_wake_that_was_already_skipped_is_recovered_by_the_sweep() {
         let (fixture, owner, scout) = company_with_first_run_scout().await;
         // What production holds: the start-up wake ended unsent.
@@ -1637,7 +1722,7 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn saving_the_settings_again_while_scout_is_reachable_queues_nothing() {
+    async fn changing_a_preference_while_scout_is_reachable_queues_nothing() {
         let (fixture, owner, _scout) = company_with_first_run_scout().await;
         deliver_one(&fixture.state, community(&fixture), soon())
             .await
@@ -1648,11 +1733,99 @@ mod postgres_tests {
             &owner,
             &CofounderSettings {
                 enabled: true,
+                money_preference: buzz_core::company_cofounder::MoneyPreference::BestOption,
                 ..CofounderSettings::default()
             },
         )
         .await;
-        assert_eq!(pending_count(&fixture).await, 0, "only Try again re-wakes");
+        assert_eq!(
+            pending_count(&fixture).await,
+            0,
+            "changing a preference is not a Try again"
+        );
+    }
+
+    /// 2 Nov 2026: the start-up wake was delivered while Scout was not running.
+    /// Nothing failed, so there was no lead status and "Try again" (the same
+    /// settings saved again) queued nothing. It must wake Scout again for as
+    /// long as onboarding has not finished.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn try_again_before_scout_began_onboarding_queues_a_fresh_wake() {
+        let (fixture, owner, scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        assert_eq!(pending_count(&fixture).await, 0, "the first wake went out");
+
+        save_cofounder_settings(
+            &fixture,
+            &owner,
+            &CofounderSettings {
+                enabled: true,
+                ..CofounderSettings::default()
+            },
+        )
+        .await;
+        assert_eq!(
+            mode_on_count(&fixture).await,
+            1,
+            "Try again queued a fresh start-up wake"
+        );
+
+        // Delivered once the five minute interval has passed.
+        deliver_one(
+            &fixture.state,
+            community(&fixture),
+            Utc::now() + chrono::Duration::seconds(MIN_WAKE_INTERVAL_SECS + 5),
+        )
+        .await
+        .expect("deliver again");
+        let dm = dm_between(&fixture, &owner, &scout).await;
+        assert_eq!(wake_messages(&fixture, dm).await.len(), 2);
+        assert_eq!(pending_count(&fixture).await, 0);
+    }
+
+    /// Off then on again is a new start-up wake every time while onboarding has
+    /// not finished, even when the earlier one was delivered.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn switching_off_and_on_again_queues_a_fresh_wake_each_time() {
+        let (fixture, owner, _scout) = company_with_first_run_scout().await;
+        deliver_one(&fixture.state, community(&fixture), soon())
+            .await
+            .expect("deliver");
+        assert_eq!(pending_count(&fixture).await, 0);
+
+        for round in 1..=2 {
+            save_cofounder_settings(&fixture, &owner, &CofounderSettings::default()).await;
+            assert_eq!(
+                mode_on_count(&fixture).await,
+                0,
+                "off queues nothing (round {round})"
+            );
+            enable_cofounder(&fixture, &owner).await;
+            assert_eq!(
+                mode_on_count(&fixture).await,
+                1,
+                "on queued a fresh start-up wake (round {round})"
+            );
+            // Close it unsent, as a delivered one would be, so the next round
+            // starts from nothing pending.
+            let pending = fixture
+                .state
+                .db
+                .cofounder_pending_wakes(community(&fixture), soon(), 10)
+                .await
+                .expect("pending wakes");
+            let ids = pending.iter().map(|wake| wake.id).collect::<Vec<_>>();
+            fixture
+                .state
+                .db
+                .cofounder_wakes_skipped(community(&fixture), &ids, "test setup")
+                .await
+                .expect("close the wake");
+        }
     }
 
     #[tokio::test]

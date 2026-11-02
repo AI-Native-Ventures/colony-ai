@@ -167,6 +167,8 @@ pub async fn handle(
             | BusinessCommand::ProspectAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::ProposalAcceptance(_)
+            | BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
         match community_business_channel {
             Some(expected_channel_id) if expected_channel_id == channel_id => {}
@@ -213,8 +215,14 @@ pub async fn handle(
             | BusinessCommand::PaymentEvidence(_)
             | BusinessCommand::MoneyAdjustment(_)
             | BusinessCommand::MoneyFollowUp(_)
+            | BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
         match &command {
+            BusinessCommand::OutreachListAction(_)
+            | BusinessCommand::DiscoveryCampaignAction(_) => {
+                super::outreach_lists::require_outreach_actor(&role)?;
+            }
             BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
                 require_member_or_admin(&role)?;
             }
@@ -1334,6 +1342,30 @@ pub async fn handle(
                 kind: KIND_INVOICE_HEAD,
                 d_tag,
                 event_id: expected_id,
+            });
+        }
+        BusinessCommand::OutreachListAction(action) => {
+            let planned = super::outreach_lists::plan_list_action(
+                state, tenant, &event, &role, channel_id, d_tag, *action,
+            )
+            .await?;
+            heads.push(HeadWrite {
+                event: planned.event,
+                channel_id,
+                d_tag: planned.d_tag,
+                expected_event_id: planned.expected_event_id,
+            });
+        }
+        BusinessCommand::DiscoveryCampaignAction(action) => {
+            let planned = super::outreach_lists::plan_campaign_action(
+                state, tenant, &event, &role, channel_id, d_tag, *action,
+            )
+            .await?;
+            heads.push(HeadWrite {
+                event: planned.event,
+                channel_id,
+                d_tag: planned.d_tag,
+                expected_event_id: planned.expected_event_id,
             });
         }
         BusinessCommand::MoneyFollowUp(action) => {
@@ -4448,6 +4480,7 @@ mod tests {
                 industry: "Professional Services".into(),
                 vertical: "Marketing Agency".into(),
                 fit_score: Some(87),
+                origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
                 discovery_tags: Vec::new(),
                 potential_monthly_value_minor: Some(450_000),
                 website: Some("https://example.test".into()),
@@ -4702,14 +4735,14 @@ mod postgres_tests {
     static BUSINESS_RECORDS_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
         std::sync::OnceLock::new();
 
-    struct Fixture {
-        pool: sqlx::PgPool,
-        state: Arc<AppState>,
-        tenant: TenantContext,
+    pub(super) struct Fixture {
+        pub(super) pool: sqlx::PgPool,
+        pub(super) state: Arc<AppState>,
+        pub(super) tenant: TenantContext,
         _serial_guard: tokio::sync::MutexGuard<'static, ()>,
     }
 
-    async fn fixture() -> Fixture {
+    pub(super) async fn fixture() -> Fixture {
         let serial_guard = BUSINESS_RECORDS_DB_TEST_LOCK
             .get_or_init(|| tokio::sync::Mutex::new(()))
             .lock()
@@ -4740,7 +4773,7 @@ mod postgres_tests {
         }
     }
 
-    async fn private_stream(fixture: &Fixture, name: &str, owner: &Keys) -> Uuid {
+    pub(super) async fn private_stream(fixture: &Fixture, name: &str, owner: &Keys) -> Uuid {
         let pubkey = owner.public_key().to_bytes();
         let channel = fixture
             .state
@@ -4759,7 +4792,7 @@ mod postgres_tests {
         channel.id
     }
 
-    async fn business_stream(fixture: &Fixture, owner: &Keys) -> Uuid {
+    pub(super) async fn business_stream(fixture: &Fixture, owner: &Keys) -> Uuid {
         let channel_id = private_stream(fixture, "business", owner).await;
         fixture
             .state
@@ -4775,7 +4808,7 @@ mod postgres_tests {
         channel_id
     }
 
-    fn auth(keys: &Keys) -> IngestAuth {
+    pub(super) fn auth(keys: &Keys) -> IngestAuth {
         IngestAuth::Http {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
@@ -4783,7 +4816,7 @@ mod postgres_tests {
         }
     }
 
-    fn scoped_nip42_auth(keys: &Keys, channel_ids: Vec<Uuid>) -> IngestAuth {
+    pub(super) fn scoped_nip42_auth(keys: &Keys, channel_ids: Vec<Uuid>) -> IngestAuth {
         IngestAuth::Nip42 {
             pubkey: keys.public_key(),
             scopes: vec![buzz_auth::Scope::MessagesWrite],
@@ -4792,7 +4825,7 @@ mod postgres_tests {
         }
     }
 
-    fn signed_command<T: Serialize>(
+    pub(super) fn signed_command<T: Serialize>(
         keys: &Keys,
         kind: u32,
         channel_id: Uuid,
@@ -5172,7 +5205,12 @@ mod postgres_tests {
         }
     }
 
-    async fn expect_duplicate(fixture: &Fixture, keys: &Keys, channel_id: Uuid, event: &Event) {
+    pub(super) async fn expect_duplicate(
+        fixture: &Fixture,
+        keys: &Keys,
+        channel_id: Uuid,
+        event: &Event,
+    ) {
         let replay = handle(&fixture.tenant, &fixture.state, event.clone(), auth(keys))
             .await
             .expect("committed command retry must be accepted");
@@ -5185,7 +5223,7 @@ mod postgres_tests {
         );
     }
 
-    async fn expect_event_missing(fixture: &Fixture, event: &Event) {
+    pub(super) async fn expect_event_missing(fixture: &Fixture, event: &Event) {
         let stored = fixture
             .state
             .db
@@ -7371,3 +7409,6 @@ mod postgres_tests {
         assert_eq!(final_head.payment_evidence_count, 1);
     }
 }
+
+#[cfg(test)]
+mod outreach_lists_postgres_tests;

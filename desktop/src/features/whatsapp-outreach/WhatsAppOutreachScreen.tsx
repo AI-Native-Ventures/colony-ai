@@ -9,6 +9,7 @@ import {
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -47,6 +48,10 @@ import {
 } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
+import {
+  type ContactFilter,
+  WhatsAppOutreachContactFilters,
+} from "./WhatsAppOutreachContactFilters";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
 import {
   useWhatsAppCommand,
@@ -59,21 +64,14 @@ import {
 } from "./whatsappOutreachQueries";
 import "./whatsappOutreach.css";
 
-type ContactFilter =
-  | "all"
-  | "replied"
-  | "sent"
-  | "opted-out"
-  | "needs-reply"
-  | "wants-call"
-  | "in-pipeline";
-
 type WhatsAppOutreachScreenProps = {
   channelId: string;
   initialThreadRootId: string | null;
   initialContactWaId?: string | null;
   mode?: "full" | "dock" | "desk";
   channelIsMember?: boolean;
+  hideSelectedConversation?: boolean;
+  onContactSelected?: (waId: string) => void;
 };
 
 function dayKey(value: string | Date): string {
@@ -115,8 +113,12 @@ export function WhatsAppOutreachScreen({
   initialContactWaId = null,
   mode = "full",
   channelIsMember = false,
+  hideSelectedConversation = false,
+  onContactSelected,
 }: WhatsAppOutreachScreenProps) {
   const navigate = useNavigate();
+  const { activeCommunity } = useCommunities();
+  const businessName = activeCommunity?.name.trim() || "This business";
   const isMobile = useIsMobile();
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
@@ -138,7 +140,9 @@ export function WhatsAppOutreachScreen({
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null);
   const [activeFilter, setActiveFilter] = React.useState<ContactFilter>("all");
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [showContactList, setShowContactList] = React.useState(false);
+  const [showContactList, setShowContactList] = React.useState(
+    mode === "desk" && !initialContactWaId,
+  );
   const [recordOpen, setRecordOpen] = React.useState(false);
   const [messageText, setMessageText] = React.useState("");
   const [selectedTemplate, setSelectedTemplate] =
@@ -181,10 +185,6 @@ export function WhatsAppOutreachScreen({
     : null;
 
   React.useEffect(() => {
-    if (mode === "desk" && isMobile) setShowContactList(true);
-  }, [isMobile, mode]);
-
-  React.useEffect(() => {
     if (
       !initialContactWaId ||
       initialContactWaId === lastContactRequestRef.current
@@ -193,7 +193,14 @@ export function WhatsAppOutreachScreen({
     }
     lastContactRequestRef.current = initialContactWaId;
     setSelectedWaId(initialContactWaId);
+    setShowContactList(false);
   }, [initialContactWaId]);
+
+  React.useEffect(() => {
+    if (mode !== "desk" || !hideSelectedConversation) return;
+    setRecordOpen(false);
+    setShowContactList(true);
+  }, [hideSelectedConversation, mode]);
 
   React.useEffect(() => {
     if (!contacts.length) return;
@@ -216,7 +223,9 @@ export function WhatsAppOutreachScreen({
 
   const selectedContact =
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
-  const threadQuery = useWhatsAppThreadQuery(selectedContact?.waId ?? null);
+  const threadQuery = useWhatsAppThreadQuery(
+    hideSelectedConversation ? null : (selectedContact?.waId ?? null),
+  );
   const thread = threadQuery.data;
   const sendNowBatchIds = useWhatsAppSendNowBatchIds(
     selectedContact,
@@ -339,20 +348,6 @@ export function WhatsAppOutreachScreen({
   const openerLabel = templates.find(
     (template) => template.name === openerTitle,
   )?.title;
-  const contactFilters: Array<[ContactFilter, string]> =
-    mode === "desk"
-      ? [
-          ["all", "All"],
-          ["needs-reply", "Needs reply"],
-          ["wants-call", "Wants a call"],
-          ["opted-out", "Opted out"],
-        ]
-      : [
-          ["all", "All"],
-          ["replied", "Replied"],
-          ["sent", "Sent"],
-          ["opted-out", "Opted out"],
-        ];
   const selectedRecordIdentity = selectedContactWithThreadIdentity
     ? resolveOutreachContactIdentity(
         selectedContactWithThreadIdentity,
@@ -377,7 +372,8 @@ export function WhatsAppOutreachScreen({
 
   function selectContact(contact: WhatsAppContact) {
     setSelectedWaId(contact.waId);
-    setShowContactList(false);
+    onContactSelected?.(contact.waId);
+    setShowContactList(hideSelectedConversation);
     setRecordOpen(false);
     setMessageText("");
     setSelectedTemplate(null);
@@ -585,7 +581,7 @@ export function WhatsAppOutreachScreen({
     return (
       <main className="c3wa-root c3wa-outreach-empty">
         <h1>WhatsApp is not connected</h1>
-        <p>Connect your Horizon Labs number in Settings to open Outreach.</p>
+        <p>Connect your {businessName} number in Settings to open Outreach.</p>
         <Button onClick={openSettings} type="button">
           Open WhatsApp settings
         </Button>
@@ -600,6 +596,7 @@ export function WhatsAppOutreachScreen({
         mode === "desk" && "c3wa-outreach-desk",
       )}
       data-has-selected-contact={selectedContact ? "true" : "false"}
+      data-dock-whatsapp-open={hideSelectedConversation ? "true" : "false"}
       data-mode={mode}
       data-testid="whatsapp-outreach"
       data-channel-id={channelId}
@@ -641,31 +638,13 @@ export function WhatsAppOutreachScreen({
               <TooltipContent>WhatsApp settings</TooltipContent>
             </Tooltip>
           </div>
-          <input
-            aria-label="Search chats"
-            className="c3wa-contact-search"
-            onChange={(event) => setSearchTerm(event.currentTarget.value)}
-            placeholder="Search chats"
-            type="search"
-            value={searchTerm}
+          <WhatsAppOutreachContactFilters
+            activeFilter={activeFilter}
+            mode={mode}
+            onActiveFilterChange={setActiveFilter}
+            onSearchTermChange={setSearchTerm}
+            searchTerm={searchTerm}
           />
-          <div
-            aria-label="Filter contacts"
-            className="c3wa-contact-filters"
-            role="tablist"
-          >
-            {contactFilters.map(([filter, label]) => (
-              <button
-                aria-selected={activeFilter === filter}
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                role="tab"
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </header>
         <div className="c3wa-contact-list">
           {filteredContacts.map((contact) => {
@@ -730,7 +709,7 @@ export function WhatsAppOutreachScreen({
         </div>
       </aside>
 
-      {selectedContact ? (
+      {selectedContact && !hideSelectedConversation ? (
         <section
           className={cn(
             "c3wa-thread-panel",
@@ -870,7 +849,9 @@ export function WhatsAppOutreachScreen({
                       )}
                 </strong>
                 <small>
-                  {openerLabel ? `Opener: ${openerLabel}` : "Horizon Labs lead"}
+                  {openerLabel
+                    ? `Opener: ${openerLabel}`
+                    : `${businessName} lead`}
                 </small>
               </span>
               <button onClick={openLead} type="button">
@@ -918,6 +899,7 @@ export function WhatsAppOutreachScreen({
                     contactName={
                       selectedIdentity?.personName ?? "WhatsApp contact"
                     }
+                    businessName={businessName}
                     anonymousContact={selectedContactIsAnonymous}
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
@@ -1094,7 +1076,7 @@ export function WhatsAppOutreachScreen({
                     : selectedContact.windowOpen
                       ? isMobile
                         ? "Reply on WhatsApp…"
-                        : "Reply on WhatsApp as Horizon Labs"
+                        : `Reply on WhatsApp as ${businessName}`
                       : "Choose a template to send a message"
                 }
                 rows={2}
@@ -1161,7 +1143,7 @@ export function WhatsAppOutreachScreen({
             ) : null}
           </div>
         </section>
-      ) : (
+      ) : !hideSelectedConversation ? (
         <section
           className={cn(
             "c3wa-thread-panel c3wa-no-contact",
@@ -1171,8 +1153,11 @@ export function WhatsAppOutreachScreen({
         >
           <p>Select a contact to open the conversation.</p>
         </section>
-      )}
-      {mode === "desk" && selectedContact && selectedRecordIdentity ? (
+      ) : null}
+      {mode === "desk" &&
+      !hideSelectedConversation &&
+      selectedContact &&
+      selectedRecordIdentity ? (
         <WhatsAppContactRecordPanel
           canEdit={canEditContact}
           canWriteCustomerRecord={customerCapabilities.canWrite}

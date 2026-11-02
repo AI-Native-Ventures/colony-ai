@@ -51,7 +51,7 @@ export function ChannelWorkspaceTabs({
     return (
       <nav
         aria-label="Channel views"
-        className="flex gap-1 overflow-x-auto"
+        className="flex min-w-0 max-w-full gap-1 overflow-x-auto"
         data-testid="channel-view-tabs"
       >
         <button
@@ -134,7 +134,7 @@ export function ChannelWorkspaceTabs({
   return (
     <nav
       aria-label="Channel views"
-      className="flex gap-1 overflow-x-auto"
+      className="flex min-w-0 max-w-full gap-1 overflow-x-auto"
       data-testid="channel-view-tabs"
     >
       <span

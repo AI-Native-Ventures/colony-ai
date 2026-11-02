@@ -19,6 +19,7 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
+import { KIND_COFOUNDER_LEAD_HEAD } from "@/shared/constants/kinds";
 import {
   KIND_COMPANY_ACCESS_ACTION,
   KIND_COMPANY_ACCESS_HEAD,
@@ -289,6 +290,8 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+  /** "Start with the app"; on unless the seed says otherwise. */
+  startOnAppLaunch?: boolean;
 };
 
 /** Narrow live-config values that a mock runtime reports for one agent. */
@@ -407,6 +410,16 @@ export type MockCofounderSettings = {
     approvePlaybookChanges: boolean;
     approveEveryDiscoveryCampaign: boolean;
   };
+};
+
+export type MockCofounderLeadStatus = {
+  schemaVersion: 1;
+  state: "reached" | "unreachable";
+  problem: "no_scout" | "several_scouts" | "delivery_failed" | null;
+  detail: string;
+  attempts: number;
+  since: number;
+  updatedAt: number;
 };
 
 export type MockCompanyFunctionHead = {
@@ -1134,6 +1147,8 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
+    /** Relay-signed kind 30680 wake status used by Scout setup E2E coverage. */
+    companyLeadStatus?: MockCofounderLeadStatus | null;
     companyFunctionHeads?: MockCompanyFunctionHead[];
     /** Reject function slot writes in order, then accept them. */
     companyFunctionActionErrors?: string[];
@@ -3519,7 +3534,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     needs_restart: seed.needsRestart ?? false,
     restart_diff: seed.restartDiff ?? [],
     log_path: `/tmp/mock-agent-${seed.pubkey}.log`,
-    start_on_app_launch: true,
+    start_on_app_launch: seed.startOnAppLaunch ?? true,
     auto_restart_on_config_change: seed.autoRestartOnConfigChange ?? true,
     backend: seed.backend ?? { type: "local" },
     backend_agent_id: null,
@@ -7016,6 +7031,27 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function filterMockCompanyLeadStatus(filter: MockFilter): RelayEvent[] {
+  const status = getConfig()?.mock?.companyLeadStatus;
+  if (!status) return [];
+  const head = createSignedMockCompanyHead(
+    KIND_COFOUNDER_LEAD_HEAD,
+    status,
+    "company:cofounder-lead",
+    status.updatedAt,
+  );
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return [head]
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .slice(0, filter.limit ?? 1);
 }
 
 function filterMockInitiativeHead(
@@ -19698,6 +19734,14 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_COFOUNDER_HEAD)) {
       for (const event of filterMockCofounderHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_COFOUNDER_LEAD_HEAD)) {
+      for (const event of filterMockCompanyLeadStatus(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);

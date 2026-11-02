@@ -1,3 +1,4 @@
+import * as React from "react";
 import { toast } from "sonner";
 
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
@@ -13,21 +14,33 @@ import { SettingsSwitchRow } from "@/features/settings/ui/SettingsKit";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 
 import { useCofounderSettingsQuery, useSetCofounderSettings } from "../hooks";
+import { useCofounderLeadStatusQuery } from "../leadStatusHooks";
+import {
+  cofounderScoutCardModel,
+  getScoutStartState,
+  requestScoutRestart,
+  subscribeScoutStartState,
+} from "../scoutKeepAlive";
 import "./cofounderPhase2.css";
 
 export function CofounderSettingRow() {
   const { activeCommunity } = useCommunities();
   const membershipQuery = useMyRelayMembershipLookupQuery();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
+  const leadStatusQuery = useCofounderLeadStatusQuery(
+    settingsQuery.data?.settings.enabled === true,
+  );
   const setSettings = useSetCofounderSettings();
   const cofounderEnabled = settingsQuery.data?.settings.enabled === true;
   const onboardingQuery = useOnboardingQuery(cofounderEnabled);
   const briefQuery = useBriefQuery(cofounderEnabled);
+  const onboardingHead = onboardingQuery.data?.head;
   const channelsQuery = useChannelsQuery({
     enabled: cofounderEnabled,
   });
   const openDm = useOpenDmMutation();
   const { goChannel } = useAppNavigation();
+  const [now, setNow] = React.useState(() => Date.now());
   const role = membershipQuery.data?.membership?.role;
   const canChange = role === "owner" || role === "admin";
   const settings = settingsQuery.data?.settings;
@@ -48,13 +61,40 @@ export function CofounderSettingRow() {
       ),
   );
   const briefHead = briefQuery.data?.head;
-  const showGettingToKnowCard =
-    cofounderEnabled &&
-    onboardingQuery.data?.head?.status === "in_progress" &&
-    briefHead?.pending == null &&
-    briefHead?.confirmed == null &&
-    !onboardingQuery.isError &&
-    !briefQuery.isError;
+  const scoutStart = React.useSyncExternalStore(
+    subscribeScoutStartState,
+    getScoutStartState,
+  );
+  const onboardingStartedAt =
+    onboardingHead?.resumedAt ?? onboardingHead?.startedAt ?? null;
+  // Before Scout has begun there is no onboarding record: the wait runs from the
+  // moment the mode was switched on.
+  const waitingSince = onboardingHead
+    ? onboardingStartedAt
+    : (settingsQuery.data?.updatedAt ?? null);
+  const scoutCard = cofounderScoutCardModel({
+    enabled: cofounderEnabled,
+    recordsKnown:
+      onboardingQuery.data !== undefined &&
+      briefQuery.data !== undefined &&
+      !onboardingQuery.isError &&
+      !briefQuery.isError,
+    onboardingStatus: onboardingHead?.status ?? null,
+    briefExists: briefHead?.pending != null || briefHead?.confirmed != null,
+    waitingSince,
+    unreachable: leadStatusQuery.data?.state === "unreachable",
+    unreachableDetail: leadStatusQuery.data?.detail || null,
+    scoutStart,
+    companyName,
+    nowMs: now,
+  });
+  const showGettingToKnowCard = scoutCard !== null;
+  React.useEffect(() => {
+    if (!showGettingToKnowCard) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(timer);
+  }, [showGettingToKnowCard]);
   const disabled =
     !activeCommunity ||
     !canChange ||
@@ -72,6 +112,13 @@ export function CofounderSettingRow() {
     } catch {
       toast.error("Could not update co-founder mode.");
     }
+  }
+
+  /** Try again: wake Scout (a fresh start-up wake from the relay) and start it
+   * on this computer if it is not running. One button, no other step. */
+  async function retryScout() {
+    requestScoutRestart(scoutPubkey);
+    await changeEnabled(true);
   }
 
   async function openScout() {
@@ -107,9 +154,10 @@ export function CofounderSettingRow() {
         onCheckedChange={(enabled) => void changeEnabled(enabled)}
         testId="cofounder-mode-toggle"
       />
-      {showGettingToKnowCard ? (
+      {scoutCard ? (
         <div
           className="cf-setting-cofounder-scout"
+          data-kind={scoutCard.kind}
           data-testid="cofounder-scout-entry"
         >
           <ProfileAvatar
@@ -121,20 +169,21 @@ export function CofounderSettingRow() {
             testId="cofounder-scout-avatar"
           />
           <p>
-            <strong>Scout is getting to know {companyName}</strong>
-            <span>
-              Reading your website, leads, chats and connected tools. Scout will
-              message you a short brief to check.
-            </span>
+            <strong>{scoutCard.title}</strong>
+            <span>{scoutCard.body}</span>
           </p>
           <button
             className="cf-setting-cofounder-scout-button"
-            data-testid="cofounder-open-scout"
-            disabled={!scoutPubkey || openDm.isPending}
-            onClick={() => void openScout()}
+            data-testid={
+              scoutCard.retry ? "cofounder-retry-scout" : "cofounder-open-scout"
+            }
+            disabled={
+              scoutCard.retry ? disabled : !scoutPubkey || openDm.isPending
+            }
+            onClick={() => void (scoutCard.retry ? retryScout() : openScout())}
             type="button"
           >
-            Open Scout
+            {scoutCard.retry ? "Try again" : "Open Scout"}
           </button>
         </div>
       ) : null}

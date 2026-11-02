@@ -64,8 +64,18 @@ export async function fetchCofounderSettings(): Promise<CofounderSettingsView> {
     .map((event) => parseCofounderSettingsHead(event, relaySelf))
     .find((record) => record !== null);
   return head
-    ? { exists: true, eventId: head.eventId, settings: head.settings }
-    : { exists: false, eventId: null, settings: DEFAULT_COFOUNDER_SETTINGS };
+    ? {
+        exists: true,
+        eventId: head.eventId,
+        settings: head.settings,
+        updatedAt: head.updatedAt,
+      }
+    : {
+        exists: false,
+        eventId: null,
+        settings: DEFAULT_COFOUNDER_SETTINGS,
+        updatedAt: null,
+      };
 }
 
 export function useCofounderSettingsQuery(communityId: string | null) {
