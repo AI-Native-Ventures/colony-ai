@@ -334,10 +334,7 @@ async function scanState(
             return false;
           }
           const hit = document.elementFromPoint(x, y);
-          return (
-            !!hit &&
-            (hit === element || element.contains(hit) || hit.contains(element))
-          );
+          return !!hit && (hit === element || element.contains(hit));
         };
         const points = [
           [0.5, 0.5],
@@ -379,10 +376,7 @@ async function scanState(
             return false;
           }
           const hit = document.elementFromPoint(x, y);
-          return (
-            !!hit &&
-            (hit === owner || owner.contains(hit) || hit.contains(owner))
-          );
+          return !!hit && (hit === owner || owner.contains(hit));
         };
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
         let node = walker.nextNode();
