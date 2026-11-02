@@ -57,6 +57,7 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
       turnId: "runtime-switch-active-turn",
     });
   }, scout);
+  await expect(page.getByText("Working", { exact: true })).toBeVisible();
   await page.getByTestId("agent-edit-configuration").click();
   await expect(page.getByTestId("edit-agent-dialog")).toBeVisible();
   await page.locator("#edit-agent-runtime").click();
