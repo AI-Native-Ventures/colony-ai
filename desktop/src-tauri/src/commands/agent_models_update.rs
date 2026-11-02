@@ -275,16 +275,15 @@ pub async fn update_managed_agent(
         if let Some(acp_command) = input.acp_command {
             record.acp_command = acp_command;
         }
-        // Harness edit: the persona's runtime is authoritative, so an explicit
-        // `agent_command_override` is persisted ONLY when the user picks a
-        // command that diverges from the persona, and the empty/whitespace
-        // "Inherit from persona" sentinel clears the pin, the materialized
-        // record runtime, AND the per-instance effort override (column here,
-        // env aliases after `env_vars` is applied below). A name-only edit
-        // (`agent_command == None`) leaves the pin intact. `harness_override`
-        // threads the user's explicit intent — see `apply_agent_command_update`
-        // and `update_time_agent_command_override` for the full resolution
-        // rules.
+        // Harness edit: a deliberate owner choice is persisted as a per-agent
+        // `agent_command_override` and remains authoritative across persona
+        // snapshots. The empty/whitespace "Inherit from persona" sentinel
+        // clears the pin, the materialized record runtime, AND the per-instance
+        // effort override (column here, env aliases after `env_vars` is applied
+        // below). A name-only edit (`agent_command == None`) leaves the pin
+        // intact. `harness_override` threads the user's explicit intent; see
+        // `apply_agent_command_update` and `update_time_agent_command_override`
+        // for the full resolution rules.
         let mut inherit_transition = false;
         if let Some(agent_command) = input.agent_command {
             inherit_transition = crate::managed_agents::apply_agent_command_update(
