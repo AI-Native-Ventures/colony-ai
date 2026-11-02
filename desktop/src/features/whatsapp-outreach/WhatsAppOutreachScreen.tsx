@@ -48,6 +48,10 @@ import {
 } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
+import {
+  type ContactFilter,
+  WhatsAppOutreachContactFilters,
+} from "./WhatsAppOutreachContactFilters";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
 import {
   useWhatsAppCommand,
@@ -59,15 +63,6 @@ import {
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
 import "./whatsappOutreach.css";
-
-type ContactFilter =
-  | "all"
-  | "replied"
-  | "sent"
-  | "opted-out"
-  | "needs-reply"
-  | "wants-call"
-  | "in-pipeline";
 
 type WhatsAppOutreachScreenProps = {
   channelId: string;
@@ -353,20 +348,6 @@ export function WhatsAppOutreachScreen({
   const openerLabel = templates.find(
     (template) => template.name === openerTitle,
   )?.title;
-  const contactFilters: Array<[ContactFilter, string]> =
-    mode === "desk"
-      ? [
-          ["all", "All"],
-          ["needs-reply", "Needs reply"],
-          ["wants-call", "Wants a call"],
-          ["opted-out", "Opted out"],
-        ]
-      : [
-          ["all", "All"],
-          ["replied", "Replied"],
-          ["sent", "Sent"],
-          ["opted-out", "Opted out"],
-        ];
   const selectedRecordIdentity = selectedContactWithThreadIdentity
     ? resolveOutreachContactIdentity(
         selectedContactWithThreadIdentity,
@@ -657,32 +638,13 @@ export function WhatsAppOutreachScreen({
               <TooltipContent>WhatsApp settings</TooltipContent>
             </Tooltip>
           </div>
-          <input
-            aria-label="Search chats"
-            className="c3wa-contact-search"
-            onChange={(event) => setSearchTerm(event.currentTarget.value)}
-            placeholder="Search chats"
-            type="search"
-            value={searchTerm}
+          <WhatsAppOutreachContactFilters
+            activeFilter={activeFilter}
+            mode={mode}
+            onActiveFilterChange={setActiveFilter}
+            onSearchTermChange={setSearchTerm}
+            searchTerm={searchTerm}
           />
-          <div
-            aria-label="Filter contacts"
-            className="c3wa-contact-filters"
-            role="tablist"
-          >
-            {contactFilters.map(([filter, label]) => (
-              <button
-                aria-selected={activeFilter === filter}
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                role="tab"
-                title={label}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </header>
         <div className="c3wa-contact-list">
           {filteredContacts.map((contact) => {
