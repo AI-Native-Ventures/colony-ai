@@ -1125,7 +1125,7 @@ function makeReport() {
   <h2>Findings</h2>${cards || "<p>No overflow findings.</p>"}</body></html>`;
 }
 
-test.describe.configure({ mode: "serial", timeout: 15 * 60_000 });
+test.describe.configure({ mode: "serial", retries: 0, timeout: 15 * 60_000 });
 
 test("all screens, widths and important states", async ({ page, browser }) => {
   process.env.COLONY3_PROOF_THEME = "light";
