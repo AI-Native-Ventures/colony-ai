@@ -4,9 +4,7 @@ import test from "node:test";
 import {
   afterScoutStartFailure,
   cofounderScoutCardModel,
-  COFOUNDER_WAKE_TAG,
   findCofounderScout,
-  findPendingCofounderWake,
   getScoutStartState,
   IDLE_SCOUT_START_STATE,
   noteScoutStartFailed,
@@ -20,8 +18,6 @@ import {
 
 const SCOUT = "a".repeat(64);
 const OTHER = "b".repeat(64);
-const RELAY = "c".repeat(64);
-const OWNER = "d".repeat(64);
 const RELAY_URL = "wss://horizon.example";
 const NOW = 1_800_000_000_000;
 
@@ -44,7 +40,6 @@ function plan(overrides = {}) {
     onboardingKnown: true,
     onboardingStarted: false,
     scout: agent(),
-    wakeWaiting: false,
     state: IDLE_SCOUT_START_STATE,
     now: NOW,
     ...overrides,
@@ -70,10 +65,6 @@ test("nothing starts while co-founder mode is off", () => {
   assert.equal(result.markAutoStart, false);
 });
 
-test("an onboarding record that has not been read is not 'not started'", () => {
-  assert.equal(plan({ onboardingKnown: false }).start, false);
-});
-
 test("a running Scout is left alone", () => {
   assert.equal(plan({ scout: agent({ status: "running" }) }).start, false);
   assert.equal(plan({ scout: agent({ status: "deployed" }) }).start, false);
@@ -87,15 +78,16 @@ test("a remote or missing Scout is never started on this computer", () => {
   );
 });
 
-test("a Scout stopped on purpose is left alone once onboarding has begun", () => {
-  const result = plan({ onboardingStarted: true, wakeWaiting: false });
-  assert.equal(result.start, false);
+test("a stopped Scout is kept up after onboarding began too, so the next wake finds it running", () => {
+  const result = plan({ onboardingStarted: true });
+  assert.equal(result.start, true);
+  assert.equal(result.reason, "keep-running");
 });
 
-test("a relay wake waiting for a stopped Scout starts it, even mid-onboarding", () => {
-  const result = plan({ onboardingStarted: true, wakeWaiting: true });
+test("an unread onboarding record never claims 'not started'", () => {
+  const result = plan({ onboardingKnown: false });
   assert.equal(result.start, true);
-  assert.equal(result.reason, "wake-waiting");
+  assert.equal(result.reason, "keep-running");
 });
 
 test("a failed start is retried on a capped back-off, then left failed", () => {
@@ -189,111 +181,6 @@ test("findCofounderScout refuses two Scouts and ignores another community's", ()
   assert.equal(findCofounderScout([elsewhere], { relayUrl: RELAY_URL }), null);
   const remote = agent({ backend: { type: "provider", id: "x" } });
   assert.equal(findCofounderScout([remote], { relayUrl: RELAY_URL }), null);
-});
-
-// ── relay wakes ────────────────────────────────────────────────────────────
-
-function wakeEvent(overrides = {}) {
-  return {
-    id: "1".repeat(64),
-    pubkey: RELAY,
-    kind: 9,
-    created_at: 1_000,
-    content: "Wake from the relay (co-founder mode):",
-    sig: "",
-    tags: [
-      ["h", "dm-channel"],
-      ["p", SCOUT],
-      [COFOUNDER_WAKE_TAG, "mode_on"],
-    ],
-    ...overrides,
-  };
-}
-
-function relay({ wakes, scoutEvents }) {
-  const asked = [];
-  return {
-    asked,
-    fetchEvents: async (filter) => {
-      asked.push(filter);
-      return filter.authors?.[0] === SCOUT ? scoutEvents : wakes;
-    },
-  };
-}
-
-test("a relay wake Scout never reacted to is found in the history after a launch", async () => {
-  const { fetchEvents, asked } = relay({
-    wakes: [wakeEvent()],
-    scoutEvents: [],
-  });
-  const wake = await findPendingCofounderWake({
-    scoutPubkey: SCOUT,
-    relaySelf: RELAY,
-    nowSeconds: 2_000,
-    fetchEvents,
-  });
-  assert.deepEqual(wake, {
-    id: "1".repeat(64),
-    createdAt: 1_000,
-    channelId: "dm-channel",
-  });
-  // The relay refuses a read that names no kinds (the p-gate): both name them.
-  assert.ok(asked.every((filter) => Array.isArray(filter.kinds)));
-});
-
-test("a wake Scout reacted to or answered is no longer waiting", async () => {
-  const reaction = {
-    id: "2".repeat(64),
-    pubkey: SCOUT,
-    kind: 7,
-    created_at: 1_001,
-    content: "👀",
-    sig: "",
-    tags: [["e", "1".repeat(64)]],
-  };
-  const { fetchEvents } = relay({
-    wakes: [wakeEvent()],
-    scoutEvents: [reaction],
-  });
-  assert.equal(
-    await findPendingCofounderWake({
-      scoutPubkey: SCOUT,
-      relaySelf: RELAY,
-      nowSeconds: 2_000,
-      fetchEvents,
-    }),
-    null,
-  );
-});
-
-test("only a message the relay itself signed counts as a wake", async () => {
-  // A member who copies the tag cannot make Scout start (or hide anything).
-  const forged = wakeEvent({ pubkey: OWNER });
-  const noTag = wakeEvent({ tags: [["p", SCOUT]] });
-  const { fetchEvents } = relay({ wakes: [forged, noTag], scoutEvents: [] });
-  assert.equal(
-    await findPendingCofounderWake({
-      scoutPubkey: SCOUT,
-      relaySelf: RELAY,
-      nowSeconds: 2_000,
-      fetchEvents,
-    }),
-    null,
-  );
-});
-
-test("a relay that cannot be read is an error, never 'nothing is waiting'", async () => {
-  await assert.rejects(
-    findPendingCofounderWake({
-      scoutPubkey: SCOUT,
-      relaySelf: RELAY,
-      nowSeconds: 2_000,
-      fetchEvents: async () => {
-        throw new Error("offline");
-      },
-    }),
-    /offline/,
-  );
 });
 
 // ── the card ───────────────────────────────────────────────────────────────

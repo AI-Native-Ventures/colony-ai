@@ -1,15 +1,8 @@
-import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
-import type { ManagedAgent, RelayEvent } from "@/shared/api/types";
-import {
-  KIND_DELETION,
-  KIND_REACTION,
-  KIND_STREAM_MESSAGE,
-  KIND_STREAM_MESSAGE_V2,
-} from "@/shared/constants/kinds";
+import type { ManagedAgent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 /**
- * Keeps the owner's Scout running while co-founder mode needs it.
+ * Keeps the owner's Scout running while co-founder mode is on.
  *
  * 2 Nov 2026, owner on 3.0.30: co-founder mode was on, the relay left its
  * start-up wake in the Scout direct message, and nothing happened for hours
@@ -21,15 +14,16 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
  * onboarding.
  *
  * The rule here is the owner's: co-founder onboarding starts by itself, and the
- * owner never has to message Scout, open a chat or click anything. This module
- * holds the decisions as pure functions, so they are tested without React:
+ * owner never has to message Scout, open a chat or click anything. The wake is
+ * hidden from every surface (#688), so the app does not look for it: it keeps
+ * Scout up, and a Scout that is up reads the wake live, or replays it from its
+ * wake ledger when it starts (up to 7 days back, handled once, and only marked
+ * handled when its turn ended with an answer). This module holds the decisions
+ * as pure functions, so they are tested without React:
  *
- * - [`planScoutStart`]: start Scout when co-founder mode is on and either
- *   onboarding has not begun or a relay wake is waiting, and Scout is not
- *   running. A failed start is retried with a capped back-off and then left in
- *   a visible `failed` state with one recovery action (Try again).
- * - [`findPendingCofounderWake`]: a relay wake for Scout that Scout has not
- *   reacted to, found live or in the direct message history after a launch.
+ * - [`planScoutStart`]: start Scout when co-founder mode is on and Scout is a
+ *   stopped local agent. A failed start is retried with a capped back-off and
+ *   then left in a visible `failed` state with one recovery action (Try again).
  * - [`cofounderScoutCardModel`]: what the "Scout is getting to know" card says.
  */
 
@@ -41,22 +35,6 @@ export const SCOUT_START_BACKOFF_MS = [0, 5_000, 30_000, 120_000] as const;
 export const SCOUT_START_MAX_FAILURES = SCOUT_START_BACKOFF_MS.length;
 /** Time after which a Scout that has not begun onboarding is called stalled. */
 export const SCOUT_STALL_AFTER_MS = 3 * 60 * 1000;
-/** How far back a waiting wake is looked for. The relay closes older ones. */
-export const COFOUNDER_WAKE_LOOKBACK_SECONDS = 24 * 60 * 60;
-/** The tag the relay puts on the message that wakes Scout. */
-export const COFOUNDER_WAKE_TAG = "buzz:cofounder-wake";
-/** Longest a wake lookup waits on the relay. */
-export const COFOUNDER_WAKE_READ_TIMEOUT_MS = 6_000;
-
-const MESSAGE_KINDS = [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2];
-/** What Scout publishes when it sees a message: a reaction, a reply, or the
- * deletion that takes its reaction back. A relay read must name kinds. */
-const SCOUT_ACTIVITY_KINDS = [
-  KIND_REACTION,
-  KIND_DELETION,
-  KIND_STREAM_MESSAGE,
-  KIND_STREAM_MESSAGE_V2,
-];
 
 type ScoutAgent = Pick<
   ManagedAgent,
@@ -138,8 +116,8 @@ export const IDLE_SCOUT_START_STATE: ScoutStartState = {
 export type ScoutStartPlan = {
   /** Start Scout now. */
   start: boolean;
-  /** Why Scout is started (also shown in logs). */
-  reason: "onboarding-not-started" | "wake-waiting" | null;
+  /** Why Scout is started: onboarding has not begun, or just keeping it up. */
+  reason: "onboarding-not-started" | "keep-running" | null;
   /** Turn "start with the app" on for Scout so the next launch starts it. */
   markAutoStart: boolean;
   /** Desktop clock ms to look again, when waiting out a back-off. */
@@ -159,11 +137,9 @@ const NO_PLAN: ScoutStartPlan = {
 /**
  * Whether Scout is to be started now.
  *
- * Nothing happens while co-founder mode is off, while onboarding is still being
- * read (an unread record must not look like "not started"), or while Scout is
- * running. A stopped local Scout is started when onboarding has not begun, or a
- * relay wake is waiting for it. A Scout that the owner stopped on purpose with
- * nothing waiting is left alone.
+ * Nothing happens while co-founder mode is off, or for a Scout that is missing,
+ * remote or running. A stopped local Scout is started while the mode is on. To
+ * stop Scout for good, switch co-founder mode off.
  */
 export function planScoutStart(input: {
   enabled: boolean;
@@ -172,8 +148,6 @@ export function planScoutStart(input: {
   /** The onboarding record exists, so Scout has begun. */
   onboardingStarted: boolean;
   scout: ScoutAgent | null;
-  /** A relay wake is waiting for Scout. */
-  wakeWaiting: boolean;
   state: ScoutStartState;
   now: number;
 }): ScoutStartPlan {
@@ -185,13 +159,10 @@ export function planScoutStart(input: {
   // it on while co-founder mode is on, whatever else is going on.
   const markAutoStart = !scout.startOnAppLaunch;
   if (isScoutUp(scout)) return { ...NO_PLAN, markAutoStart };
-  if (!input.onboardingKnown) return { ...NO_PLAN, markAutoStart };
-  const reason = !input.onboardingStarted
-    ? "onboarding-not-started"
-    : input.wakeWaiting
-      ? "wake-waiting"
-      : null;
-  if (reason === null) return { ...NO_PLAN, markAutoStart };
+  const reason =
+    input.onboardingKnown && !input.onboardingStarted
+      ? "onboarding-not-started"
+      : "keep-running";
 
   const sameScout =
     state.pubkey !== null && state.pubkey === normalizePubkey(scout.pubkey);
@@ -226,115 +197,6 @@ export function afterScoutStartFailure(
       (SCOUT_START_BACKOFF_MS[
         Math.min(failures, SCOUT_START_MAX_FAILURES - 1)
       ] ?? 0),
-  };
-}
-
-function tagValue(event: RelayEvent, name: string): string | null {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? null;
-}
-
-/** A relay wake that is waiting for Scout. */
-export type PendingCofounderWake = {
-  id: string;
-  /** Unix seconds the relay posted it. */
-  createdAt: number;
-  channelId: string | null;
-};
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`reading wakes timed out after ${ms} ms`)),
-      ms,
-    );
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-/**
- * The newest relay wake for `scoutPubkey` that Scout has not reacted to, or
- * `null`. A wake is a relay-signed message tagged [`COFOUNDER_WAKE_TAG`] that
- * mentions Scout. Anything Scout publishes after it (a reaction, a reply, a
- * deletion) shows Scout saw it, so a wake older than Scout's newest event is
- * not waiting. Throws when the relay cannot be read: an empty answer here means
- * "nothing is waiting", so a failed read must not look like one.
- */
-export async function findPendingCofounderWake({
-  scoutPubkey,
-  relaySelf,
-  nowSeconds,
-  fetchEvents,
-  lookbackSeconds = COFOUNDER_WAKE_LOOKBACK_SECONDS,
-  readTimeoutMs = COFOUNDER_WAKE_READ_TIMEOUT_MS,
-}: {
-  scoutPubkey: string;
-  relaySelf: string;
-  nowSeconds: number;
-  fetchEvents: (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
-  lookbackSeconds?: number;
-  readTimeoutMs?: number;
-}): Promise<PendingCofounderWake | null> {
-  const scout = normalizePubkey(scoutPubkey);
-  const relay = normalizePubkey(relaySelf);
-  const since = nowSeconds - lookbackSeconds;
-  const wakes = (
-    await withTimeout(
-      fetchEvents({
-        kinds: MESSAGE_KINDS,
-        "#p": [scout],
-        authors: [relay],
-        since,
-        limit: 20,
-      }),
-      readTimeoutMs,
-    )
-  ).filter(
-    (event) =>
-      normalizePubkey(event.pubkey) === relay &&
-      event.tags.some((tag) => tag[0] === COFOUNDER_WAKE_TAG) &&
-      event.tags.some(
-        (tag) => tag[0] === "p" && normalizePubkey(tag[1] ?? "") === scout,
-      ),
-  );
-  if (wakes.length === 0) return null;
-  const newest = wakes.reduce((best, event) =>
-    event.created_at > best.created_at ||
-    (event.created_at === best.created_at && event.id > best.id)
-      ? event
-      : best,
-  );
-  const seen = await withTimeout(
-    fetchEvents({
-      kinds: SCOUT_ACTIVITY_KINDS,
-      authors: [scout],
-      since: newest.created_at,
-      limit: 5,
-    }),
-    readTimeoutMs,
-  );
-  // Scout's own events after the wake: it saw the wake (even if it only reacted).
-  if (
-    seen.some(
-      (event) =>
-        normalizePubkey(event.pubkey) === scout &&
-        event.created_at > newest.created_at,
-    )
-  ) {
-    return null;
-  }
-  return {
-    id: newest.id,
-    createdAt: newest.created_at,
-    channelId: tagValue(newest, "h"),
   };
 }
 

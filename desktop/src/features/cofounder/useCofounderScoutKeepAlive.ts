@@ -7,11 +7,8 @@ import {
   useManagedAgentsQuery,
   useStartManagedAgentMutation,
 } from "@/features/agents/hooks";
-import { createMentionCatchUpStore } from "@/features/agents/mentionCatchUpStorage";
 import { useCommunities } from "@/features/communities/useCommunities";
-import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { relayClient } from "@/shared/api/relayClient";
 import { listManagedAgents } from "@/shared/api/tauri";
 import { setManagedAgentStartOnAppLaunch } from "@/shared/api/tauriManagedAgents";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -20,7 +17,6 @@ import { useCofounderSettingsQuery } from "./hooks";
 import { useOnboardingQuery } from "./initiativeHooks";
 import {
   findCofounderScout,
-  findPendingCofounderWake,
   getScoutStartState,
   isScoutUp,
   noteScoutStartFailed,
@@ -31,14 +27,15 @@ import {
   setScoutStartState,
   subscribeScoutStartState,
 } from "./scoutKeepAlive";
-import type { PendingCofounderWake } from "./scoutKeepAlive";
 
 /** How often Scout is looked at while co-founder mode is on. The managed agent
  * list only polls while something runs, so a Scout that never started needs
  * this clock to be noticed. */
 const KEEP_ALIVE_CLOCK_MS = 30_000;
-/** Seconds of history a start reaches back: the harness replays no further
- * than 15 minutes from a floor, and its ledger skips what it handled. */
+/** Seconds of history a start reaches back when onboarding has not begun: the
+ * harness replays no further than 15 minutes from a floor, and its wake ledger
+ * skips what it handled. Covers the start-up wake the relay posted just before
+ * Scout was up. */
 const START_REPLAY_SECONDS = 14 * 60;
 /** Starts that landed but did not stay up, within the window, before the
  * keep-alive calls it a failure instead of starting Scout again. */
@@ -52,14 +49,17 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Starts the owner's Scout by itself whenever co-founder mode needs it.
+ * Keeps the owner's Scout running while co-founder mode is on.
  *
  * Mounted once for the community on screen. While co-founder mode is on and
- * Scout is a stopped local agent, it starts Scout when onboarding has not begun
- * or a relay wake is waiting for it (found live, or in the direct message
- * history after a launch). It also turns "start with the app" on for Scout so
- * the next launch starts it before anything else runs. The owner never has to
- * message Scout, open a chat or click anything.
+ * Scout is a stopped local agent, it starts Scout, so a wake the relay posts
+ * (live, or while Colony was closed) always finds Scout up and its wake ledger
+ * replays whatever it missed. It also turns "start with the app" on for Scout
+ * so the next launch starts it before anything else runs. The owner never has
+ * to message Scout, open a chat or click anything.
+ *
+ * The relay's wake itself is deliberately not read here: it is hidden from
+ * every surface (#688), and Scout being up is what makes it work.
  *
  * A start that fails is retried with a capped back-off and then left in the
  * `failed` state the Scout card shows, with Try again as the one recovery. See
@@ -88,17 +88,6 @@ export function useCofounderScoutKeepAlive(): void {
   const busyRef = React.useRef(false);
   const autoStartMarkedRef = React.useRef<Set<string>>(new Set());
   const quickStartsRef = React.useRef<number[]>([]);
-  const wakeLookupRef = React.useRef<{
-    at: number;
-    pubkey: string;
-    wake: PendingCofounderWake | null;
-  } | null>(null);
-  const caughtUpRef = React.useRef<ReturnType<
-    typeof createMentionCatchUpStore
-  > | null>(null);
-  if (caughtUpRef.current === null) {
-    caughtUpRef.current = createMentionCatchUpStore();
-  }
 
   // Switching co-founder mode off forgets earlier failures, so switching it on
   // again starts Scout afresh instead of staying in an old "could not start".
@@ -106,7 +95,6 @@ export function useCofounderScoutKeepAlive(): void {
     if (enabled) return;
     resetScoutStartState();
     quickStartsRef.current = [];
-    wakeLookupRef.current = null;
   }, [enabled]);
 
   // The clock: look again while co-founder mode is on.
@@ -126,7 +114,7 @@ export function useCofounderScoutKeepAlive(): void {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `clock` and the start state only re-run the look.
   React.useEffect(() => {
-    if (!enabled || !relayUrl || !signer || !agents || !onboardingKnown) return;
+    if (!enabled || !relayUrl || !signer || !agents) return;
     const scout = findCofounderScout(agents, {
       leadPubkey: head?.leadPubkey,
       relayUrl,
@@ -136,70 +124,43 @@ export function useCofounderScoutKeepAlive(): void {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+    async function markAutoStart(pubkey: string) {
+      try {
+        await setManagedAgentStartOnAppLaunch(pubkey, true);
+        await queryClient.invalidateQueries({
+          queryKey: managedAgentsQueryKey,
+        });
+      } catch (error) {
+        autoStartMarkedRef.current.delete(normalizePubkey(pubkey));
+        console.warn(
+          "[cofounder-scout] could not turn on start with the app",
+          error,
+        );
+      }
+    }
+
     const look = async () => {
-      if (isScoutUp(scout)) {
-        if (
-          !autoStartMarkedRef.current.has(scoutKey) &&
-          !scout.startOnAppLaunch
-        ) {
-          autoStartMarkedRef.current.add(scoutKey);
-          await markAutoStart(scout.pubkey);
-        }
-        const state = getScoutStartState();
-        if (state.pubkey === scoutKey && state.phase === "starting") {
-          setScoutStartState({ ...state, phase: "idle" });
-        }
-        if (state.pubkey === scoutKey && state.failures > 0)
-          noteScoutUp(scoutKey);
-        return;
-      }
-
-      // Scout is stopped. Only look at the relay for a waiting wake when
-      // onboarding has already begun (otherwise Scout is wanted regardless).
-      let wake: PendingCofounderWake | null = null;
-      if (head !== null) {
-        const cached = wakeLookupRef.current;
-        if (
-          cached &&
-          cached.pubkey === scoutKey &&
-          Date.now() - cached.at < KEEP_ALIVE_CLOCK_MS / 2
-        ) {
-          wake = cached.wake;
-        } else {
-          try {
-            const relaySelf = await getRelaySelf();
-            if (relaySelf) {
-              wake = await findPendingCofounderWake({
-                scoutPubkey: scout.pubkey,
-                relaySelf,
-                nowSeconds: Math.floor(Date.now() / 1000),
-                fetchEvents: (filter) => relayClient.fetchEvents(filter),
-              });
-            }
-          } catch (error) {
-            // An unread relay is not "nothing waiting": look again next tick.
-            console.warn("[cofounder-scout] could not read the wakes", error);
-            return;
-          }
-          wakeLookupRef.current = { at: Date.now(), pubkey: scoutKey, wake };
-        }
-        if (cancelled) return;
-        // One start per wake and device; the harness ledger replays the rest.
-        if (wake && caughtUpRef.current?.has(wake.id)) wake = null;
-      }
-
       const plan = planScoutStart({
         enabled,
         onboardingKnown,
         onboardingStarted: head !== null,
         scout,
-        wakeWaiting: wake !== null,
         state: getScoutStartState(),
         now: Date.now(),
       });
       if (plan.markAutoStart && !autoStartMarkedRef.current.has(scoutKey)) {
         autoStartMarkedRef.current.add(scoutKey);
         await markAutoStart(scout.pubkey);
+      }
+      if (isScoutUp(scout)) {
+        const state = getScoutStartState();
+        if (state.pubkey === scoutKey && state.phase === "starting") {
+          setScoutStartState({ ...state, phase: "idle" });
+        }
+        if (state.pubkey === scoutKey && state.failures > 0) {
+          noteScoutUp(scoutKey);
+        }
+        return;
       }
       if (plan.retryAt !== null) {
         retryTimer = setTimeout(
@@ -228,10 +189,9 @@ export function useCofounderScoutKeepAlive(): void {
       busyRef.current = true;
       noteScoutStarting(scout.pubkey);
       const floorUnix =
-        plan.reason === "wake-waiting" && wake
-          ? wake.createdAt
-          : Math.floor(now / 1000) - START_REPLAY_SECONDS;
-      if (wake) caughtUpRef.current?.add(wake.id);
+        plan.reason === "onboarding-not-started"
+          ? Math.floor(now / 1000) - START_REPLAY_SECONDS
+          : undefined;
       try {
         await runAgentLifecycle(
           scout.pubkey,
@@ -249,7 +209,9 @@ export function useCofounderScoutKeepAlive(): void {
               pubkey: scout.pubkey,
               expectedRelayUrl: relayUrl,
               expectedSignerPubkey: signer,
-              replayFloorUnix: floorUnix,
+              ...(floorUnix !== undefined
+                ? { replayFloorUnix: floorUnix }
+                : {}),
             });
           },
         );
@@ -277,21 +239,6 @@ export function useCofounderScoutKeepAlive(): void {
       cancelled = true;
       if (retryTimer !== null) clearTimeout(retryTimer);
     };
-
-    async function markAutoStart(pubkey: string) {
-      try {
-        await setManagedAgentStartOnAppLaunch(pubkey, true);
-        await queryClient.invalidateQueries({
-          queryKey: managedAgentsQueryKey,
-        });
-      } catch (error) {
-        autoStartMarkedRef.current.delete(normalizePubkey(pubkey));
-        console.warn(
-          "[cofounder-scout] could not turn on start with the app",
-          error,
-        );
-      }
-    }
   }, [
     enabled,
     relayUrl,
