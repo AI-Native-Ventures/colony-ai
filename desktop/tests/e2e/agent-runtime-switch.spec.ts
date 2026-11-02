@@ -59,22 +59,23 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
   }, scout);
   await expect(page.getByText("Working", { exact: true })).toBeVisible();
   await page.getByTestId("agent-edit-configuration").click();
-  await expect(page.getByTestId("edit-agent-dialog")).toBeVisible();
+  const editDialog = page.getByTestId("edit-agent-dialog");
+  await expect(editDialog).toBeVisible();
   await page.locator("#edit-agent-runtime").click();
   await page.getByRole("menuitemradio", { name: /Codex/ }).click();
   await expect(page.getByTestId("edit-agent-dialog-submit")).toBeEnabled();
   await page.getByTestId("edit-agent-dialog-submit").click();
 
   await expect(
-    page.getByText("Switching to Codex...", { exact: true }),
+    editDialog.getByText("Switching to Codex...", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(
+    editDialog.getByText(
       "The current turn will stop. Queued mentions will remain queued.",
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByTestId("edit-agent-dialog")).toBeHidden();
+  await expect(editDialog).toBeHidden();
   await page.getByRole("button", { name: "Message" }).click();
   await expect(page.getByTestId("chat-header")).toBeVisible();
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
