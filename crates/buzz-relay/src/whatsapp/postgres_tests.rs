@@ -29,7 +29,9 @@ use buzz_core::kind::{
 use buzz_core::tenant::{CommunityId, TenantContext};
 
 use super::connect;
-use super::graph::{GraphApi, GraphError, PhoneInfo, RemoteTemplate, SendRequest};
+use super::graph::{
+    DownloadError, GraphApi, GraphError, MediaInfo, PhoneInfo, RemoteTemplate, SendRequest,
+};
 use super::sender;
 use crate::handlers::ingest::{HttpAuthMethod, IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
@@ -49,6 +51,8 @@ struct FakeGraph {
     sabotage_after_send: AtomicBool,
     reject_token: AtomicBool,
     hide_templates: AtomicBool,
+    media_info: Mutex<Result<MediaInfo, GraphError>>,
+    media_download: Mutex<Result<Vec<u8>, DownloadError>>,
 }
 
 impl FakeGraph {
@@ -62,7 +66,20 @@ impl FakeGraph {
             sabotage_after_send: AtomicBool::new(false),
             reject_token: AtomicBool::new(false),
             hide_templates: AtomicBool::new(false),
+            media_info: Mutex::new(Err(GraphError::Unavailable("no media scripted".into()))),
+            media_download: Mutex::new(Err(DownloadError::Graph(GraphError::Unavailable(
+                "no media scripted".into(),
+            )))),
         }
+    }
+
+    fn script_media(
+        &self,
+        info: Result<MediaInfo, GraphError>,
+        download: Result<Vec<u8>, DownloadError>,
+    ) {
+        *self.media_info.lock().expect("media info lock") = info;
+        *self.media_download.lock().expect("media download lock") = download;
     }
 
     fn send_count(&self) -> usize {
@@ -166,6 +183,26 @@ impl GraphApi for FakeGraph {
                 .expect("sabotage the send record");
         }
         Ok(wamid)
+    }
+
+    async fn media_info(&self, token: &str, _media_id: &str) -> Result<MediaInfo, GraphError> {
+        self.tokens_seen
+            .lock()
+            .expect("tokens lock")
+            .push(token.to_string());
+        self.media_info.lock().expect("media info lock").clone()
+    }
+
+    async fn download_media(
+        &self,
+        _token: &str,
+        _url: &str,
+        _max_bytes: u64,
+    ) -> Result<Vec<u8>, DownloadError> {
+        self.media_download
+            .lock()
+            .expect("media download lock")
+            .clone()
     }
 }
 
@@ -587,6 +624,233 @@ fn button_tap(from: &str, wamid: &str, title: &str) -> String {
                       "type": "button", "button": {"text": title, "payload": "x"}}]
     }}]}]})
     .to_string()
+}
+
+fn sticker_hook(from: &str, wamid: &str, media_id: &str) -> String {
+    json!({"object": "whatsapp_business_account", "entry": [{"id": WABA_ID, "changes": [{
+    "field": "messages",
+    "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {"display_phone_number": "27820000000", "phone_number_id": PHONE_ID},
+        "contacts": [{"profile": {"name": "Kensington Guest House"}, "wa_id": from}],
+        "messages": [{"from": from, "id": wamid, "timestamp": Utc::now().timestamp().to_string(),
+                      "type": "sticker",
+                      "sticker": {"id": media_id, "mime_type": "image/webp", "animated": false}}]
+    }}]}]})
+    .to_string()
+}
+
+async fn media_of(fx: &Fixture, wa_id: &str) -> buzz_db::whatsapp::WhatsappMedia {
+    let message = fx.thread(wa_id).await.remove(0);
+    fx.state
+        .db
+        .whatsapp_get_media(fx.community(), message.id)
+        .await
+        .expect("media lookup")
+        .expect("the message has a media record")
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_inbound_sticker_keeps_its_media_id_and_a_failed_download_leaves_a_retry_record() {
+    // GUARD: `whatsapp_set_inbound_media` in `inbound::handle_message`. Without it the sticker
+    // is the bare text "[sticker]" and the Meta media id is lost.
+    let fx = fixture().await;
+    let wa = "27821239001";
+    fx.graph.script_media(
+        Err(GraphError::Unavailable("timeout".into())),
+        Err(DownloadError::Graph(GraphError::Unavailable(
+            "timeout".into(),
+        ))),
+    );
+    assert_eq!(
+        fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK1", "MEDIA-77"))
+            .await,
+        StatusCode::OK,
+        "a failed download never fails the webhook"
+    );
+    let row = fx.thread(wa).await.remove(0);
+    assert_eq!(
+        (row.kind.as_str(), row.body.as_str()),
+        ("media", "[sticker]")
+    );
+    let media = media_of(&fx, wa).await;
+    assert_eq!(media.media["mediaId"], "MEDIA-77");
+    assert_eq!(media.media["mime"], "image/webp");
+    // GUARD: the failure is a durable record with a backoff, not a log line.
+    assert_eq!(media.state.as_deref(), Some("pending"));
+    assert_eq!(media.attempts, 1);
+    assert!(media.retry_at.is_some_and(|at| at > Utc::now()));
+    assert_eq!(media.error.as_deref(), Some("timeout"));
+    // The chat still has its Colony message, flagged as not downloaded yet.
+    let channel = fx.outreach_channel().await;
+    let events = channel_events(&fx, channel, wa).await;
+    let last = events.last().expect("the sticker was posted");
+    assert!(last.2.to_string().contains("wa-media"), "{}", last.2);
+    assert!(last.0.contains("still downloading"), "{}", last.0);
+
+    // A redelivery of the same webhook changes nothing.
+    assert_eq!(
+        fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK1", "MEDIA-77"))
+            .await,
+        StatusCode::OK
+    );
+    assert_eq!(fx.thread(wa).await.len(), 1);
+    assert_eq!(media_of(&fx, wa).await.attempts, 1);
+
+    // The thread API tells the app what happened.
+    let view =
+        crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa, 50, true, Utc::now())
+            .await
+            .expect("thread");
+    assert_eq!(view["messages"][0]["media"]["type"], "sticker");
+    assert_eq!(view["messages"][0]["media"]["state"], "pending");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_file_meta_no_longer_has_is_gone_and_only_a_failed_download_can_be_retried() {
+    let fx = fixture().await;
+    let wa = "27821239002";
+    fx.graph.script_media(
+        Err(GraphError::Rejected {
+            http_status: 404,
+            code: None,
+            message: String::new(),
+        }),
+        Err(DownloadError::TooLarge),
+    );
+    assert_eq!(
+        fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK2", "MEDIA-78"))
+            .await,
+        StatusCode::OK
+    );
+    let media = media_of(&fx, wa).await;
+    assert_eq!(media.state.as_deref(), Some("gone"));
+    assert_eq!(media.error.as_deref(), Some("not_found"));
+
+    let retry = |id: Uuid| update(wa, json!({"retryMedia": id.to_string()}));
+    let outcome = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            retry(media.message_id),
+        )
+        .await
+        .expect("owner command");
+    assert!(
+        outcome.message.contains("nothing to retry"),
+        "a gone file is not restarted: {}",
+        outcome.message
+    );
+    assert_eq!(media_of(&fx, wa).await.state.as_deref(), Some("gone"));
+
+    // A download that gave up can be retried by someone who may reply, and nobody else.
+    sqlx::query(
+        "UPDATE whatsapp_messages SET media_state = 'failed', media_error = 'timeout', \
+             media_attempts = 8 WHERE community_id = $1 AND id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(media.message_id)
+    .execute(&fx.pool)
+    .await
+    .expect("mark failed");
+    let stranger = Keys::generate();
+    let refusal = rejection(
+        fx.command(
+            &stranger,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            retry(media.message_id),
+        )
+        .await,
+    );
+    assert!(refusal.contains("only the owner"), "{refusal}");
+    assert_eq!(media_of(&fx, wa).await.state.as_deref(), Some("failed"));
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        retry(media.message_id),
+    )
+    .await
+    .expect("owner retries");
+    let again = media_of(&fx, wa).await;
+    assert_eq!(again.state.as_deref(), Some("pending"));
+    assert_eq!(again.attempts, 0);
+    assert!(again.retry_at.is_some_and(|at| at <= Utc::now()));
+    // Another contact's message id is not retryable through this contact.
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(
+                "27821239003",
+                json!({"retryMedia": media.message_id.to_string()}),
+            ),
+        )
+        .await,
+    );
+    assert!(
+        refusal.contains("no such media") || refusal.contains("no such contact"),
+        "{refusal}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_file_over_the_cap_is_marked_too_large_and_never_retried() {
+    let fx = fixture().await;
+    let wa = "27821239004";
+    fx.graph.script_media(
+        Ok(MediaInfo {
+            url: "https://lookaside.fbsbx.com/x".into(),
+            mime_type: None,
+            sha256: None,
+            file_size: Some(super::media::MAX_MEDIA_BYTES + 1),
+        }),
+        Ok(vec![]),
+    );
+    assert_eq!(
+        fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK3", "MEDIA-79"))
+            .await,
+        StatusCode::OK
+    );
+    let media = media_of(&fx, wa).await;
+    assert_eq!(media.state.as_deref(), Some("failed"));
+    assert_eq!(media.error.as_deref(), Some("too_large"));
+    let reset = fx
+        .state
+        .db
+        .whatsapp_media_reset(fx.community(), media.message_id, Utc::now())
+        .await
+        .expect("reset");
+    assert!(!reset, "retrying cannot make a file smaller");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn the_sender_loop_retries_a_due_download_and_leaves_a_not_yet_due_one_alone() {
+    let fx = fixture().await;
+    let wa = "27821239005";
+    fx.graph.script_media(
+        Err(GraphError::Unavailable("timeout".into())),
+        Err(DownloadError::Graph(GraphError::Unavailable(
+            "timeout".into(),
+        ))),
+    );
+    fx.deliver(APP_SECRET, &sticker_hook(wa, "wamid.STK4", "MEDIA-80"))
+        .await;
+    let first = media_of(&fx, wa).await;
+    assert_eq!(first.attempts, 1);
+    let retry_at = first.retry_at.expect("scheduled");
+
+    // Before the backoff ends nothing is fetched again.
+    fx.run_sender(retry_at - Duration::seconds(5)).await;
+    assert_eq!(media_of(&fx, wa).await.attempts, 1);
+    // After it, the loop tries again and records the next failure with a longer wait.
+    fx.run_sender(retry_at + Duration::seconds(1)).await;
+    let second = media_of(&fx, wa).await;
+    assert_eq!(second.attempts, 2);
+    assert!(second.retry_at.expect("scheduled") > retry_at);
 }
 
 #[tokio::test]

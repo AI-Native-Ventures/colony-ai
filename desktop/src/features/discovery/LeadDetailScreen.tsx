@@ -18,6 +18,7 @@ import {
   maskWhatsAppNumber,
   whatsappLeadStatusLabel,
 } from "@/features/whatsapp-outreach/whatsappOutreachModels";
+import { WhatsAppMessagePreview } from "@/features/whatsapp-outreach/WhatsAppMessageMedia";
 import { useWhatsAppThreadQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { customerActions } from "@/features/cofounder/customerActions";
 import {
@@ -383,7 +384,13 @@ export function LeadDetailScreen({
 
               {lastInboundWhatsApp ? (
                 <blockquote className="c3l-whatsapp-last-message">
-                  <p>“{lastInboundWhatsApp.text}”</p>
+                  <p>
+                    {lastInboundWhatsApp.media ? (
+                      <WhatsAppMessagePreview message={lastInboundWhatsApp} />
+                    ) : (
+                      `“${lastInboundWhatsApp.text}”`
+                    )}
+                  </p>
                   <span>
                     Last message · {person.contactName ?? "Contact"},{" "}
                     {whatsAppDay(lastInboundWhatsApp.createdAt)}{" "}

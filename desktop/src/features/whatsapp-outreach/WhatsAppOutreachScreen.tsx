@@ -27,10 +27,17 @@ import {
   getWhatsAppDailyCapProgress,
   isWhatsAppPhoneLikeName,
   maskWhatsAppNumber,
+  whatsappMessagePreview,
   type WhatsAppBatchDetail,
   type WhatsAppContact,
+  type WhatsAppMessage,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
+
+/** The list line for a chat: the latest message in words, never a bracket placeholder. */
+function previewOfLatest(message: WhatsAppMessage | undefined): string | null {
+  return message ? whatsappMessagePreview(message) : null;
+}
 import {
   contactStatus,
   pendingBatchRowsForContact,
@@ -690,7 +697,7 @@ export function WhatsAppOutreachScreen({
             const preview =
               rowBatch?.row.preview ??
               (isSelected
-                ? (chronologicalMessages.at(-1)?.text ?? null)
+                ? previewOfLatest(chronologicalMessages.at(-1))
                 : null);
             const hasDraft = pendingDrafts.some(
               (draft) => draft.waId === contact.waId,

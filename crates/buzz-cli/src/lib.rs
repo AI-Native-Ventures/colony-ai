@@ -1493,7 +1493,9 @@ pub enum WhatsappCmd {
         #[arg(long)]
         limit: Option<u32>,
     },
-    /// Show one contact's messages with delivery state
+    /// Show one contact's messages with delivery state. A message with a picture, sticker, voice
+    /// note, file, location or contact card has a `media` object: `description` says what was sent
+    /// and `url` (when `state` is `stored`) is the file on the company's media host
     Thread {
         /// Phone number, for example +27821234567
         #[arg(long)]

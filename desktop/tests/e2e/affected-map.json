@@ -460,7 +460,8 @@
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
-        "whatsapp-dock-narrow.spec.ts"
+        "whatsapp-dock-narrow.spec.ts",
+        "whatsapp-inbound-media.spec.ts"
       ]
     },
     {
