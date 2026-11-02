@@ -2,21 +2,23 @@
 //!
 //! Every function returns the JSON shape documented in `docs/admin-api-contract.md`.
 //! Everything here reads the precomputed `metrics_*` tables or small operational
-//! tables (wakes, WhatsApp states, the AI journal). Nothing reads message text:
-//! the only `events.content` read is the co-founder settings record, from which
-//! only the `enabled` flag is taken.
+//! tables (wakes, WhatsApp states, the AI journal). Nothing returns message
+//! text: the settings read returns only `enabled`, and the onboarding read
+//! returns only fixed progress enums from the relay-authored head.
 
 use std::collections::{HashMap, HashSet};
 
+use buzz_core::company_onboarding::{ONBOARDING_D_TAG, OnboardingHead, StepState};
+use buzz_core::kind::KIND_ONBOARDING_HEAD;
 use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Datelike, Days, NaiveDate, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::Row as _;
 use uuid::Uuid;
 
 use super::admin_metrics::day_start;
-use crate::error::Result;
 use crate::Db;
+use crate::error::Result;
 
 /// Largest page of the businesses table.
 pub const MAX_BUSINESS_PAGE: i64 = 200;
@@ -158,6 +160,44 @@ impl Db {
                 (id, enabled)
             })
             .collect())
+    }
+
+    /// Return only the safe progress enums from the current relay-authored
+    /// onboarding head. Questions, requested accounts, map proposals and
+    /// pubkeys stay inside the stored event and never leave this query.
+    async fn onboarding_progress(
+        &self,
+        community_id: Uuid,
+        relay_pubkey: &[u8],
+    ) -> Result<Option<Value>> {
+        let content: Option<String> = sqlx::query_scalar(
+            "SELECT content FROM events \
+              WHERE community_id = $1 AND kind = $2 AND pubkey = $3 \
+                AND d_tag = $4 AND channel_id IS NULL AND deleted_at IS NULL \
+              ORDER BY created_at DESC, id ASC LIMIT 1",
+        )
+        .bind(community_id)
+        .bind(KIND_ONBOARDING_HEAD as i32)
+        .bind(relay_pubkey)
+        .bind(ONBOARDING_D_TAG)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(content) = content else {
+            return Ok(None);
+        };
+        let head: OnboardingHead = serde_json::from_str(&content)?;
+        let current = head
+            .steps
+            .iter()
+            .find(|step| !matches!(step.state, StepState::Done | StepState::Skipped));
+        let current_step = current.map(|step| step.step);
+        let current_step_state = current.map(|step| step.state);
+        Ok(Some(json!({
+            "status": head.status,
+            "currentStep": current_step,
+            "currentStepState": current_step_state,
+            "steps": head.steps,
+        })))
     }
 
     async fn business_bases(&self, only: Option<Uuid>) -> Result<Vec<BusinessBase>> {
@@ -811,6 +851,7 @@ impl Db {
         community_id: Uuid,
         days: i64,
         discovery_cap: i64,
+        relay_pubkey: &[u8],
         now: DateTime<Utc>,
     ) -> Result<Option<Value>> {
         let Some(base) = self.business_bases(Some(community_id)).await?.pop() else {
@@ -820,6 +861,7 @@ impl Db {
         let from = back(today, u64::try_from(days.max(1) - 1).unwrap_or(0));
         let week_start = back(today, 7);
         let flags = self.cofounder_flags().await?;
+        let onboarding = self.onboarding_progress(community_id, relay_pubkey).await?;
         let (bad, warn) = self.business_flags(now).await?;
         let health = if bad.contains(&community_id) {
             "bad"
@@ -1120,6 +1162,7 @@ impl Db {
             "cofounder": {
                 "on": flags.get(&community_id).copied().flatten(),
                 "onSince": on_since,
+                "onboarding": onboarding,
                 "wakes": { "delivered": wake("delivered"), "skipped": wake("skipped"), "pending": wake("pending") },
                 "lastWake": last_wake.map(|(at, status, reason)| json!({ "at": at, "status": status, "reason": reason })),
                 "skippedByOutcome": skipped_by.iter().map(|row| json!({ "outcome": row.0, "count": row.1 })).collect::<Vec<Value>>(),

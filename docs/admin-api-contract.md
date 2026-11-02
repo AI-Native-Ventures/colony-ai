@@ -14,7 +14,7 @@ This contract is the source of truth for field names. If the UI needs something 
   - Signed by a moderator, or by a key that is not on the roster: `403`.
   - Admin auth mode `disabled` (local dev): `403` for every metrics route. There is no anonymous read of metrics.
 - Audit: every successful read writes one row to `relay_operator_read_audit` (actor key, path, time). No query string values or response data are stored.
-- Privacy: counts, ids and timestamps only. No message text, no WhatsApp text, no lead data, no customer names. People appear as shortened keys (`pubkeyShort`, first 8 hex) and a business shows by its name and host (operators already see these). A relay test greps every response for event content.
+- Privacy: counts, ids, timestamps and fixed progress enums only. No message text, no WhatsApp text, no lead data, no customer names. People appear as shortened keys (`pubkeyShort`, first 8 hex) and a business shows by its name and host (operators already see these). A relay test greps every response for event content.
 - Errors: same shape as the existing admin API: `{"error": {"code": "...", "message": "...", "requestId": "..."}}`. Codes used here: `invalid_days`, `invalid_sort`, `invalid_limit`, `invalid_offset`, `invalid_query`, `not_found`, `forbidden`. An unknown query parameter is `400`.
 - Caching: `Cache-Control: no-store` (existing admin middleware). Every number comes from a precomputed table, never from a live scan of `events`.
 - Dates: `day` is a UTC date `YYYY-MM-DD`; timestamps are RFC 3339 UTC. The UI formats to SAST. Money is a USD decimal **string** (`"12.340000"`, 6 places) so nothing rounds in transit. Token and request counts are JSON numbers (safe integers).
@@ -197,6 +197,14 @@ Query: `q` (case-insensitive substring of business name or host or owner name), 
   },
   "cofounder": {
     "on": true, "onSince": "2026-11-01T08:05:00Z",   // onSince = first mode_on wake time, null when unknown
+    "onboarding": {                                   // null when onboarding has not started
+      "status": "in_progress", "currentStep": "money", "currentStepState": "asked",
+      "steps": [
+        { "step": "brief", "state": "done" }, { "step": "money", "state": "asked" },
+        { "step": "approvals", "state": "todo" }, { "step": "accounts", "state": "todo" },
+        { "step": "map", "state": "todo" }
+      ]
+    },                                                 // progress enums only; no question, account, map or pubkey data
     "wakes": { "delivered": 1, "skipped": 2, "pending": 0 },
     "lastWake": { "at": "2026-11-01T23:15:00Z", "status": "delivered", "reason": "daily_start" },   // null when none
     "skippedByOutcome": [ { "outcome": "no Scout found", "count": 2 } ]   // relay-written outcome strings, max 300 chars
@@ -306,7 +314,7 @@ All new tables are deployment-global (not per community), hold counts and ids on
 | `relay_operator_read_audit` | one row per metrics read (actor, route, time) | admin API |
 | `account_ai_requests.model / input_tokens / output_tokens` | generated columns from the stored `usage` JSON, so old rows are backfilled by the migration itself | database |
 
-Rollup job: runs inside the relay (one pod at a time, Postgres advisory lock). On start it fills any missing days of the last 90 days. Every 15 minutes it recomputes today (partial). Once a day, after 00:10 UTC, it finalises yesterday. All recomputations are idempotent (same input, same rows).
+Rollup job: runs inside the relay (one pod at a time, Postgres advisory lock). On start it fills any missing days of the last 120 days, giving the earliest point in the 90-day admin range its full 30-day MAU context. Every 15 minutes it recomputes today (partial). Once a day, after 00:10 UTC, it finalises yesterday. All recomputations are idempotent (same input, same rows).
 
 Definitions used by the rollup:
 

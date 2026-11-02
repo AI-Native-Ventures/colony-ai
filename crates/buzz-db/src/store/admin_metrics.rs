@@ -10,14 +10,15 @@ use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Days, NaiveDate, NaiveTime, Utc};
 use sqlx::PgPool;
 
-use crate::error::Result;
 use crate::Db;
+use crate::error::Result;
 
 /// Deployment-global advisory lock so one relay pod runs the rollup at a time.
 pub const METRICS_ROLLUP_LOCK_KEY: i64 = 0x4255_5a5a_4d45_5452;
 
-/// Days the first run (and any later gap) backfills.
-pub const BACKFILL_DAYS: u64 = 90;
+/// Days the first run (and any later gap) backfills. The extra 30 days give
+/// the earliest point in the 90-day admin range a complete MAU window.
+pub const BACKFILL_DAYS: u64 = 120;
 
 /// Days of rollup rows kept.
 pub const RETENTION_DAYS: u64 = 400;
@@ -414,9 +415,14 @@ impl Db {
 #[cfg(test)]
 mod postgres_tests {
     use super::*;
+    use buzz_core::company_onboarding::{
+        ONBOARDING_D_TAG, OnboardingHead, OnboardingStatus, OnboardingStep, OpenQuestion,
+        StepState, StepStatus,
+    };
+    use buzz_core::company_records::COMPANY_RECORD_SCHEMA_VERSION;
     use serde_json::Value;
-    use sqlx::postgres::PgPoolOptions;
     use sqlx::Row as _;
+    use sqlx::postgres::PgPoolOptions;
     use uuid::Uuid;
 
     type AiDailyRow = (String, i64, i64, i64, i64, i64, i64, i64);
@@ -511,6 +517,30 @@ mod postgres_tests {
         .await
         .expect("event");
         id
+    }
+
+    async fn onboarding_head_event(
+        pool: &PgPool,
+        community: Uuid,
+        relay_pubkey: &[u8],
+        created_at: DateTime<Utc>,
+        content: &str,
+    ) {
+        sqlx::query(
+            "INSERT INTO events (community_id, id, pubkey, created_at, kind, tags, content, sig, channel_id, d_tag) \
+             VALUES ($1, $2, $3, $4, $5, '[]'::jsonb, $6, $7, NULL, $8)",
+        )
+        .bind(community)
+        .bind(key())
+        .bind(relay_pubkey)
+        .bind(created_at)
+        .bind(buzz_core::kind::KIND_ONBOARDING_HEAD as i32)
+        .bind(content)
+        .bind(vec![0u8; 64])
+        .bind(ONBOARDING_D_TAG)
+        .execute(pool)
+        .await
+        .expect("onboarding head event");
     }
 
     async fn mention(
@@ -905,10 +935,10 @@ mod postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn a_full_pass_fills_missing_days_then_only_refreshes_today() {
+    async fn a_full_pass_fills_missing_days_with_mau_context_then_refreshes_today() {
         let pool = pool().await;
         let db = Db::from_pool(pool.clone());
-        // Days before every other test's data, so the 90 day window and the
+        // Days before every other test's data, so the 120 day window and the
         // retention prune cannot touch rows another test is building.
         let now = at(
             NaiveDate::from_ymd_opt(2099, 1, 1).expect("date")
@@ -916,6 +946,19 @@ mod postgres_tests {
             12,
             0,
         );
+        let context_community = community(&pool).await;
+        let context_person = human(&pool, context_community).await;
+        let context_day = now.date_naive() - Days::new(110);
+        event(
+            &pool,
+            context_community,
+            &context_person,
+            at(context_day, 9, 0),
+            9,
+            None,
+            "",
+        )
+        .await;
         let mut first = RollupSummary::default();
         for _ in 0..40 {
             first = db.run_metrics_rollup(now).await.expect("first pass");
@@ -937,6 +980,17 @@ mod postgres_tests {
         .await
         .expect("finals");
         assert_eq!(finals, i64::try_from(BACKFILL_DAYS - 1).expect("days"));
+        let earliest_chart_day = today - Days::new(89);
+        let earliest_mau: i64 =
+            sqlx::query_scalar("SELECT mau::bigint FROM metrics_daily_active WHERE day = $1")
+                .bind(earliest_chart_day)
+                .fetch_one(&pool)
+                .await
+                .expect("earliest chart MAU");
+        assert_eq!(
+            earliest_mau, 1,
+            "the first 90-day point includes its prior 30 days"
+        );
         let (_, _, _, today_final) = daily(&pool, today).await;
         assert!(!today_final, "today stays open until the nightly finalise");
 
@@ -993,6 +1047,46 @@ mod postgres_tests {
         .await
         .expect("member");
         let scout = agent(&pool, c, &owner, "Scout").await;
+        let onboarding = OnboardingHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            revision: 1,
+            status: OnboardingStatus::InProgress,
+            lead_pubkey: hex::encode(&scout),
+            steps: OnboardingStep::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(index, step)| StepStatus {
+                    step,
+                    state: match index {
+                        0 => StepState::Done,
+                        1 => StepState::Asked,
+                        _ => StepState::Todo,
+                    },
+                })
+                .collect(),
+            question: Some(OpenQuestion {
+                step: OnboardingStep::Money,
+                text: SECRET.to_owned(),
+                account: None,
+            }),
+            accounts: Vec::new(),
+            map: None,
+            started_at: at(day, 8, 0).timestamp(),
+            resumed_at: None,
+            resume_count: 0,
+            completed_at: None,
+            updated_by_pubkey: hex::encode(&owner),
+            updated_at: at(day, 22, 0).timestamp(),
+        };
+        let onboarding_content = serde_json::to_string(&onboarding).expect("onboarding JSON");
+        onboarding_head_event(&pool, c, &owner, at(day, 22, 0), &onboarding_content).await;
+        let mut untrusted_head = onboarding.clone();
+        untrusted_head.status = OnboardingStatus::Complete;
+        untrusted_head.steps.iter_mut().for_each(|step| {
+            step.state = StepState::Done;
+        });
+        let untrusted_content = serde_json::to_string(&untrusted_head).expect("untrusted JSON");
+        onboarding_head_event(&pool, c, &scout, at(day, 23, 0), &untrusted_content).await;
         let room = Uuid::new_v4();
         let ask = event(&pool, c, &owner, at(day, 9, 0), 9, Some(room), SECRET).await;
         mention(&pool, c, &scout, &ask, at(day, 9, 0), room).await;
@@ -1037,7 +1131,7 @@ mod postgres_tests {
             .await
             .expect("businesses");
         let detail = db
-            .admin_metrics_business(c, 30, 2000, now)
+            .admin_metrics_business(c, 30, 2000, &owner, now)
             .await
             .expect("detail")
             .expect("business exists");
@@ -1063,6 +1157,24 @@ mod postgres_tests {
 
         assert_eq!(detail["business"]["health"], "bad");
         assert_eq!(detail["cofounder"]["on"], true);
+        assert_eq!(detail["cofounder"]["onboarding"]["status"], "in_progress");
+        assert_eq!(detail["cofounder"]["onboarding"]["currentStep"], "money");
+        assert_eq!(
+            detail["cofounder"]["onboarding"]["currentStepState"],
+            "asked"
+        );
+        assert_eq!(
+            detail["cofounder"]["onboarding"]["steps"]
+                .as_array()
+                .map(Vec::len),
+            Some(5)
+        );
+        let onboarding = &detail["cofounder"]["onboarding"];
+        assert!(onboarding.get("question").is_none());
+        assert!(onboarding.get("accounts").is_none());
+        assert!(onboarding.get("map").is_none());
+        assert!(onboarding.get("leadPubkey").is_none());
+        assert!(onboarding.get("updatedByPubkey").is_none());
         assert_eq!(detail["cofounder"]["wakes"]["skipped"], 2);
         assert_eq!(
             detail["cofounder"]["skippedByOutcome"][0]["outcome"],
@@ -1100,7 +1212,7 @@ mod postgres_tests {
         );
 
         let missing = db
-            .admin_metrics_business(Uuid::new_v4(), 30, 2000, now)
+            .admin_metrics_business(Uuid::new_v4(), 30, 2000, &owner, now)
             .await
             .expect("lookup");
         assert!(missing.is_none());

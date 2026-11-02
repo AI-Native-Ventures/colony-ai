@@ -8,14 +8,14 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, Uri},
     routing::get,
-    Json, Router,
 };
 use chrono::Utc;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::auth::{authorize, require_mutation_principal, require_operator};
@@ -171,9 +171,16 @@ async fn business(
 ) -> Result<Json<Value>, ApiError> {
     operator_read(&state, &uri, &headers, "metrics/businesses/{communityId}").await?;
     let days = parse_days(query.days)?;
+    let relay_pubkey = state.relay_keypair.public_key().to_bytes();
     match state
         .db
-        .admin_metrics_business(community_id, days, discovery_cap(&state), Utc::now())
+        .admin_metrics_business(
+            community_id,
+            days,
+            discovery_cap(&state),
+            &relay_pubkey,
+            Utc::now(),
+        )
         .await?
     {
         Some(body) => Ok(Json(body)),
