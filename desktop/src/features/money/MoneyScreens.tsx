@@ -2,6 +2,7 @@ import * as React from "react";
 
 import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { useMoneyRecordsQuery } from "@/features/clients/useBusinessRecords";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import {
   StateButton,
   StateCard,
@@ -62,6 +63,7 @@ export function MoneyRouteScreen({
   invoiceId?: string;
 }) {
   const query = useMoneyRecordsQuery();
+  const salesRecords = useBusinessRecords({ createIfMissing: false });
   const communityMembership = useMyRelayMembershipQuery();
   const relayRole = communityMembership.data?.role;
   const canManage = relayRole === "owner" || relayRole === "admin";
@@ -72,6 +74,31 @@ export function MoneyRouteScreen({
       new Map(clients.map(({ value }) => [value.clientId, value.displayName])),
     [clients],
   );
+  const clientLogos = React.useMemo(() => {
+    const prospectByPartyId = new Map(
+      (salesRecords.records?.prospects ?? []).map(({ record }) => [
+        record.prospect.party.partyId,
+        record.prospect,
+      ]),
+    );
+    return new Map(
+      clients.flatMap(({ value }) => {
+        const prospect = prospectByPartyId.get(value.partyId);
+        return value.clientId && prospect
+          ? [
+              [
+                value.clientId,
+                {
+                  website: prospect.website,
+                  logoUrl: prospect.logoUrl ?? null,
+                  placePhotoUrl: prospect.placePhotoUrl ?? null,
+                },
+              ] as const,
+            ]
+          : [];
+      }),
+    );
+  }, [clients, salesRecords.records?.prospects]);
   const [chosenPeriod, setPeriod] = React.useState<string | null>(null);
   const [clientId, setClientId] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<InvoiceChip | "all">(
@@ -205,6 +232,7 @@ export function MoneyRouteScreen({
       </MoneyFilters>
       {listSection === "overview" ? (
         <MoneyOverview
+          clientLogos={clientLogos}
           clientNames={clientNames}
           clientId={clientId}
           invoices={visibleRecords}

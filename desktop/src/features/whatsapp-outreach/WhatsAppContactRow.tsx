@@ -1,5 +1,6 @@
 import { UserRound } from "lucide-react";
 
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { cn } from "@/shared/lib/cn";
 import { contactStatus } from "./whatsappOutreachContactState";
 import {
@@ -29,6 +30,10 @@ function StatusChip({ status }: { status: string }) {
 export function WhatsAppContactRow({
   contact,
   businessName,
+  website,
+  logoUrl,
+  placePhotoUrl,
+  isLinked,
   hasDraft,
   preview,
   waitingForApproval,
@@ -39,6 +44,10 @@ export function WhatsAppContactRow({
 }: {
   contact: WhatsAppContact;
   businessName: string;
+  website: string | null;
+  logoUrl: string | null;
+  placePhotoUrl: string | null;
+  isLinked: boolean;
   hasDraft: boolean;
   preview: string | null;
   waitingForApproval: boolean;
@@ -58,7 +67,15 @@ export function WhatsAppContactRow({
         type="button"
       >
         <span aria-hidden="true" className="c3wa-contact-avatar">
-          {isWhatsAppPhoneLikeName(businessName) ? (
+          {isLinked ? (
+            <BusinessLogoMark
+              className="c3wa-desk-logo-mark"
+              logoUrl={logoUrl}
+              name={businessName}
+              placePhotoUrl={placePhotoUrl}
+              website={website}
+            />
+          ) : isWhatsAppPhoneLikeName(businessName) ? (
             <UserRound aria-hidden="true" size={17} strokeWidth={1.8} />
           ) : (
             whatsappInitials(businessName)

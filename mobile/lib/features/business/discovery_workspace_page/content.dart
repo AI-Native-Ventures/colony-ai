@@ -255,6 +255,20 @@ class _DiscoveryRecordTile extends StatelessWidget {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            BusinessLogoMark(
+                              name: name,
+                              website: prospect['website'] is String
+                                  ? prospect['website'] as String
+                                  : null,
+                              logoUrl: prospect['logoUrl'] is String
+                                  ? prospect['logoUrl'] as String
+                                  : null,
+                              placePhotoUrl: prospect['placePhotoUrl'] is String
+                                  ? prospect['placePhotoUrl'] as String
+                                  : null,
+                              size: 36,
+                            ),
+                            const SizedBox(width: 10),
                             Flexible(
                               child: Text(
                                 name,
@@ -357,21 +371,18 @@ class _DiscoveryProspectDetailPage extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: tokens.soft,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        _initials(name),
-                        style: context.textTheme.titleMedium?.copyWith(
-                          color: context.appColors.success,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                    BusinessLogoMark(
+                      name: name,
+                      website: prospect['website'] is String
+                          ? prospect['website'] as String
+                          : null,
+                      logoUrl: prospect['logoUrl'] is String
+                          ? prospect['logoUrl'] as String
+                          : null,
+                      placePhotoUrl: prospect['placePhotoUrl'] is String
+                          ? prospect['placePhotoUrl'] as String
+                          : null,
+                      size: 52,
                     ),
                     const Spacer(),
                     if (score is int)

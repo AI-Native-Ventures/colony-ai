@@ -10,6 +10,7 @@ import { useCustomerRecordCapabilities } from "@/features/cofounder/customerReco
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -707,6 +708,8 @@ export function WhatsAppOutreachScreen({
                 personName={identity.personName}
                 preview={preview}
                 selected={isSelected}
+                logoUrl={identity.logoUrl}
+                placePhotoUrl={identity.placePhotoUrl}
                 website={identity.website}
                 isDesk
                 isLinked={identity.isLinked}
@@ -718,11 +721,15 @@ export function WhatsAppOutreachScreen({
                 canReviewBatch={Boolean(rowBatch)}
                 contact={rowContact}
                 hasDraft={hasDraft}
+                isLinked={identity.isLinked}
+                logoUrl={identity.logoUrl}
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
+                placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
                 selected={isSelected}
+                website={identity.website}
                 waitingForApproval={rowMatches.length > 0}
               />
             );
@@ -752,7 +759,15 @@ export function WhatsAppOutreachScreen({
               ‹
             </button>
             <span aria-hidden="true" className="c3wa-thread-avatar">
-              {selectedContactIsAnonymous ? (
+              {selectedIdentity?.isLinked ? (
+                <BusinessLogoMark
+                  className="c3wa-desk-logo-mark"
+                  logoUrl={selectedIdentity.logoUrl}
+                  name={selectedIdentity.displayName}
+                  placePhotoUrl={selectedIdentity.placePhotoUrl}
+                  website={selectedIdentity.website}
+                />
+              ) : selectedContactIsAnonymous ? (
                 <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
               ) : (
                 whatsappInitials(selectedIdentity?.displayName ?? "WhatsApp")

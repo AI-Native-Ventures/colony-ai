@@ -25,6 +25,7 @@ import {
   RecordMessage,
 } from "@/features/clients/ui/ClientWorkspace";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { maskWhatsAppNumber } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import { customerActions } from "@/features/cofounder/customerActions";
@@ -349,6 +350,13 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
           <BusinessTrail crumbs={crumbs} />
           <div className="b3-detail-head cf-customer-head">
             <div className="cf-customer-title">
+              <BusinessLogoMark
+                className="b3-tile"
+                logoUrl={prospect?.logoUrl}
+                name={name}
+                placePhotoUrl={prospect?.placePhotoUrl}
+                website={prospect?.website}
+              />
               <h1 className="b3-title">{name}</h1>
               <span className="b3-subtitle">
                 {businessType} · {location}

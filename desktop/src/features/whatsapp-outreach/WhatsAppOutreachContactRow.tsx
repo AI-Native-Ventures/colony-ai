@@ -40,6 +40,8 @@ export function WhatsAppOutreachContactRow({
   onReviewBatch,
   personName,
   website,
+  logoUrl,
+  placePhotoUrl,
   isDesk = false,
   isLinked = Boolean(contact.leadId || contact.businessName),
 }: {
@@ -54,6 +56,8 @@ export function WhatsAppOutreachContactRow({
   onReviewBatch: () => void;
   personName: string | null;
   website: string | null;
+  logoUrl?: string | null;
+  placePhotoUrl?: string | null;
   isDesk?: boolean;
   isLinked?: boolean;
 }) {
@@ -80,12 +84,22 @@ export function WhatsAppOutreachContactRow({
             isLinked ? (
               <BusinessLogoMark
                 className="c3wa-desk-logo-mark"
+                logoUrl={logoUrl}
                 name={businessName}
+                placePhotoUrl={placePhotoUrl}
                 website={website}
               />
             ) : (
               <UserRound aria-hidden="true" size={18} />
             )
+          ) : isLinked ? (
+            <BusinessLogoMark
+              className="c3wa-desk-logo-mark"
+              logoUrl={logoUrl}
+              name={businessName}
+              placePhotoUrl={placePhotoUrl}
+              website={website}
+            />
           ) : (
             whatsappInitials(businessName)
           )}
