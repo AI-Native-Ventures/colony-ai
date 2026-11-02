@@ -4799,6 +4799,7 @@ mod tests {
             "cofounder",
             "credits",
             "customers",
+            "design",
             "discovery",
             "dms",
             "duties",
