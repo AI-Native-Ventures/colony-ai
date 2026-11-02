@@ -986,9 +986,9 @@ async function visit(
     await page.locator(selector).waitFor({ state: "visible", timeout: 8_000 });
     await waitForAnimations(page, 100);
     if (route.startsWith("/#/settings")) {
-      await page
-        .locator('[data-testid="settings-sidebar"]')
-        .evaluate(async (element) => {
+      const settingsSidebar = page.locator('[data-testid="settings-sidebar"]');
+      if (await settingsSidebar.isVisible().catch(() => false)) {
+        await settingsSidebar.evaluate(async (element) => {
           const transition = Promise.all(
             element
               .getAnimations({ subtree: true })
@@ -999,6 +999,7 @@ async function visit(
           );
           await Promise.race([transition, ceiling]);
         });
+      }
     }
     return true;
   } catch (error) {
