@@ -2,6 +2,7 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppShell } from "@/app/AppShellContext";
+import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useActiveChannelHeader } from "@/features/channels/useActiveChannelHeader";
 import { useChannelPaneHandlers } from "@/features/channels/useChannelPaneHandlers";
@@ -107,6 +108,7 @@ export function ChannelScreen({
 }: ChannelScreenProps) {
   const queryClient = useQueryClient();
   const { goHome, goSettings } = useAppNavigation();
+  const routeOrigin = useRouteOrigin();
   const { activeCommunity } = useCommunities();
   const {
     clearChannelUnreadSource,
@@ -149,7 +151,29 @@ export function ChannelScreen({
     defaultWidthPx: CHANNEL_PANEL_DEFAULT_WIDTH_PX,
   });
   const [isMembersSidebarOpen, setIsMembersSidebarOpen] = React.useState(false);
-  const [outreachTab, setOutreachTab] = React.useState<OutreachDeskTab>("needs-you");
+  const restoredChannelState = routeOrigin.pageSnapshot?.viewState as
+    | {
+        channelId?: string;
+        outreachTab?: OutreachDeskTab;
+        selectedWaId?: string | null;
+      }
+    | undefined;
+  const restoredChannelMatches =
+    restoredChannelState?.channelId === activeChannel?.id;
+  const [outreachTab, setOutreachTab] = React.useState<OutreachDeskTab>(
+    restoredChannelMatches
+      ? (restoredChannelState?.outreachTab ?? "needs-you")
+      : "needs-you",
+  );
+  const [selectedOutreachWaId, setSelectedOutreachWaId] = React.useState<
+    string | null
+  >(
+    restoredChannelMatches
+      ? (restoredChannelState?.selectedWaId ??
+        initialWhatsAppContactWaId ??
+        null)
+      : (initialWhatsAppContactWaId ?? null),
+  );
   const [isAddBotOpen, setIsAddBotOpen] = React.useState(false);
   const [expandedThreadReplyIds, setExpandedThreadReplyIds] = React.useState(
     () => new Set<string>(),
@@ -176,10 +200,25 @@ export function ChannelScreen({
     // Reset the channel-scoped tab when the active route changes.
     void activeChannelId;
     setOutreachTab(
-      initialWhatsAppDeskTab ??
-        (initialWhatsAppContactWaId ? "chats" : "needs-you"),
+      restoredChannelMatches
+        ? (restoredChannelState?.outreachTab ?? "needs-you")
+        : (initialWhatsAppDeskTab ??
+            (initialWhatsAppContactWaId ? "chats" : "needs-you")),
     );
-  }, [activeChannelId, initialWhatsAppContactWaId, initialWhatsAppDeskTab]);
+    setSelectedOutreachWaId(
+      restoredChannelMatches
+        ? (restoredChannelState?.selectedWaId ??
+          initialWhatsAppContactWaId ??
+          null)
+        : (initialWhatsAppContactWaId ?? null),
+    );
+  }, [
+    activeChannelId,
+    initialWhatsAppContactWaId,
+    initialWhatsAppDeskTab,
+    restoredChannelMatches,
+    restoredChannelState,
+  ]);
   const relaySelfPubkey = useRelaySelfQuery(activeChannel !== null).data;
   const effectiveOpenThreadHeadId =
     optimisticOpenThreadHeadId === undefined
@@ -249,6 +288,27 @@ export function ChannelScreen({
     activeDmPresenceStatus,
     activeChannelEphemeralDisplay,
   } = useActiveChannelHeader(activeChannel, currentPubkey);
+  React.useEffect(() => {
+    if (!activeChannel || !activeChannelTitle) return;
+    routeOrigin.savePageSnapshot({
+      backLabel: isOutreachChannel ? "Outreach" : activeChannelTitle,
+      breadcrumbs: isOutreachChannel
+        ? ["Business", "Outreach"]
+        : ["Chat", activeChannelTitle],
+      viewState: {
+        channelId: activeChannel.id,
+        outreachTab,
+        selectedWaId: selectedOutreachWaId,
+      },
+    });
+  }, [
+    activeChannel,
+    activeChannelTitle,
+    isOutreachChannel,
+    outreachTab,
+    routeOrigin.savePageSnapshot,
+    selectedOutreachWaId,
+  ]);
   const sendMessageMutation = useSendMessageMutation(
     activeChannel,
     currentIdentity,
@@ -735,8 +795,9 @@ export function ChannelScreen({
         activeTab={outreachTab}
         channelId={activeChannel.id}
         channelIsMember={activeChannel.isMember}
-        initialContactWaId={initialWhatsAppContactWaId ?? null}
+        initialContactWaId={selectedOutreachWaId}
         onTabChange={setOutreachTab}
+        onSelectedContactChange={setSelectedOutreachWaId}
       />
     ) : undefined;
   return (

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import {
   Dialog,
@@ -174,9 +174,12 @@ export function AddLeadDialog({
                 role="alert"
               >
                 {DUPLICATE_MESSAGE}{" "}
-                <a href={`#/sales/lead/${duplicateId}`}>
+                <Link
+                  params={{ prospectId: duplicateId }}
+                  to="/sales/lead/$prospectId"
+                >
                   Open the existing record.
-                </a>
+                </Link>
               </span>
             ) : null}
           </DialogInput>

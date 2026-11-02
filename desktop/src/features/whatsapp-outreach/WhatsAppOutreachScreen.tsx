@@ -27,6 +27,7 @@ import {
   getWhatsAppDailyCapProgress,
   isWhatsAppPhoneLikeName,
   maskWhatsAppNumber,
+  whatsappLatestPreview,
   type WhatsAppBatchDetail,
   type WhatsAppContact,
   type WhatsAppTemplate,
@@ -60,17 +61,8 @@ import {
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
+import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import "./whatsappOutreach.css";
-
-type WhatsAppOutreachScreenProps = {
-  channelId: string;
-  initialThreadRootId: string | null;
-  initialContactWaId?: string | null;
-  mode?: "full" | "dock" | "desk";
-  channelIsMember?: boolean;
-  hideSelectedConversation?: boolean;
-  onContactSelected?: (waId: string) => void;
-};
 
 function dayKey(value: string | Date): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -111,6 +103,7 @@ export function WhatsAppOutreachScreen({
   initialContactWaId = null,
   mode = "full",
   channelIsMember = false,
+  onSelectedContactChange,
   hideSelectedConversation = false,
   onContactSelected,
 }: WhatsAppOutreachScreenProps) {
@@ -190,9 +183,10 @@ export function WhatsAppOutreachScreen({
       return;
     }
     lastContactRequestRef.current = initialContactWaId;
+    if (initialContactWaId === selectedWaId) return;
     setSelectedWaId(initialContactWaId);
-    setShowContactList(false);
-  }, [initialContactWaId]);
+    setShowContactList(hideSelectedConversation);
+  }, [hideSelectedConversation, initialContactWaId, selectedWaId]);
 
   React.useEffect(() => {
     if (mode !== "desk" || !hideSelectedConversation) return;
@@ -218,6 +212,10 @@ export function WhatsAppOutreachScreen({
       );
     }
   }, [contacts, initialContactWaId, initialThreadRootId, selectedWaId]);
+
+  React.useEffect(() => {
+    if (selectedWaId) onSelectedContactChange?.(selectedWaId);
+  }, [onSelectedContactChange, selectedWaId]);
 
   const selectedContact =
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
@@ -370,6 +368,7 @@ export function WhatsAppOutreachScreen({
 
   function selectContact(contact: WhatsAppContact) {
     setSelectedWaId(contact.waId);
+    onSelectedContactChange?.(contact.waId);
     onContactSelected?.(contact.waId);
     setShowContactList(hideSelectedConversation);
     setRecordOpen(false);
@@ -664,7 +663,7 @@ export function WhatsAppOutreachScreen({
             const preview =
               rowBatch?.row.preview ??
               (isSelected
-                ? (chronologicalMessages.at(-1)?.text ?? null)
+                ? whatsappLatestPreview(chronologicalMessages.at(-1))
                 : null);
             const hasDraft = pendingDrafts.some(
               (draft) => draft.waId === contact.waId,

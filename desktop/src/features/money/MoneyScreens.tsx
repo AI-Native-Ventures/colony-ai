@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
 import type { EventRecord } from "@/features/clients/lib/businessRecords";
 import { useMoneyRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
@@ -62,6 +63,14 @@ export function MoneyRouteScreen({
   section: MoneySection;
   invoiceId?: string;
 }) {
+  const routeOrigin = useRouteOrigin();
+  const restored = routeOrigin.pageSnapshot?.viewState as
+    | {
+        chosenPeriod?: string | null;
+        clientId?: string;
+        statusFilter?: InvoiceChip | "all";
+      }
+    | undefined;
   const query = useMoneyRecordsQuery();
   const salesRecords = useBusinessRecords({ createIfMissing: false });
   const communityMembership = useMyRelayMembershipQuery();
@@ -99,13 +108,51 @@ export function MoneyRouteScreen({
       }),
     );
   }, [clients, salesRecords.records?.prospects]);
-  const [chosenPeriod, setPeriod] = React.useState<string | null>(null);
-  const [clientId, setClientId] = React.useState("all");
+  const [chosenPeriod, setPeriod] = React.useState<string | null>(
+    restored?.chosenPeriod ?? null,
+  );
+  const [clientId, setClientId] = React.useState(restored?.clientId ?? "all");
   const [statusFilter, setStatusFilter] = React.useState<InvoiceChip | "all">(
-    "all",
+    restored?.statusFilter ?? "all",
   );
   const [createOpen, setCreateOpen] = React.useState(false);
   const records = query.data;
+
+  React.useEffect(() => {
+    if (section === "invoice" || section === "revenue-invoice") return;
+    const label =
+      section === "overview"
+        ? "Money"
+        : section === "revenue"
+          ? "All revenue"
+          : "All invoices";
+    const breadcrumbs =
+      section === "overview"
+        ? ["Business", "Money"]
+        : ["Business", "Money", section === "revenue" ? "Revenue" : "Invoices"];
+    const save = () =>
+      routeOrigin.savePageSnapshot({
+        backLabel: label,
+        breadcrumbs,
+        viewState: { chosenPeriod, clientId, statusFilter },
+        scrollY: window.scrollY,
+      });
+    save();
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, [
+    chosenPeriod,
+    clientId,
+    routeOrigin.savePageSnapshot,
+    section,
+    statusFilter,
+  ]);
+
+  React.useEffect(() => {
+    const scrollY = routeOrigin.pageSnapshot?.scrollY;
+    if (typeof scrollY !== "number" || scrollY <= 0) return;
+    requestAnimationFrame(() => window.scrollTo({ top: scrollY }));
+  }, [routeOrigin.pageSnapshot?.scrollY]);
 
   if (directory.isPending || query.isPending) {
     return (

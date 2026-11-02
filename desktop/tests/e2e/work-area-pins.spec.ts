@@ -22,7 +22,6 @@ const ALICE = TEST_IDENTITIES.alice.pubkey;
 const BOB = TEST_IDENTITIES.bob.pubkey;
 
 const dock = (page: Page) => page.getByTestId("work-area-panel");
-const pinned = (page: Page) => page.getByTestId("pinned-messages");
 const pinnedState = (page: Page) => page.getByTestId("pinned-messages-state");
 const headerKnowledge = (page: Page) =>
   page.getByTestId("channel-view-tab-knowledge");

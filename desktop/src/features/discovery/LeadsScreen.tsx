@@ -1,6 +1,7 @@
 import * as React from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
+import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { formatZar } from "./BusinessCommon";
@@ -26,13 +27,19 @@ import "./colony3-leads.css";
 
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
+  const routeOrigin = useRouteOrigin();
+  const restored = routeOrigin.pageSnapshot?.viewState as
+    | { query?: string; stage?: string; whatsappFilter?: string }
+    | undefined;
   const { campaign } = useDiscoveryCampaign();
   const customerAccess = useCustomerRecordCapabilities();
   const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
   const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
-  const [query, setQuery] = React.useState("");
-  const [stage, setStage] = React.useState("all");
-  const [whatsappFilter, setWhatsappFilter] = React.useState("all");
+  const [query, setQuery] = React.useState(restored?.query ?? "");
+  const [stage, setStage] = React.useState(restored?.stage ?? "all");
+  const [whatsappFilter, setWhatsappFilter] = React.useState(
+    restored?.whatsappFilter ?? "all",
+  );
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
   const customerRecordByPartyId = React.useMemo(
@@ -82,6 +89,41 @@ export function LeadsScreen(context: LeadContext) {
     return matchesQuery && matchesStage && matchesWhatsApp;
   });
   const runner = campaign?.runBy ?? null;
+
+  React.useEffect(() => {
+    const scrollTarget = document.querySelector<HTMLElement>(".c3l-page");
+    const save = () =>
+      routeOrigin.savePageSnapshot({
+        backLabel: "All leads",
+        breadcrumbs: ["Business", "Sales", "Leads"],
+        viewState: { query, stage, whatsappFilter },
+        scrollY: scrollTarget?.scrollTop ?? window.scrollY,
+        scrollTarget: scrollTarget ? ".c3l-page" : undefined,
+      });
+    save();
+    const scrollHost: Window | HTMLElement = scrollTarget ?? window;
+    scrollHost.addEventListener("scroll", save, { passive: true });
+    return () => scrollHost.removeEventListener("scroll", save);
+  }, [query, routeOrigin.savePageSnapshot, stage, whatsappFilter]);
+
+  React.useEffect(() => {
+    const scrollY = routeOrigin.pageSnapshot?.scrollY;
+    if (typeof scrollY !== "number" || scrollY <= 0) return;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const target = routeOrigin.pageSnapshot?.scrollTarget
+          ? document.querySelector<HTMLElement>(
+              routeOrigin.pageSnapshot.scrollTarget,
+            )
+          : null;
+        if (target) target.scrollTo({ top: scrollY });
+        else window.scrollTo({ top: scrollY });
+      }),
+    );
+  }, [
+    routeOrigin.pageSnapshot?.scrollTarget,
+    routeOrigin.pageSnapshot?.scrollY,
+  ]);
 
   return (
     <main className="c3l-page" data-testid="w10-leads-page">
@@ -245,12 +287,13 @@ export function LeadsScreen(context: LeadContext) {
                         )}
                       </td>
                       <td className="c3l-cell-next-step">
-                        <a
+                        <Link
                           className="c3l-next-step"
-                          href={`#/sales/lead/${record.prospectId}`}
+                          params={{ prospectId: record.prospectId }}
+                          to="/sales/lead/$prospectId"
                         >
                           Review lead
-                        </a>
+                        </Link>
                       </td>
                     </tr>
                   );

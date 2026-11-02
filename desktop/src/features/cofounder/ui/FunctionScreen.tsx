@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { useRouteBack } from "@/app/navigation/RouteOriginContext";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
@@ -278,6 +279,11 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
 }
 
 export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
+  const routeBack = useRouteBack({
+    to: "/company/map",
+    label: "Company map",
+    breadcrumbs: ["Company", "Company map"],
+  });
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const membership = useMyRelayMembershipQuery();
@@ -470,12 +476,14 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
           <TeamPageTitle>{detail.name}</TeamPageTitle>
           <p className="team-subtitle">{FUNCTION_DESCRIPTIONS[functionId]}</p>
         </div>
-        <Link
+        <button
           className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          to="/company/map"
+          onClick={routeBack.goBack}
+          title={routeBack.backLabel}
+          type="button"
         >
-          Company map
-        </Link>
+          {routeBack.backLabel}
+        </button>
       </header>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">

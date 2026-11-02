@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -143,8 +143,16 @@ export function campaignFor(
   );
 }
 
-/** Top bar trail for a lead: `Business / Sales / Leads / <name>`. */
-export function LeadBreadcrumb({ name }: { name: string }) {
+/** Top bar trail for a lead, with the real source page as its parent. */
+export function LeadBreadcrumb({
+  name,
+  parent,
+  onBack,
+}: {
+  name: string;
+  parent: readonly string[];
+  onBack: () => void;
+}) {
   return (
     <AppTopChromePortal>
       <nav
@@ -152,13 +160,23 @@ export function LeadBreadcrumb({ name }: { name: string }) {
         className="c3l-crumbs"
         data-testid="lead-breadcrumb"
       >
-        <span>Business</span>
-        <span aria-hidden="true">/</span>
-        <span>Sales</span>
-        <span aria-hidden="true">/</span>
-        <a className="c3l-crumb-link" href="#/leads">
-          Leads
-        </a>
+        {parent.map((label, index) => (
+          <React.Fragment key={label}>
+            {index > 0 ? <span aria-hidden="true">/</span> : null}
+            {index === parent.length - 1 ? (
+              <button
+                aria-label={`Back to ${label}`}
+                className="c3l-crumb-link"
+                onClick={onBack}
+                type="button"
+              >
+                {label}
+              </button>
+            ) : (
+              <span>{label}</span>
+            )}
+          </React.Fragment>
+        ))}
         <span aria-hidden="true">/</span>
         <span aria-current="page" data-current="true">
           {name}
