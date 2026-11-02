@@ -746,14 +746,7 @@ async fn an_unopenable_token_is_recorded_with_backoff_inline_and_in_sender_repai
     // GUARD: a due retry with an unavailable key also advances the durable backoff instead of
     // leaving this oldest row immediately due on every sender pass.
     let repair_at = first_retry_at + Duration::seconds(1);
-    media::repair(
-        &fx.state,
-        &fx.tenant,
-        &connection,
-        None,
-        repair_at,
-    )
-    .await;
+    media::repair(&fx.state, &fx.tenant, &connection, None, repair_at).await;
     let second = media_of(&fx, wa).await;
     assert_eq!(second.state.as_deref(), Some("pending"));
     assert_eq!(second.attempts, 2);
