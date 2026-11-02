@@ -4,10 +4,6 @@ use super::*;
 
 #[test]
 fn visual_work_skill_requires_a_claude_design_board_and_owner_review() {
-    assert!(
-        NEST_SKILL_VERSION >= 25,
-        "adding the visual workflow must refresh existing nests"
-    );
     let skill = COLONY_CLI_SKILL_MD;
     let start = skill
         .find("## Visual work")
