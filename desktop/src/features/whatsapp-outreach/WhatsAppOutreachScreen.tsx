@@ -58,6 +58,7 @@ import {
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
+import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import "./whatsappOutreach.css";
 
 type ContactFilter =
@@ -68,15 +69,6 @@ type ContactFilter =
   | "needs-reply"
   | "wants-call"
   | "in-pipeline";
-
-type WhatsAppOutreachScreenProps = {
-  channelId: string;
-  initialThreadRootId: string | null;
-  initialContactWaId?: string | null;
-  mode?: "full" | "dock" | "desk";
-  channelIsMember?: boolean;
-  onSelectedContactChange?: (waId: string) => void;
-};
 
 function dayKey(value: string | Date): string {
   return new Intl.DateTimeFormat("en-CA", {
