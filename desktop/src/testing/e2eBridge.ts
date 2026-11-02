@@ -2899,6 +2899,8 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     provider: agent.provider ?? null,
     env_vars: { ...(agent.env_vars ?? {}) },
     status: agent.status,
+    running_runtime_id: agent.running_runtime_id ?? null,
+    running_model: agent.running_model ?? null,
     pid: agent.pid,
     created_at: agent.created_at,
     updated_at: agent.updated_at,
