@@ -756,14 +756,3 @@ String _humanize(String value) => value
 String _formatDate(int timestamp) => DateTime.fromMillisecondsSinceEpoch(
   timestamp * 1000,
 ).toLocal().toString().split(' ').first;
-
-String _initials(String value) {
-  final words = value
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty);
-  return words
-      .take(2)
-      .map((word) => word.characters.first.toUpperCase())
-      .join();
-}
