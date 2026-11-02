@@ -840,6 +840,8 @@ type E2eConfig = {
       mcp?: MockCommandAvailability;
     };
     managedAgents?: MockManagedAgentSeed[];
+    /** Delay managed-agent saves so transitional runtime-switch UI can be observed. */
+    updateManagedAgentDelayMs?: number;
     /** Channel records used only to reproduce frozen visual reference data. */
     visualChannels?: VisualChannelSeed[];
     agentUsageSeries?: import("@/shared/api/tauriArchive").AgentUsageSeries;
@@ -24222,6 +24224,14 @@ export function maybeInstallE2eTauriMocks() {
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":
+        if ((activeConfig?.mock?.updateManagedAgentDelayMs ?? 0) > 0) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              activeConfig?.mock?.updateManagedAgentDelayMs ?? 0,
+            ),
+          );
+        }
         return handleUpdateManagedAgent(
           payload as Parameters<typeof handleUpdateManagedAgent>[0],
         );
