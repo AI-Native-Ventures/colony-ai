@@ -60,7 +60,7 @@ async fn rollup_day(
            JOIN users u ON u.community_id = e.community_id AND u.pubkey = e.pubkey \
           WHERE u.agent_type IS NULL AND u.agent_owner_pubkey IS NULL \
             AND e.created_at >= $2 AND e.created_at < $3 \
-            AND e.deleted_at IS NULL AND e.kind <> 0 AND e.kind NOT BETWEEN 20000 AND 29999 \
+            AND e.deleted_at IS NULL AND e.kind <> 0 AND e.kind >= 0 \
           GROUP BY e.community_id, e.pubkey",
     )
     .bind(day)
@@ -96,7 +96,7 @@ async fn rollup_day(
                             WHERE r.community_id = a.community_id AND r.pubkey = a.pubkey \
                               AND r.channel_id IS NOT DISTINCT FROM m.channel_id \
                               AND r.created_at > m.event_created_at \
-                              AND r.created_at <= m.event_created_at + interval '5 minutes' \
+                              AND r.created_at <= m.event_created_at + interval '50 minutes' \
                               AND r.deleted_at IS NULL AND r.kind <> 0 \
                               AND r.kind NOT BETWEEN 20000 AND 29999) AS answered_at \
                      FROM users a \
@@ -332,7 +332,7 @@ impl Db {
              ON CONFLICT (day, community_id, pubkey) DO UPDATE SET \
                  sessions = metrics_app_sessions_daily.sessions + \
                      CASE WHEN EXCLUDED.last_seen_at - metrics_app_sessions_daily.last_seen_at \
-                               > make_interval(mins => $5) THEN 1 ELSE 0 END, \
+                               > make_interval(mins => $5 * 100) THEN 1 ELSE 0 END, \
                  connections = metrics_app_sessions_daily.connections + 1, \
                  last_seen_at = GREATEST(metrics_app_sessions_daily.last_seen_at, EXCLUDED.last_seen_at), \
                  app_version = COALESCE(EXCLUDED.app_version, metrics_app_sessions_daily.app_version)",

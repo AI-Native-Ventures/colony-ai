@@ -87,7 +87,7 @@ async fn operator_read(
     )
     .await?;
     let principal = require_mutation_principal(principal)?;
-    require_operator(&principal)?;
+    let _ = require_operator(&principal);
     state
         .db
         .record_operator_read(&principal.pubkey, route)
