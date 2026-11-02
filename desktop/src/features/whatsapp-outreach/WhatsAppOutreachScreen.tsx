@@ -75,6 +75,8 @@ type WhatsAppOutreachScreenProps = {
   initialContactWaId?: string | null;
   mode?: "full" | "dock" | "desk";
   channelIsMember?: boolean;
+  hideSelectedConversation?: boolean;
+  onContactSelected?: (waId: string) => void;
 };
 
 function dayKey(value: string | Date): string {
@@ -116,6 +118,8 @@ export function WhatsAppOutreachScreen({
   initialContactWaId = null,
   mode = "full",
   channelIsMember = false,
+  hideSelectedConversation = false,
+  onContactSelected,
 }: WhatsAppOutreachScreenProps) {
   const navigate = useNavigate();
   const { activeCommunity } = useCommunities();
@@ -141,7 +145,9 @@ export function WhatsAppOutreachScreen({
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null);
   const [activeFilter, setActiveFilter] = React.useState<ContactFilter>("all");
   const [searchTerm, setSearchTerm] = React.useState("");
-  const [showContactList, setShowContactList] = React.useState(false);
+  const [showContactList, setShowContactList] = React.useState(
+    mode === "desk" && !initialContactWaId,
+  );
   const [recordOpen, setRecordOpen] = React.useState(false);
   const [messageText, setMessageText] = React.useState("");
   const [selectedTemplate, setSelectedTemplate] =
@@ -184,10 +190,6 @@ export function WhatsAppOutreachScreen({
     : null;
 
   React.useEffect(() => {
-    if (mode === "desk" && isMobile) setShowContactList(true);
-  }, [isMobile, mode]);
-
-  React.useEffect(() => {
     if (
       !initialContactWaId ||
       initialContactWaId === lastContactRequestRef.current
@@ -196,7 +198,14 @@ export function WhatsAppOutreachScreen({
     }
     lastContactRequestRef.current = initialContactWaId;
     setSelectedWaId(initialContactWaId);
+    setShowContactList(false);
   }, [initialContactWaId]);
+
+  React.useEffect(() => {
+    if (mode !== "desk" || !hideSelectedConversation) return;
+    setRecordOpen(false);
+    setShowContactList(true);
+  }, [hideSelectedConversation, mode]);
 
   React.useEffect(() => {
     if (!contacts.length) return;
@@ -219,7 +228,9 @@ export function WhatsAppOutreachScreen({
 
   const selectedContact =
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
-  const threadQuery = useWhatsAppThreadQuery(selectedContact?.waId ?? null);
+  const threadQuery = useWhatsAppThreadQuery(
+    hideSelectedConversation ? null : (selectedContact?.waId ?? null),
+  );
   const thread = threadQuery.data;
   const sendNowBatchIds = useWhatsAppSendNowBatchIds(
     selectedContact,
@@ -380,7 +391,8 @@ export function WhatsAppOutreachScreen({
 
   function selectContact(contact: WhatsAppContact) {
     setSelectedWaId(contact.waId);
-    setShowContactList(false);
+    onContactSelected?.(contact.waId);
+    setShowContactList(hideSelectedConversation);
     setRecordOpen(false);
     setMessageText("");
     setSelectedTemplate(null);
@@ -603,6 +615,7 @@ export function WhatsAppOutreachScreen({
         mode === "desk" && "c3wa-outreach-desk",
       )}
       data-has-selected-contact={selectedContact ? "true" : "false"}
+      data-dock-whatsapp-open={hideSelectedConversation ? "true" : "false"}
       data-mode={mode}
       data-testid="whatsapp-outreach"
       data-channel-id={channelId}
@@ -663,6 +676,7 @@ export function WhatsAppOutreachScreen({
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
                 role="tab"
+                title={label}
                 type="button"
               >
                 {label}
@@ -733,7 +747,7 @@ export function WhatsAppOutreachScreen({
         </div>
       </aside>
 
-      {selectedContact ? (
+      {selectedContact && !hideSelectedConversation ? (
         <section
           className={cn(
             "c3wa-thread-panel",
@@ -1167,7 +1181,7 @@ export function WhatsAppOutreachScreen({
             ) : null}
           </div>
         </section>
-      ) : (
+      ) : !hideSelectedConversation ? (
         <section
           className={cn(
             "c3wa-thread-panel c3wa-no-contact",
@@ -1177,8 +1191,11 @@ export function WhatsAppOutreachScreen({
         >
           <p>Select a contact to open the conversation.</p>
         </section>
-      )}
-      {mode === "desk" && selectedContact && selectedRecordIdentity ? (
+      ) : null}
+      {mode === "desk" &&
+      !hideSelectedConversation &&
+      selectedContact &&
+      selectedRecordIdentity ? (
         <WhatsAppContactRecordPanel
           canEdit={canEditContact}
           canWriteCustomerRecord={customerCapabilities.canWrite}

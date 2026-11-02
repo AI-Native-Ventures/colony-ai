@@ -11,7 +11,7 @@ import {
   type WhatsAppProofTheme,
 } from "../helpers/whatsappOutreach";
 
-const containerWidths = [360, 480, 640, 900, 1200] as const;
+const containerWidths = [320, 360, 480, 640, 900, 1200, 2000] as const;
 const ownerViewportHeight = 1100;
 
 function deskSurface(page: Page) {
@@ -76,8 +76,24 @@ async function overflowReport(page: Page) {
         element.getAttribute("aria-label") ??
         element.tagName.toLowerCase() +
           "." +
-          String(element.className).trim().replace(/\s+/gu, ".");
-      if (box.left < cardBox.left - 1 || box.right > cardBox.right + 1) {
+          String(element.className).trim().replace(/\s+/gu, ".") +
+          (element.textContent?.trim().replace(/\s+/gu, " ").slice(0, 32)
+            ? `:${element.textContent.trim().replace(/\s+/gu, " ").slice(0, 32)}`
+            : "");
+      let insideHorizontalScroller = false;
+      let ancestor = element.parentElement;
+      while (ancestor && ancestor !== card) {
+        const ancestorOverflow = getComputedStyle(ancestor).overflowX;
+        if (ancestorOverflow === "auto" || ancestorOverflow === "scroll") {
+          insideHorizontalScroller = true;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      if (
+        !insideHorizontalScroller &&
+        (box.left < cardBox.left - 1 || box.right > cardBox.right + 1)
+      ) {
         outside.push(
           name +
             " (" +
@@ -92,9 +108,11 @@ async function overflowReport(page: Page) {
       const scrollsHorizontally =
         style.overflowX === "auto" || style.overflowX === "scroll";
       const intentionallyEllipsized = style.textOverflow === "ellipsis";
+      const visuallyHidden = element.matches(".sr-only, .c3wa-sr-only");
       if (
         !scrollsHorizontally &&
         !intentionallyEllipsized &&
+        !visuallyHidden &&
         element.scrollWidth > element.clientWidth + 1
       ) {
         oversized.push(
@@ -229,6 +247,7 @@ test("Outreach desk stays inside its container with the WhatsApp dock open and c
       }
 
       await setViewportForDockContainer(page, containerWidths[0]);
+      await setDeskContainerWidth(page, containerWidths[0]);
       await page.getByTestId("channel-whatsapp-chats-trigger").click();
       const dock = page.getByTestId("work-area-panel");
       await expect(dock).toBeVisible();
@@ -236,12 +255,22 @@ test("Outreach desk stays inside its container with the WhatsApp dock open and c
         '[data-testid="whatsapp-outreach"][data-mode="dock"]',
       );
       await expect(dockWhatsApp).toBeVisible();
+      const channelTabs = page.getByTestId("channel-view-tabs");
+      await expect(channelTabs).toHaveCSS("overflow-x", "auto");
+      expect(
+        await channelTabs.evaluate(
+          (tabs) => tabs.scrollWidth > tabs.clientWidth,
+        ),
+      ).toBe(true);
 
       for (const width of containerWidths) {
         await setViewportForDockContainer(page, width);
         await setDeskContainerWidth(page, width);
         await expectDockCardInsideConversation(page);
         await expectNoDeskOverflow(page, width);
+        await expect(
+          deskSurface(page).locator(".c3wa-contact-panel"),
+        ).toBeVisible();
         await expect(
           deskSurface(page).locator(".c3wa-thread-panel"),
         ).toHaveCount(0);

@@ -175,6 +175,7 @@
         "channel-mute.spec.ts",
         "channel-shared-header-backdrop.spec.ts",
         "whatsapp-outreach-desk.spec.ts",
+        "whatsapp-outreach-desk-narrow.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-polish.spec.ts",
         "whatsapp-dock-narrow.spec.ts",
