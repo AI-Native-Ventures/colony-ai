@@ -9,6 +9,7 @@ mod error;
 mod metrics;
 #[cfg(test)]
 mod metrics_postgres_tests;
+mod session;
 
 use std::sync::Arc;
 
@@ -64,6 +65,7 @@ pub fn router(state: Arc<crate::state::AppState>) -> Router {
         .route("/operators/{pubkey}", put(upsert_operator))
         .route("/operators/{pubkey}", delete(delete_operator))
         .merge(metrics::routes())
+        .merge(session::routes())
         .layer(middleware::from_fn(security_headers))
         // Mutation routes carry a JSON body (max ~4 KB); read-only routes have no body.
         .layer(RequestBodyLimitLayer::new(4096))

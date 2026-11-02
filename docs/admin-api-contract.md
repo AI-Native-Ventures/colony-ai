@@ -9,7 +9,7 @@ This contract is the source of truth for field names. If the UI needs something 
 
 - Base: the existing deployment admin API, `/api/admin/v1`, served on the operator-only admin host (same host and same NIP-98 login the Reports and Feedback pages already use). New routes live under `/api/admin/v1/metrics/`.
 - Method: `GET` only. No mutations in v1.
-- Auth: NIP-98 signed request exactly as the existing routes (`Authorization: Nostr <base64 event>`, bound to the full path and query). The principal must be a **relay operator** (`probe` returns `role: "operator"`).
+- Auth: either the Colony sign-in session cookie (section 1a) or a NIP-98 signed request exactly as the existing routes (`Authorization: Nostr <base64 event>`, bound to the full path and query). The principal must be a **relay operator** (`probe` returns `role: "operator"`).
   - Not signed or bad signature: `401` (existing admin error body).
   - Signed by a moderator, or by a key that is not on the roster: `403`.
   - Admin auth mode `disabled` (local dev): `403` for every metrics route. There is no anonymous read of metrics.
@@ -21,6 +21,38 @@ This contract is the source of truth for field names. If the UI needs something 
 - Range: `days` query parameter, one of `7`, `30`, `90`; default `30`; anything else is `400 invalid_days`.
 - Freshness: every response carries `generatedAt` and `dataThrough`. `dataThrough` is the newest day whose rollup is complete (yesterday UTC once the nightly job has run). Today's numbers are refreshed every 15 minutes and are marked `partial: true` in series rows.
 - Nulls: a number the relay does not collect is `null`, never `0`, and is named in the response's `unavailable` array so the UI can show "not collected" instead of a fake zero.
+
+## 1a. Address and sign-in (owner decision, 2 Nov 2026)
+
+**Address:** `https://admin.colony.global`. `deploy/fly/fly.prod.toml` now sets `BUZZ_ADMIN_HOST = "admin.colony.global"` and `RELAY_OPERATOR_API_ORIGIN = "https://admin.colony.global"` (was `admin.colony.ainative.ventures`). The admin bundle (`admin-web`) is already in the production image (`BUZZ_ADMIN_WEB_DIR=/srv/buzz/admin-web`, Dockerfile) and is served by the relay itself on that exact host. Canary keeps `admin-canary.colony.ainative.ventures`.
+
+**Why the old host "returns 404":** it is by design for non-browser requests. The relay answers the admin host with the web page only when the request says `Accept: text/html`; anything else (curl's default `Accept: */*`, API probes without a signature) gets 404 so the relay protocol is not exposed there. Checked 2 Nov: `curl -H 'Accept: text/html' https://admin.colony.ainative.ventures/` returns 200, plain `curl` returns 404. So the old host was reachable; it was just unused. The new host `admin.colony.global` has **no DNS record yet**, so it cannot work until the coordinator steps below are done.
+
+**Client routes the relay serves on the admin host** (index page, client-side routing): `/`, `/overview`, `/businesses`, `/businesses/{id}`, `/ai-usage`, `/system` (Health), `/sign-in`, `/reports`, `/feedback`. (`/health` is taken by the relay's own health route, so the Health board lives at `/system`.) Everything else on that host is 404.
+
+**Sign in with your Colony account** (the same Google sign-in Colony accounts use, server custody; no shared passwords or tokens):
+
+1. The page sends the browser to Google's OpenID Connect endpoint: `https://accounts.google.com/o/oauth2/v2/auth?client_id=<admin web client id>&redirect_uri=https://admin.colony.global/sign-in&response_type=id_token&scope=openid%20email&nonce=<random 32+ chars>&prompt=select_account`. The nonce is generated in the browser and kept in `sessionStorage`. (The page's content security policy is `script-src 'self'`, so no Google script is loaded; this is a plain redirect.)
+2. Google returns to `/sign-in#id_token=...`. The page reads the fragment, removes it from the address bar, and posts it.
+3. `POST /api/admin/v1/session/google` with `Content-Type: application/json`, body `{"idToken": "...", "nonce": "..."}`, sent from the admin page (the request must carry `Origin: https://admin.colony.global`).
+   - The relay verifies the token exactly as account sign-in does (signature, issuer, expiry, `email_verified`, audience in `COLONY_GOOGLE_CLIENT_IDS`), and that the token's `nonce` equals the posted one.
+   - It looks up the existing Colony account for the verified email (it never creates or links an account) and checks that the **account's public key is listed in `RELAY_OPERATOR_PUBKEYS`**.
+   - `200 {"status":"ok","pubkeyShort":"ab12cd34","expiresInSeconds":28800}` plus `Set-Cookie: __Host-colony_admin=...; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=28800`. The cookie is a signed token (HMAC keyed from the deployment account key); removing the key from `RELAY_OPERATOR_PUBKEYS` ends its sessions at once.
+   - `401 unauthorized` for a bad token or nonce; `403 forbidden` for "no such account" and "not an operator" alike (one answer, so the page cannot be used to learn who has an account); `403` also when Colony sign-in is not configured.
+4. Every later admin request is authenticated by the cookie, no `Authorization` header. The existing `GET /api/admin/v1/probe` returns `role: "operator"`, `source: "config"`; the UI uses it to decide between "signed in" and "show sign-in".
+5. Writes (report and feedback actions) with the cookie must also send the header `X-Colony-Admin: 1`; without it they are `403`. Reads (GET) do not need it.
+6. `POST /api/admin/v1/session/logout` (with `X-Colony-Admin: 1`) clears the cookie.
+
+**NIP-98 stays** as the operator fallback (a request with an `Authorization: Nostr ...` header ignores the cookie). The metrics boards accept either. Moderators (DB roster) keep NIP-98 only; the cookie sign-in is for keys in `RELAY_OPERATOR_PUBKEYS`.
+
+**Coordinator steps (not done by AD-DATA, nothing was run against Fly or DNS):**
+
+1. DNS, Cloudflare zone `colony.global`: add `CNAME admin -> colony-relay.fly.dev`, DNS only (grey cloud), the same shape as `admin.colony.ainative.ventures` today.
+2. Fly certificate: `fly certs add admin.colony.global -a colony-relay`, then `fly certs show admin.colony.global -a colony-relay` until it says issued. (If Fly asks for the `_acme-challenge` CNAME, add what it prints.)
+3. Google Cloud console (project that owns the existing Colony Google client ids): create an OAuth client of type **Web application**, authorized redirect URI `https://admin.colony.global/sign-in`, authorized JavaScript origin `https://admin.colony.global`. Append its client id to the Fly secret `COLONY_GOOGLE_CLIENT_IDS` (comma-separated, keep the existing ids). It is an identifier, not a credential; no client secret is used.
+4. Confirm Fly secrets on `colony-relay`: `RELAY_OPERATOR_PUBKEYS` contains the owner's **Colony account public key** (the `accounts.pubkey` for the owner's Google email, hex), and `COLONY_ACCOUNT_KEK` is set (it is, accounts work today).
+5. Deploy the relay (this PR's code, the `fly.prod.toml` change and migration 0061 go out together). After that `admin.colony.ainative.ventures` stops being the admin host.
+6. Tell AD-UI the Google web client id so the page can build the redirect URL (it is public; v1 puts it in the admin bundle as a build-time constant).
 
 ## 2. Endpoints
 
