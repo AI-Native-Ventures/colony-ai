@@ -1,6 +1,10 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import {
+  useRouteBack,
+  useRouteOrigin,
+} from "@/app/navigation/RouteOriginContext";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { errorMessage, formatDate, formatZar } from "./BusinessCommon";
@@ -118,6 +122,12 @@ export function LeadDetailScreen({
   ...context
 }: LeadContext & { prospect: ProspectRow | null }) {
   const navigate = useNavigate();
+  const routeBack = useRouteBack({
+    to: "/leads",
+    label: "All leads",
+    breadcrumbs: ["Business", "Sales", "Leads"],
+  });
+  const routeOrigin = useRouteOrigin();
   const { campaign, provider } = useDiscoveryCampaign();
   const { statusQuery, contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const customerAccess = useCustomerRecordCapabilities();
@@ -156,6 +166,16 @@ export function LeadDetailScreen({
   );
   const [lostOpen, setLostOpen] = React.useState(false);
   const canWrite = canEdit(context.role) && Boolean(context.currentPubkey);
+  const name = prospect?.record.prospect.party.displayName ?? "Lead";
+
+  React.useEffect(() => {
+    if (!prospect) return;
+    routeOrigin.savePageSnapshot({
+      backLabel: name,
+      breadcrumbs: [...routeBack.breadcrumbs, name],
+      scrollY: window.scrollY,
+    });
+  }, [name, prospect, routeBack.breadcrumbs, routeOrigin.savePageSnapshot]);
 
   if (!prospect) {
     return (
@@ -166,10 +186,10 @@ export function LeadDetailScreen({
             <p>Return to the result list and try another profile.</p>
             <button
               className="c3l-btn c3l-btn-outline"
-              onClick={() => void navigate({ to: "/leads" })}
+              onClick={routeBack.goBack}
               type="button"
             >
-              All leads
+              {routeBack.backLabel}
             </button>
           </div>
         </div>
@@ -179,7 +199,6 @@ export function LeadDetailScreen({
 
   const record = prospect.record;
   const person = record.prospect;
-  const name = person.party.displayName;
   const customerRecord = customerRecordsQuery.data?.find(
     (candidate) => candidate.partyId === person.party.partyId,
   );
@@ -286,7 +305,11 @@ export function LeadDetailScreen({
 
   return (
     <main className="c3l-page" data-testid="w10-prospect-page">
-      <LeadBreadcrumb name={name} />
+      <LeadBreadcrumb
+        name={name}
+        onBack={routeBack.goBack}
+        parent={routeBack.breadcrumbs}
+      />
       <div className="c3l-wrap c3l-wrap-detail">
         <div className="c3l-head">
           <div className="c3l-head-identity">
@@ -303,12 +326,14 @@ export function LeadDetailScreen({
             </div>
           </div>
           <button
+            aria-label={`Back to ${routeBack.backLabel}`}
             className="c3l-btn c3l-btn-outline c3l-head-back"
-            onClick={() => void navigate({ to: "/leads" })}
+            onClick={routeBack.goBack}
+            title={routeBack.backLabel}
             type="button"
           >
             <ArrowLeftGlyph />
-            All leads
+            <span className="c3l-head-back-label">{routeBack.backLabel}</span>
           </button>
         </div>
 

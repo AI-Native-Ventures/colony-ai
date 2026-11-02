@@ -1,5 +1,9 @@
 import * as React from "react";
 
+import {
+  useRouteBack,
+  useRouteOrigin,
+} from "@/app/navigation/RouteOriginContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { usePeople, type PersonInfo } from "@/features/clients/lib/usePeople";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
@@ -39,7 +43,13 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
   const [invoiceOpen, setInvoiceOpen] = React.useState(false);
   const canManageMoney =
     membership.data?.role === "owner" || membership.data?.role === "admin";
-  const { goChannel, goClients, goWork, goWorkItem } = useAppNavigation();
+  const { goChannel, goWork, goWorkItem } = useAppNavigation();
+  const routeBack = useRouteBack({
+    to: "/clients",
+    label: "All clients",
+    breadcrumbs: ["Business", "Clients"],
+  });
+  const routeOrigin = useRouteOrigin();
   const headRecord = clientRecords.clientQuery.data ?? null;
   const head = headRecord?.value;
   const channel = clientRecords.channel;
@@ -61,6 +71,15 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
     { titles: true },
   );
 
+  React.useEffect(() => {
+    if (!head) return;
+    routeOrigin.savePageSnapshot({
+      backLabel: head.displayName,
+      breadcrumbs: ["Business", "Clients", head.displayName],
+      scrollY: window.scrollY,
+    });
+  }, [head, routeOrigin.savePageSnapshot]);
+
   if (clientRecords.channelsQuery.isError) {
     return (
       <ClientWorkspace title="Client">
@@ -77,8 +96,8 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
           This client is unavailable to the current identity in this business.
         </StateAlert>
         <div>
-          <StateButton onClick={() => void goClients()}>
-            All clients
+          <StateButton onClick={routeBack.goBack}>
+            {routeBack.backLabel}
           </StateButton>
         </div>
       </ClientWorkspace>
@@ -119,8 +138,8 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
           No client record exists in the selected private channel.
         </StateAlert>
         <div>
-          <StateButton onClick={() => void goClients()}>
-            All clients
+          <StateButton onClick={routeBack.goBack}>
+            {routeBack.backLabel}
           </StateButton>
         </div>
       </ClientWorkspace>
@@ -152,12 +171,14 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
           </div>
           <div className="b3-head-actions">
             <button
+              aria-label={`Back to ${routeBack.backLabel}`}
               className="b3-btn"
-              onClick={() => void goClients()}
+              onClick={routeBack.goBack}
+              title={routeBack.backLabel}
               type="button"
             >
               <ArrowLeftIcon />
-              All clients
+              <span className="max-w-64 truncate">{routeBack.backLabel}</span>
             </button>
             {canManageMoney && head.status !== "archived" ? (
               <button
@@ -185,8 +206,13 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
     >
       <BusinessTrail
         crumbs={[
-          { label: "Business" },
-          { label: "Clients", onClick: () => void goClients() },
+          ...routeBack.breadcrumbs.map((label, index) => ({
+            label,
+            onClick:
+              index === routeBack.breadcrumbs.length - 1
+                ? routeBack.goBack
+                : undefined,
+          })),
           { label: head.displayName },
         ]}
       />

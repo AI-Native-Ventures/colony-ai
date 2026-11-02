@@ -75,6 +75,7 @@ type WhatsAppOutreachScreenProps = {
   initialContactWaId?: string | null;
   mode?: "full" | "dock" | "desk";
   channelIsMember?: boolean;
+  onSelectedContactChange?: (waId: string) => void;
 };
 
 function dayKey(value: string | Date): string {
@@ -116,6 +117,7 @@ export function WhatsAppOutreachScreen({
   initialContactWaId = null,
   mode = "full",
   channelIsMember = false,
+  onSelectedContactChange,
 }: WhatsAppOutreachScreenProps) {
   const navigate = useNavigate();
   const { activeCommunity } = useCommunities();
@@ -216,6 +218,10 @@ export function WhatsAppOutreachScreen({
       );
     }
   }, [contacts, initialContactWaId, initialThreadRootId, selectedWaId]);
+
+  React.useEffect(() => {
+    if (selectedWaId) onSelectedContactChange?.(selectedWaId);
+  }, [onSelectedContactChange, selectedWaId]);
 
   const selectedContact =
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
@@ -380,6 +386,7 @@ export function WhatsAppOutreachScreen({
 
   function selectContact(contact: WhatsAppContact) {
     setSelectedWaId(contact.waId);
+    onSelectedContactChange?.(contact.waId);
     setShowContactList(false);
     setRecordOpen(false);
     setMessageText("");

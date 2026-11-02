@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router";
+
 import {
   CheckGlyph,
   ChevronRightGlyph,
@@ -206,7 +208,6 @@ export function CampaignTable({
               .sort((left, right) => Number(right.picked) - Number(left.picked))
               .slice(0, 3)
               .map((match) => match.tag);
-            const href = `#/sales/lead/${row.record.prospectId}`;
             return (
               <tr
                 aria-selected={isSelected}
@@ -228,10 +229,11 @@ export function CampaignTable({
                   />
                 </td>
                 <td {...CELL_ROLE}>
-                  <a
+                  <Link
                     aria-label={`${prospect.party.displayName}, ${prospect.vertical}${matchedTags.length ? `, matching tags ${matchedTags.join(", ")}` : ""}`}
                     className="c3d-prospect"
-                    href={href}
+                    params={{ prospectId: row.record.prospectId }}
+                    to="/sales/lead/$prospectId"
                   >
                     <BusinessLogoMark
                       className="c3d-prospect-mark"
@@ -246,7 +248,7 @@ export function CampaignTable({
                         tags={prospect.discoveryTags}
                       />
                     </span>
-                  </a>
+                  </Link>
                 </td>
                 <td className="c3d-location" {...CELL_ROLE}>
                   {prospect.location ?? "Not set"}
@@ -267,13 +269,14 @@ export function CampaignTable({
                   </span>
                 </td>
                 <td {...CELL_ROLE}>
-                  <a
+                  <Link
                     aria-label={`Open ${prospect.party.displayName}`}
                     className="c3d-open"
-                    href={href}
+                    params={{ prospectId: row.record.prospectId }}
+                    to="/sales/lead/$prospectId"
                   >
                     <ChevronRightGlyph />
-                  </a>
+                  </Link>
                 </td>
               </tr>
             );
