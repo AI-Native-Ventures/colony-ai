@@ -979,6 +979,17 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
         if force {
             if let Some(path_str) = &binary_path {
                 availability = codex_adapter_availability(&PathBuf::from(path_str));
+                if availability == AcpAvailabilityStatus::Available
+                    && crate::commands::managed_node_repair_required_for_codex_shim(
+                        binary_path.as_deref(),
+                    )
+                {
+                    // The app-owned Codex shim can run under a fallback Node
+                    // from PATH, but its pinned runtime is part of the managed
+                    // package contract. Route it through the existing repair
+                    // affordance; external adapters and healthy Node stay ready.
+                    availability = AcpAvailabilityStatus::AdapterOutdated;
+                }
             }
         } else if let Some(cached) = adapter_availability_cached() {
             availability = cached;

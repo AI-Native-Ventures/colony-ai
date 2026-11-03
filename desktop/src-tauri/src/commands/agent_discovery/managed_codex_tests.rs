@@ -51,6 +51,31 @@ fn write_runtime_tree(dir: &Path) {
     }
 }
 
+#[cfg(unix)]
+struct RestoreRuntimeTestEnvironment {
+    home: Option<std::ffi::OsString>,
+    xdg_data: Option<std::ffi::OsString>,
+    path: Option<std::ffi::OsString>,
+}
+
+#[cfg(unix)]
+impl Drop for RestoreRuntimeTestEnvironment {
+    fn drop(&mut self) {
+        for (key, value) in [
+            ("HOME", self.home.take()),
+            ("XDG_DATA_HOME", self.xdg_data.take()),
+            ("PATH", self.path.take()),
+        ] {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        crate::managed_agents::clear_resolve_cache();
+        crate::managed_agents::refresh_login_shell_path();
+    }
+}
+
 #[test]
 fn package_manifest_and_lock_pin_both_packages_and_integrities() {
     let manifest: serde_json::Value = serde_json::from_str(PACKAGE_JSON).unwrap();
@@ -171,6 +196,117 @@ fn an_existing_codex_runtime_recovers_an_orphaned_managed_node_before_ready_retu
     assert!(result.is_ok());
     assert!(node_recovered, "managed Node must be repaired first");
     assert!(node_bin.is_file());
+}
+
+/// Exercise forced catalog discovery with an app-owned package shim that runs
+/// under a fallback PATH Node while Colony's pinned Node is absent. The public
+/// catalog must route it to the existing setup action, which repairs Node
+/// before taking the valid-package fast path and leaves that package intact.
+#[cfg(unix)]
+#[test]
+fn forced_discovery_routes_fallback_node_codex_shim_through_managed_repair() {
+    use crate::managed_agents::discover_acp_runtimes_from;
+    use std::os::unix::fs::PermissionsExt;
+
+    let _path_guard = crate::managed_agents::lock_path_mutex();
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let data = temp.path().join("data");
+    let fallback_bin = home.join(".nvm/versions/node/v22.0.0/bin");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::create_dir_all(&fallback_bin).unwrap();
+    std::fs::create_dir_all(home.join(".nvm/alias")).unwrap();
+    std::fs::write(home.join(".nvm/alias/default"), "v22.0.0\n").unwrap();
+    let environment = RestoreRuntimeTestEnvironment {
+        home: std::env::var_os("HOME"),
+        xdg_data: std::env::var_os("XDG_DATA_HOME"),
+        path: std::env::var_os("PATH"),
+    };
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_DATA_HOME", &data);
+    std::env::set_var(
+        "PATH",
+        std::env::join_paths([fallback_bin.clone(), Path::new("/usr/bin").to_path_buf()]).unwrap(),
+    );
+    crate::managed_agents::clear_resolve_cache();
+
+    let platform = crate::managed_agents::managed_codex_platform().unwrap();
+    let final_dir = crate::managed_agents::buzz_managed_codex_dir().unwrap();
+    std::fs::create_dir_all(&final_dir).unwrap();
+    write_runtime_tree(&final_dir);
+    let shim = final_dir.join("node_modules/.bin/codex-acp");
+    std::fs::write(&shim, "#!/usr/bin/env node\n").unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let fallback_node = fallback_bin.join("node");
+    let fallback_marker = temp.path().join("fallback-node-ran");
+    std::fs::write(
+        &fallback_node,
+        format!(
+            "#!/bin/sh\ntest \"$1\" = {} || exit 3\nprintf '@agentclientprotocol/codex-acp {CODEX_ACP_VERSION}\\n'\ntouch {}\n",
+            shell_quote(&shim),
+            shell_quote(&fallback_marker),
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fallback_node, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let managed_node = crate::managed_agents::buzz_managed_node_bin_path().unwrap();
+    assert!(
+        !managed_node.exists(),
+        "the pinned Node fixture starts missing"
+    );
+
+    let discovered = discover_acp_runtimes_from(None, true);
+    let codex = discovered.iter().find(|entry| entry.id == "codex").unwrap();
+    assert_eq!(
+        codex.availability,
+        crate::managed_agents::AcpAvailabilityStatus::AdapterOutdated,
+        "a fallback Node must not mask an orphaned app-owned Codex shim"
+    );
+    assert_eq!(codex.command.as_deref(), Some("codex-acp"));
+    assert_eq!(
+        codex.binary_path.as_deref(),
+        Some(shim.to_str().unwrap()),
+        "forced discovery must resolve the app-owned shim"
+    );
+    assert!(
+        codex.can_auto_install,
+        "the catalog must expose setup/repair"
+    );
+    assert!(
+        fallback_marker.is_file(),
+        "fallback Node must run the shim probe"
+    );
+    assert!(managed_codex_runtime_ready(&final_dir));
+
+    let shim_before_repair = std::fs::read(&shim).unwrap();
+    let package_before_repair =
+        std::fs::read(final_dir.join("node_modules/@agentclientprotocol/codex-acp/package.json"))
+            .unwrap();
+    let result = ensure_managed_codex_with_node(
+        &final_dir,
+        platform,
+        || {
+            std::fs::create_dir_all(managed_node.parent().unwrap()).unwrap();
+            std::fs::write(&managed_node, "#!/bin/sh\nprintf 'v24.18.0\\n'\n").unwrap();
+            std::fs::set_permissions(&managed_node, std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+            Ok(())
+        },
+        |_| panic!("valid Codex packages must not be reinstalled during Node repair"),
+    );
+
+    assert!(result.is_ok());
+    assert!(crate::commands::agent_discovery::managed_node::managed_node_runtime_ready());
+    assert!(managed_codex_runtime_ready(&final_dir));
+    assert_eq!(std::fs::read(&shim).unwrap(), shim_before_repair);
+    assert_eq!(
+        std::fs::read(final_dir.join("node_modules/@agentclientprotocol/codex-acp/package.json"))
+            .unwrap(),
+        package_before_repair
+    );
+    drop(environment);
 }
 
 #[test]

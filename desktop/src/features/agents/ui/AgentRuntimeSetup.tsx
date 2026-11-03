@@ -6,6 +6,7 @@ import {
   useConnectAcpRuntimeMutation,
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
+import { selectCodexChatGptAuthMethod } from "@/features/agents/lib/selectCodexChatGptAuthMethod";
 import { refreshAcpRuntimes } from "@/features/agents/acpRuntimesQuery";
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
@@ -234,10 +235,7 @@ export function useAgentRuntimeSetup({
       const methods = authMethods.data?.methods ?? [];
       const method =
         runtime.id === "codex"
-          ? (methods.find((candidate) => candidate.id === "chat-gpt") ??
-            methods.find(
-              (candidate) => candidate.id === "chat-gpt-device-code",
-            ))
+          ? selectCodexChatGptAuthMethod(methods)
           : methods.length === 1
             ? methods[0]
             : (methods.find((candidate) => candidate.type === "terminal") ??

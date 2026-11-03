@@ -476,3 +476,29 @@ fn test_managed_node_runtime_ready_returns_false_when_binary_absent() {
         "managed_node_runtime_ready must return false when the binary file does not exist"
     );
 }
+
+#[test]
+fn codex_managed_node_repair_only_targets_orphaned_app_owned_shims() {
+    let managed_bin = std::path::Path::new("/app-data/Colony/runtimes/codex/.bin");
+    let managed_shim = managed_bin.join("codex-acp");
+    let external_shim = std::path::Path::new("/usr/local/bin/codex-acp");
+
+    assert!(codex_shim_needs_managed_node_repair(
+        &managed_shim,
+        managed_bin,
+        true,
+        false,
+    ));
+    assert!(!codex_shim_needs_managed_node_repair(
+        &managed_shim,
+        managed_bin,
+        true,
+        true,
+    ));
+    assert!(!codex_shim_needs_managed_node_repair(
+        external_shim,
+        managed_bin,
+        true,
+        false,
+    ));
+}

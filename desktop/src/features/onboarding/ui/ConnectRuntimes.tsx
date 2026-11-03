@@ -9,6 +9,7 @@ import {
   useGitBashPrerequisiteQuery,
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
+import { selectCodexChatGptAuthMethod } from "@/features/agents/lib/selectCodexChatGptAuthMethod";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import {
   checkClaudeSubscription,
@@ -136,7 +137,11 @@ function ConnectedRuntimeRow({
   };
 
   const signIn = () => {
-    const method = authMethods.data?.methods[0];
+    const methods = authMethods.data?.methods ?? [];
+    const method =
+      runtime.id === "codex"
+        ? selectCodexChatGptAuthMethod(methods)
+        : methods[0];
     if (!method) {
       void authMethods.refetch();
       return;

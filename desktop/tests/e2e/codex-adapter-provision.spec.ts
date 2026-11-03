@@ -7,6 +7,7 @@ import {
   REFERENCE_CHANNEL_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
 import { installMockBridge } from "../helpers/bridge";
+import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
 const CLAUDE_AVAILABLE = {
   id: "claude",
@@ -55,6 +56,12 @@ const CODEX_READY = {
   auth_status: { status: "logged_out" },
 };
 
+const CODEX_ADAPTER_OUTDATED = {
+  ...CODEX_READY,
+  availability: "adapter_outdated",
+  auth_status: { status: "unknown" },
+};
+
 const CODEX_READY_SIGNED_IN = {
   ...CODEX_READY,
   auth_status: { status: "logged_in" },
@@ -78,6 +85,10 @@ const CODEX_AUTH_METHODS = {
       description: "Use ChatGPT device code authentication",
     },
   ],
+};
+
+const CODEX_DEVICE_CODE_AUTH_METHODS = {
+  methods: [CODEX_AUTH_METHODS.methods[0], CODEX_AUTH_METHODS.methods[2]],
 };
 
 const GEMINI_UNAVAILABLE = {
@@ -115,7 +126,7 @@ async function openScoutEditorWithoutRuntimeChange(page: Page) {
   return { dialog, scout };
 }
 
-async function expectCodexChatGptAuthMethod(page: Page) {
+async function expectCodexAuthMethod(page: Page, methodId: string) {
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -132,8 +143,12 @@ async function expectCodexChatGptAuthMethod(page: Page) {
       }),
     )
     .toMatchObject({
-      request: { runtimeId: "codex", methodId: "chat-gpt" },
+      request: { runtimeId: "codex", methodId },
     });
+}
+
+async function expectCodexChatGptAuthMethod(page: Page) {
+  await expectCodexAuthMethod(page, "chat-gpt");
 }
 
 test("an already-selected missing Codex runtime is recognized and set up", async ({
@@ -189,6 +204,43 @@ test("an already-selected missing Codex runtime is recognized and set up", async
   expect(
     commands.filter((command) => command === "install_acp_runtime"),
   ).toHaveLength(1);
+});
+
+test("an available app-managed Codex shim with orphaned Node is repaired before save", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_ADAPTER_OUTDATED],
+    acpRuntimesCatalogAfterInstall: [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
+    installAcpRuntimeResult: { success: true, steps: [] },
+    managedAgents: [
+      {
+        pubkey: REFERENCE_AGENTS.scout.pubkey,
+        name: "Scout",
+        personaId: SCOUT_PERSONA.id,
+        runtime: "codex",
+        agentCommand: "codex-acp",
+        model: "gpt-5",
+        status: "stopped",
+      },
+    ],
+    personas: [{ ...SCOUT_PERSONA, runtime: "codex" }],
+  });
+
+  const { dialog } = await openScoutEditorWithoutRuntimeChange(page);
+  await page.getByTestId("edit-agent-dialog-submit").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+            .__BUZZ_E2E_COMMANDS__ ?? [],
+      ),
+    )
+    .toContain("install_acp_runtime");
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
 });
 
 test("switching Scout to Codex provisions the missing adapter before saving", async ({
@@ -411,4 +463,46 @@ test("a signed-out Codex runtime offers one Sign in to Codex action", async ({
   expect(
     commands.filter((command) => command === "connect_acp_runtime"),
   ).toHaveLength(1);
+});
+
+test("Codex onboarding chooses ChatGPT when the API key method is listed first", async ({
+  page,
+}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await openR17ConnectionSetup(page, {
+    runtimes: [r17Runtime("codex", "available", { status: "logged_out" })],
+    mock: {
+      acpAuthMethods: { codex: CODEX_AUTH_METHODS },
+      connectAcpRuntimeResult: { launched: true },
+    },
+  });
+
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expectCodexChatGptAuthMethod(page);
+  const commands = await page.evaluate(
+    () =>
+      (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+        .__BUZZ_E2E_COMMANDS__ ?? [],
+  );
+  expect(
+    commands.filter((command) => command === "connect_acp_runtime"),
+  ).toHaveLength(1);
+});
+
+test("Codex onboarding falls back to the ChatGPT device-code auth method", async ({
+  page,
+}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await openR17ConnectionSetup(page, {
+    runtimes: [r17Runtime("codex", "available", { status: "logged_out" })],
+    mock: {
+      acpAuthMethods: { codex: CODEX_DEVICE_CODE_AUTH_METHODS },
+      connectAcpRuntimeResult: { launched: true },
+    },
+  });
+
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expectCodexAuthMethod(page, "chat-gpt-device-code");
 });

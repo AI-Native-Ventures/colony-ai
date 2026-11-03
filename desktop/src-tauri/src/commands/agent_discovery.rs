@@ -1056,6 +1056,31 @@ use managed_node::{
 };
 use managed_opencode::ensure_managed_opencode_blocking;
 
+/// Return whether this exact resolved Codex shim needs Colony's pinned Node
+/// runtime repaired. External Codex adapters and healthy managed Node installs
+/// remain untouched.
+pub(crate) fn managed_node_repair_required_for_codex_shim(binary_path: Option<&str>) -> bool {
+    let Some(binary_path) = binary_path.map(std::path::Path::new) else {
+        return false;
+    };
+    let Some(managed_codex_bin) = crate::managed_agents::buzz_managed_codex_bin_dir() else {
+        return false;
+    };
+    if !binary_path.starts_with(&managed_codex_bin) {
+        return false;
+    }
+    if !managed_node_runtime_supported() {
+        return false;
+    }
+
+    managed_node::codex_shim_needs_managed_node_repair(
+        binary_path,
+        &managed_codex_bin,
+        true,
+        managed_node::managed_node_runtime_ready(),
+    )
+}
+
 #[tauri::command]
 pub async fn discover_managed_agent_prereqs(
     input: DiscoverManagedAgentPrereqsRequest,
