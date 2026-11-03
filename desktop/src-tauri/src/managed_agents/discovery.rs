@@ -1276,3 +1276,7 @@ pub fn managed_agent_avatar_url(command: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "discovery/runtime_offerability_tests.rs"]
+mod runtime_offerability_tests;
