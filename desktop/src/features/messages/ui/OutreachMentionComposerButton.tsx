@@ -44,19 +44,19 @@ type EntityChoice = {
   key: string;
   title: string;
   detail?: string;
+  searchText?: string;
   href: string;
   icon: LucideIcon;
   testId?: string;
 };
 
-function matching<T extends { title: string; detail?: string }>(
-  choices: readonly T[],
-  query: string,
-): T[] {
+function matching<
+  T extends { title: string; detail?: string; searchText?: string },
+>(choices: readonly T[], query: string): T[] {
   const needle = query.trim().toLocaleLowerCase();
   return needle
     ? choices.filter((item) =>
-        `${item.title} ${item.detail ?? ""}`
+        `${item.title} ${item.detail ?? ""} ${item.searchText ?? ""}`
           .toLocaleLowerCase()
           .includes(needle),
       )
@@ -274,6 +274,7 @@ function OutreachMentionPickerContent({
       key: `lead:${lead.leadId}`,
       title: lead.name,
       detail: `Lead · ${lead.stageLabel}`,
+      searchText: lead.meta,
       href: buildLeadLink(lead.leadId),
       icon: UserRound,
       testId: `lead-reference-option-${lead.leadId}`,

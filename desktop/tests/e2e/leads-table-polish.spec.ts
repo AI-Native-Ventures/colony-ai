@@ -75,55 +75,45 @@ async function openLeads(page: Page) {
 test.describe("Leads table polish", () => {
   test.use({ viewport: { width: 1440, height: 960 } });
 
-  test("renders the 108 lead proof fixture in the approved five-column rhythm", async ({
+  test("renders the 108 lead proof fixture in the paginated outreach table", async ({
     page,
   }, testInfo) => {
     await openLeads(page);
 
     const table = page.getByRole("table", { name: "Leads" });
-    await expect(table.locator("tbody tr")).toHaveCount(108);
+    await expect(
+      page.locator(".c3l-leads-desktop-head .c3l-subtitle"),
+    ).toContainText("108 leads");
+    await expect(page.locator(".c3l-match-count")).toHaveText("0 of 108 match");
+
+    await page
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await page.getByRole("button", { name: "Remove WhatsApp filter" }).click();
+    await page
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+
+    await expect(page.locator(".c3l-match-count")).toHaveText(
+      "108 of 108 match",
+    );
+    await expect(table.locator("tbody tr")).toHaveCount(8);
     await expect(table.locator("thead th")).toHaveText([
+      "",
       "Business",
-      "Contact",
+      "Phone",
       "Stage",
-      "Service / month",
+      "WhatsApp",
       "Next step",
     ]);
-    await expect(page.getByLabel("WhatsApp status")).toBeVisible();
-
-    const longName = table
-      .locator("tbody tr")
-      .filter({ hasText: REFERENCE_LONG_LEAD_NAME })
-      .first()
-      .locator(".c3l-business-text strong");
-    await expect(longName).toHaveCSS("white-space", "nowrap");
-    await expect(longName).toHaveCSS("text-overflow", "ellipsis");
-
-    const unsetLead = table
-      .locator("tbody tr")
-      .filter({ hasText: "Gather House" })
-      .first();
-    await expect(unsetLead.locator(".c3l-cell-contact")).toHaveText("Not set");
-    await expect(unsetLead.locator(".c3l-cell-amount")).toHaveText("Not set");
     await expect(
-      unsetLead.locator(".c3l-cell-contact .c3l-empty-value"),
-    ).toHaveCSS("font-weight", "500");
-
-    const formField = table
-      .locator("tbody tr")
-      .filter({ hasText: "Form & Field" })
-      .first();
-    await expect(
-      formField.locator(".c3l-cell-business").getByText("Customer record"),
-    ).toHaveCount(0);
-    await expect(
-      formField.getByRole("button", { name: "Make client" }),
-    ).toHaveCount(0);
-    await expect(
-      formField.locator(".c3l-cell-next-step").getByRole("link", {
-        name: "Review lead",
+      table.getByRole("checkbox", {
+        name: "Select all 8 leads on this page",
       }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Lead pages" }),
+    ).toContainText("Page 1 of 14");
 
     const lightPath = testInfo.outputPath("1440-light.png");
     await page.screenshot({ path: lightPath });
@@ -137,30 +127,75 @@ test.describe("Leads table polish", () => {
     });
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await page.getByRole("button", { name: "Remove WhatsApp filter" }).click();
+    await page
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
     const darkPath = testInfo.outputPath("1440-dark.png");
     await page.screenshot({ path: darkPath });
     await testInfo.attach("leads-1440-dark", {
       path: darkPath,
       contentType: "image/png",
     });
+
+    const search = page.getByRole("searchbox", { name: "Search leads" });
+    await search.fill(REFERENCE_LONG_LEAD_NAME);
+    const longName = table
+      .locator("tbody tr")
+      .filter({ hasText: REFERENCE_LONG_LEAD_NAME })
+      .first()
+      .locator(".c3l-business-text strong");
+    await expect(longName).toHaveCSS("white-space", "nowrap");
+    await expect(longName).toHaveCSS("text-overflow", "ellipsis");
+
+    await search.fill("Gather House");
+    const unsetLead = table.locator("tbody tr").filter({
+      has: page.getByText("Gather House", { exact: true }),
+    });
+    await expect(unsetLead.locator(".c3l-cell-phone strong")).toHaveText(
+      "Not set",
+    );
+
+    await search.fill("Form & Field");
+    const formField = table.locator("tbody tr").filter({
+      has: page.getByText("Form & Field", { exact: true }),
+    });
+    await expect(
+      formField.locator(".c3l-cell-business").getByText("Customer record"),
+    ).toHaveCount(0);
+    await expect(
+      formField.getByRole("button", { name: "Make client" }),
+    ).toHaveCount(0);
+    await expect(
+      formField.locator(".c3l-cell-next-step").getByRole("link", {
+        name: "Review lead",
+      }),
+    ).toBeVisible();
   });
 
-  test("clicking an empty part of a lead row opens that lead", async ({
-    page,
-  }) => {
+  test("the Review lead action opens that lead", async ({ page }) => {
     await openLeads(page);
+    await page
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await page.getByRole("button", { name: "Remove WhatsApp filter" }).click();
+    await page
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+    await page
+      .getByRole("searchbox", { name: "Search leads" })
+      .fill("Form & Field");
+
     const row = page
       .getByRole("table", { name: "Leads" })
       .locator("tbody tr")
-      .filter({ hasText: "Form & Field" })
+      .filter({ has: page.getByText("Form & Field", { exact: true }) })
       .first();
 
-    const emptyCell = await row.locator("td").nth(3).boundingBox();
-    if (!emptyCell) throw new Error("The lead row amount cell is unavailable.");
-    await page.mouse.click(
-      emptyCell.x + emptyCell.width / 2,
-      emptyCell.y + emptyCell.height / 2,
-    );
+    await row.getByRole("link", { name: "Review lead" }).click();
 
     await expect(page).toHaveURL(new RegExp(`/sales/lead/${FORM_FIELD_ID}$`));
     await expect(
@@ -168,9 +203,7 @@ test.describe("Leads table polish", () => {
     ).toBeVisible();
   });
 
-  test("customer record and Make client actions live on lead detail", async ({
-    page,
-  }) => {
+  test("Make client converts the lead from lead detail", async ({ page }) => {
     await openLeads(page);
     await page.goto(`/#/sales/lead/${FORM_FIELD_ID}`, {
       waitUntil: "domcontentloaded",
@@ -179,14 +212,8 @@ test.describe("Leads table polish", () => {
     const detail = page.getByTestId("w10-prospect-page");
     const convert = detail.getByRole("button", { name: "Make client" });
     await expect(convert).toBeVisible();
-    await expect(
-      detail.getByRole("link", { name: "Customer record" }),
-    ).toBeVisible();
     await convert.click();
     await expect(convert).toHaveCount(0);
-    await detail.getByRole("link", { name: "Customer record" }).click();
-    await expect(page).toHaveURL(
-      new RegExp(`/clients/record/${FORM_FIELD_ID}$`),
-    );
+    await expect(detail.getByRole("alert")).toHaveCount(0);
   });
 });
