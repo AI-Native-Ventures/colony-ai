@@ -1128,6 +1128,29 @@ fn test_codex_install_commands_for_os_are_empty() {
     assert!(codex.cli_install_commands_for_os().is_empty());
 }
 
+#[test]
+fn unavailable_catalog_rows_retain_declared_runtime_commands() {
+    let codex = super::known_acp_runtime_exact("codex").unwrap();
+    assert_eq!(
+        super::runtime_command_candidates(codex),
+        vec!["codex-acp".to_string()]
+    );
+}
+
+#[test]
+fn auto_installability_requires_the_prerequisites_to_finish_setup() {
+    let claude = super::known_acp_runtime_exact("claude").unwrap();
+    let codex = super::known_acp_runtime_exact("codex").unwrap();
+
+    assert!(super::runtime_can_auto_install(claude, false));
+    assert!(!super::runtime_can_auto_install(claude, true));
+    assert_eq!(
+        super::runtime_can_auto_install(codex, false),
+        super::managed_binary_runtime("codex"),
+        "Codex is installable only where Colony has a managed runtime"
+    );
+}
+
 /// On Windows, every vendor CLI selects its official PowerShell installer.
 #[cfg(windows)]
 #[test]

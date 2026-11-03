@@ -37,6 +37,7 @@ const CODEX_MISSING = {
   install_hint: "Colony will set up Codex.",
   install_instructions_url: "https://developers.openai.com/codex/cli/",
   can_auto_install: true,
+  command_candidates: ["codex-acp"],
   underlying_cli_path: "/private/tmp/colony-runtimes/codex/bin/codex",
   node_required: false,
   auth_status: { status: "unknown" },
@@ -76,16 +77,64 @@ const SCOUT_PERSONA = {
 };
 
 async function openScoutEditor(page: Page) {
+  const { dialog, scout } = await openScoutEditorWithoutRuntimeChange(page);
+  await page.locator("#edit-agent-runtime").click();
+  await page.getByRole("menuitemradio", { name: /Codex/ }).click();
+  return { dialog, scout };
+}
+
+async function openScoutEditorWithoutRuntimeChange(page: Page) {
   const scout = REFERENCE_AGENTS.scout.pubkey;
   await page.goto(`/#/agents?agent=${scout}`);
   await expect(page.getByTestId("agent-profile-content")).toBeVisible();
   await page.getByTestId("agent-edit-configuration").click();
   const dialog = page.getByTestId("edit-agent-dialog");
   await expect(dialog).toBeVisible();
-  await page.locator("#edit-agent-runtime").click();
-  await page.getByRole("menuitemradio", { name: /Codex/ }).click();
   return { dialog, scout };
 }
+
+test("an already-selected missing Codex runtime is recognized and set up", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING],
+    acpRuntimesCatalogAfterInstall: [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
+    installAcpRuntimeResult: { success: true, steps: [] },
+    managedAgents: [
+      {
+        pubkey: REFERENCE_AGENTS.scout.pubkey,
+        name: "Scout",
+        personaId: SCOUT_PERSONA.id,
+        runtime: "codex",
+        agentCommand: "codex-acp",
+        agentArgs: ["acp"],
+        agentCommandOverride: "codex-acp",
+        model: "gpt-5",
+        status: "stopped",
+      },
+    ],
+    personas: [SCOUT_PERSONA],
+  });
+
+  const { dialog } = await openScoutEditorWithoutRuntimeChange(page);
+  await expect(page.locator("#edit-agent-runtime")).toContainText(/Codex/);
+  await page.getByTestId("edit-agent-dialog-submit").click();
+  await expect(
+    dialog.getByText("Setting up Codex...", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
+
+  const commands = await page.evaluate(
+    () =>
+      (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+        .__BUZZ_E2E_COMMANDS__ ?? [],
+  );
+  expect(
+    commands.filter((command) => command === "install_acp_runtime"),
+  ).toHaveLength(1);
+});
 
 test("switching Scout to Codex provisions the missing adapter before saving", async ({
   page,

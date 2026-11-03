@@ -140,6 +140,7 @@ pub async fn save_custom_harness(
         avatar_url: String::new(),
         availability,
         command: command_opt,
+        command_candidates: vec![definition.command.clone()],
         binary_path,
         default_args,
         mcp_command: None,

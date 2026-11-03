@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getDefaultPersonaRuntime,
   buildPersonaRuntimeDropdownOptions,
+  findPersonaRuntimeForCommand,
   isHarnessOfferable,
   getPersonaModelOptions,
   getPersonaProviderOptions,
@@ -53,6 +54,18 @@ test("runtime selectors offer ready or Colony-installable harnesses and keep the
     !ids.includes("gemini"),
     "unavailable unprovisionable harnesses are hidden",
   );
+});
+
+test("an unavailable saved command resolves through catalog command candidates", () => {
+  const codex = {
+    ...makeRuntime("codex", "adapter_missing"),
+    command: null,
+    commandCandidates: ["codex-acp"],
+    canAutoInstall: true,
+  };
+
+  assert.equal(findPersonaRuntimeForCommand([codex], "codex-acp"), codex);
+  assert.equal(findPersonaRuntimeForCommand([codex], "unknown-acp"), undefined);
 });
 
 // ── getPersonaProviderOptions — hideProviderIds ───────────────────────────────

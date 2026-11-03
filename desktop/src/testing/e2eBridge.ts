@@ -276,6 +276,9 @@ export type MockManagedAgentSeed = {
   systemPrompt?: string | null;
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
+  /** Override the default catalog command for unavailable-runtime recovery specs. */
+  agentCommand?: string;
+  agentArgs?: string[];
   agentCommandOverride?: string | null;
   runningRuntimeId?: string | null;
   runningModel?: string | null;
@@ -3516,8 +3519,9 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
   const catalogEntry = seed.runtime
     ? DEFAULT_RUNTIME_COMMAND[seed.runtime]
     : undefined;
-  const agentCommand = catalogEntry?.command ?? seed.runtime ?? "goose";
-  const agentArgs = catalogEntry?.args ?? ["acp"];
+  const agentCommand =
+    seed.agentCommand ?? catalogEntry?.command ?? seed.runtime ?? "goose";
+  const agentArgs = seed.agentArgs ?? catalogEntry?.args ?? ["acp"];
 
   return {
     pubkey: seed.pubkey,

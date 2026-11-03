@@ -498,6 +498,23 @@ export function isHarnessOfferable(runtime: AcpRuntimeCatalogEntry) {
   return runtime.availability === "available" || runtime.canAutoInstall;
 }
 
+/** Resolve a saved command to its catalog entry, including unavailable runtimes. */
+export function findPersonaRuntimeForCommand(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+  command: string,
+) {
+  const normalized = command.trim();
+  return (
+    runtimes.find((runtime) => runtime.command?.trim() === normalized) ??
+    runtimes.find((runtime) =>
+      runtime.commandCandidates?.some(
+        (candidate) => candidate.trim() === normalized,
+      ),
+    ) ??
+    runtimes.find((runtime) => runtime.id === normalized)
+  );
+}
+
 export function buildPersonaRuntimeDropdownOptions({
   defaultRuntimeId,
   isCreateMode,

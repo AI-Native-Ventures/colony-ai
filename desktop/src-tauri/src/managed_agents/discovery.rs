@@ -689,6 +689,21 @@ fn runtime_needs_npm(runtime: &KnownAcpRuntime) -> bool {
         .any(|cmd| is_npm_global_install(cmd))
 }
 
+fn runtime_can_auto_install(runtime: &KnownAcpRuntime, node_required: bool) -> bool {
+    !node_required
+        && (!runtime.cli_install_commands_for_os().is_empty()
+            || !runtime.adapter_install_commands.is_empty()
+            || super::managed_binary_runtime(runtime.id))
+}
+
+fn runtime_command_candidates(runtime: &KnownAcpRuntime) -> Vec<String> {
+    runtime
+        .commands
+        .iter()
+        .map(|command| (*command).to_string())
+        .collect()
+}
+
 /// Returns `true` when `cmd` is an npm global install/uninstall invocation.
 ///
 /// Buzz rewrites these catalog commands to an app-private npm prefix before
@@ -987,10 +1002,6 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
         .map(|cmd| normalize_agent_args(cmd, Vec::new()))
         .unwrap_or_default();
 
-    let can_auto_install = !runtime.cli_install_commands_for_os().is_empty()
-        || !runtime.adapter_install_commands.is_empty()
-        || super::managed_binary_runtime(runtime.id);
-
     let cli_hint = runtime.cli_install_hint;
     let adapter_hint = runtime.adapter_install_hint;
     let install_hint = match availability {
@@ -1022,11 +1033,15 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
     // runtime into app data before running npm-backed adapter installs.
     let node_required = matches!(
         availability,
-        AcpAvailabilityStatus::AdapterMissing | AcpAvailabilityStatus::NotInstalled
+        AcpAvailabilityStatus::AdapterMissing
+            | AcpAvailabilityStatus::AdapterOutdated
+            | AcpAvailabilityStatus::CliMissing
+            | AcpAvailabilityStatus::NotInstalled
     ) && runtime_needs_npm(runtime)
         && buzz_managed_node_bin_dir().is_none()
         && resolve("npm").is_none()
         && resolve("node").is_none();
+    let can_auto_install = runtime_can_auto_install(runtime, node_required);
 
     PartialEntry {
         runtime,
@@ -1036,6 +1051,7 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
             avatar_url: runtime.avatar_url.to_string(),
             availability,
             command,
+            command_candidates: runtime_command_candidates(runtime),
             binary_path,
             default_args,
             mcp_command: runtime.mcp_command.map(str::to_string),
@@ -1178,6 +1194,7 @@ pub fn discover_acp_runtimes_from(
                 avatar_url: String::new(),
                 availability,
                 command,
+                command_candidates: vec![def.command.clone()],
                 binary_path,
                 default_args,
                 // Custom harnesses are plain ACP — no MCP sidecar, no env-var

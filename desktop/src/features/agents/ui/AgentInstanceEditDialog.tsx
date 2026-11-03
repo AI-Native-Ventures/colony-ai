@@ -38,6 +38,7 @@ import {
   formatRuntimeOptionLabel,
   getDefaultLlmModelLabel,
   getDefaultPersonaRuntime,
+  findPersonaRuntimeForCommand,
   getProviderApiKeyEnvVar,
   getPersonaProviderOptions,
   isMissingRequiredDropdownField,
@@ -207,9 +208,6 @@ export function AgentInstanceEditDialog({
 
   // Seed the runtime selector from the catalog when the dialog opens.
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState("custom");
-  const runtimeAuthMethodsQuery = useAcpAuthMethodsQuery(selectedRuntimeId, {
-    enabled: false,
-  });
 
   // Tracks whether the user has made an in-dialog runtime selection.
   const runtimeTouched = React.useRef(false);
@@ -250,9 +248,10 @@ export function AgentInstanceEditDialog({
       setIsAvatarUploadPending(false);
       setIsAddHarnessOpen(false);
       runtimeTouched.current = false;
-      const matched =
-        runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim()) ??
-        runtimes.find((r) => r.id === agent.agentCommand.trim());
+      const matched = findPersonaRuntimeForCommand(
+        runtimes,
+        agent.agentCommand,
+      );
       setSelectedRuntimeId(matched ? matched.id : "custom");
       updateMutation.reset();
     }
@@ -263,9 +262,7 @@ export function AgentInstanceEditDialog({
     if (!open || runtimeTouched.current || runtimes.length === 0) {
       return;
     }
-    const matched =
-      runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim()) ??
-      runtimes.find((r) => r.id === agent.agentCommand.trim());
+    const matched = findPersonaRuntimeForCommand(runtimes, agent.agentCommand);
     if (matched) {
       setSelectedRuntimeId(matched.id);
     }
@@ -316,18 +313,6 @@ export function AgentInstanceEditDialog({
     };
   }, [open, runtimeAuthWaitingForReturn, queryClient]);
 
-  React.useEffect(() => {
-    if (
-      runtimeAuthWaitingForReturn &&
-      selectedRuntime?.authStatus.status === "logged_in"
-    ) {
-      setRuntimeAuthWaitingForReturn(false);
-      setRuntimeAuthMessage(
-        `${selectedRuntime.label} sign-in is complete. Save changes to apply this harness.`,
-      );
-    }
-  }, [runtimeAuthWaitingForReturn, selectedRuntime]);
-
   const runtimeDropdownValue = selectedRuntimeId || NO_RUNTIME_DROPDOWN_VALUE;
 
   const runtimeDropdownOptions: PersonaDropdownOption[] = React.useMemo(() => {
@@ -356,9 +341,7 @@ export function AgentInstanceEditDialog({
   // ids mutate during selection changes and cannot identify the original state.
   const originalRuntimeSupportsProvider = React.useMemo(() => {
     const originalCommand = originalAgentCommand.trim();
-    const matched =
-      runtimes.find((r) => r.command?.trim() === originalCommand) ??
-      runtimes.find((r) => r.id === originalCommand);
+    const matched = findPersonaRuntimeForCommand(runtimes, originalCommand);
     return runtimeSupportsLlmProviderSelection(matched?.id ?? "");
   }, [runtimes, originalAgentCommand]);
 
@@ -377,9 +360,7 @@ export function AgentInstanceEditDialog({
       );
     }
     return (
-      runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim())
-        ?.id ??
-      runtimes.find((r) => r.id === agent.agentCommand.trim())?.id ??
+      findPersonaRuntimeForCommand(runtimes, agent.agentCommand)?.id ??
       // Fall back to the app default runtime so discovery can run for agents
       // whose persona has no runtime set (e.g. freshly-added catalog builtins).
       getDefaultPersonaRuntime(runtimes)?.id ??
@@ -400,6 +381,21 @@ export function AgentInstanceEditDialog({
   const prospectiveRuntime = runtimes.find(
     (r) => r.id === prospectiveRuntimeId,
   );
+  const runtimeAuthMethodsQuery = useAcpAuthMethodsQuery(prospectiveRuntimeId, {
+    enabled: false,
+  });
+  React.useEffect(() => {
+    if (
+      runtimeAuthWaitingForReturn &&
+      prospectiveRuntime?.authStatus.status === "logged_in"
+    ) {
+      setRuntimeAuthWaitingForReturn(false);
+      setRuntimeAuthMessage(
+        `${prospectiveRuntime.label} sign-in is complete. Save changes to apply this harness.`,
+      );
+    }
+  }, [runtimeAuthWaitingForReturn, prospectiveRuntime]);
+
   const runtimeCatalogStatus = runtimesQuery.isLoading
     ? ("loading" as const)
     : runtimesQuery.isError
@@ -734,9 +730,12 @@ export function AgentInstanceEditDialog({
     try {
       let submittedAgentCommand = agentCommand;
       let submittedAgentArgs = agentArgs;
-      let submittedInheritHarness = inheritHarness;
-      if (selectedRuntime?.availability !== "available") {
-        if (!selectedRuntime?.canAutoInstall) {
+      const submittedInheritHarness = inheritHarness;
+      if (
+        prospectiveRuntime &&
+        prospectiveRuntime.availability !== "available"
+      ) {
+        if (!prospectiveRuntime.canAutoInstall) {
           throw new Error(
             "Colony cannot set up this harness on this platform. Choose an available harness.",
           );
@@ -746,7 +745,7 @@ export function AgentInstanceEditDialog({
         setRuntimeAuthError(null);
         setRuntimeAuthMessage("");
         const install = await installRuntimeMutation.mutateAsync(
-          selectedRuntime.id,
+          prospectiveRuntime.id,
         );
         if (!install.success) {
           const detail = install.steps
@@ -756,13 +755,13 @@ export function AgentInstanceEditDialog({
             .join("\n");
           throw new Error(
             detail
-              ? `${selectedRuntime.label} setup failed: ${detail}`
-              : `${selectedRuntime.label} setup failed without an install error. Retry setup.`,
+              ? `${prospectiveRuntime.label} setup failed: ${detail}`
+              : `${prospectiveRuntime.label} setup failed without an install error. Retry setup.`,
           );
         }
         const refreshed = await refreshAcpRuntimes(queryClient);
         const installedRuntime = refreshed?.find(
-          (runtime) => runtime.id === selectedRuntime.id,
+          (runtime) => runtime.id === prospectiveRuntime.id,
         );
         if (
           installedRuntime?.availability !== "available" ||
@@ -770,15 +769,15 @@ export function AgentInstanceEditDialog({
         ) {
           const availability = installedRuntime?.availability ?? "unknown";
           throw new Error(
-            `${selectedRuntime.label} setup finished, but Colony still reports it as ${availability}. Retry setup or choose another harness.`,
+            `${prospectiveRuntime.label} setup finished, but Colony still reports it as ${availability}. Retry setup or choose another harness.`,
           );
         }
-        submittedAgentCommand = installedRuntime.command;
-        submittedAgentArgs = installedRuntime.defaultArgs.join(",");
-        submittedInheritHarness = false;
-        setAgentCommand(submittedAgentCommand);
-        setAgentArgs(submittedAgentArgs);
-        setInheritHarness(false);
+        if (!submittedInheritHarness) {
+          submittedAgentCommand = installedRuntime.command;
+          submittedAgentArgs = installedRuntime.defaultArgs.join(",");
+          setAgentCommand(submittedAgentCommand);
+          setAgentArgs(submittedAgentArgs);
+        }
         setRuntimeSetupProgress(false);
         if (
           installedRuntime.loginHint &&
@@ -791,12 +790,12 @@ export function AgentInstanceEditDialog({
         }
       }
       if (
-        selectedRuntime?.availability === "available" &&
-        selectedRuntime.loginHint &&
-        selectedRuntime.authStatus.status !== "logged_in"
+        prospectiveRuntime?.availability === "available" &&
+        prospectiveRuntime.loginHint &&
+        prospectiveRuntime.authStatus.status !== "logged_in"
       ) {
         setRuntimeSetupMessage(
-          `Sign in to ${selectedRuntime.label} before saving the switch.`,
+          `Sign in to ${prospectiveRuntime.label} before saving the switch.`,
         );
         return;
       }
@@ -928,7 +927,7 @@ export function AgentInstanceEditDialog({
 
       const result = await saveWithRuntimeSwitch(input, {
         runtimeId: prospectiveRuntimeId,
-        label: selectedRuntime?.label ?? prospectiveRuntimeId,
+        label: prospectiveRuntime?.label ?? prospectiveRuntimeId,
         model: normalizedModel,
       });
       if (result === null) return;
@@ -1000,7 +999,7 @@ export function AgentInstanceEditDialog({
   }
 
   async function signInToSelectedRuntime() {
-    const runtime = selectedRuntime;
+    const runtime = prospectiveRuntime;
     if (!runtime?.loginHint) return;
     setRuntimeAuthProgress(true);
     setRuntimeAuthError(null);
@@ -1163,7 +1162,7 @@ export function AgentInstanceEditDialog({
             >
               {isSaving
                 ? runtimeSetupProgress
-                  ? `Setting up ${selectedRuntime?.label ?? "harness"}...`
+                  ? `Setting up ${prospectiveRuntime?.label ?? "harness"}...`
                   : "Saving..."
                 : runtimeSetupError
                   ? "Try again"
@@ -1232,8 +1231,8 @@ export function AgentInstanceEditDialog({
                   data-testid="runtime-setup-progress"
                   role="status"
                 >
-                  Colony is setting up {selectedRuntime?.label ?? "the harness"}
-                  .
+                  Colony is setting up{" "}
+                  {prospectiveRuntime?.label ?? "the harness"}.
                 </p>
               ) : null}
               {runtimeSetupMessage ? (
@@ -1241,13 +1240,13 @@ export function AgentInstanceEditDialog({
                   {runtimeSetupMessage}
                 </p>
               ) : null}
-              {selectedRuntime?.loginHint &&
-              selectedRuntime.availability === "available" &&
-              selectedRuntime.authStatus.status !== "logged_in" ? (
+              {prospectiveRuntime?.loginHint &&
+              prospectiveRuntime.availability === "available" &&
+              prospectiveRuntime.authStatus.status !== "logged_in" ? (
                 <div className="space-y-2 rounded-lg border border-border p-3">
                   <p className="text-xs text-muted-foreground">
-                    {selectedRuntime.label} needs an account sign-in before it
-                    can answer.
+                    {prospectiveRuntime.label} needs an account sign-in before
+                    it can answer.
                   </p>
                   <Button
                     disabled={runtimeAuthProgress || isSaving}
@@ -1256,8 +1255,8 @@ export function AgentInstanceEditDialog({
                     variant="outline"
                   >
                     {runtimeAuthProgress
-                      ? `Opening ${selectedRuntime.label} sign-in...`
-                      : `Sign in to ${selectedRuntime.label}`}
+                      ? `Opening ${prospectiveRuntime.label} sign-in...`
+                      : `Sign in to ${prospectiveRuntime.label}`}
                   </Button>
                   {runtimeAuthMessage ? (
                     <p aria-live="polite" className="text-xs" role="status">

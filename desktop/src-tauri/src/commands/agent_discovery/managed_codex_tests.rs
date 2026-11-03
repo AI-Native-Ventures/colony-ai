@@ -17,9 +17,18 @@ fn install_result(success: bool) -> InstallStepResult {
 }
 
 fn write_runtime_tree(dir: &Path) {
+    let platform = crate::managed_agents::managed_codex_platform()
+        .expect("tests run on a supported Codex platform");
     for (package, version) in [
-        ("@agentclientprotocol/codex-acp", CODEX_ACP_VERSION),
-        ("@openai/codex", CODEX_CLI_VERSION),
+        (
+            "@agentclientprotocol/codex-acp".to_string(),
+            CODEX_ACP_VERSION.to_string(),
+        ),
+        ("@openai/codex".to_string(), CODEX_CLI_VERSION.to_string()),
+        (
+            format!("@openai/codex-{platform}"),
+            format!("{CODEX_CLI_VERSION}-{platform}"),
+        ),
     ] {
         let package_dir = dir.join("node_modules").join(package);
         std::fs::create_dir_all(&package_dir).unwrap();
@@ -72,7 +81,8 @@ fn a_missing_managed_adapter_runs_provisioning_and_promotes_only_a_valid_tree() 
     assert!(!managed_codex_runtime_ready(&final_dir));
     let mut install_calls = 0;
 
-    let result = provision_missing_runtime(&final_dir, "darwin-arm64", |staging| {
+    let platform = crate::managed_agents::managed_codex_platform().unwrap();
+    let result = provision_missing_runtime(&final_dir, platform, |staging| {
         install_calls += 1;
         assert!(staging.join("package.json").is_file());
         assert!(staging.join("package-lock.json").is_file());
@@ -83,7 +93,24 @@ fn a_missing_managed_adapter_runs_provisioning_and_promotes_only_a_valid_tree() 
     assert!(result.is_ok());
     assert_eq!(install_calls, 1, "a missing runtime must provision once");
     assert!(managed_codex_runtime_ready(&final_dir));
-    assert!(!staging_dir(temp.path(), "darwin-arm64").exists());
+    assert!(!staging_dir(temp.path(), platform).exists());
+}
+
+#[test]
+fn runtime_readiness_requires_the_host_cli_payload() {
+    let temp = tempfile::tempdir().unwrap();
+    write_runtime_tree(temp.path());
+    let platform = crate::managed_agents::managed_codex_platform().unwrap();
+    std::fs::remove_dir_all(
+        temp.path()
+            .join(format!("node_modules/@openai/codex-{platform}")),
+    )
+    .unwrap();
+
+    let error = validate_runtime_tree(temp.path()).unwrap_err();
+
+    assert!(error.contains("package.json"), "{error}");
+    assert!(!managed_codex_runtime_ready(temp.path()));
 }
 
 #[test]
@@ -91,8 +118,9 @@ fn failed_provisioning_propagates_the_cause_and_cleans_its_stage() {
     let temp = tempfile::tempdir().unwrap();
     let final_dir = temp.path().join("runtime");
 
-    let error = provision_missing_runtime(&final_dir, "darwin-arm64", |_| install_result(false))
-        .unwrap_err();
+    let platform = crate::managed_agents::managed_codex_platform().unwrap();
+    let error =
+        provision_missing_runtime(&final_dir, platform, |_| install_result(false)).unwrap_err();
 
     assert!(
         error.stderr.contains("registry unavailable"),
@@ -100,7 +128,7 @@ fn failed_provisioning_propagates_the_cause_and_cleans_its_stage() {
         error.stderr
     );
     assert!(!final_dir.exists());
-    assert!(!staging_dir(temp.path(), "darwin-arm64").exists());
+    assert!(!staging_dir(temp.path(), platform).exists());
 }
 
 #[test]
@@ -125,5 +153,5 @@ fn npm_install_is_local_to_the_staging_tree_and_never_global() {
     assert!(command.starts_with("npm ci --prefix '"), "{command}");
     assert!(command.contains("Colony'\\''s Codex"), "{command}");
     assert!(!command.contains("--global") && !command.contains(" -g"));
-    assert!(command.ends_with("--ignore-scripts --no-audit --no-fund"));
+    assert!(command.ends_with("--ignore-scripts --no-audit --no-fund --include=optional"));
 }

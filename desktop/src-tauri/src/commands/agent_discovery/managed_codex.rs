@@ -161,7 +161,7 @@ fn remove_staging(path: &Path) -> Result<(), String> {
 
 fn npm_ci_command(staging_dir: &Path) -> String {
     format!(
-        "npm ci --prefix {} --ignore-scripts --no-audit --no-fund",
+        "npm ci --prefix {} --ignore-scripts --no-audit --no-fund --include=optional",
         shell_quote(staging_dir)
     )
 }
@@ -185,6 +185,17 @@ fn validate_runtime_tree(dir: &Path) -> Result<(), String> {
     }
     if package_version(&cli)? != CODEX_CLI_VERSION {
         return Err(format!("Codex CLI must be version {CODEX_CLI_VERSION}"));
+    }
+    let platform = crate::managed_agents::managed_codex_platform()
+        .ok_or_else(|| "Colony does not provide Codex for this platform".to_string())?;
+    let platform_cli = dir.join(format!(
+        "node_modules/@openai/codex-{platform}/package.json"
+    ));
+    let expected_platform_version = format!("{CODEX_CLI_VERSION}-{platform}");
+    if package_version(&platform_cli)? != expected_platform_version {
+        return Err(format!(
+            "Codex CLI platform package must be version {expected_platform_version}"
+        ));
     }
     for command in ["codex-acp", "codex"] {
         if !command_shim_exists(&dir.join("node_modules/.bin"), command) {
