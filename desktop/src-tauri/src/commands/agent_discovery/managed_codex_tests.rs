@@ -146,6 +146,34 @@ fn an_existing_valid_runtime_skips_the_install_command() {
 }
 
 #[test]
+fn an_existing_codex_runtime_recovers_an_orphaned_managed_node_before_ready_return() {
+    let temp = tempfile::tempdir().unwrap();
+    let final_dir = temp.path().join("runtime");
+    std::fs::create_dir_all(&final_dir).unwrap();
+    write_runtime_tree(&final_dir);
+
+    let node_bin = temp.path().join("managed-node/bin/node");
+    assert!(!node_bin.exists());
+    let mut node_recovered = false;
+    let platform = crate::managed_agents::managed_codex_platform().unwrap();
+    let result = ensure_managed_codex_with_node(
+        &final_dir,
+        platform,
+        || {
+            std::fs::create_dir_all(node_bin.parent().unwrap()).unwrap();
+            std::fs::write(&node_bin, "recovered managed Node").unwrap();
+            node_recovered = true;
+            Ok(())
+        },
+        |_| panic!("a ready Codex runtime must not be installed a second time"),
+    );
+
+    assert!(result.is_ok());
+    assert!(node_recovered, "managed Node must be repaired first");
+    assert!(node_bin.is_file());
+}
+
+#[test]
 fn npm_install_is_local_to_the_staging_tree_and_never_global() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("Colony's Codex");

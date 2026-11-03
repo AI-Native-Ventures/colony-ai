@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+
+import { expect, test } from "../helpers/harnessModelListTest";
 
 import {
   REFERENCE_AGENTS,
@@ -58,6 +60,26 @@ const CODEX_READY_SIGNED_IN = {
   auth_status: { status: "logged_in" },
 };
 
+const CODEX_AUTH_METHODS = {
+  methods: [
+    {
+      id: "api-key",
+      name: "API key",
+      description: "Use an API key to authenticate",
+    },
+    {
+      id: "chat-gpt",
+      name: "ChatGPT",
+      description: "Use ChatGPT to authenticate",
+    },
+    {
+      id: "chat-gpt-device-code",
+      name: "ChatGPT device code",
+      description: "Use ChatGPT device code authentication",
+    },
+  ],
+};
+
 const GEMINI_UNAVAILABLE = {
   ...CODEX_MISSING,
   id: "gemini-cli",
@@ -91,6 +113,27 @@ async function openScoutEditorWithoutRuntimeChange(page: Page) {
   const dialog = page.getByTestId("edit-agent-dialog");
   await expect(dialog).toBeVisible();
   return { dialog, scout };
+}
+
+async function expectCodexChatGptAuthMethod(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const calls = (
+          window as Window & {
+            __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{
+              command: string;
+              payload: unknown;
+            }>;
+          }
+        ).__BUZZ_E2E_COMMAND_PAYLOADS__;
+        return calls?.find((call) => call.command === "connect_acp_runtime")
+          ?.payload;
+      }),
+    )
+    .toMatchObject({
+      request: { runtimeId: "codex", methodId: "chat-gpt" },
+    });
 }
 
 test("an already-selected missing Codex runtime is recognized and set up", async ({
@@ -209,18 +252,7 @@ test("a signed-out Codex setup pauses the save and offers ChatGPT sign-in", asyn
       [CLAUDE_AVAILABLE, CODEX_READY],
       [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
     ],
-    acpAuthMethods: {
-      codex: {
-        methods: [
-          {
-            id: "chatgpt",
-            name: "ChatGPT",
-            type: "terminal",
-            command: ["codex", "login"],
-          },
-        ],
-      },
-    },
+    acpAuthMethods: { codex: CODEX_AUTH_METHODS },
     connectAcpRuntimeResult: { launched: true },
     installAcpRuntimeResult: { success: true, steps: [] },
     managedAgents: [
@@ -244,6 +276,7 @@ test("a signed-out Codex setup pauses the save and offers ChatGPT sign-in", asyn
   await expect(dialog).toBeVisible();
 
   await signIn.click();
+  await expectCodexChatGptAuthMethod(page);
   await expect(dialog.getByText(/Codex sign-in is complete/)).toBeVisible();
   await expect(signIn).toBeHidden();
   await page.getByTestId("edit-agent-dialog-submit").click();
@@ -348,18 +381,7 @@ test("a signed-out Codex runtime offers one Sign in to Codex action", async ({
     referenceWorkspace: true,
     colony3Sidebar: true,
     acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_READY],
-    acpAuthMethods: {
-      codex: {
-        methods: [
-          {
-            id: "chatgpt-login",
-            name: "Sign in with ChatGPT",
-            type: "terminal",
-            command: ["codex", "login"],
-          },
-        ],
-      },
-    },
+    acpAuthMethods: { codex: CODEX_AUTH_METHODS },
     connectAcpRuntimeResult: { launched: true },
     managedAgents: [
       {
@@ -379,6 +401,7 @@ test("a signed-out Codex runtime offers one Sign in to Codex action", async ({
   const signIn = dialog.getByRole("button", { name: "Sign in to Codex" });
   await expect(signIn).toBeVisible();
   await signIn.click();
+  await expectCodexChatGptAuthMethod(page);
 
   const commands = await page.evaluate(
     () =>

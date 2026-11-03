@@ -59,22 +59,36 @@ pub(super) fn ensure_managed_codex_blocking(
     ) else {
         return Err(unsupported_step());
     };
-    if managed_codex_runtime_ready(&final_dir) {
+    ensure_managed_codex_with_node(
+        &final_dir,
+        platform,
+        super::managed_node::ensure_managed_node_runtime_blocking,
+        |staging_dir| {
+            let command = npm_ci_command(staging_dir);
+            super::run_install_command_with_retry("codex", &command, reporter)
+        },
+    )
+}
+
+fn ensure_managed_codex_with_node(
+    final_dir: &Path,
+    platform: &str,
+    ensure_node: impl FnOnce() -> Result<(), Box<InstallStepResult>>,
+    run_install: impl FnOnce(&Path) -> InstallStepResult,
+) -> Result<(), Box<InstallStepResult>> {
+    ensure_node()?;
+    if managed_codex_runtime_ready(final_dir) {
         return Ok(());
     }
-    super::managed_node::ensure_managed_node_runtime_blocking()?;
 
     let _guard = install_lock()
         .lock()
         .map_err(|_| failed_step("Codex install lock poisoned".to_string()))?;
-    if managed_codex_runtime_ready(&final_dir) {
+    if managed_codex_runtime_ready(final_dir) {
         return Ok(());
     }
 
-    provision_missing_runtime(&final_dir, platform, |staging_dir| {
-        let command = npm_ci_command(staging_dir);
-        super::run_install_command_with_retry("codex", &command, reporter)
-    })
+    provision_missing_runtime(final_dir, platform, run_install)
 }
 
 fn provision_missing_runtime(

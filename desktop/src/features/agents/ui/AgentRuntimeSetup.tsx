@@ -233,14 +233,19 @@ export function useAgentRuntimeSetup({
       if (authMethods.isError) throw authMethods.error;
       const methods = authMethods.data?.methods ?? [];
       const method =
-        methods.length === 1
-          ? methods[0]
-          : (methods.find((candidate) => candidate.type === "terminal") ??
-            methods.find((candidate) =>
-              /sign[ -]?in|log[ -]?in/i.test(
-                `${candidate.id} ${candidate.name} ${candidate.description ?? ""}`,
-              ),
-            ));
+        runtime.id === "codex"
+          ? (methods.find((candidate) => candidate.id === "chat-gpt") ??
+            methods.find(
+              (candidate) => candidate.id === "chat-gpt-device-code",
+            ))
+          : methods.length === 1
+            ? methods[0]
+            : (methods.find((candidate) => candidate.type === "terminal") ??
+              methods.find((candidate) =>
+                /sign[ -]?in|log[ -]?in/i.test(
+                  `${candidate.id} ${candidate.name} ${candidate.description ?? ""}`,
+                ),
+              ));
       if (!method) {
         throw new Error(
           `${runtime.label} did not offer a sign-in method. Restart Colony and try again.`,
