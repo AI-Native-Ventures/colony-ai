@@ -90,6 +90,15 @@ test("Scout switches from Claude Code to Codex and the DM header reports the run
   await expect(editDialog).toBeVisible();
   await page.locator("#edit-agent-runtime").click();
   await page.getByRole("menuitemradio", { name: /Codex/ }).click();
+  const modelSelect = page.locator("#edit-agent-model");
+  await expect(modelSelect).toBeEnabled();
+  await modelSelect.click();
+  const codexDefaultModel = page.getByRole("menuitemradio", {
+    name: "GPT-5.5",
+    exact: true,
+  });
+  await expect(codexDefaultModel).toBeVisible();
+  await codexDefaultModel.click();
   await expect(page.getByTestId("edit-agent-dialog-submit")).toBeEnabled();
   await page.getByTestId("edit-agent-dialog-submit").click();
 
