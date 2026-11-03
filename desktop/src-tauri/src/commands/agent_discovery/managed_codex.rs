@@ -62,9 +62,7 @@ pub(super) fn ensure_managed_codex_blocking(
     if managed_codex_runtime_ready(&final_dir) {
         return Ok(());
     }
-    if let Err(step) = super::managed_node::ensure_managed_node_runtime_blocking() {
-        return Err(step);
-    }
+    super::managed_node::ensure_managed_node_runtime_blocking()?;
 
     let _guard = install_lock()
         .lock()
@@ -132,7 +130,7 @@ fn provision_missing_runtime(
     }
 
     if final_dir.exists() {
-        std::fs::remove_dir_all(&final_dir)
+        std::fs::remove_dir_all(final_dir)
             .map_err(|error| failed_step(format!("replace incomplete Codex runtime: {error}")))?;
     }
     if let Err(error) = std::fs::rename(&staging_dir, final_dir) {
