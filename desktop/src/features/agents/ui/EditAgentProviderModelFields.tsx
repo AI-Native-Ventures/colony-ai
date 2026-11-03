@@ -10,6 +10,7 @@ import {
 } from "./agentConfigOptions";
 import { PersonaDropdownField } from "./PersonaDropdownField";
 import { PersonaProviderApiKeyField } from "./PersonaProviderApiKeyField";
+import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
 
 /**
  * LLM provider + provider API key + model block of the Edit Agent dialog.
@@ -22,6 +23,7 @@ import { PersonaProviderApiKeyField } from "./PersonaProviderApiKeyField";
  */
 export function EditAgentProviderModelFields({
   disabled,
+  runtimeSwitchPubkey,
   llmProviderFieldVisible,
   providerRequired,
   providerDropdownOptions,
@@ -48,6 +50,7 @@ export function EditAgentProviderModelFields({
   modelStatusMessage,
 }: {
   disabled: boolean;
+  runtimeSwitchPubkey: string;
   llmProviderFieldVisible: boolean;
   providerRequired: boolean;
   providerDropdownOptions: PersonaDropdownOption[];
@@ -75,6 +78,7 @@ export function EditAgentProviderModelFields({
 }) {
   return (
     <>
+      <AgentRuntimeSwitchNotice pubkey={runtimeSwitchPubkey} />
       {/* LLM provider */}
       {llmProviderFieldVisible ? (
         <div className="space-y-1.5">

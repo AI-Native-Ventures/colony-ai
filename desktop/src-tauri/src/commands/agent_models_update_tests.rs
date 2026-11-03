@@ -47,6 +47,49 @@ fn local_record() -> ManagedAgentRecord {
     // BackendKind deserializes as Local when the field is absent (the json! above).
 }
 
+#[test]
+fn runtime_change_requires_restart_through_update_predicate() {
+    let before = local_record();
+    let mut after = before.clone();
+    after.agent_command_override = Some("codex".to_string());
+
+    assert!(managed_agent_runtime_or_model_changed(
+        &before,
+        &after,
+        &[],
+        &crate::managed_agents::GlobalAgentConfig::default(),
+    ));
+}
+
+#[test]
+fn model_only_change_requires_restart_through_update_predicate() {
+    let mut before = local_record();
+    before.model = Some("claude-sonnet-4-5".to_string());
+    let mut after = before.clone();
+    after.model = Some("gpt-5.5".to_string());
+
+    assert!(managed_agent_runtime_or_model_changed(
+        &before,
+        &after,
+        &[],
+        &crate::managed_agents::GlobalAgentConfig::default(),
+    ));
+}
+
+#[test]
+fn unrelated_edit_does_not_trigger_runtime_restart() {
+    let before = local_record();
+    let mut after = before.clone();
+    after.name = "Renamed agent".to_string();
+
+    assert!(!managed_agent_runtime_or_model_changed(
+        &before,
+        &after,
+        &[],
+        &crate::managed_agents::GlobalAgentConfig::default(),
+    ));
+}
+
 // ── Production-entered seam tests (apply_record_field_updates) ──────────────
 //
 // These tests call `apply_record_field_updates`, the same function production

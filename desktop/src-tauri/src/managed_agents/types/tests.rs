@@ -790,6 +790,8 @@ fn summary_fixture(
         system_prompt: None,
         avatar_url: None,
         model: None,
+        running_runtime_id: None,
+        running_model: None,
         model_source: None,
         provider: None,
         persona_out_of_date: false,

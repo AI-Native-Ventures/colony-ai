@@ -502,10 +502,10 @@ fn definition_runtime_edit_changes_snapshot_for_materialized_record() {
     );
 }
 
-/// (c) A pin naming a KNOWN runtime no longer beats a changed definition
-/// runtime — apply_persona_snapshot clears the stale pin, so the badge fires.
+/// (c) An explicit pin naming a known runtime beats a changed definition
+/// runtime. Only an override-free record inherits persona runtime changes.
 #[test]
-fn known_runtime_pin_yields_to_definition_runtime_change() {
+fn known_runtime_pin_beats_definition_runtime_change() {
     let mut rec = record();
     rec.persona_id = Some("pers".into());
     rec.runtime = Some("goose".into()); // materialized runtime
@@ -513,10 +513,10 @@ fn known_runtime_pin_yields_to_definition_runtime_change() {
 
     let before = [persona("pers", Some("goose"), "prompt")];
     let after = [persona("pers", Some("claude"), "prompt")];
-    assert_ne!(
+    assert_eq!(
         snapshot(&rec, &before, &[], "wss://ws.example", &Default::default()),
         snapshot(&rec, &after, &[], "wss://ws.example", &Default::default()),
-        "stale known-runtime pin must not shadow a definition runtime edit"
+        "explicit runtime pin must keep the running command independent of persona defaults"
     );
 }
 

@@ -634,6 +634,12 @@ pub struct ManagedAgentSummary {
     pub system_prompt: Option<String>,
     pub avatar_url: Option<String>,
     pub model: Option<String>,
+    /// Runtime identity captured from the tracked process that is actually running.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub running_runtime_id: Option<String>,
+    /// Current ACP model, or the model captured in the process spawn snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub running_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_source: Option<super::effective_config::ConfigSource>,
     /// LLM inference provider, resolved the same way as `model`/`model_source`
