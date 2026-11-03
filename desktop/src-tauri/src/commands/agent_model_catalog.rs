@@ -346,7 +346,7 @@ fn readable_codex_name(name: &str) -> String {
 
 fn readable_model_name(model_id: &str) -> String {
     model_id
-        .split(|character| character == '-' || character == '_')
+        .split(['-', '_'])
         .filter(|part| !part.is_empty())
         .map(|part| {
             let mut characters = part.chars();

@@ -55,7 +55,7 @@ fn opencode_cli_marks_a_default_when_the_cli_marks_one() {
 #[test]
 fn claude_acp_current_models_are_combined_with_cli_aliases() {
     let raw: serde_json::Value = serde_json::from_str(CLAUDE_ACP_MODELS).expect("ACP fixture JSON");
-    let mut response = super::super::agent_models::normalize_agent_models(&raw, None);
+    let mut response = super::super::normalize_agent_models(&raw, None);
     merge_claude_code_aliases(&mut response);
 
     assert_eq!(
