@@ -2782,6 +2782,7 @@
 }
 
 .c3l-crumbs [data-current="true"] {
+  min-width: 0;
   overflow: hidden;
   color: hsl(var(--colony-fg));
   font-weight: 800;
@@ -2789,17 +2790,36 @@
 }
 
 .c3l-crumb-link {
+  min-width: 0;
+  max-width: min(20rem, 32vw);
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
+  text-overflow: ellipsis;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .c3l-crumb-link:hover {
   text-decoration: underline;
+}
+
+.c3l-crumbs-inline {
+  width: 100%;
+  max-width: 70rem;
+  margin: 0 auto;
+  padding: 1rem 2.5rem 0;
+}
+
+@media (max-width: 48rem) {
+  .c3l-crumbs-inline {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
 }
 
 /* ----------------------------------------------------------------- fields -- */

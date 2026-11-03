@@ -20,6 +20,7 @@ import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import type { OutreachListHead } from "@/features/discovery/businessRecordContract";
 import type { DiscoveryCampaignHead } from "@/features/discovery/businessRecordContract";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   buildDiscoveryCampaignLink,
   buildLeadLink,
@@ -131,17 +132,25 @@ function MentionIdentityGroup({
         {choices.map(({ key, title: label, detail, person }) => (
           <li key={key}>
             <button
+              aria-label={`Mention ${label}`}
               className="c3r-picker-item"
               onClick={() => onSelect(person)}
               onKeyDown={onKeyDown}
               type="button"
             >
               <span aria-hidden="true" className="c3r-mention-avatar">
-                {person.avatarUrl ? (
-                  <img alt="" src={person.avatarUrl} />
-                ) : (
-                  label.trim().slice(0, 1).toLocaleUpperCase() || "•"
-                )}
+                <ProfileAvatar
+                  avatarUrl={person.avatarUrl ?? null}
+                  className="h-full w-full"
+                  label={label}
+                  pubkey={person.pubkey}
+                  shape={
+                    person.isAgent || person.kind === "persona"
+                      ? "squircle"
+                      : "circle"
+                  }
+                  testId="mention-suggestion-avatar"
+                />
               </span>
               <span className="c3r-copy">
                 <span className="c3r-name">{label}</span>

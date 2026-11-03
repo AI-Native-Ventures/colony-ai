@@ -311,6 +311,7 @@ export function LeadDetailScreen({
   return (
     <main className="c3l-page" data-testid="w10-prospect-page">
       <LeadBreadcrumb
+        backLabel={routeBack.backLabel}
         name={name}
         onBack={routeBack.goBack}
         parent={routeBack.breadcrumbs}
@@ -492,6 +493,14 @@ export function LeadDetailScreen({
               >
                 <ListPlus aria-hidden="true" size={15} /> Add to outreach list
               </button>
+              {customerAccess.enabled && customerRecord ? (
+                <a
+                  className="c3l-btn c3l-btn-outline c3l-customer-record-action"
+                  href={`#/clients/record/${person.party.partyId}`}
+                >
+                  Customer record
+                </a>
+              ) : null}
               {whatsappContact && outreachChannelId ? (
                 <button
                   className="c3l-btn c3l-btn-outline c3l-contact-open-chat"
@@ -761,14 +770,6 @@ export function LeadDetailScreen({
                   >
                     Mark as lost
                   </button>
-                ) : null}
-                {customerAccess.enabled && customerRecord ? (
-                  <a
-                    className="c3l-btn c3l-btn-outline c3l-btn-block c3l-customer-record-action"
-                    href={`#/clients/record/${person.party.partyId}`}
-                  >
-                    Customer record
-                  </a>
                 ) : null}
               </div>
               {conversionError ? (
