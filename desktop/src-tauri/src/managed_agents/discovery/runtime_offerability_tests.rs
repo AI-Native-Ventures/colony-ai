@@ -1,7 +1,5 @@
-use super::{
-    known_acp_runtime_exact, managed_binary_runtime, runtime_can_auto_install,
-    runtime_command_candidates,
-};
+use super::super::managed_binary_runtime;
+use super::{known_acp_runtime_exact, runtime_can_auto_install, runtime_command_candidates};
 
 #[test]
 fn unavailable_catalog_rows_retain_declared_runtime_commands() {
