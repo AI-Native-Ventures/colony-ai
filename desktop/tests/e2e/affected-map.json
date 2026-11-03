@@ -46,6 +46,7 @@
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
       "harness-model-list.spec.ts",
+      "codex-adapter-provision.spec.ts",
       "w10-discovery-sales.spec.ts",
       "leads-table-polish.spec.ts",
       "back-to-origin.spec.ts",
@@ -147,6 +148,7 @@
         "edit-agent.spec.ts",
         "agent-runtime-switch.spec.ts",
         "harness-model-list.spec.ts",
+        "codex-adapter-provision.spec.ts",
         "edit-agent-run-on.spec.ts",
         "agent-access-warning.spec.ts",
         "agent-lifecycle-feedback.spec.ts",
@@ -505,6 +507,10 @@
     {
       "paths": ["desktop/tests/e2e/whatsapp-outreach-desk-narrow.spec.ts"],
       "specs": ["whatsapp-outreach-desk-narrow.spec.ts"]
+    },
+    {
+      "paths": ["desktop/tests/e2e/codex-adapter-provision.spec.ts"],
+      "specs": ["codex-adapter-provision.spec.ts"]
     }
   ]
 }
