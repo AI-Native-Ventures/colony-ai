@@ -38,8 +38,9 @@ const CODEX_MISSING = {
   install_instructions_url: "https://developers.openai.com/codex/cli/",
   can_auto_install: true,
   underlying_cli_path: "/private/tmp/colony-runtimes/codex/bin/codex",
-  node_required: true,
-  auth_status: { status: "logged_out" },
+  node_required: false,
+  auth_status: { status: "unknown" },
+  login_hint: "Run codex login to authenticate.",
   source: "builtin",
 };
 
@@ -48,6 +49,21 @@ const CODEX_READY = {
   availability: "available",
   command: "codex-acp",
   binary_path: "/private/tmp/colony-runtimes/codex/bin/codex-acp",
+  auth_status: { status: "logged_out" },
+};
+
+const CODEX_READY_SIGNED_IN = {
+  ...CODEX_READY,
+  auth_status: { status: "logged_in" },
+};
+
+const GEMINI_UNAVAILABLE = {
+  ...CODEX_MISSING,
+  id: "gemini-cli",
+  label: "Gemini CLI",
+  availability: "not_installed",
+  can_auto_install: false,
+  auth_status: { status: "unknown" },
 };
 
 const SCOUT_PERSONA = {
@@ -79,7 +95,7 @@ test("switching Scout to Codex provisions the missing adapter before saving", as
     referenceWorkspace: true,
     colony3Sidebar: true,
     acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING],
-    acpRuntimesCatalogAfterInstall: [CLAUDE_AVAILABLE, CODEX_READY],
+    acpRuntimesCatalogAfterInstall: [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
     installAcpRuntimeDelayMs: 900,
     installAcpRuntimeResult: { success: true, steps: [] },
     managedAgents: [
@@ -117,6 +133,148 @@ test("switching Scout to Codex provisions the missing adapter before saving", as
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
     "Codex",
   );
+});
+
+test("a signed-out Codex setup pauses the save and offers ChatGPT sign-in", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING],
+    acpRuntimesCatalogAfterInstallSequence: [
+      [CLAUDE_AVAILABLE, CODEX_READY],
+      [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
+    ],
+    acpAuthMethods: {
+      codex: {
+        methods: [
+          {
+            id: "chatgpt",
+            name: "ChatGPT",
+            type: "terminal",
+            command: ["codex", "login"],
+          },
+        ],
+      },
+    },
+    connectAcpRuntimeResult: { launched: true },
+    installAcpRuntimeResult: { success: true, steps: [] },
+    managedAgents: [
+      {
+        pubkey: REFERENCE_AGENTS.scout.pubkey,
+        name: "Scout",
+        personaId: SCOUT_PERSONA.id,
+        runtime: "claude",
+        model: "claude-sonnet-4-5",
+        status: "running",
+        channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
+      },
+    ],
+    personas: [SCOUT_PERSONA],
+  });
+
+  const { dialog } = await openScoutEditor(page);
+  await page.getByTestId("edit-agent-dialog-submit").click();
+  const signIn = dialog.getByRole("button", { name: "Sign in to Codex" });
+  await expect(signIn).toBeVisible();
+  await expect(dialog).toBeVisible();
+
+  await signIn.click();
+  await expect(dialog.getByText(/Codex sign-in is complete/)).toBeVisible();
+  await expect(signIn).toBeHidden();
+  await page.getByTestId("edit-agent-dialog-submit").click();
+  await expect(dialog).toBeHidden();
+
+  const commands = await page.evaluate(
+    () =>
+      (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+        .__BUZZ_E2E_COMMANDS__ ?? [],
+  );
+  expect(
+    commands.filter((command) => command === "install_acp_runtime"),
+  ).toHaveLength(1);
+  expect(
+    commands.filter((command) => command === "connect_acp_runtime"),
+  ).toHaveLength(1);
+  expect(
+    commands.filter((command) => command === "update_managed_agent"),
+  ).toHaveLength(1);
+});
+
+test("Codex setup failure shows the cause and one retry action", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING],
+    installAcpRuntimeResult: {
+      success: false,
+      steps: [
+        {
+          step: "codex",
+          command: "npm ci",
+          success: false,
+          stdout: "",
+          stderr: "registry request failed: connection reset",
+          exit_code: 1,
+        },
+      ],
+    },
+    managedAgents: [
+      {
+        pubkey: REFERENCE_AGENTS.scout.pubkey,
+        name: "Scout",
+        personaId: SCOUT_PERSONA.id,
+        runtime: "claude",
+        model: "claude-sonnet-4-5",
+        status: "running",
+        channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
+      },
+    ],
+    personas: [SCOUT_PERSONA],
+  });
+
+  const { dialog } = await openScoutEditor(page);
+  await page.getByTestId("edit-agent-dialog-submit").click();
+  await expect(
+    dialog.getByText(/registry request failed: connection reset/),
+  ).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Try again" })).toHaveCount(
+    1,
+  );
+});
+
+test("an unavailable harness Colony cannot start is not offered for agent selection", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    colony3Sidebar: true,
+    acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING, GEMINI_UNAVAILABLE],
+    managedAgents: [
+      {
+        pubkey: REFERENCE_AGENTS.scout.pubkey,
+        name: "Scout",
+        personaId: SCOUT_PERSONA.id,
+        runtime: "claude",
+        model: "claude-sonnet-4-5",
+        status: "running",
+        channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
+      },
+    ],
+    personas: [SCOUT_PERSONA],
+  });
+
+  await openScoutEditor(page);
+  await page.locator("#edit-agent-runtime").click();
+  await expect(
+    page.getByRole("menuitemradio", { name: /Codex/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitemradio", { name: /Gemini CLI/ }),
+  ).toHaveCount(0);
 });
 
 test("a signed-out Codex runtime offers one Sign in to Codex action", async ({

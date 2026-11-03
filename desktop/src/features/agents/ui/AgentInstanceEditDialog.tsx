@@ -5,10 +5,13 @@ import { toast } from "sonner";
 import {
   agentConfigSurfaceQueryKey,
   useAcpRuntimesQuery,
+  useAcpAuthMethodsQuery,
   useAgentConfigSurface,
   useBakedBuildEnvKeysQuery,
   usePersonasQuery,
   useStartManagedAgentMutation,
+  useInstallAcpRuntimeMutation,
+  useConnectAcpRuntimeMutation,
   useUpdateManagedAgentMutation,
 } from "@/features/agents/hooks";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
@@ -25,6 +28,7 @@ import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { setManagedAgentAutoRestart } from "@/shared/api/tauriManagedAgents";
+import { refreshAcpRuntimes } from "@/features/agents/acpRuntimesQuery";
 import { EffortPickerField } from "./EffortPickerField";
 import * as EditAgentAdvanced from "./EditAgentAdvancedFields";
 import {
@@ -37,6 +41,7 @@ import {
   getProviderApiKeyEnvVar,
   getPersonaProviderOptions,
   isMissingRequiredDropdownField,
+  isHarnessOfferable,
   NO_RUNTIME_DROPDOWN_VALUE,
   PERSONA_FIELD_CONTROL_CLASS,
   PERSONA_FIELD_SHELL_CLASS,
@@ -118,6 +123,8 @@ export function AgentInstanceEditDialog({
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const startMutation = useStartManagedAgentMutation();
+  const installRuntimeMutation = useInstallAcpRuntimeMutation();
+  const connectRuntimeMutation = useConnectAcpRuntimeMutation();
   const saveWithRuntimeSwitch = useAgentRuntimeSwitchSave(
     agent,
     updateMutation.mutateAsync,
@@ -130,6 +137,17 @@ export function AgentInstanceEditDialog({
   // Surfaces a standalone-setter failure (auto-restart or effort) that React
   // Query does not track — keeps the dialog open so the user can retry Save.
   const [setterError, setSetterError] = React.useState<Error | null>(null);
+  const [runtimeSetupProgress, setRuntimeSetupProgress] = React.useState(false);
+  const [runtimeSetupMessage, setRuntimeSetupMessage] = React.useState("");
+  const [runtimeSetupError, setRuntimeSetupError] =
+    React.useState<Error | null>(null);
+  const [runtimeAuthProgress, setRuntimeAuthProgress] = React.useState(false);
+  const [runtimeAuthWaitingForReturn, setRuntimeAuthWaitingForReturn] =
+    React.useState(false);
+  const [runtimeAuthMessage, setRuntimeAuthMessage] = React.useState("");
+  const [runtimeAuthError, setRuntimeAuthError] = React.useState<Error | null>(
+    null,
+  );
   const runtimesQuery = useAcpRuntimesQuery({ enabled: open });
   const configSurfaceQuery = useAgentConfigSurface(open ? agent.pubkey : null);
   const runtimes = runtimesQuery.data ?? [];
@@ -189,6 +207,9 @@ export function AgentInstanceEditDialog({
 
   // Seed the runtime selector from the catalog when the dialog opens.
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState("custom");
+  const runtimeAuthMethodsQuery = useAcpAuthMethodsQuery(selectedRuntimeId, {
+    enabled: false,
+  });
 
   // Tracks whether the user has made an in-dialog runtime selection.
   const runtimeTouched = React.useRef(false);
@@ -216,6 +237,13 @@ export function AgentInstanceEditDialog({
       setEffortLevel(null);
       effortTouched.current = false;
       setSetterError(null);
+      setRuntimeSetupProgress(false);
+      setRuntimeSetupMessage("");
+      setRuntimeSetupError(null);
+      setRuntimeAuthProgress(false);
+      setRuntimeAuthWaitingForReturn(false);
+      setRuntimeAuthMessage("");
+      setRuntimeAuthError(null);
       setRespondTo(agent.respondTo);
       setRespondToAllowlist(agent.respondToAllowlist);
       setAvatarUrl(agent.avatarUrl ?? "");
@@ -245,14 +273,60 @@ export function AgentInstanceEditDialog({
 
   // Build the sorted runtime catalog for the dropdown.
   const sortedRuntimes = React.useMemo(
-    () => sortPersonaRuntimes(runtimes),
-    [runtimes],
+    () =>
+      sortPersonaRuntimes(
+        runtimes.filter(
+          (runtime) =>
+            isHarnessOfferable(runtime) ||
+            runtime.id === selectedRuntimeId ||
+            runtime.command?.trim() === agent.agentCommand.trim(),
+        ),
+      ),
+    [agent.agentCommand, runtimes, selectedRuntimeId],
   );
 
   const selectedRuntime = React.useMemo(
     () => runtimes.find((r) => r.id === selectedRuntimeId),
     [runtimes, selectedRuntimeId],
   );
+
+  React.useEffect(() => {
+    if (!open || !runtimeAuthWaitingForReturn) return;
+
+    let refreshInFlight = false;
+    const refreshAfterReturning = async () => {
+      if (refreshInFlight || document.visibilityState === "hidden") return;
+      refreshInFlight = true;
+      try {
+        await refreshAcpRuntimes(queryClient);
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAfterReturning();
+      }
+    };
+    window.addEventListener("focus", onVisibilityChange);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onVisibilityChange);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [open, runtimeAuthWaitingForReturn, queryClient]);
+
+  React.useEffect(() => {
+    if (
+      runtimeAuthWaitingForReturn &&
+      selectedRuntime?.authStatus.status === "logged_in"
+    ) {
+      setRuntimeAuthWaitingForReturn(false);
+      setRuntimeAuthMessage(
+        `${selectedRuntime.label} sign-in is complete. Save changes to apply this harness.`,
+      );
+    }
+  }, [runtimeAuthWaitingForReturn, selectedRuntime]);
 
   const runtimeDropdownValue = selectedRuntimeId || NO_RUNTIME_DROPDOWN_VALUE;
 
@@ -550,7 +624,11 @@ export function AgentInstanceEditDialog({
     // provider/model logic treats the new runtime as effective, so an inherited
     // Claude agent could persist a Databricks provider while still running
     // Claude. Keep inheriting in that case.
-    if (isCustomCommand || nextRuntime?.command) {
+    if (
+      isCustomCommand ||
+      nextRuntime?.command ||
+      nextRuntime?.canAutoInstall
+    ) {
       setInheritHarness(false);
     }
 
@@ -650,9 +728,80 @@ export function AgentInstanceEditDialog({
   async function handleSubmit() {
     setIsSaving(true);
     setSetterError(null);
+    setRuntimeSetupError(null);
+    setRuntimeSetupMessage("");
+    let runtimeSetupAttempted = false;
     try {
+      let submittedAgentCommand = agentCommand;
+      let submittedAgentArgs = agentArgs;
+      let submittedInheritHarness = inheritHarness;
+      if (selectedRuntime?.availability !== "available") {
+        if (!selectedRuntime?.canAutoInstall) {
+          throw new Error(
+            "Colony cannot set up this harness on this platform. Choose an available harness.",
+          );
+        }
+        runtimeSetupAttempted = true;
+        setRuntimeSetupProgress(true);
+        setRuntimeAuthError(null);
+        setRuntimeAuthMessage("");
+        const install = await installRuntimeMutation.mutateAsync(
+          selectedRuntime.id,
+        );
+        if (!install.success) {
+          const detail = install.steps
+            .filter((step) => !step.success)
+            .map((step) => step.stderr.trim() || step.hint || step.command)
+            .filter(Boolean)
+            .join("\n");
+          throw new Error(
+            detail
+              ? `${selectedRuntime.label} setup failed: ${detail}`
+              : `${selectedRuntime.label} setup failed without an install error. Retry setup.`,
+          );
+        }
+        const refreshed = await refreshAcpRuntimes(queryClient);
+        const installedRuntime = refreshed?.find(
+          (runtime) => runtime.id === selectedRuntime.id,
+        );
+        if (
+          installedRuntime?.availability !== "available" ||
+          !installedRuntime.command
+        ) {
+          const availability = installedRuntime?.availability ?? "unknown";
+          throw new Error(
+            `${selectedRuntime.label} setup finished, but Colony still reports it as ${availability}. Retry setup or choose another harness.`,
+          );
+        }
+        submittedAgentCommand = installedRuntime.command;
+        submittedAgentArgs = installedRuntime.defaultArgs.join(",");
+        submittedInheritHarness = false;
+        setAgentCommand(submittedAgentCommand);
+        setAgentArgs(submittedAgentArgs);
+        setInheritHarness(false);
+        setRuntimeSetupProgress(false);
+        if (
+          installedRuntime.loginHint &&
+          installedRuntime.authStatus.status !== "logged_in"
+        ) {
+          setRuntimeSetupMessage(
+            `${installedRuntime.label} is ready. Sign in before saving the switch.`,
+          );
+          return;
+        }
+      }
+      if (
+        selectedRuntime?.availability === "available" &&
+        selectedRuntime.loginHint &&
+        selectedRuntime.authStatus.status !== "logged_in"
+      ) {
+        setRuntimeSetupMessage(
+          `Sign in to ${selectedRuntime.label} before saving the switch.`,
+        );
+        return;
+      }
       const parsedParallelism = Number.parseInt(parallelism, 10);
-      const parsedArgs = agentArgs
+      const parsedArgs = submittedAgentArgs
         .split(",")
         .map((v) => v.trim())
         .filter((v) => v.length > 0);
@@ -672,8 +821,8 @@ export function AgentInstanceEditDialog({
       // sentinel/pin/no-op contract, including the inherit→pin transition where
       // the prefilled command equals the original but must still be pinned.
       const agentCommandUpdate = resolveAgentCommandUpdate({
-        inheritHarness,
-        agentCommand,
+        inheritHarness: submittedInheritHarness,
+        agentCommand: submittedAgentCommand,
         originalAgentCommand: agent.agentCommand,
         agentCommandOverride: agent.agentCommandOverride ?? null,
       });
@@ -712,7 +861,7 @@ export function AgentInstanceEditDialog({
         // Signal deliberate pins so Custom and persona-matching commands stay
         // pinned. Omit this for inheritance and name-only edits.
         harnessOverride:
-          agentCommandUpdate != null ? !inheritHarness : undefined,
+          agentCommandUpdate != null ? !submittedInheritHarness : undefined,
         agentArgs:
           parsedArgs.join(",") !== agent.agentArgs.join(",")
             ? parsedArgs
@@ -838,9 +987,62 @@ export function AgentInstanceEditDialog({
         });
       }
     } catch (e) {
-      setSetterError(e instanceof Error ? e : new Error("Failed to save"));
+      const error = e instanceof Error ? e : new Error("Failed to save");
+      if (runtimeSetupAttempted) {
+        setRuntimeSetupError(error);
+      } else {
+        setSetterError(error);
+      }
     } finally {
+      setRuntimeSetupProgress(false);
       setIsSaving(false);
+    }
+  }
+
+  async function signInToSelectedRuntime() {
+    const runtime = selectedRuntime;
+    if (!runtime?.loginHint) return;
+    setRuntimeAuthProgress(true);
+    setRuntimeAuthError(null);
+    setRuntimeAuthMessage("");
+    try {
+      const authMethods = await runtimeAuthMethodsQuery.refetch();
+      if (authMethods.isError) {
+        throw authMethods.error;
+      }
+      const methods = authMethods.data?.methods ?? [];
+      const method =
+        methods.length === 1
+          ? methods[0]
+          : (methods.find((candidate) => candidate.type === "terminal") ??
+            methods.find((candidate) =>
+              /sign[ -]?in|log[ -]?in/i.test(
+                `${candidate.id} ${candidate.name} ${candidate.description ?? ""}`,
+              ),
+            ));
+      if (!method) {
+        throw new Error(
+          `${runtime.label} did not offer a sign-in method. Restart Colony and try again.`,
+        );
+      }
+      setRuntimeAuthWaitingForReturn(true);
+      await connectRuntimeMutation.mutateAsync({
+        runtimeId: runtime.id,
+        methodId: method.id,
+      });
+      setRuntimeAuthMessage(
+        `Complete the ${runtime.label} sign-in prompt, then return to Colony. Colony checks again when you return.`,
+      );
+      await refreshAcpRuntimes(queryClient);
+    } catch (e) {
+      setRuntimeAuthWaitingForReturn(false);
+      setRuntimeAuthError(
+        e instanceof Error
+          ? e
+          : new Error(`${runtime.label} sign-in could not start.`),
+      );
+    } finally {
+      setRuntimeAuthProgress(false);
     }
   }
 
@@ -930,6 +1132,8 @@ export function AgentInstanceEditDialog({
   // setterError takes precedence — the update already committed when it fires.
   const displayError =
     setterError ??
+    runtimeSetupError ??
+    runtimeAuthError ??
     (updateMutation.error instanceof Error ? updateMutation.error : null);
 
   return (
@@ -957,7 +1161,13 @@ export function AgentInstanceEditDialog({
               onClick={() => void handleSubmit()}
               type="button"
             >
-              {isSaving ? "Saving..." : "Save changes"}
+              {isSaving
+                ? runtimeSetupProgress
+                  ? `Setting up ${selectedRuntime?.label ?? "harness"}...`
+                  : "Saving..."
+                : runtimeSetupError
+                  ? "Try again"
+                  : "Save changes"}
             </Button>
           </div>
         }
@@ -1015,6 +1225,47 @@ export function AgentInstanceEditDialog({
                 placeholder="Choose a provider"
                 value={runtimeDropdownValue}
               />
+              {runtimeSetupProgress ? (
+                <p
+                  aria-live="polite"
+                  className="text-xs text-muted-foreground"
+                  data-testid="runtime-setup-progress"
+                  role="status"
+                >
+                  Colony is setting up {selectedRuntime?.label ?? "the harness"}
+                  .
+                </p>
+              ) : null}
+              {runtimeSetupMessage ? (
+                <p aria-live="polite" className="text-xs" role="status">
+                  {runtimeSetupMessage}
+                </p>
+              ) : null}
+              {selectedRuntime?.loginHint &&
+              selectedRuntime.availability === "available" &&
+              selectedRuntime.authStatus.status !== "logged_in" ? (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    {selectedRuntime.label} needs an account sign-in before it
+                    can answer.
+                  </p>
+                  <Button
+                    disabled={runtimeAuthProgress || isSaving}
+                    onClick={() => void signInToSelectedRuntime()}
+                    type="button"
+                    variant="outline"
+                  >
+                    {runtimeAuthProgress
+                      ? `Opening ${selectedRuntime.label} sign-in...`
+                      : `Sign in to ${selectedRuntime.label}`}
+                  </Button>
+                  {runtimeAuthMessage ? (
+                    <p aria-live="polite" className="text-xs" role="status">
+                      {runtimeAuthMessage}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             {isColonyFreeAi ? (
               <AgentCreditsModelField

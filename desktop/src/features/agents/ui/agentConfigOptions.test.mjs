@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   getDefaultPersonaRuntime,
+  buildPersonaRuntimeDropdownOptions,
+  isHarnessOfferable,
   getPersonaModelOptions,
   getPersonaProviderOptions,
   getProviderApiKeyLabel,
@@ -21,8 +23,37 @@ function makeRuntime(id, availability = "available") {
     defaultArgs: [],
     mcpCommand: null,
     availability,
+    canAutoInstall: false,
   };
 }
+
+test("runtime selectors offer ready or Colony-installable harnesses and keep the current choice", () => {
+  const codexMissing = {
+    ...makeRuntime("codex", "adapter_missing"),
+    canAutoInstall: true,
+  };
+  const unsupported = makeRuntime("gemini", "not_installed");
+  const currentUnsupported = makeRuntime("legacy-custom", "not_installed");
+  assert.equal(isHarnessOfferable(codexMissing), true);
+  assert.equal(isHarnessOfferable(unsupported), false);
+
+  const { runtimeDropdownOptions } = buildPersonaRuntimeDropdownOptions({
+    isCreateMode: false,
+    runtime: "legacy-custom",
+    runtimes: [codexMissing, unsupported, currentUnsupported],
+    runtimesLoading: false,
+  });
+  const ids = runtimeDropdownOptions.map((option) => option.value);
+  assert.ok(ids.includes("codex"), "Colony-provisionable Codex stays offered");
+  assert.ok(
+    ids.includes("legacy-custom"),
+    "the saved choice keeps a recovery path",
+  );
+  assert.ok(
+    !ids.includes("gemini"),
+    "unavailable unprovisionable harnesses are hidden",
+  );
+});
 
 // ── getPersonaProviderOptions — hideProviderIds ───────────────────────────────
 

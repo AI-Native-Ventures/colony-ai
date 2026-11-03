@@ -12,11 +12,8 @@ fn test_npm_eacces_hint_guidance_mentions_colony_private_dir() {
 #[test]
 fn test_rewrite_npm_install_uses_private_prefix() {
     assert_eq!(
-        rewrite_npm_global_install(
-            "npm install -g @agentclientprotocol/codex-acp",
-            "'/tmp/Buzz Node'"
-        ),
-        "npm install --global --prefix '/tmp/Buzz Node' @agentclientprotocol/codex-acp"
+        rewrite_npm_global_install("npm install -g @example/harness-acp", "'/tmp/Buzz Node'"),
+        "npm install --global --prefix '/tmp/Buzz Node' @example/harness-acp"
     );
 }
 
@@ -31,8 +28,8 @@ fn test_rewrite_npm_i_uses_private_prefix() {
 #[test]
 fn test_rewrite_npm_uninstall_uses_private_prefix() {
     assert_eq!(
-        rewrite_npm_global_install("npm uninstall -g @zed-industries/codex-acp", "'/tmp/buzz'"),
-        "npm uninstall --global --prefix '/tmp/buzz' @zed-industries/codex-acp"
+        rewrite_npm_global_install("npm uninstall -g @example/harness-acp", "'/tmp/buzz'"),
+        "npm uninstall --global --prefix '/tmp/buzz' @example/harness-acp"
     );
 }
 

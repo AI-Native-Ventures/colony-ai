@@ -3,9 +3,9 @@ use std::process::Command;
 use std::time::Duration;
 
 use crate::managed_agents::{
-    buzz_managed_command_path, buzz_managed_node_bin_dir, buzz_managed_npm_bin_dir,
-    AcpAvailabilityStatus, AcpRuntimeCatalogEntry, AuthStatus, CommandAvailabilityInfo,
-    HarnessSource,
+    buzz_managed_codex_bin_dir, buzz_managed_command_path, buzz_managed_node_bin_dir,
+    buzz_managed_npm_bin_dir, AcpAvailabilityStatus, AcpRuntimeCatalogEntry, AuthStatus,
+    CommandAvailabilityInfo, HarnessSource,
 };
 mod auth_status_cache;
 mod install_locations;
@@ -50,6 +50,9 @@ fn common_binary_paths() -> Vec<PathBuf> {
     }
     if let Some(managed_bin) = buzz_managed_npm_bin_dir() {
         paths.insert(0, managed_bin);
+    }
+    if let Some(codex_bin) = buzz_managed_codex_bin_dir() {
+        paths.insert(0, codex_bin);
     }
     if let Some(home) = dirs::home_dir() {
         paths.extend(user_binary_paths(&home));
@@ -1048,7 +1051,8 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
             install_hint,
             install_instructions_url: install_instructions_url.to_string(),
             can_auto_install,
-            requires_external_cli: runtime.underlying_cli.is_some(),
+            requires_external_cli: runtime.underlying_cli.is_some()
+                && !super::managed_binary_runtime(runtime.id),
             underlying_cli_path,
             node_required,
             // Filled in by the auth-probe phase in full catalog discovery.

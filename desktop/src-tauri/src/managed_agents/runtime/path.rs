@@ -121,6 +121,9 @@ pub(in crate::managed_agents) fn build_augmented_path(
     // This keeps tests/utility callers that intentionally pass no local context
     // from manufacturing a PATH out of ambient platform dirs alone.
     if has_local_context {
+        if let Some(managed_codex_bin) = crate::managed_agents::buzz_managed_codex_bin_dir() {
+            managed.push(managed_codex_bin);
+        }
         if let Some(managed_npm_bin) = crate::managed_agents::buzz_managed_npm_bin_dir() {
             managed.push(managed_npm_bin);
         }
@@ -214,7 +217,13 @@ mod tests {
             None,
         )
         .unwrap();
+        let codex = crate::managed_agents::buzz_managed_codex_bin_dir().unwrap();
         let managed = crate::managed_agents::buzz_managed_npm_bin_dir().unwrap();
+        assert!(
+            result.find(&codex.to_string_lossy().to_string()).unwrap()
+                < result.find(&managed.to_string_lossy().to_string()).unwrap(),
+            "Colony's pinned Codex runtime must precede external npm bins: {result}"
+        );
         assert!(
             result.find(&managed.to_string_lossy().to_string()).unwrap()
                 < result.find("/home/agent/.volta/bin").unwrap()
