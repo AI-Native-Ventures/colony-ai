@@ -10,13 +10,12 @@
 //! `failed to spawn shell: Access is denied. (os error 5)`, and the block is
 //! sticky: Defender's "Allow" button does not clear it.
 //!
-//! [`windows_install_command!`] emits the two-step form instead — download the
-//! vendor script to a file, then execute the file — which does not match that
-//! signature. All three runtimes use it, not only the one observed failing:
-//! Goose and Claude escaped by scoring under the classifier threshold, which is
-//! luck rather than design, and the threshold is not ours to depend on.
+//! [`windows_install_command!`] emits the two-step form instead: download the
+//! vendor script to a file, then execute the file. Every runtime that uses a
+//! vendor Windows installer shares this command shape. Codex uses Colony's
+//! private runtime and does not use a machine-wide installer.
 //!
-//! # Why one macro instead of three literals
+//! # Why one macro instead of per-runtime literals
 //!
 //! The catalog needs `&'static str`, so the commands must be built at compile
 //! time from literals. Emitting them from a single macro means the security
@@ -83,18 +82,16 @@ macro_rules! windows_install_command {
 mod tests {
     use crate::managed_agents::known_acp_runtime_exact;
 
-    /// Every runtime that ships a Windows install command. `cli_install_commands_windows`
-    /// is read directly rather than through `cli_install_commands_for_os()` so these
-    /// assertions cover the Windows strings while running on the Linux CI host.
+    /// Every catalog runtime that ships a vendor Windows install command.
+    /// Read the Windows strings directly so these assertions also run on Linux CI.
     fn windows_install_commands() -> Vec<(&'static str, &'static str)> {
-        ["goose", "claude", "codex"]
-            .into_iter()
-            .flat_map(|id| {
-                known_acp_runtime_exact(id)
-                    .expect("runtime must exist in the catalog")
+        super::super::KNOWN_ACP_RUNTIMES
+            .iter()
+            .flat_map(|runtime| {
+                runtime
                     .cli_install_commands_windows
                     .iter()
-                    .map(move |command| (id, *command))
+                    .map(move |command| (runtime.id, *command))
             })
             .collect()
     }
@@ -117,15 +114,16 @@ mod tests {
         }
     }
 
-    /// All three runtimes must be hardened, not just the one observed failing.
-    /// Goose and Claude escaped only by scoring under the classifier threshold.
+    /// Keep the vendor installer set explicit. Colony provisions Codex privately.
     #[test]
     fn test_every_windows_install_command_downloads_to_a_file_then_executes_it() {
         let commands = windows_install_commands();
+        let mut runtime_ids = commands.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        runtime_ids.sort_unstable();
         assert_eq!(
-            commands.len(),
-            3,
-            "expected exactly one Windows install command for each of goose, claude, codex"
+            runtime_ids,
+            vec!["claude", "goose"],
+            "Goose and Claude use vendor Windows installers; Colony provisions Codex privately"
         );
         for (id, command) in commands {
             assert!(
@@ -202,8 +200,7 @@ mod tests {
         );
     }
 
-    /// The vendor URLs are the payload; pin them so a refactor of the shared
-    /// shape cannot silently retarget a download.
+    /// Pin vendor URLs so a refactor cannot silently retarget a download.
     #[test]
     fn test_windows_install_commands_target_the_official_vendor_urls() {
         for (id, expected) in [
@@ -212,7 +209,6 @@ mod tests {
                 "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1",
             ),
             ("claude", "https://claude.ai/install.ps1"),
-            ("codex", "https://chatgpt.com/codex/install.ps1"),
         ] {
             let runtime = known_acp_runtime_exact(id).unwrap();
             let command = runtime.cli_install_commands_windows[0];
