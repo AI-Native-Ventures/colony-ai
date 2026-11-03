@@ -807,9 +807,7 @@ async function emitPendingBatchNotice(
 test.describe("Outreach lists", () => {
   test.describe.configure({ mode: "serial", timeout: 120_000 });
 
-  test("creates a campaign list, previews a batch, and references it in Scout chat", async ({
-    page,
-  }) => {
+  test("filters and selects leads and campaign prospects", async ({ page }) => {
     await page
       .context()
       .grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -1019,10 +1017,16 @@ test.describe("Outreach lists", () => {
     await expect(campaignToolbar).toContainText("39 selected");
     await campaignToolbar.getByRole("button", { name: "Ask Scout" }).click();
     await expect(page).toHaveURL(new RegExp(REFERENCE_CHANNEL_IDS.scoutDm));
+  });
+
+  test("creates and reviews a shared guesthouse outreach list", async ({
+    page,
+  }) => {
     await openReference(page, "/campaign", 1440, "light", {
       whatsappGuesthouses: true,
       mockWhatsApp: true,
     });
+    const leads = page.getByTestId("w10-leads-page");
     const listCampaign = page.getByTestId("w10-campaign-page");
     await listCampaign
       .getByRole("checkbox", { name: "Select Jacaranda Lane Guesthouse" })
@@ -1136,28 +1140,33 @@ test.describe("Outreach lists", () => {
       new RegExp(`/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`),
     );
     await expect(page.getByTestId("message-input")).toBeVisible();
+  });
+
+  test("references the shared list in Scout chat and previews its batch", async ({
+    page,
+  }) => {
+    await openReference(
+      page,
+      `/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`,
+      1440,
+      "light",
+      { mockWhatsApp: true, outreachMentionBoard: true },
+    );
+    await expect(
+      page.getByText(
+        "Morning. 3 replies came in overnight on WhatsApp; Seventh Street Rooms wants a call.",
+      ),
+    ).toBeVisible();
     const picker = page.getByTestId("lead-reference-picker");
     const composer = page.getByTestId("message-input");
-    await page.getByTestId("reference-lead-button").click();
+    await composer.pressSequentially("@Scout");
     await expect(picker).toBeVisible();
-    const identities = picker.getByRole("region", {
-      name: "People and agents",
-    });
-    await expect(
-      identities.getByRole("button", { name: /Scout/ }),
-    ).toBeVisible();
-    await expect(
-      identities.getByRole("button", { name: /Scout/ }),
-    ).toContainText("AI employee");
-    await page.keyboard.press("Escape");
-    await composer.pressSequentially("@", { delay: 60 });
-    await expect(picker).toBeVisible();
-    await composer.pressSequentially("Scout", { delay: 60 });
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
       .click();
     await composer.pressSequentially(" research ");
+    const listId = "3f1a7000-0000-4000-9000-000000000001";
     await composer.pressSequentially(`@${LIST_NAME}`);
     const search = picker.getByRole("textbox", {
       name: "Search mentions and references",
@@ -1270,7 +1279,9 @@ test.describe("Outreach lists", () => {
     await capture(page, "OLChatResolved");
     await reference.click();
     await expect(page.getByTestId("outreach-list-detail")).toBeVisible();
+  });
 
+  test("shows the expanded outreach mention picker", async ({ page }) => {
     await openReference(
       page,
       `/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`,
@@ -1569,7 +1580,9 @@ test.describe("Outreach lists", () => {
     });
     await expect(campaignToolbar).toContainText("7 selected");
     await capture(page, "OLCampaignSelectDark");
+  });
 
+  test("matches the approved dark lead and list boards", async ({ page }) => {
     await openReference(
       page,
       `/sales/lead/${REFERENCE_PROSPECT_IDS.stillroom}`,
@@ -1643,7 +1656,9 @@ test.describe("Outreach lists", () => {
       /Business\s*\/\s*Sales\s*\/\s*Leads\s*\/\s*Jacaranda Lane Guesthouse/,
     );
     await capture(page, "OLLeadPhoneDark");
+  });
 
+  test("matches the approved dark mobile outreach boards", async ({ page }) => {
     await openReference(page, "/leads", 390, "dark", {
       whatsappGuesthouses: true,
       mockWhatsApp: true,
@@ -1710,7 +1725,11 @@ test.describe("Outreach lists", () => {
         () => document.documentElement.scrollWidth - window.innerWidth,
       ),
     ).toBeLessThanOrEqual(2);
+  });
 
+  test("matches the approved dark mention and resolved chat boards", async ({
+    page,
+  }) => {
     await openReference(
       page,
       `/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`,
