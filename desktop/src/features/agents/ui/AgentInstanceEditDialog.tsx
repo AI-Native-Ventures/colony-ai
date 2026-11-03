@@ -82,6 +82,7 @@ import {
   usePersonaModelDiscovery,
 } from "./usePersonaModelDiscovery";
 import { EditAgentProviderModelFields } from "./EditAgentProviderModelFields";
+import { RefreshModelListButton } from "./RefreshModelListButton";
 import {
   getBakedModelInheritLabel,
   getBakedProviderInheritLabel,
@@ -443,6 +444,7 @@ export function AgentInstanceEditDialog({
     discoveredModelOptions,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
+    refreshModelDiscovery,
   } = usePersonaModelDiscovery({
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
@@ -733,6 +735,12 @@ export function AgentInstanceEditDialog({
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
               : undefined,
+        modelOverride:
+          linkedPersona != null &&
+          !isColonyFreeAi &&
+          model.trim() !== (agent.model ?? "")
+            ? model.trim() || null
+            : undefined,
         // Persist by provider capability: capable writes, locked clears,
         // unknown omits. Field visibility remains UX-only.
         provider:
@@ -1011,12 +1019,20 @@ export function AgentInstanceEditDialog({
             </div>
             {isColonyFreeAi ? (
               <div className="space-y-2 rounded-xl border border-border p-3">
-                <label
-                  className="text-sm font-semibold text-foreground"
-                  htmlFor="agent-free-model-select"
-                >
-                  Colony free AI
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    className="text-sm font-semibold text-foreground"
+                    htmlFor="agent-free-model-select"
+                  >
+                    Colony free AI
+                  </label>
+                  <RefreshModelListButton
+                    disabled={isSaving}
+                    onClick={() => void freeModelsQuery.refetch()}
+                    refreshing={freeModelsQuery.isFetching}
+                    testId="refresh-agent-models"
+                  />
+                </div>
                 {freeModelsQuery.isPending ? (
                   <p className="text-xs text-muted-foreground">
                     Loading available free models…
@@ -1097,6 +1113,8 @@ export function AgentInstanceEditDialog({
                 modelDropdownOptions={modelDropdownOptions}
                 modelSelectValue={modelSelectValue}
                 onModelDropdownChange={handleModelDropdownChange}
+                onRefreshModels={refreshModelDiscovery}
+                refreshingModels={modelDiscoveryLoading}
                 showCustomModelInput={showCustomModelInput}
                 model={model}
                 onModelChange={setModel}

@@ -447,6 +447,7 @@ mod tests {
             description: None,
             system_prompt: String::new(),
             runtime: None,
+            model_override: None,
             model: None,
             provider: None,
             name_pool: Vec::new(),

@@ -109,6 +109,7 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${appPort}`,
     channel: "chrome",
+    headless: true,
     launchOptions: {
       args: ["--use-mock-keychain", "--password-store=basic"],
     },
@@ -227,6 +228,7 @@ export default defineConfig({
         "**/agent-readiness-screenshots.spec.ts",
         "**/edit-agent.spec.ts",
         "**/agent-runtime-switch.spec.ts",
+        "**/harness-model-list.spec.ts",
         "**/doctor-cta-screenshots.spec.ts",
         "**/pubkey-display-screenshots.spec.ts",
         "**/file-attachment.spec.ts",

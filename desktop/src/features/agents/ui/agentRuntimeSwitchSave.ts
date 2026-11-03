@@ -25,6 +25,7 @@ export function useAgentRuntimeSwitchSave<T>(
       input.agentCommand !== undefined ||
       input.agentArgs !== undefined ||
       input.model !== undefined ||
+      input.modelOverride !== undefined ||
       input.provider !== undefined;
     const generation =
       switchRequested &&

@@ -97,6 +97,31 @@ fn apply_effort_update(
     Ok(())
 }
 
+/// Apply an explicit linked-agent model override, or restore persona inheritance.
+/// The linked persona remains the source of provider and all other defaults.
+pub(crate) fn apply_linked_model_override(
+    record: &mut ManagedAgentRecord,
+    model_override: Option<Option<String>>,
+) -> Result<(), String> {
+    if record.persona_id.is_none() {
+        return if model_override.is_some() {
+            Err("per-agent model overrides require a linked agent".to_string())
+        } else {
+            Ok(())
+        };
+    }
+
+    if let Some(model_override) = model_override {
+        record.model_override = model_override
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    if record.provider.as_deref() == Some("colony-credits") {
+        record.model_override = None;
+    }
+    Ok(())
+}
+
 /// Proof token returned by `apply_record_field_updates`. Zero-size and
 /// `#[must_use]`; consumed by `stamp_record_updated_at`, so removing the
 /// `apply_record_field_updates` call from `update_managed_agent` leaves
@@ -207,6 +232,7 @@ pub async fn update_managed_agent(
             || input.agent_command.is_some()
             || input.agent_args.is_some()
             || input.model.is_some()
+            || input.model_override.is_some()
             || input.provider.is_some();
         let personas = if config_update_requested {
             load_personas(&app)?
@@ -255,6 +281,7 @@ pub async fn update_managed_agent(
             input.provider,
             input.system_prompt,
         )?;
+        apply_linked_model_override(record, input.model_override)?;
         if let Some(parallelism) = input.parallelism {
             record.parallelism = parallelism;
         }

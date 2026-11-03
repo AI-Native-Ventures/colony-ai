@@ -1711,7 +1711,12 @@ type RawManagedAgent = {
   model: string | null;
   running_runtime_id?: string | null;
   running_model?: string | null;
-  model_source?: "definition" | "global" | "instance_legacy" | null;
+  model_source?:
+    | "definition"
+    | "global"
+    | "instance_override"
+    | "instance_legacy"
+    | null;
   provider?: string | null;
   env_vars?: Record<string, string>;
   status: "running" | "stopped" | "deployed" | "not_deployed";
@@ -2416,6 +2421,11 @@ declare global {
     /** Count of `get_event` invocations for the current defer-target ID since
      *  the last time `__BUZZ_E2E_DEFER_GET_EVENT__` was set. */
     __BUZZ_E2E_GET_EVENT_CALL_COUNT__?: number;
+    /** Model discovery requests issued by the mock bridge, including explicit refreshes. */
+    __BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__?: Array<{
+      agentCommand: string;
+      refresh: boolean;
+    }>;
     /** Release every `start_managed_agent` currently held behind
      *  `startManagedAgentDelayMs`, letting it settle (scope checks, then any
      *  armed `startManagedAgentErrors` rejection) without waiting out the
@@ -18486,6 +18496,7 @@ async function handleUpdateManagedAgent(args: {
     name?: string;
     avatarUrl?: string | null;
     model?: string | null;
+    modelOverride?: string | null;
     provider?: string | null;
     agentCommand?: string;
     agentArgs?: string[];
@@ -18510,6 +18521,17 @@ async function handleUpdateManagedAgent(args: {
   }
   if (args.input.model !== undefined) {
     agent.model = args.input.model;
+  }
+  if (args.input.modelOverride !== undefined) {
+    const personaModel = agent.persona_id
+      ? mockPersonas.find((persona) => persona.id === agent.persona_id)?.model
+      : null;
+    agent.model = args.input.modelOverride ?? personaModel ?? null;
+    agent.model_source = args.input.modelOverride
+      ? "instance_override"
+      : personaModel
+        ? "definition"
+        : "global";
   }
   if (args.input.provider !== undefined) {
     agent.provider = args.input.provider;
@@ -18536,15 +18558,23 @@ async function handleUpdateManagedAgent(args: {
     if (agent.status === "running") {
       agent.running_runtime_id = runtimeId;
       agent.running_model =
-        args.input.model ??
-        (runtimeId === "codex"
-          ? "gpt-5.5"
-          : runtimeId === "claude"
-            ? "claude-sonnet-4-5"
-            : agent.running_model);
+        args.input.modelOverride !== undefined
+          ? agent.model
+          : (args.input.model ??
+            (runtimeId === "codex"
+              ? "gpt-5.5"
+              : runtimeId === "claude"
+                ? "claude-sonnet-4-5"
+                : agent.running_model));
     }
-  } else if (agent.status === "running" && args.input.model !== undefined) {
-    agent.running_model = args.input.model;
+  } else if (
+    agent.status === "running" &&
+    (args.input.model !== undefined || args.input.modelOverride !== undefined)
+  ) {
+    agent.running_model =
+      args.input.modelOverride !== undefined
+        ? agent.model
+        : (args.input.model ?? null);
   }
   if (args.input.systemPrompt !== undefined) {
     agent.system_prompt = args.input.systemPrompt;
@@ -24048,6 +24078,20 @@ export function maybeInstallE2eTauriMocks() {
           supportsSwitching: false,
         };
       case "discover_agent_models": {
+        const input = (
+          payload as {
+            input?: {
+              agentCommand?: string;
+              provider?: string;
+              refresh?: boolean;
+            };
+          } | null
+        )?.input;
+        const agentCommand = input?.agentCommand?.trim() ?? "";
+        window.__BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__ = [
+          ...(window.__BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__ ?? []),
+          { agentCommand, refresh: input?.refresh === true },
+        ].slice(-16);
         const discoverError = activeConfig?.mock?.discoverAgentModelsError;
         if (discoverError) {
           throw new Error(discoverError);
@@ -24067,12 +24111,6 @@ export function maybeInstallE2eTauriMocks() {
             supportsSwitching: discoverOverride.supportsSwitching,
           };
         }
-        const input = (
-          payload as {
-            input?: { agentCommand?: string; provider?: string };
-          } | null
-        )?.input;
-        const agentCommand = input?.agentCommand?.trim() ?? "";
         const provider = input?.provider?.trim() ?? "";
         const openAiModels = [
           { id: "gpt-5.5", name: "GPT-5.5", description: null },
@@ -24105,14 +24143,38 @@ export function maybeInstallE2eTauriMocks() {
           },
         ];
         const codexRuntimeModels = [
-          { id: "gpt-5.5", name: "GPT-5.5", description: null },
-          { id: "gpt-5.5[low]", name: "GPT-5.5 (low)", description: null },
           {
-            id: "gpt-5.5[medium]",
-            name: "GPT-5.5 (medium)",
+            id: "gpt-6-luna[low]",
+            name: "GPT-6 Luna (Low)",
             description: null,
           },
-          { id: "gpt-5.5[high]", name: "GPT-5.5 (high)", description: null },
+          {
+            id: "gpt-6-luna[medium]",
+            name: "GPT-6 Luna",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[high]",
+            name: "GPT-6 Luna (High)",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[xhigh]",
+            name: "GPT-6 Luna (Extra high)",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[max]",
+            name: "GPT-6 Luna (Max)",
+            description: null,
+          },
+          { id: "gpt-5.5[low]", name: "GPT-5.5 (Low)", description: null },
+          {
+            id: "gpt-5.5[medium]",
+            name: "GPT-5.5",
+            description: null,
+          },
+          { id: "gpt-5.5[high]", name: "GPT-5.5 (High)", description: null },
         ];
         if (provider === "relay-mesh") {
           if (!mockMeshState.admitted) {

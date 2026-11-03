@@ -98,6 +98,21 @@ export function simpleModelLabel(
 ) {
   const trimmed = model?.trim();
   if (!trimmed || trimmed.toLowerCase() === "[model]") return "Not reported";
+  const codexEffortMatch = trimmed.match(
+    /^(.*)\[(low|medium|high|xhigh|max)\]$/i,
+  );
+  if (codexEffortMatch) {
+    const baseModel = codexEffortMatch[1];
+    const effort = codexEffortMatch[2].toLowerCase();
+    const modelLabel =
+      FULL_MODEL_ALIASES[baseModel.toLowerCase()] ??
+      formatAgentModelLabel(baseModel, provider);
+    const effortLabel =
+      effort === "xhigh"
+        ? "Extra high"
+        : effort.charAt(0).toUpperCase() + effort.slice(1);
+    return `${modelLabel} (${effortLabel})`;
+  }
   return (
     FULL_MODEL_ALIASES[trimmed.toLowerCase()] ??
     formatAgentModelLabel(trimmed, provider)

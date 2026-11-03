@@ -29,6 +29,7 @@ use presets::{preset_catalog_entry, PRESET_HARNESSES};
 pub(crate) use presets::{preset_harness_definitions, preset_harness_ids};
 pub(crate) use runtime_metadata::EffortNormalization;
 pub(crate) use runtime_metadata::KnownAcpRuntime;
+pub(crate) use runtime_metadata::ModelListSource;
 #[cfg(test)]
 pub(crate) use runtime_metadata::GOOSE_EFFORT_NORMALIZATION;
 
