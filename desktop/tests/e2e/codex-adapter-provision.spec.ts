@@ -101,6 +101,7 @@ test("an already-selected missing Codex runtime is recognized and set up", async
     colony3Sidebar: true,
     acpRuntimesCatalog: [CLAUDE_AVAILABLE, CODEX_MISSING],
     acpRuntimesCatalogAfterInstall: [CLAUDE_AVAILABLE, CODEX_READY_SIGNED_IN],
+    installAcpRuntimeDelayMs: 900,
     installAcpRuntimeResult: { success: true, steps: [] },
     managedAgents: [
       {
@@ -115,12 +116,23 @@ test("an already-selected missing Codex runtime is recognized and set up", async
         status: "stopped",
       },
     ],
-    personas: [SCOUT_PERSONA],
+    personas: [{ ...SCOUT_PERSONA, runtime: "codex" }],
   });
 
   const { dialog } = await openScoutEditorWithoutRuntimeChange(page);
-  await expect(page.locator("#edit-agent-runtime")).toContainText(/Codex/);
+  await expect(page.locator("#edit-agent-runtime")).toContainText(
+    "Codex (adapter missing)",
+  );
   await page.getByTestId("edit-agent-dialog-submit").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+            .__BUZZ_E2E_COMMANDS__ ?? [],
+      ),
+    )
+    .toContain("install_acp_runtime");
   await expect(
     dialog.getByText("Setting up Codex...", { exact: true }),
   ).toBeVisible();
@@ -179,6 +191,8 @@ test("switching Scout to Codex provisions the missing adapter before saving", as
   expect(commands.indexOf("install_acp_runtime")).toBeLessThan(
     commands.indexOf("update_managed_agent"),
   );
+  await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`);
+  await expect(page.getByTestId("chat-header")).toBeVisible();
   await expect(page.getByTestId("chat-header-agent-runtime")).toContainText(
     "Codex",
   );
@@ -316,7 +330,7 @@ test("an unavailable harness Colony cannot start is not offered for agent select
     personas: [SCOUT_PERSONA],
   });
 
-  await openScoutEditor(page);
+  await openScoutEditorWithoutRuntimeChange(page);
   await page.locator("#edit-agent-runtime").click();
   await expect(
     page.getByRole("menuitemradio", { name: /Codex/ }),

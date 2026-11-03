@@ -319,23 +319,25 @@ export function AgentRuntimeSetupPanel({
           {message}
         </p>
       ) : null}
-      {runtime?.loginHint &&
-      runtime.availability === "available" &&
-      runtime.authStatus.status !== "logged_in" ? (
+      {runtime?.loginHint && runtime.availability === "available" ? (
         <div className="space-y-2 rounded-lg border border-border p-3">
-          <p className="text-xs text-muted-foreground">
-            {runtime.label} needs an account sign-in before it can answer.
-          </p>
-          <Button
-            disabled={authProgress || isSaving}
-            onClick={onSignIn}
-            type="button"
-            variant="outline"
-          >
-            {authProgress
-              ? `Opening ${runtime.label} sign-in...`
-              : `Sign in to ${runtime.label}`}
-          </Button>
+          {runtime.authStatus.status !== "logged_in" ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {runtime.label} needs an account sign-in before it can answer.
+              </p>
+              <Button
+                disabled={authProgress || isSaving}
+                onClick={onSignIn}
+                type="button"
+                variant="outline"
+              >
+                {authProgress
+                  ? `Opening ${runtime.label} sign-in...`
+                  : `Sign in to ${runtime.label}`}
+              </Button>
+            </>
+          ) : null}
           {authMessage ? (
             <p aria-live="polite" className="text-xs" role="status">
               {authMessage}
