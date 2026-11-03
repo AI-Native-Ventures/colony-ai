@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use super::overrides::{divergent_agent_command_override, update_time_agent_command_override};
 use super::{
     apply_agent_command_update, apply_env_vars_then_effort_transition, classify_runtime,
     codex_adapter_availability, codex_adapter_is_outdated, create_time_agent_command_override,
     default_agent_command, effective_agent_command, find_nvm_default_bin,
     is_login_shell_path_uninit, is_safe_nvm_tag, managed_agent_avatar_url, normalize_agent_args,
+    overrides::{divergent_agent_command_override, update_time_agent_command_override},
     parse_semver_tag, probe_codex_acp_version, record_agent_command, refresh_login_shell_path,
     remove_record_effort_aliases, try_record_agent_command, BUZZ_AGENT_AVATAR_URL,
     CLAUDE_CODE_AVATAR_URL, CODEX_AVATAR_URL, GOOSE_AVATAR_URL,
@@ -230,6 +230,7 @@ fn record_with(
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: None,
         provider: None,
         persona_source_version: None,
@@ -447,14 +448,10 @@ fn divergent_override_none_for_empty_or_absent_pick() {
 
 #[test]
 fn create_time_override_none_when_persona_runtime_not_installed() {
-    // CRITICAL-3 (Case 3): a `claude`-persona agent created on a machine
-    // where the claude adapter isn't installed. `resolvePersonaRuntime`
-    // falls back to the default (`buzz-agent`) and sends THAT command with
-    // `harness_override` false (the user did not pick it). At create this
-    // is a fallback, not a deliberate pin — it must store `None` so the
-    // agent inherits the persona's runtime once it's installed and the
-    // persona is re-edited. Baking `Some("buzz-agent")` here is the exact
-    // bug this resolver chain exists to kill.
+    // CRITICAL-3 case: when a Claude persona is created without its adapter,
+    // resolution falls back to buzz-agent with harness_override false. That
+    // is not a deliberate pin; the record must inherit Claude once its
+    // adapter is installed. Saving buzz-agent here would persist the fallback.
     let personas = vec![persona_with_runtime("p1", Some("claude"))];
     assert_eq!(
         create_time_agent_command_override(Some("p1"), &personas, Some("buzz-agent"), false),

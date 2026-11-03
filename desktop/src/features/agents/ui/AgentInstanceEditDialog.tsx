@@ -67,11 +67,11 @@ import {
 import { AgentAntPictureControl } from "./AgentAntPicturePicker";
 import { agentAntAvatarDataUrl, agentFunctionFromRole } from "./agentAntAvatar";
 import { resolveManagedAgentAvatarUrl } from "./managedAgentAvatar";
-import { simpleModelLabel } from "./simpleAgentAi";
 import {
   providerOptionsWithFreeAi,
   useAgentFreeAiModels,
 } from "./useAgentFreeAiOptions";
+import { AgentCreditsModelField } from "./AgentCreditsModelField";
 import { OwnerOnlyAccessField } from "./OwnerOnlyAccessField";
 import type { EnvVarsValue } from "./EnvVarsEditor";
 import { useRequiredCredentialState } from "./useRequiredCredentialState";
@@ -443,6 +443,7 @@ export function AgentInstanceEditDialog({
     discoveredModelOptions,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
+    refreshModelDiscovery,
   } = usePersonaModelDiscovery({
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
@@ -733,6 +734,12 @@ export function AgentInstanceEditDialog({
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
               : undefined,
+        modelOverride:
+          linkedPersona != null &&
+          !isColonyFreeAi &&
+          model.trim() !== (agent.model ?? "")
+            ? model.trim() || null
+            : undefined,
         // Persist by provider capability: capable writes, locked clears,
         // unknown omits. Field visibility remains UX-only.
         provider:
@@ -1010,64 +1017,16 @@ export function AgentInstanceEditDialog({
               />
             </div>
             {isColonyFreeAi ? (
-              <div className="space-y-2 rounded-xl border border-border p-3">
-                <label
-                  className="text-sm font-semibold text-foreground"
-                  htmlFor="agent-free-model-select"
-                >
-                  Colony free AI
-                </label>
-                {freeModelsQuery.isPending ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading available free models…
-                  </p>
-                ) : freeModelsQuery.isError ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-destructive">
-                      Free models could not be loaded.
-                    </p>
-                    <Button
-                      onClick={() => void freeModelsQuery.refetch()}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                ) : freeModels.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No free models are configured on this relay.
-                  </p>
-                ) : (
-                  <>
-                    <PersonaDropdownField
-                      disabled={isSaving}
-                      id="agent-free-model-select"
-                      onValueChange={setModel}
-                      options={freeModels.map((id) => ({
-                        label: simpleModelLabel(id, "colony-credits"),
-                        value: id,
-                      }))}
-                      placeholder="Choose a free model"
-                      value={
-                        freeModels.includes(model.trim())
-                          ? model.trim()
-                          : freeModels[0]
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Colony tries the next free model automatically when this
-                      one is busy.
-                      {freeModels.some((id) =>
-                        id.startsWith("poolside/laguna-"),
-                      )
-                        ? " Laguna models are scheduled to expire 31 Oct."
-                        : ""}
-                    </p>
-                  </>
-                )}
-              </div>
+              <AgentCreditsModelField
+                disabled={isSaving}
+                error={freeModelsQuery.isError}
+                loading={freeModelsQuery.isPending}
+                model={model}
+                models={freeModels}
+                onModelChange={setModel}
+                onRefresh={() => void freeModelsQuery.refetch()}
+                refreshing={freeModelsQuery.isFetching}
+              />
             ) : (
               <EditAgentProviderModelFields
                 disabled={isSaving}
@@ -1097,6 +1056,8 @@ export function AgentInstanceEditDialog({
                 modelDropdownOptions={modelDropdownOptions}
                 modelSelectValue={modelSelectValue}
                 onModelDropdownChange={handleModelDropdownChange}
+                onRefreshModels={refreshModelDiscovery}
+                refreshingModels={modelDiscoveryLoading}
                 showCustomModelInput={showCustomModelInput}
                 model={model}
                 onModelChange={setModel}

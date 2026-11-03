@@ -261,6 +261,26 @@ fn update_request_provider_tristate_absent_means_no_touch() {
 }
 
 #[test]
+fn update_request_model_override_tristate_distinguishes_keep_clear_and_set() {
+    let absent: super::UpdateManagedAgentRequest =
+        serde_json::from_str(r#"{"pubkey":"abcd1234"}"#).expect("absent field parses");
+    assert_eq!(absent.model_override, None);
+
+    let clear: super::UpdateManagedAgentRequest =
+        serde_json::from_str(r#"{"pubkey":"abcd1234","modelOverride":null}"#)
+            .expect("clear field parses");
+    assert_eq!(clear.model_override, Some(None));
+
+    let set: super::UpdateManagedAgentRequest =
+        serde_json::from_str(r#"{"pubkey":"abcd1234","modelOverride":"gpt-6-luna[medium]"}"#)
+            .expect("set field parses");
+    assert_eq!(
+        set.model_override,
+        Some(Some("gpt-6-luna[medium]".to_string()))
+    );
+}
+
+#[test]
 fn update_request_provider_tristate_null_means_clear() {
     // A JSON payload with `"provider": null` deserialized with `Some(None)` —
     // the backend must clear the record's provider back to the runtime default.

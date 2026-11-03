@@ -214,6 +214,7 @@ impl AgentDefinition {
             parallelism: default_agent_parallelism(),
             session_policy: self.session_policy,
             system_prompt: (!self.system_prompt.is_empty()).then_some(self.system_prompt),
+            model_override: None,
             model: self.model,
             provider: self.provider,
             persona_source_version: None,
@@ -388,12 +389,15 @@ pub struct ManagedAgentRecord {
     /// Desired LLM model ID. Matches AgentModelInfo.id from discovery.
     /// The harness re-discovers the correct ACP switching metadata at session
     /// creation by matching this ID against the fresh session/new response.
-    /// For a linked instance this remains a display snapshot except when the
-    /// instance provider is Colony credits, where it is the selected free
-    /// gateway model.
-    /// For a definition-less instance this field is authoritative.
+    /// For linked instances this is a display snapshot except for Colony
+    /// credits, where it stores the selected gateway model. For a
+    /// definition-less instance this field is authoritative.
     #[serde(default)]
     pub model: Option<String>,
+    /// Explicit per-instance model selection for a persona-linked agent.
+    /// When absent, the linked persona or global default remains authoritative.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_override: Option<String>,
     /// LLM inference provider. For linked instances this is normally a legacy
     /// snapshot, with Colony credits as the per-agent override. For a
     /// definition-less instance this field is authoritative. `#[serde(default)]`

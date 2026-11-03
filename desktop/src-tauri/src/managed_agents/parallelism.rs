@@ -83,6 +83,7 @@ mod tests {
             max_turn_duration_seconds: None,
             parallelism,
             system_prompt: None,
+            model_override: None,
             model: None,
             provider: None,
             persona_source_version: None,

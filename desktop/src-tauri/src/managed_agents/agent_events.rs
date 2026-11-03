@@ -183,6 +183,7 @@ mod tests {
             max_turn_duration_seconds: None,
             parallelism: 24,
             system_prompt: Some("You are a test agent.".to_string()),
+            model_override: None,
             model: Some("claude-opus-4".to_string()),
             provider: Some("anthropic".to_string()),
             persona_source_version: Some("abc123".to_string()),

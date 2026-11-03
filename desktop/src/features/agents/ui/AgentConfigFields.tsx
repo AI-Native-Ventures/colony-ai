@@ -370,6 +370,7 @@ export function AgentConfigFields({
     modelDiscoveryLoading,
     modelDiscoveryStatus,
     modelDiscoverySuccessfulEmpty,
+    refreshModelDiscovery,
   } = usePersonaModelDiscovery({
     envVars: config.env_vars,
     isCustomProviderEditing: isCustomProvider,
@@ -838,6 +839,7 @@ export function AgentConfigFields({
             }
             onIsCustomModelEditingChange={onCustomModelEditingChange}
             onModelChange={handleModelChange}
+            onRefreshModels={refreshModelDiscovery}
             placeholderClassName={placeholderClassName}
             placeholder="Select a model"
             provider={providerForDiscovery}

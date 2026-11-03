@@ -4,7 +4,7 @@ use nostr::Keys;
 use serde::Deserialize;
 use tauri::{AppHandle, State};
 
-use super::agent_model_process::run_agent_models_command;
+use super::agent_model_process::{run_agent_models_command, uses_native_model_list_source};
 use super::managed_agent_definition::apply_model_provider_prompt_update;
 // The map-only lookup is reached solely from the base-URL helpers that exist for
 // their unit tests; discovery itself always goes through the process-env variant.
@@ -99,6 +99,18 @@ pub async fn get_agent_models(
     // so a build-provided provider still gets live discovery.
     let effective_provider =
         effective_discovery_provider(saved_provider.as_deref(), provider_env_var, &merged_env);
+    if uses_native_model_list_source(&agent_command) {
+        return run_agent_models_command(
+            resolved_acp,
+            agent_command,
+            agent_args,
+            persisted_model,
+            merged_env,
+            false,
+        )
+        .await;
+    }
+
     if let Some(models) = discover_openrouter_models(
         &state.http_client,
         &effective_provider,
@@ -150,6 +162,7 @@ pub async fn get_agent_models(
         agent_args,
         persisted_model,
         merged_env,
+        false,
     )
     .await
 }
@@ -188,6 +201,9 @@ pub struct DiscoverAgentModelsInput {
     /// Merged below user `env_vars` so user overrides always win.
     #[serde(default)]
     pub definition_env: BTreeMap<String, String>,
+    /// Refreshes the CLI's own model cache when the user explicitly requests it.
+    #[serde(default)]
+    pub refresh: bool,
 }
 
 /// Query available models from an unsaved agent configuration.
@@ -283,6 +299,18 @@ pub async fn discover_agent_models(
         return Err("Colony shared compute is not available in this build".to_string());
     }
 
+    if uses_native_model_list_source(&resolved_agent) {
+        return run_agent_models_command(
+            resolved_acp,
+            resolved_agent,
+            agent_args,
+            None,
+            merged_env,
+            input.refresh,
+        )
+        .await;
+    }
+
     if let Some(models) =
         discover_openrouter_models(&state.http_client, &effective_provider, &merged_env, None)
             .await?
@@ -320,7 +348,15 @@ pub async fn discover_agent_models(
         return Ok(models);
     }
 
-    run_agent_models_command(resolved_acp, resolved_agent, agent_args, None, merged_env).await
+    run_agent_models_command(
+        resolved_acp,
+        resolved_agent,
+        agent_args,
+        None,
+        merged_env,
+        input.refresh,
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize)]
