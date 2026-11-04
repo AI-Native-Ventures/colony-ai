@@ -394,7 +394,12 @@ export type ManagedAgent = {
   runningRuntimeId?: string | null;
   /** Model reported by the live ACP session or captured at spawn. */
   runningModel?: string | null;
-  modelSource: "definition" | "global" | "instance_legacy" | null;
+  modelSource:
+    | "definition"
+    | "global"
+    | "instance_override"
+    | "instance_legacy"
+    | null;
   /** LLM inference provider, from the agent's pinned record snapshot. */
   provider: string | null;
   /** True when the linked persona has been edited since this agent was created. */
@@ -559,6 +564,8 @@ export type AcpRuntimeCatalogEntry = {
   availability: AcpAvailabilityStatus;
   command: string | null;
   binaryPath: string | null;
+  /** Catalog-declared commands, even when currently unavailable. */
+  commandCandidates?: string[];
   defaultArgs: string[];
   mcpCommand: string | null;
   /** Environment variable used to apply the initial model, when supported. */
@@ -756,6 +763,8 @@ export type UpdateManagedAgentInput = {
   /** Absent = keep; null = clear; string = localized avatar URL or upload data URI. */
   avatarUrl?: string | null;
   model?: string | null;
+  /** Absent = keep; null = inherit from persona; string = per-agent model. */
+  modelOverride?: string | null;
   provider?: string | null;
   systemPrompt?: string | null;
   /** Absent = don't touch. Present = replace the env_vars map entirely. */

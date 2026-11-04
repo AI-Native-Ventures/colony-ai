@@ -37,6 +37,7 @@ import {
   useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
 import { findWhatsAppBatchCreatorChannel } from "./whatsappBatchNavigation";
+import { BATCH_MANAGE_NOTE } from "./whatsappContactAccess";
 import "./whatsappOutreach.css";
 
 function formatTime(value: string | null): string | null {
@@ -511,6 +512,11 @@ export function WhatsAppBatchScreen({
         </div>
         {pending ? (
           <footer className="c3wa-mobile-batch-actions">
+            {!canManage ? (
+              <p className="c3wa-desk-cap-note" role="note">
+                {BATCH_MANAGE_NOTE}
+              </p>
+            ) : null}
             <Button
               disabled={!canManage || busy}
               onClick={() => void decide("reject")}
@@ -817,6 +823,11 @@ export function WhatsAppBatchScreen({
                 ) : null}
                 {pending ? (
                   <div className="c3wa-batch-actions">
+                    {!canManage ? (
+                      <p className="c3wa-desk-cap-note" role="note">
+                        {BATCH_MANAGE_NOTE}
+                      </p>
+                    ) : null}
                     <Button
                       disabled={!canManage || busy}
                       onClick={() => void decide("approve")}

@@ -387,7 +387,7 @@ export function DiscoveryBusinessCatalogue({
                     size={640}
                   />
                   <span className="d4-industry-card-caption">
-                    <strong>{industry.label}</strong>
+                    <strong title={industry.label}>{industry.label}</strong>
                     <small>{industry.verticals.length} business types</small>
                     <ChevronRightGlyph />
                   </span>
@@ -448,7 +448,7 @@ export function DiscoveryBusinessCatalogue({
                   size={640}
                 />
                 <span className="d4-industry-card-caption">
-                  <strong>{industry.label}</strong>
+                  <strong title={industry.label}>{industry.label}</strong>
                   <small>{industry.verticals.length} business types</small>
                   <ChevronRightGlyph />
                 </span>

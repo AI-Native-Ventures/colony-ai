@@ -50,11 +50,18 @@ test("working routes match the Your connection card", () => {
   );
   const startFree = {
     ...emptyConfig,
+    preferred_runtime: "buzz-agent",
+    provider: "colony-credits",
+    model: "openai/gpt-4.1-mini:free",
+  };
+  assert.equal(hasWorkingAiConnection(startFree, [colonyAgent]), true);
+  const legacyStartFree = {
+    ...emptyConfig,
     preferred_runtime: "opencode",
     provider: "opencode-free",
     model: "opencode/deepseek-v4.1-flash-free",
   };
-  assert.equal(hasWorkingAiConnection(startFree, [opencode]), true);
+  assert.equal(hasWorkingAiConnection(legacyStartFree, [opencode]), true);
   const ownKey = {
     ...emptyConfig,
     preferred_runtime: "buzz-agent",

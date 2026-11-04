@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { openSettings, openAvatarProfileContext } from "../helpers/settings";
+import { r17Runtime } from "../helpers/onboarding";
 
 type AccountAuthMethod =
   | "signUp"
@@ -326,36 +327,28 @@ function e2eCommands(page: Page) {
 test("returning account on a device with no AI connects before opening its business", async ({
   page,
 }) => {
-  const opencode = (availability: string, status: string) => ({
-    id: "opencode",
-    label: "OpenCode",
-    avatar_url: "",
-    availability,
-    command: availability === "available" ? "opencode" : null,
-    binary_path:
-      availability === "available" ? "/usr/local/bin/opencode" : null,
-    default_args: [],
-    mcp_command: null,
-    install_hint: "Install opencode",
-    install_instructions_url: "https://example.com",
-    can_auto_install: true,
-    underlying_cli_path: null,
-    node_required: false,
-    auth_status: { status },
-    login_hint: "Sign in to opencode",
-  });
   let businessCreates = 0;
   await startFirstRun(page, [RETURNING_COMMUNITY], {
-    acpRuntimesCatalog: [opencode("not_installed", "unknown")],
-    acpRuntimesCatalogAfterInstall: [opencode("available", "not_applicable")],
-    installAcpRuntimeResult: { success: true, steps: [] },
+    colonyCreditsGatewayEnabled: true,
+    acpRuntimesCatalog: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
     onboardingConnectionResult: {
       reply: "Hello again. What shall we work on?",
-      model: "opencode/deepseek-v4.1-flash-free",
+      model: "openai/gpt-4.1-mini:free",
       startupMs: 20,
       totalMs: 50,
     },
   });
+  await page.route("**/api/credits-gateway/capabilities", (route) =>
+    route.fulfill({
+      json: {
+        enabled: true,
+        runtime: "colony",
+        freeModels: ["openai/gpt-4.1-mini:free"],
+      },
+    }),
+  );
   page.on("request", (request) => {
     if (
       request.method() === "POST" &&
@@ -387,8 +380,9 @@ test("returning account on a device with no AI connects before opening its busin
     window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("get_global_agent_config", null),
   );
   expect(saved).toMatchObject({
-    preferred_runtime: "opencode",
-    provider: "opencode-free",
+    preferred_runtime: "buzz-agent",
+    provider: "colony-credits",
+    model: "openai/gpt-4.1-mini:free",
   });
   // The proof is filed under the existing business, not a new one.
   expect(

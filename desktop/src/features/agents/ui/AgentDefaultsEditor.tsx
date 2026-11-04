@@ -137,8 +137,15 @@ export function AgentDefaultsEditor({
 
   const runtimesQuery = useAcpRuntimesQuery();
   const sortedRuntimes = React.useMemo(
-    () => sortPersonaRuntimes(runtimesQuery.data ?? []),
-    [runtimesQuery.data],
+    () =>
+      sortPersonaRuntimes(
+        (runtimesQuery.data ?? []).filter(
+          (runtime) =>
+            runtime.availability === "available" ||
+            runtime.id === config.preferred_runtime,
+        ),
+      ),
+    [config.preferred_runtime, runtimesQuery.data],
   );
   // An unset preferred runtime uses the same Buzz Agent-first fallback as
   // deployment. The rendered draft below carries that fallback forward so the

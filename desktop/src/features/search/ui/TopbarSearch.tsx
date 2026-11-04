@@ -892,6 +892,7 @@ export function TopbarSearch({
               <span
                 className="c3s-title"
                 data-action={result.kind === "action" ? "true" : undefined}
+                title={title ?? undefined}
               >
                 {result.kind === "channel" || result.kind === "user" ? (
                   <HighlightedSearchText
@@ -903,7 +904,7 @@ export function TopbarSearch({
                 )}
               </span>
               {preview ? (
-                <span className="c3s-sub">
+                <span className="c3s-sub" title={preview}>
                   {result.kind === "channel" || result.kind === "user" ? (
                     <HighlightedSearchText query={resultQuery} text={preview} />
                   ) : (

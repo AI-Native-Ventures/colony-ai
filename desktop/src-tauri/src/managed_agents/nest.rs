@@ -92,7 +92,8 @@ const NEST_AGENTS_VERSION: u32 = 8;
 /// Company Records rule and the one-worker-per-request rule.
 /// Version 24 adds the Lists, campaigns and templates section (`colony lists`,
 /// `colony campaigns`, `colony whatsapp templates get`, `batch create --list`).
-const NEST_SKILL_VERSION: u32 = 24;
+/// Version 26 makes Open Design the default visual workflow for every runtime.
+const NEST_SKILL_VERSION: u32 = 26;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
@@ -1066,5 +1067,7 @@ mod outreach_lists_skill_tests;
 mod render_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod visual_work_skill_tests;
 #[cfg(test)]
 mod web_task_rules_tests;

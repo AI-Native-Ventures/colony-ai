@@ -626,6 +626,7 @@ pub async fn confirm_agent_snapshot_import(
                 .unwrap_or(crate::managed_agents::DEFAULT_AGENT_PARALLELISM),
             session_policy: snapshot.definition.session_policy,
             system_prompt: snapshot.definition.system_prompt.clone(),
+            model_override: None,
             model: snapshot.definition.model.clone(),
             provider: snapshot.definition.provider.clone(),
             persona_source_version: None,

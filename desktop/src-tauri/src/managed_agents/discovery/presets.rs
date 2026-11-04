@@ -73,6 +73,7 @@ pub(super) fn preset_catalog_entry(
         avatar_url: String::new(),
         availability,
         command,
+        command_candidates: vec![def.command.to_string()],
         binary_path,
         default_args: normalize_agent_args(
             def.command,

@@ -34,9 +34,11 @@ import {
   formatRuntimeOptionLabel,
   getDefaultLlmModelLabel,
   getDefaultPersonaRuntime,
+  findPersonaRuntimeForCommand,
   getProviderApiKeyEnvVar,
   getPersonaProviderOptions,
   isMissingRequiredDropdownField,
+  isHarnessOfferable,
   NO_RUNTIME_DROPDOWN_VALUE,
   PERSONA_FIELD_CONTROL_CLASS,
   PERSONA_FIELD_SHELL_CLASS,
@@ -61,17 +63,21 @@ import {
 import {
   selectionOnModelDropdownChange,
   selectionOnProviderDropdownChange,
-  selectionOnRuntimeChange,
   type RuntimeModelProviderSelection,
 } from "./runtimeModelProviderSelection";
+import {
+  AgentRuntimeSetupPanel,
+  useAgentRuntimeSetup,
+} from "./AgentRuntimeSetup";
+import { applyAgentRuntimeDropdownChange } from "./agentRuntimeDropdownChange";
 import { AgentAntPictureControl } from "./AgentAntPicturePicker";
 import { agentAntAvatarDataUrl, agentFunctionFromRole } from "./agentAntAvatar";
 import { resolveManagedAgentAvatarUrl } from "./managedAgentAvatar";
-import { simpleModelLabel } from "./simpleAgentAi";
 import {
   providerOptionsWithFreeAi,
   useAgentFreeAiModels,
 } from "./useAgentFreeAiOptions";
+import { AgentCreditsModelField } from "./AgentCreditsModelField";
 import { OwnerOnlyAccessField } from "./OwnerOnlyAccessField";
 import type { EnvVarsValue } from "./EnvVarsEditor";
 import { useRequiredCredentialState } from "./useRequiredCredentialState";
@@ -96,7 +102,6 @@ import { AddCustomHarnessDialog } from "./AddCustomHarnessDialog";
 import { useAgentRuntimeSwitchSave } from "./agentRuntimeSwitchSave";
 import {
   ADD_CUSTOM_HARNESS_OPTION,
-  runtimeDropdownAction,
   usePendingHarnessSelection,
 } from "./addCustomHarness";
 
@@ -222,9 +227,10 @@ export function AgentInstanceEditDialog({
       setIsAvatarUploadPending(false);
       setIsAddHarnessOpen(false);
       runtimeTouched.current = false;
-      const matched =
-        runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim()) ??
-        runtimes.find((r) => r.id === agent.agentCommand.trim());
+      const matched = findPersonaRuntimeForCommand(
+        runtimes,
+        agent.agentCommand,
+      );
       setSelectedRuntimeId(matched ? matched.id : "custom");
       updateMutation.reset();
     }
@@ -235,9 +241,7 @@ export function AgentInstanceEditDialog({
     if (!open || runtimeTouched.current || runtimes.length === 0) {
       return;
     }
-    const matched =
-      runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim()) ??
-      runtimes.find((r) => r.id === agent.agentCommand.trim());
+    const matched = findPersonaRuntimeForCommand(runtimes, agent.agentCommand);
     if (matched) {
       setSelectedRuntimeId(matched.id);
     }
@@ -245,8 +249,16 @@ export function AgentInstanceEditDialog({
 
   // Build the sorted runtime catalog for the dropdown.
   const sortedRuntimes = React.useMemo(
-    () => sortPersonaRuntimes(runtimes),
-    [runtimes],
+    () =>
+      sortPersonaRuntimes(
+        runtimes.filter(
+          (runtime) =>
+            isHarnessOfferable(runtime) ||
+            runtime.id === selectedRuntimeId ||
+            runtime.command?.trim() === agent.agentCommand.trim(),
+        ),
+      ),
+    [agent.agentCommand, runtimes, selectedRuntimeId],
   );
 
   const selectedRuntime = React.useMemo(
@@ -282,9 +294,7 @@ export function AgentInstanceEditDialog({
   // ids mutate during selection changes and cannot identify the original state.
   const originalRuntimeSupportsProvider = React.useMemo(() => {
     const originalCommand = originalAgentCommand.trim();
-    const matched =
-      runtimes.find((r) => r.command?.trim() === originalCommand) ??
-      runtimes.find((r) => r.id === originalCommand);
+    const matched = findPersonaRuntimeForCommand(runtimes, originalCommand);
     return runtimeSupportsLlmProviderSelection(matched?.id ?? "");
   }, [runtimes, originalAgentCommand]);
 
@@ -303,9 +313,7 @@ export function AgentInstanceEditDialog({
       );
     }
     return (
-      runtimes.find((r) => r.command?.trim() === agent.agentCommand.trim())
-        ?.id ??
-      runtimes.find((r) => r.id === agent.agentCommand.trim())?.id ??
+      findPersonaRuntimeForCommand(runtimes, agent.agentCommand)?.id ??
       // Fall back to the app default runtime so discovery can run for agents
       // whose persona has no runtime set (e.g. freshly-added catalog builtins).
       getDefaultPersonaRuntime(runtimes)?.id ??
@@ -326,6 +334,17 @@ export function AgentInstanceEditDialog({
   const prospectiveRuntime = runtimes.find(
     (r) => r.id === prospectiveRuntimeId,
   );
+  const runtimeSetup = useAgentRuntimeSetup({
+    agentKey: agent.pubkey,
+    agentArgs,
+    agentCommand,
+    inheritHarness,
+    open,
+    runtime: prospectiveRuntime,
+    setAgentArgs,
+    setAgentCommand,
+  });
+
   const runtimeCatalogStatus = runtimesQuery.isLoading
     ? ("loading" as const)
     : runtimesQuery.isError
@@ -443,6 +462,7 @@ export function AgentInstanceEditDialog({
     discoveredModelOptions,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
+    refreshModelDiscovery,
   } = usePersonaModelDiscovery({
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
@@ -521,56 +541,20 @@ export function AgentInstanceEditDialog({
   }
 
   function handleRuntimeDropdownChange(nextValue: string) {
-    const action = runtimeDropdownAction(nextValue);
-    if (action.kind === "add-custom-harness") {
-      setIsAddHarnessOpen(true);
-      return;
-    }
-    const nextRuntimeId = action.runtimeId;
-    const previousRuntimeId = selectedRuntimeId;
-    const nextRuntime = runtimes.find((r) => r.id === nextRuntimeId);
-
-    // Mark that the user has made an explicit runtime choice. The catalog-arrival
-    // effect will no longer overwrite selectedRuntimeId after this point.
-    runtimeTouched.current = true;
-    const resolvedRuntimeId = nextRuntimeId || "custom";
-    setSelectedRuntimeId(resolvedRuntimeId);
-    effortTouched.current = false;
-    setEffortLevel(null);
-    const isCustomCommand = resolvedRuntimeId === "custom";
-
-    // Only pin the harness when the selection can actually supply a command:
-    //   - "Custom command": the Advanced command input becomes editable, so the
-    //     user provides the command.
-    //   - a catalog entry with a concrete command: we set it below.
-    // A catalog entry with command:null (availability adapter_missing /
-    // not_installed) can't produce a runnable command — clearing inheritance
-    // there would omit agentCommand on Save (command unchanged) while the
-    // provider/model logic treats the new runtime as effective, so an inherited
-    // Claude agent could persist a Databricks provider while still running
-    // Claude. Keep inheriting in that case.
-    if (isCustomCommand || nextRuntime?.command) {
-      setInheritHarness(false);
-    }
-
-    // When switching to a catalog-known runtime, update the agent command to
-    // its resolved command so the command field stays consistent.
-    if (nextRuntime?.command) {
-      setAgentCommand(nextRuntime.command);
-      const newArgs = nextRuntime.defaultArgs.join(",");
-      setAgentArgs(newArgs);
-    }
-
-    applySelection(
-      selectionOnRuntimeChange(selection, {
-        previousRuntime: previousRuntimeId,
-        nextRuntime: nextRuntime?.id ?? nextRuntimeId,
-        nextRuntimeCanChooseProvider: runtimeSupportsLlmProviderSelection(
-          nextRuntime?.id ?? nextRuntimeId,
-        ),
-        lockedRuntimeReset: "full",
-      }),
-    );
+    applyAgentRuntimeDropdownChange(nextValue, {
+      applySelection,
+      effortTouched,
+      runtimes,
+      selectedRuntimeId,
+      selection,
+      setAgentArgs,
+      setAgentCommand,
+      setEffortLevel,
+      setInheritHarness,
+      setIsAddHarnessOpen,
+      setSelectedRuntimeId,
+      runtimeTouched,
+    });
   }
 
   // Routed through the normal change handler so a harness registered inline
@@ -650,8 +634,13 @@ export function AgentInstanceEditDialog({
     setIsSaving(true);
     setSetterError(null);
     try {
+      const preparedRuntime = await runtimeSetup.prepareForSave();
+      if (!preparedRuntime) return;
+      const submittedAgentCommand = preparedRuntime.agentCommand;
+      const submittedAgentArgs = preparedRuntime.agentArgs;
+      const submittedInheritHarness = inheritHarness;
       const parsedParallelism = Number.parseInt(parallelism, 10);
-      const parsedArgs = agentArgs
+      const parsedArgs = submittedAgentArgs
         .split(",")
         .map((v) => v.trim())
         .filter((v) => v.length > 0);
@@ -671,8 +660,8 @@ export function AgentInstanceEditDialog({
       // sentinel/pin/no-op contract, including the inherit→pin transition where
       // the prefilled command equals the original but must still be pinned.
       const agentCommandUpdate = resolveAgentCommandUpdate({
-        inheritHarness,
-        agentCommand,
+        inheritHarness: submittedInheritHarness,
+        agentCommand: submittedAgentCommand,
         originalAgentCommand: agent.agentCommand,
         agentCommandOverride: agent.agentCommandOverride ?? null,
       });
@@ -711,7 +700,7 @@ export function AgentInstanceEditDialog({
         // Signal deliberate pins so Custom and persona-matching commands stay
         // pinned. Omit this for inheritance and name-only edits.
         harnessOverride:
-          agentCommandUpdate != null ? !inheritHarness : undefined,
+          agentCommandUpdate != null ? !submittedInheritHarness : undefined,
         agentArgs:
           parsedArgs.join(",") !== agent.agentArgs.join(",")
             ? parsedArgs
@@ -733,6 +722,12 @@ export function AgentInstanceEditDialog({
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
               : undefined,
+        modelOverride:
+          linkedPersona != null &&
+          !isColonyFreeAi &&
+          model.trim() !== (agent.model ?? "")
+            ? model.trim() || null
+            : undefined,
         // Persist by provider capability: capable writes, locked clears,
         // unknown omits. Field visibility remains UX-only.
         provider:
@@ -772,7 +767,7 @@ export function AgentInstanceEditDialog({
 
       const result = await saveWithRuntimeSwitch(input, {
         runtimeId: prospectiveRuntimeId,
-        label: selectedRuntime?.label ?? prospectiveRuntimeId,
+        label: prospectiveRuntime?.label ?? prospectiveRuntimeId,
         model: normalizedModel,
       });
       if (result === null) return;
@@ -831,7 +826,8 @@ export function AgentInstanceEditDialog({
         });
       }
     } catch (e) {
-      setSetterError(e instanceof Error ? e : new Error("Failed to save"));
+      const error = e instanceof Error ? e : new Error("Failed to save");
+      setSetterError(error);
     } finally {
       setIsSaving(false);
     }
@@ -923,6 +919,8 @@ export function AgentInstanceEditDialog({
   // setterError takes precedence — the update already committed when it fires.
   const displayError =
     setterError ??
+    runtimeSetup.error ??
+    runtimeSetup.authError ??
     (updateMutation.error instanceof Error ? updateMutation.error : null);
 
   return (
@@ -950,7 +948,7 @@ export function AgentInstanceEditDialog({
               onClick={() => void handleSubmit()}
               type="button"
             >
-              {isSaving ? "Saving..." : "Save changes"}
+              {runtimeSetup.submitLabel(isSaving, prospectiveRuntime?.label)}
             </Button>
           </div>
         }
@@ -1008,66 +1006,27 @@ export function AgentInstanceEditDialog({
                 placeholder="Choose a provider"
                 value={runtimeDropdownValue}
               />
+              <AgentRuntimeSetupPanel
+                authMessage={runtimeSetup.authMessage}
+                authProgress={runtimeSetup.authProgress}
+                isSaving={isSaving}
+                message={runtimeSetup.message}
+                onSignIn={() => void runtimeSetup.signIn()}
+                progress={runtimeSetup.progress}
+                runtime={prospectiveRuntime}
+              />
             </div>
             {isColonyFreeAi ? (
-              <div className="space-y-2 rounded-xl border border-border p-3">
-                <label
-                  className="text-sm font-semibold text-foreground"
-                  htmlFor="agent-free-model-select"
-                >
-                  Colony free AI
-                </label>
-                {freeModelsQuery.isPending ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading available free models…
-                  </p>
-                ) : freeModelsQuery.isError ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-destructive">
-                      Free models could not be loaded.
-                    </p>
-                    <Button
-                      onClick={() => void freeModelsQuery.refetch()}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                ) : freeModels.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No free models are configured on this relay.
-                  </p>
-                ) : (
-                  <>
-                    <PersonaDropdownField
-                      disabled={isSaving}
-                      id="agent-free-model-select"
-                      onValueChange={setModel}
-                      options={freeModels.map((id) => ({
-                        label: simpleModelLabel(id, "colony-credits"),
-                        value: id,
-                      }))}
-                      placeholder="Choose a free model"
-                      value={
-                        freeModels.includes(model.trim())
-                          ? model.trim()
-                          : freeModels[0]
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Colony tries the next free model automatically when this
-                      one is busy.
-                      {freeModels.some((id) =>
-                        id.startsWith("poolside/laguna-"),
-                      )
-                        ? " Laguna models are scheduled to expire 31 Oct."
-                        : ""}
-                    </p>
-                  </>
-                )}
-              </div>
+              <AgentCreditsModelField
+                disabled={isSaving}
+                error={freeModelsQuery.isError}
+                loading={freeModelsQuery.isPending}
+                model={model}
+                models={freeModels}
+                onModelChange={setModel}
+                onRefresh={() => void freeModelsQuery.refetch()}
+                refreshing={freeModelsQuery.isFetching}
+              />
             ) : (
               <EditAgentProviderModelFields
                 disabled={isSaving}
@@ -1097,6 +1056,8 @@ export function AgentInstanceEditDialog({
                 modelDropdownOptions={modelDropdownOptions}
                 modelSelectValue={modelSelectValue}
                 onModelDropdownChange={handleModelDropdownChange}
+                onRefreshModels={refreshModelDiscovery}
+                refreshingModels={modelDiscoveryLoading}
                 showCustomModelInput={showCustomModelInput}
                 model={model}
                 onModelChange={setModel}

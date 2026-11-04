@@ -112,9 +112,10 @@ fn build_inherited_tiers(
 ///
 /// Persona-linked instances have their system_prompt/model/provider cleared
 /// first (definition-authoritative): stale materialized snapshots can never
-/// shadow live persona values. The reader then resolves each field through its
-/// full candidate list (record env > ACP > persona env > global env > structured
-/// persona/global > config file) via `resolve_with_override`.
+/// shadow live persona values. A deliberate per-agent model override is copied
+/// into the structured record tier before the reader resolves its candidate
+/// list (record env > ACP > persona env > global env > structured
+/// record/persona/global > config file).
 fn resolve_config_surface(
     mut record: ManagedAgentRecord,
     personas: &[AgentDefinition],
@@ -125,10 +126,12 @@ fn resolve_config_surface(
 ) -> RuntimeConfigSurface {
     // Linked instances are definition-authoritative: clear stale materialized
     // model/provider/prompt so they can never masquerade as BuzzExplicit and
-    // shadow definition values. Env var overrides are untouched.
+    // shadow definition values. A deliberate model override is the exception;
+    // it is per-agent state and belongs in the structured record tier. Env var
+    // overrides are untouched.
     if record.persona_id.is_some() {
         record.system_prompt = None;
-        record.model = None;
+        record.model = record.model_override.clone();
         record.provider = None;
     }
 

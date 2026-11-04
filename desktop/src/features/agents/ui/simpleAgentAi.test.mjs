@@ -91,6 +91,11 @@ test("approved aliases and the provider-aware model registry produce full names"
   assert.equal(simpleModelLabel("gpt-5.5", "openai"), "GPT-5.5");
   assert.equal(simpleModelLabel("gpt-6"), "GPT-6");
   assert.equal(simpleModelLabel("gpt-6-luna"), "GPT-6 Luna");
+  assert.equal(simpleModelLabel("gpt-6-luna[medium]"), "GPT-6 Luna (Medium)");
+  assert.equal(
+    simpleModelLabel("gpt-6-luna[xhigh]"),
+    "GPT-6 Luna (Extra high)",
+  );
   assert.equal(
     simpleModelLabel(
       "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -182,8 +187,8 @@ test("Colony Agent effort uses model capability values without ACP options", () 
 test("changing harness clears the previous model and provider labels through the production transition", () => {
   const next = selectionOnRuntimeChange(
     {
-      provider: "opencode-free",
-      model: "opencode/deepseek-v4.1-flash-free",
+      provider: "colony-credits",
+      model: "openai/gpt-4.1-mini:free",
       isCustomProviderEditing: false,
       isCustomModelEditing: false,
       envVars: {
@@ -192,7 +197,7 @@ test("changing harness clears the previous model and provider labels through the
       },
     },
     {
-      previousRuntime: "opencode",
+      previousRuntime: "buzz-agent",
       nextRuntime: "claude",
       nextRuntimeCanChooseProvider: false,
       lockedRuntimeReset: "full",

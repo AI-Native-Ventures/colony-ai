@@ -14,6 +14,7 @@ use super::types::{AgentDefinition, ManagedAgentRecord};
 pub enum ConfigSource {
     Definition,
     Global,
+    InstanceOverride,
     InstanceLegacy,
 }
 
@@ -121,6 +122,15 @@ fn resolve_linked(
             value: non_blank(record.model.as_deref()).map(str::to_owned),
             source: ConfigSource::InstanceLegacy,
         };
+    }
+
+    if record.provider.as_deref().map(str::trim) != Some("colony-credits") {
+        if let Some(model) = non_blank(record.model_override.as_deref()) {
+            config.model = ResolvedField {
+                value: Some(model.to_owned()),
+                source: ConfigSource::InstanceOverride,
+            };
+        }
     }
 
     config

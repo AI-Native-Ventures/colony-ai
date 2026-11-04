@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use super::overrides::{divergent_agent_command_override, update_time_agent_command_override};
 use super::{
     apply_agent_command_update, apply_env_vars_then_effort_transition, classify_runtime,
     codex_adapter_availability, codex_adapter_is_outdated, create_time_agent_command_override,
     default_agent_command, effective_agent_command, find_nvm_default_bin,
     is_login_shell_path_uninit, is_safe_nvm_tag, managed_agent_avatar_url, normalize_agent_args,
+    overrides::{divergent_agent_command_override, update_time_agent_command_override},
     parse_semver_tag, probe_codex_acp_version, record_agent_command, refresh_login_shell_path,
     remove_record_effort_aliases, try_record_agent_command, BUZZ_AGENT_AVATAR_URL,
     CLAUDE_CODE_AVATAR_URL, CODEX_AVATAR_URL, GOOSE_AVATAR_URL,
@@ -230,6 +230,7 @@ fn record_with(
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: None,
         provider: None,
         persona_source_version: None,
@@ -447,14 +448,10 @@ fn divergent_override_none_for_empty_or_absent_pick() {
 
 #[test]
 fn create_time_override_none_when_persona_runtime_not_installed() {
-    // CRITICAL-3 (Case 3): a `claude`-persona agent created on a machine
-    // where the claude adapter isn't installed. `resolvePersonaRuntime`
-    // falls back to the default (`buzz-agent`) and sends THAT command with
-    // `harness_override` false (the user did not pick it). At create this
-    // is a fallback, not a deliberate pin — it must store `None` so the
-    // agent inherits the persona's runtime once it's installed and the
-    // persona is re-edited. Baking `Some("buzz-agent")` here is the exact
-    // bug this resolver chain exists to kill.
+    // CRITICAL-3 case: when a Claude persona is created without its adapter,
+    // resolution falls back to buzz-agent with harness_override false. That
+    // is not a deliberate pin; the record must inherit Claude once its
+    // adapter is installed. Saving buzz-agent here would persist the fallback.
     let personas = vec![persona_with_runtime("p1", Some("claude"))];
     assert_eq!(
         create_time_agent_command_override(Some("p1"), &personas, Some("buzz-agent"), false),
@@ -1104,34 +1101,31 @@ fn test_command_basenames_dotted_name_no_extra_candidates() {
 
 // ── Phase B: cli_install_commands_for_os ────────────────────────────────────
 
-/// Claude and Codex have non-empty default cli_install_commands (install.sh).
+/// Claude retains its vendor installer; Codex has no global installer because
+/// Colony provisions its CLI and ACP adapter together in app data.
 #[test]
-fn test_claude_and_codex_have_cli_install_commands() {
+fn test_codex_has_no_machine_global_cli_install_command() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
     let codex = super::known_acp_runtime_exact("codex").unwrap();
     assert!(
         !claude.cli_install_commands.is_empty(),
         "claude must have cli install commands"
     );
-    assert!(
-        !codex.cli_install_commands.is_empty(),
-        "codex must have cli install commands"
-    );
+    assert!(codex.cli_install_commands.is_empty());
+    assert!(codex.cli_install_commands_windows.is_empty());
+    assert!(codex.adapter_install_commands.is_empty());
 }
 
-/// cli_install_commands_for_os returns a non-empty slice for claude and codex.
+/// Only the managed runtime path can install Codex.
 #[test]
-fn test_cli_install_commands_for_os_non_empty_for_claude_codex() {
+fn test_codex_install_commands_for_os_are_empty() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
     let codex = super::known_acp_runtime_exact("codex").unwrap();
     assert!(
         !claude.cli_install_commands_for_os().is_empty(),
         "claude must have install commands on every platform"
     );
-    assert!(
-        !codex.cli_install_commands_for_os().is_empty(),
-        "codex must have install commands on every platform"
-    );
+    assert!(codex.cli_install_commands_for_os().is_empty());
 }
 
 /// On Windows, every vendor CLI selects its official PowerShell installer.
@@ -1139,32 +1133,26 @@ fn test_cli_install_commands_for_os_non_empty_for_claude_codex() {
 #[test]
 fn test_cli_install_commands_for_os_selects_powershell_on_windows() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
-    let codex = super::known_acp_runtime_exact("codex").unwrap();
     let goose = super::known_acp_runtime_exact("goose").unwrap();
 
     // Windows must select the PowerShell commands, not the curl|bash ones.
     let claude_cmds = claude.cli_install_commands_for_os();
-    let codex_cmds = codex.cli_install_commands_for_os();
     let goose_cmds = goose.cli_install_commands_for_os();
 
     assert_ne!(
         claude_cmds, claude.cli_install_commands,
         "Windows must NOT use the default curl|bash commands for claude"
     );
-    assert_ne!(
-        codex_cmds, codex.cli_install_commands,
-        "Windows must NOT use the default curl|bash commands for codex"
-    );
+    assert!(super::known_acp_runtime_exact("codex")
+        .unwrap()
+        .cli_install_commands_for_os()
+        .is_empty());
     assert_eq!(goose_cmds, goose.cli_install_commands_windows);
 
     // Verify they are the PowerShell installers.
     assert!(
         claude_cmds.iter().any(|c| c.contains("powershell")),
         "claude Windows install must use powershell; got: {claude_cmds:?}"
-    );
-    assert!(
-        codex_cmds.iter().any(|c| c.contains("powershell")),
-        "codex Windows install must use powershell; got: {codex_cmds:?}"
     );
     assert!(
         goose_cmds.iter().any(|c| c.contains("download_cli.ps1")),

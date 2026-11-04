@@ -31,8 +31,10 @@
       "workspace-switcher.spec.ts",
       "agent-avatar-everywhere.spec.ts",
       "connect-polish.spec.ts",
-      "start-free-opencode.spec.ts",
+      "start-free-gateway.spec.ts",
+      "open-design-review.spec.ts",
       "colony3-first-run-proof.spec.ts",
+      "overflow-audit.spec.ts",
       "smoke.spec.ts",
       "navigation.spec.ts",
       "colony3-today.spec.ts",
@@ -45,6 +47,8 @@
       "cofounder-map.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
+      "harness-model-list.spec.ts",
+      "codex-adapter-provision.spec.ts",
       "w10-discovery-sales.spec.ts",
       "colony3-outreach-lists.spec.ts",
       "leads-table-polish.spec.ts",
@@ -146,6 +150,8 @@
         "colony3-agents-proof.spec.ts",
         "edit-agent.spec.ts",
         "agent-runtime-switch.spec.ts",
+        "harness-model-list.spec.ts",
+        "codex-adapter-provision.spec.ts",
         "edit-agent-run-on.spec.ts",
         "agent-access-warning.spec.ts",
         "agent-lifecycle-feedback.spec.ts",
@@ -253,7 +259,11 @@
     },
     {
       "paths": ["desktop/src/features/credits/**"],
-      "specs": ["stripe-credits.spec.ts", "credits-gateway-option.spec.ts"]
+      "specs": [
+        "stripe-credits.spec.ts",
+        "credits-gateway-option.spec.ts",
+        "start-free-gateway.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/custom-emoji/**"],
@@ -315,6 +325,7 @@
     {
       "paths": ["desktop/src/features/messages/**"],
       "specs": [
+        "open-design-review.spec.ts",
         "whatsapp-outreach-desk.spec.ts",
         "messaging.spec.ts",
         "link-preview-bare-domain.spec.ts",
@@ -374,7 +385,7 @@
         "workspace-header-icon.spec.ts",
         "colony3-first-run-proof.spec.ts",
         "connect-polish.spec.ts",
-        "start-free-opencode.spec.ts",
+        "start-free-gateway.spec.ts",
         "start-free-screenshots.spec.ts",
         "first-reply-runtime.spec.ts",
         "onboarding-agent-defaults.spec.ts",
@@ -486,6 +497,7 @@
     {
       "paths": ["desktop/src/features/workarea/**"],
       "specs": [
+        "open-design-review.spec.ts",
         "whatsapp-work-area.spec.ts",
         "work-area-dock.spec.ts",
         "work-area-dock-screenshots.spec.ts",
@@ -506,6 +518,10 @@
     {
       "paths": ["desktop/tests/e2e/whatsapp-outreach-desk-narrow.spec.ts"],
       "specs": ["whatsapp-outreach-desk-narrow.spec.ts"]
+    },
+    {
+      "paths": ["desktop/tests/e2e/codex-adapter-provision.spec.ts"],
+      "specs": ["codex-adapter-provision.spec.ts"]
     }
   ]
 }

@@ -71,7 +71,10 @@ function parseFileRef(value: unknown): WorkAreaFileRef | null {
 
 function parseTab(value: unknown): WorkAreaTab | null {
   if (typeof value !== "object" || value === null) return null;
-  const { id, kind, file, contactWaId } = value as Record<string, unknown>;
+  const { id, kind, file, contactWaId, designProjectId } = value as Record<
+    string,
+    unknown
+  >;
   if (typeof id !== "string" || id.length === 0 || id.length > 128) return null;
   if (!isWorkAreaTabKind(kind)) return null;
   if (kind === "file") {
@@ -89,6 +92,14 @@ function parseTab(value: unknown): WorkAreaTab | null {
         ? { contactWaId }
         : {}),
     };
+  }
+  if (kind === "design") {
+    return typeof designProjectId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+        designProjectId,
+      )
+      ? { id, kind, designProjectId }
+      : null;
   }
   return { id, kind };
 }
@@ -190,7 +201,8 @@ function sameChannel(a: WorkAreaChannelState, b: WorkAreaChannelState) {
         tab.id === b.tabs[index]?.id &&
         tab.kind === b.tabs[index]?.kind &&
         tab.file?.path === b.tabs[index]?.file?.path &&
-        tab.contactWaId === b.tabs[index]?.contactWaId,
+        tab.contactWaId === b.tabs[index]?.contactWaId &&
+        tab.designProjectId === b.tabs[index]?.designProjectId,
     )
   );
 }
@@ -267,7 +279,9 @@ function withTab(
     const updated =
       options?.contactWaId && existing.kind === "whatsapp"
         ? { ...existing, contactWaId: options.contactWaId }
-        : existing;
+        : options?.designProjectId && existing.kind === "design"
+          ? { ...existing, designProjectId: options.designProjectId }
+          : existing;
     if (updated === existing) {
       return { ...current, open: true, activeTabId: id };
     }
@@ -285,7 +299,9 @@ function withTab(
         ? { id, kind, file }
         : options?.contactWaId && kind === "whatsapp"
           ? { id, kind, contactWaId: options.contactWaId }
-          : { id, kind },
+          : options?.designProjectId && kind === "design"
+            ? { id, kind, designProjectId: options.designProjectId }
+            : { id, kind },
     ],
     activeTabId: id,
   };

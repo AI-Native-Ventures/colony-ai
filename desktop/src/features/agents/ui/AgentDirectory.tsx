@@ -555,7 +555,11 @@ function AgentIdentityButton({
         <span className="agents-c3-ident-name">
           {agent.name || "Unnamed agent"}
         </span>
-        {role ? <span className="agents-c3-ident-role">{role}</span> : null}
+        {role ? (
+          <span className="agents-c3-ident-role" title={role}>
+            {role}
+          </span>
+        ) : null}
       </span>
     </button>
   );

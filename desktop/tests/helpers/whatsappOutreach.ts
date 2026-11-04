@@ -1494,7 +1494,9 @@ export async function installWhatsAppMockBridge(
           ...deskContacts,
         ]);
       }
-      const templatesForMock = clone(state.status.templates);
+      // A disconnected initial status intentionally clears its templates, but
+      // reconnecting should restore the seeded template catalog.
+      const templatesForMock = clone(seed.status.templates);
       state.threads[planeTreeWaId].contact = clone(seed.contacts[0]);
       for (const contact of baseContacts.slice(1)) {
         state.threads[contact.waId] = { contact: clone(contact), messages: [] };

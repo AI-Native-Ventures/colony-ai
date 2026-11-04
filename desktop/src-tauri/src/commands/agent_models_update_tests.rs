@@ -90,6 +90,46 @@ fn unrelated_edit_does_not_trigger_runtime_restart() {
     ));
 }
 
+#[test]
+fn linked_model_override_write_is_a_production_entered_seam() {
+    let mut record = local_record();
+    record.persona_id = Some("scout".to_string());
+    record.model = Some("persona-model-snapshot".to_string());
+
+    apply_linked_model_override(
+        &mut record,
+        Some(Some("  gpt-6-luna[medium]  ".to_string())),
+    )
+    .expect("linked model choice should persist");
+
+    assert_eq!(record.model_override.as_deref(), Some("gpt-6-luna[medium]"));
+    assert_eq!(record.model.as_deref(), Some("persona-model-snapshot"));
+}
+
+#[test]
+fn clearing_linked_model_override_restores_persona_inheritance() {
+    let mut record = local_record();
+    record.persona_id = Some("scout".to_string());
+    record.model_override = Some("gpt-6-luna[medium]".to_string());
+
+    apply_linked_model_override(&mut record, Some(None)).expect("null means restore persona model");
+
+    assert_eq!(record.model_override, None);
+}
+
+#[test]
+fn colony_credits_clears_a_general_linked_model_override() {
+    let mut record = local_record();
+    record.persona_id = Some("scout".to_string());
+    record.provider = Some("colony-credits".to_string());
+    record.model_override = Some("gpt-6-luna[medium]".to_string());
+
+    apply_linked_model_override(&mut record, None)
+        .expect("credits remains the per-agent model source");
+
+    assert_eq!(record.model_override, None);
+}
+
 // ── Production-entered seam tests (apply_record_field_updates) ──────────────
 //
 // These tests call `apply_record_field_updates`, the same function production

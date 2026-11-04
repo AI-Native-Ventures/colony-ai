@@ -65,6 +65,14 @@ impl EffortNormalization {
 }
 
 /// Static capabilities and installation metadata for a known ACP runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ModelListSource {
+    Acp,
+    ClaudeCode,
+    CodexCli,
+    OpenCodeCli,
+}
+
 pub(crate) struct KnownAcpRuntime {
     pub id: &'static str,
     pub label: &'static str,
@@ -162,6 +170,18 @@ pub(crate) struct KnownAcpRuntime {
 }
 
 impl KnownAcpRuntime {
+    /// Select the authoritative model-list adapter for this known harness.
+    /// The runtime catalog remains the sole capability registry; frontend
+    /// code must not infer adapters from harness IDs.
+    pub fn model_list_source(&self) -> ModelListSource {
+        match self.id {
+            "claude" => ModelListSource::ClaudeCode,
+            "codex" => ModelListSource::CodexCli,
+            "opencode" => ModelListSource::OpenCodeCli,
+            _ => ModelListSource::Acp,
+        }
+    }
+
     /// Return the CLI install commands for the current platform.
     ///
     /// On Windows, returns `cli_install_commands_windows` when non-empty,
@@ -217,5 +237,41 @@ mod tests {
         );
         assert!(codex.adapter_install_instructions_url.contains("codex-acp"));
         assert!(codex.cli_install_hint.contains("Codex CLI"));
+    }
+
+    #[test]
+    fn model_list_sources_follow_the_known_runtime_catalog() {
+        use super::ModelListSource;
+
+        assert_eq!(
+            known_acp_runtime_exact("claude")
+                .expect("Claude runtime in catalog")
+                .model_list_source(),
+            ModelListSource::ClaudeCode
+        );
+        assert_eq!(
+            known_acp_runtime_exact("codex")
+                .expect("Codex runtime in catalog")
+                .model_list_source(),
+            ModelListSource::CodexCli
+        );
+        assert_eq!(
+            known_acp_runtime_exact("opencode")
+                .expect("OpenCode runtime in catalog")
+                .model_list_source(),
+            ModelListSource::OpenCodeCli
+        );
+        assert_eq!(
+            known_acp_runtime_exact("goose")
+                .expect("Goose runtime in catalog")
+                .model_list_source(),
+            ModelListSource::Acp
+        );
+        assert_eq!(
+            known_acp_runtime_exact("buzz-agent")
+                .expect("Colony Agent runtime in catalog")
+                .model_list_source(),
+            ModelListSource::Acp
+        );
     }
 }

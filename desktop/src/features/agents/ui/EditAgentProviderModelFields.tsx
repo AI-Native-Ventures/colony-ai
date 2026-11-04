@@ -11,6 +11,7 @@ import {
 import { PersonaDropdownField } from "./PersonaDropdownField";
 import { PersonaProviderApiKeyField } from "./PersonaProviderApiKeyField";
 import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
+import { RefreshModelListButton } from "./RefreshModelListButton";
 
 /**
  * LLM provider + provider API key + model block of the Edit Agent dialog.
@@ -44,6 +45,8 @@ export function EditAgentProviderModelFields({
   modelDropdownOptions,
   modelSelectValue,
   onModelDropdownChange,
+  onRefreshModels,
+  refreshingModels,
   showCustomModelInput,
   model,
   onModelChange,
@@ -71,6 +74,8 @@ export function EditAgentProviderModelFields({
   modelDropdownOptions: PersonaDropdownOption[];
   modelSelectValue: string;
   onModelDropdownChange: (value: string) => void;
+  onRefreshModels: () => void;
+  refreshingModels: boolean;
   showCustomModelInput: boolean;
   model: string;
   onModelChange: (value: string) => void;
@@ -143,19 +148,27 @@ export function EditAgentProviderModelFields({
 
       {/* Model */}
       <div className="space-y-1.5">
-        <label
-          className="text-sm font-medium text-foreground"
-          htmlFor="edit-agent-model"
-        >
-          Model
-          {modelRequired ? (
-            <span className="ml-1 text-destructive" aria-hidden="true">
-              *
-            </span>
-          ) : (
-            <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
-          )}
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="edit-agent-model"
+          >
+            Model
+            {modelRequired ? (
+              <span className="ml-1 text-destructive" aria-hidden="true">
+                *
+              </span>
+            ) : (
+              <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
+            )}
+          </label>
+          <RefreshModelListButton
+            disabled={disabled}
+            onClick={onRefreshModels}
+            refreshing={refreshingModels}
+            testId="refresh-agent-models"
+          />
+        </div>
         <PersonaDropdownField
           disabled={disabled || modelDiscoveryLoading}
           id="edit-agent-model"

@@ -95,6 +95,8 @@ export function requestedSourceLabel(
       return "Agent definition";
     case "global":
       return "Global defaults";
+    case "instance_override":
+      return "This agent";
     case "instance_legacy":
       return "Agent record";
     default:

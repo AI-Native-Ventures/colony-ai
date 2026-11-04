@@ -178,6 +178,7 @@ export type RawAcpRuntimeCatalogEntry = {
   avatar_url: string;
   availability: AcpAvailabilityStatus;
   command: string | null;
+  command_candidates?: string[];
   binary_path: string | null;
   default_args: string[];
   mcp_command: string | null;
@@ -634,6 +635,7 @@ export function fromRawAcpRuntimeCatalogEntry(
     avatarUrl: entry.avatar_url,
     availability: entry.availability,
     command: entry.command,
+    commandCandidates: entry.command_candidates ?? [],
     binaryPath: entry.binary_path,
     defaultArgs: entry.default_args,
     mcpCommand: entry.mcp_command,

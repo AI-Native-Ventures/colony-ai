@@ -1,25 +1,23 @@
-import { useInstallOutputLine } from "@/features/agents/lib/useInstallOutputLine";
 import { FirstRunError } from "./firstRunControls";
-import { START_FREE_RUNTIME_ID } from "./startFree";
 
 export type StartFreeState = "idle" | "installing" | "install-failed" | "ended";
 
 type StartFreePanelProps = {
   state: StartFreeState;
-  /** Install failure guidance from the native install step, when it has one. */
+  /** Gateway or native connection failure guidance. */
   hint: string | null;
-  /** What went wrong, from the native install step. */
+  /** Optional diagnostic detail. */
   reason?: string | null;
   /** False when retrying cannot help (unsupported computer). */
   canRetry?: boolean;
 };
 
-const INSTALL_FALLBACK =
-  "Free AI could not be set up. Check your internet connection and try again.";
+const FREE_AI_FALLBACK =
+  "Colony free AI could not connect. Try again or use your own AI.";
 
 /**
- * Start free on the Connect step: idle, installing Colony's own OpenCode,
- * install failed, or ended (OpenCode no longer offers the free model).
+ * Start free on the Connect step: idle, checking Colony's free gateway, or
+ * unavailable. The gateway uses the bundled Colony Agent and no subscription.
  * Presentation only; ConnectSetupStep owns the flow and the Test button.
  */
 export function StartFreePanel({
@@ -27,11 +25,6 @@ export function StartFreePanel({
   hint,
   reason = null,
 }: StartFreePanelProps) {
-  const installLine = useInstallOutputLine(
-    START_FREE_RUNTIME_ID,
-    state === "installing",
-  );
-
   if (state === "installing") {
     return (
       <div
@@ -42,8 +35,7 @@ export function StartFreePanel({
       >
         <span aria-hidden="true" className="c3fr-spinner" />
         <div className="c3fr-start-free-text">
-          <strong>Setting up free AI…</strong>
-          {installLine ? <span>{installLine}</span> : null}
+          <strong>Connecting to Colony free AI…</strong>
         </div>
       </div>
     );
@@ -54,8 +46,8 @@ export function StartFreePanel({
       <div data-testid="start-free-problem">
         <FirstRunError>
           {state === "ended"
-            ? "OpenCode's free AI has ended. Connect your own AI to continue."
-            : (hint ?? INSTALL_FALLBACK)}
+            ? "Colony free AI is not configured for this workspace. Use your own AI or try again later."
+            : (hint ?? FREE_AI_FALLBACK)}
         </FirstRunError>
         {state === "install-failed" && reason ? (
           <p className="c3fr-note start-free-reason">{reason}</p>
@@ -66,8 +58,8 @@ export function StartFreePanel({
 
   return (
     <p className="c3fr-note" data-testid="start-free-fine-print">
-      Runs through OpenCode on your computer. Chats aren't stored or used for
-      training. Free while OpenCode offers it.
+      Uses Colony's free AI gateway and the bundled Colony Agent. No
+      subscription or customer API key is required.
     </p>
   );
 }
