@@ -960,24 +960,30 @@ async fn refund_recipe_is_refused_even_when_approved() {
     let fx = fixture().await;
     let (connection_id, _) = fx.connect_api(false).await;
 
-    // Proposed by Scout: stored as refused, and the owner cannot approve it.
-    let mut refund = create_recipe("/v1/refunds");
-    refund.recipe_id = "refund-x".into();
-    fx.connection_action(&fx.scout, connection_id, ConnectionOp::ProposeRecipe, |a| {
-        a.recipe = Some(refund.clone())
-    })
-    .await
-    .expect("the proposal is recorded as refused");
-    let stored = fx.stored_recipe(connection_id, "refund-x").await;
-    assert_eq!(stored.refusal.as_deref(), Some("refund_path"));
-    let message = rejection(
-        fx.connection_action(&fx.owner, connection_id, ConnectionOp::ApproveRecipe, |a| {
-            a.recipe_id = Some("refund-x".into());
-            a.recipe_hash = Some(stored.recipe_hash.clone());
+    // Proposed by Scout: refunds and payouts are stored as refused, and the owner cannot
+    // approve either recipe.
+    for (recipe_id, path, refusal_code) in [
+        ("refund-x", "/v1/refunds", "refund_path"),
+        ("payout-x", "/v1/payouts", "payout_path"),
+    ] {
+        let mut refused = create_recipe(path);
+        refused.recipe_id = recipe_id.into();
+        fx.connection_action(&fx.scout, connection_id, ConnectionOp::ProposeRecipe, |a| {
+            a.recipe = Some(refused)
         })
-        .await,
-    );
-    assert!(message.contains("refund_path"), "{message}");
+        .await
+        .expect("the proposal is recorded as refused");
+        let stored = fx.stored_recipe(connection_id, recipe_id).await;
+        assert_eq!(stored.refusal.as_deref(), Some(refusal_code));
+        let message = rejection(
+            fx.connection_action(&fx.owner, connection_id, ConnectionOp::ApproveRecipe, |a| {
+                a.recipe_id = Some(recipe_id.into());
+                a.recipe_hash = Some(stored.recipe_hash.clone());
+            })
+            .await,
+        );
+        assert!(message.contains(refusal_code), "{message}");
+    }
 
     // Even a recipe forced to "approved" in storage is refused when it runs, and the provider
     // is never called.
@@ -985,30 +991,35 @@ async fn refund_recipe_is_refused_even_when_approved() {
         .await;
     let link_id = fx.draft(connection_id).await;
     fx.approve(link_id).await.expect("owner approves the card");
-    let mut tampered = load_connection(&fx.state, fx.community(), connection_id)
-        .await
-        .expect("load")
-        .expect("exists");
-    tampered
-        .config
-        .recipes
-        .iter_mut()
-        .find(|stored| stored.recipe.recipe_id == "create-payment-link")
-        .expect("the approved recipe")
-        .recipe
-        .path = "/v1/refunds".into();
     let (_, head) = fx.head(link_id).await;
-    let failure = run_create(
-        &fx.state,
-        fx.provider.as_ref(),
-        fx.community(),
-        &head,
-        &tampered,
-        None,
-    )
-    .await
-    .expect_err("a refund path must never run");
-    assert_eq!(failure.code, "refund_path");
+    for (path, refusal_code) in [
+        ("/v1/refunds", "refund_path"),
+        ("/v1/payouts", "payout_path"),
+    ] {
+        let mut tampered = load_connection(&fx.state, fx.community(), connection_id)
+            .await
+            .expect("load")
+            .expect("exists");
+        tampered
+            .config
+            .recipes
+            .iter_mut()
+            .find(|stored| stored.recipe.recipe_id == "create-payment-link")
+            .expect("the approved recipe")
+            .recipe
+            .path = path.into();
+        let failure = run_create(
+            &fx.state,
+            fx.provider.as_ref(),
+            fx.community(),
+            &head,
+            &tampered,
+            None,
+        )
+        .await
+        .expect_err("a funds-moving path must never run");
+        assert_eq!(failure.code, refusal_code);
+    }
     assert_eq!(fx.provider.call_count(), 0);
 }
 
