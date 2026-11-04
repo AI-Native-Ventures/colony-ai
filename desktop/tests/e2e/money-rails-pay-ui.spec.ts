@@ -30,6 +30,7 @@ import { waitForAnimations } from "../helpers/animations";
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const PLANE_TREE_PARTY_ID = REFERENCE_PROSPECT_IDS["form-field"];
 const APPROVAL_CARD_ID = "7f3c2a91-4b1d-4a2f-8e63-2d90a74ce112";
+const PAYSTACK_CARD_ID = "6a2f7c13-d4e8-4b91-9a05-3c7d8e1f2046";
 const API_KEY_CANARY = "sk_test_money_rails_secret_never_echo";
 const NOTICE_ADDRESS =
   "https://horizon-labs.colony.ainative.ventures/hooks/pay/7f3c2a91";
@@ -71,6 +72,20 @@ const PAYMENT_CARD: MoneyLinkCard = {
   approvedHeadEventId: null,
   expiresInDays: 14,
   browserGrant: null,
+};
+
+const PAYSTACK_CARD: MoneyLinkCard = {
+  ...PAYMENT_CARD,
+  id: PAYSTACK_CARD_ID,
+  headEventId: "paystack-link-head-v1",
+  draftedBy: REFERENCE_AGENTS.scout.pubkey,
+  title: "Deposit for Plane Tree Guesthouse",
+  provider: {
+    connectionId: "connection-paystack",
+    name: "Paystack",
+    host: "api.paystack.co",
+    route: "api",
+  },
 };
 
 function cardInState(
@@ -162,6 +177,11 @@ const INITIAL_SNAPSHOT: MoneyRailsSnapshot = {
 type MoneyRailsWindow = Window & {
   __BUZZ_E2E_MONEY_RAILS__?: MoneyRailsMockBridge;
   __BUZZ_E2E_MONEY_RAILS_ACTIONS__?: Array<Record<string, unknown>>;
+  __BUZZ_E2E_MONEY_RAILS_PUBLISH_CARD__?: (card: MoneyLinkCard) => void;
+  __BUZZ_E2E_MONEY_RAILS_APPLY_VERIFIED_NOTICE__?: (input: {
+    linkId: string;
+    providerReference: string;
+  }) => void;
   __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
     channelName: string;
     content: string;
@@ -199,7 +219,7 @@ async function installMoneyRailsMock(
   page: Page,
   theme: "light" | "dark",
   snapshot: MoneyRailsSnapshot = INITIAL_SNAPSHOT,
-  customerRecord = false,
+  customerRecord: boolean | "unpaid" = false,
   approvalChat = false,
   mobileApproval = false,
 ) {
@@ -237,14 +257,16 @@ async function installMoneyRailsMock(
     record.partyId = PLANE_TREE_PARTY_ID;
     record.clientId = PLANE_TREE_CLIENT_ID;
     record.clientStatus = "active";
+    const initialDepositPaidMinor = customerRecord === "unpaid" ? 0 : 375_000;
     record.money = {
       currency: "ZAR",
       quoteTotalMinor: 750_000,
-      depositPaidMinor: 375_000,
-      depositPaidAt: Math.floor(
-        new Date("2026-11-03T09:20:00+02:00").getTime() / 1_000,
-      ),
-      balanceDueMinor: 375_000,
+      depositPaidMinor: initialDepositPaidMinor,
+      depositPaidAt:
+        initialDepositPaidMinor === 0
+          ? null
+          : Math.floor(new Date("2026-11-03T09:20:00+02:00").getTime() / 1_000),
+      balanceDueMinor: 750_000 - initialDepositPaidMinor,
       otherCurrencyFacts: 0,
     };
     record.quotes = [
@@ -314,6 +336,42 @@ async function installMoneyRailsMock(
       };
       const testWindow = window as MoneyRailsWindow;
       testWindow.__BUZZ_E2E_MONEY_RAILS_ACTIONS__ = actions;
+      testWindow.__BUZZ_E2E_MONEY_RAILS_PUBLISH_CARD__ = (card) => {
+        state = {
+          ...state,
+          paymentLinks: [
+            ...state.paymentLinks.filter((item) => item.id !== card.id),
+            card,
+          ],
+        };
+        notify();
+      };
+      testWindow.__BUZZ_E2E_MONEY_RAILS_APPLY_VERIFIED_NOTICE__ = ({
+        linkId,
+        providerReference,
+      }) => {
+        const cardIndex = state.paymentLinks.findIndex(
+          (card) => card.id === linkId,
+        );
+        const card = state.paymentLinks[cardIndex];
+        if (card?.state !== "sent") {
+          throw new Error("A verified notice needs a sent payment link.");
+        }
+        const paidCard: MoneyLinkCard = {
+          ...card,
+          state: "paid",
+          expiresLabel: "",
+          providerReference,
+          statusDetail: "Confirmed by Paystack, not just reported",
+        };
+        state = {
+          ...state,
+          paymentLinks: state.paymentLinks.map((item, index) =>
+            index === cardIndex ? paidCard : item,
+          ),
+        };
+        notify();
+      };
       testWindow.__BUZZ_E2E_MONEY_RAILS__ = {
         getSnapshot: () => state,
         getPaymentLinkDetails: (linkId) => {
@@ -734,6 +792,103 @@ test("provider connect dialog keeps API key masked and never returns it", async 
     },
   ]);
   expect(JSON.stringify(actions)).not.toContain(API_KEY_CANARY);
+});
+
+test("Paystack connection, Scout approval, and a verified notice reach the customer record", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1180 });
+  await installMoneyRailsMock(
+    page,
+    "light",
+    { paymentLinks: [], connections: [] },
+    "unpaid",
+  );
+  await page.goto("/#/today");
+  await openMoneySettings(page);
+  await page.getByTestId("money-rail-add-provider").click();
+
+  const dialog = page.getByTestId("money-rail-connect-dialog");
+  await expect(dialog.getByLabel("Provider")).toHaveValue(
+    "Paystack · paystack.com",
+  );
+  await dialog.getByLabel("Use an API key").check();
+  const keyField = dialog.getByTestId("money-rail-api-key");
+  await expect(keyField).toHaveAttribute("type", "password");
+  await expect(dialog).toContainText("Locked to api.paystack.co");
+  await keyField.fill(API_KEY_CANARY);
+  await dialog.getByTestId("money-rail-connect-provider").click();
+  await expect(keyField).toHaveValue("");
+  await expect(page.locator("body")).not.toContainText(API_KEY_CANARY);
+  await expect(
+    page.getByTestId("money-rail-connection-connection-paystack"),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  await openScoutDm(page);
+  await page.evaluate((card) => {
+    const publish = (window as MoneyRailsWindow)
+      .__BUZZ_E2E_MONEY_RAILS_PUBLISH_CARD__;
+    if (!publish) throw new Error("The mock relay card publisher is missing.");
+    publish(card);
+  }, PAYSTACK_CARD);
+  const scoutMessage = await emitMockMessage(
+    page,
+    "I prepared the Paystack deposit link for Plane Tree. Please review it.",
+    { cardId: PAYSTACK_CARD_ID, pubkey: REFERENCE_AGENTS.scout.pubkey },
+  );
+  if (!scoutMessage?.id)
+    throw new Error("Scout's payment link was not posted.");
+  await revealMockMessage(page, scoutMessage.id);
+
+  const card = page.getByTestId(`money-rail-card-${PAYSTACK_CARD_ID}`);
+  await expect(card).toBeVisible();
+  await expect(card).toHaveAttribute("data-state", "needs_you");
+  await expect(card).toContainText("Paystack, through its API");
+  await expect(card).toContainText("Needs you");
+  await card.getByTestId(`money-rail-approve-${PAYSTACK_CARD_ID}`).click();
+  await expect(card).toHaveAttribute("data-state", "sent");
+
+  await page.evaluate(
+    (input) => {
+      const applyNotice = (window as MoneyRailsWindow)
+        .__BUZZ_E2E_MONEY_RAILS_APPLY_VERIFIED_NOTICE__;
+      if (!applyNotice)
+        throw new Error("The mock relay notice publisher is missing.");
+      applyNotice(input);
+    },
+    { linkId: PAYSTACK_CARD_ID, providerReference: "pay_test_1042" },
+  );
+  await expect(card).toHaveAttribute("data-state", "paid");
+  await expect(card).toContainText("Confirmed by Paystack, not just reported");
+
+  await page.goto(`/#/clients/record/${PLANE_TREE_PARTY_ID}`);
+  await expect(page.getByTestId("customer-record-screen")).toBeVisible();
+  const customerPayment = page
+    .getByTestId("customer-payment-links")
+    .getByTestId(`customer-payment-link-${PAYSTACK_CARD_ID}`);
+  await expect(customerPayment).toContainText("Paid");
+  await expect(customerPayment).toContainText("Confirmed by Paystack");
+
+  const actions = await page.evaluate(
+    () => (window as MoneyRailsWindow).__BUZZ_E2E_MONEY_RAILS_ACTIONS__ ?? [],
+  );
+  expect(actions).toEqual([
+    {
+      type: "connect",
+      provider: "Paystack",
+      host: "api.paystack.co",
+      route: "api",
+      hadApiKey: true,
+    },
+    {
+      type: "approve",
+      linkId: PAYSTACK_CARD_ID,
+      headEventId: "paystack-link-head-v1",
+    },
+  ]);
+  expect(JSON.stringify(actions)).not.toContain(API_KEY_CANARY);
+  expect(JSON.stringify(actions)).not.toMatch(/refund|payout|transfer/iu);
 });
 
 test("payment board screenshots cover connect and customer states across themes and sizes", async ({
