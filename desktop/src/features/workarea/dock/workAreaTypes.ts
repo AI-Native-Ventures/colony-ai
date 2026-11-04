@@ -19,6 +19,7 @@ export const WORK_AREA_TAB_KINDS = [
   "knowledge",
   "file",
   "whatsapp",
+  "design",
 ] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
@@ -48,10 +49,13 @@ export type WorkAreaTab = {
   file?: WorkAreaFileRef;
   /** Selected conversation when a WhatsApp reply opens the inbox. */
   contactWaId?: string;
+  /** Local Colony design project shown in this review tab. */
+  designProjectId?: string;
 };
 
 export type WorkAreaTabOptions = {
   contactWaId?: string;
+  designProjectId?: string;
 };
 
 /** Everything the dock remembers about one channel. */

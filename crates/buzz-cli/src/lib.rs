@@ -250,6 +250,9 @@ enum Cmd {
     /// Get and set channel canvas documents
     #[command(subcommand)]
     Canvas(CanvasCmd),
+    /// Create and review private Open Design projects
+    #[command(subcommand)]
+    Design(DesignCmd),
     /// Add, remove, and list emoji reactions
     #[command(subcommand)]
     Reactions(ReactionsCmd),
@@ -906,6 +909,64 @@ pub enum CanvasCmd {
         #[arg(long)]
         content: String,
     },
+}
+
+#[derive(Clone, clap::ValueEnum)]
+pub enum DesignRuntime {
+    Claude,
+    Codex,
+    Opencode,
+    #[value(name = "colony")]
+    ColonyBuzzAgent,
+}
+
+impl DesignRuntime {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Opencode => "opencode",
+            Self::ColonyBuzzAgent => "colony-buzz-agent",
+        }
+    }
+}
+
+#[derive(Clone, Subcommand)]
+pub enum DesignCmd {
+    /// Start a private project from a brief and the saved business brand
+    New {
+        #[arg(long)]
+        name: String,
+        /// Design brief, under 16 KB
+        #[arg(long)]
+        brief: String,
+        /// The same local runtime used by this agent
+        #[arg(long, value_enum)]
+        runtime: DesignRuntime,
+        /// Current Colony channel for the owner review card
+        #[arg(long, env = "BUZZ_GIT_ORIGIN_CHANNEL_ID", hide_env = true)]
+        channel: Option<String>,
+    },
+    /// Run or continue a private design project
+    Run {
+        project_id: String,
+        #[arg(long)]
+        prompt: Option<String>,
+    },
+    /// Read project and owner review status
+    Status { project_id: String },
+    /// Return the safe local preview details for a project
+    Preview { project_id: String },
+    /// Copy project outputs into its private exports folder
+    Export {
+        project_id: String,
+        #[arg(long, default_value = "html")]
+        format: String,
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Stop the project's local daemon
+    Stop { project_id: String },
 }
 
 #[derive(Subcommand)]
@@ -4447,6 +4508,15 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         };
     }
 
+    // Design projects are local-first. The helper reads the current agent's
+    // already-authorized runtime environment. Creating, checking, previewing,
+    // exporting and stopping are local; `run` also posts its owner review card.
+    if let Cmd::Design(ref sub) = cli.command {
+        if !matches!(sub, DesignCmd::Run { .. }) {
+            return commands::design::dispatch(sub).await;
+        }
+    }
+
     // Auth: private key is required for all relay operations.
     // The keypair IS the identity — no tokens, no other auth.
     let private_key_str = cli.private_key.ok_or_else(|| {
@@ -4493,6 +4563,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Messages(sub) => commands::messages::dispatch(sub, &client, &cli.format).await,
         Cmd::Channels(sub) => commands::channels::dispatch(sub, &client, &cli.format).await,
         Cmd::Canvas(sub) => commands::channels::dispatch_canvas(sub, &client).await,
+        Cmd::Design(sub) => commands::design::dispatch_authenticated(&sub, &client).await,
         Cmd::Reactions(sub) => commands::reactions::dispatch(sub, &client).await,
         Cmd::Emoji(sub) => commands::emoji::dispatch(sub, &client).await,
         Cmd::Gifs(sub) => commands::gifs::dispatch(sub, &client).await,
@@ -4546,6 +4617,38 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn design_cli_parses_start_free_gateway_adapter_and_local_review_commands() {
+        let cli = Cli::try_parse_from([
+            "buzz",
+            "design",
+            "new",
+            "--name",
+            "Landing page",
+            "--brief",
+            "Design a private landing page",
+            "--runtime",
+            "colony",
+            "--channel",
+            "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50",
+        ])
+        .expect("design new accepts the Colony gateway runtime");
+        assert!(matches!(
+            cli.command,
+            Cmd::Design(DesignCmd::New {
+                runtime: DesignRuntime::ColonyBuzzAgent,
+                ..
+            })
+        ));
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "design",
+            "status",
+            "b9517e2d-46d3-493d-9e46-aed2c6320505"
+        ])
+        .is_ok());
+    }
 
     /// Raw shorthand `[auth,hex,,hex]` normalizes to strict JSON; the empty
     /// conditions field becomes `""`.
@@ -4698,6 +4801,7 @@ mod tests {
             "cofounder",
             "credits",
             "customers",
+            "design",
             "discovery",
             "dms",
             "duties",

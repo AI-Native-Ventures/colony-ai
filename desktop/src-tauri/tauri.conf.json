@@ -52,6 +52,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": ["resources/third-party-notices/*"],
     "externalBin": [
       "binaries/buzz-acp",
       "binaries/buzz-agent",

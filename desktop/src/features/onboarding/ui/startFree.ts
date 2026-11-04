@@ -5,10 +5,9 @@ import {
 } from "@/features/agents/lib/friendlyAgentLastError";
 import type { GlobalAgentConfig } from "@/shared/api/types";
 
-/** Start free runs Colony's own OpenCode on OpenCode's free model. */
-export const START_FREE_RUNTIME_ID = "opencode";
-export const START_FREE_PROVIDER = "opencode-free";
-export const START_FREE_MODEL = "opencode/deepseek-v4.1-flash-free";
+/** Start free uses Colony's bundled agent and the relay's configured free model. */
+export const START_FREE_RUNTIME_ID = "buzz-agent";
+export const START_FREE_PROVIDER = "colony-credits";
 
 /** A connection-test failure that keeps the native result's machine code. */
 export class OnboardingConnectionError extends Error {
@@ -22,16 +21,20 @@ export class OnboardingConnectionError extends Error {
 
 export function buildStartFreeConfig(
   current: GlobalAgentConfig,
+  freeModel: string,
 ): GlobalAgentConfig {
+  if (!freeModel.trim().endsWith(":free")) {
+    throw new Error("Colony free AI did not return a configured free model.");
+  }
   return {
     ...current,
     preferred_runtime: START_FREE_RUNTIME_ID,
     provider: START_FREE_PROVIDER,
-    model: START_FREE_MODEL,
+    model: freeModel,
   };
 }
 
-/** "ended" means OpenCode no longer offers the free model. */
+/** Keep the retired state for a relay that has no configured free route. */
 export function startFreeFailureKind(error: unknown): "ended" | "other" {
   return error instanceof OnboardingConnectionError &&
     error.code === "model_unavailable"
@@ -40,7 +43,7 @@ export function startFreeFailureKind(error: unknown): "ended" | "other" {
 }
 
 /**
- * What Connect shows for a failed proof turn. OpenCode's free quota running out
+ * What Connect shows for a failed proof turn. A temporary free-route refusal
  * gets one plain sentence, whether the native test coded it or only quoted it.
  */
 export function onboardingFailureCopy(error: Error): string {

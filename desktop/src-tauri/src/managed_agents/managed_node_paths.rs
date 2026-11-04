@@ -83,7 +83,7 @@ pub(crate) fn managed_opencode_platform() -> Option<&'static str> {
     }
 }
 
-/// Colony's own OpenCode folder for this platform (Start free).
+/// Colony's managed OpenCode folder for this platform, including legacy Start free records.
 pub(crate) fn buzz_managed_opencode_dir() -> Option<PathBuf> {
     let platform = managed_opencode_platform()?;
     dirs::data_dir().map(|dir| {
@@ -136,7 +136,7 @@ pub(crate) fn buzz_managed_command_path(command: &str, basename: &str) -> Option
 }
 
 /// Resolve a Colony-managed command from the given folders. Colony's own
-/// OpenCode folder is searched first, so Start free never runs another copy.
+/// OpenCode folder is searched first so legacy Start free records never run another copy.
 fn managed_command_path_in(
     command: &str,
     basename: &str,

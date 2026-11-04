@@ -45,14 +45,14 @@ export const PROVIDER_KEY_REJECTED_COPY =
 export const MODEL_NOT_FOUND_COPY =
   "The configured model is not available - open agent settings and select a different one from the dropdown.";
 
-/** Start free: OpenCode no longer offers the free model (buzz-acp strict mode). */
+/** Legacy OpenCode Start free records: the provider ended its free model. */
 export const FREE_MODEL_ENDED_COPY =
   "Free AI has ended. Connect your own AI in Settings.";
 
 const FREE_MODEL_ENDED_PREFIX = "free model ended: ";
 
 /**
- * Start free: OpenCode's daily free quota is gone. OpenCode words it as
+ * Legacy OpenCode Start free records: its daily free quota is gone. It words it as
  * "AI_APICallError: Free usage limit reached. Free models work in OpenCode
  * (...); subscribe to OpenCode Go to keep going". The same copy is used by the
  * Connect test and chat notices in `crates/buzz-acp/src/provider_failure.rs`.
@@ -65,7 +65,7 @@ export const FREE_LIMIT_CODE = "free_limit_reached";
 
 const FREE_LIMIT_PHRASE = "free usage limit reached";
 
-/** True when `text` is (or quotes) OpenCode's free-quota-used-up error. */
+/** True when `text` is (or quotes) the legacy OpenCode free-quota error. */
 export function isFreeLimitText(text: string | null | undefined): boolean {
   return (text ?? "").toLowerCase().includes(FREE_LIMIT_PHRASE);
 }
