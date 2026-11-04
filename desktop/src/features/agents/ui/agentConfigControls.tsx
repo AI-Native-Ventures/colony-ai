@@ -11,6 +11,7 @@ import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Input } from "@/shared/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { RefreshModelListButton } from "./RefreshModelListButton";
 import {
   AUTO_MODEL_DROPDOWN_VALUE,
   AUTO_PROVIDER_DROPDOWN_VALUE,
@@ -347,6 +348,7 @@ export function AgentModelField({
   model,
   modelDiscoveryLoading,
   modelDiscoveryStatus,
+  onRefreshModels,
   onIsCustomModelEditingChange,
   onModelChange,
   placeholder = "Select model",
@@ -381,6 +383,7 @@ export function AgentModelField({
   model: string;
   modelDiscoveryLoading: boolean;
   modelDiscoveryStatus: PersonaModelDiscoveryStatus | null;
+  onRefreshModels?: () => void;
   onIsCustomModelEditingChange: (value: boolean) => void;
   onModelChange: (value: string) => void;
   /** Trigger placeholder shown when there is no selected model option. */
@@ -570,13 +573,22 @@ export function AgentModelField({
 
   return (
     <div className={cn("space-y-1.5", fieldClassName)}>
-      <RequiredFieldLabel
-        className={labelClassName}
-        htmlFor={id}
-        isRequired={isRequired}
-      >
-        Model
-      </RequiredFieldLabel>
+      <div className="flex items-center justify-between gap-2">
+        <RequiredFieldLabel
+          className={labelClassName}
+          htmlFor={id}
+          isRequired={isRequired}
+        >
+          Model
+        </RequiredFieldLabel>
+        {onRefreshModels ? (
+          <RefreshModelListButton
+            disabled={disabled}
+            onClick={onRefreshModels}
+            refreshing={modelDiscoveryLoading}
+          />
+        ) : null}
+      </div>
       {!useCustomSelect && useChevronIcon ? (
         <div className="relative">
           {modelSelect}

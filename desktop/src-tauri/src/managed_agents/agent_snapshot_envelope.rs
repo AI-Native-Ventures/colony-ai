@@ -386,6 +386,7 @@ mod tests {
             max_turn_duration_seconds: None,
             parallelism: 1,
             system_prompt: None,
+            model_override: None,
             model: None,
             env_vars: std::collections::BTreeMap::new(),
             start_on_app_launch: false,

@@ -59,6 +59,7 @@ fn make_agent(name: &str, persona_id: Option<&str>) -> ManagedAgentRecord {
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: None,
         provider: None,
         persona_source_version: None,

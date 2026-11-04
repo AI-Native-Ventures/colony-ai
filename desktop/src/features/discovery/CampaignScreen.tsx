@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { BusinessRecords } from "./businessRecordRelay";
 import { publishProspectAction } from "./businessRecordMutations";
@@ -70,11 +71,24 @@ function matchesFilter(
 
 export function CampaignScreen(context: CampaignContext) {
   const navigate = useNavigate();
+  const routeOrigin = useRouteOrigin();
+  const restored = routeOrigin.pageSnapshot?.viewState as
+    | {
+        query?: string;
+        filter?: ProspectFilter;
+        sort?: ProspectSort;
+        selected?: string[];
+      }
+    | undefined;
   const { campaign, provider } = useDiscoveryCampaign();
-  const [query, setQuery] = React.useState("");
-  const [filter, setFilter] = React.useState<ProspectFilter>("all");
-  const [sort, setSort] = React.useState<ProspectSort>("fit");
-  const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
+  const [query, setQuery] = React.useState(restored?.query ?? "");
+  const [filter, setFilter] = React.useState<ProspectFilter>(
+    restored?.filter ?? "all",
+  );
+  const [sort, setSort] = React.useState<ProspectSort>(restored?.sort ?? "fit");
+  const [selected, setSelected] = React.useState<Set<string>>(
+    () => new Set(restored?.selected ?? []),
+  );
   const [dialogMode, setDialogMode] = React.useState<CampaignDialogMode>(null);
   const [relatedTypeId, setRelatedTypeId] = React.useState<string | null>(null);
   const [widenPending, setWidenPending] =
@@ -89,6 +103,47 @@ export function CampaignScreen(context: CampaignContext) {
   const [notice, setNotice] = React.useState("");
   const recordsRef = React.useRef(context.records);
   recordsRef.current = context.records;
+
+  React.useEffect(() => {
+    if (!campaign) return;
+    const scrollTarget = document.querySelector<HTMLElement>(".c3d-root");
+    const save = () =>
+      routeOrigin.savePageSnapshot({
+        backLabel: campaign.name,
+        breadcrumbs: ["Business", "Discovery", campaign.name],
+        viewState: {
+          query,
+          filter,
+          sort,
+          selected: [...selected],
+        },
+        scrollY: scrollTarget?.scrollTop ?? window.scrollY,
+        scrollTarget: scrollTarget ? ".c3d-root" : undefined,
+      });
+    save();
+    const scrollHost: Window | HTMLElement = scrollTarget ?? window;
+    scrollHost.addEventListener("scroll", save, { passive: true });
+    return () => scrollHost.removeEventListener("scroll", save);
+  }, [campaign, filter, query, routeOrigin.savePageSnapshot, selected, sort]);
+
+  React.useEffect(() => {
+    const scrollY = routeOrigin.pageSnapshot?.scrollY;
+    if (typeof scrollY !== "number" || scrollY <= 0) return;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const target = routeOrigin.pageSnapshot?.scrollTarget
+          ? document.querySelector<HTMLElement>(
+              routeOrigin.pageSnapshot.scrollTarget,
+            )
+          : null;
+        if (target) target.scrollTo({ top: scrollY });
+        else window.scrollTo({ top: scrollY });
+      }),
+    );
+  }, [
+    routeOrigin.pageSnapshot?.scrollTarget,
+    routeOrigin.pageSnapshot?.scrollY,
+  ]);
 
   React.useEffect(() => {
     if (!provider || !campaign) void navigate({ to: "/discovery" });

@@ -790,6 +790,15 @@ CREATE TABLE whatsapp_messages (
     post_retry_at TIMESTAMPTZ,
     post_gave_up_at TIMESTAMPTZ,
     intent TEXT CHECK (intent IS NULL OR intent IN ('wants_call')),
+    media JSONB,
+    media_state TEXT CHECK (
+        media_state IS NULL OR media_state IN ('pending', 'stored', 'failed', 'gone')
+    ),
+    media_stored JSONB,
+    media_attempts INTEGER NOT NULL DEFAULT 0 CHECK (media_attempts >= 0),
+    media_retry_at TIMESTAMPTZ,
+    media_error TEXT,
+    media_linked BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (community_id, id),
     FOREIGN KEY (community_id, wa_id) REFERENCES whatsapp_contacts (community_id, wa_id),
     FOREIGN KEY (community_id, batch_id) REFERENCES whatsapp_batches (community_id, id),
@@ -807,6 +816,9 @@ CREATE INDEX whatsapp_messages_thread
 CREATE INDEX whatsapp_messages_new_chat_day
     ON whatsapp_messages (community_id, sent_at)
     WHERE new_chat AND sent_at IS NOT NULL;
+CREATE INDEX whatsapp_messages_media_due
+    ON whatsapp_messages (community_id, media_retry_at)
+    WHERE media_state = 'pending';
 
 -- ── API tokens ────────────────────────────────────────────────────────────────
 -- Conformance: "API tokens and NIP-98 replay". token_hash uniqueness scoped to

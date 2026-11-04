@@ -62,6 +62,7 @@ fn record(
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: prompt.map(str::to_string),
+        model_override: None,
         model: model.map(str::to_string),
         provider: provider.map(str::to_string),
         persona_source_version: None,
@@ -188,6 +189,32 @@ fn linked_stale_record_model_is_inert() {
 }
 
 #[test]
+fn linked_explicit_instance_model_override_wins_over_persona_snapshot() {
+    let mut rec = record(Some("d1"), Some("stale-record-model"), None, None);
+    rec.model_override = Some("gpt-6-luna[medium]".to_string());
+    let defs = vec![definition(
+        "d1",
+        Some("persona-model"),
+        Some("anthropic"),
+        "persona prompt",
+    )];
+    let global = global(Some("global-model"), Some("global-provider"));
+
+    let config = resolve_effective_config(&rec, &defs, &global)
+        .require_resolved()
+        .expect("linked instance resolves");
+
+    assert_eq!(config.model.value.as_deref(), Some("gpt-6-luna[medium]"));
+    assert_eq!(config.model.source, ConfigSource::InstanceOverride);
+    assert_eq!(config.provider.value.as_deref(), Some("anthropic"));
+    assert_eq!(config.provider.source, ConfigSource::Definition);
+    assert_eq!(
+        config.system_prompt.value.as_deref(),
+        Some("persona prompt")
+    );
+}
+
+#[test]
 fn linked_colony_credits_selection_uses_the_instance_free_model() {
     let rec = record(
         Some("d1"),
@@ -195,6 +222,8 @@ fn linked_colony_credits_selection_uses_the_instance_free_model() {
         Some("colony-credits"),
         None,
     );
+    let mut rec = rec;
+    rec.model_override = Some("stale-normal-model".to_string());
     let defs = vec![definition(
         "d1",
         Some("claude-opus-5-5"),

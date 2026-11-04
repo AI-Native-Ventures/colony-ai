@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 
 import { cn } from "@/shared/lib/cn";
 import { Input } from "@/shared/ui/input";
+import { RefreshModelListButton } from "./RefreshModelListButton";
 import { PersonaModelCombobox } from "./PersonaModelCombobox";
 import type { PersonaModelDiscoveryStatus } from "./personaModelDiscoveryStatus";
 import {
@@ -20,6 +21,8 @@ type PersonaModelFieldProps = {
   modelDropdownOptions: readonly PersonaDropdownOption[];
   showSharedComputeAutoHint: boolean;
   modelSelectValue: string;
+  onRefreshModels: () => void;
+  refreshingModels: boolean;
   onCustomModelChange: (value: string) => void;
   onModelValueChange: (value: string) => void;
   showCustomModelInput: boolean;
@@ -33,6 +36,8 @@ export function PersonaModelField({
   modelDiscoveryStatus,
   modelDropdownOptions,
   modelSelectValue,
+  onRefreshModels,
+  refreshingModels,
   showSharedComputeAutoHint,
   onCustomModelChange,
   onModelValueChange,
@@ -49,15 +54,22 @@ export function PersonaModelField({
       transition={transition}
     >
       <div className="space-y-1.5">
-        <label
-          className="text-sm font-medium text-foreground"
-          htmlFor="persona-model"
-        >
-          Model
-          {!isExplicitModelRequired ? (
-            <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
-          ) : null}
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="persona-model"
+          >
+            Model
+            {!isExplicitModelRequired ? (
+              <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
+            ) : null}
+          </label>
+          <RefreshModelListButton
+            disabled={disabled}
+            onClick={onRefreshModels}
+            refreshing={refreshingModels}
+          />
+        </div>
         <PersonaModelCombobox
           disabled={disabled}
           id="persona-model"

@@ -38,6 +38,7 @@ import {
   saveActiveAgentTurnsForCommunity,
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
+import { resetAgentRuntimeSwitchState } from "@/features/agents/agentRuntimeSwitchStore";
 import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
 import { resetScoutStartState } from "@/features/cofounder/scoutKeepAlive";
@@ -86,6 +87,7 @@ async function resetCommunityState({
   clearAllDrafts();
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();
+  resetAgentRuntimeSwitchState();
   resetAgentWorkingSignal();
   // Mentions still waiting on an agent to start belong to the community they
   // were sent in: dropping them keeps their replay floors and "starting" notices

@@ -1,0 +1,38 @@
+{
+  "agent": {
+    "name": "claude-agent-acp",
+    "version": "0.61.0"
+  },
+  "stable": {
+    "configOptions": [
+      {
+        "configId": "model",
+        "category": "model",
+        "currentValue": "claude-sonnet-4-20250514",
+        "options": [
+          {
+            "value": "claude-sonnet-4-20250514",
+            "displayName": "Sonnet 4"
+          },
+          {
+            "value": "claude-opus-4-20250514",
+            "displayName": "Opus 4"
+          }
+        ]
+      }
+    ]
+  },
+  "unstable": {
+    "currentModelId": "claude-sonnet-4-20250514",
+    "availableModels": [
+      {
+        "modelId": "claude-sonnet-4-20250514",
+        "name": "Sonnet 4"
+      },
+      {
+        "modelId": "claude-opus-4-20250514",
+        "name": "Opus 4"
+      }
+    ]
+  }
+}

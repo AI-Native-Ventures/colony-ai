@@ -12,12 +12,14 @@ export function OutreachDeskWorkspace({
   channelId,
   channelIsMember,
   initialContactWaId,
+  onSelectedContactChange,
   onTabChange,
 }: {
   activeTab: Extract<OutreachDeskTab, "needs-you" | "pipeline" | "chats">;
   channelId: string;
   channelIsMember: boolean;
   initialContactWaId: string | null;
+  onSelectedContactChange: (waId: string) => void;
   onTabChange: (tab: OutreachDeskTab) => void;
 }) {
   const [selectedWaId, setSelectedWaId] = React.useState(initialContactWaId);
@@ -92,6 +94,7 @@ export function OutreachDeskWorkspace({
           initialThreadRootId={null}
           mode="desk"
           onContactSelected={selectDeskContact}
+          onSelectedContactChange={onSelectedContactChange}
         />
       </div>
     );

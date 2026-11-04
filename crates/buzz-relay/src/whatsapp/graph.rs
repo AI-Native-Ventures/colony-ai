@@ -14,6 +14,8 @@ pub const GRAPH_API_VERSION: &str = "v23.0";
 const DEFAULT_GRAPH_BASE: &str = "https://graph.facebook.com";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// Downloading a media file can take longer than a JSON call.
+const MEDIA_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_TEMPLATE_PAGES: usize = 10;
 const ERROR_MESSAGE_CHARS: usize = 300;
 
@@ -68,6 +70,43 @@ pub enum SendRequest {
         /// Body parameters in slot order.
         params: Vec<String>,
     },
+}
+
+/// What Meta says about one media file (`GET /{media-id}`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaInfo {
+    /// Short-lived download URL. Meta hosts it; the bearer token is needed to fetch it.
+    pub url: String,
+    /// MIME type Meta recorded.
+    pub mime_type: Option<String>,
+    /// SHA-256 Meta recorded (hex).
+    pub sha256: Option<String>,
+    /// Size in bytes.
+    pub file_size: Option<u64>,
+}
+
+/// Why a media download did not produce bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DownloadError {
+    /// The file is bigger than the cap. Trying again will not help.
+    TooLarge,
+    /// The Graph call or the download failed.
+    Graph(GraphError),
+}
+
+impl std::fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooLarge => write!(f, "media file too large"),
+            Self::Graph(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl From<GraphError> for DownloadError {
+    fn from(error: GraphError) -> Self {
+        Self::Graph(error)
+    }
 }
 
 /// Why a Graph call did not succeed.
@@ -143,6 +182,75 @@ pub trait GraphApi: Send + Sync {
         phone_number_id: &str,
         request: &SendRequest,
     ) -> Result<String, GraphError>;
+    /// `GET /{media-id}`: the download URL and facts of an inbound media file.
+    async fn media_info(&self, token: &str, media_id: &str) -> Result<MediaInfo, GraphError>;
+    /// Download the bytes behind a [`MediaInfo::url`]. Stops with [`DownloadError::TooLarge`]
+    /// as soon as more than `max_bytes` arrive, and refuses a URL that is not Meta's.
+    async fn download_media(
+        &self,
+        token: &str,
+        url: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, DownloadError>;
+}
+
+/// A Meta media id is a plain token. Anything else would change the path of the Graph call.
+pub fn media_id_is_safe(media_id: &str) -> bool {
+    !media_id.is_empty()
+        && media_id.len() <= 128
+        && media_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Read the answer of `GET /{media-id}`. `None` when it has no URL.
+pub fn parse_media_info(body: &Value) -> Option<MediaInfo> {
+    let url = body.get("url")?.as_str()?;
+    if url.is_empty() {
+        return None;
+    }
+    let file_size = body.get("file_size").and_then(|v| {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+    });
+    Some(MediaInfo {
+        url: url.to_owned(),
+        mime_type: body
+            .get("mime_type")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        sha256: body
+            .get("sha256")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        file_size,
+    })
+}
+
+/// Hosts Meta serves media from. The bearer token is only ever sent to one of these (or to
+/// the configured Graph base in tests), so a hostile URL cannot collect it.
+fn meta_media_host(host: &str) -> bool {
+    ["fbsbx.com", "facebook.com", "fbcdn.net", "whatsapp.net"]
+        .iter()
+        .any(|suffix| host == *suffix || host.ends_with(&format!(".{suffix}")))
+}
+
+/// Whether `url` may receive the bearer token: https on a Meta media host, or the same origin
+/// as the configured Graph base.
+pub fn media_url_allowed(url: &url::Url, base: &str) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if url.scheme() == "https" && meta_media_host(host) {
+        return true;
+    }
+    url::Url::parse(base)
+        .map(|base| {
+            base.scheme() == url.scheme()
+                && base.host_str() == Some(host)
+                && base.port_or_known_default() == url.port_or_known_default()
+        })
+        .unwrap_or(false)
 }
 
 /// Request body for a send.
@@ -484,6 +592,70 @@ impl GraphApi for ReqwestGraph {
         parse_send_response(&body)
             .ok_or_else(|| GraphError::Unavailable("send response had no message id".to_owned()))
     }
+
+    async fn media_info(&self, token: &str, media_id: &str) -> Result<MediaInfo, GraphError> {
+        if !media_id_is_safe(media_id) {
+            return Err(GraphError::Rejected {
+                http_status: 404,
+                code: None,
+                message: "invalid media id".to_owned(),
+            });
+        }
+        let body = self
+            .call(token, self.client.get(self.url(media_id)))
+            .await?;
+        parse_media_info(&body)
+            .ok_or_else(|| GraphError::Unavailable("media answer had no url".to_owned()))
+    }
+
+    async fn download_media(
+        &self,
+        token: &str,
+        url: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, DownloadError> {
+        use futures_util::StreamExt;
+        let parsed = url::Url::parse(url)
+            .map_err(|_| GraphError::Unavailable("invalid media url".to_owned()))?;
+        if !media_url_allowed(&parsed, &self.base) {
+            return Err(GraphError::Unavailable("media url is not Meta's".to_owned()).into());
+        }
+        let response = self
+            .client
+            .get(parsed)
+            .bearer_auth(token)
+            .timeout(MEDIA_TIMEOUT)
+            .send()
+            .await
+            .map_err(|error| GraphError::Unavailable(describe_transport_error(&error)))?;
+        let status = response.status();
+        if !status.is_success() {
+            let error = if status.is_client_error() {
+                GraphError::Rejected {
+                    http_status: status.as_u16(),
+                    code: None,
+                    message: String::new(),
+                }
+            } else {
+                GraphError::Unavailable(format!("http {}", status.as_u16()))
+            };
+            return Err(error.into());
+        }
+        if response.content_length().is_some_and(|len| len > max_bytes) {
+            return Err(DownloadError::TooLarge);
+        }
+        let mut stream = response.bytes_stream();
+        let mut out: Vec<u8> = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|error| GraphError::Unavailable(describe_transport_error(&error)))?;
+            if out.len() as u64 + chunk.len() as u64 > max_bytes {
+                return Err(DownloadError::TooLarge);
+            }
+            out.extend_from_slice(&chunk);
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -593,6 +765,47 @@ mod tests {
             graph.url("123/messages"),
             format!("https://graph.example.test/{GRAPH_API_VERSION}/123/messages")
         );
+    }
+
+    #[test]
+    fn media_answer_gives_url_size_and_type() {
+        let info = parse_media_info(&json!({
+            "url": "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1",
+            "mime_type": "image/webp", "sha256": "ab", "file_size": "4096", "id": "1"
+        }))
+        .expect("info");
+        assert_eq!(info.mime_type.as_deref(), Some("image/webp"));
+        assert_eq!(info.file_size, Some(4096));
+        assert!(parse_media_info(&json!({"id": "1"})).is_none());
+        assert!(parse_media_info(&json!({"url": ""})).is_none());
+    }
+
+    #[test]
+    fn a_media_id_cannot_change_the_graph_path() {
+        assert!(media_id_is_safe("1234567890"));
+        assert!(media_id_is_safe("wamid_a-b"));
+        for bad in ["", "../me", "1/2", "1?x=y", "a b", "1#"] {
+            assert!(!media_id_is_safe(bad), "{bad}");
+        }
+        assert!(!media_id_is_safe(&"1".repeat(129)));
+    }
+
+    #[test]
+    fn the_token_only_goes_to_meta_media_hosts() {
+        let base = "http://127.0.0.1:9";
+        let allowed = |url: &str| media_url_allowed(&url::Url::parse(url).expect("url"), base);
+        assert!(allowed(
+            "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1"
+        ));
+        assert!(allowed("https://scontent.xx.fbcdn.net/v/a.jpg"));
+        assert!(allowed("http://127.0.0.1:9/file"));
+        // Look-alike hosts, plain http to the internet, other ports and other schemes.
+        assert!(!allowed("https://evilfbsbx.com/x"));
+        assert!(!allowed("https://fbsbx.com.evil.example/x"));
+        assert!(!allowed("http://lookaside.fbsbx.com/x"));
+        assert!(!allowed("http://127.0.0.1:10/file"));
+        assert!(!allowed("file:///etc/passwd"));
+        assert!(!allowed("https://169.254.169.254/latest/meta-data"));
     }
 
     #[test]

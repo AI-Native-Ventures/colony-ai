@@ -23,6 +23,38 @@ use buzz_core::whatsapp_stage::OptOutKind;
 
 const MAX_LEADS_SCANNED: i64 = 2000;
 
+/// The media or structured content of an inbound message: a picture, sticker, voice note,
+/// document, location or contact card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboundMedia {
+    /// `image`, `video`, `audio`, `voice`, `document`, `sticker`, `location` or `contacts`.
+    pub kind: &'static str,
+    /// What is kept in the database (`type`, `mediaId`, `mime`, `caption`, ...).
+    pub data: Value,
+}
+
+impl InboundMedia {
+    /// The Meta media id, when there are bytes to download.
+    pub fn media_id(&self) -> Option<&str> {
+        self.data.get("mediaId").and_then(Value::as_str)
+    }
+
+    /// `pending` when bytes have to be downloaded, `failed` when the payload named a file but
+    /// gave no usable id, `None` for a location or contact card (nothing to download).
+    pub fn initial_state(&self) -> Option<&'static str> {
+        match self.kind {
+            "location" | "contacts" => None,
+            _ if self.media_id().is_some() => Some("pending"),
+            _ => Some("failed"),
+        }
+    }
+
+    /// The reason for a `failed` initial state.
+    pub fn initial_error(&self) -> Option<&'static str> {
+        (self.initial_state() == Some("failed")).then_some("no_media_id")
+    }
+}
+
 /// One inbound customer message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboundMessage {
@@ -42,6 +74,8 @@ pub struct InboundMessage {
     pub is_button: bool,
     /// WhatsApp id of the message this one answers (the template a button was tapped on).
     pub context_wamid: Option<String>,
+    /// The media or structured content, when the message has any.
+    pub media: Option<InboundMedia>,
 }
 
 /// One delivery status callback.
@@ -105,7 +139,9 @@ fn parse_message(
             .and_then(Value::as_str)
             .map(str::to_owned)
     };
-    let (kind, text, is_button) = match message.get("type").and_then(Value::as_str).unwrap_or("") {
+    let message_type = message.get("type").and_then(Value::as_str).unwrap_or("");
+    let mut media = None;
+    let (kind, text, is_button) = match message_type {
         "text" => ("text", text_at("/text/body").unwrap_or_default(), false),
         "button" => ("button", text_at("/button/text").unwrap_or_default(), true),
         "interactive" => {
@@ -114,25 +150,62 @@ fn parse_message(
                 .unwrap_or_default();
             ("button", title, true)
         }
-        "image" => (
-            "media",
-            text_at("/image/caption").unwrap_or_else(|| "[image]".into()),
-            false,
-        ),
-        "video" => (
-            "media",
-            text_at("/video/caption").unwrap_or_else(|| "[video]".into()),
-            false,
-        ),
-        "document" => (
-            "media",
-            text_at("/document/caption").unwrap_or_else(|| "[document]".into()),
-            false,
-        ),
-        "audio" => ("media", "[voice note]".to_string(), false),
-        "sticker" => ("media", "[sticker]".to_string(), false),
-        "location" => ("other", "[location]".to_string(), false),
-        "contacts" => ("other", "[contact card]".to_string(), false),
+        "image" | "video" | "document" | "audio" | "sticker" => {
+            let found = media_of(message, message_type);
+            let caption = found
+                .data
+                .get("caption")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let placeholder = match found.kind {
+                "voice" => "[voice note]",
+                "audio" => "[audio]",
+                "video" => "[video]",
+                "document" => "[document]",
+                "sticker" => "[sticker]",
+                _ => "[image]",
+            };
+            media = Some(found);
+            (
+                "media",
+                caption
+                    .filter(|caption| !caption.trim().is_empty())
+                    .unwrap_or_else(|| placeholder.to_string()),
+                false,
+            )
+        }
+        "location" => {
+            let found = location_of(message);
+            let text = found
+                .data
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|name| format!("[location] {name}"))
+                .unwrap_or_else(|| "[location]".to_string());
+            media = Some(found);
+            ("other", text, false)
+        }
+        "contacts" => {
+            let found = contacts_of(message);
+            let names = found
+                .data
+                .pointer("/contacts")
+                .and_then(Value::as_array)
+                .map(|contacts| {
+                    contacts
+                        .iter()
+                        .filter_map(|contact| contact.get("name").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .filter(|names| !names.is_empty());
+            let text = match names {
+                Some(names) => format!("[contact card] {names}"),
+                None => "[contact card]".to_string(),
+            };
+            media = Some(found);
+            ("other", text, false)
+        }
         // Reactions are not messages: they never open a window or wake an agent.
         "reaction" => return None,
         _ => ("other", "[unsupported message]".to_string(), false),
@@ -150,7 +223,119 @@ fn parse_message(
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty() && id.len() <= 256)
             .map(str::to_owned),
+        media,
     })
+}
+
+fn clipped(value: Option<&Value>, max: usize) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(|text| clip(text.trim(), max))
+        .filter(|text| !text.is_empty())
+}
+
+/// The downloadable media of an image, video, document, audio or sticker message.
+fn media_of(message: &Value, message_type: &str) -> InboundMedia {
+    let body = message.get(message_type);
+    let field = |name: &str| body.and_then(|body| body.get(name));
+    let media_id = field("id")
+        .and_then(Value::as_str)
+        .filter(|id| super::graph::media_id_is_safe(id));
+    let voice = message_type == "audio" && field("voice").and_then(Value::as_bool) == Some(true);
+    let animated =
+        message_type == "sticker" && field("animated").and_then(Value::as_bool) == Some(true);
+    let kind = match message_type {
+        "audio" if voice => "voice",
+        "audio" => "audio",
+        "video" => "video",
+        "document" => "document",
+        "sticker" => "sticker",
+        _ => "image",
+    };
+    let mut data = serde_json::Map::new();
+    data.insert("type".into(), Value::from(kind));
+    if let Some(id) = media_id {
+        data.insert("mediaId".into(), Value::from(id));
+    }
+    for (key, source, max) in [
+        ("mime", "mime_type", 100),
+        ("sha256", "sha256", 100),
+        ("caption", "caption", 1024),
+        ("filename", "filename", 200),
+    ] {
+        if let Some(text) = clipped(field(source), max) {
+            data.insert(key.into(), Value::from(text));
+        }
+    }
+    if animated {
+        data.insert("animated".into(), Value::from(true));
+    }
+    InboundMedia {
+        kind,
+        data: Value::Object(data),
+    }
+}
+
+/// A shared location. Coordinates are kept only when they are real numbers on the globe.
+fn location_of(message: &Value) -> InboundMedia {
+    let location = message.get("location");
+    let coordinate = |name: &str, limit: f64| {
+        location
+            .and_then(|location| location.get(name))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && value.abs() <= limit)
+    };
+    let mut data = serde_json::Map::new();
+    data.insert("type".into(), Value::from("location"));
+    if let (Some(latitude), Some(longitude)) =
+        (coordinate("latitude", 90.0), coordinate("longitude", 180.0))
+    {
+        data.insert("latitude".into(), Value::from(latitude));
+        data.insert("longitude".into(), Value::from(longitude));
+    }
+    for name in ["name", "address"] {
+        if let Some(text) = clipped(location.and_then(|location| location.get(name)), 300) {
+            data.insert(name.into(), Value::from(text));
+        }
+    }
+    InboundMedia {
+        kind: "location",
+        data: Value::Object(data),
+    }
+}
+
+/// Shared contact cards: a name and the phone numbers of each, at most ten cards.
+fn contacts_of(message: &Value) -> InboundMedia {
+    let cards: Vec<Value> = message
+        .get("contacts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(10)
+        .map(|card| {
+            let name = clipped(card.pointer("/name/formatted_name"), 200)
+                .or_else(|| clipped(card.pointer("/name/first_name"), 200));
+            let phones: Vec<Value> = card
+                .get("phones")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|phone| clipped(phone.get("phone"), 40))
+                .take(5)
+                .map(Value::from)
+                .collect();
+            let mut out = serde_json::Map::new();
+            if let Some(name) = name {
+                out.insert("name".into(), Value::from(name));
+            }
+            out.insert("phones".into(), Value::Array(phones));
+            Value::Object(out)
+        })
+        .collect();
+    InboundMedia {
+        kind: "contacts",
+        data: serde_json::json!({"type": "contacts", "contacts": cards}),
+    }
 }
 
 /// Read a webhook payload. Messages for another phone number id are dropped.
@@ -277,7 +462,7 @@ pub async fn process_payload(
     let parsed = parse_payload(payload, &connection.phone_number_id);
     let mut failures = Vec::new();
     for message in &parsed.messages {
-        if let Err(error) = handle_message(state, tenant, message).await {
+        if let Err(error) = handle_message(state, tenant, connection, message).await {
             tracing::warn!(wamid = %message.wamid, "whatsapp inbound message failed: {error}");
             failures.push(error);
         }
@@ -306,6 +491,7 @@ pub async fn process_payload(
 async fn handle_message(
     state: &Arc<AppState>,
     tenant: &TenantContext,
+    connection: &WhatsappConnection,
     message: &InboundMessage,
 ) -> Result<(), String> {
     let community = tenant.community();
@@ -356,6 +542,28 @@ async fn handle_message(
     let Some(stored) = stored else {
         return Err("stored message vanished".into());
     };
+
+    // Keep what Meta said about the media (its id expires), then fetch the bytes while the
+    // webhook is still open so the picture is there when the owner opens the chat. The first
+    // call per message writes; a redelivery repeats it harmlessly. A download that does not
+    // finish here is retried by the sender loop from the durable record.
+    if let Some(media) = message.media.as_ref() {
+        state
+            .db
+            .whatsapp_set_inbound_media(
+                community,
+                stored.id,
+                &media.data,
+                media.initial_state(),
+                media.initial_error(),
+                Utc::now(),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        if media.initial_state() == Some("pending") {
+            super::media::fetch_inline(state, tenant, connection, stored.id).await;
+        }
+    }
 
     let opt_out_kind = classify_opt_out(&message.text, message.is_button);
     let opted_out_now = if let Some(kind) = opt_out_kind {
@@ -578,7 +786,7 @@ mod tests {
             {"from": "27821234567", "id": "b", "timestamp": "1", "type": "button", "button": {"text": "Stop promotions", "payload": "x"}},
             {"from": "27821234567", "id": "c", "timestamp": "1", "type": "interactive",
              "interactive": {"type": "button_reply", "button_reply": {"id": "1", "title": "Tell me more"}}},
-            {"from": "27821234567", "id": "d", "timestamp": "1", "type": "audio", "audio": {"id": "m"}},
+            {"from": "27821234567", "id": "d", "timestamp": "1", "type": "audio", "audio": {"id": "m", "voice": true}},
             {"from": "27821234567", "id": "e", "timestamp": "1", "type": "reaction", "reaction": {"emoji": "x"}},
             {"from": "12", "id": "f", "timestamp": "1", "type": "text", "text": {"body": "short number"}}
         ]}}]}]});
@@ -609,6 +817,155 @@ mod tests {
         let parsed = parse_payload(&tap("Tell me more"), "111");
         assert_eq!(parsed.messages[0].text, "Tell me more");
         assert!(!is_opt_out_button(&parsed.messages[0].text));
+    }
+
+    /// One message of the given type in a Meta webhook payload.
+    fn one(message: Value) -> InboundMessage {
+        let mut message = message;
+        message["from"] = json!("27821234567");
+        message["id"] = json!("wamid.M");
+        message["timestamp"] = json!("1800000000");
+        let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
+            "metadata": {"phone_number_id": "111"}, "messages": [message]}}]}]});
+        let mut parsed = parse_payload(&payload, "111");
+        assert_eq!(parsed.messages.len(), 1, "one message expected");
+        parsed.messages.remove(0)
+    }
+
+    #[test]
+    fn a_sticker_keeps_its_media_id_mime_and_animation() {
+        // GUARD: the sticker used to become the text "[sticker]" and the media id was lost, so
+        // the picture could never be fetched.
+        let message = one(json!({"type": "sticker", "sticker": {
+            "id": "1234567890", "mime_type": "image/webp", "sha256": "abc", "animated": true}}));
+        assert_eq!(message.kind, "media");
+        assert_eq!(message.text, "[sticker]");
+        let media = message.media.expect("media");
+        assert_eq!(media.kind, "sticker");
+        assert_eq!(media.media_id(), Some("1234567890"));
+        assert_eq!(media.data["mime"], "image/webp");
+        assert_eq!(media.data["sha256"], "abc");
+        assert_eq!(media.data["animated"], true);
+        assert_eq!(media.initial_state(), Some("pending"));
+    }
+
+    #[test]
+    fn every_downloadable_type_keeps_its_id_and_caption() {
+        for (kind, key, expected, placeholder) in [
+            ("image", "image", "image", "[image]"),
+            ("video", "video", "video", "[video]"),
+            ("document", "document", "document", "[document]"),
+            ("audio", "audio", "audio", "[audio]"),
+            ("sticker", "sticker", "sticker", "[sticker]"),
+        ] {
+            let plain = one(json!({"type": kind, key: {"id": "77", "mime_type": "x/y"}}));
+            let media = plain.media.expect("media");
+            assert_eq!((media.kind, media.media_id()), (expected, Some("77")));
+            assert_eq!(plain.text, placeholder);
+            assert_eq!(plain.kind, "media");
+            assert!(!plain.is_button);
+        }
+        let captioned = one(json!({"type": "image", "image": {"id": "9", "caption": "my shop"}}));
+        assert_eq!(captioned.text, "my shop");
+        assert_eq!(captioned.media.expect("media").data["caption"], "my shop");
+        let doc = one(json!({"type": "document",
+            "document": {"id": "9", "filename": "quote.pdf", "mime_type": "application/pdf"}}));
+        assert_eq!(doc.media.expect("media").data["filename"], "quote.pdf");
+    }
+
+    #[test]
+    fn a_voice_note_is_told_apart_from_an_audio_file() {
+        let voice = one(json!({"type": "audio", "audio": {"id": "5", "voice": true}}));
+        assert_eq!(voice.media.as_ref().expect("media").kind, "voice");
+        assert_eq!(voice.text, "[voice note]");
+        let audio = one(json!({"type": "audio", "audio": {"id": "5", "voice": false}}));
+        assert_eq!(audio.media.as_ref().expect("media").kind, "audio");
+        assert_eq!(audio.text, "[audio]");
+    }
+
+    #[test]
+    fn media_without_a_usable_id_is_marked_failed_not_dropped() {
+        for id in [json!(null), json!("../../me"), json!("")] {
+            let message = one(json!({"type": "sticker", "sticker": {"id": id}}));
+            let media = message
+                .media
+                .expect("the message still has its media record");
+            assert_eq!(media.media_id(), None);
+            assert_eq!(media.initial_state(), Some("failed"));
+            assert_eq!(media.initial_error(), Some("no_media_id"));
+        }
+    }
+
+    #[test]
+    fn a_location_keeps_coordinates_name_and_address() {
+        let message = one(json!({"type": "location", "location": {
+            "latitude": -26.2041, "longitude": 28.0473, "name": "Kensington Guest House",
+            "address": "12 Main Rd"}}));
+        assert_eq!(message.kind, "other");
+        assert_eq!(message.text, "[location] Kensington Guest House");
+        let media = message.media.expect("media");
+        assert_eq!(media.initial_state(), None);
+        assert_eq!(media.data["latitude"], -26.2041);
+        assert_eq!(media.data["longitude"], 28.0473);
+        assert_eq!(media.data["address"], "12 Main Rd");
+        // A coordinate off the globe is not kept.
+        let bad =
+            one(json!({"type": "location", "location": {"latitude": 123.0, "longitude": 1.0}}));
+        let bad = bad.media.expect("media");
+        assert!(bad.data.get("latitude").is_none());
+        assert_eq!(
+            one(json!({"type": "location", "location": {}})).text,
+            "[location]"
+        );
+    }
+
+    #[test]
+    fn contact_cards_keep_names_and_numbers() {
+        let message = one(json!({"type": "contacts", "contacts": [
+            {"name": {"formatted_name": "Sipho Dlamini"},
+             "phones": [{"phone": "+27 82 111 2222", "type": "CELL"}, {"phone": "+27 11 000 1111"}]},
+            {"name": {"first_name": "Anele"}, "phones": []}]}));
+        assert_eq!(message.kind, "other");
+        assert_eq!(message.text, "[contact card] Sipho Dlamini, Anele");
+        let media = message.media.expect("media");
+        assert_eq!(media.initial_state(), None);
+        let cards = media.data["contacts"].as_array().expect("cards");
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["phones"][0], "+27 82 111 2222");
+        assert_eq!(cards[1]["name"], "Anele");
+    }
+
+    #[test]
+    fn reactions_text_buttons_and_unsupported_have_no_media() {
+        let payload = json!({"entry": [{"changes": [{"field": "messages", "value": {
+        "metadata": {"phone_number_id": "111"},
+        "messages": [
+            {"from": "27821234567", "id": "r", "timestamp": "1", "type": "reaction", "reaction": {"emoji": "x"}},
+            {"from": "27821234567", "id": "t", "timestamp": "1", "type": "text", "text": {"body": "hi"}},
+            {"from": "27821234567", "id": "b", "timestamp": "1", "type": "button", "button": {"text": "Yes"}},
+            {"from": "27821234567", "id": "u", "timestamp": "1", "type": "unsupported"},
+            {"from": "27821234567", "id": "o", "timestamp": "1", "type": "order", "order": {}}
+        ]}}]}]});
+        let parsed = parse_payload(&payload, "111");
+        // The reaction is not a message.
+        let texts: Vec<_> = parsed.messages.iter().map(|m| m.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "hi",
+                "Yes",
+                "[unsupported message]",
+                "[unsupported message]"
+            ]
+        );
+        assert!(parsed.messages.iter().all(|m| m.media.is_none()));
+    }
+
+    #[test]
+    fn the_debug_form_of_a_media_message_carries_the_media_id() {
+        // The red proof asserts on this form because it compiles on main too.
+        let message = one(json!({"type": "sticker", "sticker": {"id": "MEDIA_ID_123"}}));
+        assert!(format!("{message:?}").contains("MEDIA_ID_123"));
     }
 
     #[test]

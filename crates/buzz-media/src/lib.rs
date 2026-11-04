@@ -6,6 +6,7 @@ pub mod auth;
 pub mod bucket_index;
 pub mod config;
 pub mod error;
+pub mod inbound;
 pub mod storage;
 pub mod thumbnail;
 pub mod types;
@@ -20,6 +21,7 @@ pub use bucket_index::{
 };
 pub use config::{MediaConfig, S3AddressingStyle};
 pub use error::MediaError;
+pub use inbound::{store_inbound, StoredInbound};
 pub use storage::{
     BlobHeadMeta, BlobMeta, BulkDeleteOutcome, ByteStream, MediaStorage, ObjectVersionEntry,
     ObjectVersionKind, ObjectVersionRef, ObjectVersionsPage,
