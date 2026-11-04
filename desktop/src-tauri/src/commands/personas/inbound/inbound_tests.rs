@@ -198,6 +198,7 @@ fn local_agent() -> ManagedAgentRecord {
         max_turn_duration_seconds: None,
         parallelism: 8,
         system_prompt: Some("local prompt".to_string()),
+        model_override: None,
         model: Some("local-model".to_string()),
         provider: Some("local-provider".to_string()),
         persona_source_version: Some("local-hash".to_string()),

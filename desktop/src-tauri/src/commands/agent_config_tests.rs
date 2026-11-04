@@ -87,6 +87,7 @@ fn agent_record() -> ManagedAgentRecord {
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: None,
         env_vars: Default::default(),
         start_on_app_launch: false,
@@ -199,6 +200,29 @@ fn linked_stale_record_model_never_outranks_persona_model() {
     let model = surface.normalized.model.as_ref().expect("model resolved");
     assert_eq!(model.value.as_deref(), Some("persona-model"));
     assert_eq!(model.origin, ConfigOrigin::PersonaDefault);
+}
+
+#[test]
+fn linked_instance_model_override_is_reported_as_the_requested_model() {
+    with_no_goose_config(|| {
+        let mut record = agent_record();
+        record.model = Some("persona-model-snapshot".to_string());
+        record.model_override = Some("gpt-6-luna[medium]".to_string());
+        let personas = vec![persona_with_model("persona-model")];
+
+        let surface = resolve_config_surface(
+            record,
+            &personas,
+            Some(goose_runtime()),
+            None,
+            &Default::default(),
+            None,
+        );
+
+        let model = surface.normalized.model.as_ref().expect("model resolved");
+        assert_eq!(model.value.as_deref(), Some("gpt-6-luna[medium]"));
+        assert_eq!(model.origin, ConfigOrigin::BuzzExplicit);
+    });
 }
 
 /// Definition-authoritative, blank-definition case: a linked instance

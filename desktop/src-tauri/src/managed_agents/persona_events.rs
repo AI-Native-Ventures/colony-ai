@@ -626,44 +626,8 @@ pub fn apply_persona_snapshot(record: &mut ManagedAgentRecord, persona: &AgentDe
     record.provider = snapshot.provider;
     record.runtime = snapshot.runtime;
     record.session_policy = persona.session_policy;
-    // Drop a stale create-time harness pin when the definition switches to a
-    // different known runtime (builtin, static preset, or loaded custom). A pin
-    // that names an unknown/custom command is always kept.
-    //
-    // Both sides are resolved through the canonical harness-identity resolver
-    // (`canonical_harness_command`) which accepts either a runtime id OR a
-    // command string — covering aliases (e.g. "claude-code-acp"), path prefixes
-    // ("/usr/local/bin/goose"), and harnesses whose id ≠ command. The persona
-    // runtime side is resolved via `command_for_runtime_id` (id-only input is
-    // sufficient there since persona.runtime is always an authoritative id).
-    //
-    // Comparison is on canonical primary commands so "goose", "/usr/local/bin/goose",
-    // and runtime id "goose" all represent the same harness; the stale pin is
-    // dropped only when the canonical commands differ.
-    if let Some(new_cmd) = persona
-        .runtime
-        .as_deref()
-        .map(str::trim)
-        .filter(|r| !r.is_empty())
-        .and_then(super::command_for_runtime_id)
-    {
-        if let Some(pin) = record
-            .agent_command_override
-            .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-        {
-            // Resolve the pin via the canonical resolver (accepts id OR command).
-            if let Some(pin_cmd) = super::canonical_harness_command(pin) {
-                if pin_cmd != new_cmd {
-                    // Known harness switched to a different known harness — drop stale pin.
-                    record.agent_command_override = None;
-                }
-                // Same harness: keep the pin (e.g. explicit path override for same runtime).
-            }
-            // Custom/unknown pin: always keep.
-        }
-    }
+    // An instance command override is an explicit owner choice. Persona
+    // snapshots refresh inherited defaults, but must never replace that pin.
     // env_vars stay overrides-only. Self-heal records written before the env
     // refresh: persona env used to be baked into `record.env_vars`, turning
     // inherited values into pseudo-overrides that shadow later persona edits.

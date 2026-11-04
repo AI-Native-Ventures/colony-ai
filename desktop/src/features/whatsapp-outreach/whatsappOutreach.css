@@ -4706,6 +4706,11 @@
   margin: 0;
 }
 
+.c3wa-batch-actions > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .c3wa-batch-actions {
   display: flex;
   flex-wrap: wrap;
@@ -5510,6 +5515,15 @@
     padding: 0.75rem 1.25rem max(2.125rem, env(safe-area-inset-bottom));
     border-top: 1px solid var(--c3wa-line);
     background: var(--c3wa-surface);
+  }
+
+  .c3wa-mobile-batch-actions {
+    flex-wrap: wrap;
+  }
+
+  .c3wa-mobile-batch-actions > p {
+    flex-basis: 100%;
+    margin: 0;
   }
 
   .c3wa-mobile-batch-actions > button {

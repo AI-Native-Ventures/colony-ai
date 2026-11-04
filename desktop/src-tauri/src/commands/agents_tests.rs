@@ -28,6 +28,7 @@ fn bare_agent_record(
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: model.map(str::to_string),
         provider: provider.map(str::to_string),
         persona_source_version: None,

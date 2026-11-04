@@ -1,4 +1,4 @@
-//! Colony's own pinned OpenCode for "Start free". Downloaded from the
+//! Colony's own pinned OpenCode, retained for existing managed profiles. Downloaded from the
 //! OpenCode GitHub release, checked against a pinned SHA256, unpacked into
 //! Colony's app-data folder. Never runs OpenCode's install script and never
 //! touches an OpenCode the user installed themselves.

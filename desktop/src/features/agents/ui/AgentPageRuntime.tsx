@@ -89,8 +89,6 @@ export function AgentPageRuntime({
   config,
   configError,
   configLoading,
-  inheritedModel,
-  inheritedProvider,
   providerEnvVars,
   onEditConfiguration,
   onManageHarnesses,
@@ -104,8 +102,6 @@ export function AgentPageRuntime({
   config: RuntimeConfig;
   configError: Error | null;
   configLoading: boolean;
-  inheritedModel?: string | null;
-  inheritedProvider?: string | null;
   providerEnvVars: Readonly<Record<string, string>>;
   onEditConfiguration: () => void;
   onManageHarnesses: () => void;
@@ -113,24 +109,25 @@ export function AgentPageRuntime({
   runtime: AcpRuntimeCatalogEntry | undefined;
 }) {
   const local = agent.backend.type === "local";
-  const expectedRuntimeId = runtime?.id ?? agent.runtime?.trim() ?? null;
+  const hasRunningLocalPair = local && agent.status === "running";
+  const idleRuntimeLabel = local ? "Not running" : "Not reported";
+  const expectedRuntimeId =
+    hasRunningLocalPair && agent.runningRuntimeId ? agent.runningRuntimeId : "";
   const { observed, model, provider } = resolveSimpleAgentAi({
     runtimeId: expectedRuntimeId,
-    config,
-    agentModel: agent.model,
-    agentProvider: agent.provider,
-    inheritedModel,
-    inheritedProvider,
+    config: expectedRuntimeId ? config : undefined,
+    agentModel: hasRunningLocalPair ? agent.runningModel : null,
+    agentProvider: null,
   });
   const providerLabel = simpleProviderLabel({
-    runtimeId: runtime?.id,
+    runtimeId: expectedRuntimeId,
     provider,
     envVars: providerEnvVars,
   });
   const subscriptionUsageQuery = useAgentSubscriptionUsage(
     agent.pubkey,
     isClaudeSubscription({
-      runtimeId: runtime?.id,
+      runtimeId: expectedRuntimeId,
       provider,
       envVars: providerEnvVars,
     }),
@@ -139,7 +136,7 @@ export function AgentPageRuntime({
     ? acceptedEffortLabel(
         config?.normalized.thinkingEffort?.value,
         config?.effortOptions,
-        { runtimeId: runtime?.id, provider, model },
+        { runtimeId: expectedRuntimeId, provider, model },
       )
     : null;
   const availabilityLabel = harnessAvailabilityLabel(availability, local).label;
@@ -175,17 +172,21 @@ export function AgentPageRuntime({
         <Detail
           label="Model"
           value={
-            configLoading && !model
-              ? "Loading"
-              : simpleModelLabel(model, provider)
+            !hasRunningLocalPair
+              ? idleRuntimeLabel
+              : configLoading && !model
+                ? "Loading"
+                : simpleModelLabel(model, provider)
           }
         />
         <Detail
           label="Harness"
           value={
-            configLoading && !runtime
-              ? "Loading"
-              : (runtime?.label ?? "Not reported")
+            !hasRunningLocalPair
+              ? idleRuntimeLabel
+              : configLoading && !runtime
+                ? "Loading"
+                : (runtime?.label ?? "Not reported")
           }
         />
         {effort ? <Detail label="Effort" value={effort} /> : null}

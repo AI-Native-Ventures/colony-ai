@@ -9,6 +9,8 @@ export type DiscoverAgentModelsInput = {
   envVars?: Record<string, string>;
   /** Definition-level env from the harness definition (custom/preset). Merged below user envVars. */
   definitionEnv?: Record<string, string>;
+  /** Refreshes a harness-owned model cache after an explicit user request. */
+  refresh?: boolean;
 };
 
 export async function discoverAgentModels(input: DiscoverAgentModelsInput) {

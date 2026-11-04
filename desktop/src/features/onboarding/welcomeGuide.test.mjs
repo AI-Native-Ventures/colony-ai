@@ -296,17 +296,16 @@ test("existing Welcome starter needs no update when runtime already matches", ()
   );
 });
 
-// The agent summary carries resolved launch values: OpenCode's default
-// ["acp"] args and the global Start free model and provider. The Welcome
-// definition leaves all three to inherit, so they are not a mismatch.
+// The agent summary carries the resolved Colony Agent runtime and the
+// gateway model and provider inherited from Start free.
 function startFreeScout(overrides = {}) {
   return makeAgent({
     personaId: WELCOME_GUIDE_PERSONA_ID,
-    agentCommand: "opencode",
-    agentArgs: ["acp"],
+    agentCommand: "buzz-agent",
+    agentArgs: [],
     mcpCommand: "",
-    model: "opencode/deepseek-v4.1-flash-free",
-    provider: "opencode-free",
+    model: "openai/gpt-4.1-mini:free",
+    provider: "colony-credits",
     ...overrides,
   });
 }
@@ -314,15 +313,15 @@ function startFreeScout(overrides = {}) {
 const START_FREE_DESIRED = {
   name: "Scout",
   personaId: WELCOME_GUIDE_PERSONA_ID,
-  agentCommand: "opencode",
+  agentCommand: "buzz-agent",
   agentArgs: [],
   mcpCommand: "",
   parallelism: 1,
 };
 
-test("existing Start free Scout needs no update when it inherits OpenCode defaults", () => {
+test("existing Start free Scout needs no update when it inherits Colony gateway defaults", () => {
   assert.equal(
-    welcomeStarterRuntimeUpdate(startFreeScout(), START_FREE_DESIRED, ["acp"]),
+    welcomeStarterRuntimeUpdate(startFreeScout(), START_FREE_DESIRED),
     null,
   );
 });
@@ -331,7 +330,6 @@ test("existing Welcome starter still clears frozen args that differ from the run
   const update = welcomeStarterRuntimeUpdate(
     startFreeScout({ agentArgs: ["--old"] }),
     START_FREE_DESIRED,
-    ["acp"],
   );
   assert.deepEqual(update?.agentArgs, []);
 });
@@ -340,7 +338,6 @@ test("definition-less starter still clears its own stale model", () => {
   const update = welcomeStarterRuntimeUpdate(
     startFreeScout({ personaId: null }),
     START_FREE_DESIRED,
-    ["acp"],
   );
   assert.equal(update?.model, null);
   assert.equal(update?.provider, null);
@@ -355,7 +352,7 @@ test("reconcile leaves a running Start free Scout running", async () => {
     async () => assert.fail("a matching Scout needs no update"),
     {
       start: async () => assert.fail("a matching Scout must not restart"),
-      runtimeDefaultArgs: ["acp"],
+      runtimeDefaultArgs: [],
     },
   );
   assert.equal(result, running);

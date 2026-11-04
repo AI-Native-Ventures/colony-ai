@@ -837,6 +837,7 @@ fn resolve_effective_agent_env_user_env_wins_over_structured_fields() {
         max_turn_duration_seconds: None,
         parallelism: 1,
         system_prompt: None,
+        model_override: None,
         model: None,
         provider: None,
         persona_source_version: None,

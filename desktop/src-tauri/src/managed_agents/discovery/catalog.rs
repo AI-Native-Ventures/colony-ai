@@ -91,13 +91,16 @@ pub(crate) const KNOWN_ACP_RUNTIMES: &[KnownAcpRuntime] = &[
         mcp_command: Some("buzz-dev-mcp"),
         mcp_hooks: false,
         underlying_cli: Some("codex"),
-        cli_install_commands: &["curl -fsSL https://chatgpt.com/codex/install.sh | sh"],
-        cli_install_commands_windows: &[windows_install_command!("codex", "https://chatgpt.com/codex/install.ps1")],
-        adapter_install_commands: &["npm install -g @agentclientprotocol/codex-acp"],
+        // Colony installs the pinned Codex CLI and ACP adapter into its own
+        // managed runtime folder. Never invoke Codex's machine-wide installer
+        // or global npm from this catalog.
+        cli_install_commands: &[],
+        cli_install_commands_windows: &[],
+        adapter_install_commands: &[],
         cli_install_instructions_url: "https://developers.openai.com/codex/cli/",
         adapter_install_instructions_url: "https://github.com/agentclientprotocol/codex-acp",
-        cli_install_hint: "Colony talks to Codex through the Codex CLI.",
-        adapter_install_hint: "Colony talks to the Codex CLI through an ACP adapter. Install it with: npm install -g @agentclientprotocol/codex-acp.",
+        cli_install_hint: "Colony sets up its private Codex CLI and ACP adapter.",
+        adapter_install_hint: "Colony sets up its private Codex CLI and ACP adapter.",
         skill_dir: Some(".codex/skills"),
         supports_acp_model_switching: false,
         model_env_var: None,

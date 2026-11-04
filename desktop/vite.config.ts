@@ -48,7 +48,7 @@ export default defineConfig(async ({ mode }) => {
       ),
       __COLONY_LOGO_DEV_TOKEN__: JSON.stringify(
         mode === "e2e"
-          ? "e2e-logo-dev-token"
+          ? "e2e-test-token"
           : (process.env.COLONY_LOGO_DEV_TOKEN ??
               modeEnv.COLONY_LOGO_DEV_TOKEN ??
               ""),

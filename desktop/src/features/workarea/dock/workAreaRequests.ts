@@ -39,9 +39,25 @@ export function listenForWorkAreaTabRequests(
     const options =
       typeof rawOptions === "object" &&
       rawOptions !== null &&
-      typeof (rawOptions as Record<string, unknown>).contactWaId === "string"
+      (typeof (rawOptions as Record<string, unknown>).contactWaId ===
+        "string" ||
+        typeof (rawOptions as Record<string, unknown>).designProjectId ===
+          "string")
         ? {
-            contactWaId: (rawOptions as Record<string, string>).contactWaId,
+            ...(typeof (rawOptions as Record<string, unknown>).contactWaId ===
+            "string"
+              ? {
+                  contactWaId: (rawOptions as Record<string, string>)
+                    .contactWaId,
+                }
+              : {}),
+            ...(typeof (rawOptions as Record<string, unknown>)
+              .designProjectId === "string"
+              ? {
+                  designProjectId: (rawOptions as Record<string, string>)
+                    .designProjectId,
+                }
+              : {}),
           }
         : undefined;
     listener(request.kind, options);

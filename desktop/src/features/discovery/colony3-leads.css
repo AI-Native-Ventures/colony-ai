@@ -82,6 +82,9 @@
 
 .c3l-head-actions {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
   gap: 0.625rem;
   margin-left: auto;
 }
