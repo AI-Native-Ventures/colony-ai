@@ -176,8 +176,8 @@ pub(crate) fn mark_profile_reconciled(
 /// Reconcile an agent's kind:0 profile on the relay.
 ///
 /// Queries the relay for the agent's existing profile and re-publishes if missing
-/// or stale (display_name or picture mismatch). This is fire-and-forget — errors
-/// are returned to the caller for logging but never block agent startup.
+/// or stale (display_name, picture, about, or verified owner mismatch). Callers
+/// choose whether a reconciliation failure is a startup gate or a deferred retry.
 ///
 /// For legacy records (pre-PR-921) where `avatar_url` is `None`, this function
 /// backfills via `resolve_legacy_avatar` — preferring the persona record's avatar
@@ -273,6 +273,50 @@ pub(crate) async fn reconcile_agent_profile(
     .await
 }
 
+/// Make the shared identity record a startup precondition.
+///
+/// The normal path reconciles and publishes the managed kind:0 before the
+/// harness or provider can emit a message. An explicit agent-managed-profile
+/// opt-out remains respected, but it must already have a nonblank kind:0 name;
+/// otherwise starting would reintroduce an agent that teammates can only see
+/// as an unresolved identity.
+pub(crate) async fn ensure_agent_identity_profile(
+    state: &AppState,
+    app: &AppHandle,
+    agent_pubkey: &str,
+    data: &ProfileReconcileData,
+) -> Result<(), String> {
+    match reconcile_agent_profile(state, app, agent_pubkey, data).await? {
+        ProfileReconcileOutcome::Reconciled => Ok(()),
+        ProfileReconcileOutcome::SkippedDisabled => {
+            let relay_url = resolve_reconcile_relay(
+                data.target_relay_url.as_deref(),
+                &data.relay_url,
+                &relay_ws_url_with_override(state),
+            );
+            let profile = crate::relay::query_agent_profile(state, &relay_url, agent_pubkey)
+                .await?;
+            let signed_in_owner = workspace_owner_hex(state)?;
+            let has_verified_owner = data.auth_tag.is_none()
+                || profile.as_ref().and_then(|value| value.owner_pubkey.as_deref()).is_some_and(
+                    |owner| owner.eq_ignore_ascii_case(&signed_in_owner),
+                );
+            let has_name = profile
+                .as_ref()
+                .and_then(|value| value.display_name.as_deref())
+                .is_some_and(|value| !value.trim().is_empty());
+            if has_name && has_verified_owner {
+                Ok(())
+            } else {
+                Err(
+                    "The agent has no published verified identity profile. Re-enable managed profiles or publish the agent profile before starting it."
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
 /// Network half of startup/restore reconciliation, after legacy source backfill.
 /// Kept separate from the disk migration so the production compare-and-publish
 /// seam can be exercised against two communities without a GUI runtime.
@@ -311,11 +355,13 @@ pub(crate) async fn reconcile_profile_at(
     )
     .await?;
 
+    let expected_owner = data.auth_tag.as_ref().map(|_| signed_in_owner.as_str());
     if !profile_needs_sync(
         existing,
         &data.name,
         expected_avatar.as_deref(),
         data.about.as_deref(),
+        expected_owner,
     ) {
         return Ok(ProfileReconcileOutcome::Reconciled);
     }
@@ -341,8 +387,9 @@ pub(crate) async fn reconcile_profile_at(
 }
 
 /// Decide whether a published profile is missing or stale relative to the
-/// expected name, avatar, and about. A missing profile always needs sync; a
-/// present one is stale when the display name, picture, or about diverges.
+/// expected name, avatar, about, and (when this agent has NIP-OA) verified
+/// owner. A missing profile always needs sync; a present one is stale when one
+/// of those values diverges.
 /// For about, `None` and the empty string are treated as equal so an
 /// about-less profile never triggers a pointless republish loop.
 pub(super) fn profile_needs_sync(
@@ -350,6 +397,7 @@ pub(super) fn profile_needs_sync(
     expected_name: &str,
     expected_avatar: Option<&str>,
     expected_about: Option<&str>,
+    expected_owner: Option<&str>,
 ) -> bool {
     match existing {
         None => true,
@@ -357,7 +405,12 @@ pub(super) fn profile_needs_sync(
             let name_matches = info.display_name.as_deref() == Some(expected_name);
             let picture_matches = info.picture.as_deref() == expected_avatar;
             let about_matches = info.about.as_deref().unwrap_or("") == expected_about.unwrap_or("");
-            !name_matches || !picture_matches || !about_matches
+            let owner_matches = expected_owner.is_none_or(|expected| {
+                info.owner_pubkey
+                    .as_deref()
+                    .is_some_and(|actual| actual.eq_ignore_ascii_case(expected))
+            });
+            !name_matches || !picture_matches || !about_matches || !owner_matches
         }
     }
 }

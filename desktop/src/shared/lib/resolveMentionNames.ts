@@ -64,6 +64,18 @@ export function collectProfileAliases(
   return aliases;
 }
 
+function profileLabel(profile: UserProfileSummary | undefined): string | null {
+  const value =
+    profile?.displayName?.trim() ||
+    profile?.name?.trim() ||
+    profile?.nip05Handle?.trim();
+  return value || null;
+}
+
+function firstName(label: string) {
+  return label.split(/\s+/u)[0] || "teammate";
+}
+
 export type ResolvedMentionProps = {
   /** All literal competitors, including ambiguous aliases without a binding. */
   mentionNames: string[] | undefined;
@@ -104,6 +116,39 @@ export function resolveMentionProps(
   };
   for (const key of taggedKeys) {
     for (const alias of collectProfileAliases(profiles?.[key])) add(alias, key);
+  }
+
+  // New picker selections carry the same owner-qualified label that every
+  // other agent surface uses. The `p` tag remains the routing authority; this
+  // only teaches the renderer to recognize the human-readable text. If the
+  // owner record has not arrived yet, preserve the text as plain prose rather
+  // than guessing or exposing a key.
+  const sameOwnerAliases = new Map<
+    string,
+    Array<{ alias: string; key: string; ownerSuffix: string }>
+  >();
+  for (const key of taggedKeys) {
+    const profile = profiles?.[key];
+    const ownerPubkey = profile?.ownerPubkey?.toLowerCase();
+    if (!profile?.isAgent || !ownerPubkey) continue;
+    const ownerSuffix = firstName(
+      profileLabel(profiles?.[ownerPubkey]) ?? "teammate",
+    );
+    for (const alias of collectProfileAliases(profile)) {
+      add(`${alias} (${ownerSuffix})`, key);
+      const groupKey = `${alias.toLowerCase()}:${ownerPubkey}`;
+      const group = sameOwnerAliases.get(groupKey) ?? [];
+      group.push({ alias, key, ownerSuffix });
+      sameOwnerAliases.set(groupKey, group);
+    }
+  }
+  for (const group of sameOwnerAliases.values()) {
+    if (group.length < 2) continue;
+    for (const [index, item] of [...group]
+      .sort((left, right) => left.key.localeCompare(right.key))
+      .entries()) {
+      add(`${item.alias} (${item.ownerSuffix}) ${index + 1}`, item.key);
+    }
   }
 
   // Only event-tagged identities can supply qualified bindings. The body is not

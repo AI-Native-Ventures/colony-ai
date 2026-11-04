@@ -32,11 +32,14 @@ export function selectedMentionLabel(
     return existing !== undefined && existing !== pubkey.toLowerCase();
   };
   if (!conflicts(displayName)) return displayName;
-  const qualified = `${displayName} (${pubkey.toLowerCase()})`;
-  let label = qualified;
+  // A pubkey is transport authority, not UI. Normal picker selections are
+  // already owner-qualified by resolveIdentityLabels; this neutral ordinal is
+  // only the defensive path for externally supplied duplicate labels.
+  const qualified = displayName;
+  let label = `${qualified} 2`;
   let suffix = 2;
-  // A display name may itself look qualified. Never overwrite that binding.
-  while (conflicts(label)) label = `${qualified} ${suffix++}`;
+  // A display name may itself contain an ordinal. Never overwrite that binding.
+  while (conflicts(label)) label = `${qualified} ${++suffix}`;
   return label;
 }
 

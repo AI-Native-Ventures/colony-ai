@@ -284,6 +284,40 @@ pub async fn restore_managed_agents_on_launch(
         return Ok(());
     }
 
+    // A restored process can receive its first turn as soon as it connects.
+    // Make its shared kind:0 identity a precondition just as the interactive
+    // start path does. The local record alone is only visible to its owner;
+    // without this gate another member can receive an agent message before
+    // their profile lookup has any name or NIP-OA owner to resolve.
+    let reconcile_personas = super::load_personas(app).unwrap_or_default();
+    let workspace_relay = crate::relay::relay_ws_url_with_override(state);
+    let mut identity_ready_agents = Vec::with_capacity(agents_to_start.len());
+    for record in agents_to_start {
+        let relay_url = crate::relay::effective_agent_relay_url(
+            &record.relay_url,
+            &workspace_relay,
+        );
+        let mut data = crate::commands::profile_reconcile_data(record, &reconcile_personas);
+        data.target_relay_url = Some(relay_url);
+        match crate::commands::ensure_agent_identity_profile(
+            state,
+            app,
+            &record.pubkey,
+            &data,
+        )
+        .await
+        {
+            Ok(()) => identity_ready_agents.push(record),
+            Err(error) => {
+                persist_restore_error(app, state, &record.pubkey, error)?;
+            }
+        }
+    }
+    let agents_to_start = identity_ready_agents;
+    if agents_to_start.is_empty() {
+        return Ok(());
+    }
+
     // Serialize spawning and runtime registration with shutdown cleanup. The
     // shutdown flag is rechecked after taking the lock so shutdown either
     // prevents this transition or waits until every child is tracked and can
@@ -382,8 +416,6 @@ pub async fn restore_managed_agents_on_launch(
         .lock()
         .map_err(|error| error.to_string())?;
 
-    let mut successfully_spawned: Vec<(String, String)> = Vec::new();
-
     for (pubkey, outcome) in spawn_results {
         match outcome {
             // Skipped means a concurrent reconcile already owns a live child for
@@ -417,11 +449,6 @@ pub async fn restore_managed_agents_on_launch(
                     key.clone(),
                     super::ManagedAgentPairRuntime::starting(*process),
                 );
-                // Carry the spawn key's relay into profile reconciliation so
-                // the background task queries/publishes on the relay this
-                // spawn was actually keyed to — not whatever workspace is
-                // active when the task eventually executes.
-                successfully_spawned.push((pubkey, key.relay_url.clone()));
             }
             SpawnOutcome::Failed(error) => {
                 let Ok(record) = find_managed_agent_mut(&mut records, &pubkey) else {
@@ -433,65 +460,10 @@ pub async fn restore_managed_agents_on_launch(
         }
     }
 
-    // Collect profile reconciliation data for successfully spawned agents before
-    // releasing the lock. This mirrors the fire-and-forget pattern in
-    // start_managed_agent — ensuring boot-restored agents get the same profile
-    // self-healing as UI-started agents.
-    let reconcile_personas = super::load_personas(app).unwrap_or_default();
-    let reconcile_items: Vec<(String, crate::commands::ProfileReconcileData)> =
-        successfully_spawned
-            .iter()
-            .filter_map(|(pubkey, spawn_relay)| {
-                let record = records.iter().find(|r| r.pubkey == *pubkey)?;
-                // Resolve the effective harness for the avatar-fallback
-                // derivation (the snapshot may be empty/stale for an inherited
-                // harness). Mirrors the UI start path.
-                let effective_command =
-                    crate::managed_agents::record_agent_command(record, &reconcile_personas);
-                Some((
-                    pubkey.clone(),
-                    crate::commands::ProfileReconcileData {
-                        private_key_nsec: record.private_key_nsec.clone(),
-                        name: record.name.clone(),
-                        relay_url: record.relay_url.clone(),
-                        // Pin the relay this spawn was keyed to (see the
-                        // successfully_spawned push above) so the deferred
-                        // task cannot resolve a post-switch workspace.
-                        target_relay_url: Some(spawn_relay.clone()),
-                        avatar_url: record.avatar_url.clone(),
-                        auth_tag: record.auth_tag.clone(),
-                        pubkey: record.pubkey.clone(),
-                        agent_command: effective_command,
-                        persona_id: record.persona_id.clone(),
-                        about: crate::managed_agents::record_effective_description(
-                            record,
-                            &reconcile_personas,
-                        ),
-                    },
-                ))
-            })
-            .collect();
-
     save_managed_agents(app, &records)?;
     drop(runtimes);
     drop(_store_guard);
     drop(restore_transition);
-
-    // ── Profile reconciliation (fire-and-forget) ────────────────────────────
-    // Spawn background tasks to ensure each restored agent's kind:0 profile is
-    // published on the relay. Same pattern as the UI start path.
-    for (pubkey, data) in reconcile_items {
-        let reconcile_app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let state = reconcile_app.state::<AppState>();
-            if let Err(e) =
-                crate::commands::reconcile_agent_profile(&state, &reconcile_app, &pubkey, &data)
-                    .await
-            {
-                eprintln!("buzz-desktop: profile reconciliation failed for agent {pubkey}: {e}");
-            }
-        });
-    }
 
     Ok(())
 }
@@ -547,7 +519,6 @@ pub(crate) fn spawn_pending_profile_reconciliations(app: &tauri::AppHandle, work
     }
 }
 
-#[cfg(feature = "mesh-llm")]
 fn persist_restore_error(
     app: &tauri::AppHandle,
     state: &AppState,

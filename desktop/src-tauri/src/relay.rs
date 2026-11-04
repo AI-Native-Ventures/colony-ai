@@ -744,6 +744,11 @@ pub async fn query_agent_profile(
             .get("about")
             .and_then(|v| v.as_str())
             .map(str::to_string),
+        // A managed agent is identified by its verified NIP-OA tag, not by a
+        // local managed-agent record. Preserve that tag-derived owner through
+        // the startup query so a name-only kind:0 cannot satisfy the identity
+        // readiness gate.
+        owner_pubkey: crate::nostr_convert::profile_valid_oa_owner_pubkey(event),
     }))
 }
 
@@ -754,6 +759,8 @@ pub struct AgentProfileInfo {
     pub picture: Option<String>,
     /// Published public description (kind:0 `about`).
     pub about: Option<String>,
+    /// Verified NIP-OA owner from the kind:0 event's `auth` tag.
+    pub owner_pubkey: Option<String>,
 }
 
 // ── Signed-event submission ─────────────────────────────────────────────────

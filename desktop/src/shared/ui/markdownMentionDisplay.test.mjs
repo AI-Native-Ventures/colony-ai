@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { truncateNpub } from "../lib/pubkey.ts";
 import { createMarkdownComponents } from "./markdown.tsx";
 import { renderCachedMarkdown } from "./markdown/nodeCache.ts";
 import { MarkdownRuntimeContext } from "./markdown/runtimeContext.ts";
@@ -10,7 +9,7 @@ import { MarkdownRuntimeContext } from "./markdown/runtimeContext.ts";
 const KEY = `150b20bd${"a".repeat(52)}15dc`;
 
 for (const agent of [false, true]) {
-  test(`rendered ${agent ? "agent" : "human"} abbreviates a bound key without changing its metadata`, () => {
+  test(`rendered ${agent ? "agent" : "human"} redacts a bound key from visible identity text`, () => {
     const label = `Scout (${KEY}) 2`;
     const name = label.toLowerCase();
     const html = renderToStaticMarkup(
@@ -31,14 +30,11 @@ for (const agent of [false, true]) {
         }),
       ),
     );
-    assert.equal(
-      html.replace(/<[^>]+>/g, ""),
-      `Ask Scout (${truncateNpub(KEY)}) 2`,
-    );
-    assert.ok(html.includes(`data-mention-label="${label}"`));
+    assert.equal(html.replace(/<[^>]+>/g, ""), "Ask Scout (teammate) 2");
+    assert.ok(html.includes('data-mention-label="Scout (teammate) 2"'));
     assert.ok(html.includes(`data-mention-pubkey="${KEY}"`));
-    assert.ok(html.includes(`title="${label}"`));
-    assert.ok(html.includes(`aria-label="${label}"`));
+    assert.ok(html.includes('title="Scout (teammate) 2"'));
+    assert.ok(html.includes('aria-label="Scout (teammate) 2"'));
     assert.match(
       html,
       new RegExp(

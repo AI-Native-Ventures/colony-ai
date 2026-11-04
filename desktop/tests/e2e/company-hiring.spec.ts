@@ -693,7 +693,7 @@ test("hire ask decisions use the reasoned handoff screen", async ({ page }) => {
   await expect(
     card.getByRole("heading", { name: "Decision context" }),
   ).toBeVisible();
-  await expect(card).toContainText("npub1mock... · Owner");
+  await expect(card).toContainText("Morgan · Owner");
   await expect(card.getByRole("button", { name: "Review hire" })).toBeVisible();
   await card.getByRole("button", { name: "Review hire" }).click();
   await expect(page.getByTestId("hire-handoff-form")).toBeVisible();

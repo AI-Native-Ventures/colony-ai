@@ -3,9 +3,14 @@ import * as React from "react";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import {
+  resolveIdentityLabel,
+  type ResolvedIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { resolveJobTitle } from "@/features/profile/lib/jobTitle";
+import { IdentityLabelText } from "@/features/profile/ui/IdentityLabelText";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { ChevronRightIcon, PlusIcon } from "@/shared/ui/colonyIcons";
 import { EmployeeAvatar } from "./EmployeeAvatar";
 import { useEmployeeRuntime } from "../useEmployeeRuntime";
@@ -14,21 +19,20 @@ import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { useCompanyTeamQuery } from "../teamRelay";
 import type { TeamMember } from "../teamModels";
 
-type ProfileLookup = Record<
-  string,
-  {
-    displayName: string | null;
-    avatarUrl?: string | null;
-    jobTitle?: string | null;
-  }
->;
-
-function displayName(member: TeamMember, profiles: ProfileLookup) {
-  return (
-    profiles[member.pubkey]?.displayName?.trim() ||
-    member.fallbackName?.trim() ||
-    truncateNpub(member.pubkey)
-  );
+function displayName(
+  member: TeamMember,
+  profiles: UserProfileLookup,
+  currentPubkey: string | undefined,
+) {
+  return resolveIdentityLabel({
+    pubkey: member.pubkey,
+    currentPubkey,
+    fallbackName:
+      profiles[member.pubkey]?.displayName?.trim() ?? member.fallbackName,
+    profiles,
+    isAgent: member.kind === "employee",
+    ownerPubkey: profiles[member.pubkey]?.ownerPubkey,
+  });
 }
 
 function memberKindLabel(member: TeamMember) {
@@ -121,14 +125,14 @@ function StatusCell({
 
 function TeamMemberRow({
   member,
-  name,
+  identityLabel,
   jobTitle,
   managerName,
   avatarUrl,
   definitionAvatar,
 }: {
   member: TeamMember;
-  name: string;
+  identityLabel: ResolvedIdentityLabel;
   jobTitle: string;
   managerName: string | null;
   avatarUrl?: string | null;
@@ -150,7 +154,7 @@ function TeamMemberRow({
   const reasonDescription = position?.reason
     ? `, Reason: ${position.reason}`
     : "";
-  const accessibleName = `${name}, ${jobTitle || "No title"}, ${memberKindLabel(member)}, ${status}${reportsTo ? `, Reports to ${reportsTo}` : ""}${reasonDescription}`;
+  const accessibleName = `${identityLabel.text}, ${jobTitle || "No title"}, ${memberKindLabel(member)}, ${status}${reportsTo ? `, Reports to ${reportsTo}` : ""}${reasonDescription}`;
   return (
     <button
       aria-label={accessibleName}
@@ -165,7 +169,7 @@ function TeamMemberRow({
             className="team-person-avatar team-person-avatar-agent"
             definition={definitionAvatar}
             instance={member.managedAgent?.avatarUrl}
-            name={name}
+            name={identityLabel.text}
             pubkey={member.pubkey}
             personaId={member.managedAgent?.personaId}
             profile={avatarUrl}
@@ -176,13 +180,15 @@ function TeamMemberRow({
           <ProfileAvatar
             avatarUrl={avatarUrl ?? null}
             className="team-person-avatar"
-            label={name}
+            label={identityLabel.text}
             pubkey={member.pubkey}
             testId={`team-avatar-${member.pubkey}`}
           />
         )}
         <span className="team-person-copy">
-          <span className="team-person-name">{name}</span>
+          <span className="team-person-name">
+            <IdentityLabelText label={identityLabel} />
+          </span>
           <span className="team-person-role">
             {jobTitle ? `${jobTitle} · ` : ""}
             {memberKindLabel(member)}
@@ -214,7 +220,7 @@ export function TeamScreen() {
   const profilesQuery = useUsersBatchQuery(memberPubkeys, {
     enabled: memberPubkeys.length > 0,
   });
-  const profiles: ProfileLookup = profilesQuery.data?.profiles ?? {};
+  const profiles: UserProfileLookup = profilesQuery.data?.profiles ?? {};
   const role = teamQuery.data?.relayMembers.find(
     (member) =>
       member.pubkey.toLowerCase() === identityQuery.data?.pubkey.toLowerCase(),
@@ -261,7 +267,9 @@ export function TeamScreen() {
   const managerName = (member: TeamMember) => {
     const managerPubkey = member.position?.head.managerPubkey;
     const manager = managerPubkey ? memberByPubkey.get(managerPubkey) : null;
-    return manager ? displayName(manager, profiles) : null;
+    return manager
+      ? displayName(manager, profiles, identityQuery.data?.pubkey).text
+      : null;
   };
   const employeeCount = members.filter(
     (member) => member.kind === "employee",
@@ -314,7 +322,11 @@ export function TeamScreen() {
               key={member.pubkey}
               managerName={managerName(member)}
               member={member}
-              name={displayName(member, profiles)}
+              identityLabel={displayName(
+                member,
+                profiles,
+                identityQuery.data?.pubkey,
+              )}
             />
           ))}
         </div>

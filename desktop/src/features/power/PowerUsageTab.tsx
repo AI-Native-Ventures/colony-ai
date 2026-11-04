@@ -3,9 +3,9 @@ import * as React from "react";
 import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import type { AgentUsageSeriesBucket } from "@/shared/api/tauriArchive";
 import type { ManagedAgent } from "@/shared/api/types";
-import { truncateNpub } from "@/shared/lib/pubkey";
 
 import { EmployeeAvatar } from "./PowerParts";
 import type { UsagePeriodDays } from "./usageBoundaries";
@@ -78,10 +78,13 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
       const key = agentUsage.agentPubkey.toLowerCase();
       if (agentFilter !== "all" && key !== agentFilter) return [];
       const agent = managedByKey.get(key);
-      const name =
-        agent?.name ??
-        profiles[key]?.displayName ??
-        truncateNpub(agentUsage.agentPubkey);
+      const name = resolveIdentityLabel({
+        pubkey: agentUsage.agentPubkey,
+        fallbackName: agent?.name,
+        profiles,
+        isAgent: true,
+        ownerPubkey: profiles[key]?.ownerPubkey ?? null,
+      }).text;
       return agentUsage.buckets
         .filter((bucket) => bucket.reportCount > 0)
         .map((bucket) => ({
@@ -114,9 +117,15 @@ export function PowerUsageTab({ agents }: { agents: ManagedAgent[] }) {
               const key = agentUsage.agentPubkey.toLowerCase();
               return (
                 <option key={agentUsage.agentPubkey} value={key}>
-                  {managedByKey.get(key)?.name ??
-                    profiles[key]?.displayName ??
-                    truncateNpub(agentUsage.agentPubkey)}
+                  {
+                    resolveIdentityLabel({
+                      pubkey: agentUsage.agentPubkey,
+                      fallbackName: managedByKey.get(key)?.name,
+                      profiles,
+                      isAgent: true,
+                      ownerPubkey: profiles[key]?.ownerPubkey ?? null,
+                    }).text
+                  }
                 </option>
               );
             })}

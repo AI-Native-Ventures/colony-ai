@@ -31,7 +31,6 @@ type SystemRowProps = {
   footer: React.ReactNode;
   onToggleReaction?: ToggleReaction;
   profiles?: UserProfileLookup;
-  ownerProfiles?: UserProfileLookup;
 };
 
 export function SystemRow({
@@ -41,7 +40,6 @@ export function SystemRow({
   footer,
   onToggleReaction,
   profiles,
-  ownerProfiles,
 }: SystemRowProps) {
   const systemEntries = entries ?? (entry ? [entry] : []);
   const firstEntry = systemEntries[0];
@@ -62,7 +60,6 @@ export function SystemRow({
         currentPubkey={currentPubkey}
         onToggleReaction={onToggleReaction}
         profiles={profiles}
-        ownerProfiles={ownerProfiles}
       />
       {footer}
     </div>

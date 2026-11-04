@@ -18,9 +18,10 @@ import {
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
 import { rankUserCandidatesBySearch } from "@/features/profile/lib/userCandidateSearch";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { ManagedAgent, UserSearchResult } from "@/shared/api/types";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 /** Maximum recipients (excluding the current user) a DM can address. */
 export const NEW_MESSAGE_RECIPIENT_LIMIT = 8;
@@ -34,11 +35,12 @@ export type NewMessageRecipientCandidate = UserSearchResult & {
 };
 
 export function formatRecipientName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 function candidateWithAgentMetadata(

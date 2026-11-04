@@ -20,7 +20,7 @@ async function openSelfProfile(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   // First seed message in #general is from the active identity.
   const firstMessage = page.getByTestId("message-row").first();
-  await firstMessage.locator("button", { hasText: "npub1mock..." }).click();
+  await firstMessage.locator("button", { hasText: "Morgan" }).click();
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
 }
 
