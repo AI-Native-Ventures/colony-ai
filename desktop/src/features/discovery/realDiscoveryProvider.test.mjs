@@ -347,6 +347,24 @@ test("a page that is only businesses already in Leads ends that query instead of
   assert.match(controller.getCurrent().endNote, /^Google has no more /);
 });
 
+test("red proof: a new campaign keeps paging after an all-existing first page", async () => {
+  const { controller, log } = harness({
+    existing: Array.from({ length: 20 }, (_, index) => `id-p${index + 1}`),
+    pages: (request) =>
+      request.skip === 0 ? page(1, 20, 20) : page(21, 3, null),
+  });
+
+  await controller.start({ ...INPUT, target: 3 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20],
+  );
+  assert.equal(controller.getCurrent().count, 3);
+  assert.equal(controller.getCurrent().status, "complete");
+});
+
 test("a query that is used up at the provider's 400 places ends honestly with 20 pages", async () => {
   // Like the relay: full pages with a next skip until skip 380, then none.
   const { controller, log } = harness({
