@@ -34,6 +34,7 @@
       "start-free-gateway.spec.ts",
       "open-design-review.spec.ts",
       "colony3-first-run-proof.spec.ts",
+      "overflow-audit.spec.ts",
       "smoke.spec.ts",
       "navigation.spec.ts",
       "colony3-today.spec.ts",

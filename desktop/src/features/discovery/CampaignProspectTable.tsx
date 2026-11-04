@@ -262,8 +262,10 @@ export function CampaignTable({
                       website={prospect.website}
                     />
                     <span className="c3d-prospect-copy">
-                      <strong>{prospect.party.displayName}</strong>
-                      <span>{prospect.vertical}</span>
+                      <strong title={prospect.party.displayName}>
+                        {prospect.party.displayName}
+                      </strong>
+                      <span title={prospect.vertical}>{prospect.vertical}</span>
                       <DiscoveryLeadTags
                         limit={3}
                         tags={prospect.discoveryTags}
@@ -285,7 +287,10 @@ export function CampaignTable({
                   </span>
                 </td>
                 <td {...CELL_ROLE}>
-                  <span className={`c3d-pill c3d-pill--${status.tone}`}>
+                  <span
+                    className={`c3d-pill c3d-pill--${status.tone}`}
+                    title={status.label}
+                  >
                     {status.label}
                   </span>
                 </td>

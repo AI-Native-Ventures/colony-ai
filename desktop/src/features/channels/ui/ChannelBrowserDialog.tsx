@@ -330,7 +330,10 @@ export function ChannelBrowserDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="max-h-[calc(100vh-5rem)] max-w-[640px] gap-[18px] overflow-hidden px-7 pb-5 pt-7"
+        className={cn(
+          "max-h-[calc(100vh-5rem)] max-w-[640px] gap-[18px] overflow-hidden px-7 pb-5 pt-7",
+          mode === "browse" && "grid-rows-[auto_auto_auto_minmax(0,1fr)]",
+        )}
         data-testid="channel-browser-dialog"
         onOpenAutoFocus={(event) => {
           event.preventDefault();

@@ -127,10 +127,12 @@
 }
 
 .app-sidebar-full-shell .sidebar-company-context {
+  overflow: hidden;
   color: var(--colony-sidebar-ink-soft);
   font-size: calc(13 * var(--colony-px));
   font-weight: 600;
   letter-spacing: 0;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

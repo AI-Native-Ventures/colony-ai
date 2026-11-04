@@ -55,7 +55,7 @@ export function FunctionScorecard({
           </button>
         </div>
       ) : card && card.metrics.length > 0 ? (
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <ul className="grid grid-cols-[repeat(auto-fit,minmax(min(8rem,100%),1fr))] gap-2">
           {card.metrics.map((reading) => {
             const detail = METRIC_DETAILS[reading.metric];
             const value = formatMetricValue(
@@ -65,7 +65,7 @@ export function FunctionScorecard({
             );
             return (
               <li
-                className="flex min-h-20 flex-col justify-center gap-1 rounded-xl bg-muted/70 p-3"
+                className="flex min-h-20 min-w-0 max-w-60 flex-col justify-center gap-1 rounded-xl bg-muted/70 p-3"
                 key={reading.metric}
               >
                 <span className="text-lg font-extrabold leading-tight">
