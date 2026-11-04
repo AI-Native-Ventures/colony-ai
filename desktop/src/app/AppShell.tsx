@@ -118,11 +118,6 @@ export function AppShell() {
   const communitiesHook = useCommunities();
   const location = useLocation();
   const isNarrowWindow = useIsMobile();
-  const hasMobileRouteHeader =
-    location.pathname === "/leads" ||
-    location.pathname === "/lists" ||
-    location.pathname.startsWith("/lists/") ||
-    location.pathname.startsWith("/channels/");
   const { selectedChannelId, selectedView } = React.useMemo(
     () => deriveShellRoute(location.pathname),
     [location.pathname],
@@ -903,7 +898,7 @@ export function AppShell() {
                     >
                       <AppShellChannelSurface
                         topChrome={
-                          isNarrowWindow && !hasMobileRouteHeader ? (
+                          isNarrowWindow ? (
                             <MobileWorkspaceHeader
                               activeWorkspace={communitiesHook.activeCommunity}
                               workspaces={communitiesHook.communities}
@@ -929,7 +924,7 @@ export function AppShell() {
                               onOpenWorkspaceSettings={openWorkspaceSettings}
                               onSwitchWorkspace={handleSwitchCommunity}
                             />
-                          ) : isNarrowWindow ? null : showAppTopChrome ? (
+                          ) : showAppTopChrome ? (
                             <AppTopChrome
                               canGoBack={canGoBack}
                               canGoForward={canGoForward}

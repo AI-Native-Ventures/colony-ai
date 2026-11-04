@@ -1354,7 +1354,7 @@ test.describe("Outreach lists", () => {
     await capture(page, "OLMentionPicker");
   });
 
-  test("keeps lead selection and the shared list inside a 390px view", async ({
+  test("keeps lead selection and the shared list inside 390px and 1024px views", async ({
     page,
   }) => {
     await openReference(page, "/leads", 390, "light", {
@@ -1364,7 +1364,8 @@ test.describe("Outreach lists", () => {
     });
     const leads = page.getByTestId("w10-leads-page");
     await expect(leads).toBeVisible();
-    await expect(page.getByTestId("mobile-workspace-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-workspace-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-open-navigation")).toBeVisible();
     await expect(page.getByTestId("leads-mobile-header")).toBeVisible();
     for (const name of [
       "Jacaranda Lane Guesthouse",
@@ -1430,7 +1431,8 @@ test.describe("Outreach lists", () => {
       .click();
     const mobileList = page.getByTestId("outreach-list-detail");
     await expect(mobileList).toBeVisible();
-    await expect(page.getByTestId("mobile-workspace-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-workspace-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-open-navigation")).toBeVisible();
     await expect(page.getByTestId("list-mobile-header")).toBeVisible();
     await mobileList
       .getByLabel("Default WhatsApp template")
@@ -1449,6 +1451,16 @@ test.describe("Outreach lists", () => {
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(2);
+
+    await page.setViewportSize({ width: 1024, height: 1200 });
+    await waitForAnimations(page);
+    await expect(mobileList).toBeVisible();
+    const wideOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(wideOverflow).toBeLessThanOrEqual(2);
+    await mobileList.evaluate((element) => element.scrollTo({ top: 0 }));
+    await capture(page, "OLWideList");
 
     await page.evaluate((channelId) => {
       window.location.hash = `/channels/${channelId}`;
