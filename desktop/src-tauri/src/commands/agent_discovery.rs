@@ -14,13 +14,13 @@ fn active_installs() -> &'static std::sync::Mutex<std::collections::HashSet<Stri
     ACTIVE.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-/// Returns the adapter install commands that `install_acp_runtime_blocking` would
+/// Returns catalog adapter install commands that `install_acp_runtime_blocking` would
 /// run for `runtime_id` given a resolved adapter binary at `adapter_path` (or `None` if not found).
 /// Returns `None` when no install is needed; `Some(cmds)` when adapter is missing or outdated.
-/// For the codex **outdated** case, returns a two-step reinstall: uninstall `@zed-industries/codex-acp`
-/// then install `@agentclientprotocol/codex-acp` (npm ≥7 refuses to overwrite a bin from another pkg).
-/// For the **missing** case, catalog's `adapter_install_commands` are used as-is.
-/// Pure planning function: never spawns a process. Tests use it to assert commands without real npm.
+/// Codex is provisioned by the managed runtime path above, and its catalog has
+/// no global npm commands. This fallback therefore never mutates a machine-wide
+/// Codex adapter installation.
+/// Pure planning function: never spawns a process.
 pub(crate) fn plan_adapter_install<'c>(
     runtime_id: &str,
     adapter_path: Option<&std::path::Path>,
@@ -38,12 +38,9 @@ pub(crate) fn plan_adapter_install<'c>(
         {
             None
         }
-        // Codex adapter is outdated: uninstall the old package first so npm
-        // doesn't hit EEXIST on the shared `codex-acp` bin-link, then install.
-        Some(_) => Some(vec![
-            "npm uninstall -g @zed-industries/codex-acp",
-            "npm install -g @agentclientprotocol/codex-acp",
-        ]),
+        // Managed Codex provisioning owns its versioned folder. This fallback
+        // returns only catalog commands, which are empty for Codex.
+        Some(_) => Some(adapter_install_commands.to_vec()),
         // Adapter missing: use the catalog's install commands directly.
         None => Some(adapter_install_commands.to_vec()),
     }
@@ -143,6 +140,7 @@ pub async fn save_custom_harness(
         avatar_url: String::new(),
         availability,
         command: command_opt,
+        command_candidates: vec![definition.command.clone()],
         binary_path,
         default_args,
         mcp_command: None,
@@ -307,10 +305,14 @@ fn install_acp_runtime_blocking(
         });
     }
 
-    // Colony downloads managed binaries itself (pinned, checksummed); they
-    // never use the CLI or adapter installer phases below.
+    // Colony provisions these runtime trees itself; vendor install commands
+    // below are not used for their binaries or package managers.
     if crate::managed_agents::managed_binary_runtime(runtime.id) {
-        if let Err(step) = ensure_managed_opencode_blocking(&reporter) {
+        let provision = match runtime.id {
+            "codex" => ensure_managed_codex_blocking(&reporter),
+            _ => ensure_managed_opencode_blocking(&reporter),
+        };
+        if let Err(step) = provision {
             reporter.record_step(&mut steps, *step);
             return Ok(reporter.failed(steps));
         }
@@ -1042,15 +1044,42 @@ use install_report::InstallReporter;
 
 // ── managed Node/npm runtime ──────────────────────────────────────────────────
 mod managed_archive;
+mod managed_codex;
 mod managed_git;
 mod managed_node;
 mod managed_opencode;
+use managed_codex::ensure_managed_codex_blocking;
 use managed_git::{ensure_managed_git_blocking, managed_git_ready_step, managed_git_wanted};
 use managed_node::{
     ensure_managed_node_runtime_blocking, managed_node_runtime_supported, managed_npm_command,
     npm_eacces_hint, resolve_adapter_path,
 };
 use managed_opencode::ensure_managed_opencode_blocking;
+
+/// Return whether this exact resolved Codex shim needs Colony's pinned Node
+/// runtime repaired. External Codex adapters and healthy managed Node installs
+/// remain untouched.
+pub(crate) fn managed_node_repair_required_for_codex_shim(binary_path: Option<&str>) -> bool {
+    let Some(binary_path) = binary_path.map(std::path::Path::new) else {
+        return false;
+    };
+    let Some(managed_codex_bin) = crate::managed_agents::buzz_managed_codex_bin_dir() else {
+        return false;
+    };
+    if !binary_path.starts_with(&managed_codex_bin) {
+        return false;
+    }
+    if !managed_node_runtime_supported() {
+        return false;
+    }
+
+    managed_node::codex_shim_needs_managed_node_repair(
+        binary_path,
+        &managed_codex_bin,
+        true,
+        managed_node::managed_node_runtime_ready(),
+    )
+}
 
 #[tauri::command]
 pub async fn discover_managed_agent_prereqs(

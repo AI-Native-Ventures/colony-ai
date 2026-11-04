@@ -35,18 +35,30 @@ const INSTALL_TIMEOUT: Duration = Duration::from_secs(900);
 // onboarding through three 15-minute attempts. Full CLI downloads retain their
 // existing ceiling, including slower Windows Defender scans.
 fn command_timeout(step: &str) -> Duration {
-    if step == "adapter" {
-        Duration::from_secs(120)
-    } else {
-        INSTALL_TIMEOUT
+    match step {
+        "adapter" => Duration::from_secs(120),
+        "codex" => Duration::from_secs(300),
+        _ => INSTALL_TIMEOUT,
     }
 }
 
 fn command_attempts(step: &str) -> u32 {
-    if step == "adapter" {
-        1
-    } else {
-        INSTALL_MAX_ATTEMPTS
+    match step {
+        "adapter" => 1,
+        "codex" => 2,
+        _ => INSTALL_MAX_ATTEMPTS,
+    }
+}
+
+#[cfg(test)]
+mod retry_policy_tests {
+    use super::{command_attempts, command_timeout};
+    use std::time::Duration;
+
+    #[test]
+    fn codex_provisioning_has_a_bounded_retry_policy() {
+        assert_eq!(command_attempts("codex"), 2);
+        assert_eq!(command_timeout("codex"), Duration::from_secs(300));
     }
 }
 

@@ -1101,34 +1101,31 @@ fn test_command_basenames_dotted_name_no_extra_candidates() {
 
 // ── Phase B: cli_install_commands_for_os ────────────────────────────────────
 
-/// Claude and Codex have non-empty default cli_install_commands (install.sh).
+/// Claude retains its vendor installer; Codex has no global installer because
+/// Colony provisions its CLI and ACP adapter together in app data.
 #[test]
-fn test_claude_and_codex_have_cli_install_commands() {
+fn test_codex_has_no_machine_global_cli_install_command() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
     let codex = super::known_acp_runtime_exact("codex").unwrap();
     assert!(
         !claude.cli_install_commands.is_empty(),
         "claude must have cli install commands"
     );
-    assert!(
-        !codex.cli_install_commands.is_empty(),
-        "codex must have cli install commands"
-    );
+    assert!(codex.cli_install_commands.is_empty());
+    assert!(codex.cli_install_commands_windows.is_empty());
+    assert!(codex.adapter_install_commands.is_empty());
 }
 
-/// cli_install_commands_for_os returns a non-empty slice for claude and codex.
+/// Only the managed runtime path can install Codex.
 #[test]
-fn test_cli_install_commands_for_os_non_empty_for_claude_codex() {
+fn test_codex_install_commands_for_os_are_empty() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
     let codex = super::known_acp_runtime_exact("codex").unwrap();
     assert!(
         !claude.cli_install_commands_for_os().is_empty(),
         "claude must have install commands on every platform"
     );
-    assert!(
-        !codex.cli_install_commands_for_os().is_empty(),
-        "codex must have install commands on every platform"
-    );
+    assert!(codex.cli_install_commands_for_os().is_empty());
 }
 
 /// On Windows, every vendor CLI selects its official PowerShell installer.
@@ -1136,32 +1133,26 @@ fn test_cli_install_commands_for_os_non_empty_for_claude_codex() {
 #[test]
 fn test_cli_install_commands_for_os_selects_powershell_on_windows() {
     let claude = super::known_acp_runtime_exact("claude").unwrap();
-    let codex = super::known_acp_runtime_exact("codex").unwrap();
     let goose = super::known_acp_runtime_exact("goose").unwrap();
 
     // Windows must select the PowerShell commands, not the curl|bash ones.
     let claude_cmds = claude.cli_install_commands_for_os();
-    let codex_cmds = codex.cli_install_commands_for_os();
     let goose_cmds = goose.cli_install_commands_for_os();
 
     assert_ne!(
         claude_cmds, claude.cli_install_commands,
         "Windows must NOT use the default curl|bash commands for claude"
     );
-    assert_ne!(
-        codex_cmds, codex.cli_install_commands,
-        "Windows must NOT use the default curl|bash commands for codex"
-    );
+    assert!(super::known_acp_runtime_exact("codex")
+        .unwrap()
+        .cli_install_commands_for_os()
+        .is_empty());
     assert_eq!(goose_cmds, goose.cli_install_commands_windows);
 
     // Verify they are the PowerShell installers.
     assert!(
         claude_cmds.iter().any(|c| c.contains("powershell")),
         "claude Windows install must use powershell; got: {claude_cmds:?}"
-    );
-    assert!(
-        codex_cmds.iter().any(|c| c.contains("powershell")),
-        "codex Windows install must use powershell; got: {codex_cmds:?}"
     );
     assert!(
         goose_cmds.iter().any(|c| c.contains("download_cli.ps1")),

@@ -564,6 +564,8 @@ export type AcpRuntimeCatalogEntry = {
   availability: AcpAvailabilityStatus;
   command: string | null;
   binaryPath: string | null;
+  /** Catalog-declared commands, even when currently unavailable. */
+  commandCandidates?: string[];
   defaultArgs: string[];
   mcpCommand: string | null;
   /** Environment variable used to apply the initial model, when supported. */

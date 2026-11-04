@@ -757,6 +757,10 @@ pub struct AcpRuntimeCatalogEntry {
     pub avatar_url: String,
     pub availability: AcpAvailabilityStatus,
     pub command: Option<String>,
+    /// Static command names declared by this harness, including when no
+    /// executable is currently resolved. Used to recognize a saved harness
+    /// selection so the UI can offer its managed setup path.
+    pub command_candidates: Vec<String>,
     pub binary_path: Option<String>,
     pub default_args: Vec<String>,
     pub mcp_command: Option<String>,
