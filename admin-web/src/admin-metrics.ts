@@ -113,6 +113,22 @@ export interface BusinessesMetrics extends MetricEnvelope {
   items: BusinessRow[];
 }
 
+export type OnboardingStep =
+  | "brief"
+  | "money"
+  | "approvals"
+  | "accounts"
+  | "map";
+
+export type OnboardingStepState = "todo" | "asked" | "done" | "skipped";
+
+export interface OnboardingProgress {
+  status: "in_progress" | "complete";
+  currentStep: OnboardingStep | null;
+  currentStepState: OnboardingStepState | null;
+  steps: Array<{ step: OnboardingStep; state: OnboardingStepState }>;
+}
+
 export interface BusinessDetailMetrics extends MetricEnvelope {
   business: {
     communityId: string;
@@ -183,6 +199,7 @@ export interface BusinessDetailMetrics extends MetricEnvelope {
   cofounder: {
     on: boolean | null;
     onSince: string | null;
+    onboarding: OnboardingProgress | null;
     wakes: { delivered: number; skipped: number; pending: number };
     lastWake: { at: string; status: string; reason: string } | null;
     skippedByOutcome: Array<{ outcome: string; count: number }>;

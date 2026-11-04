@@ -107,9 +107,29 @@ test("business detail shows counts and status without private content", async ({
   ).toBeVisible();
   await expect(page.getByText("horizonlabs.colony.global")).toBeVisible();
   await expect(page.getByText("No Scout found")).toBeVisible();
+  await expect(
+    page.getByText("In progress · Money (Asked)", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Composer froze.")).toHaveCount(0);
   await expect(page.getByText("WhatsApp text")).toHaveCount(0);
-  await expect(page.getByText("Not collected", { exact: true })).toBeVisible();
+});
+
+test("business detail labels onboarding that has not started", async ({
+  page,
+}) => {
+  await page.route(
+    "**/api/admin/v1/metrics/businesses/horizon-labs*",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...businessFixture,
+          cofounder: { ...businessFixture.cofounder, onboarding: null },
+        }),
+      }),
+  );
+  await page.goto("/businesses/horizon-labs");
+  await expect(page.getByText("Not started", { exact: true })).toBeVisible();
 });
 
 test("AI usage labels the gateway boundary and renders outcomes", async ({

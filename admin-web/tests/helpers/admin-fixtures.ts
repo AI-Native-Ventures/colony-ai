@@ -328,6 +328,18 @@ export const businessFixture = {
   cofounder: {
     on: true,
     onSince: "2026-11-01T08:05:00Z",
+    onboarding: {
+      status: "in_progress",
+      currentStep: "money",
+      currentStepState: "asked",
+      steps: [
+        { step: "brief", state: "done" },
+        { step: "money", state: "asked" },
+        { step: "approvals", state: "todo" },
+        { step: "accounts", state: "todo" },
+        { step: "map", state: "todo" },
+      ],
+    },
     wakes: { delivered: 1, skipped: 2, pending: 0 },
     lastWake: {
       at: "2026-11-01T23:15:00Z",

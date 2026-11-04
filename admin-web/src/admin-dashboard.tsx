@@ -15,6 +15,7 @@ import type {
   HealthMetrics,
   MetricDelta,
   MetricValue,
+  OnboardingProgress,
   OverviewMetrics,
 } from "./admin-metrics";
 import { useResource } from "./useResource";
@@ -1171,7 +1172,10 @@ function BusinessDetailPage({
                       : "Not collected"
                   }
                 />
-                <DataRow label="Onboarding" value="Not collected" />
+                <DataRow
+                  label="Onboarding"
+                  value={onboardingLabel(data.cofounder.onboarding)}
+                />
                 <DataRow
                   label="Last wake outcome"
                   value={
@@ -1997,6 +2001,16 @@ function formatDay(value: string): string {
 
 function capitalize(value: string): string {
   return value.length ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+}
+
+function onboardingLabel(progress: OnboardingProgress | null): string {
+  if (!progress) return "Not started";
+  if (progress.status === "complete") return "Complete";
+  if (!progress.currentStep) return "In progress";
+  const state = progress.currentStepState
+    ? ` (${capitalize(progress.currentStepState)})`
+    : "";
+  return `In progress · ${capitalize(progress.currentStep)}${state}`;
 }
 
 function runtimeName(value: string | null): string {
