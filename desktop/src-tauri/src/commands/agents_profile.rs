@@ -294,13 +294,14 @@ pub(crate) async fn ensure_agent_identity_profile(
                 &data.relay_url,
                 &relay_ws_url_with_override(state),
             );
-            let profile = crate::relay::query_agent_profile(state, &relay_url, agent_pubkey)
-                .await?;
+            let profile =
+                crate::relay::query_agent_profile(state, &relay_url, agent_pubkey).await?;
             let signed_in_owner = workspace_owner_hex(state)?;
             let has_verified_owner = data.auth_tag.is_none()
-                || profile.as_ref().and_then(|value| value.owner_pubkey.as_deref()).is_some_and(
-                    |owner| owner.eq_ignore_ascii_case(&signed_in_owner),
-                );
+                || profile
+                    .as_ref()
+                    .and_then(|value| value.owner_pubkey.as_deref())
+                    .is_some_and(|owner| owner.eq_ignore_ascii_case(&signed_in_owner));
             let has_name = profile
                 .as_ref()
                 .and_then(|value| value.display_name.as_deref())

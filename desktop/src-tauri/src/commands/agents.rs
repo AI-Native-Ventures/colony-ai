@@ -802,34 +802,35 @@ pub async fn create_managed_agent(
 
     try_regenerate_nest(&app);
 
-    let spawn_error = if input.spawn_after_create && input.backend != BackendKind::Local && profile_ready {
-        if let BackendKind::Provider { ref id, ref config } = input.backend {
-            let agent_json = {
-                let _g = state
-                    .managed_agents_store_lock
-                    .lock()
-                    .map_err(|e| e.to_string())?;
-                let records = load_managed_agents(&app)?;
-                let rec = records
-                    .iter()
-                    .find(|r| r.pubkey == pubkey)
-                    .ok_or_else(|| "agent disappeared".to_string())?;
-                build_deploy_payload(&app, &state, rec)?
-            };
-            match deploy_to_provider(
-                &app, &state, &pubkey, id, config, agent_json, None, None, None, None,
-            )
-            .await
-            {
-                Ok(()) => spawn_error,
-                Err(e) => Some(e),
+    let spawn_error =
+        if input.spawn_after_create && input.backend != BackendKind::Local && profile_ready {
+            if let BackendKind::Provider { ref id, ref config } = input.backend {
+                let agent_json = {
+                    let _g = state
+                        .managed_agents_store_lock
+                        .lock()
+                        .map_err(|e| e.to_string())?;
+                    let records = load_managed_agents(&app)?;
+                    let rec = records
+                        .iter()
+                        .find(|r| r.pubkey == pubkey)
+                        .ok_or_else(|| "agent disappeared".to_string())?;
+                    build_deploy_payload(&app, &state, rec)?
+                };
+                match deploy_to_provider(
+                    &app, &state, &pubkey, id, config, agent_json, None, None, None, None,
+                )
+                .await
+                {
+                    Ok(()) => spawn_error,
+                    Err(e) => Some(e),
+                }
+            } else {
+                spawn_error
             }
         } else {
             spawn_error
-        }
-    } else {
-        spawn_error
-    };
+        };
 
     // Rebuild summary if provider deploy may have updated backend_agent_id.
     let final_agent = if input.backend != BackendKind::Local && spawn_error.is_none() {

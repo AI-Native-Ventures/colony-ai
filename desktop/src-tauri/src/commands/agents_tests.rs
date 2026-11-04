@@ -465,7 +465,13 @@ fn profile_in_sync_when_name_and_picture_match() {
 #[test]
 fn profile_in_sync_when_both_avatars_absent() {
     let existing = profile(Some("Duncan"), None);
-    assert!(!profile_needs_sync(Some(&existing), "Duncan", None, None, None));
+    assert!(!profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -483,7 +489,13 @@ fn profile_needs_sync_when_existing_name_is_none() {
 #[test]
 fn profile_needs_sync_when_expected_avatar_absent_but_published() {
     let existing = profile(Some("Duncan"), Some("https://x/a.png"));
-    assert!(profile_needs_sync(Some(&existing), "Duncan", None, None, None));
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -501,7 +513,13 @@ fn profile_needs_sync_when_about_diverges() {
 #[test]
 fn profile_needs_sync_when_expected_about_absent_but_published() {
     let existing = profile_with_about(Some("Duncan"), None, Some("Stale description."));
-    assert!(profile_needs_sync(Some(&existing), "Duncan", None, None, None));
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -521,7 +539,13 @@ fn profile_in_sync_when_about_none_equals_published_empty_string() {
     // None vs "" must be treated as equal — otherwise every reconcile of an
     // about-less agent would republish forever.
     let existing = profile_with_about(Some("Duncan"), None, Some(""));
-    assert!(!profile_needs_sync(Some(&existing), "Duncan", None, None, None));
+    assert!(!profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
