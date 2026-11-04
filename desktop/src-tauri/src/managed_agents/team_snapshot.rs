@@ -274,6 +274,7 @@ mod tests {
             max_turn_duration_seconds: Some(600),
             parallelism: 1,
             system_prompt: Some(format!("You are {name}.")),
+            model_override: None,
             model: Some("claude-opus-4".to_string()),
             provider: Some("anthropic".to_string()),
             persona_source_version: None,

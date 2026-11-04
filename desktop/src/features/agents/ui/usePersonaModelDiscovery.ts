@@ -17,6 +17,7 @@ import { resolveModelLabel } from "@/features/agents/lib/formatAgentModelLabel";
 export const MODEL_DISCOVERY_LOADING_VALUE = "__model_discovery_loading__";
 
 const MODEL_DISCOVERY_CREDENTIAL_DEBOUNCE_MS = 250;
+const MAX_MODEL_DISCOVERY_CACHE_ENTRIES = 24;
 
 function stableModelDiscoveryEnvKey(envVars: EnvVarsValue): string {
   return JSON.stringify(
@@ -54,6 +55,9 @@ export function getDiscoveredPersonaModelOptions(
   );
   const harnessDefaultEntry = response.models.find(isHarnessDefaultModelEntry);
   const agentDefaultModel = response.agentDefaultModel?.trim();
+  const agentDefaultModelInfo = agentDefaultModel
+    ? response.models.find((model) => model.id.trim() === agentDefaultModel)
+    : undefined;
 
   const defaultModelOption =
     providerRequiresExplicitModel(provider) && harnessDefaultEntry === undefined
@@ -65,7 +69,7 @@ export function getDiscoveredPersonaModelOptions(
               provider === "relay-mesh"
                 ? "Default (auto)"
                 : agentDefaultModel
-                  ? `Default model (${resolveModelLabel(agentDefaultModel, null, provider)})`
+                  ? `Default model (${resolveModelLabel(agentDefaultModel, agentDefaultModelInfo?.name, provider)})`
                   : "Default model",
           },
         ];
@@ -168,7 +172,6 @@ export function usePersonaModelDiscovery({
   modelFieldVisible,
   open,
   provider,
-  refreshToken = 0,
   selectedRuntime,
 }: {
   envVars: EnvVarsValue;
@@ -176,9 +179,10 @@ export function usePersonaModelDiscovery({
   modelFieldVisible: boolean;
   open: boolean;
   provider: string;
-  refreshToken?: number;
   selectedRuntime: AcpRuntimeCatalogEntry | undefined;
 }) {
+  const [refreshToken, setRefreshToken] = React.useState(0);
+  const refreshRequestedRef = React.useRef(false);
   const [modelDiscoveryData, setModelDiscoveryData] =
     React.useState<AgentModelsResponse | null>(null);
   const [modelDiscoveryDataKey, setModelDiscoveryDataKey] = React.useState<
@@ -195,6 +199,12 @@ export function usePersonaModelDiscovery({
     new Map<string, AgentModelsResponse>(),
   );
   const modelDiscoveryRequestRef = React.useRef(0);
+
+  const refreshModelDiscovery = React.useCallback(() => {
+    modelDiscoveryCacheRef.current.clear();
+    refreshRequestedRef.current = true;
+    setRefreshToken((current) => current + 1);
+  }, []);
 
   const trimmedProvider = provider.trim();
   const shouldDebounceModelDiscovery =
@@ -291,6 +301,8 @@ export function usePersonaModelDiscovery({
     setModelDiscoveryStatus(null);
     setModelDiscoveryStatusKey(activeModelDiscoveryKey);
     setModelDiscoveryLoading(true);
+    const refresh = refreshRequestedRef.current;
+    refreshRequestedRef.current = false;
     function runModelDiscovery() {
       void discoverAgentModels({
         agentCommand: activeAgentCommand,
@@ -298,6 +310,7 @@ export function usePersonaModelDiscovery({
         provider: trimmedProvider || undefined,
         envVars,
         definitionEnv: selectedRuntimeDefinitionEnv ?? {},
+        refresh,
       })
         .then((response) => {
           if (modelDiscoveryRequestRef.current !== requestId) {
@@ -308,6 +321,17 @@ export function usePersonaModelDiscovery({
           // and closing → reopening the dialog must re-run discovery so the
           // user's CLI-install/sign-in is actually reflected.
           if (isCacheableDiscoveryResponse(response, trimmedProvider)) {
+            if (
+              modelDiscoveryCacheRef.current.size >=
+              MAX_MODEL_DISCOVERY_CACHE_ENTRIES
+            ) {
+              const oldestKey = modelDiscoveryCacheRef.current
+                .keys()
+                .next().value;
+              if (oldestKey !== undefined) {
+                modelDiscoveryCacheRef.current.delete(oldestKey);
+              }
+            }
             modelDiscoveryCacheRef.current.set(
               activeModelDiscoveryKey,
               response,
@@ -409,5 +433,6 @@ export function usePersonaModelDiscovery({
         ? null
         : activeModelDiscoveryStatus,
     modelDiscoverySuccessfulEmpty,
+    refreshModelDiscovery,
   };
 }

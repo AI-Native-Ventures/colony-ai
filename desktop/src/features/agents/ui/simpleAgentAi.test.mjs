@@ -91,6 +91,11 @@ test("approved aliases and the provider-aware model registry produce full names"
   assert.equal(simpleModelLabel("gpt-5.5", "openai"), "GPT-5.5");
   assert.equal(simpleModelLabel("gpt-6"), "GPT-6");
   assert.equal(simpleModelLabel("gpt-6-luna"), "GPT-6 Luna");
+  assert.equal(simpleModelLabel("gpt-6-luna[medium]"), "GPT-6 Luna (Medium)");
+  assert.equal(
+    simpleModelLabel("gpt-6-luna[xhigh]"),
+    "GPT-6 Luna (Extra high)",
+  );
   assert.equal(
     simpleModelLabel(
       "nvidia/nemotron-3-ultra-550b-a55b:free",

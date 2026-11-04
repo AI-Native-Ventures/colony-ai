@@ -663,6 +663,7 @@ pub async fn create_managed_agent(
                     .filter(|value| !value.is_empty())
                     .map(str::to_string)
             }),
+            model_override: None,
             model: effective_model.clone(),
             provider: effective_provider.clone(),
             persona_source_version: snapshot_source_version,

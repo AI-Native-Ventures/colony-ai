@@ -25,13 +25,11 @@ pub(crate) use login_shell::{find_via_login_shell, refresh_login_shell_path};
 pub(crate) use login_shell::{
     is_login_shell_path_uninit, is_safe_nvm_tag, login_shell_candidates, parse_semver_tag,
 };
-pub(crate) use presets::{
-    canonical_harness_command, command_for_runtime_id, preset_harness_definitions,
-    preset_harness_ids,
-};
 use presets::{preset_catalog_entry, PRESET_HARNESSES};
+pub(crate) use presets::{preset_harness_definitions, preset_harness_ids};
 pub(crate) use runtime_metadata::EffortNormalization;
 pub(crate) use runtime_metadata::KnownAcpRuntime;
+pub(crate) use runtime_metadata::ModelListSource;
 #[cfg(test)]
 pub(crate) use runtime_metadata::GOOSE_EFFORT_NORMALIZATION;
 

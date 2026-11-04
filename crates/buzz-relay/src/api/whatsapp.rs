@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use buzz_db::whatsapp::{
-    OutreachFlags, WhatsappBatch, WhatsappContact, WhatsappMessage, WhatsappTemplate,
+    OutreachFlags, WhatsappBatch, WhatsappContact, WhatsappMedia, WhatsappMessage, WhatsappTemplate,
 };
 
 use super::{api_error, api_error_with_code, gifs, internal_error};
@@ -270,6 +270,50 @@ fn message_view(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Value 
     })
 }
 
+/// How the app and agents see the media of an inbound message. `url` is set once the file is
+/// stored (it is served from the community's media host and needs the member's media
+/// authorization like any other file). `state` is `stored`, `pending`, `failed`, `gone` or
+/// `none` (a location or contact card has nothing to download). `canRetry` is true when the
+/// owner may press Retry.
+pub(crate) fn media_view(media: &WhatsappMedia, base: &str) -> Value {
+    let text = |key: &str| media.media.get(key).and_then(Value::as_str);
+    let stored = media.stored.as_ref();
+    let stored_text = |key: &str| stored.and_then(|s| s.get(key)).and_then(Value::as_str);
+    let state = media.state.as_deref().unwrap_or("none");
+    let label = crate::whatsapp::channel::media_label(media);
+    let caption = text("caption");
+    let description = match caption {
+        Some(caption) => format!("Customer sent a {label} with the caption: {caption}"),
+        None => format!("Customer sent a {label}"),
+    };
+    let mut view = json!({
+        "type": crate::whatsapp::channel::media_kind(media),
+        "state": state,
+        "url": crate::whatsapp::channel::media_link(media, base),
+        "mime": stored_text("mime").or_else(|| text("mime")),
+        "size": stored.and_then(|s| s.get("size")).and_then(Value::as_u64),
+        "opaque": stored
+            .and_then(|s| s.get("opaque"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        "caption": caption,
+        "filename": text("filename"),
+        "animated": media.media.get("animated").and_then(Value::as_bool).unwrap_or(false),
+        "error": media.error,
+        "canRetry": state == "failed" && media.error.as_deref() != Some("too_large")
+            && media.error.as_deref() != Some("no_media_id"),
+        "description": description,
+    });
+    if let Some(object) = view.as_object_mut() {
+        for key in ["latitude", "longitude", "name", "address", "contacts"] {
+            if let Some(value) = media.media.get(key) {
+                object.insert(key.to_owned(), value.clone());
+            }
+        }
+    }
+    view
+}
+
 /// The `contacts` and `inbox` answer: each contact with its outreach status.
 pub(crate) async fn contacts_view(
     state: &Arc<AppState>,
@@ -332,11 +376,34 @@ pub(crate) async fn thread_view(
     let desk = desk::load(state, community, std::slice::from_ref(&contact))
         .await
         .map_err(|reason| internal_error(&reason))?;
+    let ids: Vec<Uuid> = messages.iter().map(|message| message.id).collect();
+    let media = state
+        .db
+        .whatsapp_media_for_messages(community, &ids)
+        .await
+        .map_err(db_error)?;
+    let media_base = if media.is_empty() {
+        String::new()
+    } else {
+        let host = state
+            .db
+            .lookup_community_host(community)
+            .await
+            .map_err(db_error)?
+            .unwrap_or_default();
+        crate::api::media::media_base_url_for_tenant(&state.config.relay_url, &host)
+    };
     Ok(json!({
         "contact": with_desk(contact_view(&contact, now, &flags), &contact, &desk),
         "messages": messages
             .iter()
-            .map(|message| message_view(message, now))
+            .map(|message| {
+                let mut view = message_view(message, now);
+                if let (Some(media), Some(object)) = (media.get(&message.id), view.as_object_mut()) {
+                    object.insert("media".to_owned(), media_view(media, &media_base));
+                }
+                view
+            })
             .collect::<Vec<_>>(),
     }))
 }
@@ -645,13 +712,11 @@ pub async fn webhook_receive(
             "whatsapp is not configured",
         ));
     };
-    let (_token, app_secret) =
-        connect::open_secrets(kek, *tenant.community().as_uuid(), &connection).map_err(
-            |reason| {
-                tracing::error!("whatsapp webhook could not open the app secret: {reason}");
-                api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
-            },
-        )?;
+    let app_secret = connect::open_app_secret(kek, *tenant.community().as_uuid(), &connection)
+        .map_err(|reason| {
+            tracing::error!("whatsapp webhook could not open the app secret: {reason}");
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        })?;
     let signature = headers
         .get(SIGNATURE_HEADER)
         .and_then(|value| value.to_str().ok());
@@ -900,5 +965,83 @@ mod tests {
         ] {
             assert!(!error.message().contains("secret-looking-detail"));
         }
+    }
+
+    fn media_record(
+        kind: &str,
+        state: Option<&str>,
+        stored: Option<Value>,
+        error: Option<&str>,
+    ) -> WhatsappMedia {
+        WhatsappMedia {
+            message_id: Uuid::nil(),
+            wa_id: "27821234567".into(),
+            media: json!({"type": kind, "caption": "look"}),
+            state: state.map(str::to_owned),
+            stored,
+            attempts: 0,
+            retry_at: None,
+            error: error.map(str::to_owned),
+            linked: false,
+            event_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn a_stored_sticker_is_served_with_its_url_for_the_app_and_agents() {
+        let sha = "ab".repeat(32);
+        let media = media_record(
+            "sticker",
+            Some("stored"),
+            Some(
+                json!({"sha256": sha, "ext": "webp", "mime": "image/webp", "size": 900, "opaque": false}),
+            ),
+            None,
+        );
+        let view = media_view(&media, "https://acme.example/media");
+        assert_eq!(view["type"], "sticker");
+        assert_eq!(view["state"], "stored");
+        assert_eq!(
+            view["url"],
+            format!("https://acme.example/media/{sha}.webp")
+        );
+        assert_eq!(view["mime"], "image/webp");
+        assert_eq!(view["canRetry"], false);
+        assert_eq!(
+            view["description"],
+            "Customer sent a sticker with the caption: look"
+        );
+    }
+
+    #[test]
+    fn a_failed_download_offers_retry_unless_retrying_cannot_help() {
+        let retryable = media_record("image", Some("failed"), None, Some("timeout"));
+        let view = media_view(&retryable, "https://acme.example/media");
+        assert_eq!(
+            (view["state"].as_str(), view["url"].is_null()),
+            (Some("failed"), true)
+        );
+        assert_eq!(view["canRetry"], true);
+        for (state, error) in [
+            ("failed", "too_large"),
+            ("failed", "no_media_id"),
+            ("gone", "not_found"),
+            ("pending", "timeout"),
+        ] {
+            let view = media_view(&media_record("image", Some(state), None, Some(error)), "b");
+            assert_eq!(view["canRetry"], false, "{state} {error}");
+        }
+    }
+
+    #[test]
+    fn a_location_has_no_download_state_and_keeps_its_coordinates() {
+        let mut place = media_record("location", None, None, None);
+        place.media = json!({"type": "location", "latitude": -26.2, "longitude": 28.04, "name": "Guest House"});
+        let view = media_view(&place, "b");
+        assert_eq!(view["state"], "none");
+        assert_eq!(view["latitude"], -26.2);
+        assert_eq!(view["name"], "Guest House");
+        assert!(view["url"].is_null());
     }
 }

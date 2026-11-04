@@ -2,9 +2,9 @@ import * as React from "react";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useAppShell } from "@/app/AppShellContext";
+import { useRouteBack } from "@/app/navigation/RouteOriginContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useActiveAgentTurns } from "@/features/agents/activeAgentTurnsStore";
-import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import {
   useAcpRuntimesQuery,
   useAgentConfigSurface,
@@ -41,6 +41,7 @@ import {
 } from "./AgentPageOverview";
 import { AgentPageRuntime } from "./AgentPageRuntime";
 import { AgentStatusChip } from "./AgentStatusChip";
+import { AgentRuntimeSwitchNotice } from "./AgentRuntimeSwitchNotice";
 import { useManagedAgentActions } from "./useManagedAgentActions";
 import "./agentsColony3.css";
 
@@ -158,6 +159,19 @@ export function AgentPage({
   const activeTurns = useActiveAgentTurns(key);
   const profileQuery = useUserProfileQuery(key);
   const archive = useIdentityArchive(key);
+  const routeBack = useRouteBack(
+    origin === "team"
+      ? {
+          to: "/team",
+          label: "Team",
+          breadcrumbs: ["Company", "Team"],
+        }
+      : {
+          to: "/agents",
+          label: "Agents",
+          breadcrumbs: ["Company", "Agents"],
+        },
+  );
   // A profile that only came from the shared name lookup has no about text or
   // job title yet; load the full profile once.
   const refreshedSummary = React.useRef<string | null>(null);
@@ -174,7 +188,7 @@ export function AgentPage({
   }, [key, profileQuery.data?.hasProfileEvent]);
   const openDm = useOpenDmMutation();
   const appShell = useAppShell();
-  const { goAgents, goChannel, goTeam } = useAppNavigation();
+  const { goChannel } = useAppNavigation();
 
   const member = teamQuery.data?.members.find(
     (candidate) => candidate.pubkey === key,
@@ -199,7 +213,9 @@ export function AgentPage({
   const [opening, setOpening] = React.useState(false);
 
   const runtimes = runtimesQuery.data ?? [];
-  const runtime = agent ? runtimeForAgent(agent, runtimes) : undefined;
+  const runtime = agent?.runningRuntimeId
+    ? runtimes.find((candidate) => candidate.id === agent.runningRuntimeId)
+    : undefined;
   const persona = personasQuery.data?.find(
     (candidate) => candidate.id === agent?.personaId,
   );
@@ -250,7 +266,7 @@ export function AgentPage({
   const managerName = managerProfile.data?.displayName?.trim() || null;
 
   const openChannel = (channelId: string) => void goChannel(channelId);
-  const backToList = () => void (origin === "team" ? goTeam() : goAgents());
+  const backToList = routeBack.goBack;
 
   async function message() {
     setOpening(true);
@@ -322,7 +338,7 @@ export function AgentPage({
         <span>Company</span>
         <span aria-hidden="true">/</span>
         <button onClick={backToList} type="button">
-          {origin === "team" ? "Team" : "Agents"}
+          {routeBack.backLabel}
         </button>
         <span aria-hidden="true">/</span>
         <span aria-current="page">{name}</span>
@@ -418,7 +434,7 @@ export function AgentPage({
                   onClick={backToList}
                   type="button"
                 >
-                  {origin === "team" ? "Back to team" : "Back to directory"}
+                  {`Back to ${routeBack.backLabel}`}
                 </button>
               </div>
             </div>
@@ -442,7 +458,7 @@ export function AgentPage({
     ? "loading"
     : runtimesQuery.isError
       ? "error"
-      : runtime
+      : agent.status === "running" && runtime
         ? runtime.availability
         : "unknown";
   const positionChip =
@@ -604,8 +620,6 @@ export function AgentPage({
               configQuery.error instanceof Error ? configQuery.error : null
             }
             configLoading={configQuery.isLoading}
-            inheritedModel={persona?.model ?? globalConfig.model}
-            inheritedProvider={persona?.provider ?? globalConfig.provider}
             providerEnvVars={{
               ...globalConfig.env_vars,
               ...(persona?.envVars ?? {}),
@@ -616,6 +630,7 @@ export function AgentPage({
             onRetryConfiguration={() => void configQuery.refetch()}
             runtime={runtime}
           />
+          <AgentRuntimeSwitchNotice pubkey={agent.pubkey} />
           <AgentPageOverview
             activeTurns={activeTurns}
             agent={agent}

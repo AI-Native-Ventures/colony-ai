@@ -14,7 +14,8 @@ use buzz_core::channel::MemberRole;
 use buzz_core::kind::KIND_STREAM_MESSAGE;
 use buzz_core::TenantContext;
 use buzz_db::channel::{ChannelType, ChannelVisibility};
-use buzz_db::whatsapp::{WhatsappContact, WhatsappMessage};
+use buzz_db::whatsapp::{WhatsappContact, WhatsappMedia, WhatsappMessage};
+use serde_json::Value;
 
 use super::policy::{contact_label, e164};
 use crate::state::AppState;
@@ -385,7 +386,9 @@ pub fn message_tags(
 }
 
 /// Write the Colony message for a stored WhatsApp message into the contact's thread and
-/// remember its event id. Safe to repeat: the event is deterministic.
+/// remember its event id. Safe to repeat: the event is deterministic. A message with media
+/// carries the media link when the file is already stored; otherwise the repair loop adds one
+/// follow-up message with the link when the download finishes.
 pub async fn post_for_message(
     state: &Arc<AppState>,
     tenant: &TenantContext,
@@ -402,14 +405,27 @@ pub async fn post_for_message(
             .unwrap_or(false),
         None => false,
     };
-    let tags = message_tags(contact, message, owner_in_channel);
+    let mut tags = message_tags(contact, message, owner_in_channel);
+    let mut content = message.body.clone();
+    let media = state
+        .db
+        .whatsapp_get_media(tenant.community(), message.id)
+        .await
+        .map_err(|error| format!("media lookup failed: {error}"))?;
+    let mut carries_link = false;
+    if let Some(media) = media.as_ref() {
+        let base = media_base(state, tenant);
+        tags.extend(media_tags(media, &base));
+        content = media_content(&message.body, media, &base);
+        carries_link = media_link(media, &base).is_some();
+    }
     let created_at = message.sent_at.unwrap_or(message.created_at);
     let event = post_message(
         state,
         tenant,
         channel_id,
         Some(&root_hex),
-        message.body.clone(),
+        content,
         tags,
         created_at,
     )
@@ -418,7 +434,218 @@ pub async fn post_for_message(
         .db
         .whatsapp_set_message_event(tenant.community(), message.id, event.id.as_bytes())
         .await
-        .map_err(|error| format!("could not remember the message event: {error}"))
+        .map_err(|error| format!("could not remember the message event: {error}"))?;
+    if carries_link {
+        state
+            .db
+            .whatsapp_media_mark_linked(tenant.community(), message.id)
+            .await
+            .map_err(|error| format!("could not remember the media link: {error}"))?;
+    }
+    Ok(())
+}
+
+/// Base URL media files are served from on this community's host.
+fn media_base(state: &Arc<AppState>, tenant: &TenantContext) -> String {
+    crate::api::media::media_base_url_for_tenant(&state.config.relay_url, tenant.host())
+}
+
+/// What kind of media a record holds (`image`, `sticker`, `voice`, ...).
+pub fn media_kind(media: &WhatsappMedia) -> &str {
+    media
+        .media
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("file")
+}
+
+/// Plain name of a media kind for sentences.
+pub fn media_label(media: &WhatsappMedia) -> String {
+    match media_kind(media) {
+        "voice" => "voice note".to_string(),
+        "contacts" => "contact card".to_string(),
+        "document" => media
+            .media
+            .get("filename")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| "document".to_string()),
+        other => other.to_string(),
+    }
+}
+
+/// URL of a stored file under `base`. `None` unless the hash and extension are well formed.
+pub fn stored_url(base: &str, stored: &Value) -> Option<String> {
+    let sha = stored.get("sha256")?.as_str()?;
+    let ext = stored.get("ext")?.as_str()?;
+    let sha_ok = sha.len() == 64 && sha.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'));
+    let ext_ok =
+        !ext.is_empty() && ext.len() <= 8 && ext.chars().all(|c| c.is_ascii_alphanumeric());
+    (sha_ok && ext_ok).then(|| format!("{base}/{sha}.{ext}"))
+}
+
+/// URL of the record's file, once it is stored.
+pub fn media_link(media: &WhatsappMedia, base: &str) -> Option<String> {
+    if media.state.as_deref() != Some("stored") {
+        return None;
+    }
+    stored_url(base, media.stored.as_ref()?)
+}
+
+/// Tags a media message carries: its kind and download state, the NIP-92 `imeta` entry once the
+/// file is stored, and the coordinates of a location.
+pub fn media_tags(media: &WhatsappMedia, base: &str) -> Vec<Vec<String>> {
+    let kind = media_kind(media);
+    let state = media.state.as_deref().unwrap_or("none");
+    let mut tags = vec![vec![
+        "wa-media".to_string(),
+        kind.to_string(),
+        state.to_string(),
+    ]];
+    if let (Some(url), Some(stored)) = (media_link(media, base), media.stored.as_ref()) {
+        let text = |key: &str| stored.get(key).and_then(Value::as_str);
+        let mut imeta = vec![
+            "imeta".to_string(),
+            format!("url {url}"),
+            format!("m {}", text("mime").unwrap_or("application/octet-stream")),
+            format!("x {}", text("sha256").unwrap_or_default()),
+            format!(
+                "size {}",
+                stored.get("size").and_then(Value::as_u64).unwrap_or(0)
+            ),
+            format!("alt {}", media_label(media)),
+        ];
+        if let Some(name) = media.media.get("filename").and_then(Value::as_str) {
+            imeta.push(format!("filename {name}"));
+        }
+        tags.push(imeta);
+    }
+    if kind == "location" {
+        if let (Some(lat), Some(lng)) = (
+            media.media.get("latitude").and_then(Value::as_f64),
+            media.media.get("longitude").and_then(Value::as_f64),
+        ) {
+            tags.push(vec![
+                "wa-location".to_string(),
+                lat.to_string(),
+                lng.to_string(),
+            ]);
+        }
+    }
+    tags
+}
+
+/// Text of the Colony message for a media message: what the customer wrote, then a line an
+/// agent or a person can use (a markdown image or link for a stored file, a map link for a
+/// location, the numbers of a contact card, or one honest sentence when there is no file).
+pub fn media_content(body: &str, media: &WhatsappMedia, base: &str) -> String {
+    let kind = media_kind(media);
+    let mut out = body.to_string();
+    match kind {
+        "location" => {
+            if let (Some(lat), Some(lng)) = (
+                media.media.get("latitude").and_then(Value::as_f64),
+                media.media.get("longitude").and_then(Value::as_f64),
+            ) {
+                out.push_str(&format!("\nhttps://www.google.com/maps?q={lat},{lng}"));
+            }
+            if let Some(address) = media.media.get("address").and_then(Value::as_str) {
+                out.push_str(&format!("\n{address}"));
+            }
+        }
+        "contacts" => {
+            for card in media
+                .media
+                .get("contacts")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let name = card
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Contact");
+                let phones: Vec<&str> = card
+                    .get("phones")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .collect();
+                out.push_str(&format!("\n{name}: {}", phones.join(", ")));
+            }
+        }
+        _ => match media.state.as_deref() {
+            Some("stored") => {
+                if let Some(url) = media_link(media, base) {
+                    let label = media_label(media);
+                    let opaque = media
+                        .stored
+                        .as_ref()
+                        .and_then(|stored| stored.get("opaque"))
+                        .and_then(Value::as_bool)
+                        == Some(true);
+                    let inline = matches!(kind, "image" | "sticker" | "video") && !opaque;
+                    let bang = if inline { "!" } else { "" };
+                    out.push_str(&format!("\n{bang}[{label}]({url})"));
+                }
+            }
+            Some("pending") => out.push_str("\n(the file is still downloading)"),
+            Some("gone") => out.push_str("\n(WhatsApp no longer has the file)"),
+            Some("failed") => out.push_str("\n(the file could not be downloaded)"),
+            _ => {}
+        },
+    }
+    out
+}
+
+/// The repair loop's follow-up for media that finished downloading after its message was
+/// posted: one short reply in the thread that carries the link. Marks the record linked.
+pub async fn post_media_followup(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    channel_id: Uuid,
+    media: &WhatsappMedia,
+) -> Result<(), String> {
+    let community = tenant.community();
+    let contact = state
+        .db
+        .whatsapp_get_contact(community, &media.wa_id)
+        .await
+        .map_err(|error| format!("contact lookup failed: {error}"))?
+        .ok_or_else(|| "the contact vanished".to_string())?;
+    let root_hex = ensure_thread_root(state, tenant, channel_id, &contact).await?;
+    let base = media_base(state, tenant);
+    let content = media_content(
+        &format!("The earlier [{}] is ready.", media_label(media)),
+        media,
+        &base,
+    );
+    let mut tags = vec![
+        vec!["wa".to_string(), contact.wa_id.clone()],
+        vec![
+            "wa-name".to_string(),
+            contact_label(&contact.display_name, &contact.wa_id),
+        ],
+        vec!["wa-dir".to_string(), "in".to_string()],
+        vec!["wa-media-of".to_string(), media.message_id.to_string()],
+    ];
+    tags.extend(media_tags(media, &base));
+    post_message(
+        state,
+        tenant,
+        channel_id,
+        Some(&root_hex),
+        content,
+        tags,
+        Utc::now(),
+    )
+    .await?;
+    state
+        .db
+        .whatsapp_media_mark_linked(community, media.message_id)
+        .await
+        .map_err(|error| format!("could not remember the media link: {error}"))
 }
 
 /// Post an operator notice (token expired, quality change, contact paused, batch waiting).
@@ -593,6 +820,129 @@ mod tests {
         assert!(tags.contains(&vec!["wa-sender".to_string(), hex::encode([7u8; 32])]));
         assert!(tags.contains(&vec!["wa-dir".to_string(), "out".to_string()]));
         assert!(!tags.iter().any(|tag| tag[0] == "p"));
+    }
+
+    const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const BASE: &str = "https://acme.example/media";
+
+    fn media_record(kind: &str, state: Option<&str>, stored: Option<Value>) -> WhatsappMedia {
+        WhatsappMedia {
+            message_id: Uuid::nil(),
+            wa_id: "27821234567".into(),
+            media: serde_json::json!({"type": kind}),
+            state: state.map(str::to_owned),
+            stored,
+            attempts: 0,
+            retry_at: None,
+            error: None,
+            linked: false,
+            event_id: None,
+            created_at: DateTime::from_timestamp(1_800_000_000, 0).expect("time"),
+        }
+    }
+
+    fn stored_value(ext: &str, mime: &str, opaque: bool) -> Value {
+        serde_json::json!({"sha256": SHA, "ext": ext, "mime": mime, "size": 4096, "opaque": opaque})
+    }
+
+    #[test]
+    fn a_stored_sticker_carries_an_imeta_entry_and_an_inline_image() {
+        // GUARD: the sticker event used to hold only the text "[sticker]".
+        let media = media_record(
+            "sticker",
+            Some("stored"),
+            Some(stored_value("webp", "image/webp", false)),
+        );
+        let tags = media_tags(&media, BASE);
+        assert!(tags.contains(&vec!["wa-media".into(), "sticker".into(), "stored".into()]));
+        let imeta = tags.iter().find(|tag| tag[0] == "imeta").expect("imeta");
+        assert!(imeta.contains(&format!("url {BASE}/{SHA}.webp")));
+        assert!(imeta.contains(&"m image/webp".to_string()));
+        assert!(imeta.contains(&format!("x {SHA}")));
+        let content = media_content("[sticker]", &media, BASE);
+        assert_eq!(content, format!("[sticker]\n![sticker]({BASE}/{SHA}.webp)"));
+    }
+
+    #[test]
+    fn voice_notes_and_documents_are_links_and_opaque_images_are_never_inline() {
+        let voice = media_record(
+            "voice",
+            Some("stored"),
+            Some(stored_value("ogg", "audio/ogg", true)),
+        );
+        assert_eq!(
+            media_content("[voice note]", &voice, BASE),
+            format!("[voice note]\n[voice note]({BASE}/{SHA}.ogg)")
+        );
+        let mut doc = media_record(
+            "document",
+            Some("stored"),
+            Some(stored_value("pdf", "application/pdf", false)),
+        );
+        doc.media = serde_json::json!({"type": "document", "filename": "quote.pdf"});
+        let tags = media_tags(&doc, BASE);
+        let imeta = tags.iter().find(|tag| tag[0] == "imeta").expect("imeta");
+        assert!(imeta.contains(&"filename quote.pdf".to_string()));
+        assert!(media_content("[document]", &doc, BASE)
+            .ends_with(&format!("[quote.pdf]({BASE}/{SHA}.pdf)")));
+        let odd = media_record(
+            "image",
+            Some("stored"),
+            Some(stored_value("bin", "application/octet-stream", true)),
+        );
+        assert!(
+            media_content("[image]", &odd, BASE).contains(&format!("\n[image]({BASE}/{SHA}.bin)"))
+        );
+    }
+
+    #[test]
+    fn a_message_without_a_file_says_so_and_has_no_imeta() {
+        for (state, words) in [
+            ("pending", "still downloading"),
+            ("failed", "could not be downloaded"),
+            ("gone", "no longer has the file"),
+        ] {
+            let media = media_record("sticker", Some(state), None);
+            assert!(media_tags(&media, BASE).iter().all(|tag| tag[0] != "imeta"));
+            assert!(
+                media_content("[sticker]", &media, BASE).contains(words),
+                "{state}"
+            );
+            assert!(media_link(&media, BASE).is_none());
+        }
+    }
+
+    #[test]
+    fn a_hostile_stored_record_never_becomes_a_url() {
+        for stored in [
+            serde_json::json!({"sha256": "../../x", "ext": "webp"}),
+            serde_json::json!({"sha256": SHA, "ext": "we/bp"}),
+            serde_json::json!({"sha256": SHA, "ext": ""}),
+            serde_json::json!({"sha256": SHA.to_uppercase(), "ext": "webp"}),
+            serde_json::json!({"ext": "webp"}),
+        ] {
+            assert!(stored_url(BASE, &stored).is_none(), "{stored}");
+        }
+    }
+
+    #[test]
+    fn locations_and_contact_cards_give_agents_a_link_and_the_numbers() {
+        let mut place = media_record("location", None, None);
+        place.media = serde_json::json!({"type": "location", "latitude": -26.2, "longitude": 28.04,
+            "address": "12 Main Rd"});
+        let content = media_content("[location] Guest House", &place, BASE);
+        assert!(content.contains("https://www.google.com/maps?q=-26.2,28.04"));
+        assert!(content.ends_with("12 Main Rd"));
+        assert!(media_tags(&place, BASE).contains(&vec![
+            "wa-location".into(),
+            "-26.2".into(),
+            "28.04".into()
+        ]));
+        let mut card = media_record("contacts", None, None);
+        card.media = serde_json::json!({"type": "contacts",
+            "contacts": [{"name": "Sipho", "phones": ["+27 82 111 2222", "+27 11 000 1111"]}]});
+        assert!(media_content("[contact card] Sipho", &card, BASE)
+            .ends_with("Sipho: +27 82 111 2222, +27 11 000 1111"));
     }
 
     #[test]

@@ -715,7 +715,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 61);
+        assert_eq!(migrations.len(), 62);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -725,6 +725,11 @@ mod postgres_tests {
         assert_eq!(migrations[59].version, 60);
         assert_eq!(migrations[60].version, 61);
         assert!(migrations[60]
+            .sql
+            .as_str()
+            .contains("ADD COLUMN media JSONB"));
+        assert_eq!(migrations[61].version, 62);
+        assert!(migrations[61]
             .sql
             .as_str()
             .contains("CREATE TABLE money_rails_connections"));

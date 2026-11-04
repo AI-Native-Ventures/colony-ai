@@ -44,8 +44,11 @@
       "company-hiring.spec.ts",
       "cofounder-map.spec.ts",
       "edit-agent.spec.ts",
+      "agent-runtime-switch.spec.ts",
+      "harness-model-list.spec.ts",
       "w10-discovery-sales.spec.ts",
       "leads-table-polish.spec.ts",
+      "back-to-origin.spec.ts",
       "colony3-discovery-run.spec.ts",
       "colony3-lead-reference.spec.ts",
       "colony3-sales-setup.spec.ts",
@@ -67,7 +70,8 @@
         "channels.spec.ts",
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
-        "whatsapp-dock-narrow.spec.ts"
+        "whatsapp-dock-narrow.spec.ts",
+        "whatsapp-inbound-media.spec.ts"
       ],
       "titles": [
         "send a message and see it in timeline",
@@ -98,7 +102,11 @@
         "genuinely missing batch is one plain line with no actions",
         "cannot use send now on an approved card",
         "channel content and actions stay reachable beside the dock at owner size",
-        "whatsapp header keeps the label and unread badge inside the action at every requested width"
+        "whatsapp header keeps the label and unread badge inside the action at every requested width",
+        "every type shows properly in the chat and stays inside its card at 1440x900",
+        "phone: every type stays inside its card at 390x844",
+        "Retry on a failed download asks the relay to try again",
+        "desk preview shows each inbound media type"
       ]
     }
   },
@@ -137,6 +145,8 @@
         "w07-agents-smoke.spec.ts",
         "colony3-agents-proof.spec.ts",
         "edit-agent.spec.ts",
+        "agent-runtime-switch.spec.ts",
+        "harness-model-list.spec.ts",
         "edit-agent-run-on.spec.ts",
         "agent-access-warning.spec.ts",
         "agent-lifecycle-feedback.spec.ts",
@@ -262,6 +272,7 @@
       "specs": [
         "w10-discovery-sales.spec.ts",
         "leads-table-polish.spec.ts",
+        "back-to-origin.spec.ts",
         "colony3-discovery-run.spec.ts",
         "colony3-discovery-leads-proof.spec.ts",
         "colony3-lead-reference.spec.ts",
@@ -463,6 +474,7 @@
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
         "whatsapp-dock-narrow.spec.ts",
+        "whatsapp-inbound-media.spec.ts",
         "whatsapp-outreach-desk-narrow.spec.ts"
       ]
     },

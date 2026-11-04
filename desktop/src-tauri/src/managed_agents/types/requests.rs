@@ -235,6 +235,9 @@ pub struct UpdateManagedAgentRequest {
     /// Absent = don't touch. null = clear to agent default. "id" = set.
     #[serde(default)]
     pub model: Option<Option<String>>,
+    /// Absent = keep; null = inherit from persona; string = per-agent model.
+    #[serde(default, deserialize_with = "crate::util::double_option")]
+    pub model_override: Option<Option<String>>,
     #[serde(default)]
     pub system_prompt: Option<Option<String>>,
     /// Absent = don't touch. Present = replace the env_vars map entirely.

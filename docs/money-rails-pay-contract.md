@@ -23,7 +23,8 @@ if the UI needs a different shape, say so in the PR before the relay code lands.
 
 ## 2. Event kinds
 
-Added to `crates/buzz-core/src/kind.rs`. Current main `781e1306a` assigns 30680 to
+Added to `crates/buzz-core/src/kind.rs`. Current main at this branch's integration point
+(`2525fd8d0ec0eca8d5d7443435290c68faeb63a9`) assigns 30680 to
 `KIND_COFOUNDER_LEAD_HEAD` and 30684, 30685, 47075 and 47076 to the outreach lists design.
 Money rails therefore uses the following free assignments. Earlier drafts used 30680, 30683,
 47070 and 47074; none of those values are used by this contract. Signing and booking will get
@@ -592,7 +593,7 @@ approve, and the word list means they could not ask for money to leave even thro
 
 ## 12. Storage and deploy
 
-Migration `migrations/0061_money_rails_pay.sql` and the same tables in
+Migration `migrations/0062_money_rails_pay.sql` and the same tables in
 `schema/schema.sql`, `scripts/reconcile-schema-after-pgschema.sql` (write fences) and the
 tenant deletion manifest. **Additive only** (four new tables, no change to an existing
 table), each with `attach_community_write_fence`:
