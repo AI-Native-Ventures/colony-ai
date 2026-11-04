@@ -202,16 +202,18 @@ test("two viewer profile lookup resolves a shared agent identity and never rende
           if (typeof payload !== "object" || payload === null) return [];
           const pubkeys = (payload as { pubkeys?: unknown }).pubkeys;
           return Array.isArray(pubkeys)
-            ? pubkeys.filter((pubkey): pubkey is string => typeof pubkey === "string")
+            ? pubkeys.filter(
+                (pubkey): pubkey is string => typeof pubkey === "string",
+              )
             : [];
         }),
     );
-    expect(profileLookupPubkeys.map((pubkey) => pubkey.toLowerCase())).toContain(
-      BASHEER_SCOUT,
-    );
-    expect(profileLookupPubkeys.map((pubkey) => pubkey.toLowerCase())).toContain(
-      BASHEER.pubkey,
-    );
+    expect(
+      profileLookupPubkeys.map((pubkey) => pubkey.toLowerCase()),
+    ).toContain(BASHEER_SCOUT);
+    expect(
+      profileLookupPubkeys.map((pubkey) => pubkey.toLowerCase()),
+    ).toContain(BASHEER.pubkey);
     if (includeColdAgent) {
       await expect(
         page
@@ -292,7 +294,9 @@ for (const viewport of [
     const teammateContext = await browser.newContext({ colorScheme, viewport });
     const owner = await ownerContext.newPage();
     const teammate = await teammateContext.newPage();
-    await installViewer(owner, BASHEER, { theme: proofTheme === "dark" ? "dark" : "light" });
+    await installViewer(owner, BASHEER, {
+      theme: proofTheme === "dark" ? "dark" : "light",
+    });
     await installViewer(teammate, TEAMMATE, {
       theme: proofTheme === "dark" ? "dark" : "light",
     });
