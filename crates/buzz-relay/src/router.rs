@@ -102,6 +102,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(api::gifs::SHARE_PATH, post(api::gifs::share))
         // Relay-owned prospect search proxy; the provider key stays server-side.
         .route(api::discovery::SEARCH_PATH, post(api::discovery::search))
+        // Relay-owned, cached location autocomplete; no desktop provider call.
+        .route(
+            api::discovery::LOCATION_PATH,
+            post(api::discovery::locations),
+        )
         .route(
             "/workflows/{workflow_id}/runs",
             get(api::workflows::workflow_runs),

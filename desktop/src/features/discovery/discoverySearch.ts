@@ -4,6 +4,11 @@
  * error mapping. The HTTP call itself lives in `outscraperSearchClient.ts`.
  */
 
+import {
+  discoveryLocationKey,
+  type DiscoveryLocation,
+} from "./discoveryLocation";
+
 export type DiscoveryPlace = {
   placeId: string | null;
   name: string;
@@ -28,7 +33,12 @@ export type DiscoveryPlace = {
 export type DiscoverySearchRequest = {
   query: string;
   location: string;
+  /** ISO country code from the chosen place, never guessed from free text. */
   country?: string;
+  /** Provider region from the chosen place, for example ZA or Gauteng. */
+  region?: string;
+  /** The chosen place's center, sent only through the authenticated relay. */
+  coordinates?: { latitude: number; longitude: number };
   limit: number;
   skip: number;
   language?: string;
@@ -197,51 +207,27 @@ export function searchErrorFromHttp(
   });
 }
 
-/** Countries the server maps to a Google Maps region (mirrors its table). */
-const KNOWN_COUNTRIES = [
-  "South Africa",
-  "United States",
-  "United Kingdom",
-  "Nigeria",
-  "Kenya",
-  "Namibia",
-  "Botswana",
-  "Zimbabwe",
-  "Zambia",
-  "Mozambique",
-  "Australia",
-  "Canada",
-  "India",
-  "Ireland",
-  "New Zealand",
-  "Germany",
-  "France",
-  "Netherlands",
-];
-
-/**
- * The location text when it is exactly a country the server knows, so the
- * search can be limited to that region. Anything else (a city, "Johannesburg,
- * South Africa") passes no country: the app never guesses one.
- */
-export function countryForLocation(location: string): string | undefined {
-  const normalized = location.trim().toLocaleLowerCase();
-  return KNOWN_COUNTRIES.find(
-    (country) => country.toLocaleLowerCase() === normalized,
-  );
-}
-
 export function buildSearchRequest(input: {
   query: string;
   location: string;
+  locationSelection?: DiscoveryLocation | null;
   skip: number;
 }): DiscoverySearchRequest {
   const location = input.location.trim();
-  const country = countryForLocation(location);
+  const selected = input.locationSelection ?? null;
   return {
     query: input.query.trim(),
     location,
-    ...(country ? { country } : {}),
+    ...(selected?.countryCode ? { country: selected.countryCode } : {}),
+    ...(selected?.region ? { region: selected.region } : {}),
+    ...(selected
+      ? {
+          coordinates: {
+            latitude: selected.latitude,
+            longitude: selected.longitude,
+          },
+        }
+      : {}),
     limit: SEARCH_PAGE_SIZE,
     skip: alignSkip(input.skip),
     language: "en",
@@ -261,6 +247,48 @@ export function normalizePickedTags(pickedTags: string[] = []): string[] {
 }
 
 /**
+ * Stable coverage identity for one provider query. The structured location
+ * keeps two cities with the same name apart. A tagged campaign has one actual
+ * provider query per picked tag, so each stream gets its own cursor rather
+ * than letting one tag advance past pages another tag has not bought yet.
+ */
+export function discoveryCoverageKey(input: {
+  verticalId: string;
+  tag?: string | null;
+  location: string;
+  locationSelection?: DiscoveryLocation | null;
+}): string {
+  const tag = input.tag?.trim().toLocaleLowerCase() ?? "";
+  const place =
+    discoveryLocationKey(input.locationSelection ?? null) ||
+    `legacy:${input.location.trim().toLocaleLowerCase()}`;
+  return [
+    input.verticalId.trim().toLocaleLowerCase(),
+    `tag:${tag}`,
+    place,
+  ].join("::");
+}
+
+/** One durable cursor key for each provider stream in a campaign. */
+export function discoveryCoverageKeys(input: {
+  verticalId: string;
+  pickedTags?: string[];
+  location: string;
+  locationSelection?: DiscoveryLocation | null;
+}): string[] {
+  const tags = normalizePickedTags(input.pickedTags);
+  const streams = tags.length ? tags : [null];
+  return streams.map((tag) =>
+    discoveryCoverageKey({
+      verticalId: input.verticalId,
+      tag,
+      location: input.location,
+      locationSelection: input.locationSelection,
+    }),
+  );
+}
+
+/**
  * One result page's provider request. Without picked tags it is the plain
  * search. With picked tags the tags take turns, one full 20-place page each
  * (never a page split between tags, which made skips that are not multiples
@@ -269,6 +297,7 @@ export function normalizePickedTags(pickedTags: string[] = []): string[] {
 export function buildDiscoverySearchPlan(input: {
   verticalName: string;
   location: string;
+  locationSelection?: DiscoveryLocation | null;
   skip: number;
   pickedTags?: string[];
   tagCursors?: Array<number | null>;
@@ -283,6 +312,7 @@ export function buildDiscoverySearchPlan(input: {
     const request = buildSearchRequest({
       query: input.verticalName,
       location: input.location,
+      locationSelection: input.locationSelection,
       skip: input.skip,
     });
     return {
@@ -308,6 +338,7 @@ export function buildDiscoverySearchPlan(input: {
           request: buildSearchRequest({
             query: buildTagSearchQuery(next.tag, input.verticalName),
             location: input.location,
+            locationSelection: input.locationSelection,
             skip: next.cursor,
           }),
         },

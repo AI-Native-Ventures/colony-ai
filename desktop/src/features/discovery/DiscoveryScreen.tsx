@@ -20,6 +20,7 @@ import {
   industryTileColour,
 } from "./DiscoveryIcons";
 import { RunnerAvatar, useCurrentRunner } from "./DiscoveryRunner";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import {
   useDiscoveryCampaign,
   type DiscoveryCampaign,
@@ -165,6 +166,7 @@ export function DiscoveryScreen() {
   async function startCampaign(input: {
     name: string;
     location: string;
+    locationSelection: DiscoveryLocation;
     target: number;
     criteria: string;
   }) {

@@ -26,6 +26,7 @@ function campaign(id, overrides = {}) {
     verticalName: "Home Decor & Gift Shops",
     pickedTags: [],
     location: "South Africa",
+    locationSelection: null,
     target: 50,
     count: 3,
     budgetUsd: 2.5,
@@ -40,6 +41,10 @@ function campaign(id, overrides = {}) {
     endNote: null,
     createdAt: 1_000,
     skippedDuplicates: 0,
+    seenProviderPlaceIds: [],
+    spentUsd: 0,
+    endReason: null,
+    coverage: [],
     skip: 20,
     tagCursors: [],
     pendingTagCursors: null,
@@ -73,9 +78,34 @@ test("a saved list round-trips", () => {
   assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
 });
 
+test("legacy storage receives safe continuation defaults", () => {
+  const {
+    locationSelection,
+    seenProviderPlaceIds,
+    spentUsd,
+    endReason,
+    coverage,
+    ...legacyCampaign
+  } = campaign("legacy");
+  const restored = parseStoredState(
+    JSON.stringify({
+      version: 1,
+      ownerPubkey: "owner",
+      currentId: "legacy",
+      campaigns: [legacyCampaign],
+    }),
+  ).campaigns[0];
+
+  assert.equal(restored.locationSelection, null);
+  assert.deepEqual(restored.seenProviderPlaceIds, []);
+  assert.equal(restored.spentUsd, 0);
+  assert.equal(restored.endReason, null);
+  assert.deepEqual(restored.coverage, []);
+});
+
 test("the end note survives a restart", () => {
   const note =
-    "Google has no more restaurants in Johannesburg. Add another area or tag to find more.";
+    "The provider did not offer another page for restaurants in Johannesburg, so this query stopped.";
   const state = withCampaigns(campaign("one", { endNote: note }));
   const restored = parseStoredState(serializeState(state));
   assert.equal(restored.campaigns[0].endNote, note);

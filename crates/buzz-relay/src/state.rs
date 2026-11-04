@@ -735,6 +735,10 @@ pub struct AppState {
     pub gif_http_client: reqwest::Client,
     /// Shared HTTP client for relay-proxied prospect search requests.
     pub discovery_http_client: reqwest::Client,
+    /// Shared HTTP client for relay-owned free location autocomplete.
+    pub discovery_location_http_client: reqwest::Client,
+    /// Bounded cache and fair-use throttle for free location autocomplete.
+    pub discovery_location_lookup: Arc<crate::api::discovery::DiscoveryLocationLookup>,
     /// Meta Graph API client for WhatsApp outreach. Tests swap in a fake; nothing else calls Meta.
     pub whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi>,
     /// Shared HTTP and Google verification clients for account routes.
@@ -871,6 +875,10 @@ impl AppState {
             Arc::new(RedisNip98ReplayGuard::new(redis_pool.clone()));
         let gif_http_client = crate::api::gifs::build_gif_http_client();
         let discovery_http_client = crate::api::discovery::build_discovery_http_client();
+        let discovery_location_http_client =
+            crate::api::discovery::build_discovery_location_http_client();
+        let discovery_location_lookup =
+            Arc::new(crate::api::discovery::DiscoveryLocationLookup::new());
         let whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi> =
             Arc::new(crate::whatsapp::graph::ReqwestGraph::new());
         let account_services = Arc::new(crate::api::accounts::AccountServices::from_config(
@@ -940,6 +948,8 @@ impl AppState {
             nip98_replay,
             gif_http_client,
             discovery_http_client,
+            discovery_location_http_client,
+            discovery_location_lookup,
             whatsapp_graph,
             account_services,
             admission_rate_limiter,

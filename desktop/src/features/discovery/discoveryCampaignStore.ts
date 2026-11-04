@@ -8,9 +8,13 @@
 import type {
   DiscoveryAudience,
   DiscoveryCampaign,
+  DiscoveryCoverage,
+  DiscoveryEndReason,
+  DiscoveryQueryEndReason,
   DiscoveryRunStatus,
   DiscoveryRunner,
 } from "./discoveryProvider";
+import { parseDiscoveryLocation } from "./discoveryLocation";
 import type {
   DiscoveryPlace,
   DiscoverySearchResponse,
@@ -21,7 +25,9 @@ export const MAX_STORED_CAMPAIGNS = 50;
 const MAX_TOP_FITS = 5;
 /** The server returns 1 to 50 places a page; a stored page is capped the same. */
 const MAX_PENDING_PLACES = 50;
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
+const MAX_SEEN_PROVIDER_PLACE_IDS = 400;
+const MAX_COVERAGE_STREAMS = 3;
 
 export type TopFit = { id: string; name: string; fit: number };
 
@@ -34,10 +40,18 @@ export type CampaignInternals = {
   /** New offsets held with a paid page until every place on it is saved. */
   pendingTagCursors: Array<number | null> | null;
   pagesFetched: number;
-  /** True once the provider has no more results for this search. */
+  /** True once this campaign has a terminal reason for every query stream. */
   exhausted: boolean;
   /** Places that were already in Leads, so not added again. */
   skippedDuplicates: number;
+  /** Provider ids seen on fully saved pages, scoped to this campaign only. */
+  seenProviderPlaceIds: string[];
+  /** The actual provider estimate spent on fully saved pages. */
+  spentUsd: number;
+  /** Why a finished query stopped before its target, when applicable. */
+  endReason: DiscoveryEndReason | null;
+  /** The furthest cursor this device durably saved for each exact provider query. */
+  coverage: DiscoveryCoverage[];
   /** The results message still has to be posted in the Sales channel. */
   pendingPost: boolean;
   /** "sending" is written before the post so a crash can never post twice. */
@@ -94,6 +108,13 @@ const STATUSES: ReadonlySet<string> = new Set<DiscoveryRunStatus>([
   "cancelled",
   "failed",
   "complete",
+]);
+const END_REASONS: ReadonlySet<string> = new Set<DiscoveryEndReason>([
+  "target_reached",
+  "provider_end",
+  "provider_ceiling",
+  "approved_budget",
+  "provider_repeat",
 ]);
 
 /** A stored vertical id under today's catalogue; an unknown id stays as saved. */
@@ -156,6 +177,52 @@ function strOrNull(value: unknown): string | null {
 
 function numOrNull(value: unknown): number | null {
   return num(value);
+}
+
+function parseCoverage(value: unknown): DiscoveryCoverage[] {
+  // Version 1 of this local extension used one record. Keep it readable while
+  // new campaigns persist a cursor for every tag stream.
+  const entries = Array.isArray(value) ? value : [value];
+  const cursors = new Map<string, number>();
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const coverage = entry as Record<string, unknown>;
+    const queryKey = str(coverage.queryKey)?.trim();
+    const nextSkip = nonNegativeInt(coverage.nextSkip);
+    if (
+      !queryKey ||
+      queryKey.length > 1_000 ||
+      nextSkip > 400 ||
+      nextSkip % 20 !== 0
+    ) {
+      continue;
+    }
+    cursors.set(queryKey, Math.max(cursors.get(queryKey) ?? 0, nextSkip));
+  }
+  const terminals = new Map<string, DiscoveryQueryEndReason | null>();
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const coverage = entry as Record<string, unknown>;
+    const queryKey = str(coverage.queryKey)?.trim();
+    const terminalReason = str(coverage.terminalReason);
+    if (!queryKey || !cursors.has(queryKey)) continue;
+    if (
+      terminalReason === "provider_end" ||
+      terminalReason === "provider_ceiling" ||
+      terminalReason === "provider_repeat"
+    ) {
+      terminals.set(queryKey, terminalReason);
+    } else if (!terminals.has(queryKey)) {
+      terminals.set(queryKey, null);
+    }
+  }
+  return [...cursors]
+    .slice(0, MAX_COVERAGE_STREAMS)
+    .map(([queryKey, nextSkip]) => ({
+      queryKey,
+      nextSkip,
+      terminalReason: terminals.get(queryKey) ?? null,
+    }));
 }
 
 function parsePlace(raw: unknown): DiscoveryPlace | null {
@@ -230,6 +297,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
       )
     : [];
   const pickedTags = parseStringList(value.pickedTags, 3);
+  const endReason = str(value.endReason);
   return {
     id,
     name,
@@ -240,6 +308,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     verticalName: str(value.verticalName) ?? "",
     pickedTags,
     location,
+    locationSelection: parseDiscoveryLocation(value.locationSelection),
     target,
     count: nonNegativeInt(value.count),
     budgetUsd: num(value.budgetUsd) ?? 0,
@@ -257,6 +326,16 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     postedInSales: value.postedInSales === true,
     createdAt: nonNegativeInt(value.createdAt),
     skippedDuplicates: nonNegativeInt(value.skippedDuplicates),
+    seenProviderPlaceIds: parseStringList(
+      value.seenProviderPlaceIds,
+      MAX_SEEN_PROVIDER_PLACE_IDS,
+    ),
+    spentUsd: Math.max(0, num(value.spentUsd) ?? 0),
+    endReason:
+      endReason && END_REASONS.has(endReason)
+        ? (endReason as DiscoveryEndReason)
+        : null,
+    coverage: parseCoverage(value.coverage),
     skip: nonNegativeInt(value.skip),
     tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
     pendingTagCursors: Array.isArray(value.pendingTagCursors)
@@ -291,7 +370,10 @@ export function parseStoredState(raw: string | null): StoredState {
   }
   if (typeof json !== "object" || json === null) return emptyState();
   const value = json as Record<string, unknown>;
-  if (value.version !== STORE_VERSION || !Array.isArray(value.campaigns)) {
+  if (
+    (value.version !== 1 && value.version !== STORE_VERSION) ||
+    !Array.isArray(value.campaigns)
+  ) {
     return emptyState();
   }
   const campaigns: StoredCampaign[] = [];
@@ -382,9 +464,26 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     verticalName: campaign.verticalName,
     pickedTags: [...(campaign.pickedTags ?? [])],
     location: campaign.location,
+    locationSelection: campaign.locationSelection
+      ? {
+          ...campaign.locationSelection,
+          boundingBox: campaign.locationSelection.boundingBox
+            ? ([...campaign.locationSelection.boundingBox] as [
+                number,
+                number,
+                number,
+                number,
+              ])
+            : null,
+          nearby: campaign.locationSelection.nearby?.map((place) => ({
+            ...place,
+          })),
+        }
+      : null,
     target: campaign.target,
     count: campaign.count,
     budgetUsd: campaign.budgetUsd,
+    spentUsd: campaign.spentUsd,
     criteria: campaign.criteria,
     status: campaign.status,
     prospectIds: [...campaign.prospectIds],
@@ -393,6 +492,8 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     simulated: false,
     failureReason: campaign.failureReason ?? null,
     endNote: campaign.endNote ?? null,
+    endReason: campaign.endReason ?? null,
+    coverage: campaign.coverage.map((cursor) => ({ ...cursor })),
     postedInSales: campaign.postedInSales === true,
     createdAt: campaign.createdAt,
     skippedDuplicates: campaign.skippedDuplicates,

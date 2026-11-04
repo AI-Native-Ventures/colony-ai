@@ -47,8 +47,8 @@ async function installManyPlaces(page: Page, count: number) {
 }
 
 async function runSearch(page: Page, count: number) {
-  await installMockBridge(page, REAL_RUNNER);
   await installManyPlaces(page, count);
+  await installMockBridge(page, REAL_RUNNER);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
   await page
@@ -59,8 +59,9 @@ async function runSearch(page: Page, count: number) {
   await expect(typeDetails).toBeVisible();
   await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
   const dialog = page.getByTestId("discovery-campaign-dialog");
-  await dialog.getByLabel("Location").fill("South Africa");
-  await dialog.getByLabel("Prospect target").fill("50");
+  await dialog.getByRole("combobox", { name: "Location" }).fill("South Africa");
+  await dialog.getByRole("option").first().click();
+  await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
