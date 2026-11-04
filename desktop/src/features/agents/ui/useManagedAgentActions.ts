@@ -318,11 +318,11 @@ export function useManagedAgentActions() {
     await invalidateChannelMembersRosters(queryClient, channelIds);
   }
 
-  async function handleDelete(pubkey: string) {
+  async function handleDelete(pubkey: string): Promise<boolean> {
     clearFeedback();
     try {
       const agent = managedAgents.find((a) => a.pubkey === pubkey);
-      if (!agent) return;
+      if (!agent) return false;
       const channels = await getChannelsForAction();
       const result = await deleteManagedAgentWithRules({
         agent,
@@ -331,15 +331,17 @@ export function useManagedAgentActions() {
         getAvailability,
         relayAgents: relayAgentsQuery.data ?? [],
       });
-      if (result.cancelled) return;
+      if (result.cancelled) return false;
       await removeAgentFromAllChannels(pubkey);
       if (logAgentPubkey === pubkey) {
         setLogAgentPubkey(null);
       }
+      return true;
     } catch (error) {
       setActionErrorMessage(
         error instanceof Error ? error.message : "Failed to delete agent.",
       );
+      return false;
     }
   }
 

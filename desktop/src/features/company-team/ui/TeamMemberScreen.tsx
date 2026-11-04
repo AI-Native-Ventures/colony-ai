@@ -91,6 +91,10 @@ export function TeamMemberScreen({
     (candidate) =>
       candidate.pubkey.toLowerCase() === identity.data?.pubkey.toLowerCase(),
   )?.role;
+  const relayMember = teamQuery.data?.relayMembers.find(
+    (candidate) =>
+      candidate.pubkey.toLowerCase() === memberPubkey.toLowerCase(),
+  );
   const canManage = role === "owner" || role === "admin";
   const title = member?.position?.head.title ?? "";
   const managerPubkey = member?.position?.head.managerPubkey ?? "";
@@ -300,6 +304,12 @@ export function TeamMemberScreen({
         canManage={canManage}
         onEdit={() => void goTeamEdit(member.pubkey)}
         onOpenMember={(pubkey) => void goTeamMember(pubkey)}
+        onRemoved={async () => {
+          await goTeam();
+        }}
+        relayMember={relayMember ?? null}
+        viewerPubkey={identity.data?.pubkey}
+        viewerRole={role ?? null}
         directReports={otherMembers
           .filter(
             (candidate) =>

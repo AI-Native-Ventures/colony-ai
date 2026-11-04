@@ -19,6 +19,66 @@ const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
+async function installHumanAccessFixture(
+  page: import("@playwright/test").Page,
+  input: {
+    identity: (typeof TEST_IDENTITIES)["tyler" | "alice"];
+    members: Array<{
+      pubkey: string;
+      role: "owner" | "admin" | "member";
+    }>;
+  },
+) {
+  await page.addInitScript((identity) => {
+    window.localStorage.setItem(
+      "buzz:e2e-identity-override.v1",
+      JSON.stringify(identity),
+    );
+  }, input.identity);
+  await installMockBridge(page, {
+    relaySelf: getPublicKey(generateSecretKey()),
+    relayMembers: input.members,
+    searchProfiles: input.members.map((member) => ({
+      pubkey: member.pubkey,
+      displayName:
+        member.pubkey === TEST_IDENTITIES.tyler.pubkey
+          ? "Tyler Owner"
+          : member.pubkey === TEST_IDENTITIES.alice.pubkey
+            ? "Alice Admin"
+            : "Bob Member",
+    })),
+  });
+}
+
+async function seedTeamTheme(
+  page: import("@playwright/test").Page,
+  theme: "light" | "dark",
+) {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.addInitScript(
+    ({ name, pubkey, relayUrl }) => {
+      const preference = {
+        version: 1,
+        theme: name,
+        accent: "#5B45BE",
+        followSystem: false,
+      };
+      localStorage.setItem("buzz-theme", name);
+      localStorage.setItem("buzz-follow-system", "false");
+      localStorage.setItem("buzz-accent-color", "#5B45BE");
+      localStorage.setItem(
+        `buzz-community-theme.v1:${pubkey}:${encodeURIComponent(relayUrl)}`,
+        JSON.stringify(preference),
+      );
+    },
+    {
+      name: theme === "dark" ? "buzz-dark" : "buzz",
+      pubkey: OWNER_PUBKEY,
+      relayUrl: "ws://localhost:3000",
+    },
+  );
+}
+
 function positionHead(input: {
   relaySecret: Uint8Array;
   pubkey: string;
@@ -370,4 +430,225 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
     "Designer",
   );
   await expect(page.getByTestId("company-human-role")).toContainText("alice");
+
+  await page.goto(`/#/team/detail/${employeePubkey}`);
+  await page.getByRole("button", { name: "More agent actions" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Remove employee" }),
+  ).toBeVisible();
+  await page.getByRole("menuitem", { name: "Remove employee" }).click();
+  const removeEmployeeDialog = page.getByTestId("confirm-remove-agent-dialog");
+  await expect(removeEmployeeDialog).toContainText(EMPLOYEE_NAME);
+  await expect(removeEmployeeDialog).toContainText(
+    "removes it from every channel",
+  );
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_COMMAND_LOG__ = [];
+  });
+  await removeEmployeeDialog
+    .getByRole("button", { name: "Remove employee" })
+    .click();
+  await expect(page).toHaveURL(/\/team$/);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_COMMAND_LOG__?.some(
+            (entry) => entry.command === "delete_managed_agent",
+          ) ?? false,
+      ),
+    )
+    .toBe(true);
+});
+
+test("Team lets an owner confirm access changes and removals for a human member", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const owner = TEST_IDENTITIES.tyler.pubkey;
+  const member = TEST_IDENTITIES.alice.pubkey;
+  await installHumanAccessFixture(page, {
+    identity: TEST_IDENTITIES.tyler,
+    members: [
+      { pubkey: owner, role: "owner" },
+      { pubkey: member, role: "member" },
+    ],
+  });
+
+  await page.goto(`/#/team/detail/${member}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(
+    page.getByTestId("company-team-change-access-role"),
+  ).toBeVisible();
+  await expect(page.getByTestId("company-team-remove-member")).toBeVisible();
+
+  await page.goto(`/#/team/detail/${owner}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await expect(page.getByTestId("company-team-change-access-role")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("company-team-remove-member")).toHaveCount(0);
+
+  await page.goto(`/#/team/detail/${member}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+
+  await page.getByTestId("company-team-change-access-role").click();
+  const roleDialog = page.getByTestId("confirm-member-role-dialog");
+  await expect(roleDialog).toBeVisible();
+  await roleDialog.getByLabel("Access role").selectOption("admin");
+  await expect(
+    roleDialog.getByRole("button", { name: "Make admin" }),
+  ).toBeVisible();
+  await roleDialog.getByRole("button", { name: "Make admin" }).click();
+  await expect(roleDialog).toHaveCount(0);
+  await expect(page.getByTestId("company-human-access")).toContainText("Admin");
+
+  await page.getByTestId("company-team-remove-member").click();
+  const removeDialog = page.getByTestId("confirm-remove-member-dialog");
+  await expect(removeDialog).toContainText("Alice Admin");
+  await expect(removeDialog).toContainText("revoke their access to the relay");
+  await removeDialog.getByRole("button", { name: "Remove" }).click();
+  await expect(page).toHaveURL(/\/team$/);
+  await expect(page.getByTestId(`company-team-member-${member}`)).toHaveCount(
+    0,
+  );
+});
+
+test("Team hides access actions for an admin's self, owner, and admin targets", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const owner = TEST_IDENTITIES.tyler.pubkey;
+  const admin = TEST_IDENTITIES.alice.pubkey;
+  const member = TEST_IDENTITIES.bob.pubkey;
+  const otherAdmin = getPublicKey(generateSecretKey());
+  await installHumanAccessFixture(page, {
+    identity: TEST_IDENTITIES.alice,
+    members: [
+      { pubkey: owner, role: "owner" },
+      { pubkey: admin, role: "admin" },
+      { pubkey: otherAdmin, role: "admin" },
+      { pubkey: member, role: "member" },
+    ],
+  });
+
+  await page.goto(`/#/team/detail/${member}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("company-team-remove-member")).toBeVisible();
+  await expect(page.getByTestId("company-team-change-access-role")).toHaveCount(
+    0,
+  );
+
+  await page.goto(`/#/team/detail/${admin}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await expect(page.getByTestId("company-team-change-access-role")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("company-team-remove-member")).toHaveCount(0);
+
+  await page.goto(`/#/team/detail/${otherAdmin}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await expect(page.getByTestId("company-team-change-access-role")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("company-team-remove-member")).toHaveCount(0);
+
+  await page.goto(`/#/team/detail/${owner}`);
+  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+  await expect(page.getByTestId("company-team-change-access-role")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("company-team-remove-member")).toHaveCount(0);
+});
+
+test("Team captures member access actions and confirmations at required viewports", async ({
+  browser,
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const screenshotDir = "test-results/team-members";
+  const member = TEST_IDENTITIES.alice.pubkey;
+  mkdirSync(screenshotDir, { recursive: true });
+
+  for (const theme of ["light", "dark"] as const) {
+    const capturePage = theme === "light" ? page : await browser.newPage();
+    await seedTeamTheme(capturePage, theme);
+    await installHumanAccessFixture(capturePage, {
+      identity: TEST_IDENTITIES.tyler,
+      members: [
+        { pubkey: TEST_IDENTITIES.tyler.pubkey, role: "owner" },
+        { pubkey: member, role: "member" },
+      ],
+    });
+
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await capturePage.setViewportSize(viewport);
+      await capturePage.goto(`/#/team/detail/${member}`);
+      await expect(
+        capturePage.getByTestId("company-team-member-profile"),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect
+        .poll(() =>
+          capturePage.evaluate(() =>
+            document.documentElement.classList.contains("dark"),
+          ),
+        )
+        .toBe(theme === "dark");
+
+      await waitForAnimations(capturePage);
+      await capturePage.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${screenshotDir}/member-page-${theme}-${viewport.width}.png`,
+      });
+
+      await capturePage.getByTestId("company-team-change-access-role").click();
+      await expect(
+        capturePage.getByTestId("confirm-member-role-dialog"),
+      ).toBeVisible();
+      await capturePage
+        .getByTestId("confirm-member-role-dialog")
+        .getByLabel("Access role")
+        .selectOption("admin");
+      await expect(
+        capturePage
+          .getByTestId("confirm-member-role-dialog")
+          .getByRole("button", { name: "Make admin" }),
+      ).toBeEnabled();
+      await waitForAnimations(capturePage);
+      await capturePage.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${screenshotDir}/role-confirm-${theme}-${viewport.width}.png`,
+      });
+      await capturePage
+        .getByTestId("confirm-member-role-dialog")
+        .getByRole("button", { name: "Cancel" })
+        .click();
+
+      await capturePage.getByTestId("company-team-remove-member").click();
+      await expect(
+        capturePage.getByTestId("confirm-remove-member-dialog"),
+      ).toBeVisible();
+      await waitForAnimations(capturePage);
+      await capturePage.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${screenshotDir}/remove-confirm-${theme}-${viewport.width}.png`,
+      });
+      await capturePage
+        .getByTestId("confirm-remove-member-dialog")
+        .getByRole("button", { name: "Cancel" })
+        .click();
+    }
+
+    if (theme === "dark") await capturePage.close();
+  }
 });
