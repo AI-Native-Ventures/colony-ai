@@ -100,6 +100,10 @@
   white-space: nowrap;
 }
 
+.colony-hire-title-row > .colony-hire-button {
+  margin-left: auto;
+}
+
 .colony-hire-button:focus-visible,
 .colony-hire-link:focus-visible {
   outline: 2px solid hsl(var(--colony-accent));
@@ -307,14 +311,14 @@
   gap: 0.25rem;
 }
 
-.colony-hire-role-copy > h2 {
+.colony-hire-role-title > h2 {
   margin: 0;
   font-size: calc(18 * var(--colony-px));
   font-weight: 800;
   letter-spacing: -0.01em;
 }
 
-.colony-hire-role-copy > span {
+.colony-hire-role-title > span {
   color: hsl(var(--colony-muted));
   font-size: calc(14.5 * var(--colony-px));
   font-weight: 500;
@@ -370,6 +374,7 @@
 
 .colony-hire-role-actions {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -383,7 +388,7 @@
   gap: 0.75rem;
   padding: 1.5rem;
   border-radius: 1.25rem;
-  background: #fbf8fc;
+  background: hsl(var(--colony-surface-raised));
   box-shadow: inset 0 0 0 1.5px hsl(var(--colony-border-strong));
 }
 
@@ -603,17 +608,17 @@
 
 .colony-hire-simple-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(17.5rem, 21.25rem);
   align-items: start;
-  gap: 1.25rem;
+  gap: 1.75rem;
 }
 
 .colony-hire-simple-card {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 1.125rem;
-  padding: 1.375rem;
+  gap: 1.375rem;
+  padding: 1.75rem;
 }
 
 .colony-hire-simple-picture {
@@ -621,14 +626,16 @@
   min-width: 0;
   align-items: center;
   gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
 }
 
 .colony-hire-simple-avatar {
-  width: 5.25rem;
-  height: 5.25rem;
+  width: 3.5rem;
+  height: 3.5rem;
   flex: none;
   overflow: hidden;
-  border-radius: 1.4rem;
+  border-radius: 1rem;
   background: hsl(var(--colony-surface-raised));
 }
 
@@ -641,7 +648,7 @@
 }
 
 .colony-hire-simple-picture-copy > strong {
-  font-size: calc(17 * var(--colony-px));
+  font-size: calc(19 * var(--colony-px));
   font-weight: 800;
 }
 
@@ -656,11 +663,132 @@
 .colony-hire-simple-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.125rem 1rem;
+  gap: 1.25rem 1rem;
 }
 
-.colony-hire-simple-fields > .colony-hire-field:has(#hire-respond-to) {
-  grid-column: 1 / -1;
+.colony-hire-configure-tool-scope {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.125rem 1.25rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-surface-raised));
+}
+
+.colony-hire-configure-tool-scope > h2 {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.colony-hire-configure-tool-scope > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.colony-hire-configure-tool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 1rem;
+}
+
+.colony-hire-configure-tool-list > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(16 * var(--colony-px));
+}
+
+.colony-hire-configure-tool-list > div > strong {
+  font-weight: 800;
+}
+
+.colony-hire-role-summary {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.375rem;
+}
+
+.colony-hire-role-summary-eyebrow {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.colony-hire-role-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.colony-hire-role-summary-head > .colony-hire-icon-tile {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.8125rem;
+}
+
+.colony-hire-role-summary-head > strong {
+  min-width: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.colony-hire-role-summary > dl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.colony-hire-role-summary > dl > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.colony-hire-role-summary dt {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-role-summary dd {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.colony-hire-role-summary-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.colony-hire-role-summary-skills > span {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0 0.625rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
 }
 
 .colony-hire-simple-channel-fieldset,
@@ -672,6 +800,13 @@
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.colony-hire-simple-settings {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.75fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: 1.5rem;
 }
 
 .colony-hire-simple-channel-fieldset > legend,
@@ -864,7 +999,7 @@
 .colony-hire-simple-footer {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.625rem;
 }
 
@@ -878,9 +1013,238 @@
   max-width: 70rem;
 }
 
+/* ----------------------------------------------------------- role editor -- */
+
+.colony-hire-role-editor-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
+.colony-hire-role-editor-heading > .colony-hire-icon-tile {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 1rem;
+}
+
+.colony-hire-role-editor-form {
+  display: flex;
+  min-width: 0;
+  flex: 999 1 36rem;
+  flex-direction: column;
+  gap: 1.375rem;
+  padding: 1.625rem;
+}
+
+.colony-hire-role-editor-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-role-editor-field > small,
+.colony-hire-worker-menu > p {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.colony-hire-textarea {
+  width: 100%;
+  min-height: 7rem;
+  box-sizing: border-box;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.colony-hire-textarea:focus-visible {
+  border-color: hsl(var(--colony-accent));
+  outline: 2px solid hsl(var(--colony-accent) / 25%);
+  outline-offset: 0;
+}
+
+.colony-hire-role-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 1.125rem;
+}
+
+.colony-hire-worker-menu > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.colony-hire-worker-menu label {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg-secondary));
+  cursor: pointer;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-worker-menu label[data-checked="true"] {
+  border-color: hsl(var(--colony-accent));
+  background: hsl(var(--colony-accent) / 10%);
+  color: hsl(var(--colony-accent));
+}
+
+.colony-hire-worker-menu input {
+  accent-color: hsl(var(--colony-accent));
+}
+
+.colony-hire-worker-menu input:disabled + span {
+  opacity: 0.55;
+}
+
+.colony-hire-role-editor-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.colony-hire-role-editor-note > svg {
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+.colony-hire-role-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  padding-top: 1.125rem;
+  border-top: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-role-risk {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 19.5rem;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: hsl(var(--colony-surface-raised));
+  box-shadow: 0 0 0 1px hsl(var(--colony-border));
+}
+
+.colony-hire-role-risk > h2 {
+  margin: 0;
+  font-size: calc(20 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.colony-hire-role-risk > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  line-height: 1.5;
+}
+
+.colony-hire-role-risk > dl {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.colony-hire-role-risk > dl > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-role-risk > dl > div:last-child {
+  border-bottom: 0;
+}
+
+.colony-hire-role-risk > dl > div > span {
+  display: grid;
+  width: 2.125rem;
+  height: 2.125rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.625rem;
+}
+
+.colony-hire-role-risk > dl > div > span[data-tone="low"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.colony-hire-role-risk > dl > div > span[data-tone="medium"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.colony-hire-role-risk > dl > div > span[data-tone="high"] {
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.colony-hire-role-risk > dl > div > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.colony-hire-role-risk dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-role-risk dd {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 @media (max-width: 900px) {
   .colony-hire-simple-columns {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .colony-hire-role-summary {
+    max-width: none;
   }
 }
 
@@ -895,7 +1259,7 @@
 
   .colony-hire-simple-picture {
     display: grid;
-    grid-template-columns: 5.25rem minmax(0, 1fr);
+    grid-template-columns: 3.5rem minmax(0, 1fr);
     gap: 0.75rem;
   }
 
@@ -912,12 +1276,26 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .colony-hire-simple-fields > .colony-hire-field:has(#hire-respond-to) {
-    grid-column: auto;
+  .colony-hire-simple-settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
   }
 
   .colony-hire-simple-ai-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .colony-hire-role-editor-form,
+  .colony-hire-role-risk {
+    padding: 1rem;
+  }
+
+  .colony-hire-role-editor-actions {
+    justify-content: stretch;
+  }
+
+  .colony-hire-role-editor-actions > .colony-hire-button {
+    flex: 1 1 10rem;
   }
 }
 

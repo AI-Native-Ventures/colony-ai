@@ -37,6 +37,7 @@ pub(super) fn record() -> ManagedAgentRecord {
         relay_url: "ws://localhost:3000".to_string(),
         avatar_url: None,
         description: None,
+        company_role: None,
         acp_command: "buzz-acp".to_string(),
         agent_command: "goose".to_string(),
         agent_args: vec![],

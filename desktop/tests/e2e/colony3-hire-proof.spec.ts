@@ -62,7 +62,7 @@ test("HireRoles board: the built-in roles with the no-harness notice", async ({
   await expect(
     page.getByTestId(`hire-role-${HIRE_IDS.builtInHospitality}`),
   ).toBeVisible();
-  await expect(page.getByText("No harness is available")).toBeVisible();
+  await expect(page.getByText("No runtime is available")).toBeVisible();
   await shot(page, {
     name: "HireRoles",
     board: "HireRoles",
@@ -109,8 +109,10 @@ test("HireRoles: a business with no role personas is offered the built-ins", asy
   ).toHaveCount(0);
   await expect(page.getByTestId("hire-custom-role")).toHaveAttribute(
     "aria-label",
-    "Create your own role",
+    "Ask Scout to draft",
   );
+  await expect(page.getByTestId("hire-create-role")).toBeVisible();
+  await expect(page.getByTestId("hire-create-role-entry")).toBeVisible();
   await shot(page, {
     name: "HireRoles-built-in",
     board: "HireRoles",
@@ -154,4 +156,102 @@ test("HireSuccess board", async ({ page }) => {
     board: "HireSuccess",
     title: "Hire: joined the team",
   });
+});
+
+test("C3-HIRE-FIX captures the direct role path at desktop and phone widths", async ({
+  browser,
+}) => {
+  const theme = process.env.COLONY3_PROOF_THEME;
+  test.skip(
+    theme !== "light" && theme !== "dark",
+    "run with COLONY3_PROOF_THEME=light or dark for proof delivery",
+  );
+  test.setTimeout(120_000);
+  mkdirSync(OUT, { recursive: true });
+
+  for (const viewport of [
+    { name: "1440", width: 1440, height: 960 },
+    { name: "390", width: 390, height: 844 },
+  ]) {
+    const context = await browser.newContext({
+      colorScheme: theme === "dark" ? "dark" : "light",
+      viewport: { width: viewport.width, height: viewport.height },
+    });
+    try {
+      const page = await context.newPage();
+      await installHireFixture(page, "roles-empty");
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await page.goto(HIRE_ROUTES.roles);
+      await expect(page.getByTestId("hire-create-role-entry")).toBeVisible();
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${OUT}/C3-HIRE-FIX-HireRoles-${viewport.name}-${theme}.png`,
+      });
+      captures.push({
+        name: `C3-HIRE-FIX-HireRoles-${viewport.name}-${theme}`,
+        board: "HireRoles",
+        title: `Hire: role catalog with direct role creation (${viewport.name}px, ${theme})`,
+      });
+
+      await page.getByTestId("hire-create-role").click();
+      await expect(page.getByTestId("hire-role-pack-editor")).toBeVisible();
+      await page.getByTestId("role-pack-title").fill("Revenue analyst");
+      await page
+        .getByTestId("role-pack-job")
+        .fill("Turns approved sales data into a clear weekly revenue view.");
+      await page
+        .getByTestId("role-pack-skills")
+        .fill("Analysis\nReconciliation");
+      await page
+        .getByTestId("role-pack-tools")
+        .fill("Sales records | medium\nWeb search | low");
+      const worker = page.getByTestId("role-pack-worker-buzz-agent");
+      if (!(await worker.isChecked())) await worker.check();
+      await page.getByTestId("role-pack-allowance").fill("35");
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${OUT}/C3-HIRE-FIX-RolePackEditor-${viewport.name}-${theme}.png`,
+      });
+      captures.push({
+        name: `C3-HIRE-FIX-RolePackEditor-${viewport.name}-${theme}`,
+        board: "RolePackEditor",
+        title: `Hire: direct role pack editor (${viewport.name}px, ${theme})`,
+      });
+
+      await page.getByTestId("save-role-pack").click();
+      await expect(page.getByTestId("hire-roles")).toBeVisible();
+      const role = page
+        .getByRole("region", { name: "Role packs" })
+        .locator('[data-testid^="hire-role-"]', {
+          hasText: "Revenue analyst",
+        });
+      await expect(role).toBeVisible();
+      await role.getByRole("button", { name: "Configure this role" }).click();
+      await expect(page.getByTestId("hire-configure-form")).toBeVisible();
+      await expect(page.getByTestId("hire-weekly-allowance")).toHaveValue("35");
+      await page.getByTestId("hire-employee-name").fill("Riven");
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        fullPage: true,
+        path: `${OUT}/C3-HIRE-FIX-HireConfigure-${viewport.name}-${theme}.png`,
+      });
+      captures.push({
+        name: `C3-HIRE-FIX-HireConfigure-${viewport.name}-${theme}`,
+        board: "HireConfigure",
+        title: `Hire: Configure opens after direct role creation (${viewport.name}px, ${theme})`,
+      });
+    } finally {
+      await context.close();
+    }
+  }
 });

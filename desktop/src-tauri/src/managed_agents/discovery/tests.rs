@@ -213,6 +213,7 @@ fn record_with(
     crate::managed_agents::types::ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: String::new(),
         name: "r".to_string(),
         persona_id: persona_id.map(str::to_string),

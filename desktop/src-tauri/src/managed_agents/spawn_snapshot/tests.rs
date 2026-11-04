@@ -44,6 +44,7 @@ fn record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "p".repeat(64),
         name: "agent".into(),
         persona_id: None,

@@ -22,6 +22,7 @@ fn make_definition(slug: &str) -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: String::new(),
         slug: Some(slug.to_string()),
         name: slug.to_string(),

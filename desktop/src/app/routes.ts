@@ -27,6 +27,7 @@ export const routes = rootRoute("root.tsx", [
   route("/team/pause/$memberPubkey", "team.pause.$memberPubkey.tsx"),
   route("/team/archive/$memberPubkey", "team.archive.$memberPubkey.tsx"),
   route("/hire/roles", "hire.roles.tsx"),
+  route("/hire/role-pack", "hire.role-pack.tsx"),
   route("/hire/configure", "hire.configure.tsx"),
   route("/hire/review", "hire.review.tsx"),
   route("/hire/success", "hire.success.tsx"),

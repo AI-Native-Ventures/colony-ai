@@ -77,19 +77,27 @@ pub(crate) use inbound::retain_inbound_catalog_witness;
 
 #[tauri::command]
 pub async fn list_personas(app: AppHandle) -> Result<Vec<AgentDefinition>, String> {
+    tokio::task::spawn_blocking(move || list_personas_blocking(&app))
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
+/// The synchronous read transaction used by the native `list_personas`
+/// command. It remains generic so production persistence can be regression
+/// tested under a headless Tauri runtime.
+pub(super) fn list_personas_blocking<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Vec<AgentDefinition>, String> {
     use tauri::Manager;
-    tokio::task::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        let _store_guard = state
-            .managed_agents_store_lock
-            .lock()
-            .map_err(|error| error.to_string())?;
-        let mut personas = load_personas(&app)?;
-        pending::project_active_persona_sharing(&app, &state, &mut personas);
-        Ok(personas)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking failed: {e}"))?
+
+    let state = app.state::<AppState>();
+    let _store_guard = state
+        .managed_agents_store_lock
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let mut personas = load_personas(app)?;
+    pending::project_active_persona_sharing(app, &state, &mut personas);
+    Ok(personas)
 }
 
 #[cfg(test)]

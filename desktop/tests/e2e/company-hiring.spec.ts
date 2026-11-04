@@ -61,14 +61,15 @@ test("owner hires from a role and the configured draft survives reload", async (
 
   await page.goto("/#/team");
   await page.getByRole("button", { name: "Hire an agent" }).click();
-  await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit pack" })).toHaveCount(0);
+  const role = page.getByTestId(`hire-role-${PERSONA_ID}`);
+  await expect(role).toBeVisible();
+  await expect(role.getByRole("button", { name: "Edit pack" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open role pack" }),
-  ).toHaveCount(0);
+    role.getByRole("button", { name: "Open role pack" }),
+  ).toBeVisible();
   await page
     .getByTestId(`hire-role-${PERSONA_ID}`)
-    .getByRole("button", { name: "Configure" })
+    .getByRole("button", { name: "Configure this role" })
     .click();
 
   const name = page.getByTestId("hire-employee-name");
@@ -140,21 +141,20 @@ test("a business with no role personas is offered the built-in roles", async ({
   for (const name of names) {
     await expect(
       page
-        .getByRole("region", { name: "Role catalog" })
+        .getByRole("region", { name: "Role packs" })
         .getByRole("heading", { name }),
     ).toBeVisible();
   }
   await expect(
-    page.getByRole("heading", { name: "Your role catalog starts here" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Create role pack" }),
-  ).toHaveCount(0);
+    page.getByRole("heading", { name: "Create a role" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("hire-create-role")).toBeVisible();
+  await expect(page.getByTestId("hire-create-role-entry")).toBeVisible();
   const socialCard = page.getByTestId(
     "hire-role-built-in-role-social-media-manager",
   );
   await expect(socialCard).toContainText(
-    "Plans, writes and schedules social content for the company's clients.",
+    "Client social content · Content planning, Captions, Scheduling",
   );
 
   const rolePersonas = () =>
@@ -181,7 +181,9 @@ test("a business with no role personas is offered the built-in roles", async ({
   expect(await rolePersonas()).toEqual([]);
 
   // A double click on a built-in role creates its persona once and reaches Configure.
-  await socialCard.getByRole("button", { name: "Configure" }).dblclick();
+  await socialCard
+    .getByRole("button", { name: "Configure this role" })
+    .dblclick();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
   await expect(page).toHaveURL(/#\/hire\/configure\?.*personaId=/);
   const configuredRoles = await rolePersonas();
@@ -204,7 +206,7 @@ test("a business with no role personas is offered the built-in roles", async ({
   await page.goto("/#/hire/roles");
   await expect(
     page
-      .getByRole("region", { name: "Role catalog" })
+      .getByRole("region", { name: "Role packs" })
       .getByRole("heading", { name: "Social media manager" }),
   ).toHaveCount(1);
   await expect(
@@ -214,7 +216,7 @@ test("a business with no role personas is offered the built-in roles", async ({
     .locator('[data-testid^="hire-role-"]', {
       hasText: "Social media manager",
     })
-    .getByRole("button", { name: "Configure" })
+    .getByRole("button", { name: "Configure this role" })
     .click();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
   const reusedRoles = await rolePersonas();
@@ -236,7 +238,49 @@ test("a member cannot open the role catalog", async ({ page }) => {
       name: "You do not have permission for this action",
     }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Configure" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Configure this role" }),
+  ).toHaveCount(0);
+
+  await page.goto("/#/hire/role-pack");
+  await expect(
+    page.getByRole("heading", {
+      name: "You do not have permission for this action",
+    }),
+  ).toBeVisible();
+});
+
+test("an owner can create and configure a role pack without Scout", async ({
+  page,
+}) => {
+  await installBlankConfigureMock(page);
+  await page.goto("/#/hire/roles");
+
+  await page.getByTestId("hire-create-role").click();
+  await expect(page.getByTestId("hire-role-pack-editor")).toBeVisible();
+  await page.getByTestId("role-pack-title").fill("Revenue analyst");
+  await page
+    .getByTestId("role-pack-job")
+    .fill("Turns approved sales data into a clear weekly revenue view.");
+  await page.getByTestId("role-pack-skills").fill("Analysis\nReconciliation");
+  await page
+    .getByTestId("role-pack-tools")
+    .fill("Sales records | medium\nWeb search | low");
+  const worker = page.getByTestId("role-pack-worker-buzz-agent");
+  if (!(await worker.isChecked())) await worker.check();
+  await page.getByTestId("role-pack-allowance").fill("35");
+  await page.getByTestId("save-role-pack").click();
+
+  await expect(page.getByTestId("hire-roles")).toBeVisible();
+  const role = page
+    .getByRole("region", { name: "Role packs" })
+    .locator('[data-testid^="hire-role-"]', { hasText: "Revenue analyst" });
+  await expect(role).toBeVisible();
+  await expect(role).toContainText("USD 35 / week");
+  await role.getByRole("button", { name: "Configure this role" }).click();
+  await expect(page.getByTestId("hire-configure-form")).toBeVisible();
+  await expect(page.getByTestId("hire-title")).toHaveValue("Revenue analyst");
+  await expect(page.getByTestId("hire-weekly-allowance")).toHaveValue("35");
 });
 
 const BUILT_IN_ROLE_NAMES = [
@@ -274,9 +318,9 @@ for (const roleName of BUILT_IN_ROLE_NAMES) {
     await installBlankConfigureMock(page);
     await page.goto("/#/hire/roles");
     await page
-      .getByRole("region", { name: "Role catalog" })
+      .getByRole("region", { name: "Role packs" })
       .locator('[data-testid^="hire-role-"]', { hasText: roleName })
-      .getByRole("button", { name: "Configure" })
+      .getByRole("button", { name: "Configure this role" })
       .click();
     await expect(page.getByTestId("hire-employee-name")).toBeVisible();
     await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
@@ -292,7 +336,9 @@ test("Business development configures twice through its single materialized pers
     "hire-role-built-in-role-business-development",
   );
   await expect(builtInRole).toBeVisible();
-  await builtInRole.getByRole("button", { name: "Configure" }).dblclick();
+  await builtInRole
+    .getByRole("button", { name: "Configure this role" })
+    .dblclick();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
   await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
 
@@ -320,7 +366,7 @@ test("Business development configures twice through its single materialized pers
   await page.goto("/#/hire/roles");
   await page
     .getByTestId(`hire-role-${businessDevelopment[0].id}`)
-    .getByRole("button", { name: "Configure" })
+    .getByRole("button", { name: "Configure this role" })
     .click();
   await expect(page.getByTestId("hire-employee-name")).toBeVisible();
   await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
@@ -368,7 +414,7 @@ test("captures the Business development role flow at both widths and themes", as
           ),
           fullPage: true,
         });
-        await role.getByRole("button", { name: "Configure" }).click();
+        await role.getByRole("button", { name: "Configure this role" }).click();
         await expect(page.getByTestId("hire-employee-name")).toBeVisible();
         await expect(page.getByTestId("hire-configure-state")).toHaveCount(0);
         await waitForAnimations(page);
@@ -395,6 +441,16 @@ test("Configure says the role could not be loaded and goes back to roles", async
   );
   const state = page.getByTestId("hire-configure-state");
   await expect(state).toContainText("This role could not be loaded");
+  await expect(state).toContainText("We checked the latest role catalog again");
+  const personaReads = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_COMMAND_LOG__?: Array<{ command: string }>;
+    };
+    return (testWindow.__BUZZ_E2E_COMMAND_LOG__ ?? []).filter(
+      (entry) => entry.command === "list_personas",
+    ).length;
+  });
+  expect(personaReads).toBe(2);
   await expect(page.getByTestId("hire-employee-name")).toHaveCount(0);
   await state.getByRole("button", { name: "Back to roles" }).click();
   await expect(page.getByTestId("hire-roles")).toBeVisible();

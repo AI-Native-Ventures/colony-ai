@@ -44,7 +44,7 @@ import {
 } from "../hireConfigureStatus";
 import type { HireConfigureStatus } from "../hireConfigureStatus";
 import type { HireProposal } from "@/features/company-asks/askRecords";
-import { ArrowGlyph } from "./hireTools";
+import { ArrowGlyph, RoleIcon, ToolChip, ToolGlyph } from "./hireTools";
 import {
   HireButton,
   HireField,
@@ -221,7 +221,7 @@ function initialValues(
     introductionChannelId: channelId,
     channelIds: channelId ? [channelId] : [],
     respondTo: "owner-only",
-    weeklyAllowance: "",
+    weeklyAllowance: rolePack.defaultAllowance ?? "",
     runtimeId,
     providerId: persona?.runtime === runtimeId ? (persona.provider ?? "") : "",
     modelId: persona?.runtime === runtimeId ? (persona.model ?? "") : "",
@@ -236,21 +236,21 @@ function currentRecordProposal(record: CompanyHireHeadRecord | undefined) {
 function HireConfigureState({
   onBack,
   onRetry,
+  roleCatalogRefreshAttempted,
   status,
   timedOut,
 }: {
   onBack: () => void;
   onRetry: () => void;
+  roleCatalogRefreshAttempted: boolean;
   status: Exclude<HireConfigureStatus, "ready">;
   timedOut: boolean;
 }) {
   const actions = (
     <div className="colony-hire-state-actions">
-      {status === "role-missing" ? null : (
-        <HireButton onClick={onRetry} size="md">
-          Try again
-        </HireButton>
-      )}
+      <HireButton onClick={onRetry} size="md">
+        Try again
+      </HireButton>
       <HireButton onClick={onBack} size="md" variant="outline">
         Back to roles
       </HireButton>
@@ -286,14 +286,21 @@ function HireConfigureState({
         ) : status === "error" ? (
           <HireRecovery
             action={actions}
-            title="This information could not load"
+            title={
+              roleCatalogRefreshAttempted
+                ? "The latest role catalog could not be checked"
+                : "This information could not load"
+            }
           >
-            A connection failure is not an empty record. Your draft is kept.
+            {roleCatalogRefreshAttempted
+              ? "We tried to refresh the role catalog before deciding this role was missing, but that refresh failed. Your draft is kept."
+              : "A connection failure is not an empty record. Your draft is kept."}
           </HireRecovery>
         ) : (
           <HireRecovery action={actions} title="This role could not be loaded">
-            The role is no longer in your catalog. Go back to the roles and
-            choose it again.
+            We checked the latest role catalog again, but this role is no longer
+            available. It may have been removed on this device. Go back to
+            choose another role, or try again if you expect it to be there.
           </HireRecovery>
         )}
       </div>
@@ -362,6 +369,18 @@ export function HireConfigureScreen({
   const [draftSaveError, setDraftSaveError] = React.useState(false);
   const [nameTaken, setNameTaken] = React.useState(source?.nameTaken === true);
   const initialized = React.useRef(form !== null);
+  const roleCatalogKey = `${hireId}:${personaId ?? ""}`;
+  const [roleCatalogRefresh, setRoleCatalogRefresh] = React.useState<{
+    key: string;
+    state: "idle" | "refreshing" | "complete";
+  }>(() => ({ key: roleCatalogKey, state: "idle" }));
+  const refetchPersonas = personasQuery.refetch;
+  // A navigation can keep this component mounted with a new role id. A result
+  // for the previous role must not make the new one look conclusively missing.
+  const roleCatalogRefreshState =
+    roleCatalogRefresh.key === roleCatalogKey
+      ? roleCatalogRefresh.state
+      : "idle";
 
   React.useEffect(() => {
     if (initialized.current) return;
@@ -531,6 +550,30 @@ export function HireConfigureScreen({
       channel.archivedAt === null &&
       channel.isMember,
   );
+  const roleMayBeMissing =
+    rolePack === null &&
+    !personasQuery.isPending &&
+    !headQuery.isPending &&
+    !personasQuery.isError &&
+    !headQuery.isError;
+  React.useEffect(() => {
+    if (!roleMayBeMissing || roleCatalogRefreshState !== "idle") return;
+    let current = true;
+    setRoleCatalogRefresh({ key: roleCatalogKey, state: "refreshing" });
+    void refetchPersonas().finally(() => {
+      if (current) {
+        setRoleCatalogRefresh({ key: roleCatalogKey, state: "complete" });
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [
+    refetchPersonas,
+    roleCatalogKey,
+    roleCatalogRefreshState,
+    roleMayBeMissing,
+  ]);
   const status = hireConfigureStatus({
     personas: personasQuery,
     runtimes: runtimesQuery,
@@ -541,6 +584,7 @@ export function HireConfigureScreen({
     head: headQuery,
     hasRolePack: rolePack !== null,
     hasForm: form !== null,
+    freshRoleFetchComplete: roleCatalogRefreshState === "complete",
   });
   const [attempt, setAttempt] = React.useState(0);
   const [timedOut, setTimedOut] = React.useState(false);
@@ -556,6 +600,7 @@ export function HireConfigureScreen({
   }, [attempt, status]);
   const retry = () => {
     setAttempt((count) => count + 1);
+    setRoleCatalogRefresh({ key: roleCatalogKey, state: "idle" });
     void Promise.all([
       personasQuery.refetch(),
       runtimesQuery.refetch(),
@@ -639,6 +684,7 @@ export function HireConfigureScreen({
       <HireConfigureState
         onBack={() => void goHireRoles()}
         onRetry={retry}
+        roleCatalogRefreshAttempted={roleCatalogRefreshState !== "idle"}
         status={status === "ready" ? "loading" : status}
         timedOut={timedOut}
       />
@@ -685,6 +731,7 @@ export function HireConfigureScreen({
   };
 
   const previewName = form.displayName.trim() || "New employee";
+  const managerOptions = teamQuery.data?.members ?? [];
   const chooseChannel = (channelId: string, checked: boolean) => {
     const selected = new Set(
       form.channelIds.length > 0
@@ -706,6 +753,18 @@ export function HireConfigureScreen({
     setForm((current) =>
       current ? { ...current, channelIds, introductionChannelId } : current,
     );
+  };
+  const chooseHomeChannel = (channelId: string) => {
+    setForm((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        introductionChannelId: channelId,
+        channelIds: current.channelIds.includes(channelId)
+          ? current.channelIds
+          : [...current.channelIds, channelId],
+      };
+    });
   };
   const modelGroups = modelChoices.reduce<
     { label: string; choices: ModelChoice[]; isFree: boolean }[]
@@ -742,8 +801,8 @@ export function HireConfigureScreen({
   return (
     <HirePage testId="hire-configure">
       <HireTitle
-        subtitle="Its name, picture, AI and channels."
-        title={`Set up your ${rolePack.title}`}
+        subtitle={`From the ${rolePack.title} role pack`}
+        title="Configure employee"
       />
       <HireSteps current={2} onSelect={() => void goHireRoles()} />
       {workerMenu.map((runtimeId) => {
@@ -781,12 +840,8 @@ export function HireConfigureScreen({
                 testId="hire-preview-avatar"
               />
               <div className="colony-hire-simple-picture-copy">
-                <strong>Picture</strong>
-                <span>
-                  A Colony ant picked for{" "}
-                  {agentFunctionFromRole(rolePack.job).toLowerCase()}. Choose a
-                  colour or use a photo.
-                </span>
+                <strong>{previewName}</strong>
+                <span>{form.title || rolePack.title} · AI employee</span>
               </div>
               <AgentAntPicturePicker
                 avatarUrl={avatarUrl || agentAntAvatarDataUrl(rolePack.job)}
@@ -809,7 +864,7 @@ export function HireConfigureScreen({
                   </>
                 }
                 htmlFor="hire-employee-name"
-                label="Name"
+                label="Employee name"
               >
                 <input
                   autoComplete="off"
@@ -825,7 +880,7 @@ export function HireConfigureScreen({
                   value={form.displayName}
                 />
               </HireField>
-              <HireField htmlFor="hire-title" label="Role">
+              <HireField htmlFor="hire-title" label="Title">
                 <input
                   className="colony-hire-input"
                   data-testid="hire-title"
@@ -836,213 +891,186 @@ export function HireConfigureScreen({
                   value={form.title}
                 />
               </HireField>
+              <HireField htmlFor="hire-manager" label="Reports to">
+                <select
+                  className="colony-hire-select"
+                  data-testid="hire-manager"
+                  id="hire-manager"
+                  onChange={(event) =>
+                    updateForm("managerPubkey", event.target.value)
+                  }
+                  value={form.managerPubkey}
+                >
+                  <option value="">No direct manager</option>
+                  {managerOptions.map((member) => {
+                    const name = member.fallbackName?.trim() || "Team member";
+                    const title = member.position?.head.title.trim();
+                    return (
+                      <option key={member.pubkey} value={member.pubkey}>
+                        {title ? `${name} · ${title}` : name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </HireField>
+              <HireField htmlFor="hire-home-channel" label="Home channel">
+                <select
+                  className="colony-hire-select"
+                  data-testid="hire-home-channel"
+                  id="hire-home-channel"
+                  onChange={(event) => chooseHomeChannel(event.target.value)}
+                  value={form.introductionChannelId}
+                >
+                  {validChannels.length === 0 ? (
+                    <option value="">No joined channels</option>
+                  ) : (
+                    validChannels.map((channel) => (
+                      <option key={channel.id} value={channel.id}>
+                        # {channel.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </HireField>
               <HireField
-                htmlFor="hire-respond-to"
-                label="Who can give instructions"
+                hint={<small>Work pauses when the allowance runs out.</small>}
+                htmlFor="hire-weekly-allowance"
+                label="Weekly allowance (USD, API-equivalent)"
+              >
+                <span className="colony-hire-prefixed">
+                  <span>USD</span>
+                  <input
+                    aria-label="Weekly allowance in US dollars"
+                    data-testid="hire-weekly-allowance"
+                    id="hire-weekly-allowance"
+                    inputMode="decimal"
+                    maxLength={24}
+                    onChange={(event) =>
+                      updateForm("weeklyAllowance", event.target.value)
+                    }
+                    placeholder="[AMOUNT]"
+                    value={form.weeklyAllowance}
+                  />
+                </span>
+              </HireField>
+              <HireField
+                hint={<small>Allowed by the role pack.</small>}
+                htmlFor="hire-worker-model"
+                label="Worker model"
               >
                 <select
                   className="colony-hire-select"
-                  data-testid="hire-respond-to"
-                  id="hire-respond-to"
+                  data-testid="hire-worker-model"
+                  disabled={rolePack.workerMenu.length === 0}
+                  id="hire-worker-model"
                   onChange={(event) =>
-                    updateForm("respondTo", event.target.value as RespondToMode)
+                    setForm((current) =>
+                      current
+                        ? {
+                            ...current,
+                            runtimeId: event.target.value,
+                            providerId: "",
+                            modelId: "",
+                            effortLevel: "",
+                          }
+                        : current,
+                    )
                   }
-                  value={form.respondTo}
+                  value={form.runtimeId}
                 >
-                  <option value="owner-only">You and admins</option>
-                  <option value="anyone">Anyone in this space</option>
+                  {rolePack.workerMenu.length === 0 ? (
+                    <option value="">No worker model is allowed</option>
+                  ) : (
+                    rolePack.workerMenu.map((runtimeId) => (
+                      <option key={runtimeId} value={runtimeId}>
+                        {runtimesById.get(runtimeId)?.label ?? runtimeId}
+                      </option>
+                    ))
+                  )}
                 </select>
               </HireField>
             </div>
-            <fieldset className="colony-hire-simple-channel-fieldset">
-              <legend>Add it to channels</legend>
-              <div className="colony-hire-simple-channel-list">
-                {validChannels.map((channel) => {
-                  const checked = form.channelIds.includes(channel.id);
-                  return (
-                    <label
-                      className="colony-hire-simple-channel"
-                      data-checked={checked}
-                      key={channel.id}
-                    >
-                      <input
-                        checked={checked}
-                        data-testid={`hire-channel-${channel.id}`}
-                        onChange={(event) =>
-                          chooseChannel(channel.id, event.target.checked)
-                        }
-                        type="checkbox"
-                      />
-                      <span># {channel.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              <small>
-                {validChannels.length === 0
-                  ? "Join a channel before hiring this employee."
-                  : "Tag it in any other channel to add it there."}
-              </small>
-            </fieldset>
-          </section>
-          <section
-            aria-labelledby="hire-ai-heading"
-            className="colony-hire-card colony-hire-simple-card colony-hire-simple-ai"
-          >
-            <h2 id="hire-ai-heading">AI</h2>
-            <dl
-              aria-label="Selected AI"
-              className="colony-hire-simple-ai-summary"
+            <section
+              aria-labelledby="hire-tool-scope-heading"
+              className="colony-hire-configure-tool-scope"
             >
-              <div>
-                <dt>Model</dt>
-                <dd>{currentChoice?.label ?? "Choose a model"}</dd>
-              </div>
-              <div>
-                <dt>Harness</dt>
-                <dd>{selectedRuntime?.label ?? form.runtimeId}</dd>
-              </div>
-              {form.effortLevel ? (
-                <div>
-                  <dt>Effort</dt>
-                  <dd>{form.effortLevel}</dd>
-                </div>
-              ) : null}
-              {selectedProviderLabel ? (
-                <div className="colony-hire-simple-ai-provider">
-                  <dt>Provider</dt>
-                  <dd>{selectedProviderLabel}</dd>
-                </div>
-              ) : null}
-            </dl>
-            <fieldset
-              aria-label="Available AI models"
-              className="colony-hire-simple-models"
-            >
-              {form.providerId === "colony-credits" &&
-              freeModelsQuery.isPending ? (
-                <p role="status">Checking the relay's free models…</p>
-              ) : null}
-              {form.providerId === "colony-credits" &&
-              freeModelsQuery.isError ? (
-                <p data-tone="error" role="alert">
-                  Free models could not be checked. Retry or choose another
-                  harness.
-                  <button
-                    className="colony-hire-inline-link"
-                    onClick={() => void freeModelsQuery.refetch()}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                </p>
-              ) : null}
-              {modelGroups.map((group) => (
-                <section
-                  aria-label={group.label}
-                  className="colony-hire-simple-model-group"
-                  key={group.label}
-                >
-                  <h3>{group.label}</h3>
-                  {group.choices.map((choice) => {
-                    const runtime = runtimesById.get(choice.runtimeId);
-                    const providerLabel = simpleProviderLabel({
-                      runtimeId: choice.runtimeId,
-                      provider: choice.providerId,
-                      envVars: inheritedDefaults.inheritedEnvVars,
-                    });
-                    const checked = currentChoice?.value === choice.value;
-                    return (
-                      <label
-                        className="colony-hire-simple-model-option"
-                        data-checked={checked}
-                        key={choice.value}
-                      >
-                        <input
-                          aria-label={
-                            choice.label +
-                            ", " +
-                            (runtime?.label ?? choice.runtimeId)
-                          }
-                          checked={checked}
-                          data-testid="hire-ai-model-option"
-                          name="hire-ai-model"
-                          onChange={() => {
-                            setForm((current) =>
-                              current
-                                ? {
-                                    ...current,
-                                    runtimeId: choice.runtimeId,
-                                    providerId: choice.providerId,
-                                    modelId: choice.modelId,
-                                    effortLevel: "",
-                                  }
-                                : current,
-                            );
-                          }}
-                          type="radio"
-                          value={choice.value}
-                        />
-                        <span>
-                          <strong>{choice.label}</strong>
-                          <small>
-                            Harness: {runtime?.label ?? choice.runtimeId}
-                            {providerLabel
-                              ? ` · Provider: ${providerLabel}`
-                              : ""}
-                          </small>
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {group.isFree ? (
-                    <p className="colony-hire-simple-free-note">
-                      If it is busy, Colony uses the next free model
-                      automatically.
-                    </p>
-                  ) : null}
-                </section>
-              ))}
-              {modelChoices.length === 0 &&
-              !(
-                form.providerId === "colony-credits" &&
-                freeModelsQuery.isPending
-              ) ? (
-                <p role="status">
-                  No model choices were reported by the available harnesses.
-                  Check the harness sign-in and model settings before
-                  continuing.
-                </p>
-              ) : null}
-            </fieldset>
-            {effortOptions.length > 0 ? (
-              <fieldset className="colony-hire-simple-effort">
-                <legend>Effort</legend>
-                <div role="radiogroup" aria-label="Effort">
-                  {effortOptions.map((effort) => (
-                    <label
-                      data-checked={form.effortLevel === effort}
-                      key={effort}
-                    >
-                      <input
-                        checked={form.effortLevel === effort}
-                        data-testid={`hire-effort-${effort}`}
-                        name="hire-effort"
-                        onChange={() => updateForm("effortLevel", effort)}
-                        type="radio"
-                        value={effort}
-                      />
-                      {effort}
-                    </label>
+              <h2 id="hire-tool-scope-heading">Included tool scope</h2>
+              {rolePack.tools.length > 0 ? (
+                <div className="colony-hire-configure-tool-list">
+                  {rolePack.tools.map((tool) => (
+                    <div key={`${tool.name}:${tool.risk}`}>
+                      <ToolGlyph tool={tool} />
+                      <strong>{tool.name}</strong>
+                      <ToolChip tool={tool} />
+                    </div>
                   ))}
                 </div>
-                <small>
-                  Effort levels as {selectedRuntime?.label ?? "this harness"}{" "}
-                  names them.
-                </small>
-              </fieldset>
-            ) : null}
+              ) : (
+                <p>No tools are included in this role pack.</p>
+              )}
+              <p>
+                Tools come from the role pack. Spending money, messaging
+                outsiders, deleting data or publishing still needs a standing
+                permission.
+              </p>
+            </section>
+            <div className="colony-hire-simple-footer">
+              <HireButton
+                disabled={!canContinue}
+                testId="hire-review"
+                type="submit"
+              >
+                Review hire
+                <ArrowGlyph size={16} />
+              </HireButton>
+              <HireButton onClick={() => void goHireRoles()} variant="outline">
+                Cancel
+              </HireButton>
+            </div>
           </section>
+          <aside
+            aria-label="Role summary"
+            className="colony-hire-card colony-hire-role-summary"
+          >
+            <span className="colony-hire-role-summary-eyebrow">Role pack</span>
+            <div className="colony-hire-role-summary-head">
+              <span className="colony-hire-icon-tile" data-active="true">
+                <RoleIcon job={rolePack.job} title={rolePack.title} />
+              </span>
+              <strong>{rolePack.title}</strong>
+            </div>
+            <dl>
+              <div>
+                <dt>Job</dt>
+                <dd>{rolePack.job}</dd>
+              </div>
+              <div>
+                <dt>Skills</dt>
+                <dd className="colony-hire-role-summary-skills">
+                  {rolePack.skills.length > 0
+                    ? rolePack.skills.map((skill) => (
+                        <span key={skill}>{skill}</span>
+                      ))
+                    : "No skills listed"}
+                </dd>
+              </div>
+              <div>
+                <dt>Default allowance</dt>
+                <dd>
+                  {rolePack.defaultAllowance
+                    ? `USD ${rolePack.defaultAllowance} / week`
+                    : "No default amount"}
+                </dd>
+              </div>
+            </dl>
+            <button
+              className="colony-hire-link"
+              onClick={() => void goHireRoles()}
+              type="button"
+            >
+              Change role
+            </button>
+          </aside>
         </div>
         {draftSaveError ? (
           <p data-tone="error" role="alert">
@@ -1054,19 +1082,208 @@ export function HireConfigureScreen({
             Uploading picture…
           </p>
         ) : null}
-        <div className="colony-hire-simple-footer">
-          <HireButton onClick={() => void goHireRoles()} variant="outline">
-            Back
-          </HireButton>
-          <HireButton
-            disabled={!canContinue}
-            testId="hire-review"
-            type="submit"
+        <section className="colony-hire-card colony-hire-simple-card colony-hire-simple-settings">
+          <HireField
+            htmlFor="hire-respond-to"
+            label="Who can give instructions"
           >
-            Continue to review
-            <ArrowGlyph size={16} />
-          </HireButton>
-        </div>
+            <select
+              className="colony-hire-select"
+              data-testid="hire-respond-to"
+              id="hire-respond-to"
+              onChange={(event) =>
+                updateForm("respondTo", event.target.value as RespondToMode)
+              }
+              value={form.respondTo}
+            >
+              <option value="owner-only">You and admins</option>
+              <option value="anyone">Anyone in this space</option>
+            </select>
+          </HireField>
+          <fieldset className="colony-hire-simple-channel-fieldset">
+            <legend>Add it to channels</legend>
+            <div className="colony-hire-simple-channel-list">
+              {validChannels.map((channel) => {
+                const checked = form.channelIds.includes(channel.id);
+                return (
+                  <label
+                    className="colony-hire-simple-channel"
+                    data-checked={checked}
+                    key={channel.id}
+                  >
+                    <input
+                      checked={checked}
+                      data-testid={`hire-channel-${channel.id}`}
+                      onChange={(event) =>
+                        chooseChannel(channel.id, event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span># {channel.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <small>
+              {validChannels.length === 0
+                ? "Join a channel before hiring this employee."
+                : "Tag it in any other channel to add it there."}
+            </small>
+          </fieldset>
+        </section>
+        <section
+          aria-labelledby="hire-ai-heading"
+          className="colony-hire-card colony-hire-simple-card colony-hire-simple-ai"
+        >
+          <h2 id="hire-ai-heading">AI</h2>
+          <dl
+            aria-label="Selected AI"
+            className="colony-hire-simple-ai-summary"
+          >
+            <div>
+              <dt>Model</dt>
+              <dd>{currentChoice?.label ?? "Choose a model"}</dd>
+            </div>
+            <div>
+              <dt>Harness</dt>
+              <dd>{selectedRuntime?.label ?? form.runtimeId}</dd>
+            </div>
+            {form.effortLevel ? (
+              <div>
+                <dt>Effort</dt>
+                <dd>{form.effortLevel}</dd>
+              </div>
+            ) : null}
+            {selectedProviderLabel ? (
+              <div className="colony-hire-simple-ai-provider">
+                <dt>Provider</dt>
+                <dd>{selectedProviderLabel}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <fieldset
+            aria-label="Available AI models"
+            className="colony-hire-simple-models"
+          >
+            {form.providerId === "colony-credits" &&
+            freeModelsQuery.isPending ? (
+              <p role="status">Checking the relay's free models…</p>
+            ) : null}
+            {form.providerId === "colony-credits" && freeModelsQuery.isError ? (
+              <p data-tone="error" role="alert">
+                Free models could not be checked. Retry or choose another
+                harness.
+                <button
+                  className="colony-hire-inline-link"
+                  onClick={() => void freeModelsQuery.refetch()}
+                  type="button"
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
+            {modelGroups.map((group) => (
+              <section
+                aria-label={group.label}
+                className="colony-hire-simple-model-group"
+                key={group.label}
+              >
+                <h3>{group.label}</h3>
+                {group.choices.map((choice) => {
+                  const runtime = runtimesById.get(choice.runtimeId);
+                  const providerLabel = simpleProviderLabel({
+                    runtimeId: choice.runtimeId,
+                    provider: choice.providerId,
+                    envVars: inheritedDefaults.inheritedEnvVars,
+                  });
+                  const checked = currentChoice?.value === choice.value;
+                  return (
+                    <label
+                      className="colony-hire-simple-model-option"
+                      data-checked={checked}
+                      key={choice.value}
+                    >
+                      <input
+                        aria-label={
+                          choice.label +
+                          ", " +
+                          (runtime?.label ?? choice.runtimeId)
+                        }
+                        checked={checked}
+                        data-testid="hire-ai-model-option"
+                        name="hire-ai-model"
+                        onChange={() => {
+                          setForm((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  runtimeId: choice.runtimeId,
+                                  providerId: choice.providerId,
+                                  modelId: choice.modelId,
+                                  effortLevel: "",
+                                }
+                              : current,
+                          );
+                        }}
+                        type="radio"
+                        value={choice.value}
+                      />
+                      <span>
+                        <strong>{choice.label}</strong>
+                        <small>
+                          Harness: {runtime?.label ?? choice.runtimeId}
+                          {providerLabel ? ` · Provider: ${providerLabel}` : ""}
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })}
+                {group.isFree ? (
+                  <p className="colony-hire-simple-free-note">
+                    If it is busy, Colony uses the next free model
+                    automatically.
+                  </p>
+                ) : null}
+              </section>
+            ))}
+            {modelChoices.length === 0 &&
+            !(
+              form.providerId === "colony-credits" && freeModelsQuery.isPending
+            ) ? (
+              <p role="status">
+                No model choices were reported by the available harnesses. Check
+                the harness sign-in and model settings before continuing.
+              </p>
+            ) : null}
+          </fieldset>
+          {effortOptions.length > 0 ? (
+            <fieldset className="colony-hire-simple-effort">
+              <legend>Effort</legend>
+              <div role="radiogroup" aria-label="Effort">
+                {effortOptions.map((effort) => (
+                  <label
+                    data-checked={form.effortLevel === effort}
+                    key={effort}
+                  >
+                    <input
+                      checked={form.effortLevel === effort}
+                      data-testid={`hire-effort-${effort}`}
+                      name="hire-effort"
+                      onChange={() => updateForm("effortLevel", effort)}
+                      type="radio"
+                      value={effort}
+                    />
+                    {effort}
+                  </label>
+                ))}
+              </div>
+              <small>
+                Effort levels as {selectedRuntime?.label ?? "this harness"}{" "}
+                names them.
+              </small>
+            </fieldset>
+          ) : null}
+        </section>
       </form>
     </HirePage>
   );
