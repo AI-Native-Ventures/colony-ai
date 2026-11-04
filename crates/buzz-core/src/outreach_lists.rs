@@ -1497,7 +1497,7 @@ mod tests {
         a.found = Some(39);
         a.skipped_duplicates = Some(4);
         a.status = Some(CampaignStatus::Complete);
-        a.end_note = Some("Google has no more restaurants".into());
+        a.end_note = Some("The provider did not offer another page for restaurants".into());
         let head = apply_campaign_action(None, &a, &person(), 100, EVENT).unwrap();
         assert_eq!((head.found, head.skipped_duplicates), (39, 4));
         assert_eq!(head.status, CampaignStatus::Complete);

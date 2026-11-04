@@ -84,8 +84,9 @@ async function startCampaign(page: Page) {
   await expect(typeDetails).toBeVisible();
   await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
   const dialog = page.getByTestId("discovery-campaign-dialog");
-  await dialog.getByLabel("Location").fill("Johannesburg");
-  await dialog.getByLabel("Prospect target").fill("2");
+  await dialog.getByRole("combobox", { name: "Location" }).fill("Johannesburg");
+  await dialog.getByRole("option").first().click();
+  await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -118,8 +119,8 @@ test.describe("Business records use the relay's business id", () => {
   test("a search saves every prospect under the relay's business id", async ({
     page,
   }) => {
-    await installMockBridge(page, REAL_RUNNER);
     await installSearchStub(page);
+    await installMockBridge(page, REAL_RUNNER);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     await startCampaign(page);
     await expect(
@@ -193,8 +194,8 @@ test.describe("Business records use the relay's business id", () => {
   test("a relay that cannot confirm the business stops the search before it is paid for", async ({
     page,
   }) => {
-    await installMockBridge(page, REAL_RUNNER);
     await installSearchStub(page);
+    await installMockBridge(page, REAL_RUNNER);
     await page.route(MEMBER_DIRECTORY, (route) =>
       route.fulfill({
         json: { owner_pubkey: "a".repeat(64), communities: [] },

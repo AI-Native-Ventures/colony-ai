@@ -99,6 +99,7 @@ fn search_for(limit: u32) -> ValidatedSearch {
     ValidatedSearch {
         query: "guesthouses, Melville".to_string(),
         region: Some("za".to_string()),
+        coordinates: None,
         limit,
         skip: 0,
         language: "en".to_string(),

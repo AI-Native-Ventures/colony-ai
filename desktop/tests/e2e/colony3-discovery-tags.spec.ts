@@ -153,8 +153,8 @@ async function openRealDiscovery(
   await page.setViewportSize({ width, height });
   await seedTheme(page, dark);
   await installDiscoveryImageMocks(page);
-  await installMockBridge(page, REAL_RUNNER);
   await installSearchStub(page);
+  await installMockBridge(page, REAL_RUNNER);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expectDiscoveryReady(page);
   await expectNoHorizontalOverflow(page);
@@ -325,8 +325,11 @@ for (const [width, height] of [
 
       const form = page.getByTestId("discovery-campaign-dialog");
       await expect(form).toBeVisible();
-      await form.getByLabel("Location").fill("South Africa");
-      await form.getByLabel("Prospect target").fill("5");
+      await form
+        .getByRole("combobox", { name: "Location" })
+        .fill("South Africa");
+      await form.getByRole("option").first().click();
+      await form.getByLabel("Prospect target").fill("100");
       await form
         .getByRole("checkbox", {
           name: "I approve this campaign’s maximum budget.",

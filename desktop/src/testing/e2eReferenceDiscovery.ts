@@ -13,6 +13,24 @@ const REFERENCE_RUNNER = {
   pubkey: REFERENCE_AGENTS.aya.pubkey,
 };
 
+// The reference workspace also seeds guesthouse leads for outreach scenarios.
+// Keep this simulated home-furnishings campaign restricted to its twelve
+// matching fixture records.
+const REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS = [
+  REFERENCE_PROSPECT_IDS["the-olive-house"],
+  REFERENCE_PROSPECT_IDS["form-field"],
+  REFERENCE_PROSPECT_IDS["sunday-edit"],
+  REFERENCE_PROSPECT_IDS.stillroom,
+  REFERENCE_PROSPECT_IDS["gather-house"],
+  REFERENCE_PROSPECT_IDS["common-ground"],
+  REFERENCE_PROSPECT_IDS["clay-collective"],
+  REFERENCE_PROSPECT_IDS["woven-living"],
+  REFERENCE_PROSPECT_IDS["little-kin"],
+  REFERENCE_PROSPECT_IDS["north-note"],
+  REFERENCE_PROSPECT_IDS["studio-local"],
+  REFERENCE_PROSPECT_IDS["cedar-co"],
+] as const;
+
 const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   id: "agency-prospects",
   name: "Independent brands needing social support",
@@ -27,7 +45,7 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   budgetUsd: 2.5,
   criteria: "",
   status: "complete",
-  prospectIds: Object.values(REFERENCE_PROSPECT_IDS),
+  prospectIds: [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS],
   created: false,
   runBy: REFERENCE_RUNNER,
   simulated: true,
@@ -101,9 +119,10 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
     const hasReferenceResults =
       input.audience === "businesses" &&
       input.verticalId === "home-furnishings-retailers" &&
-      input.location.toLocaleLowerCase().includes("south africa");
+      input.locationSelection?.kind === "country" &&
+      input.locationSelection.countryCode?.toUpperCase() === "ZA";
     const prospectIds = hasReferenceResults
-      ? Object.values(REFERENCE_PROSPECT_IDS)
+      ? [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS]
       : [];
     const campaign: DiscoveryCampaign = {
       ...input,
