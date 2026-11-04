@@ -686,6 +686,7 @@ export function useSetManagedAgentStartOnAppLaunchMutation() {
 }
 
 export function useDeleteManagedAgentMutation() {
+  // E2E baseline proof: exercise the agent dialog shards on main.
   const queryClient = useQueryClient();
 
   return useMutation({
