@@ -99,3 +99,33 @@ printf '%s\n' build apk --debug --no-pub \
   >"$fixture/expected"
 diff -u "$fixture/expected" "$CALL_LOG"
 printf 'PASS mobile-build-android server client ID\n'
+
+# ubuntu-26.04 runners default to JDK 25, which Gradle 8.14 cannot parse: the
+# Android recipe must hand the build the runner's JDK 21, then 17, when present.
+cat > "$fixture/bin/flutter" <<'STUB'
+#!/bin/bash
+set -eu
+printf '%s\n' "$JAVA_HOME" > "$CALL_LOG"
+printf '%s\n' "${PATH%%:*}" >> "$CALL_LOG"
+STUB
+chmod +x "$fixture/bin/flutter"
+for jdk in 17 21; do
+  mkdir -p "$fixture/jdk$jdk/bin"
+  printf '#!/bin/bash\nexit 0\n' > "$fixture/jdk$jdk/bin/java"
+  chmod +x "$fixture/jdk$jdk/bin/java"
+done
+export JAVA_HOME="$fixture/jdk25"
+export JAVA_HOME_17_X64="$fixture/jdk17"
+export JAVA_HOME_21_X64="$fixture/jdk21"
+(cd "$fixture" && /bin/bash "$fixture/mobile-build-android")
+printf '%s\n' "$fixture/jdk21" "$fixture/jdk21/bin" >"$fixture/expected"
+diff -u "$fixture/expected" "$CALL_LOG"
+unset JAVA_HOME_21_X64
+(cd "$fixture" && /bin/bash "$fixture/mobile-build-android")
+printf '%s\n' "$fixture/jdk17" "$fixture/jdk17/bin" >"$fixture/expected"
+diff -u "$fixture/expected" "$CALL_LOG"
+unset JAVA_HOME_17_X64
+(cd "$fixture" && /bin/bash "$fixture/mobile-build-android")
+printf '%s\n' "$fixture/jdk25" "$fixture/bin" >"$fixture/expected"
+diff -u "$fixture/expected" "$CALL_LOG"
+printf 'PASS mobile-build-android JDK selection\n'
