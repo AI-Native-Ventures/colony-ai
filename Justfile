@@ -916,6 +916,15 @@ mobile-build-android:
     #!/usr/bin/env bash
     set -euo pipefail
     ./scripts/mobile-worktree-overrides.sh
+    # Gradle 8.14 cannot read a JDK 25 version string (ubuntu-26.04 runners
+    # default to it), so prefer the runner's JDK 21, then 17, when present.
+    for jdk_home in "${JAVA_HOME_21_X64:-}" "${JAVA_HOME_17_X64:-}"; do
+        if [[ -n "$jdk_home" && -x "$jdk_home/bin/java" ]]; then
+            export JAVA_HOME="$jdk_home"
+            export PATH="$jdk_home/bin:$PATH"
+            break
+        fi
+    done
     set -- build apk --debug --no-pub
     if [[ -n "${BUZZ_PUSH_GATEWAY_URL:-}" ]]; then
         set -- "$@" --dart-define="BUZZ_PUSH_GATEWAY_URL=${BUZZ_PUSH_GATEWAY_URL}"
