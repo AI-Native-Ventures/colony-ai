@@ -7,7 +7,6 @@ import {
   usePersonasQuery,
 } from "@/features/agents/hooks";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
-import { usePersonaModelDiscovery } from "@/features/agents/ui/usePersonaModelDiscovery";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
@@ -19,7 +18,6 @@ import type {
   RespondToMode,
 } from "@/shared/api/types";
 import { readConfiguredFreeAiModels } from "@/features/credits/creditsGateway";
-import { getProviderEffortConfig } from "@/features/agents/ui/buzzAgentConfig";
 import {
   simpleModelLabel,
   simpleProviderLabel,
@@ -44,7 +42,16 @@ import {
 } from "../hireConfigureStatus";
 import type { HireConfigureStatus } from "../hireConfigureStatus";
 import type { HireProposal } from "@/features/company-asks/askRecords";
-import { ArrowGlyph, RoleIcon, ToolChip, ToolGlyph } from "./hireTools";
+import { ArrowGlyph } from "./hireTools";
+import {
+  HireConfigureRoleSummary,
+  HireConfigureToolScope,
+} from "./HireConfigureRolePack";
+import {
+  defaultEffortFor,
+  effortOptionsFor,
+  WorkerModelProbe,
+} from "./hireConfigureModels";
 import {
   HireButton,
   HireField,
@@ -145,60 +152,6 @@ function modelChoicesForRuntime(
     modelId: option.id,
     label: option.id ? simpleModelLabel(option.id, providerId) : option.label,
   }));
-}
-
-function effortOptionsFor(
-  runtime: AcpRuntimeCatalogEntry | undefined,
-  providerId: string,
-  modelId: string,
-): readonly string[] {
-  if (runtime?.effortCanonicalValues?.length) {
-    return runtime.effortCanonicalValues;
-  }
-  if (runtime?.id === "buzz-agent") {
-    return getProviderEffortConfig(providerId, modelId).validValues;
-  }
-  return [];
-}
-
-function defaultEffortFor(
-  runtime: AcpRuntimeCatalogEntry | undefined,
-  providerId: string,
-  modelId: string,
-) {
-  if (runtime?.id === "buzz-agent") {
-    return getProviderEffortConfig(providerId, modelId).defaultValue ?? "";
-  }
-  return runtime?.effortCanonicalValues?.[0] ?? "";
-}
-
-function WorkerModelProbe({
-  envVars,
-  onOptions,
-  providerId,
-  runtime,
-}: {
-  envVars: Record<string, string>;
-  onOptions: (
-    runtimeId: string,
-    providerId: string,
-    options: readonly { id: string; label: string }[] | null,
-  ) => void;
-  providerId: string;
-  runtime: AcpRuntimeCatalogEntry;
-}) {
-  const { discoveredModelOptions } = usePersonaModelDiscovery({
-    envVars,
-    isCustomProviderEditing: false,
-    modelFieldVisible: true,
-    open: true,
-    provider: providerId,
-    selectedRuntime: runtime,
-  });
-  React.useEffect(() => {
-    onOptions(runtime.id, providerId, discoveredModelOptions);
-  }, [discoveredModelOptions, onOptions, providerId, runtime.id]);
-  return null;
 }
 
 function initialValues(
@@ -990,30 +943,7 @@ export function HireConfigureScreen({
                 </select>
               </HireField>
             </div>
-            <section
-              aria-labelledby="hire-tool-scope-heading"
-              className="colony-hire-configure-tool-scope"
-            >
-              <h2 id="hire-tool-scope-heading">Included tool scope</h2>
-              {rolePack.tools.length > 0 ? (
-                <div className="colony-hire-configure-tool-list">
-                  {rolePack.tools.map((tool) => (
-                    <div key={`${tool.name}:${tool.risk}`}>
-                      <ToolGlyph tool={tool} />
-                      <strong>{tool.name}</strong>
-                      <ToolChip tool={tool} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p>No tools are included in this role pack.</p>
-              )}
-              <p>
-                Tools come from the role pack. Spending money, messaging
-                outsiders, deleting data or publishing still needs a standing
-                permission.
-              </p>
-            </section>
+            <HireConfigureToolScope rolePack={rolePack} />
             <div className="colony-hire-simple-footer">
               <HireButton
                 disabled={!canContinue}
@@ -1028,49 +958,10 @@ export function HireConfigureScreen({
               </HireButton>
             </div>
           </section>
-          <aside
-            aria-label="Role summary"
-            className="colony-hire-card colony-hire-role-summary"
-          >
-            <span className="colony-hire-role-summary-eyebrow">Role pack</span>
-            <div className="colony-hire-role-summary-head">
-              <span className="colony-hire-icon-tile" data-active="true">
-                <RoleIcon job={rolePack.job} title={rolePack.title} />
-              </span>
-              <strong>{rolePack.title}</strong>
-            </div>
-            <dl>
-              <div>
-                <dt>Job</dt>
-                <dd>{rolePack.job}</dd>
-              </div>
-              <div>
-                <dt>Skills</dt>
-                <dd className="colony-hire-role-summary-skills">
-                  {rolePack.skills.length > 0
-                    ? rolePack.skills.map((skill) => (
-                        <span key={skill}>{skill}</span>
-                      ))
-                    : "No skills listed"}
-                </dd>
-              </div>
-              <div>
-                <dt>Default allowance</dt>
-                <dd>
-                  {rolePack.defaultAllowance
-                    ? `USD ${rolePack.defaultAllowance} / week`
-                    : "No default amount"}
-                </dd>
-              </div>
-            </dl>
-            <button
-              className="colony-hire-link"
-              onClick={() => void goHireRoles()}
-              type="button"
-            >
-              Change role
-            </button>
-          </aside>
+          <HireConfigureRoleSummary
+            onChangeRole={() => void goHireRoles()}
+            rolePack={rolePack}
+          />
         </div>
         {draftSaveError ? (
           <p data-tone="error" role="alert">
