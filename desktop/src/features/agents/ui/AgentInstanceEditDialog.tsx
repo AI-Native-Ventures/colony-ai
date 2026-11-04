@@ -67,11 +67,11 @@ import {
 import { AgentAntPictureControl } from "./AgentAntPicturePicker";
 import { agentAntAvatarDataUrl, agentFunctionFromRole } from "./agentAntAvatar";
 import { resolveManagedAgentAvatarUrl } from "./managedAgentAvatar";
-import { simpleModelLabel } from "./simpleAgentAi";
 import {
   providerOptionsWithFreeAi,
   useAgentFreeAiModels,
 } from "./useAgentFreeAiOptions";
+import { AgentCreditsModelField } from "./AgentCreditsModelField";
 import { OwnerOnlyAccessField } from "./OwnerOnlyAccessField";
 import type { EnvVarsValue } from "./EnvVarsEditor";
 import { useRequiredCredentialState } from "./useRequiredCredentialState";
@@ -93,6 +93,7 @@ import { useProviderApiKeyFieldState } from "./providerApiKeyFieldState";
 import { resolveModelFieldStatusMessage } from "./agentConfigControls";
 import { showAgentProfileSyncWarning } from "./agentProfileSyncWarning";
 import { AddCustomHarnessDialog } from "./AddCustomHarnessDialog";
+import { useAgentRuntimeSwitchSave } from "./agentRuntimeSwitchSave";
 import {
   ADD_CUSTOM_HARNESS_OPTION,
   runtimeDropdownAction,
@@ -117,6 +118,11 @@ export function AgentInstanceEditDialog({
 }) {
   const updateMutation = useUpdateManagedAgentMutation();
   const startMutation = useStartManagedAgentMutation();
+  const saveWithRuntimeSwitch = useAgentRuntimeSwitchSave(
+    agent,
+    updateMutation.mutateAsync,
+    onOpenChange,
+  );
   const queryClient = useQueryClient();
   // Spans the COMPLETE Save sequence (locked update + standalone setters).
   // Every gate must key off this, not updateMutation.isPending alone.
@@ -437,6 +443,7 @@ export function AgentInstanceEditDialog({
     discoveredModelOptions,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
+    refreshModelDiscovery,
   } = usePersonaModelDiscovery({
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
@@ -696,17 +703,14 @@ export function AgentInstanceEditDialog({
           (resolvedAvatar ?? null) !== (agent.avatarUrl ?? null)
             ? (resolvedAvatar ?? null)
             : undefined,
-        // relayUrl deliberately never submitted: the legacy per-record pin is
-        // ignored (#2122) and the stored value is preserved as-is.
+        // Legacy relayUrl pins are ignored (#2122); omit it and preserve storage.
         acpCommand:
           acpCommand.trim() !== agent.acpCommand
             ? acpCommand.trim()
             : undefined,
         agentCommand: agentCommandUpdate,
-        // A non-inheriting selection is a deliberate pin — signal it so the
-        // backend preserves a Custom/runtime command even when it maps to the
-        // linked persona's own runtime (otherwise it would be dropped back to
-        // inherit). Omitted (falsy) when inheriting or on a name-only edit.
+        // Signal deliberate pins so Custom and persona-matching commands stay
+        // pinned. Omit this for inheritance and name-only edits.
         harnessOverride:
           agentCommandUpdate != null ? !inheritHarness : undefined,
         agentArgs:
@@ -730,9 +734,14 @@ export function AgentInstanceEditDialog({
             : normalizedModel !== (agent.model ?? null)
               ? normalizedModel
               : undefined,
-        // Tri-state provider persistence keyed on providerRuntimeCapability
-        // (see the classification comment above for the capable/locked/unknown
-        // contract). llmProviderFieldVisible is UX visibility only; not used here.
+        modelOverride:
+          linkedPersona != null &&
+          !isColonyFreeAi &&
+          model.trim() !== (agent.model ?? "")
+            ? model.trim() || null
+            : undefined,
+        // Persist by provider capability: capable writes, locked clears,
+        // unknown omits. Field visibility remains UX-only.
         provider:
           providerRuntimeCapability === "capable"
             ? normalizedSubmitProvider !== (agent.provider ?? null)
@@ -747,12 +756,8 @@ export function AgentInstanceEditDialog({
           ? undefined
           : submitEnvVars,
         respondTo: respondTo !== agent.respondTo ? respondTo : undefined,
-        // The allowlist is preserved across mode toggles in local UI state
-        // (so a user can flip away from allowlist and back without losing
-        // their entries), but we only send it on the wire when (a) it
-        // actually changed, AND (b) the saved mode will need it. Sending
-        // an allowlist while switching to a non-allowlist mode would be
-        // harmless server-side, but it's noise in the persisted record.
+        // Keep allowlist edits across mode toggles, but submit only changed
+        // entries when the saved mode uses them. Other modes get no update.
         respondToAllowlist:
           respondTo === "allowlist" &&
           respondToAllowlist.join(",") !== agent.respondToAllowlist.join(",")
@@ -760,26 +765,27 @@ export function AgentInstanceEditDialog({
             : undefined,
       };
 
-      // Resolve effort before the update so access-change restarts can
-      // snapshot and launch the NEW effort value atomically.
+      // Resolve effort first so access-change restarts snapshot its new value.
       const effortSubmission = resolveEffortSubmission({
         effortLevel,
         originalEffortLevel:
           configSurfaceQuery.data?.normalized.thinkingEffort?.value ?? null,
         inheritTransition: agentCommandUpdate === "",
       });
-      // Include effort in the locked update when touched (tri-state: absent =
-      // don't touch; null = clear; string = set). Only when effortSubmission.persist.
+      // Persist touched effort in the locked update: absent, clear, or set.
       if (effortTouched.current && effortSubmission.persist) {
         input.effortLevel = effortSubmission.level;
       }
 
-      const result = await updateMutation.mutateAsync(input);
+      const result = await saveWithRuntimeSwitch(input, {
+        runtimeId: prospectiveRuntimeId,
+        label: selectedRuntime?.label ?? prospectiveRuntimeId,
+        model: normalizedModel,
+      });
+      if (result === null) return;
 
-      // Standalone setters — sequenced after the locked update resolves so the
-      // dialog remains fully gated (isSaving) for the COMPLETE Save transaction.
-      // A failure here surfaces as setterError (retryable) and aborts before
-      // close, keeping the dialog open so the user can retry Save.
+      // Run standalone setters after the locked update inside the full save gate.
+      // Failures leave the dialog open so the user can retry.
       try {
         if (autoRestartOnConfigChange !== agent.autoRestartOnConfigChange) {
           // Mirrors start-on-app-launch; not part of UpdateManagedAgentInput so
@@ -1011,67 +1017,20 @@ export function AgentInstanceEditDialog({
               />
             </div>
             {isColonyFreeAi ? (
-              <div className="space-y-2 rounded-xl border border-border p-3">
-                <label
-                  className="text-sm font-semibold text-foreground"
-                  htmlFor="agent-free-model-select"
-                >
-                  Colony free AI
-                </label>
-                {freeModelsQuery.isPending ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading available free models…
-                  </p>
-                ) : freeModelsQuery.isError ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-destructive">
-                      Free models could not be loaded.
-                    </p>
-                    <Button
-                      onClick={() => void freeModelsQuery.refetch()}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                ) : freeModels.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No free models are configured on this relay.
-                  </p>
-                ) : (
-                  <>
-                    <PersonaDropdownField
-                      disabled={isSaving}
-                      id="agent-free-model-select"
-                      onValueChange={setModel}
-                      options={freeModels.map((id) => ({
-                        label: simpleModelLabel(id, "colony-credits"),
-                        value: id,
-                      }))}
-                      placeholder="Choose a free model"
-                      value={
-                        freeModels.includes(model.trim())
-                          ? model.trim()
-                          : freeModels[0]
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Colony tries the next free model automatically when this
-                      one is busy.
-                      {freeModels.some((id) =>
-                        id.startsWith("poolside/laguna-"),
-                      )
-                        ? " Laguna models are scheduled to expire 31 Oct."
-                        : ""}
-                    </p>
-                  </>
-                )}
-              </div>
+              <AgentCreditsModelField
+                disabled={isSaving}
+                error={freeModelsQuery.isError}
+                loading={freeModelsQuery.isPending}
+                model={model}
+                models={freeModels}
+                onModelChange={setModel}
+                onRefresh={() => void freeModelsQuery.refetch()}
+                refreshing={freeModelsQuery.isFetching}
+              />
             ) : (
               <EditAgentProviderModelFields
                 disabled={isSaving}
+                runtimeSwitchPubkey={agent.pubkey}
                 llmProviderFieldVisible={llmProviderFieldVisible}
                 providerRequired={providerRequired}
                 providerDropdownOptions={providerDropdownOptions}
@@ -1097,6 +1056,8 @@ export function AgentInstanceEditDialog({
                 modelDropdownOptions={modelDropdownOptions}
                 modelSelectValue={modelSelectValue}
                 onModelDropdownChange={handleModelDropdownChange}
+                onRefreshModels={refreshModelDiscovery}
+                refreshingModels={modelDiscoveryLoading}
                 showCustomModelInput={showCustomModelInput}
                 model={model}
                 onModelChange={setModel}

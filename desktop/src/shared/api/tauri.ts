@@ -132,6 +132,8 @@ export type RawManagedAgent = {
   system_prompt: string | null;
   avatar_url?: string | null;
   model: string | null;
+  running_runtime_id?: string | null;
+  running_model?: string | null;
   model_source?: ManagedAgent["modelSource"];
   provider: string | null;
   persona_out_of_date: boolean;
@@ -595,6 +597,8 @@ export function fromRawManagedAgent(agent: RawManagedAgent): ManagedAgent {
     systemPrompt: agent.system_prompt,
     avatarUrl: agent.avatar_url ?? null,
     model: agent.model,
+    runningRuntimeId: agent.running_runtime_id ?? null,
+    runningModel: agent.running_model ?? null,
     modelSource: agent.model_source ?? null,
     provider: agent.provider ?? null,
     personaOutOfDate: agent.persona_out_of_date ?? false,

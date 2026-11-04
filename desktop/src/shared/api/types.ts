@@ -390,7 +390,16 @@ export type ManagedAgent = {
   systemPrompt: string | null;
   avatarUrl: string | null;
   model: string | null;
-  modelSource: "definition" | "global" | "instance_legacy" | null;
+  /** Runtime observed from the tracked process that is currently running. */
+  runningRuntimeId?: string | null;
+  /** Model reported by the live ACP session or captured at spawn. */
+  runningModel?: string | null;
+  modelSource:
+    | "definition"
+    | "global"
+    | "instance_override"
+    | "instance_legacy"
+    | null;
   /** LLM inference provider, from the agent's pinned record snapshot. */
   provider: string | null;
   /** True when the linked persona has been edited since this agent was created. */
@@ -752,6 +761,8 @@ export type UpdateManagedAgentInput = {
   /** Absent = keep; null = clear; string = localized avatar URL or upload data URI. */
   avatarUrl?: string | null;
   model?: string | null;
+  /** Absent = keep; null = inherit from persona; string = per-agent model. */
+  modelOverride?: string | null;
   provider?: string | null;
   systemPrompt?: string | null;
   /** Absent = don't touch. Present = replace the env_vars map entirely. */

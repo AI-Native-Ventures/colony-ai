@@ -276,6 +276,9 @@ export type MockManagedAgentSeed = {
   systemPrompt?: string | null;
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
+  agentCommandOverride?: string | null;
+  runningRuntimeId?: string | null;
+  runningModel?: string | null;
   status?: RawManagedAgent["status"];
   lastStartedAt?: string | null;
   channelNames?: string[];
@@ -840,6 +843,8 @@ type E2eConfig = {
       mcp?: MockCommandAvailability;
     };
     managedAgents?: MockManagedAgentSeed[];
+    /** Delay managed-agent saves so transitional runtime-switch UI can be observed. */
+    updateManagedAgentDelayMs?: number;
     /** Channel records used only to reproduce frozen visual reference data. */
     visualChannels?: VisualChannelSeed[];
     agentUsageSeries?: import("@/shared/api/tauriArchive").AgentUsageSeries;
@@ -1694,6 +1699,7 @@ type RawManagedAgent = {
   relay_url: string;
   acp_command: string;
   agent_command: string;
+  agent_command_override?: string | null;
   agent_args: string[];
   mcp_command: string;
   turn_timeout_seconds: number;
@@ -1703,7 +1709,14 @@ type RawManagedAgent = {
   system_prompt: string | null;
   avatar_url: string | null;
   model: string | null;
-  model_source?: "definition" | "global" | "instance_legacy" | null;
+  running_runtime_id?: string | null;
+  running_model?: string | null;
+  model_source?:
+    | "definition"
+    | "global"
+    | "instance_override"
+    | "instance_legacy"
+    | null;
   provider?: string | null;
   env_vars?: Record<string, string>;
   status: "running" | "stopped" | "deployed" | "not_deployed";
@@ -2408,6 +2421,11 @@ declare global {
     /** Count of `get_event` invocations for the current defer-target ID since
      *  the last time `__BUZZ_E2E_DEFER_GET_EVENT__` was set. */
     __BUZZ_E2E_GET_EVENT_CALL_COUNT__?: number;
+    /** Model discovery requests issued by the mock bridge, including explicit refreshes. */
+    __BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__?: Array<{
+      agentCommand: string;
+      refresh: boolean;
+    }>;
     /** Release every `start_managed_agent` currently held behind
      *  `startManagedAgentDelayMs`, letting it settle (scope checks, then any
      *  armed `startManagedAgentErrors` rejection) without waiting out the
@@ -2891,6 +2909,8 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     provider: agent.provider ?? null,
     env_vars: { ...(agent.env_vars ?? {}) },
     status: agent.status,
+    running_runtime_id: agent.running_runtime_id ?? null,
+    running_model: agent.running_model ?? null,
     pid: agent.pid,
     created_at: agent.created_at,
     updated_at: agent.updated_at,
@@ -3510,6 +3530,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     relay_url: seed.relayUrl ?? DEFAULT_RELAY_WS_URL,
     acp_command: "buzz-acp",
     agent_command: agentCommand,
+    agent_command_override: seed.agentCommandOverride ?? null,
     agent_args: agentArgs,
     mcp_command: "",
     turn_timeout_seconds: 320,
@@ -3519,6 +3540,12 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     system_prompt: seed.systemPrompt ?? null,
     avatar_url: seed.avatarUrl ?? null,
     model: seed.model ?? null,
+    running_runtime_id:
+      status === "running"
+        ? (seed.runningRuntimeId ?? seed.runtime ?? null)
+        : null,
+    running_model:
+      status === "running" ? (seed.runningModel ?? seed.model ?? null) : null,
     model_source: seed.modelSource ?? (seed.model ? "definition" : null),
     provider: seed.provider ?? null,
     env_vars: { ...(seed.envVars ?? {}) },
@@ -18469,6 +18496,11 @@ async function handleUpdateManagedAgent(args: {
     name?: string;
     avatarUrl?: string | null;
     model?: string | null;
+    modelOverride?: string | null;
+    provider?: string | null;
+    agentCommand?: string;
+    agentArgs?: string[];
+    harnessOverride?: boolean;
     systemPrompt?: string | null;
     envVars?: Record<string, string>;
     respondTo?: "owner-only" | "allowlist" | "anyone";
@@ -18489,6 +18521,60 @@ async function handleUpdateManagedAgent(args: {
   }
   if (args.input.model !== undefined) {
     agent.model = args.input.model;
+  }
+  if (args.input.modelOverride !== undefined) {
+    const personaModel = agent.persona_id
+      ? mockPersonas.find((persona) => persona.id === agent.persona_id)?.model
+      : null;
+    agent.model = args.input.modelOverride ?? personaModel ?? null;
+    agent.model_source = args.input.modelOverride
+      ? "instance_override"
+      : personaModel
+        ? "definition"
+        : "global";
+  }
+  if (args.input.provider !== undefined) {
+    agent.provider = args.input.provider;
+  }
+  if (args.input.agentCommand !== undefined) {
+    agent.agent_command = args.input.agentCommand;
+    agent.agent_command_override = args.input.harnessOverride
+      ? args.input.agentCommand
+      : (agent.agent_command_override ?? null);
+    const command = args.input.agentCommand.toLowerCase();
+    const runtimeId = command.includes("codex")
+      ? "codex"
+      : command.includes("claude")
+        ? "claude"
+        : command.includes("opencode")
+          ? "opencode"
+          : command.includes("buzz-agent")
+            ? "buzz-agent"
+            : null;
+    if (runtimeId) agent.runtime = runtimeId;
+    if (args.input.agentArgs !== undefined) {
+      agent.agent_args = [...args.input.agentArgs];
+    }
+    if (agent.status === "running") {
+      agent.running_runtime_id = runtimeId;
+      agent.running_model =
+        args.input.modelOverride !== undefined
+          ? agent.model
+          : (args.input.model ??
+            (runtimeId === "codex"
+              ? "gpt-5.5"
+              : runtimeId === "claude"
+                ? "claude-sonnet-4-5"
+                : agent.running_model));
+    }
+  } else if (
+    agent.status === "running" &&
+    (args.input.model !== undefined || args.input.modelOverride !== undefined)
+  ) {
+    agent.running_model =
+      args.input.modelOverride !== undefined
+        ? agent.model
+        : (args.input.model ?? null);
   }
   if (args.input.systemPrompt !== undefined) {
     agent.system_prompt = args.input.systemPrompt;
@@ -23992,6 +24078,20 @@ export function maybeInstallE2eTauriMocks() {
           supportsSwitching: false,
         };
       case "discover_agent_models": {
+        const input = (
+          payload as {
+            input?: {
+              agentCommand?: string;
+              provider?: string;
+              refresh?: boolean;
+            };
+          } | null
+        )?.input;
+        const agentCommand = input?.agentCommand?.trim() ?? "";
+        window.__BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__ = [
+          ...(window.__BUZZ_E2E_AGENT_MODEL_DISCOVERY_CALLS__ ?? []),
+          { agentCommand, refresh: input?.refresh === true },
+        ].slice(-16);
         const discoverError = activeConfig?.mock?.discoverAgentModelsError;
         if (discoverError) {
           throw new Error(discoverError);
@@ -24011,12 +24111,6 @@ export function maybeInstallE2eTauriMocks() {
             supportsSwitching: discoverOverride.supportsSwitching,
           };
         }
-        const input = (
-          payload as {
-            input?: { agentCommand?: string; provider?: string };
-          } | null
-        )?.input;
-        const agentCommand = input?.agentCommand?.trim() ?? "";
         const provider = input?.provider?.trim() ?? "";
         const openAiModels = [
           { id: "gpt-5.5", name: "GPT-5.5", description: null },
@@ -24049,14 +24143,38 @@ export function maybeInstallE2eTauriMocks() {
           },
         ];
         const codexRuntimeModels = [
-          { id: "gpt-5.5", name: "GPT-5.5", description: null },
-          { id: "gpt-5.5[low]", name: "GPT-5.5 (low)", description: null },
           {
-            id: "gpt-5.5[medium]",
-            name: "GPT-5.5 (medium)",
+            id: "gpt-6-luna[low]",
+            name: "GPT-6 Luna (Low)",
             description: null,
           },
-          { id: "gpt-5.5[high]", name: "GPT-5.5 (high)", description: null },
+          {
+            id: "gpt-6-luna[medium]",
+            name: "GPT-6 Luna",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[high]",
+            name: "GPT-6 Luna (High)",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[xhigh]",
+            name: "GPT-6 Luna (Extra high)",
+            description: null,
+          },
+          {
+            id: "gpt-6-luna[max]",
+            name: "GPT-6 Luna (Max)",
+            description: null,
+          },
+          { id: "gpt-5.5[low]", name: "GPT-5.5 (Low)", description: null },
+          {
+            id: "gpt-5.5[medium]",
+            name: "GPT-5.5",
+            description: null,
+          },
+          { id: "gpt-5.5[high]", name: "GPT-5.5 (High)", description: null },
         ];
         if (provider === "relay-mesh") {
           if (!mockMeshState.admitted) {
@@ -24222,6 +24340,14 @@ export function maybeInstallE2eTauriMocks() {
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":
+        if ((activeConfig?.mock?.updateManagedAgentDelayMs ?? 0) > 0) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              activeConfig?.mock?.updateManagedAgentDelayMs ?? 0,
+            ),
+          );
+        }
         return handleUpdateManagedAgent(
           payload as Parameters<typeof handleUpdateManagedAgent>[0],
         );

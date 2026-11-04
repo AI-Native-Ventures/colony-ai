@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import {
   BusinessTabs,
@@ -77,17 +77,18 @@ export function PipelineScreen(context: LeadContext) {
               {cards.map((row) => {
                 const prospect = row.record.prospect;
                 return (
-                  <a
+                  <Link
                     className="w10-opportunity-card"
-                    href={`#/sales/lead/${row.record.prospectId}`}
                     key={row.eventId}
+                    params={{ prospectId: row.record.prospectId }}
+                    to="/sales/lead/$prospectId"
                   >
                     <strong>{prospect.party.displayName}</strong>
                     <p className="w10-opportunity-value">
                       {formatZar(prospect.potentialMonthlyValueMinor)}
                     </p>
                     <small>{prospect.contactName ?? ""}</small>
-                  </a>
+                  </Link>
                 );
               })}
             </section>

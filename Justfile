@@ -423,9 +423,10 @@ test-unit:
         # Storage accounting crosses three crates whose focused regression
         # suites are otherwise absent from the infra-free unit lane.
         # The desktop voice-note envelope fixture proves the relay's video
-        # validator accepts what the desktop uploads for a voice note.
+        # validator accepts what the desktop uploads for a voice note. The inbound customer media
+        # cleaner (inbound::tests) rewrites bytes in memory and needs no storage.
         nt buzz-media --lib \
-            -E 'test(=bucket_index::tests::bucket_snapshot_json_round_trip_preserves_community_keys) | test(=validation::tests::test_desktop_voice_note_envelope_matches_relay_contract)'
+            -E 'test(=bucket_index::tests::bucket_snapshot_json_round_trip_preserves_community_keys) | test(=validation::tests::test_desktop_voice_note_envelope_matches_relay_contract) | test(/^inbound::tests::/)'
         nt buzz-admin \
             -E 'test(=storage_snapshot_tests::failed_fold_never_invokes_snapshot_persistence)'
         # Multi-tenant conformance gate (buzz-conformance): the independent
@@ -513,11 +514,13 @@ test-unit:
         # (api::credits_gateway::keepalive and ::outcome) need no database either, nor
         # does the sanitiser for a provider's refusal reason (api::credits_gateway_message).
         # The WhatsApp policy rules, the app's view of a stored message state and name (api), and
-        # the fence-safe Colony post time and thread root (channel) are pure.
+        # the fence-safe Colony post time and thread root (channel) are pure. The inbound media
+        # download classification (whatsapp::media) runs against a stub Graph API and the Graph
+        # media answer, id and host rules (whatsapp::graph) are plain functions: no database.
         # The customer record gatherer (customer_inputs) splits the company's records by
         # business and finds each business's WhatsApp chat from plain values; it needs no database.
         nt buzz-relay --lib \
-            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/) + test(/^stripe::tests::/) + test(/^credit_packs::tests::/) + test(/^api::payments::tests::/) + test(/^api::credits_gateway_limits::tests::/) + test(/^config::tests::(stripe_|credit_policy_|payments_config_|discovery_config_)/) + test(/^handlers::ingest::postgres_tests::link_preview_/) + test(/^api::credits_gateway_upstream::tests::/) + test(/^api::credits_gateway::(keepalive|outcome)::tests::/) + test(/^api::credits_gateway_message::tests::/) + test(/^handlers::ingest::postgres_tests::cofounder_and_function_record_kinds_/) + test(/^api::discovery::cap_tests::/) + test(/^whatsapp::sender::tests::/) + test(=whatsapp::tests::access_levels_gate_the_right_actions) + test(/^handlers::whatsapp_commands::tests::/)  + test(/^api::whatsapp::tests::/) + test(/^whatsapp::channel::tests::/) + test(/^whatsapp::policy::tests::/) + test(/^whatsapp::desk::tests::/) + test(/^whatsapp::inbound::tests::/) + test(/^customer_inputs::tests::/)'
+            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/) + test(/^stripe::tests::/) + test(/^credit_packs::tests::/) + test(/^api::payments::tests::/) + test(/^api::credits_gateway_limits::tests::/) + test(/^config::tests::(stripe_|credit_policy_|payments_config_|discovery_config_)/) + test(/^handlers::ingest::postgres_tests::link_preview_/) + test(/^api::credits_gateway_upstream::tests::/) + test(/^api::credits_gateway::(keepalive|outcome)::tests::/) + test(/^api::credits_gateway_message::tests::/) + test(/^handlers::ingest::postgres_tests::cofounder_and_function_record_kinds_/) + test(/^api::discovery::cap_tests::/) + test(/^whatsapp::sender::tests::/) + test(=whatsapp::tests::access_levels_gate_the_right_actions) + test(/^handlers::whatsapp_commands::tests::/)  + test(/^api::whatsapp::tests::/) + test(/^whatsapp::channel::tests::/) + test(/^whatsapp::policy::tests::/) + test(/^whatsapp::desk::tests::/) + test(/^whatsapp::inbound::tests::/) + test(/^whatsapp::graph::tests::/) + test(/^whatsapp::media::tests::/) + test(/^customer_inputs::tests::/)'
         # ACP author-gate and queue tests protect the trust boundary between
         # relay events and agent prompts. They are infra-free; ignored lifecycle
         # tests remain excluded and run in their dedicated integration lanes.

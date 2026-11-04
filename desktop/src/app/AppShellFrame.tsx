@@ -1,5 +1,7 @@
 import type * as React from "react";
 
+import { RouteOriginProvider } from "@/app/navigation/RouteOriginContext";
+
 /**
  * The full-height frame the app shell renders inside. The class names and
  * data attributes are the hooks the shell stylesheets (glass background,
@@ -15,7 +17,7 @@ export function AppShellFrame({
       data-huddle-window={false}
     >
       <div className="buzz-huddle-app-surface z-10 flex min-h-0 flex-row overflow-hidden bg-background">
-        {children}
+        <RouteOriginProvider>{children}</RouteOriginProvider>
       </div>
     </div>
   );

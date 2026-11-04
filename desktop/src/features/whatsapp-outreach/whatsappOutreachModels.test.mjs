@@ -10,6 +10,7 @@ import {
   isWhatsAppReplyWindowOpen,
   maskWhatsAppNumber,
   parseWhatsAppBatchDetail,
+  parseWhatsAppMedia,
   parseWhatsAppMessage,
   parseWhatsAppContact,
   parseWhatsAppStatus,
@@ -19,6 +20,7 @@ import {
   whatsappDeliveryLabel,
   whatsappQueuedScheduleLabel,
   whatsappLeadStatusLabel,
+  whatsappMessagePreview,
   whatsappQualityLabel,
   whatsappTemplateDisplayTitle,
   whatsappTemplateMetaName,
@@ -346,5 +348,111 @@ test("pending batch details preserve the held row preview and linked lead", () =
   assert.equal(
     batch.rows[0].preview,
     "Hey Pam, here is your guesthouse preview.",
+  );
+});
+
+const inboundMessage = {
+  id: "m1",
+  waId: "27821234567",
+  direction: "in",
+  kind: "media",
+  text: "[sticker]",
+  templateName: null,
+  state: "read",
+  errorCode: null,
+  errorText: null,
+  eventId: null,
+  senderPubkey: null,
+  createdAt: "2026-11-02T07:41:10Z",
+};
+
+test("a sticker message keeps its stored media so the app can show it", () => {
+  const message = parseWhatsAppMessage({
+    ...inboundMessage,
+    media: {
+      type: "sticker",
+      state: "stored",
+      url: "https://acme.example/media/abc.webp",
+      mime: "image/webp",
+      size: 900,
+      opaque: false,
+      animated: true,
+      canRetry: false,
+      description: "Customer sent a sticker",
+    },
+  });
+  assert.equal(message.media?.type, "sticker");
+  assert.equal(message.media?.url, "https://acme.example/media/abc.webp");
+  assert.equal(message.media?.animated, true);
+  assert.equal(whatsappMessagePreview(message), "Sent a sticker");
+});
+
+test("a message from an older relay has no media and keeps its text", () => {
+  const message = parseWhatsAppMessage({ ...inboundMessage, text: "Hello" });
+  assert.equal("media" in message, false);
+  assert.equal(whatsappMessagePreview(message), "Hello");
+});
+
+test("a media record the app cannot read never hides the conversation", () => {
+  assert.equal(parseWhatsAppMedia(null), null);
+  assert.equal(parseWhatsAppMedia("sticker"), null);
+  assert.equal(parseWhatsAppMedia({ type: "hologram" }), null);
+  const message = parseWhatsAppMessage({
+    ...inboundMessage,
+    media: { type: "hologram" },
+  });
+  assert.equal(message.media, null);
+  assert.equal(whatsappMessagePreview(message), "[sticker]");
+  // A state the app does not know reads as a failed download, which offers the honest note.
+  assert.equal(
+    parseWhatsAppMedia({ type: "image", state: "weird" })?.state,
+    "failed",
+  );
+});
+
+test("previews say what was sent and keep the caption", () => {
+  const preview = (media) =>
+    whatsappMessagePreview(
+      parseWhatsAppMessage({ ...inboundMessage, text: "x", media }),
+    );
+  assert.equal(preview({ type: "image", state: "pending" }), "Sent a photo");
+  assert.equal(
+    preview({ type: "image", state: "stored", caption: "our garden" }),
+    "Sent a photo: our garden",
+  );
+  assert.equal(
+    preview({ type: "voice", state: "stored" }),
+    "Sent a voice note",
+  );
+  assert.equal(
+    preview({ type: "document", state: "stored", filename: "quote.pdf" }),
+    "Sent quote.pdf",
+  );
+  assert.equal(
+    preview({ type: "location", state: "none", name: "Guest House" }),
+    "Shared a location: Guest House",
+  );
+  assert.equal(
+    preview({ type: "contacts", state: "none", contacts: [] }),
+    "Shared a contact card",
+  );
+});
+
+test("contact cards keep names and numbers and drop malformed entries", () => {
+  const media = parseWhatsAppMedia({
+    type: "contacts",
+    state: "none",
+    contacts: [
+      { name: "Sipho", phones: ["+27 82 111 2222", 5, null] },
+      "nope",
+      { phones: "bad" },
+    ],
+  });
+  assert.deepEqual(
+    media?.contacts.map((card) => [card.name, card.phones]),
+    [
+      ["Sipho", ["+27 82 111 2222"]],
+      [null, []],
+    ],
   );
 });

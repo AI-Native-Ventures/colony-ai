@@ -426,6 +426,8 @@ type MockBridgeOptions = {
     mcp?: MockCommandAvailability;
   };
   managedAgents?: MockManagedAgentSeed[];
+  /** Delay managed-agent saves so transitional runtime-switch UI can be observed. */
+  updateManagedAgentDelayMs?: number;
   /** Channel records used only to reproduce frozen visual reference data. */
   visualChannels?: Array<{ id: string; name: string }>;
   agentUsageSeries?: import("../../src/shared/api/tauriArchive").AgentUsageSeries;

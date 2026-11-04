@@ -32,6 +32,7 @@ fn minimal_record() -> ManagedAgentRecord {
         max_turn_duration_seconds: Some(600),
         parallelism: 2,
         system_prompt: Some("You are a test agent.".to_string()),
+        model_override: None,
         model: Some("claude-opus-4".to_string()),
         provider: Some("anthropic".to_string()),
         persona_source_version: Some("v1.0".to_string()), // MUST NOT appear

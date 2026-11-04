@@ -3,6 +3,7 @@ import { UserRound } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
+import { WhatsAppMessageMedia } from "./WhatsAppMessageMedia";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
   isWhatsAppPhoneLikeName,
@@ -286,7 +287,9 @@ export function WhatsAppThreadMessage({
             </span>
           ) : null}
         </div>
-        {message.kind === "media" ? (
+        {message.media ? (
+          <WhatsAppMessageMedia media={message.media} message={message} />
+        ) : message.kind === "media" ? (
           <figure
             className="c3wa-media-card"
             aria-label={`Image attachment ${mediaParts[0] ?? message.text}`}

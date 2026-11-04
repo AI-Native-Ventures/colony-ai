@@ -51,7 +51,7 @@ This contract is the source of truth for field names. If the UI needs something 
 2. Fly certificate: `fly certs add admin.colony.global -a colony-relay`, then `fly certs show admin.colony.global -a colony-relay` until it says issued. (If Fly asks for the `_acme-challenge` CNAME, add what it prints.)
 3. Google Cloud console (project that owns the existing Colony Google client ids): create an OAuth client of type **Web application**, authorized redirect URI `https://admin.colony.global/sign-in`, authorized JavaScript origin `https://admin.colony.global`. Append its client id to the Fly secret `COLONY_GOOGLE_CLIENT_IDS` (comma-separated, keep the existing ids). It is an identifier, not a credential; no client secret is used.
 4. Confirm Fly secrets on `colony-relay`: `RELAY_OPERATOR_PUBKEYS` contains the owner's **Colony account public key** (the `accounts.pubkey` for the owner's Google email, hex), and `COLONY_ACCOUNT_KEK` is set (it is, accounts work today).
-5. Deploy the relay (this PR's code, the `fly.prod.toml` change and migration 0061 go out together). After that `admin.colony.ainative.ventures` stops being the admin host.
+5. Deploy the relay (this PR's code, the `fly.prod.toml` change and migration 0062 go out together). After that `admin.colony.ainative.ventures` stops being the admin host.
 6. Tell AD-UI the Google web client id so the page can build the redirect URL (it is public; v1 puts it in the admin bundle as a build-time constant).
 
 ## 2. Endpoints
@@ -300,7 +300,7 @@ Not collected in v1 and therefore `null` or `"unknown"`, not faked: relay uptime
 
 ## 3. Collected data (what the numbers come from)
 
-All new tables are deployment-global (not per community), hold counts and ids only, and are created by migration `0061_admin_metrics.sql` (also in `schema/schema.sql`). Production runs it through the normal relay deploy. **A relay deploy is needed** for any of these endpoints and counters to work.
+All new tables are deployment-global (not per community), hold counts and ids only, and are created by migration `0062_admin_metrics.sql` (also in `schema/schema.sql`). Production runs it through the normal relay deploy. **A relay deploy is needed** for any of these endpoints and counters to work.
 
 | Table | Grain | Written by |
 |---|---|---|
