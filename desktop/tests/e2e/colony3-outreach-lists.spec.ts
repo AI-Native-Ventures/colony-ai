@@ -960,7 +960,7 @@ test.describe("Outreach lists", () => {
     ).toBeVisible();
     await expect(
       campaign.getByRole("button", { name: "Find more" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(campaign.getByLabel("Filter prospects")).toHaveCount(1);
     await expect(campaign.getByLabel("Export visible prospects")).toHaveCount(
       1,

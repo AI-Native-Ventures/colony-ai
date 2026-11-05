@@ -582,6 +582,7 @@ export function OutreachMentionComposerButton({
       1; // keep the caret after the trailing separator
     editor
       .chain()
+      .focus()
       .insertContent(
         leadReferenceContent({
           textBeforeCaret,
