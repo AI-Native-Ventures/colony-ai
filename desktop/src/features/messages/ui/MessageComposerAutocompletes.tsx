@@ -28,6 +28,7 @@ type MessageComposerAutocompletesProps = {
   keepMentionedAgentsPinned: boolean;
   lockedAgentPubkeys: ReadonlySet<string>;
   mentions: UseMentionsResult;
+  outreachMentionPickerOpen: boolean;
   /**
    * Bumped to ask the mention menu to reveal its agent-audience options; the
    * menu reports back through `onOptionsRevealComplete` once it has.
@@ -55,6 +56,7 @@ export function MessageComposerAutocompletes({
   keepMentionedAgentsPinned,
   lockedAgentPubkeys,
   mentions,
+  outreachMentionPickerOpen,
   openOptionsRequest,
   onChannelSelect,
   onEmojiSelect,
@@ -62,9 +64,11 @@ export function MessageComposerAutocompletes({
   onOptionsRevealComplete,
   onToggleAlwaysAddressAgent,
 }: MessageComposerAutocompletesProps) {
-  const lookupJobTitle = useJobTitleLookup(
-    mentions.isMentionOpen && mentions.suggestions.length > 0,
-  );
+  const showInlineMentions =
+    !outreachMentionPickerOpen &&
+    mentions.isMentionOpen &&
+    mentions.suggestions.length > 0;
+  const lookupJobTitle = useJobTitleLookup(showInlineMentions);
   return (
     <>
       <EmojiAutocomplete
@@ -102,7 +106,7 @@ export function MessageComposerAutocompletes({
         onDismiss={mentions.cancelMentionAutocomplete}
         onSelect={onMentionSelect}
         selectedIndex={mentions.mentionSelectedIndex}
-        suggestions={mentions.isMentionOpen ? mentions.suggestions : []}
+        suggestions={showInlineMentions ? mentions.suggestions : []}
       />
     </>
   );

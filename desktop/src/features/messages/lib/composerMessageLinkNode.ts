@@ -12,7 +12,13 @@ import {
   truncateInlineChipLabel,
   WRAPPING_INLINE_CHIP_CLASSES,
 } from "@/shared/ui/mentionChip";
-import { buildLeadLink, parseEntityLink } from "@/shared/lib/entityLink";
+import {
+  buildDiscoveryCampaignLink,
+  buildLeadLink,
+  buildOutreachListLink,
+  buildWhatsAppTemplateLink,
+  parseEntityLink,
+} from "@/shared/lib/entityLink";
 import { buildChannelLink, parseChannelLink } from "./channelLink";
 import { getMessageLinkLabel } from "./messageLinkLabel";
 import { buildMessageLink, parseMessageLink } from "./messageLink";
@@ -29,9 +35,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
+  /^(?:buzz|colony):\/\/(?:message\?|channel\/|lead\/|list\/|campaign\/|template\/)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|lead\/)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|lead\/|list\/|campaign\/|template\/)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -75,8 +81,31 @@ export function resolveComposerMessageLinkAttributes(
   }
 
   const entity = parseEntityLink(href);
-  if (entity.ok && entity.value.type === "lead") {
-    return { channelName: "", href: buildLeadLink(entity.value.id) };
+  if (entity.ok) {
+    switch (entity.value.type) {
+      case "lead":
+        return { channelName: "", href: buildLeadLink(entity.value.id) };
+      case "list":
+        return {
+          channelName: "",
+          href: buildOutreachListLink(entity.value.id),
+        };
+      case "campaign":
+        return {
+          channelName: "",
+          href: buildDiscoveryCampaignLink(entity.value.id),
+        };
+      case "template":
+        return {
+          channelName: "",
+          href: buildWhatsAppTemplateLink(
+            entity.value.name,
+            entity.value.language,
+          ),
+        };
+      default:
+        break;
+    }
   }
 
   return null;
@@ -89,7 +118,8 @@ function unwrapExactBuzzLink(text: string): string | null {
   const entity = parseEntityLink(href);
   return parseMessageLink(href).ok ||
     parseChannelLink(href).ok ||
-    (entity.ok && entity.value.type === "lead")
+    (entity.ok &&
+      ["lead", "list", "campaign", "template"].includes(entity.value.type))
     ? href
     : null;
 }
@@ -358,18 +388,58 @@ function composerLinkPresentation(
   }
 
   const entity = parseEntityLink(href);
-  if (entity.ok && entity.value.type === "lead") {
-    // A lead chip shows the lead's name when the picker supplied one (the
-    // draft keeps only the link, so a restored draft falls back to the id).
-    const shortId = entity.value.id.slice(0, 8);
-    const leadName = channelName.trim();
-    return {
-      ariaLabel: leadName ? `Open lead ${leadName}` : `Open lead ${shortId}`,
-      channelName: leadName,
-      dataAttributes: { "data-buzz-link-kind": "lead" },
-      icon: "lead",
-      label: leadName || `Lead ${shortId}`,
-    };
+  if (entity.ok) {
+    switch (entity.value.type) {
+      case "lead": {
+        const title = channelName.trim();
+        const shortId = entity.value.id.slice(0, 8);
+        return {
+          ariaLabel: title ? `Open lead ${title}` : `Open lead ${shortId}`,
+          channelName: title,
+          dataAttributes: { "data-buzz-link-kind": "lead" },
+          icon: "lead",
+          label: title || `Lead ${shortId}`,
+        };
+      }
+      case "list": {
+        const title = channelName.trim();
+        const shortId = entity.value.id.slice(0, 8);
+        return {
+          ariaLabel: title
+            ? `Open outreach list: ${title}`
+            : `Open outreach list ${shortId}`,
+          channelName: title,
+          dataAttributes: { "data-buzz-link-kind": "list" },
+          icon: "lead",
+          label: title || `List ${shortId}`,
+        };
+      }
+      case "campaign": {
+        const title = channelName.trim();
+        const shortId = entity.value.id.slice(0, 8);
+        return {
+          ariaLabel: title
+            ? `Open Discovery campaign: ${title}`
+            : `Open Discovery campaign ${shortId}`,
+          channelName: title,
+          dataAttributes: { "data-buzz-link-kind": "campaign" },
+          icon: "lead",
+          label: title || `Campaign ${shortId}`,
+        };
+      }
+      case "template": {
+        const title = channelName.trim() || entity.value.name;
+        return {
+          ariaLabel: `Open WhatsApp template: ${title}`,
+          channelName: title,
+          dataAttributes: { "data-buzz-link-kind": "template" },
+          icon: "lead",
+          label: title,
+        };
+      }
+      default:
+        break;
+    }
   }
 
   return {
@@ -487,7 +557,9 @@ export const ComposerMessageLinkNode =
         markdown: {
           // biome-ignore lint/suspicious/noExplicitAny: prosemirror-markdown is untyped here
           serialize(state: any, node: any) {
-            state.write(String(node.attrs.href ?? ""));
+            // Preserve a boundary after the atom: the Markdown serializer
+            // trims the ordinary trailing text-space beside inline nodes.
+            state.write(`${String(node.attrs.href ?? "")} `);
           },
           parse: {
             // biome-ignore lint/suspicious/noExplicitAny: markdown-it is untyped here

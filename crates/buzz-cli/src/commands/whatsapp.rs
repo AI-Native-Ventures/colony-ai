@@ -1247,6 +1247,7 @@ mod tests {
                     location: None,
                     email: None,
                     phone: phone.map(str::to_owned),
+                    whatsapp_phone: None,
                     evidence: Vec::new(),
                     last_verified_at: None,
                     qualification: ProspectQualification::Unreviewed,

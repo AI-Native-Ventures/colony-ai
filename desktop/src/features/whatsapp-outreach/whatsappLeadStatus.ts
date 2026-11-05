@@ -63,8 +63,14 @@ export function getWhatsAppLeadStatus(
 ) {
   return contactWhatsAppStatus({
     optedOut: contact?.optedOut ?? false,
-    replied: Boolean(contact?.lastInboundAt),
-    sent: Boolean(contact),
+    replied: Boolean(contact?.lastInboundAt || contact?.stage === "replied"),
+    sent: Boolean(
+      contact &&
+        contact.stage !== "not_on_whatsapp" &&
+        (contact.lastContactedAt ||
+          contact.lastOutboundState ||
+          contact.stage !== "none"),
+    ),
     inBatch,
   });
 }

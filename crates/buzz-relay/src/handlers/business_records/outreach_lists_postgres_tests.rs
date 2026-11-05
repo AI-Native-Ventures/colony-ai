@@ -72,6 +72,7 @@ fn lead_action(prospect_id: Uuid, name: &str) -> ProspectAction {
             location: Some("Melville".into()),
             email: None,
             phone: Some("+27 82 000 0000".into()),
+            whatsapp_phone: None,
             evidence: Vec::new(),
             last_verified_at: None,
             qualification: buzz_core::business_records::ProspectQualification::Unreviewed,

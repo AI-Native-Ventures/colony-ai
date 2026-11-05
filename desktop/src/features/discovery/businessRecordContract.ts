@@ -12,12 +12,18 @@ export const KIND_PROPOSAL_VERSION = 47003;
 export const KIND_PROPOSAL_ACCEPTANCE = 47004;
 export const KIND_PROPOSAL_CONVERSION_RECEIPT = 47005;
 export const KIND_PROSPECT_ACTION = 47034;
+export const KIND_OUTREACH_LIST_HEAD = 30684;
+export const KIND_OUTREACH_LIST_ACTION = 47075;
+export const KIND_DISCOVERY_CAMPAIGN_HEAD = 30685;
+export const KIND_DISCOVERY_CAMPAIGN_ACTION = 47076;
 
 export const BUSINESS_SCOPE_KINDS = [
   KIND_PARTY_HEAD,
   KIND_SERVICE_HEAD,
   KIND_PROPOSAL_HEAD,
   KIND_PROSPECT_HEAD,
+  KIND_OUTREACH_LIST_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
 ] as const;
 
 export const BUSINESS_RECORD_QUERY_KINDS = [
@@ -28,6 +34,10 @@ export const BUSINESS_RECORD_QUERY_KINDS = [
   KIND_PROPOSAL_VERSION,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_CONVERSION_RECEIPT,
+  KIND_OUTREACH_LIST_HEAD,
+  KIND_OUTREACH_LIST_ACTION,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_ACTION,
 ] as const;
 
 export type RecordAction = "create" | "update" | "archive" | "restore";
@@ -40,6 +50,71 @@ export type ProspectStage =
 export type ProspectQualification = "unreviewed" | "qualified" | "not_fit";
 export type ProspectActivityKind = "note" | "contact";
 export type ProspectOrigin = "manual" | "discovery";
+
+export type OutreachListSourceKind = "manual" | "campaign" | "agent";
+
+export type OutreachListSource = {
+  kind: OutreachListSourceKind;
+  campaignId: string | null;
+};
+
+export type OutreachListMember = {
+  leadId: string;
+  addedBy: string;
+  addedByAgent: boolean;
+  addedAt: number;
+};
+
+export type OutreachListTemplate = { name: string; language: string };
+
+export type OutreachListHead = {
+  schemaVersion: 1;
+  listId: string;
+  name: string;
+  note: string | null;
+  status: "active" | "archived";
+  source: OutreachListSource;
+  defaultTemplate: OutreachListTemplate | null;
+  members: OutreachListMember[];
+  createdBy: string;
+  createdByAgent: boolean;
+  createdAt: number;
+  updatedBy: string;
+  updatedAt: number;
+  sourceActionEventId: string;
+};
+
+export type DiscoveryCampaignStatus =
+  | "running"
+  | "paused"
+  | "complete"
+  | "cancelled"
+  | "failed";
+
+export type DiscoveryCampaignHead = {
+  schemaVersion: 1;
+  campaignId: string;
+  name: string;
+  audience: "businesses" | "people";
+  industryName: string;
+  verticalId: string;
+  verticalName: string;
+  pickedTags: string[];
+  query: string | null;
+  area: string;
+  target: number;
+  found: number;
+  skippedDuplicates: number;
+  status: DiscoveryCampaignStatus;
+  endNote: string | null;
+  runBy: { kind: "person" | "agent"; pubkey: string };
+  createdBy: string;
+  createdByAgent: boolean;
+  createdAt: number;
+  updatedAt: number;
+  archived: boolean;
+  sourceActionEventId: string;
+};
 
 export type ServiceRecord = {
   serviceId: string;
@@ -108,6 +183,8 @@ export type ProspectRecord = {
   location: string | null;
   email: string | null;
   phone: string | null;
+  /** Optional number to use for WhatsApp instead of the business phone. */
+  whatsappPhone?: string | null;
   evidence: ProspectEvidence[];
   lastVerifiedAt: number | null;
   qualification: ProspectQualification;

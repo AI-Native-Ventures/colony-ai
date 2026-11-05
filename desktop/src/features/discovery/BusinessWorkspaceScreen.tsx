@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { DiscoveryScreen } from "./DiscoveryScreen";
 import { CampaignScreen } from "./CampaignScreen";
+import { OutreachListScreen } from "./OutreachListScreen";
 import { TENANT_COMMUNITY_UNKNOWN_MESSAGE } from "@/features/communities/tenantCommunity";
 import { W10Error, W10Loading } from "./BusinessCommon";
 import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
+import { CampaignRelaySync } from "./CampaignRelaySync";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
 import {
   SALES_NOT_ALLOWED_MESSAGE,
@@ -19,6 +21,7 @@ export function BusinessWorkspaceScreen() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const discoveryProvider = getDiscoveryCampaignProvider();
+  const business = useBusinessRecords();
 
   React.useEffect(() => {
     if (pathname === "/campaign" && !discoveryProvider?.getCurrent()) {
@@ -26,14 +29,27 @@ export function BusinessWorkspaceScreen() {
     }
   }, [discoveryProvider, navigate, pathname]);
 
-  if (pathname === "/discovery") return <DiscoveryScreen />;
-  if (pathname === "/campaign" && !discoveryProvider?.getCurrent()) return null;
-  return <BusinessRecordsRoute pathname={pathname} />;
+  const screen =
+    pathname === "/discovery" ? (
+      <DiscoveryScreen />
+    ) : pathname === "/campaign" && !discoveryProvider?.getCurrent() ? null : (
+      <BusinessRecordsRoute business={business} pathname={pathname} />
+    );
+  return (
+    <>
+      {screen}
+      <CampaignRelaySyncHost business={business} />
+    </>
+  );
 }
 
-function BusinessRecordsRoute({ pathname }: { pathname: string }) {
-  const business = useBusinessRecords();
-
+function BusinessRecordsRoute({
+  business,
+  pathname,
+}: {
+  business: ReturnType<typeof useBusinessRecords>;
+  pathname: string;
+}) {
   if (
     business.channelLoading ||
     business.tenantLoading ||
@@ -103,10 +119,17 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
   };
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
-  if (pathname === "/leads") return <LeadsScreen {...context} />;
-  if (pathname === "/campaign") return <CampaignScreen {...context} />;
-  if (pathname === "/pipeline") return <PipelineScreen {...context} />;
-  if (parts[0] === "sales" && parts[1] === "lead") {
+  let screen: React.ReactNode;
+  if (pathname === "/leads") screen = <LeadsScreen {...context} />;
+  else if (pathname === "/lists") {
+    screen = <OutreachListScreen context={context} />;
+  } else if (parts[0] === "lists") {
+    screen = <OutreachListScreen context={context} listId={parts[1]} />;
+  } else if (pathname === "/campaign") {
+    screen = <CampaignScreen {...context} />;
+  } else if (pathname === "/pipeline") {
+    screen = <PipelineScreen {...context} />;
+  } else if (parts[0] === "sales" && parts[1] === "lead") {
     const prospectId = parts[2] ?? "";
     const prospect =
       prospectId === "form-field"
@@ -117,14 +140,47 @@ function BusinessRecordsRoute({ pathname }: { pathname: string }) {
         : business.records.prospects.find(
             (candidate) => candidate.record.prospectId === prospectId,
           );
-    return <LeadDetailScreen {...context} prospect={prospect ?? null} />;
+    screen = <LeadDetailScreen {...context} prospect={prospect ?? null} />;
+  } else {
+    screen = (
+      <W10Error
+        message="Return to the business routes and choose a record."
+        onRetry={() => void business.refresh()}
+        title="Record unavailable"
+      />
+    );
   }
+  return screen;
+}
 
+function CampaignRelaySyncHost({
+  business,
+}: {
+  business: ReturnType<typeof useBusinessRecords>;
+}) {
+  if (
+    business.channelLoading ||
+    business.tenantLoading ||
+    business.recordsLoading ||
+    business.channelError ||
+    business.tenantError ||
+    business.recordsError ||
+    !business.channelId ||
+    !business.communityId ||
+    !business.records
+  ) {
+    return null;
+  }
   return (
-    <W10Error
-      message="Return to the business routes and choose a record."
-      onRetry={() => void business.refresh()}
-      title="Record unavailable"
+    <CampaignRelaySync
+      context={{
+        channelId: business.channelId,
+        communityId: business.communityId,
+        currentPubkey: business.pubkey,
+        records: business.records,
+        refresh: business.refresh,
+        role: business.role,
+      }}
     />
   );
 }
