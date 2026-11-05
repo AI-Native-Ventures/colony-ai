@@ -182,9 +182,7 @@ for (const viewport of [
       "Runtime ready",
     );
     await capture("scout-detail");
-    // The model and runtime sit on the same page as the overview.
-    const harness = page.getByTestId("agent-harness-account");
-    await expect(harness).toContainText("Claude Code");
+    // The model selection remains on the overview without private runtime data.
     await expect(page.getByTestId("agent-model-selection")).toContainText(
       "sonnet",
     );
