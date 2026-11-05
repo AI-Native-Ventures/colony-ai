@@ -9,7 +9,8 @@ import {
   SEARCH_PAGE_SIZE,
   buildTagSearchQuery,
   buildSearchRequest,
-  countryForLocation,
+  discoveryCoverageKey,
+  discoveryCoverageKeys,
   DiscoverySearchError,
   isTransientSearchError,
   mergeDiscoverySearchResponses,
@@ -127,26 +128,29 @@ test("only busy, unavailable and network failures are worth a retry", () => {
   assert.equal(isTransientSearchError(new Error("x")), false);
 });
 
-test("a country is only passed when the location is exactly one the server knows", () => {
-  assert.equal(countryForLocation("South Africa"), "South Africa");
-  assert.equal(countryForLocation("  south africa "), "South Africa");
-  assert.equal(countryForLocation("Johannesburg"), undefined);
-  assert.equal(countryForLocation("Johannesburg, South Africa"), undefined);
-  assert.equal(countryForLocation("LA"), undefined);
-  assert.equal(countryForLocation(""), undefined);
-});
-
-test("the search request pages by 20 with a clean location", () => {
+test("the search request pages by 20 and only uses structured location data", () => {
+  const selected = {
+    label: "Woodmead, Johannesburg, Gauteng, South Africa",
+    latitude: -26.055,
+    longitude: 28.081,
+    countryCode: "ZA",
+    region: "Gauteng",
+    kind: "suburb",
+    boundingBox: null,
+  };
   assert.deepEqual(
     buildSearchRequest({
       query: " Home Decor & Gift Shops ",
-      location: " South Africa ",
+      location: ` ${selected.label} `,
+      locationSelection: selected,
       skip: 40,
     }),
     {
       query: "Home Decor & Gift Shops",
-      location: "South Africa",
-      country: "South Africa",
+      location: selected.label,
+      country: "ZA",
+      region: "Gauteng",
+      coordinates: { latitude: -26.055, longitude: 28.081 },
       limit: 20,
       skip: 40,
       language: "en",
@@ -158,7 +162,53 @@ test("the search request pages by 20 with a clean location", () => {
     skip: -3,
   });
   assert.equal("country" in city, false);
+  assert.equal("coordinates" in city, false);
   assert.equal(city.skip, 0);
+});
+
+test("coverage keys keep same-name places and tag streams distinct", () => {
+  const woodmead = {
+    label: "Woodmead, Johannesburg, Gauteng, South Africa",
+    latitude: -26.055,
+    longitude: 28.081,
+    countryCode: "ZA",
+    region: "Gauteng",
+    kind: "suburb",
+    boundingBox: null,
+  };
+  const otherJohannesburg = { ...woodmead, latitude: 43.15, longitude: -75.25 };
+  const base = {
+    verticalId: "restaurants",
+    tag: "sushi",
+    location: woodmead.label,
+    locationSelection: woodmead,
+  };
+  assert.equal(
+    discoveryCoverageKey(base),
+    discoveryCoverageKey({ ...base, tag: " sushi " }),
+  );
+  assert.notEqual(
+    discoveryCoverageKey(base),
+    discoveryCoverageKey({ ...base, locationSelection: otherJohannesburg }),
+  );
+  assert.notEqual(
+    discoveryCoverageKey(base),
+    discoveryCoverageKey({ ...base, tag: "family" }),
+  );
+  assert.deepEqual(
+    discoveryCoverageKeys({
+      verticalId: "restaurants",
+      pickedTags: ["family", "sushi"],
+      location: woodmead.label,
+      locationSelection: woodmead,
+    }).sort(),
+    discoveryCoverageKeys({
+      verticalId: "restaurants",
+      pickedTags: ["sushi", "family"],
+      location: woodmead.label,
+      locationSelection: woodmead,
+    }).sort(),
+  );
 });
 
 test("a search request never carries a skip that is not a multiple of 20, or a short page", () => {

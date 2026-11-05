@@ -3,8 +3,7 @@ import { MoreHorizontal, Plus, Shield, ShieldCheck, User } from "lucide-react";
 
 import { relayMemberPermissions } from "@/features/community-members/memberPermissions";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
-import { PubKey } from "@/shared/ui/PubKey";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
 import {
   useMyRelayMembershipQuery,
   useRelayMembersQuery,
@@ -97,16 +96,15 @@ function MemberRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">
-              {displayName || truncateNpub(member.pubkey)}
+              {displayName || resolveUserLabel({ pubkey: member.pubkey })}
             </span>
             <RoleBadge role={member.role} />
             {isSelf ? (
               <span className="text-xs text-muted-foreground">(you)</span>
             ) : null}
           </div>
-          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <PubKey className="text-xs" pubkey={member.pubkey} />
-            <span>Joined {formatRelativeDate(member.createdAt)}</span>
+          <p className="text-xs text-muted-foreground">
+            Joined {formatRelativeDate(member.createdAt)}
           </p>
         </div>
       </div>

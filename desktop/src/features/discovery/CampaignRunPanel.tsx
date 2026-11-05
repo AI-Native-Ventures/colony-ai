@@ -11,6 +11,7 @@ import {
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import type { DiscoveryCampaign } from "./discoveryProvider";
 
 import "./colony3-discovery.css";
@@ -29,16 +30,20 @@ export function CampaignRunPanel({
   campaign,
   onChangeRun,
   onDiscuss,
+  onFindMore,
   onNewSearch,
   onOpenDetails,
   onOpenSettings,
+  onSearchNearby,
 }: {
   campaign: DiscoveryCampaign;
   onChangeRun: (action: RunAction) => void;
   onDiscuss: () => void;
+  onFindMore: () => void;
   onNewSearch: () => void;
   onOpenDetails: () => void;
   onOpenSettings: () => void;
+  onSearchNearby: (location: DiscoveryLocation) => void;
 }) {
   const progress = Math.min(
     100,
@@ -134,22 +139,40 @@ export function CampaignRunPanel({
                 <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
               </button>
             ) : campaign.status === "failed" ? (
-              <button
-                className="c3d-btn c3d-btn--ink c3d-btn--md"
-                onClick={() => onChangeRun("retry")}
-                type="button"
-              >
-                <RotateCcw aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
-                Retry search
-              </button>
+              <>
+                <button
+                  className="c3d-btn c3d-btn--outline c3d-btn--md"
+                  onClick={() => onChangeRun("retry")}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
+                  Retry search
+                </button>
+                <button
+                  className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  onClick={onFindMore}
+                  type="button"
+                >
+                  <PlusGlyph /> Find more
+                </button>
+              </>
             ) : (
-              <button
-                className="c3d-btn c3d-btn--ink c3d-btn--md"
-                onClick={onNewSearch}
-                type="button"
-              >
-                <PlusGlyph /> New search
-              </button>
+              <>
+                <button
+                  className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  onClick={onFindMore}
+                  type="button"
+                >
+                  <PlusGlyph /> Find more
+                </button>
+                <button
+                  className="c3d-btn c3d-btn--outline c3d-btn--md"
+                  onClick={onNewSearch}
+                  type="button"
+                >
+                  New search
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -168,7 +191,10 @@ export function CampaignRunPanel({
             <PinGlyph /> {campaign.location}
           </span>
           <span>{campaign.count} prospects</span>
-          <span>Budget approved · {formatBudget(campaign.budgetUsd)}</span>
+          <span>
+            Search cost · {formatBudget(campaign.spentUsd ?? 0)} of{" "}
+            {formatBudget(campaign.budgetUsd)} approved
+          </span>
           <button
             className="c3d-text-link"
             onClick={onOpenDetails}
@@ -177,6 +203,23 @@ export function CampaignRunPanel({
             Run details
           </button>
         </div>
+        {campaign.status !== "running" &&
+        campaign.status !== "paused" &&
+        campaign.locationSelection?.nearby?.length ? (
+          <div className="c3d-nearby-areas">
+            <span>Search nearby areas</span>
+            {campaign.locationSelection.nearby.map((location) => (
+              <button
+                className="c3d-text-link"
+                key={`${location.label}-${location.latitude}-${location.longitude}`}
+                onClick={() => onSearchNearby(location)}
+                type="button"
+              >
+                {location.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
     </>
   );

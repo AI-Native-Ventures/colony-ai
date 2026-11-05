@@ -33,6 +33,7 @@ import {
   type ProspectSort,
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import {
   DiscoveryTypeDetailsDialog,
@@ -94,7 +95,8 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenPending, setWidenPending] =
     React.useState<PendingCampaign | null>(null);
   const [widenOpen, setWidenOpen] = React.useState(false);
-  const [widenLocation, setWidenLocation] = React.useState("");
+  const [widenLocation, setWidenLocation] =
+    React.useState<DiscoveryLocation | null>(null);
   const [, setTagsReady] = React.useState(false);
   const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
     null,
@@ -162,7 +164,7 @@ export function CampaignScreen(context: CampaignContext) {
   if (!provider || !campaign) {
     return null;
   }
-  const campaignLocation = campaign.location;
+  const currentCampaign = campaign;
   const campaignRunner = campaign.runBy;
 
   const campaignRows = campaign.prospectIds
@@ -299,7 +301,7 @@ export function CampaignScreen(context: CampaignContext) {
 
   function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
     setRelatedTypeId(null);
-    setWidenLocation(campaignLocation);
+    setWidenLocation(currentCampaign.locationSelection ?? null);
     setWidenPending({
       audience: "businesses",
       industryId: row.parentId,
@@ -322,6 +324,21 @@ export function CampaignScreen(context: CampaignContext) {
     await navigate({ to: "/campaign" });
   }
 
+  /** A new approved run inherits coverage through the provider's query key. */
+  function openFindMore(location = currentCampaign.locationSelection ?? null) {
+    setRelatedTypeId(null);
+    setWidenLocation(location);
+    setWidenPending({
+      audience: currentCampaign.audience,
+      industryId: currentCampaign.industryId,
+      industryName: currentCampaign.industryName,
+      verticalId: currentCampaign.verticalId,
+      verticalName: currentCampaign.verticalName,
+      pickedTags: currentCampaign.pickedTags ?? [],
+    });
+    setWidenOpen(true);
+  }
+
   const waiting = campaign.status === "running" && campaign.count === 0;
   const footnote = campaign.simulated
     ? "Example public profiles · Review before outreach"
@@ -336,9 +353,11 @@ export function CampaignScreen(context: CampaignContext) {
             campaign={campaign}
             onChangeRun={(action) => void changeRun(action)}
             onDiscuss={shareInSales}
+            onFindMore={() => openFindMore()}
             onNewSearch={() => void navigate({ to: "/discovery" })}
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
+            onSearchNearby={(location) => openFindMore(location)}
           />
           {relatedTypes.length ? (
             <section

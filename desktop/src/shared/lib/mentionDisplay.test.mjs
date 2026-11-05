@@ -4,62 +4,68 @@ import {
   formatLegacyMentionDisplayLabel,
   formatMentionDisplayLabel,
 } from "./mentionDisplay.ts";
-import { truncateNpub, truncatePubkey } from "./pubkey.ts";
 
 const KEY = `150b20bd${"a".repeat(52)}15dc`;
-// npubEncode(KEY), pinned so a formatter regression cannot pass by
-// re-deriving the expectation from the code under test.
-const KEY_NPUB_COMPACT = "npub1z59…zwkg";
 
-test("compact mention display uses the member-list formatter and keeps collision suffixes", () => {
+test("mention display replaces legacy key labels with a neutral owner suffix", () => {
   for (const suffix of ["", " 2", " 10"]) {
     assert.equal(
       formatMentionDisplayLabel(`Bad Janet (${KEY})${suffix}`, KEY),
-      `Bad Janet (${truncateNpub(KEY)})${suffix}`,
+      `Bad Janet (teammate)${suffix}`,
     );
   }
-  assert.equal(formatMentionDisplayLabel(KEY, KEY), KEY_NPUB_COMPACT);
+  assert.equal(formatMentionDisplayLabel(KEY, KEY), "AI employee");
   assert.equal(
     formatMentionDisplayLabel(KEY.toUpperCase(), KEY),
-    KEY_NPUB_COMPACT,
+    "AI employee",
   );
 });
 
-test("display leaves unbound, mismatched, malformed and ordinary labels literal", () => {
+test("display redacts bound and unbound legacy identity labels", () => {
   for (const [label, key] of [
     [`Bad Janet (${KEY})`, undefined],
     [`Bad Janet (${KEY})`, "b".repeat(64)],
     [`Bad Janet (${KEY})`, "bad-key"],
-    [`Bad Janet (${KEY}) 1`, KEY],
-    [`Bad Janet (${KEY}) notes`, KEY],
-    [`Release ${KEY}`, KEY],
-    ["Bad Janet", KEY],
-  ])
-    assert.equal(formatMentionDisplayLabel(label, key), label);
+  ]) {
+    assert.equal(formatMentionDisplayLabel(label, key), "Bad Janet (teammate)");
+  }
 });
 
-test("legacy display keeps the retired hex compaction byte-exact for clipboard validation", () => {
+test("display redacts raw identities even inside malformed legacy labels", () => {
+  assert.equal(
+    formatMentionDisplayLabel(`Bad Janet (${KEY}) 1`, KEY),
+    "Bad Janet (AI employee) 1",
+  );
+  assert.equal(
+    formatMentionDisplayLabel(`Bad Janet (${KEY}) notes`, KEY),
+    "Bad Janet (AI employee) notes",
+  );
+  assert.equal(
+    formatMentionDisplayLabel(`Release ${KEY}`, KEY),
+    "Release AI employee",
+  );
+  assert.equal(formatMentionDisplayLabel("Bad Janet", KEY), "Bad Janet");
+});
+
+test("legacy clipboard display uses the same safe rendering rule", () => {
   for (const suffix of ["", " 2", " 10"]) {
     assert.equal(
       formatLegacyMentionDisplayLabel(`Bad Janet (${KEY})${suffix}`, KEY),
-      `Bad Janet (${truncatePubkey(KEY)})${suffix}`,
+      `Bad Janet (teammate)${suffix}`,
     );
   }
-  assert.equal(formatLegacyMentionDisplayLabel(KEY, KEY), truncatePubkey(KEY));
+  assert.equal(formatLegacyMentionDisplayLabel(KEY, KEY), "AI employee");
 });
 
-test("matching compact keys do not become identity keys", () => {
+test("legacy keys do not survive as distinguishable visible mention labels", () => {
   const other = KEY.replace("aaaa", "bbbb");
   assert.notEqual(KEY, other);
-  // The two keys collide under the old hex first8…last4 truncation yet
-  // compact to distinguishable npubs: npub display keeps them apart.
-  assert.equal(truncatePubkey(KEY), truncatePubkey(other));
-  assert.notEqual(
+  assert.equal(
     formatMentionDisplayLabel(`Scout (${KEY})`, KEY),
     formatMentionDisplayLabel(`Scout (${other})`, other),
   );
   assert.equal(
     formatMentionDisplayLabel(`Scout (${KEY})`, other),
-    `Scout (${KEY})`,
+    "Scout (teammate)",
   );
 });

@@ -64,6 +64,18 @@ export function collectProfileAliases(
   return aliases;
 }
 
+function profileLabel(profile: UserProfileSummary | undefined): string | null {
+  const value =
+    profile?.displayName?.trim() ||
+    profile?.name?.trim() ||
+    profile?.nip05Handle?.trim();
+  return value || null;
+}
+
+function firstName(label: string) {
+  return label.split(/\s+/u)[0] || "teammate";
+}
+
 export type ResolvedMentionProps = {
   /** All literal competitors, including ambiguous aliases without a binding. */
   mentionNames: string[] | undefined;
@@ -102,18 +114,59 @@ export function resolveMentionProps(
     entry.keys.add(key);
     aliases.set(normalized, entry);
   };
-  for (const key of taggedKeys) {
-    for (const alias of collectProfileAliases(profiles?.[key])) add(alias, key);
-  }
-
-  // Only event-tagged identities can supply qualified bindings. The body is not
-  // an authority to add recipients. Keep the historical literal label even if
-  // its profile has since been renamed or is not loaded.
   const qualified: Array<{
     displayName: string;
     pubkey: string;
     base: string;
   }> = [];
+  const addQualified = (displayName: string, pubkey: string, base: string) => {
+    add(displayName, pubkey);
+    qualified.push({ displayName, pubkey, base: base.toLowerCase() });
+  };
+  for (const key of taggedKeys) {
+    for (const alias of collectProfileAliases(profiles?.[key])) add(alias, key);
+  }
+
+  // New picker selections carry the same owner-qualified label that every
+  // other agent surface uses. The `p` tag remains the routing authority; this
+  // only teaches the renderer to recognize the human-readable text. If the
+  // owner record has not arrived yet, preserve the text as plain prose rather
+  // than guessing or exposing a key.
+  const sameOwnerAliases = new Map<
+    string,
+    Array<{ alias: string; key: string; ownerSuffix: string }>
+  >();
+  for (const key of taggedKeys) {
+    const profile = profiles?.[key];
+    const ownerPubkey = profile?.ownerPubkey?.toLowerCase();
+    if (!profile?.isAgent || !ownerPubkey) continue;
+    const ownerSuffix = firstName(
+      profileLabel(profiles?.[ownerPubkey]) ?? "teammate",
+    );
+    for (const alias of collectProfileAliases(profile)) {
+      addQualified(`${alias} (${ownerSuffix})`, key, alias);
+      const groupKey = `${alias.toLowerCase()}:${ownerPubkey}`;
+      const group = sameOwnerAliases.get(groupKey) ?? [];
+      group.push({ alias, key, ownerSuffix });
+      sameOwnerAliases.set(groupKey, group);
+    }
+  }
+  for (const group of sameOwnerAliases.values()) {
+    if (group.length < 2) continue;
+    for (const [index, item] of [...group]
+      .sort((left, right) => left.key.localeCompare(right.key))
+      .entries()) {
+      addQualified(
+        `${item.alias} (${item.ownerSuffix}) ${index + 1}`,
+        item.key,
+        item.alias,
+      );
+    }
+  }
+
+  // Only event-tagged identities can supply qualified bindings. The body is not
+  // an authority to add recipients. Keep the historical literal label even if
+  // its profile has since been renamed or is not loaded.
   for (const match of content.matchAll(
     /@([^@\r\n]+) \(([0-9a-f]{64})\)(?: ((?:[1-9][0-9]+|[2-9])))?/gi,
   )) {
@@ -126,8 +179,7 @@ export function resolveMentionProps(
       )
     )
       continue;
-    qualified.push({ displayName, pubkey, base: match[1].toLowerCase() });
-    add(displayName, pubkey);
+    addQualified(displayName, pubkey, match[1]);
   }
 
   // Qualification can narrow an ambiguous base only when that literal is itself
@@ -147,8 +199,9 @@ export function resolveMentionProps(
   for (const [label, entry] of aliases) {
     let keys = [...entry.keys];
     if (keys.length > 1) {
-      // A selected second Scout is explicitly qualified. Only a unique remaining
-      // Scout can own the unqualified label; tag iteration order is irrelevant.
+      // A visible owner-qualified or legacy literal has already claimed its
+      // identity. Only a unique remaining Scout can own the unqualified label,
+      // so tag iteration order remains irrelevant.
       keys = keys.filter(
         (key) =>
           !ownedQualified.some(

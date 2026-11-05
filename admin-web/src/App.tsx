@@ -22,6 +22,7 @@ import type {
   ReportDetail as ReportDetailData,
 } from "./types";
 import { useResource } from "./useResource";
+import { isOperatorAdminPath, OperatorAdminApp } from "./admin-dashboard";
 
 function usePath() {
   const [path, setPath] = useState(location.pathname);
@@ -968,7 +969,14 @@ function Nip07Screen() {
 
 export function App() {
   const { path } = usePath();
+  return isOperatorAdminPath(path) ? (
+    <OperatorAdminApp path={path} />
+  ) : (
+    <LegacyAdminApp path={path} />
+  );
+}
 
+function LegacyAdminApp({ path }: { path: string }) {
   // Probe the relay once to discover the auth mode. `null` means the probe is
   // still in flight. Once resolved, the mode is stable for the session.
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);

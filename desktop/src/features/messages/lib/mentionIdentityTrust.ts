@@ -26,8 +26,9 @@ import {
  * Compared through `canonicalMentionLabel`, so a legitimate copy is not
  * refused over the casing, padding, or U+00A0 a pasteboard round trip leaves
  * on the declared label. Generated same-name qualifiers additionally require
- * the embedded full key to match the record AND the base alias to be trusted.
- * The qualifier alone is never identity evidence.
+ * the embedded full key to match the record and the base alias to be trusted.
+ * The neutral teammate fallback similarly requires a trusted base alias. The
+ * qualifier alone is never identity evidence.
  */
 export function isTrustedMentionLabel(
   label: string,
@@ -39,8 +40,13 @@ export function isTrustedMentionLabel(
   const qualified = wanted.match(
     /^(.*) \(([0-9a-f]{64})\)(?: (?:[2-9]|[1-9][0-9]+))?$/,
   );
+  const neutralOwnerFallback = wanted.match(
+    /^(.*) \(teammate\)(?: (?:[2-9]|[1-9][0-9]+))?$/,
+  );
   const baseAlias =
-    qualified?.[2] === pubkey?.toLowerCase() ? qualified?.[1] : undefined;
+    qualified?.[2] === pubkey?.toLowerCase()
+      ? qualified?.[1]
+      : neutralOwnerFallback?.[1];
   for (const alias of aliases) {
     const trusted = canonicalMentionLabel(alias);
     if (trusted === wanted || (baseAlias && trusted === baseAlias)) return true;

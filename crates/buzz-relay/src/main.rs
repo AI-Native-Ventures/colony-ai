@@ -845,6 +845,15 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         info!("Co-founder wake worker started");
     }
 
+    // Operator admin metrics: counter flush every minute, rollups every 15 minutes.
+    {
+        let flush_state = Arc::clone(&state);
+        tokio::spawn(async move { buzz_relay::metrics_collect::run_flush(flush_state).await });
+        let rollup_state = Arc::clone(&state);
+        tokio::spawn(async move { buzz_relay::metrics_collect::run_rollup(rollup_state).await });
+        info!("Admin metrics workers started");
+    }
+
     // WhatsApp outreach sender: paced batch sends, queued replies, quality and template refresh.
     {
         let whatsapp_state = Arc::clone(&state);

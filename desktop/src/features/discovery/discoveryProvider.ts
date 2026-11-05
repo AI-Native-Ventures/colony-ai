@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import type { DiscoveryLocation } from "./discoveryLocation";
 import { getRealDiscoveryProvider } from "./discoveryRuntime";
 
 export type DiscoveryAudience = "businesses" | "people";
@@ -15,6 +16,32 @@ export type DiscoveryRunner = {
   pubkey: string | null;
 };
 
+/** Why a completed run cannot keep asking this query for another page. */
+export type DiscoveryEndReason =
+  | "target_reached"
+  | "provider_end"
+  | "provider_ceiling"
+  | "approved_budget"
+  | "provider_repeat";
+
+/** Reasons a particular provider query stream cannot usefully continue. */
+export type DiscoveryQueryEndReason = Extract<
+  DiscoveryEndReason,
+  "provider_end" | "provider_ceiling" | "provider_repeat"
+>;
+
+/**
+ * A saved page boundary for a business type, its chosen tags and one exact
+ * place. New campaigns use it to avoid paying for the same provider pages.
+ */
+export type DiscoveryCoverage = {
+  queryKey: string;
+  /** The first page offset that has not already been paid for and saved. */
+  nextSkip: number;
+  /** A terminal result on this device prevents another local campaign rebuying it. */
+  terminalReason: DiscoveryQueryEndReason | null;
+};
+
 export type DiscoveryCampaign = {
   id: string;
   name: string;
@@ -26,9 +53,13 @@ export type DiscoveryCampaign = {
   /** Search refinements chosen from this type's generated tag layer. */
   pickedTags?: string[];
   location: string;
+  /** A selected geocoder result. Legacy campaigns can omit it and still read. */
+  locationSelection?: DiscoveryLocation | null;
   target: number;
   count: number;
   budgetUsd: number;
+  /** Actual provider estimate accumulated from pages that were fully saved. */
+  spentUsd?: number;
   criteria: string;
   status: DiscoveryRunStatus;
   prospectIds: string[];
@@ -49,10 +80,14 @@ export type DiscoveryCampaign = {
   /** Places the search found that were already in Leads, so not added again. */
   skippedDuplicates?: number;
   /**
-   * Plain-words reason a finished run is below its target (for example "Google
-   * has no more restaurants ..."); null when the target was reached.
+   * Plain-words reason a finished run is below its target; null when the target
+   * was reached. It states only the observed stopping evidence.
    */
   endNote?: string | null;
+  /** Machine-readable companion to `endNote`, used by Find more. */
+  endReason?: DiscoveryEndReason | null;
+  /** Device-local page boundaries, one for each provider query stream. */
+  coverage?: DiscoveryCoverage[];
 };
 
 export type DiscoveryCampaignInput = Omit<

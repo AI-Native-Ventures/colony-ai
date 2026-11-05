@@ -5,10 +5,13 @@ import {
   parsePubkeyInput,
 } from "@/features/agents/lib/respondToAllowlist";
 import { parsePubkeyInput as parseCanonicalPubkey } from "@/shared/lib/nostrUtils";
-import { truncateNpub } from "@/shared/lib/pubkey";
-import { PubKey } from "@/shared/ui/PubKey";
 import { useIsArchivedPredicate } from "@/features/identity-archive/hooks";
-import { useUserSearchQuery } from "@/features/profile/hooks";
+import {
+  useUserSearchQuery,
+  useUsersBatchQuery,
+} from "@/features/profile/hooks";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import type { RespondToMode, UserSearchResult } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Input } from "@/shared/ui/input";
@@ -56,12 +59,14 @@ import type { PersonaDropdownOption } from "./agentConfigOptions";
  * `desktop/src-tauri/src/managed_agents/types.rs`.
  */
 
-function formatSearchUserName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+function formatSearchUserName(user: UserSearchResult, currentPubkey?: string) {
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    currentPubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 function formatSearchUserSecondary(user: UserSearchResult) {
@@ -70,7 +75,7 @@ function formatSearchUserSecondary(user: UserSearchResult) {
   if (displayName && nip05Handle) {
     return nip05Handle;
   }
-  return truncateNpub(user.pubkey);
+  return user.isAgent ? "AI employee" : "Teammate awaiting profile";
 }
 
 const RESPOND_TO_OPTIONS: PersonaDropdownOption[] = [
@@ -323,6 +328,42 @@ function AllowlistPicker({
   variant?: "default" | "persona";
 }) {
   const isPersona = variant === "persona";
+  const identityQuery = useIdentityQuery();
+  const allowlistProfilesQuery = useUsersBatchQuery(allowlist, {
+    enabled: allowlist.length > 0,
+  });
+  const ownerPubkeys = React.useMemo(
+    () => [
+      ...new Set(
+        Object.values(allowlistProfilesQuery.data?.profiles ?? {})
+          .map((profile) => profile.ownerPubkey)
+          .filter((pubkey): pubkey is string => Boolean(pubkey)),
+      ),
+    ],
+    [allowlistProfilesQuery.data?.profiles],
+  );
+  const ownerProfilesQuery = useUsersBatchQuery(ownerPubkeys, {
+    enabled: ownerPubkeys.length > 0,
+  });
+  const allowlistLabel = React.useCallback(
+    (pubkey: string) => {
+      const profile = allowlistProfilesQuery.data?.profiles[pubkey];
+      return resolveIdentityLabel({
+        pubkey,
+        currentPubkey: identityQuery.data?.pubkey,
+        fallbackName: profile?.displayName,
+        profiles: allowlistProfilesQuery.data?.profiles,
+        ownerProfiles: ownerProfilesQuery.data?.profiles,
+        isAgent: profile?.isAgent,
+        ownerPubkey: profile?.ownerPubkey,
+      }).text;
+    },
+    [
+      allowlistProfilesQuery.data?.profiles,
+      identityQuery.data?.pubkey,
+      ownerProfilesQuery.data?.profiles,
+    ],
+  );
 
   // Detect if the query is a pubkey (npub or hex) not already in the list;
   // direct entry offers the canonical hex for storage.
@@ -350,9 +391,7 @@ function AllowlistPicker({
       ) : null}
       {!isPersona && ownerPubkey ? (
         <p className="text-xs text-muted-foreground">
-          You (
-          <PubKey pubkey={ownerPubkey} />) can always use this agent. You
-          don&apos;t need to add yourself.
+          You can always use this agent. You don&apos;t need to add yourself.
         </p>
       ) : !isPersona ? (
         <p className="text-xs text-muted-foreground">
@@ -383,13 +422,13 @@ function AllowlistPicker({
               >
                 <UserAvatar
                   avatarUrl={null}
-                  displayName={truncateNpub(pubkey)}
+                  displayName={allowlistLabel(pubkey)}
                   pubkey={pubkey}
                   size="xs"
                 />
-                <PubKey pubkey={pubkey} />
+                <span>{allowlistLabel(pubkey)}</span>
                 <button
-                  aria-label={`Remove ${truncateNpub(pubkey)}`}
+                  aria-label={`Remove ${allowlistLabel(pubkey)}`}
                   className="text-muted-foreground transition-colors hover:text-foreground"
                   disabled={disabled}
                   onClick={() => onRemove(pubkey)}
@@ -420,14 +459,20 @@ function AllowlistPicker({
                     <div className="flex items-center gap-2 min-w-0">
                       <UserAvatar
                         avatarUrl={result.avatarUrl}
-                        displayName={formatSearchUserName(result)}
+                        displayName={formatSearchUserName(
+                          result,
+                          identityQuery.data?.pubkey,
+                        )}
                         pubkey={result.pubkey}
                         shape={result.isAgent ? "squircle" : "circle"}
                         size="xs"
                       />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium leading-5">
-                          {formatSearchUserName(result)}
+                          {formatSearchUserName(
+                            result,
+                            identityQuery.data?.pubkey,
+                          )}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {formatSearchUserSecondary(result)}
@@ -448,13 +493,13 @@ function AllowlistPicker({
                 <div className="flex items-center gap-2 min-w-0">
                   <UserAvatar
                     avatarUrl={null}
-                    displayName={truncateNpub(queryPubkey)}
+                    displayName="Teammate awaiting profile"
                     pubkey={queryPubkey}
                     size="xs"
                   />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium leading-5">
-                      {truncateNpub(queryPubkey)}
+                      Teammate awaiting profile
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       Add pubkey directly

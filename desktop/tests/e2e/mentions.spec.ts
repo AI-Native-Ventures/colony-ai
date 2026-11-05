@@ -578,13 +578,12 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
     (dropdownBox?.x ?? 0) + (dropdownBox?.width ?? 0) + 1,
   );
 
-  const collisionKeys = dropdown.getByTestId("mention-collision-npub");
-  await expect(collisionKeys).toHaveCount(2);
-  const fullNpubs = await collisionKeys.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("title")),
-  );
-  expect(fullNpubs).toHaveLength(2);
-  expect(new Set(fullNpubs).size).toBe(2);
+  // Same-owner names remain human-readable and route to distinct keys through
+  // their short ordinal, never through a visible public-key fragment.
+  await expect(managedRow).toContainText(/carl [12]/);
+  await expect(relayRow).toContainText(/carl [12]/);
+  const pickerText = await dropdown.innerText();
+  expect(pickerText).not.toMatch(/(?:npub1|[0-9a-f]{40,})/i);
 
   await managedRow.getByRole("button", { name: "Mention carl" }).click();
   await expect(
@@ -4429,10 +4428,10 @@ test("clicking author name opens user profile panel", async ({ page }) => {
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-  // The seed message in general is from the mock identity (npub1mock...)
+  // The seed message in general is from the mock identity (Morgan).
   const firstMessage = page.getByTestId("message-row").first();
   const authorButton = firstMessage.locator("button", {
-    hasText: "npub1mock...",
+    hasText: "Morgan",
   });
   await authorButton.click();
 
@@ -4777,7 +4776,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
   await expect(page.getByText("Sending")).toHaveCount(0, { timeout: 4_000 });
   await waitForTimelineSettled(page);
   await expect(waveAttachment).toContainText("👋");
-  await expect(waveAttachment).toContainText("npub1mock... waved at you.");
+  await expect(waveAttachment).toContainText("Morgan waved at you.");
   await expect(waveAttachment.getByRole("button")).toHaveCount(0);
 
   const commandLog = await readCommandPayloadLog(page);
@@ -4786,7 +4785,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
       expect.objectContaining({
         command: "send_channel_message",
         payload: expect.objectContaining({
-          content: expect.stringContaining("npub1mock... waved at you."),
+          content: expect.stringContaining("Morgan waved at you."),
         }),
       }),
     ]),

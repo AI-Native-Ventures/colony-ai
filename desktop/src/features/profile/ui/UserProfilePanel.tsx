@@ -73,7 +73,6 @@ import {
   resolveAgentInstruction,
   resolvePanelProfile,
   resolveProfileDisplayName,
-  truncateNpub,
   type UserProfilePanelProps,
   useRetainedPersona,
 } from "@/features/profile/ui/UserProfilePanelUtils";
@@ -601,6 +600,7 @@ export function UserProfilePanel({
   );
 
   const displayName = resolveProfileDisplayName({
+    currentPubkey,
     persona: resolvedPersona,
     profile,
     pubkey: effectivePubkey,
@@ -611,7 +611,7 @@ export function UserProfilePanel({
       return (
         ownerProfile?.nip05Handle?.trim() ||
         ownerProfile?.displayName?.trim() ||
-        truncateNpub(ownerPubkey)
+        "teammate"
       );
     }
 
@@ -623,7 +623,7 @@ export function UserProfilePanel({
     return (
       currentProfile?.nip05Handle?.trim() ||
       currentProfile?.displayName?.trim() ||
-      truncateNpub(currentPubkey)
+      "you"
     );
   }, [
     currentProfileQuery.data,

@@ -29,8 +29,9 @@ import { noteMentionSentToAgents } from "@/features/agents/mentionReconcilerHand
 import { loadManagedAgentsForSend } from "./managedAgentsForSend";
 import { useDetachedAgentStart } from "./useDetachedAgentStart";
 import { useEnsureAgentMentionsReady } from "./useEnsureAgentMentionsReady";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import type { AcpRuntime, ManagedAgent } from "@/shared/api/types";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { buildCustomEmojiTags } from "@/shared/lib/customEmojiTags";
 import {
   dedupeQueuedAgentWakes,
@@ -961,7 +962,14 @@ export function useMentionSendFlow({
     return pendingNonMemberPubkeys.map((pubkey) => ({
       avatarUrl: profiles?.[pubkey.toLowerCase()]?.avatarUrl ?? null,
       isAgent: mentions.isAgentPubkey(pubkey),
-      label: mentions.getMentionDisplayName(pubkey) ?? truncateNpub(pubkey),
+      label:
+        mentions.getMentionDisplayName(pubkey) ??
+        resolveIdentityLabel({
+          pubkey,
+          profiles,
+          isAgent: mentions.isAgentPubkey(pubkey),
+          ownerPubkey: profiles?.[pubkey.toLowerCase()]?.ownerPubkey ?? null,
+        }).text,
       pubkey,
     }));
   }, [
