@@ -723,7 +723,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 62);
+        assert_eq!(migrations.len(), 63);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -741,6 +741,8 @@ mod postgres_tests {
             .sql
             .as_str()
             .contains("CREATE TABLE metrics_daily_active"));
+        assert_eq!(migrations[62].version, 63);
+        assert!(migrations[62].sql.as_str().contains("account_health_code"));
         assert!(migrations[54]
             .sql
             .as_str()

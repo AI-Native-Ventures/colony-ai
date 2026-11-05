@@ -25,7 +25,7 @@ use buzz_core::whatsapp_stage::{
 use buzz_db::whatsapp::{DeskFacts, WhatsappContact};
 use buzz_db::EventQuery;
 
-use super::policy::{contact_label, failure_summary_for_code};
+use super::policy::{contact_label, failure_summary_for_code, is_contact_engagement_limit};
 use crate::state::AppState;
 
 /// What a linked Discovery lead says about a contact.
@@ -321,18 +321,58 @@ pub fn desk_fields(
     lead: Option<&LeadFacts>,
     record: Option<&RecordFacts>,
 ) -> Map<String, Value> {
+    desk_fields_for_capability(contact, facts, lead, record, false)
+}
+
+/// The same desk projection for a desktop that explicitly understands the `queued` stage.
+/// The legacy default deliberately writes `none` for queued work: desktop-v3.0.37 validates
+/// this enum strictly and would reject the entire contact response if it saw `queued`.
+///
+/// This match is intentionally exhaustive. Adding a stage in `buzz-core` makes the compiler
+/// require a deliberate legacy projection instead of accidentally leaking a new enum value to
+/// an installed desktop that cannot parse it.
+const fn legacy_stage_wire_value(stage: WhatsappStage) -> &'static str {
+    match stage {
+        WhatsappStage::None | WhatsappStage::Queued => "none",
+        WhatsappStage::Contacted => "contacted",
+        WhatsappStage::Replied => "replied",
+        WhatsappStage::WantsCall => "wants_call",
+        WhatsappStage::CallBooked => "call_booked",
+        WhatsappStage::QuoteSent => "quote_sent",
+        WhatsappStage::Client => "client",
+        WhatsappStage::NoThanks => "no_thanks",
+        WhatsappStage::Stopped => "stopped",
+        WhatsappStage::NotOnWhatsapp => "not_on_whatsapp",
+    }
+}
+
+/// Build the desk projection for a caller that has explicitly advertised whether it can parse
+/// the `queued` stage. New wire fields remain additive; only the existing `stage` enum is
+/// projected for compatibility.
+pub fn desk_fields_for_capability(
+    contact: &WhatsappContact,
+    facts: &DeskFacts,
+    lead: Option<&LeadFacts>,
+    record: Option<&RecordFacts>,
+    supports_queued_stage: bool,
+) -> Map<String, Value> {
     let result = derive_stage(&stage_inputs(contact, facts, lead, record));
+    let wire_stage = if supports_queued_stage {
+        result.stage.as_str()
+    } else {
+        legacy_stage_wire_value(result.stage)
+    };
     let profile = contact.display_name.trim();
     let has_profile = profile.chars().any(char::is_alphanumeric);
     let mut fields = Map::new();
-    fields.insert("stage".into(), json!(result.stage.as_str()));
+    fields.insert("stage".into(), json!(wire_stage));
     fields.insert("stageSetBy".into(), json!(result.set_by.as_wire()));
     fields.insert("stageChangedAt".into(), rfc3339(result.changed_at));
     fields.insert("lastContactedAt".into(), rfc3339(facts.last_contacted_at));
     fields.insert("lastReplyAt".into(), rfc3339(contact.last_inbound_at));
     fields.insert(
         "queuedFrom".into(),
-        if result.stage == WhatsappStage::Queued {
+        if wire_stage == "queued" {
             json!(facts.queued_from)
         } else {
             Value::Null
@@ -352,6 +392,21 @@ pub fn desk_fields(
         .then(|| failure_summary_for_code(facts.last_outcome_code.as_deref()))
         .flatten();
     fields.insert("lastFailureSummary".into(), json!(last_failure_summary));
+    let engagement_limited = facts.last_outcome_state.as_deref() == Some("failed")
+        && is_contact_engagement_limit(facts.last_outcome_code.as_deref());
+    fields.insert(
+        "deliveryFailure".into(),
+        if engagement_limited {
+            json!({
+                "code": facts.last_outcome_code,
+                "summary": last_failure_summary,
+                "retryAfter": contact.retry_after.map(|at| at.to_rfc3339()),
+                "canRetryLater": contact.retry_after.is_none(),
+            })
+        } else {
+            Value::Null
+        },
+    );
     if let Some(lead) = lead {
         fields.insert("businessName".into(), json!(lead.business_name));
         fields.insert("website".into(), json!(lead.website));
@@ -393,6 +448,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: t(1),
         }
     }
@@ -406,7 +462,7 @@ mod tests {
             last_outcome_at: Some(t(3)),
             ..Default::default()
         };
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["stage"], "not_on_whatsapp");
         // Another failure code, or a later success, is not.
         facts.last_outcome_code = Some("131049".into());
@@ -428,11 +484,11 @@ mod tests {
             label: Some("Plane Tree Hotel".into()),
             ..Default::default()
         };
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["displayName"], "Plane Tree Hotel");
         assert_eq!(fields["profileName"], "Thabo");
         facts.label = None;
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["displayName"], "Thabo");
         let mut dot = contact();
         dot.display_name = ".".into();
@@ -476,7 +532,7 @@ mod tests {
         let result = derive_stage(&inputs);
         assert_eq!(result.stage, WhatsappStage::CallBooked);
         assert_eq!(result.set_by, StageSetBy::Manual("ab".repeat(32)));
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["stageSetBy"], "ab".repeat(32));
         assert_eq!(fields["stageChangedAt"], t(4).to_rfc3339());
     }
@@ -488,14 +544,26 @@ mod tests {
             queued_from: Some("Batch: Melville guesthouses".into()),
             ..Default::default()
         };
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["stage"], "queued");
         assert_eq!(fields["queuedFrom"], "Batch: Melville guesthouses");
 
         facts.last_contacted_at = Some(t(3));
-        let fields = desk_fields(&contact(), &facts, None, None);
+        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
         assert_eq!(fields["stage"], "contacted");
         assert_eq!(fields["queuedFrom"], Value::Null);
+    }
+
+    #[test]
+    fn legacy_projection_never_emits_the_new_queued_stage() {
+        // GUARD: desktop-v3.0.37 throws for an unfamiliar `contact.stage`. The default
+        // projection is therefore the safe legacy form until a client advertises support.
+        let facts = DeskFacts {
+            queued_at: Some(t(2)),
+            queued_from: Some("Batch: legacy-safe".into()),
+            ..Default::default()
+        };
+        assert_eq!(desk_fields(&contact(), &facts, None, None)["stage"], "none");
     }
 
     #[test]

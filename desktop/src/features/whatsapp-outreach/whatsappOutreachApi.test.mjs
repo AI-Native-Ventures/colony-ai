@@ -6,6 +6,7 @@ import {
   makeWhatsAppCommand,
   postWhatsAppJson,
   publishWhatsAppCommand,
+  queryWhatsApp,
   whatsappCommandKinds,
 } from "./whatsappOutreachApi.ts";
 import { relayClient } from "@/shared/api/relayClient";
@@ -86,6 +87,34 @@ test("authenticated POST uses the same exact URL and body for its signature", as
     "5cda70126f924ed4159a29357b782816470143d633760eae56efc93b94c8bebf",
   );
   assert.deepEqual(result, responseBody);
+});
+
+test("current desktop advertises the queued-stage capability on every query", async () => {
+  let request = null;
+  await queryWhatsApp(
+    "wss://relay.example",
+    { what: "contacts" },
+    {
+      nonce: () => "capability-test",
+      signer: async (event) => ({
+        id: "id",
+        pubkey: "pubkey",
+        kind: 27235,
+        content: "",
+        tags: event.tags,
+        created_at: 1,
+        sig: "sig",
+      }),
+      fetcher: async (_url, init) => {
+        request = init;
+        return new Response(JSON.stringify({ contacts: [] }), { status: 200 });
+      },
+    },
+  );
+  assert.deepEqual(JSON.parse(request.body), {
+    what: "contacts",
+    capabilities: ["whatsapp-outreach-stage-queued"],
+  });
 });
 
 test("HTTP failures surface relay copy and malformed success bodies fail closed", async () => {
