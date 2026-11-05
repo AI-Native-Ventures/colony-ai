@@ -1438,11 +1438,13 @@
 
 .c3wa-contact-list {
   display: flex;
+  height: 0;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   gap: 0.125rem;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0.5rem;
 }
 
@@ -3287,6 +3289,15 @@
   border-radius: inherit;
 }
 
+.c3wa-contact-avatar .business-logo-mark {
+  overflow: visible;
+}
+
+.c3wa-contact-avatar .business-logo-mark > img,
+.c3wa-contact-avatar .business-logo-fallback {
+  border-radius: inherit;
+}
+
 .c3wa-desk-logo-mark img,
 .c3wa-desk-logo-mark .business-logo-fallback {
   width: 100%;
@@ -3486,7 +3497,7 @@
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: repeat(6, minmax(11.5rem, 1fr));
+  grid-template-columns: repeat(6, minmax(14rem, 1fr));
   gap: 0.75rem;
   overflow: auto;
   padding: 1.125rem 1.5rem 1.5rem;

@@ -299,7 +299,10 @@ export function useAgentAddressLockPicker({
   );
 
   const selectMentionSuggestion = React.useCallback(
-    (suggestion: MentionSuggestion, selectionOptions?: { focus?: boolean }) => {
+    (
+      suggestion: MentionSuggestion,
+      selectionOptions?: { focus?: boolean; replaceInlineQuery?: boolean },
+    ) => {
       const pubkey = normalizePubkey(suggestion.pubkey ?? "");
       if (suggestion.isAgent && pubkey && audienceScope) {
         const { cursor } = richText.getPlainTextAndCursor();

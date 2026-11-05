@@ -205,7 +205,7 @@ function OutreachMentionPickerContent({
   onSelectEntity: (choice: EntityChoice) => void;
   onSelectPerson: (
     person: MentionSuggestion,
-    options?: { focus?: boolean },
+    options?: { focus?: boolean; replaceInlineQuery?: boolean },
   ) => void;
 }) {
   const business = useBusinessRecords({ createIfMissing: false });
@@ -527,7 +527,7 @@ export function OutreachMentionComposerButton({
   onPreparePeople: () => void;
   onSelectPerson: (
     person: MentionSuggestion,
-    options?: { focus?: boolean },
+    options?: { focus?: boolean; replaceInlineQuery?: boolean },
   ) => void;
   peopleAndAgents: MentionSuggestion[];
   replacePlainTextRange: (
@@ -596,7 +596,10 @@ export function OutreachMentionComposerButton({
 
   function choosePerson(person: MentionSuggestion) {
     suppressStaleComposerFocusRef.current = true;
-    onSelectPerson(person, { focus: false });
+    onSelectPerson(person, {
+      focus: false,
+      replaceInlineQuery: mentionQuery !== null,
+    });
     setPickerOpen(false);
   }
 

@@ -102,7 +102,13 @@ function detectMentionQuery(
     return null;
   }
   const query = beforeCursor.slice(startIndex + 1);
-  if (query.includes("\n")) return null;
+  const queryLower = query.toLowerCase();
+  if (
+    query.includes("\n") ||
+    knownNamesLower.some((name) => queryLower.startsWith(`${name} `))
+  ) {
+    return null;
+  }
   return { query, startIndex };
 }
 
@@ -614,7 +620,7 @@ export function useMentions(
     (
       suggestion: MentionSuggestion,
       selectionEnd: number,
-      insertionOptions?: { focus?: boolean },
+      insertionOptions?: { focus?: boolean; replaceInlineQuery?: boolean },
     ): AutocompleteEdit => {
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
@@ -691,7 +697,7 @@ export function useMentions(
       setMentionQuery(null);
       setSelected(0);
       const startIndex =
-        mentionQuery === null
+        insertionOptions?.replaceInlineQuery === false
           ? selectionEnd
           : (flushedMentionStartIndexRef.current ?? mentionStartIndex);
       flushedMentionStartIndexRef.current = null;
@@ -704,7 +710,6 @@ export function useMentions(
     },
     [
       knownAgentPubkeys,
-      mentionQuery,
       mentionStartIndex,
       pasteBinding.claimMentionIntent,
       setSelected,
