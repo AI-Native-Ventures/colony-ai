@@ -236,7 +236,8 @@ test("status parser strips unknown secret fields and clamps invalid cap ranges",
   assert.equal(status.quality, "green");
   assert.equal(status.accountRetryCount, 0);
   assert.equal(
-    parseWhatsAppStatus(baseStatus({ accountRetryCount: 63 })).accountRetryCount,
+    parseWhatsAppStatus(baseStatus({ accountRetryCount: 63 }))
+      .accountRetryCount,
     63,
   );
   assert.equal(whatsappQualityLabel(status.quality), "Green");
@@ -407,7 +408,8 @@ test("payment failures carry a safe account recovery scope while older relays fa
     state: "failed",
     errorCode: "131042",
     errorText: "Business eligibility payment issue",
-    failureSummary: "Meta blocked this send: payment problem on your WhatsApp account.",
+    failureSummary:
+      "Meta blocked this send: payment problem on your WhatsApp account.",
     retryScope: "account",
     canRetry: true,
   });
