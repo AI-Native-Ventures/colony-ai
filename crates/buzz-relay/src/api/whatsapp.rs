@@ -409,7 +409,7 @@ pub(crate) async fn thread_view(
 }
 
 /// Thread view with the caller's explicitly advertised enum support.
-async fn thread_view_for_capability(
+pub(crate) async fn thread_view_for_capability(
     state: &Arc<AppState>,
     community: buzz_core::tenant::CommunityId,
     wa_id: &str,

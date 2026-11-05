@@ -1584,8 +1584,8 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
             fx.community(),
             rows_before_pause[1].id,
             contact_refusal_lease,
-            base() + Duration::minutes(5),
-            base() + Duration::seconds(1),
+            base() - Duration::minutes(19),
+            base() - Duration::minutes(20),
         )
         .await
         .expect("claim recipient failure"));
@@ -1609,8 +1609,8 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
             fx.community(),
             rows_before_pause[2].id,
             opted_out_account_lease,
-            base() + Duration::minutes(5),
-            base() + Duration::seconds(2),
+            base() - Duration::minutes(9),
+            base() - Duration::minutes(10),
         )
         .await
         .expect("claim opted-out account failure"));
@@ -1633,7 +1633,7 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
             fx.community(),
             &rows_before_pause[2].wa_id,
             "stop",
-            base() + Duration::seconds(3),
+            base() - Duration::minutes(8),
         )
         .await
         .expect("record late opt-out"));
@@ -1868,11 +1868,30 @@ async fn engagement_limit_is_contact_only_and_retries_after_the_selected_delay()
         "the delayed retry cannot re-enter the same day's sender pass"
     );
 
-    fx.run_sender(retry_after + Duration::seconds(1)).await;
+    let retry_due = retry_after + Duration::seconds(1);
+    fx.run_sender(retry_due).await;
+    let released = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), rows[0].id)
+        .await
+        .expect("released retry")
+        .expect("released retry exists");
+    assert!(
+        matches!(released.state.as_str(), "ready" | "sent"),
+        "the selected retry is released only after its deadline"
+    );
+
+    // A delayed engagement retry returns to the normal queue. It is not Send now, so the
+    // first permitted sender window still decides when Graph receives it.
+    if released.state != "sent" {
+        fx.run_sender(super::policy::next_window_start(retry_due))
+            .await;
+    }
     assert_eq!(
         fx.graph.send_count(),
         3,
-        "the existing row is retried once only after the selected delay"
+        "the existing row is retried once only after the selected delay and normal send window"
     );
     let retried = fx
         .state
@@ -2339,8 +2358,8 @@ async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_
 #[ignore = "requires disposable Postgres and Redis"]
 async fn approved_unsent_batch_contact_is_queued_then_contacted_after_the_send() {
     // GUARD: the production desk read model derives `queued` from ready work, then lets the
-    // first persisted send take precedence. This exercises batch approval, sender state and the
-    // same thread contact view that desktop reads.
+    // first persisted send take precedence. The current desktop explicitly advertises the
+    // queued-stage capability, so this exercises the same thread contact view that it reads.
     let fx = fixture().await;
     let agent = Keys::generate();
     own_agent(&fx, &agent, &fx.owner).await;
@@ -2370,14 +2389,14 @@ async fn approved_unsent_batch_contact_is_queued_then_contacted_after_the_send()
 
     // 05:00 Johannesburg is outside the sender window, so the approved row remains unsent.
     fx.run_sender(base() - Duration::hours(7)).await;
-    let queued = contact_json(&fx, wa).await;
+    let queued = contact_json_current_desktop(&fx, wa).await;
     assert_eq!(queued["stage"], WhatsappStage::Queued.as_str());
     assert_eq!(queued["stageSetBy"], "auto");
     assert_eq!(queued["queuedFrom"], "Batch: Melville guesthouses");
     assert_eq!(queued["lastContactedAt"], Value::Null);
 
     fx.run_sender(base()).await;
-    let contacted = contact_json(&fx, wa).await;
+    let contacted = contact_json_current_desktop(&fx, wa).await;
     assert_eq!(contacted["stage"], "contacted");
     assert_eq!(contacted["queuedFrom"], Value::Null);
     assert!(contacted["lastContactedAt"].is_string());
@@ -3187,6 +3206,23 @@ async fn contact_json(fx: &Fixture, wa_id: &str) -> Value {
     crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa_id, 50, true, Utc::now())
         .await
         .expect("thread view")["contact"]
+        .clone()
+}
+
+/// The contact as desktop 3.0.38 reads it. `whatsappOutreachApi.test.mjs` binds this capability
+/// marker to every desktop query; the no-marker helper above deliberately remains legacy-safe.
+async fn contact_json_current_desktop(fx: &Fixture, wa_id: &str) -> Value {
+    crate::api::whatsapp::thread_view_for_capability(
+        &fx.state,
+        fx.community(),
+        wa_id,
+        50,
+        true,
+        Utc::now(),
+        true,
+    )
+    .await
+    .expect("current desktop thread view")["contact"]
         .clone()
 }
 

@@ -368,8 +368,9 @@ pub struct WhatsappMessage {
     pub batch_idx: Option<i32>,
     /// Counts to the daily cap.
     pub new_chat: bool,
-    /// Set only by the owner's `send_now` decision: the moment it was given. The sender
-    /// treats a set value as "skip the send window and the pacing gap".
+    /// The owner's `send_now` marker or a delayed per-contact retry deadline. A `ready` row
+    /// with this marker was released by Send now and skips the send window and pacing gap; a
+    /// delayed retry remains `failed` until its deadline releases it and clears this field.
     pub send_after: Option<DateTime<Utc>>,
     /// Who asked for the send.
     pub sender_pubkey: Option<Vec<u8>>,
@@ -2051,11 +2052,14 @@ impl Db {
     }
 
     /// Outbound messages waiting to be sent, singles first then batch rows in batch order.
+    ///
+    /// `send_after` is the owner's existing Send now marker, not a generic eligibility clock.
+    /// A delayed per-contact retry stays `failed` until its deadline releases it, so filtering
+    /// ready work by this field would silently strand an owner-released batch.
     pub async fn whatsapp_list_sendable(
         &self,
         community: CommunityId,
         limit: i64,
-        now: DateTime<Utc>,
     ) -> Result<Vec<WhatsappMessage>> {
         let rows = sqlx::query(
             "SELECT m.id, m.wa_id, m.direction, m.kind, m.body, m.template_name, \
@@ -2064,14 +2068,12 @@ impl Db {
                     m.new_chat, m.send_after, m.sender_pubkey, m.sent_at, m.created_at \
              FROM whatsapp_messages m \
              WHERE m.community_id = $1 AND m.state IN ('queued', 'ready') \
-               AND (m.send_after IS NULL OR m.send_after <= $3) \
              ORDER BY (m.state = 'queued') DESC, (m.send_after IS NOT NULL) DESC, \
                       m.created_at, m.batch_idx NULLS FIRST, m.id \
              LIMIT $2",
         )
         .bind(community.as_uuid())
         .bind(limit.clamp(1, 200))
-        .bind(now)
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_message).collect()
@@ -2090,10 +2092,10 @@ impl Db {
             "UPDATE whatsapp_messages SET state = 'sending', lease_token = $3, lease_until = $4, \
                  sent_at = $5, updated_at = now() \
              WHERE community_id = $1 AND id = $2 AND state IN ('queued', 'ready') \
-               AND EXISTS ( \
+               AND NOT EXISTS ( \
                    SELECT 1 FROM whatsapp_settings s \
                    WHERE s.community_id = whatsapp_messages.community_id \
-                     AND NOT s.send_paused \
+                     AND s.send_paused \
                )",
         )
         .bind(community.as_uuid())

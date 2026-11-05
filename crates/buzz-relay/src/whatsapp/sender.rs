@@ -503,7 +503,7 @@ pub async fn process_community(
 
     let sendable = state
         .db
-        .whatsapp_list_sendable(community, SENDABLE_PER_TICK, now)
+        .whatsapp_list_sendable(community, SENDABLE_PER_TICK)
         .await
         .map_err(|error| error.to_string())?;
     let mut new_chat_blocked = false;
