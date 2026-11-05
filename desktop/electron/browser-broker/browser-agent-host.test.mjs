@@ -9,6 +9,7 @@ import { createBrowserAgentHost } from "./browser-agent-host.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
 
 const AGENT = "a".repeat(64);
+const SCOUT_TWO = "b".repeat(64);
 const TASK = "conversation:11111111-1111-4111-8111-111111111111";
 const COMMUNITY = "https://relay.example";
 
@@ -235,7 +236,7 @@ test("stopping the host revokes every grant and closes the channel", async () =>
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("default access: a first browser call becomes an event, the app's grant answers it, the tab is used", async () => {
+test("default access: a first browser call becomes an event, the app's grant answers it, the tab is used", async (t) => {
   const { dir, socketPath } = tmpSocket();
   const driver = createFakePageDriver();
   driver.addTab({
@@ -271,6 +272,14 @@ test("default access: a first browser call becomes an event, the app's grant ans
     taskId: TASK,
     communityOrigin: COMMUNITY,
   });
+  let scoutTwo = null;
+  let disposed = false;
+  t.after(async () => {
+    scoutTwo?.close();
+    client.close();
+    if (!disposed) await host.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
   client.start();
   await until(() => client.isReady());
   assert.ok((await client.listTools()).length > 0);
@@ -281,13 +290,28 @@ test("default access: a first browser call becomes an event, the app's grant ans
   const asked = await until(() =>
     events.find((event) => event.type === "access-requested"),
   );
-  assert.deepEqual(asked, {
-    type: "access-requested",
-    agentId: AGENT,
-    taskId: TASK,
-    communityOrigin: COMMUNITY,
-    resume: false,
-  });
+  assert.deepEqual(
+    { ...asked, accessRequestId: undefined },
+    {
+      type: "access-requested",
+      accessRequestId: undefined,
+      agentId: AGENT,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+      resume: false,
+    },
+  );
+  assert.match(asked.accessRequestId, /^\d+$/u);
+  assert.deepEqual(await host.handleRequest("agent-access-requests", {}), [
+    {
+      type: "access-requested",
+      accessRequestId: asked.accessRequestId,
+      agentId: AGENT,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+      resume: false,
+    },
+  ]);
 
   // What the trusted app window does on that event.
   const grant = await host.handleRequest("agent-grant", {
@@ -308,17 +332,88 @@ test("default access: a first browser call becomes an event, the app's grant ans
   assert.equal(opened.tab.id, "tab-1");
   assert.equal(driver.tabs.get("tab-1").url, "https://news.example/a");
 
+  // A second Scout has a different agent identity and therefore a different
+  // session credential. It still gets the same automatic default path.
+  driver.addTab({
+    id: "tab-2",
+    url: "about:blank",
+    controlOwner: "human",
+    page: { text: "", elements: [] },
+  });
+  // This is the person's already open, shared Facebook tab. A different
+  // managed Scout must be able to discover it after its automatic grant.
+  driver.addTab({
+    id: "person-facebook",
+    url: "https://www.facebook.com/profile.php?id=100066961456519",
+    controlOwner: "human",
+    title: "(20+) Facebook",
+    page: { text: "", elements: [] },
+  });
+  scoutTwo = createBrokerClient({
+    socketPath,
+    secret: browserSessionCredential(secret, {
+      agentId: SCOUT_TWO,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+    }),
+    agent: SCOUT_TWO,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+  });
+  scoutTwo.start();
+  await until(() => scoutTwo.isReady());
+  const secondOpening = scoutTwo.callTool("browser_tabs", {});
+  const secondAsked = await until(() =>
+    events.find(
+      (event) =>
+        event.type === "access-requested" && event.agentId === SCOUT_TWO,
+    ),
+  );
+  assert.deepEqual(await host.handleRequest("agent-access-requests", {}), [
+    {
+      type: "access-requested",
+      accessRequestId: secondAsked.accessRequestId,
+      agentId: SCOUT_TWO,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+      resume: false,
+    },
+  ]);
+  await host.handleRequest("agent-grant", {
+    agentId: SCOUT_TWO,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+    businessId: "biz-1",
+    tabId: "tab-2",
+    allowedOrigins: [],
+    defaultAccess: true,
+    ttlMs: 60 * 60_000,
+  });
+  const secondTabs = await secondOpening;
+  assert.equal(secondTabs.ok, true);
+  const personTab = secondTabs.tabs.find((tab) => tab.id === "person-facebook");
+  assert.equal(personTab?.control, "free");
+  assert.equal(
+    personTab?.url,
+    "https://www.facebook.com/profile.php?id=100066961456519",
+  );
+  scoutTwo.close();
+
   // Stop ends it, and the next call asks again as a resume.
   await host.handleRequest("agent-revoke", { grantId: grant.id });
   const after = client.callTool("browser_tabs", {});
   const resume = await until(() =>
-    events.filter((event) => event.type === "access-requested").at(1),
+    events
+      .filter(
+        (event) => event.type === "access-requested" && event.agentId === AGENT,
+      )
+      .at(1),
   );
   assert.equal(resume.resume, true);
   client.close();
   await host.stop();
+  disposed = true;
   assert.equal((await after).ok, false);
-  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("a host without default access refuses an empty grant and never asks the app", async () => {

@@ -254,6 +254,7 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         loader: "tsx",
       },
       bundle: true,
+      loader: { ".svg": "text" },
       write: false,
       format: "iife",
       alias: { "@": path.resolve(import.meta.dirname, "../../src") },

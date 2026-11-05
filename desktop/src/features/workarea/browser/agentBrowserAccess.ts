@@ -45,9 +45,9 @@ import {
  * page that sends the browser somewhere else. Stop and Take over end it.
  *
  * After the person ended a grant, the agent's next call arrives as a `resume`
- * request. The app does not grant: it shows one Allow card on the agent's page
- * and marks the agent as waiting for the person, and only the person's click
- * brings the browser back.
+ * request. The app does not grant: it shows one Allow card in the conversation
+ * the person is reading and marks the agent as waiting for the person. Only
+ * the person's click brings the browser back.
  *
  * Community scoped: `resetAgentBrowserAccess` is wired into
  * `resetWorkAreaState()` and so `resetCommunityState()`.
@@ -55,8 +55,6 @@ import {
 
 /** The longest a grant may last; the agent's next call renews it. */
 export const DEFAULT_ACCESS_TTL_MS = 60 * 60_000;
-/** How long an Allow card waits for the person. */
-export const ALLOW_CARD_MS = 10 * 60_000;
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const AGENT = /^[0-9a-f]{64}$/u;
@@ -77,7 +75,7 @@ export type AgentAccessRequest = {
 type Running = {
   businessId: string;
   communityOrigin: string;
-  api: Pick<typeof browserBroker, "grant" | "onEvent">;
+  api: Pick<typeof browserBroker, "accessRequests" | "grant" | "onEvent">;
   unsubscribe: () => void;
   unsubscribeWorkArea: () => void;
   unsubscribeTabs: () => void;
@@ -88,11 +86,11 @@ let running: Running | null = null;
 let generation = 0;
 const pageByTask = new Map<string, string>();
 const serving = new Map<string, Promise<void>>();
-const cardTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const taskChannels = new Map<string, string>();
 const dockWasOpenByTask = new Map<string, boolean>();
 const dismissedTasks = new Set<string>();
 const taskByGrant = new Map<string, string>();
+const handledAccessRequestIds = new Set<string>();
 const latestRequestByChannel = new Map<string, number>();
 let requestSequence = 0;
 const MAX_TRACKED_TASKS = 256;
@@ -147,6 +145,16 @@ function trackGrant(grantId: string, key: string) {
   }
 }
 
+function rememberHandledAccessRequest(id: string) {
+  handledAccessRequestIds.delete(id);
+  handledAccessRequestIds.add(id);
+  while (handledAccessRequestIds.size > MAX_TRACKED_TASKS) {
+    const oldest = handledAccessRequestIds.values().next().value;
+    if (oldest === undefined) break;
+    handledAccessRequestIds.delete(oldest);
+  }
+}
+
 function forgetEndedGrant(event: BrowserBrokerEvent) {
   if (event.type !== "grant-changed" || event.state === "active") return;
   const key = taskByGrant.get(event.grantId);
@@ -178,9 +186,6 @@ export function getWaitingAgentAccess(): readonly AgentAccessRequest[] {
 }
 
 function forgetCard(key: string) {
-  const timer = cardTimers.get(key);
-  if (timer !== undefined) clearTimeout(timer);
-  cardTimers.delete(key);
   const card = waiting.find((entry) => taskKey(entry) === key);
   if (card) {
     answerBrowserContinue(card.agentId, card.hostId);
@@ -190,21 +195,13 @@ function forgetCard(key: string) {
 
 function showCard(request: AgentAccessRequest) {
   const key = taskKey(request);
-  forgetCard(key);
-  publish([...waiting, request].slice(-4));
+  const existing = waiting.find((entry) => taskKey(entry) === key);
+  // The retained replay and the live event can describe the same stopped
+  // task. Keep its one visible card and its needs-you activity intact.
+  if (existing?.hostId === request.hostId) return;
+  if (existing) forgetCard(key);
+  publish([...waiting.filter((entry) => taskKey(entry) !== key), request]);
   askBrowserContinue(request.agentId, request.channelId, request.hostId);
-  cardTimers.set(
-    key,
-    setTimeout(() => forgetCard(key), ALLOW_CARD_MS),
-  );
-}
-
-/** The person chose not to let the agent continue. */
-export function dismissAgentAccessRequest(request: {
-  agentId: string;
-  taskId: string;
-}) {
-  forgetCard(taskKey(request));
 }
 
 async function pageFor(
@@ -254,7 +251,6 @@ function maybeShowAgentBrowserPage(
   agentTaskKey: string,
   pageKey: string,
   sequence: number | null,
-  asking = false,
 ) {
   if (sequence === null || latestRequestByChannel.get(channelId) !== sequence) {
     return;
@@ -265,9 +261,7 @@ function maybeShowAgentBrowserPage(
     windowVisible: isColonyWindowVisible(),
     dockOpen: state.open,
     personActive: isPersonActiveInWorkArea(channelId, state.activeTabId),
-    // A closed dock mutes a run that was going on, not a question the agent
-    // cannot go on without: the Allow card lives in the dock.
-    dismissedForTask: !asking && dismissedTasks.has(agentTaskKey),
+    dismissedForTask: dismissedTasks.has(agentTaskKey),
   });
   if (decision === "show")
     openWorkArea(channelId, "browser", browserTabId(pageKey));
@@ -320,18 +314,8 @@ async function open(
       channelId,
       hostId: page.hostId,
     });
-    // The card is inside the browser panel: when the person is watching this
-    // conversation the panel opens on it, so the question is seen, not only
-    // marked. The agent's wait for it ends in 30 s, but the person's Allow still
-    // brings the browser back for the next message.
-    maybeShowAgentBrowserPage(
-      channelId,
-      request.taskId,
-      taskKey(request),
-      page.key,
-      sequence,
-      true,
-    );
+    // The Allow card renders in the conversation itself, independent of the
+    // dock. Keep the page available in the background until the person acts.
     return;
   }
   try {
@@ -347,8 +331,7 @@ async function open(
     return;
   } catch (error) {
     // A reused page can be busy with another agent's task: one fresh page.
-    // Otherwise the agent hears the approval guidance when its wait ends, and
-    // the person can still allow it by hand in the browser panel.
+    // Otherwise main retains the request for the next renderer replay.
     if (!page.reused) throw error;
   }
   page = await pageFor(request, channelId, true);
@@ -397,7 +380,17 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
   const channelId = match?.[1] ?? match?.[2];
   if (!channelId) return;
   const key = taskKey(event);
+  // A live event and the durable catch-up query can race. They carry the same
+  // request id, so replaying it must not create a second grant. Direct events
+  // without an id remain supported for older fixtures and bridge clients.
+  if (
+    event.accessRequestId &&
+    handledAccessRequestIds.has(event.accessRequestId)
+  )
+    return;
   if (serving.has(key)) return;
+  if (event.accessRequestId)
+    rememberHandledAccessRequest(event.accessRequestId);
   const normalizedChannelId = channelId.toLowerCase();
   trackTask(key, normalizedChannelId);
   const sequence = ++requestSequence;
@@ -420,6 +413,8 @@ function handle(current: Running, mine: number, event: BrowserBrokerEvent) {
     sequence,
   )
     .catch(() => {
+      if (event.accessRequestId)
+        handledAccessRequestIds.delete(event.accessRequestId);
       if (![...taskByGrant.values()].includes(key)) {
         taskChannels.delete(key);
         dockWasOpenByTask.delete(key);
@@ -442,7 +437,7 @@ export function startAgentBrowserAccess({
 }: {
   businessId: string;
   communityOrigin: string;
-  api?: Pick<typeof browserBroker, "grant" | "onEvent">;
+  api?: Pick<typeof browserBroker, "accessRequests" | "grant" | "onEvent">;
 }) {
   resetAgentBrowserAccess();
   const mine = generation;
@@ -459,12 +454,26 @@ export function startAgentBrowserAccess({
     if (running === current && mine === generation) showOpenedAgentTab(opened);
   });
   current.unsubscribeWorkArea = subscribeWorkArea(observeWorkAreaState);
-  current.unsubscribe = api.onEvent((event) => {
+  const receive = (event: BrowserBrokerEvent) => {
     if (running !== current) return;
     noteBrowserEvent(event);
     forgetEndedGrant(event);
     handle(current, mine, event);
-  });
+  };
+  current.unsubscribe = api.onEvent(receive);
+  // Subscribe first, then replay requests retained in main. That ordering
+  // closes both races: a call before the renderer mounted is replayed here;
+  // a call during this query is delivered through the live subscription.
+  void api
+    .accessRequests()
+    .then((requests) => {
+      if (running !== current || mine !== generation) return;
+      for (const request of requests) receive(request);
+    })
+    .catch(() => {
+      // The next browser call still arrives over the live subscription. Main
+      // retains the request, so a fresh community start can replay it too.
+    });
 }
 
 export function resetAgentBrowserAccess() {
@@ -479,10 +488,9 @@ export function resetAgentBrowserAccess() {
   dockWasOpenByTask.clear();
   dismissedTasks.clear();
   taskByGrant.clear();
+  handledAccessRequestIds.clear();
   latestRequestByChannel.clear();
   requestSequence = 0;
-  for (const timer of cardTimers.values()) clearTimeout(timer);
-  cardTimers.clear();
   resetBrowserActivity();
   if (waiting.length > 0) publish([]);
 }

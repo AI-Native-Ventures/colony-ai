@@ -275,14 +275,17 @@ test("after Stop the agent's next call shows one Allow card, marks the agent as 
   // Main reports the agent's next call as a resume request.
   await ask(page, task, true);
   const card = page.getByTestId("browser-agent-resume");
-  await expect(card).toContainText("Scout wants to use the browser again.");
+  await expect(card).toContainText(
+    "An AI employee is waiting to use the browser again.",
+  );
+  await expect(card.getByRole("button")).toHaveCount(1);
   await expect(controller(page)).toHaveText("AI employees can use this tab");
   await expect(activityButton(page)).toHaveAccessibleName(
     "Scout needs you in the browser. View",
   );
   expect(await grants(page)).toHaveLength(1);
   await waitForAnimations(page);
-  await controls(page).screenshot({
+  await page.getByTestId("work-area-conversation").screenshot({
     path: testInfo.outputPath("agent-resume-card.png"),
   });
 
@@ -297,24 +300,22 @@ test("after Stop the agent's next call shows one Allow card, marks the agent as 
   });
 });
 
-test("Not now clears the card and leaves the agent without the browser", async ({
+test("a resume card is visible in the conversation with the dock closed and has one Allow control", async ({
   page,
 }) => {
   const channelId = await boot(page, "engineering");
   await ask(page, `conversation:${channelId}`, true);
-  // Nothing opened by itself; the mark says the agent waits for the person.
+  // Nothing opens by itself, but the recovery control is not trapped in a dock.
   await expect(dock(page)).toHaveCount(0);
-  await expect(activityButton(page)).toHaveAccessibleName(
-    "Scout needs you in the browser. View",
-  );
-  await watch(page);
   const card = page.getByTestId("browser-agent-resume");
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Not now", exact: true }).click();
+  await expect(card.getByRole("button")).toHaveCount(1);
+  await expect(card).toContainText(
+    "An AI employee is waiting to use the browser again.",
+  );
+  await card.getByRole("button", { name: "Allow", exact: true }).click();
   await expect(card).toHaveCount(0);
-  await expect(activityButton(page)).toHaveCount(0);
-  expect(await grants(page)).toHaveLength(0);
-  await expect(controller(page)).toHaveText("AI employees can use this tab");
+  await expect.poll(async () => (await grants(page)).length).toBe(1);
 });
 
 test("an Allow card goes away when the broker approves that site itself, and a held site never raises one", async ({

@@ -520,6 +520,34 @@ test("a default access grant may start with no sites and says it is automatic", 
   );
 });
 
+test("a live default grant renews as the agent works, but a person-made grant does not", () => {
+  const { store, clock, advance } = harness();
+  const automatic = store.issue(
+    request({ allowedOrigins: [], defaultAccess: true }),
+  );
+  const personMade = store.issue(request({ agentId: "agent-b" }));
+  const personExpiry = personMade.grant.expiresAt;
+  const events = [];
+  store.onChange((event) => events.push(event));
+
+  advance(1_000);
+  const renewed = store.renewDefault(automatic.grant.id);
+  assert.equal(renewed.expiresAt, clock.wall + MAX_GRANT_TTL_MS);
+  assert.equal(renewed.issuedAt, automatic.grant.issuedAt);
+  assert.deepEqual(
+    events,
+    [],
+    "renewal must not surface a person-facing event",
+  );
+  assert.equal(store.renewDefault(personMade.grant.id), null);
+  assert.equal(store.getGrant(personMade.grant.id).expiresAt, personExpiry);
+
+  advance(MAX_GRANT_TTL_MS - 1);
+  assert.equal(store.authenticate(automatic.token).ok, true);
+  advance(1);
+  assert.equal(store.authenticate(automatic.token).code, "grant_expired");
+});
+
 test("a grant that is not default access still needs at least one site", () => {
   const { store } = harness();
   for (const allowedOrigins of [[], undefined]) {

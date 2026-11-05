@@ -20,10 +20,10 @@ const UNTRUSTED =
 /**
  * How agents do web tasks, in short. The full rules live in
  * crates/buzz-acp/src/web_tasks.md, which every agent's base prompt ends
- * with; the middle sentence is copied from there word for word.
+ * with; this compact version preserves its browser-access rule.
  */
 export const WEB_TASKS =
-  "Use these tools for every task that opens, checks or operates a website. Never reach a website another way: no shell command that opens a browser or a link, no AppleScript or other desktop automation, no Playwright, Puppeteer, Selenium, or headless browser, and no browser skill or plugin, even when one is installed. Your first call opens the Colony browser for the person. Only if a tool says you have no access, ask the person to allow you in the Colony browser and wait.";
+  "Use these tools for every task that opens, checks or operates a website. Never reach a website another way: no shell command that opens a browser or a link, no AppleScript or other desktop automation, no Playwright, Puppeteer, Selenium, or headless browser, and no browser skill or plugin, even when one is installed. Your first call opens the Colony browser automatically. If access is pending, wait for Colony to prepare it. If the person stopped access, wait for the Allow card in the conversation. Never ask the person to type approval in chat.";
 
 const tab = {
   type: "string",
