@@ -10,6 +10,7 @@ import type {
   DiscoveryCampaign,
   DiscoveryCoverage,
   DiscoveryEndReason,
+  DiscoveryPageLog,
   DiscoveryQueryEndReason,
   DiscoveryRunStatus,
   DiscoveryRunner,
@@ -25,9 +26,10 @@ export const MAX_STORED_CAMPAIGNS = 50;
 const MAX_TOP_FITS = 5;
 /** The server returns 1 to 50 places a page; a stored page is capped the same. */
 const MAX_PENDING_PLACES = 50;
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 const MAX_SEEN_PROVIDER_PLACE_IDS = 400;
 const MAX_COVERAGE_STREAMS = 3;
+const MAX_PAGE_LOGS = 25;
 
 export type TopFit = { id: string; name: string; fit: number };
 
@@ -50,6 +52,8 @@ export type CampaignInternals = {
   spentUsd: number;
   /** Why a finished query stopped before its target, when applicable. */
   endReason: DiscoveryEndReason | null;
+  /** Evidence for every paid page that was fully saved. */
+  pageLog: DiscoveryPageLog[];
   /** The furthest cursor this device durably saved for each exact provider query. */
   coverage: DiscoveryCoverage[];
   /** The results message still has to be posted in the Sales channel. */
@@ -225,6 +229,50 @@ function parseCoverage(value: unknown): DiscoveryCoverage[] {
     }));
 }
 
+function parsePageLog(value: unknown): DiscoveryPageLog[] {
+  if (!Array.isArray(value)) return [];
+  const logs: DiscoveryPageLog[] = [];
+  for (const entry of value.slice(-MAX_PAGE_LOGS)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    const page = nonNegativeInt(row.page);
+    const skip = nonNegativeInt(row.skip);
+    const placesReturned = nonNegativeInt(row.placesReturned);
+    const newProspectsSaved = nonNegativeInt(row.newProspectsSaved);
+    const alreadyInLeads = nonNegativeInt(row.alreadyInLeads);
+    const repeatedInCampaign = nonNegativeInt(row.repeatedInCampaign);
+    const costUsd = num(row.costUsd);
+    const stopReason = str(row.stopReason);
+    if (
+      page < 1 ||
+      skip > 400 ||
+      skip % 20 !== 0 ||
+      placesReturned > MAX_PENDING_PLACES ||
+      newProspectsSaved > placesReturned ||
+      alreadyInLeads > placesReturned ||
+      repeatedInCampaign > placesReturned ||
+      costUsd === null ||
+      costUsd < 0
+    ) {
+      continue;
+    }
+    logs.push({
+      page,
+      skip,
+      placesReturned,
+      newProspectsSaved,
+      alreadyInLeads,
+      repeatedInCampaign,
+      costUsd,
+      stopReason:
+        stopReason && END_REASONS.has(stopReason)
+          ? (stopReason as DiscoveryEndReason)
+          : null,
+    });
+  }
+  return logs;
+}
+
 function parsePlace(raw: unknown): DiscoveryPlace | null {
   if (typeof raw !== "object" || raw === null) return null;
   const value = raw as Record<string, unknown>;
@@ -335,6 +383,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
       endReason && END_REASONS.has(endReason)
         ? (endReason as DiscoveryEndReason)
         : null,
+    pageLog: parsePageLog(value.pageLog),
     coverage: parseCoverage(value.coverage),
     skip: nonNegativeInt(value.skip),
     tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
@@ -371,7 +420,9 @@ export function parseStoredState(raw: string | null): StoredState {
   if (typeof json !== "object" || json === null) return emptyState();
   const value = json as Record<string, unknown>;
   if (
-    (value.version !== 1 && value.version !== STORE_VERSION) ||
+    (value.version !== 1 &&
+      value.version !== 2 &&
+      value.version !== STORE_VERSION) ||
     !Array.isArray(value.campaigns)
   ) {
     return emptyState();
@@ -493,6 +544,8 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     failureReason: campaign.failureReason ?? null,
     endNote: campaign.endNote ?? null,
     endReason: campaign.endReason ?? null,
+    runLog: campaign.pageLog.map((entry) => ({ ...entry })),
+    pagesFetched: campaign.pagesFetched,
     coverage: campaign.coverage.map((cursor) => ({ ...cursor })),
     postedInSales: campaign.postedInSales === true,
     createdAt: campaign.createdAt,

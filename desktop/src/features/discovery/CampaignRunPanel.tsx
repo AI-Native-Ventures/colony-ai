@@ -49,6 +49,10 @@ export function CampaignRunPanel({
     100,
     campaign.target > 0 ? (campaign.count / campaign.target) * 100 : 0,
   );
+  const canFindMore =
+    campaign.count < campaign.target &&
+    (campaign.endReason === "provider_repeat" ||
+      campaign.endReason === "approved_budget");
   return (
     <>
       <div className="c3d-head">
@@ -139,32 +143,25 @@ export function CampaignRunPanel({
                 <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
               </button>
             ) : campaign.status === "failed" ? (
-              <>
-                <button
-                  className="c3d-btn c3d-btn--outline c3d-btn--md"
-                  onClick={() => onChangeRun("retry")}
-                  type="button"
-                >
-                  <RotateCcw aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
-                  Retry search
-                </button>
-                <button
-                  className="c3d-btn c3d-btn--ink c3d-btn--md"
-                  onClick={onFindMore}
-                  type="button"
-                >
-                  <PlusGlyph /> Find more
-                </button>
-              </>
+              <button
+                className="c3d-btn c3d-btn--outline c3d-btn--md"
+                onClick={() => onChangeRun("retry")}
+                type="button"
+              >
+                <RotateCcw aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
+                Retry search
+              </button>
             ) : (
               <>
-                <button
-                  className="c3d-btn c3d-btn--ink c3d-btn--md"
-                  onClick={onFindMore}
-                  type="button"
-                >
-                  <PlusGlyph /> Find more
-                </button>
+                {canFindMore ? (
+                  <button
+                    className="c3d-btn c3d-btn--ink c3d-btn--md"
+                    onClick={onFindMore}
+                    type="button"
+                  >
+                    <PlusGlyph /> Find more
+                  </button>
+                ) : null}
                 <button
                   className="c3d-btn c3d-btn--outline c3d-btn--md"
                   onClick={onNewSearch}
