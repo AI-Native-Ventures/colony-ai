@@ -201,7 +201,7 @@ test("goose_per_agent_advanced_max_tokens_shows_inherited_global_placeholder", a
   // Step 3: navigate back and open the per-agent edit dialog for the Goose
   // agent. We use the app's Back link rather than page.goto("/") to preserve
   // the in-memory mock state (page.goto causes a full reload that resets it).
-  await page.getByRole("button", { name: "Back to workspace" }).click();
+  await page.getByTestId("settings-back-to-app").click();
   await openAgentsDirectoryView(page);
   await openAgentProfilePanel(page, TEST_IDENTITIES.tyler.pubkey);
   await page.getByTestId("user-profile-edit-agent").click();
