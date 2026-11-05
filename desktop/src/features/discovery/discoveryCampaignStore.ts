@@ -22,7 +22,8 @@ import type {
 } from "./discoverySearch";
 import { resolveVerticalId } from "./taxonomy";
 
-export const MAX_STORED_CAMPAIGNS = 50;
+/** The campaigns page paginates this durable history instead of trimming it. */
+export const MAX_STORED_CAMPAIGNS = 5_000;
 const MAX_TOP_FITS = 5;
 /** The server returns 1 to 50 places a page; a stored page is capped the same. */
 const MAX_PENDING_PLACES = 50;
