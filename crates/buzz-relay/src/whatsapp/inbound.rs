@@ -11,12 +11,15 @@ use serde_json::Value;
 use buzz_core::business_records::ProspectHead;
 use buzz_core::kind::KIND_PROSPECT_HEAD;
 use buzz_core::TenantContext;
-use buzz_db::whatsapp::WhatsappConnection;
+use buzz_db::whatsapp::{WhatsappConnection, WhatsappStatusHealthUpdate};
 use buzz_db::EventQuery;
 
 use super::channel;
 use super::connect::{refresh_phone_info, sync_templates};
-use super::policy::{classify_opt_out, contact_label, e164, is_wants_call_tap, normalize_wa_id};
+use super::policy::{
+    account_retry_error_codes, classify_failure_code, classify_opt_out, contact_label, e164,
+    is_wants_call_tap, normalize_wa_id, FailureKind,
+};
 use super::sender::handle_failure;
 use crate::state::AppState;
 use buzz_core::whatsapp_stage::OptOutKind;
@@ -680,27 +683,52 @@ async fn handle_status(
 ) -> Result<(), String> {
     let community = tenant.community();
     let code = status.code.map(|c| c.to_string());
+    let account_failure = status
+        .code
+        .map(classify_failure_code)
+        .and_then(|kind| match kind {
+            FailureKind::Account(failure) => Some(failure),
+            _ => None,
+        });
+    let error_text = status
+        .error_text
+        .as_deref()
+        .unwrap_or("Meta did not provide an error message");
     let updated = state
         .db
-        .whatsapp_update_status(
+        .whatsapp_update_status_with_account_health(
             community,
-            &status.wamid,
-            status.state,
-            code.as_deref(),
-            status.error_text.as_deref(),
+            &WhatsappStatusHealthUpdate {
+                wamid: &status.wamid,
+                state: status.state,
+                error_code: code.as_deref(),
+                error_text: (status.state == "failed").then_some(error_text),
+                account_pause_reason: account_failure.map(|failure| failure.health_title()),
+                at: Utc::now(),
+            },
         )
         .await
         .map_err(|error| error.to_string())?;
     if status.state == "failed" {
-        if let Some(message) = updated {
-            handle_failure(
-                state,
-                tenant,
-                &message,
-                status.code,
-                status.error_text.as_deref().unwrap_or("delivery failed"),
-            )
-            .await;
+        if updated.became_unhealthy {
+            let account_codes = account_retry_error_codes();
+            let waiting = state
+                .db
+                .whatsapp_count_account_health_waiting(community, &account_codes)
+                .await
+                .unwrap_or(0);
+            if let Some(failure) = account_failure {
+                channel::post_owner_notice(
+                    state,
+                    tenant,
+                    "account_sending_paused",
+                    &failure.health_banner(waiting),
+                )
+                .await;
+            }
+        }
+        if let Some(message) = updated.message.filter(|_| account_failure.is_none()) {
+            handle_failure(state, tenant, &message, status.code, error_text).await;
         }
     }
     Ok(())

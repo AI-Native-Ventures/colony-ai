@@ -44,6 +44,10 @@ import {
   customerRecordForContact,
   resolveOutreachContactIdentity,
 } from "./outreachDeskUtils";
+import {
+  WhatsAppSendHealthBanner,
+  WhatsAppSendHealthNeedsCard,
+} from "./WhatsAppSendHealthNotice";
 
 type Props = {
   channelIsMember: boolean;
@@ -483,7 +487,9 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
   const businessRecords = business.records;
   const items = getWhatsAppNeedsYouItems(contacts, drafts);
   const pendingBatches = batchesQuery.data ?? [];
-  const needsCount = pendingBatches.length + items.length;
+  const hasSendHealthNeed = canManage && Boolean(status?.sendHealth);
+  const needsCount =
+    pendingBatches.length + items.length + Number(hasSendHealthNeed);
 
   async function bookCall(contact: WhatsAppContact) {
     if (!canEdit || busyWaId) return;
@@ -571,6 +577,9 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
           <p>Scout prepared these. Nothing goes out until you say so.</p>
         </div>
       </header>
+      {status ? (
+        <WhatsAppSendHealthBanner canManage={canManage} status={status} />
+      ) : null}
 
       {actionError ? (
         <p className="c3wa-desk-error" role="alert">
@@ -594,6 +603,25 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
       ) : null}
 
       <div className="c3wa-desk-needs-scroll">
+        {hasSendHealthNeed && status ? (
+          <section
+            aria-labelledby="outreach-send-health-heading"
+            className="c3wa-desk-needs-section"
+          >
+            <div className="c3wa-desk-section-head">
+              <h2 id="outreach-send-health-heading">
+                WhatsApp sending needs you
+              </h2>
+              <span>1</span>
+            </div>
+            <div className="c3wa-desk-batch-grid">
+              <WhatsAppSendHealthNeedsCard
+                canManage={canManage}
+                status={status}
+              />
+            </div>
+          </section>
+        ) : null}
         {pendingBatches.length > 0 ? (
           <section
             aria-labelledby="outreach-batches-heading"
@@ -706,7 +734,9 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
           <p className="c3wa-desk-empty" role="status">
             Loading WhatsApp needs…
           </p>
-        ) : pendingBatches.length === 0 && items.length === 0 ? (
+        ) : pendingBatches.length === 0 &&
+          items.length === 0 &&
+          !hasSendHealthNeed ? (
           <section
             className="c3wa-desk-empty-state"
             data-testid="outreach-needs-empty"

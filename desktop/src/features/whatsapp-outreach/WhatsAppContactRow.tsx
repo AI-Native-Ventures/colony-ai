@@ -19,6 +19,7 @@ function StatusChip({ status }: { status: string }) {
       className={cn(
         "c3wa-contact-chip",
         status === "Opted out" && "is-opted",
+        status === "Not delivered" && "is-failed",
         status === "Replied" && "is-replied",
         status === "Waiting for your approval" && "is-awaiting",
       )}

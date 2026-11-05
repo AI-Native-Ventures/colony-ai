@@ -1549,41 +1549,43 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
     // row transition. Removing the failed-state, account-code or contact opt-out predicate makes
     // an assertion below fail.
     let fx = fixture().await;
-    let batch_id = approved_batch(&fx, &["+27820001001", "+27820001002", "+27820001003"]).await;
+    let plain_member = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &plain_member.public_key().to_hex(),
+            "member",
+            Some(&fx.owner.public_key().to_hex()),
+        )
+        .await
+        .expect("plain relay member");
+    let batch_id = approved_batch(
+        &fx,
+        &[
+            "+27820001001",
+            "+27820001002",
+            "+27820001003",
+            "+27820001004",
+        ],
+    )
+    .await;
     let original_keys = batch_row_idempotency_keys(&fx, batch_id).await;
-    fx.graph.script_sends(vec![Err(GraphError::Rejected {
-        http_status: 400,
-        code: Some(131_042),
-        message: "Business eligibility payment issue".into(),
-    })]);
 
-    fx.run_sender(base()).await;
-    assert_eq!(
-        fx.graph.send_count(),
-        1,
-        "the Graph stub recorded the initial definite payment refusal"
-    );
-    let rows = batch_rows(&fx, batch_id).await;
-    assert_eq!(
-        rows.iter()
-            .map(|row| row.state.as_str())
-            .collect::<Vec<_>>(),
-        vec!["failed", "ready", "ready"],
-        "the failed row is durable and later batch rows still wait"
-    );
-
-    // Set up a recipient-only refusal and an account failure whose contact opted out after the
-    // refusal. Both must remain failed when the owner resumes the payment recovery.
+    // These are historic rows that existed before the payment refusal stopped the connection.
+    // Create them while the account is still healthy: the production claim fence must reject
+    // every attempt made after the actual 131042 below.
+    let rows_before_pause = batch_rows(&fx, batch_id).await;
     let contact_refusal_lease = Uuid::new_v4();
     assert!(fx
         .state
         .db
         .whatsapp_claim_message(
             fx.community(),
-            rows[1].id,
+            rows_before_pause[1].id,
             contact_refusal_lease,
-            base() + Duration::minutes(5),
-            base() + Duration::seconds(1),
+            base() - Duration::minutes(19),
+            base() - Duration::minutes(20),
         )
         .await
         .expect("claim recipient failure"));
@@ -1592,7 +1594,7 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
         .db
         .whatsapp_fail_send(
             fx.community(),
-            rows[1].id,
+            rows_before_pause[1].id,
             contact_refusal_lease,
             "131026",
             "This number is not on WhatsApp",
@@ -1605,10 +1607,10 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
         .db
         .whatsapp_claim_message(
             fx.community(),
-            rows[2].id,
+            rows_before_pause[2].id,
             opted_out_account_lease,
-            base() + Duration::minutes(5),
-            base() + Duration::seconds(2),
+            base() - Duration::minutes(9),
+            base() - Duration::minutes(10),
         )
         .await
         .expect("claim opted-out account failure"));
@@ -1617,31 +1619,80 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
         .db
         .whatsapp_fail_send(
             fx.community(),
-            rows[2].id,
+            rows_before_pause[2].id,
             opted_out_account_lease,
             "131042",
             "Business eligibility payment issue",
         )
         .await
-        .expect("record opted-out account failure"));
+        .expect("record historic account failure"));
     assert!(fx
         .state
         .db
         .whatsapp_opt_out(
             fx.community(),
-            &rows[2].wa_id,
+            &rows_before_pause[2].wa_id,
             "stop",
-            base() + Duration::seconds(3),
+            base() - Duration::minutes(8),
         )
         .await
         .expect("record late opt-out"));
+    fx.graph.script_sends(vec![Err(GraphError::Rejected {
+        http_status: 400,
+        code: Some(131_042),
+        message: "Business eligibility payment issue".into(),
+    })]);
+
+    fx.run_sender(base()).await;
     assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "the Graph stub recorded the initial definite payment refusal"
+    );
+    assert!(
         fx.state
             .db
-            .whatsapp_complete_finished_batches(fx.community())
+            .whatsapp_ensure_settings(fx.community())
             .await
-            .expect("complete failed batch"),
-        vec![batch_id]
+            .expect("settings after account refusal")
+            .send_paused,
+        "GUARD: a 131042 response pauses the connection before more rows can be claimed"
+    );
+    let rows = batch_rows(&fx, batch_id).await;
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.state.as_str())
+            .collect::<Vec<_>>(),
+        vec!["failed", "failed", "failed", "ready"],
+        "the failed row is durable and later batch rows still wait"
+    );
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                rows[3].id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(5),
+                base() + Duration::seconds(4),
+            )
+            .await
+            .expect("claim is fenced while account health is paused"),
+        "GUARD: a second worker cannot claim a ready row after the first worker records 131042"
+    );
+    let notices = account_pause_notices(&fx, fx.outreach_channel().await).await;
+    assert_eq!(notices.len(), 1, "the new account incident notifies once");
+    assert!(notices[0].0.contains("payment problem"), "{:?}", notices[0]);
+    let owner_tag = json!(["p", fx.owner.public_key().to_hex()]);
+    let plain_member_tag = json!(["p", plain_member.public_key().to_hex()]);
+    let tags = notices[0].1.as_array().expect("notice tags");
+    assert!(
+        tags.iter().any(|tag| tag == &owner_tag),
+        "the owner receives the account-health mention"
+    );
+    assert!(
+        !tags.iter().any(|tag| tag == &plain_member_tag),
+        "a plain member does not receive the account-health notification"
     );
 
     let first_resume = fx
@@ -1665,24 +1716,13 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
             .iter()
             .map(|row| row.state.as_str())
             .collect::<Vec<_>>(),
-        vec!["ready", "failed", "failed"],
+        vec!["ready", "failed", "failed", "ready"],
         "only the eligible payment failure returned to the queue"
     );
     assert_eq!(
         batch_row_idempotency_keys(&fx, batch_id).await,
         original_keys,
         "recovery updates the original rows and leaves every idempotency key intact"
-    );
-    assert_eq!(
-        fx.state
-            .db
-            .whatsapp_get_batch(fx.community(), batch_id)
-            .await
-            .expect("batch lookup")
-            .expect("batch exists")
-            .status,
-        "approved",
-        "a completed batch reopens without changing its row order"
     );
 
     let second_resume = fx
@@ -1707,6 +1747,181 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
         2,
         "the original payment-refused row is sent once after recovery, never twice"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn engagement_limit_is_contact_only_and_retries_after_the_selected_delay() {
+    // GUARD: this uses the production Graph stub, failure classifier, sender loop and signed
+    // retryLater command. If 131049 becomes an account failure, the second recipient cannot
+    // send and the account-pause assertions below fail.
+    let fx = fixture().await;
+    let batch_id = approved_batch(&fx, &["+27820001101", "+27820001102"]).await;
+    fx.graph.script_sends(vec![
+        Err(GraphError::Rejected {
+            http_status: 400,
+            code: Some(131_049),
+            message: "This message was not delivered to maintain healthy ecosystem engagement."
+                .into(),
+        }),
+        Ok(()),
+    ]);
+
+    fx.run_sender(base()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "the first eligible row reaches the Graph stub and is refused only for its contact"
+    );
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_ensure_settings(fx.community())
+            .await
+            .expect("settings after engagement refusal")
+            .send_paused,
+        "131049 must never pause the account queue"
+    );
+    let rows = batch_rows(&fx, batch_id).await;
+    assert_eq!(rows[0].state, "failed");
+    assert_eq!(rows[0].error_code.as_deref(), Some("131049"));
+    assert_eq!(rows[1].state, "ready");
+    let paused = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), &rows[0].wa_id)
+        .await
+        .expect("limited contact")
+        .expect("limited contact exists");
+    assert_eq!(paused.pause_reason.as_deref(), Some("Meta error 131049"));
+    assert!(paused.retry_after.is_none());
+    assert_eq!(
+        fx.state
+            .db
+            .whatsapp_count_failed_messages_by_code(fx.community(), "131049")
+            .await
+            .expect("engagement summary"),
+        1
+    );
+
+    // The normal new-chat pacing interval still applies after a refused attempt. On the next
+    // eligible pass the second recipient reaches Graph, proving the 131049 contact pause did
+    // not become a connection-wide pause.
+    fx.run_sender(base() + Duration::minutes(10)).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        2,
+        "a 131049 refusal does not stop another contact after normal pacing"
+    );
+    assert_eq!(batch_rows(&fx, batch_id).await[1].state, "sent");
+
+    // A contact can have more than one historical engagement-limit refusal. The owner selected
+    // one message in the thread, so only that exact row may become eligible at the deadline.
+    let other_failure_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, error_code, error_text, \
+          idempotency_key, new_chat) \
+         VALUES ($1, $2, $3, 'out', 'template', 'A later template', 'failed', '131049', \
+                 'This message was not delivered to maintain healthy ecosystem engagement.', \
+                 $4, TRUE)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(other_failure_id)
+    .bind(&rows[0].wa_id)
+    .bind(format!("engagement-limit-{other_failure_id}"))
+    .execute(&fx.pool)
+    .await
+    .expect("second historical engagement failure");
+
+    let scheduled = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            json!({
+                "v": 1,
+                "waId": rows[0].wa_id,
+                "retryLater": {"messageId": rows[0].id.to_string(), "days": 7},
+            }),
+        )
+        .await
+        .expect("owner schedules a seven-day retry");
+    assert!(
+        scheduled.message.contains("7 days"),
+        "{}",
+        scheduled.message
+    );
+    let scheduled_contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), &rows[0].wa_id)
+        .await
+        .expect("scheduled contact")
+        .expect("scheduled contact exists");
+    let retry_after = scheduled_contact
+        .retry_after
+        .expect("seven-day retry deadline");
+    fx.run_sender(retry_after - Duration::seconds(1)).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        2,
+        "the delayed retry cannot re-enter the same day's sender pass"
+    );
+
+    let retry_due = retry_after + Duration::seconds(1);
+    fx.run_sender(retry_due).await;
+    let released = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), rows[0].id)
+        .await
+        .expect("released retry")
+        .expect("released retry exists");
+    assert!(
+        matches!(released.state.as_str(), "ready" | "sent"),
+        "the selected retry is released only after its deadline"
+    );
+
+    // A delayed engagement retry returns to the normal queue. It is not Send now, so the
+    // first permitted sender window still decides when Graph receives it.
+    if released.state != "sent" {
+        fx.run_sender(super::policy::next_window_start(retry_due))
+            .await;
+    }
+    assert_eq!(
+        fx.graph.send_count(),
+        3,
+        "the existing row is retried once only after the selected delay and normal send window"
+    );
+    let retried = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), rows[0].id)
+        .await
+        .expect("retried message")
+        .expect("retried message exists");
+    assert_eq!(retried.state, "sent");
+    let untouched_failure = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), other_failure_id)
+        .await
+        .expect("other engagement failure")
+        .expect("other engagement failure exists");
+    assert_eq!(
+        untouched_failure.state, "failed",
+        "a per-contact retry only requeues the exact message the owner selected"
+    );
+    assert!(untouched_failure.send_after.is_none());
+    let released_contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), &rows[0].wa_id)
+        .await
+        .expect("released contact")
+        .expect("released contact exists");
+    assert!(released_contact.paused_at.is_none());
+    assert!(released_contact.retry_after.is_none());
 }
 
 #[tokio::test]
@@ -2143,8 +2358,8 @@ async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_
 #[ignore = "requires disposable Postgres and Redis"]
 async fn approved_unsent_batch_contact_is_queued_then_contacted_after_the_send() {
     // GUARD: the production desk read model derives `queued` from ready work, then lets the
-    // first persisted send take precedence. This exercises batch approval, sender state and the
-    // same thread contact view that desktop reads.
+    // first persisted send take precedence. The current desktop explicitly advertises the
+    // queued-stage capability, so this exercises the same thread contact view that it reads.
     let fx = fixture().await;
     let agent = Keys::generate();
     own_agent(&fx, &agent, &fx.owner).await;
@@ -2174,14 +2389,14 @@ async fn approved_unsent_batch_contact_is_queued_then_contacted_after_the_send()
 
     // 05:00 Johannesburg is outside the sender window, so the approved row remains unsent.
     fx.run_sender(base() - Duration::hours(7)).await;
-    let queued = contact_json(&fx, wa).await;
+    let queued = contact_json_current_desktop(&fx, wa).await;
     assert_eq!(queued["stage"], WhatsappStage::Queued.as_str());
     assert_eq!(queued["stageSetBy"], "auto");
     assert_eq!(queued["queuedFrom"], "Batch: Melville guesthouses");
     assert_eq!(queued["lastContactedAt"], Value::Null);
 
     fx.run_sender(base()).await;
-    let contacted = contact_json(&fx, wa).await;
+    let contacted = contact_json_current_desktop(&fx, wa).await;
     assert_eq!(contacted["stage"], "contacted");
     assert_eq!(contacted["queuedFrom"], Value::Null);
     assert!(contacted["lastContactedAt"].is_string());
@@ -2754,6 +2969,20 @@ async fn channel_events(
     .expect("channel events")
 }
 
+async fn account_pause_notices(fx: &Fixture, channel: Uuid) -> Vec<(String, Value)> {
+    sqlx::query_as::<_, (String, Value)>(
+        "SELECT content, tags FROM events \
+         WHERE community_id = $1 AND channel_id = $2 AND kind = 9 \
+           AND tags @> jsonb_build_array(jsonb_build_array('wa-notice', 'account_sending_paused')) \
+         ORDER BY created_at, id",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(channel)
+    .fetch_all(&fx.pool)
+    .await
+    .expect("account-pause notices")
+}
+
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
 async fn rows_unposted_for_a_day_post_by_themselves_under_the_replica_fence() {
@@ -2977,6 +3206,23 @@ async fn contact_json(fx: &Fixture, wa_id: &str) -> Value {
     crate::api::whatsapp::thread_view(&fx.state, fx.community(), wa_id, 50, true, Utc::now())
         .await
         .expect("thread view")["contact"]
+        .clone()
+}
+
+/// The contact as desktop 3.0.38 reads it. `whatsappOutreachApi.test.mjs` binds this capability
+/// marker to every desktop query; the no-marker helper above deliberately remains legacy-safe.
+async fn contact_json_current_desktop(fx: &Fixture, wa_id: &str) -> Value {
+    crate::api::whatsapp::thread_view_for_capability(
+        &fx.state,
+        fx.community(),
+        wa_id,
+        50,
+        true,
+        Utc::now(),
+        true,
+    )
+    .await
+    .expect("current desktop thread view")["contact"]
         .clone()
 }
 

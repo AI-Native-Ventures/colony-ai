@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use nostr::Event;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -32,9 +32,9 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
 use crate::whatsapp::policy::{
-    account_retry_error_codes, clean_title, e164, normalize_wa_id, render_template,
-    retry_scope_for_error_code, template_slot_count, window_open, FailureRetryScope,
-    SEND_NOW_MAX_ROWS,
+    account_retry_error_codes, clean_title, e164, is_contact_engagement_limit, normalize_wa_id,
+    render_template, retry_scope_for_error_code, template_slot_count, window_open,
+    FailureRetryScope, SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
     check_send, enqueue_send, Enqueued, SendCommand, SendContext, TemplateRef,
@@ -183,6 +183,17 @@ struct ContactUpdateCommand {
     /// resume all eligible rows together; temporary failures requeue only this row.
     #[serde(default)]
     retry_send: Option<String>,
+    /// Owner-selected delayed retry for Meta's documented recipient engagement limit (131049).
+    /// This is deliberately separate from `retrySend`: it never releases the row immediately.
+    #[serde(default)]
+    retry_later: Option<RetryLaterCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RetryLaterCommand {
+    message_id: String,
+    days: i64,
 }
 
 /// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
@@ -919,8 +930,69 @@ async fn handle_contact_update(
     let community = tenant.community();
     let wa_id =
         normalize_wa_id(&command.wa_id).ok_or_else(|| invalid("waId must be a phone number"))?;
+    if let Some(retry_later) = command.retry_later.as_ref() {
+        if command.stage.is_some()
+            || command.label.is_some()
+            || command.retry_media.is_some()
+            || command.retry_send.is_some()
+        {
+            return Err(invalid("retryLater is sent on its own"));
+        }
+        if !access.is_owner_admin() {
+            return Err(restricted(
+                "only the owner or an admin can schedule a WhatsApp retry",
+            ));
+        }
+        if !matches!(retry_later.days, 3 | 7 | 14) {
+            return Err(invalid("retryLater days must be 3, 7 or 14"));
+        }
+        let message_id =
+            parse_uuid(&retry_later.message_id, "retryLater.messageId").map_err(invalid)?;
+        let message = state
+            .db
+            .whatsapp_get_message(community, message_id)
+            .await
+            .map_err(internal)?
+            .filter(|message| message.wa_id == wa_id && message.direction == "out")
+            .ok_or_else(|| invalid("no such outbound message"))?;
+        if message.state != "failed" || !is_contact_engagement_limit(message.error_code.as_deref())
+        {
+            return Err(invalid(
+                "only Meta error 131049 can be retried later; it must still be a failed send",
+            ));
+        }
+        let now = Utc::now();
+        let scheduled = state
+            .db
+            .whatsapp_schedule_contact_retry(
+                community,
+                &wa_id,
+                message_id,
+                "131049",
+                now + Duration::days(retry_later.days),
+                now,
+            )
+            .await
+            .map_err(internal)?;
+        return Ok(ok(
+            event,
+            if scheduled {
+                format!(
+                    "retry scheduled in {} days; the contact stays paused until then",
+                    retry_later.days
+                )
+            } else {
+                "nothing to schedule: this retry was already scheduled or the contact is unavailable"
+                    .to_string()
+            },
+        ));
+    }
     if let Some(message_id) = command.retry_send.as_deref() {
-        if command.stage.is_some() || command.label.is_some() || command.retry_media.is_some() {
+        if command.stage.is_some()
+            || command.label.is_some()
+            || command.retry_media.is_some()
+            || command.retry_later.is_some()
+        {
             return Err(invalid("retrySend is sent on its own"));
         }
         if !access.is_owner_admin() {
@@ -950,7 +1022,7 @@ async fn handle_contact_update(
                 let codes = account_retry_error_codes();
                 let retried = state
                     .db
-                    .whatsapp_retry_account_failures(community, &codes)
+                    .whatsapp_resume_account_health_and_retry(community, &codes, Utc::now())
                     .await
                     .map_err(internal)?;
                 Ok(ok(
@@ -981,7 +1053,11 @@ async fn handle_contact_update(
         };
     }
     if let Some(message_id) = command.retry_media.as_deref() {
-        if command.stage.is_some() || command.label.is_some() || command.retry_send.is_some() {
+        if command.stage.is_some()
+            || command.label.is_some()
+            || command.retry_send.is_some()
+            || command.retry_later.is_some()
+        {
             return Err(invalid("retryMedia is sent on its own"));
         }
         let message_id = parse_uuid(message_id, "retryMedia").map_err(invalid)?;
@@ -1253,7 +1329,7 @@ async fn handle_settings(
         let codes = account_retry_error_codes();
         let retried = state
             .db
-            .whatsapp_retry_account_failures(community, &codes)
+            .whatsapp_resume_account_health_and_retry(community, &codes, Utc::now())
             .await
             .map_err(internal)?;
         changes.push(if retried == 0 {
@@ -1287,6 +1363,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: Utc
                 .with_ymd_and_hms(2026, 10, 1, 8, 0, 0)
                 .single()

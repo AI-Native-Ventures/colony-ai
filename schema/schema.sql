@@ -652,6 +652,14 @@ CREATE TABLE whatsapp_settings (
     outreach_channel_id UUID,
     send_paused BOOLEAN NOT NULL DEFAULT false,
     pause_reason TEXT,
+    account_health_code TEXT CHECK (
+        account_health_code IS NULL OR char_length(account_health_code) BETWEEN 1 AND 64
+    ),
+    account_health_text TEXT CHECK (
+        account_health_text IS NULL OR char_length(account_health_text) BETWEEN 1 AND 500
+    ),
+    account_health_at TIMESTAMPTZ,
+    account_health_resume_requested_at TIMESTAMPTZ,
     issues JSONB NOT NULL DEFAULT '[]'::jsonb,
     templates_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -714,6 +722,7 @@ CREATE TABLE whatsapp_contacts (
     opt_out_reason TEXT,
     paused_at TIMESTAMPTZ,
     pause_reason TEXT,
+    retry_after TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     label TEXT CHECK (label IS NULL OR char_length(label) BETWEEN 1 AND 120),
@@ -811,6 +820,9 @@ CREATE TABLE whatsapp_messages (
 CREATE INDEX whatsapp_messages_due
     ON whatsapp_messages (community_id, created_at)
     WHERE state IN ('ready', 'queued', 'sending');
+CREATE INDEX whatsapp_contacts_retry_due
+    ON whatsapp_contacts (community_id, retry_after)
+    WHERE retry_after IS NOT NULL;
 CREATE INDEX whatsapp_messages_thread
     ON whatsapp_messages (community_id, wa_id, created_at DESC);
 CREATE INDEX whatsapp_messages_new_chat_day
