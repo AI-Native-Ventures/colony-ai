@@ -129,7 +129,9 @@ test.describe("GATE-304: the harness queued the mention and was stopped before i
     await expect(indicator(page)).toHaveAttribute("data-state", "stalled");
     await expect(
       indicator(page).getByTestId("agent-working-indicator-label"),
-    ).toHaveText("Scout keeps stopping before it answers.");
+    ).toHaveText(
+      "Scout stopped before answering, and Colony did not receive an error detail.",
+    );
     await expect(
       indicator(page).getByRole("button", { name: "Try starting Scout again" }),
     ).toBeVisible();
