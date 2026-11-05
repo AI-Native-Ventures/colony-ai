@@ -8,7 +8,7 @@
 //! 2. `not_on_whatsapp`: the latest send failed with a Meta "undeliverable" code.
 //! 3. A manual stage set by a person, unless a newer fact implies a later stage.
 //! 4. Derived, latest first: `client`, `quote_sent`, `call_booked`, `no_thanks` (lead lost),
-//!    `wants_call`, `replied`, `contacted`, else `none`.
+//!    `wants_call`, `replied`, `contacted`, `queued`, else `none`.
 //!
 //! A manual stage is never moved backwards automatically: a fact overrides it only when it is
 //! strictly later on the ladder AND newer than the manual change.
@@ -68,6 +68,8 @@ impl OptOutKind {
 pub enum WhatsappStage {
     /// Not in the pipeline.
     None,
+    /// An approved outbound opener is waiting for its first send.
+    Queued,
     /// An opener was sent.
     Contacted,
     /// They answered.
@@ -93,6 +95,7 @@ impl WhatsappStage {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
+            Self::Queued => "queued",
             Self::Contacted => "contacted",
             Self::Replied => "replied",
             Self::WantsCall => "wants_call",
@@ -105,8 +108,8 @@ impl WhatsappStage {
         }
     }
 
-    /// A stage a person may set by hand. `stopped` and `not_on_whatsapp` are facts, `none`
-    /// is the absence of a stage.
+    /// A stage a person may set by hand. `queued`, `stopped` and `not_on_whatsapp` are facts;
+    /// `none` is the absence of a stage.
     pub fn parse_manual(value: &str) -> Option<Self> {
         match value.trim() {
             "contacted" => Some(Self::Contacted),
@@ -125,7 +128,7 @@ impl WhatsappStage {
     /// or another send does not.
     const fn rank(self) -> u8 {
         match self {
-            Self::None => 0,
+            Self::None | Self::Queued => 0,
             Self::Contacted => 1,
             Self::Replied | Self::NoThanks => 2,
             Self::WantsCall => 3,
@@ -185,6 +188,8 @@ pub struct StageInputs {
     pub replied: Option<Fact>,
     /// Latest outbound message that reached Meta.
     pub contacted: Option<Fact>,
+    /// An approved outbound message waiting for its first send.
+    pub queued: Option<Fact>,
 }
 
 /// Who decided the stage.
@@ -227,6 +232,7 @@ fn derive_auto(inputs: &StageInputs) -> Option<(WhatsappStage, Fact)> {
         (WhatsappStage::WantsCall, inputs.wants_call),
         (WhatsappStage::Replied, inputs.replied),
         (WhatsappStage::Contacted, inputs.contacted),
+        (WhatsappStage::Queued, inputs.queued),
     ]
     .into_iter()
     .find_map(|(stage, fact)| fact.map(|fact| (stage, fact)))
@@ -317,6 +323,39 @@ mod tests {
         assert_eq!(derive_stage(&i).stage, WhatsappStage::QuoteSent);
         i.client = Some(Fact::at(t(6)));
         assert_eq!(derive_stage(&i).stage, WhatsappStage::Client);
+    }
+
+    #[test]
+    fn queued_is_the_lowest_automatic_stage_and_is_not_manual() {
+        // GUARD: an approved, unsent opener belongs in the pipeline until the first send, but
+        // every contact, reply, and manually selected stage remains more authoritative.
+        let mut i = StageInputs {
+            queued: Some(Fact::at(t(1))),
+            ..Default::default()
+        };
+        assert_eq!(derive_stage(&i).stage, WhatsappStage::Queued);
+
+        i.contacted = Some(Fact::at(t(2)));
+        assert_eq!(derive_stage(&i).stage, WhatsappStage::Contacted);
+
+        i.replied = Some(Fact::at(t(3)));
+        assert_eq!(derive_stage(&i).stage, WhatsappStage::Replied);
+
+        i.contacted = None;
+        i.replied = None;
+        i.queued = None;
+        assert_eq!(derive_stage(&i).stage, WhatsappStage::None);
+
+        let manual_contacted = StageInputs {
+            queued: Some(Fact::at(t(9))),
+            manual: manual(WhatsappStage::Contacted, 2),
+            ..Default::default()
+        };
+        assert_eq!(
+            derive_stage(&manual_contacted).stage,
+            WhatsappStage::Contacted
+        );
+        assert_eq!(WhatsappStage::parse_manual("queued"), None);
     }
 
     #[test]
@@ -477,7 +516,15 @@ mod tests {
             let stage = WhatsappStage::parse_manual(ok).expect(ok);
             assert_eq!(stage.as_str(), ok);
         }
-        for bad in ["stopped", "not_on_whatsapp", "none", "", "Client", "won"] {
+        for bad in [
+            "queued",
+            "stopped",
+            "not_on_whatsapp",
+            "none",
+            "",
+            "Client",
+            "won",
+        ] {
             assert_eq!(WhatsappStage::parse_manual(bad), None, "{bad}");
         }
     }

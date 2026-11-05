@@ -43,6 +43,7 @@ export const JACARANDA_LEAD_ID = REFERENCE_PROSPECT_IDS.stillroom;
 export const LAVENDER_HILL_WA_ID = "27795552241";
 export const GREEN_SHUTTER_WA_ID = "27605553422";
 export const OAKLEAF_WA_ID = "27655551175";
+export const QUEUED_LEAD_WA_ID = "27794441101";
 const E2E_SELF_PUBKEY = "deadbeef".repeat(8);
 
 function deskCustomerRecordMock() {
@@ -88,6 +89,8 @@ type WhatsAppMockActor = {
   workspaceName?: string;
   /** Seed the approved desk states without changing legacy inbox fixtures. */
   deskFixture?: boolean;
+  /** Seed one approved, unsent contact for Pipeline queue proofs. */
+  queuedFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
   outreachChannelMember?: boolean;
   batchVariant?:
@@ -1104,6 +1107,8 @@ export async function installWhatsAppMockBridge(
         decidedBatchId,
         batchVariant: seededBatchVariant,
         deskFixture,
+        queuedFixture,
+        queuedLeadWaId,
         deskFirstBatchRows,
         deskFollowUpRows,
         deskPipelineAdditionalContacts,
@@ -1493,6 +1498,32 @@ export async function installWhatsAppMockBridge(
           ),
           ...deskContacts,
         ]);
+      }
+      if (deskFixture && queuedFixture) {
+        const queueFields = {
+          lastInboundAt: null,
+          lastContactedAt: null,
+          lastOutboundState: null,
+          lastReplyAt: null,
+          stage: "queued",
+          stageSetBy: "auto",
+          stageChangedAt: "2026-10-29T10:52:00+02:00",
+          queuedFrom: "Batch: Message 12 guesthouses in Melville",
+          outreachStatus: "queued",
+          unanswered: true,
+          awaitingApproval: false,
+        };
+        const queuedDeskContact = deskContacts.find(
+          (contact) => contact.waId === queuedLeadWaId,
+        );
+        const queuedStateContact = state.contacts.find(
+          (contact) => contact.waId === queuedLeadWaId,
+        );
+        if (!queuedDeskContact || !queuedStateContact) {
+          throw new Error("The queued Pipeline fixture contact is missing.");
+        }
+        Object.assign(queuedDeskContact, queueFields);
+        Object.assign(queuedStateContact, queueFields);
       }
       // A disconnected initial status intentionally clears its templates, but
       // reconnecting should restore the seeded template catalog.
@@ -1916,6 +1947,8 @@ export async function installWhatsAppMockBridge(
       decidedBatchId: WHATSAPP_DECIDED_BATCH_ID,
       batchVariant: actor.batchVariant ?? null,
       deskFixture: actor.deskFixture === true,
+      queuedFixture: actor.queuedFixture === true,
+      queuedLeadWaId: QUEUED_LEAD_WA_ID,
       deskFirstBatchRows,
       deskFollowUpRows,
       deskPipelineAdditionalContacts,

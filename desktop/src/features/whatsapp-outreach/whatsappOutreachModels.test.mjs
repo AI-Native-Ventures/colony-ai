@@ -90,6 +90,38 @@ test("contact parser accepts the additive stage and identity view fields", () =>
     () => parseWhatsAppContact({ ...payload, lastOutboundState: "queued" }),
     /invalid WhatsApp outbound state/u,
   );
+
+  const queuedContact = parseWhatsAppContact({
+    ...payload,
+    stage: "queued",
+    stageSetBy: "auto",
+    lastContactedAt: null,
+    queuedFrom: "Batch: Melville guesthouses",
+    outreachStatus: "queued",
+  });
+  assert.equal(queuedContact.stage, "queued");
+  assert.equal(queuedContact.queuedFrom, "Batch: Melville guesthouses");
+  assert.equal(queuedContact.outreachStatus, "queued");
+
+  // An older relay has no `stage: queued`, but it already exposes the queue status.
+  const oldRelayQueuedContact = parseWhatsAppContact({
+    ...payload,
+    stage: "none",
+    stageSetBy: "auto",
+    lastContactedAt: null,
+    queuedFrom: undefined,
+    outreachStatus: "queued",
+  });
+  assert.equal(oldRelayQueuedContact.stage, "queued");
+  assert.equal(oldRelayQueuedContact.queuedFrom, null);
+
+  // A newer relay stage must not make an older desktop hide the contact or crash.
+  const futureStageContact = parseWhatsAppContact({
+    ...payload,
+    stage: "future_stage",
+    stageSetBy: "auto",
+  });
+  assert.equal(futureStageContact.stage, "none");
 });
 
 function baseStatus(overrides = {}) {

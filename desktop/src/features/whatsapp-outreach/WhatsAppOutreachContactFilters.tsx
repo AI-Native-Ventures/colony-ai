@@ -1,5 +1,6 @@
 export type ContactFilter =
   | "all"
+  | "queued"
   | "replied"
   | "sent"
   | "opted-out"
@@ -26,12 +27,14 @@ export function WhatsAppOutreachContactFilters({
     mode === "desk"
       ? [
           ["all", "All"],
+          ["queued", "Queued"],
           ["needs-reply", "Needs reply"],
           ["wants-call", "Wants a call"],
           ["opted-out", "Opted out"],
         ]
       : [
           ["all", "All"],
+          ["queued", "Queued"],
           ["replied", "Replied"],
           ["sent", "Sent"],
           ["opted-out", "Opted out"],
