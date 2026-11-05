@@ -312,6 +312,9 @@ async function scanState(
   state: string,
   theme: "light" | "dark",
 ) {
+  // Text geometry is part of the audit. Do not scan while web fonts can still
+  // replace the fallback face and change an element's scroll dimensions.
+  await page.evaluate(() => document.fonts.ready);
   const raw = await page.evaluate(
     ({ screen, width, state, theme, minWordWidth }) => {
       type RawFinding = Omit<Finding, "captureId" | "crop" | "observed">;
