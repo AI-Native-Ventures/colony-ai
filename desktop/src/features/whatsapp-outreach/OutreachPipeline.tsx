@@ -25,7 +25,9 @@ import {
   useWhatsAppCommand,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
+  useWhatsAppStatusQuery,
 } from "./whatsappOutreachQueries";
+import { WhatsAppSendHealthBanner } from "./WhatsAppSendHealthNotice";
 import { canManageWhatsAppContact } from "./whatsappContactAccess";
 import {
   isWhatsAppPipelineStage,
@@ -57,6 +59,7 @@ function nextStep(
   customerStep: string | null,
   personName: string,
 ) {
+  if (contact.deliveryFailure) return contact.deliveryFailure.summary;
   if (contact.lastOutboundState === "failed") {
     return (
       contact.lastFailureSummary ?? "Send failed. Open the chat to review it."
@@ -125,8 +128,9 @@ function PipelineCard({
 }) {
   const effectiveStage = pipelineStage(contact);
   const isQueued = contact.stage === "queued";
-  const stageLabel =
-    contact.lastOutboundState === "failed"
+  const stageLabel = contact.deliveryFailure
+    ? "Not delivered"
+    : contact.lastOutboundState === "failed"
       ? "Send failed"
       : isQueued
         ? "Queued"
@@ -220,7 +224,9 @@ function PipelineCard({
       <div className="c3wa-pipeline-card-foot">
         <span
           className={`c3wa-pipeline-stage-chip is-${
-            contact.lastOutboundState === "failed" ? "failed" : effectiveStage
+            contact.lastOutboundState === "failed" || contact.deliveryFailure
+              ? "failed"
+              : effectiveStage
           }`}
         >
           {stageLabel}
@@ -278,6 +284,7 @@ export function OutreachPipeline({
   const businessName = activeCommunity?.name.trim() || "This business";
   const contactsQuery = useWhatsAppContactsQuery();
   const draftsQuery = useWhatsAppDraftsQuery();
+  const statusQuery = useWhatsAppStatusQuery();
   const business = useBusinessRecords({ createIfMissing: false });
   const customerRecords = useCustomerRecords(true);
   const customerAccess = useCustomerRecordCapabilities();
@@ -289,6 +296,10 @@ export function OutreachPipeline({
   const [busyWaId, setBusyWaId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState("");
   const role = membership.data?.membership?.role;
+  const canManage =
+    membership.data?.membershipRequired === false ||
+    role === "owner" ||
+    role === "admin";
   const canEdit = canManageWhatsAppContact({
     role,
     isOutreachMember: channelIsMember,
@@ -403,6 +414,12 @@ export function OutreachPipeline({
           />
         </label>
       </header>
+      {statusQuery.data ? (
+        <WhatsAppSendHealthBanner
+          canManage={canManage}
+          status={statusQuery.data}
+        />
+      ) : null}
       {actionError ? (
         <p className="c3wa-desk-error" role="alert">
           {actionError}

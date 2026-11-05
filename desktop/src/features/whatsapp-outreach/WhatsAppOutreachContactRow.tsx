@@ -19,7 +19,7 @@ function StatusChip({ status }: { status: string }) {
       className={cn(
         "c3wa-contact-chip",
         status === "Opted out" && "is-opted",
-        status === "Send failed" && "is-failed",
+        (status === "Send failed" || status === "Not delivered") && "is-failed",
         status === "Replied" && "is-replied",
         status === "Waiting for your approval" && "is-awaiting",
       )}
@@ -64,8 +64,9 @@ export function WhatsAppOutreachContactRow({
   isLinked?: boolean;
 }) {
   const status = contactStatus(contact, waitingForApproval);
-  const stageLabel =
-    contact.lastOutboundState === "failed" && contact.stage === "none"
+  const stageLabel = contact.deliveryFailure
+    ? "Not delivered"
+    : contact.lastOutboundState === "failed" && contact.stage === "none"
       ? "Send failed"
       : WHATSAPP_STAGE_LABELS[contact.stage];
   const lastMessageAt = [
@@ -125,7 +126,9 @@ export function WhatsAppOutreachContactRow({
               <span
                 className={cn(
                   "c3wa-contact-stage-chip",
-                  contact.lastOutboundState === "failed" && "is-failed",
+                  (contact.lastOutboundState === "failed" ||
+                    contact.deliveryFailure) &&
+                    "is-failed",
                 )}
                 title={stageLabel}
               >

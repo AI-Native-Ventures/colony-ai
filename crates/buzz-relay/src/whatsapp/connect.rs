@@ -14,8 +14,8 @@ use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTempl
 use super::channel;
 use super::graph::{GraphError, PhoneInfo};
 use super::policy::{
-    account_retry_error_codes, default_template_title, hash_verify_token, sast_day_start,
-    template_slot_count,
+    account_failure_for_code, account_retry_error_codes, default_template_title, hash_verify_token,
+    sast_day_start, template_slot_count,
 };
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
@@ -686,6 +686,33 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         .whatsapp_count_retryable_account_failures(community, &account_retry_codes)
         .await
         .map_err(|error| error.to_string())?;
+    let account_waiting_count = state
+        .db
+        .whatsapp_count_account_health_waiting(community, &account_retry_codes)
+        .await
+        .map_err(|error| error.to_string())?;
+    let not_delivered_by_meta = state
+        .db
+        .whatsapp_count_failed_messages_by_code(community, "131049")
+        .await
+        .map_err(|error| error.to_string())?;
+    let send_health = settings
+        .account_health_code
+        .as_deref()
+        .and_then(|code| account_failure_for_code(Some(code)).map(|failure| (code, failure)))
+        .map(|(code, failure)| {
+            json!({
+                "code": code,
+                "message": failure.summary(),
+                "banner": failure.health_banner(account_waiting_count),
+                "fixSteps": failure.fix_steps(),
+                "fixUrl": failure.fix_url(),
+                "at": settings.account_health_at.map(|at| at.to_rfc3339()),
+                "paused": settings.send_paused,
+                "resumeRequestedAt": settings.account_health_resume_requested_at.map(|at| at.to_rfc3339()),
+                "waitingCount": account_waiting_count,
+            })
+        });
     Ok(json!({
         "connected": connection.is_some(),
         "connectionId": connection.as_ref().map(|c| c.id.to_string()),
@@ -696,6 +723,10 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         "dailyNewChatCap": settings.daily_new_chat_cap,
         "newChatsSentToday": sent_today,
         "accountRetryCount": account_retry_count,
+        // Additive health data. Desktops before this slice ignore the fields, and a relay before
+        // this slice simply omits them for the new desktop parser's safe defaults.
+        "sendHealth": send_health,
+        "healthSummary": { "notDeliveredByMeta": not_delivered_by_meta },
         "sendingPaused": settings.send_paused,
         "pauseReason": settings.pause_reason,
         "issues": settings.issues,

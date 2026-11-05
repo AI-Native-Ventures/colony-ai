@@ -7,6 +7,7 @@ import { WhatsAppMessageMedia } from "./WhatsAppMessageMedia";
 import {
   WhatsAppResumeAndRetryAction,
   WhatsAppSendAgainAction,
+  WhatsAppTryAgainLaterAction,
 } from "./WhatsAppRetryActions";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
@@ -335,6 +336,12 @@ export function WhatsAppThreadMessage({
             <span role="status">
               {message.failureSummary ?? message.errorText ?? statusLabel}
             </span>
+            {message.errorCode ? (
+              <small>Meta error {message.errorCode}</small>
+            ) : null}
+            {canRetrySend && message.canRetryLater ? (
+              <WhatsAppTryAgainLaterAction message={message} />
+            ) : null}
             {canRetrySend && message.canRetry ? (
               message.retryScope === "account" && accountRetryCount > 0 ? (
                 <WhatsAppResumeAndRetryAction
