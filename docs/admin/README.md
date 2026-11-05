@@ -264,6 +264,35 @@ itself. If a reverse proxy strips or rewrites `Authorization` headers, the
 dashboard breaks post-upgrade in nip98 mode — check proxy configuration before
 rolling.
 
+## Operator metrics console
+
+The operator console is served by `admin-web` and adds `/overview`,
+`/businesses`, `/businesses/:communityId`, `/ai-usage`, and `/system` (Health).
+`/health` remains reserved for the relay health route. People, Agents,
+Discovery, and WhatsApp navigation links lead to their overview sections because
+the metrics API contract does not define separate list endpoints for them.
+
+The console reads these operator-only metrics routes:
+
+- `GET /api/admin/v1/metrics/overview?days=30`
+- `GET /api/admin/v1/metrics/businesses?days=30&q=&sort=active&limit=100&offset=0`
+- `GET /api/admin/v1/metrics/businesses/:communityId?days=30`
+- `GET /api/admin/v1/metrics/ai-usage?days=30`
+- `GET /api/admin/v1/metrics/health`
+
+The `days` parameter accepts `7`, `30`, or `90` on the first four routes and
+does not apply to Health. Metrics require an operator principal. Cookie sessions
+come from Colony Google sign-in; NIP-98 remains available as a browser fallback.
+The UI renders null metrics as "Not collected" and shows aggregates, ids, and
+timestamps without message or WhatsApp content.
+
+To enable the Google redirect button, provide the public web OAuth client ID at
+admin bundle build time as `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID`. It is an
+identifier, not a secret, and the browser bundle does not use a client secret.
+If the value is unset, Google sign-in reports that it is not configured and the
+NIP-98 fallback remains available. The end-to-end build uses a local fake client
+ID; the production build does not read the test fixtures or test environment.
+
 ## Local development
 
 For local review, run `just admin-seed` before `just admin`. `just admin`
