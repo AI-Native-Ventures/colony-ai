@@ -463,6 +463,10 @@ test.describe("Outreach desk", () => {
     await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
+    await expect(page.getByTestId("whatsapp-send-health-banner")).toHaveCount(
+      0,
+    );
+    await expect(page.getByTestId("outreach-needs-send-health")).toHaveCount(0);
     await expect(page.getByTestId("whatsapp-resume-retry-trigger")).toHaveCount(
       0,
     );
