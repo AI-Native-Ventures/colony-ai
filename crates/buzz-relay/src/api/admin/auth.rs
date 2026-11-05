@@ -203,15 +203,22 @@ pub async fn authorize(
     let (principal, nip98_event_id) = match &config.auth {
         AdminAuth::Disabled => (None, None),
         AdminAuth::Nip98 => {
-            let full_path = format!("{ADMIN_API_PREFIX}{path_and_query}");
-            let (pubkey_bytes, event_id) =
-                authorize_nip98(config, headers, &full_path, method, raw_body).await?;
-            // Resolve the roster grant BEFORE claiming the replay ID: an
-            // unrostered-but-validly-signing key (e.g. any WARP-admitted laptop)
-            // must not be able to consume replay slots at request rate. Only a
-            // request that clears authorization claims its event ID.
-            let principal = resolve_admin_principal(state, pubkey_bytes).await?;
-            (Some(principal), Some(event_id))
+            // A "Sign in with your Colony account" session cookie, when the
+            // request carries no Authorization header. NIP-98 stays the fallback.
+            if let Some(principal) = super::session::principal_from_cookie(state, headers, method)?
+            {
+                (Some(principal), None)
+            } else {
+                let full_path = format!("{ADMIN_API_PREFIX}{path_and_query}");
+                let (pubkey_bytes, event_id) =
+                    authorize_nip98(config, headers, &full_path, method, raw_body).await?;
+                // Resolve the roster grant BEFORE claiming the replay ID: an
+                // unrostered-but-validly-signing key (e.g. any WARP-admitted laptop)
+                // must not be able to consume replay slots at request rate. Only a
+                // request that clears authorization claims its event ID.
+                let principal = resolve_admin_principal(state, pubkey_bytes).await?;
+                (Some(principal), Some(event_id))
+            }
         }
     };
 
@@ -442,7 +449,7 @@ fn nostr_credential(value: &str) -> Option<&str> {
         .filter(|c| !c.is_empty())
 }
 
-fn origin_matches_host(origin: &str, host: &str) -> bool {
+pub(super) fn origin_matches_host(origin: &str, host: &str) -> bool {
     // Compare against the exact canonical origin: https:// for non-loopback,
     // http:// for loopback. Accepting either scheme for non-loopback would
     // allow plaintext origins for production hosts.

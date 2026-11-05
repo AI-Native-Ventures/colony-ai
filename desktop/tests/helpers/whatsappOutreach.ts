@@ -43,6 +43,7 @@ export const JACARANDA_LEAD_ID = REFERENCE_PROSPECT_IDS.stillroom;
 export const LAVENDER_HILL_WA_ID = "27795552241";
 export const GREEN_SHUTTER_WA_ID = "27605553422";
 export const OAKLEAF_WA_ID = "27655551175";
+export const QUEUED_LEAD_WA_ID = "27794441101";
 const E2E_SELF_PUBKEY = "deadbeef".repeat(8);
 
 function deskCustomerRecordMock() {
@@ -88,8 +89,12 @@ type WhatsAppMockActor = {
   workspaceName?: string;
   /** Seed the approved desk states without changing legacy inbox fixtures. */
   deskFixture?: boolean;
+  /** Seed one approved, unsent contact for Pipeline queue proofs. */
+  queuedFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
   outreachChannelMember?: boolean;
+  /** Seed definite Meta payment failures that an owner can recover. */
+  paymentRetryCount?: number;
   batchVariant?:
     | "decided-card-pending"
     | "decided-card-approved"
@@ -1104,11 +1109,14 @@ export async function installWhatsAppMockBridge(
         decidedBatchId,
         batchVariant: seededBatchVariant,
         deskFixture,
+        queuedFixture,
+        queuedLeadWaId,
         deskFirstBatchRows,
         deskFollowUpRows,
         deskPipelineAdditionalContacts,
         templates: templateSeed,
         initiallyConnected,
+        paymentRetryCount,
         ...baseSeed
       } = seed;
       const state = clone(baseSeed);
@@ -1132,6 +1140,7 @@ export async function installWhatsAppMockBridge(
       const visualBatchScreen = approvedBatch || batchVariant === "visual";
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
+      state.status.accountRetryCount = paymentRetryCount ?? 0;
       state.batch.status =
         approvedBatch || sendNowBatch || leadsBatch ? "approved" : "pending";
       state.secondPendingBatch.status = state.batch.status;
@@ -1172,19 +1181,22 @@ export async function installWhatsAppMockBridge(
             6,
           ),
         ).toISOString();
-        const sourceRow = state.batch.rows[0];
+        const sourceRows =
+          batchVariant === "decided-card-pending"
+            ? state.batch.rows.slice(0, 2)
+            : state.batch.rows.slice(0, 1);
         state.batch.batchId = decidedBatchId;
-        state.batch.rows = [
-          {
-            ...sourceRow,
-            idx: 0,
-            state: batchVariant === "decided-card-sent" ? "sent" : "ready",
-            sendsAt,
-          },
-        ];
+        state.batch.rows = sourceRows.map((sourceRow, idx) => ({
+          ...sourceRow,
+          idx,
+          state: batchVariant === "decided-card-sent" ? "sent" : "ready",
+          sendsAt,
+        }));
+        const readyCount =
+          batchVariant === "decided-card-sent" ? 0 : state.batch.rows.length;
         state.batch.counts = {
-          total: 1,
-          ready: batchVariant === "decided-card-sent" ? 0 : 1,
+          total: state.batch.rows.length,
+          ready: readyCount,
           sent: batchVariant === "decided-card-sent" ? 1 : 0,
           failed: 0,
           dropped: 0,
@@ -1491,6 +1503,32 @@ export async function installWhatsAppMockBridge(
           ...deskContacts,
         ]);
       }
+      if (deskFixture && queuedFixture) {
+        const queueFields = {
+          lastInboundAt: null,
+          lastContactedAt: null,
+          lastOutboundState: null,
+          lastReplyAt: null,
+          stage: "queued",
+          stageSetBy: "auto",
+          stageChangedAt: "2026-10-29T10:52:00+02:00",
+          queuedFrom: "Batch: Message 12 guesthouses in Melville",
+          outreachStatus: "queued",
+          unanswered: true,
+          awaitingApproval: false,
+        };
+        const queuedDeskContact = deskContacts.find(
+          (contact) => contact.waId === queuedLeadWaId,
+        );
+        const queuedStateContact = state.contacts.find(
+          (contact) => contact.waId === queuedLeadWaId,
+        );
+        if (!queuedDeskContact || !queuedStateContact) {
+          throw new Error("The queued Pipeline fixture contact is missing.");
+        }
+        Object.assign(queuedDeskContact, queueFields);
+        Object.assign(queuedStateContact, queueFields);
+      }
       // A disconnected initial status intentionally clears its templates, but
       // reconnecting should restore the seeded template catalog.
       const templatesForMock = clone(seed.status.templates);
@@ -1645,6 +1683,33 @@ export async function installWhatsAppMockBridge(
       for (const thread of Object.values(state.threads)) {
         normalizeContactView(thread.contact);
       }
+      if (paymentRetryCount && paymentRetryCount > 0) {
+        const paymentMessage = state.threads[planeTreeWaId].messages.find(
+          (message) => message.id === "e2e-wa-failed",
+        );
+        if (paymentMessage) {
+          Object.assign(paymentMessage, {
+            errorCode: "131042",
+            errorText: "Business eligibility payment issue",
+            failureSummary:
+              "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
+            retryScope: "account",
+            canRetry: true,
+          });
+        }
+        const failureContact = state.contacts.find(
+          (contact) => contact.waId === planeTreeWaId,
+        );
+        if (failureContact) {
+          Object.assign(failureContact, {
+            stage: "none",
+            lastOutboundState: "failed",
+            lastFailureSummary:
+              "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
+          });
+          state.threads[planeTreeWaId].contact = clone(failureContact);
+        }
+      }
       const globalWindow = window as Window & {
         __BUZZ_E2E_WHATSAPP_STATE__?: typeof state;
       };
@@ -1739,6 +1804,19 @@ export async function installWhatsAppMockBridge(
             state.status.dailyNewChatCap = body.dailyNewChatCap;
           if (typeof body.sendingPaused === "boolean")
             state.status.sendingPaused = body.sendingPaused;
+          if (body.resumeAndRetry === true) {
+            state.status.accountRetryCount = 0;
+            for (const thread of Object.values(state.threads)) {
+              for (const message of thread.messages) {
+                if (message.retryScope === "account") {
+                  message.state = "queued";
+                  message.failureSummary = null;
+                  message.retryScope = null;
+                  message.canRetry = false;
+                }
+              }
+            }
+          }
         }
         if (kind === 47052 && typeof body.waId === "string") {
           const contact = state.contacts.find(
@@ -1913,9 +1991,12 @@ export async function installWhatsAppMockBridge(
       decidedBatchId: WHATSAPP_DECIDED_BATCH_ID,
       batchVariant: actor.batchVariant ?? null,
       deskFixture: actor.deskFixture === true,
+      queuedFixture: actor.queuedFixture === true,
+      queuedLeadWaId: QUEUED_LEAD_WA_ID,
       deskFirstBatchRows,
       deskFollowUpRows,
       deskPipelineAdditionalContacts,
+      paymentRetryCount: actor.paymentRetryCount ?? 0,
     },
   );
 }

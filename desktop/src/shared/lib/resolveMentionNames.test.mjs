@@ -110,6 +110,45 @@ test("includes aliases from mention reference tags", () => {
   });
 });
 
+test("owner-qualified agent aliases leave one remaining Scout unambiguous", () => {
+  const scout = PUBKEY;
+  const teammateScout = OTHER_PUBKEY;
+  const basheer = "c".repeat(64);
+  const zaina = "d".repeat(64);
+  const profiles = {
+    [scout]: profile({
+      displayName: "Scout",
+      isAgent: true,
+      ownerPubkey: basheer,
+    }),
+    [teammateScout]: profile({
+      displayName: "Scout",
+      isAgent: true,
+      ownerPubkey: zaina,
+    }),
+    [basheer]: profile({ displayName: "Basheer Khan" }),
+    [zaina]: profile({ displayName: "Zaina Ali" }),
+  };
+  for (const tags of [
+    [
+      ["p", scout],
+      ["p", teammateScout],
+    ],
+    [
+      ["p", teammateScout],
+      ["p", scout],
+    ],
+  ]) {
+    const { mentionPubkeysByName } = resolveMentionProps(
+      tags,
+      profiles,
+      "@Scout @Scout (Zaina)",
+    );
+    assert.equal(mentionPubkeysByName?.scout, scout);
+    assert.equal(mentionPubkeysByName?.["scout (zaina)"], teammateScout);
+  }
+});
+
 test("every rendered name resolves to a pubkey (outputs stay in sync)", () => {
   const tags = [
     ["p", PUBKEY],

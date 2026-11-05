@@ -15,7 +15,7 @@ import {
   NoticeGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
-import type { DiscoveryCampaign } from "./discoveryProvider";
+import type { DiscoveryCampaign, DiscoveryPageLog } from "./discoveryProvider";
 
 import "./colony3-discovery.css";
 
@@ -58,7 +58,7 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
   const failed = campaign.status === "failed";
   const duplicates = campaign.skippedDuplicates ?? 0;
   const duplicateText = duplicates
-    ? `Duplicate check and source references retained · ${duplicates} already in Leads`
+    ? `${campaign.count} new prospects saved · ${duplicates} already in your Leads`
     : "Duplicate check and source references retained";
   return [
     { text: "Search criteria prepared", state: "done" },
@@ -74,6 +74,68 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
       state: campaign.status === "complete" ? "final" : "wait",
     },
   ];
+}
+
+function pageStopReason(entry: DiscoveryPageLog): string {
+  switch (entry.stopReason) {
+    case "target_reached":
+      return "Stopped because the requested new-prospect target was reached.";
+    case "provider_end":
+      return "Stopped because the relay returned nextSkip null, so the provider offered no next page.";
+    case "provider_ceiling":
+      return "Stopped at the relay's 400-record provider ceiling.";
+    case "provider_repeat":
+      return "Stopped because every provider place id on this page had already appeared in this campaign. No further paid page was requested.";
+    case "approved_budget":
+      return "Stopped because the approved budget did not cover another full provider page.";
+    default:
+      return "The relay offered another page after this one.";
+  }
+}
+
+function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <section aria-labelledby="page-log-title" className="c3d-page-log">
+      <div className="c3d-page-log-head">
+        <h3 id="page-log-title">Provider page log</h3>
+        <span>Recorded from each relay response</span>
+      </div>
+      <ol>
+        {entries.map((entry) => (
+          <li className="c3d-page-log-row" key={`${entry.page}-${entry.skip}`}>
+            <div className="c3d-page-log-summary">
+              <strong>
+                Page {entry.page} <span>skip {entry.skip}</span>
+              </strong>
+              <span>
+                {entry.placesReturned}{" "}
+                {entry.placesReturned === 1 ? "place" : "places"} returned ·{" "}
+                {formatBudget(entry.costUsd)}
+              </span>
+            </div>
+            <dl>
+              <div>
+                <dt>New saved</dt>
+                <dd>{entry.newProspectsSaved}</dd>
+              </div>
+              <div>
+                <dt>Already in Leads</dt>
+                <dd>{entry.alreadyInLeads}</dd>
+              </div>
+              <div>
+                <dt>Repeated in campaign</dt>
+                <dd>{entry.repeatedInCampaign}</dd>
+              </div>
+            </dl>
+            <p data-stop-reason={entry.stopReason ?? "continue"}>
+              {pageStopReason(entry)}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 /** "Search activity." and "Search & budget." (`CampaignModals`). */
@@ -143,6 +205,7 @@ export function CampaignDialog({
                 </li>
               ))}
             </ol>
+            <PageLog entries={campaign.runLog ?? []} />
             <p className="c3d-note">
               <InfoGlyph />
               <span>

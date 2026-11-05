@@ -367,7 +367,11 @@ export function AgentPage({
       >
         <span>Company</span>
         <span aria-hidden="true">/</span>
-        <button onClick={backToList} type="button">
+        <button
+          aria-label={`Back to ${routeBack.backLabel}`}
+          onClick={backToList}
+          type="button"
+        >
           {routeBack.backLabel}
         </button>
         <span aria-hidden="true">/</span>

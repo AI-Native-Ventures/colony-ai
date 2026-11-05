@@ -13,6 +13,7 @@ import { MessageThreadSummaryRow } from "./MessageThreadSummaryRow";
 import { SystemMessageRow } from "./SystemMessageRow";
 import { WhatsAppChannelEventRow } from "@/features/whatsapp-outreach/WhatsAppChannelEventRow";
 import { WhatsAppDiscussionActivity } from "@/features/whatsapp-outreach/WhatsAppDiscussionActivityRow";
+import { LeadUpdateSummaryCard } from "@/features/discovery/LeadUpdateSummaryCard";
 import {
   DesignReviewMessageCard,
   designReviewCardData,
@@ -31,7 +32,6 @@ type SystemRowProps = {
   footer: React.ReactNode;
   onToggleReaction?: ToggleReaction;
   profiles?: UserProfileLookup;
-  ownerProfiles?: UserProfileLookup;
 };
 
 export function SystemRow({
@@ -41,7 +41,6 @@ export function SystemRow({
   footer,
   onToggleReaction,
   profiles,
-  ownerProfiles,
 }: SystemRowProps) {
   const systemEntries = entries ?? (entry ? [entry] : []);
   const firstEntry = systemEntries[0];
@@ -62,7 +61,6 @@ export function SystemRow({
         currentPubkey={currentPubkey}
         onToggleReaction={onToggleReaction}
         profiles={profiles}
-        ownerProfiles={ownerProfiles}
       />
       {footer}
     </div>
@@ -266,6 +264,7 @@ export function MessageRowItem({
         showDepthGuides={false}
         videoReviewContext={videoReviewContext}
       />
+      <LeadUpdateSummaryCard message={message} />
       {footer ? <div className="relative z-20">{footer}</div> : null}
     </div>
   );

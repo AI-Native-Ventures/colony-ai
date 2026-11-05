@@ -1,4 +1,5 @@
 .business-logo-mark {
+  display: block;
   overflow: hidden;
   aspect-ratio: 1;
 }

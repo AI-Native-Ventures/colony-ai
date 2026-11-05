@@ -13,7 +13,7 @@ import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { SelectedRecipientChip } from "@/features/profile/ui/SelectedRecipientChip";
 import type { RelayMemberRole, UserSearchResult } from "@/shared/api/types";
 import { parsePubkeyInput } from "@/shared/lib/nostrUtils";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -47,11 +47,12 @@ const ROLE_OPTIONS: Array<{
 ];
 
 function formatSearchUserName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 export function DirectAddMemberForm({

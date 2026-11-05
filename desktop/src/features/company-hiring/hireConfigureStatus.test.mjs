@@ -18,6 +18,7 @@ function input(overrides = {}) {
     head: settled,
     hasRolePack: true,
     hasForm: true,
+    freshRoleFetchComplete: true,
     ...overrides,
   };
 }
@@ -43,7 +44,20 @@ test("settled queries and no form yet keep loading", () => {
   assert.equal(hireConfigureStatus(input({ hasForm: false })), "loading");
 });
 
-test("a persona list that does not hold the role says so without waiting on the relay", () => {
+test("a persona list that does not hold the role waits for one fresh catalog read", () => {
+  assert.equal(
+    hireConfigureStatus(
+      input({
+        hasRolePack: false,
+        hasForm: false,
+        freshRoleFetchComplete: false,
+      }),
+    ),
+    "loading",
+  );
+});
+
+test("a missing role is reported only after the fresh catalog read completes", () => {
   assert.equal(
     hireConfigureStatus(
       input({ hasRolePack: false, hasForm: false, team: pending }),

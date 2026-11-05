@@ -53,6 +53,18 @@ test("Needs You deduplicates an unanswered wants-call contact into the higher se
   );
 });
 
+test("Needs You excludes queued contacts even when old draft or reply data remains", () => {
+  const queued = contact({
+    stage: "queued",
+    unanswered: true,
+  });
+
+  assert.deepEqual(
+    getWhatsAppNeedsYouItems([queued], [{ waId: queued.waId }]),
+    [],
+  );
+});
+
 test("contact labels override profile and business names", () => {
   assert.equal(
     contactDisplayName(

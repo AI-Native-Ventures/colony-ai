@@ -626,6 +626,7 @@ pub async fn create_managed_agent(
             pubkey: pubkey.clone(),
             name: name.clone(),
             description: None,
+            company_role: None,
             persona_id: requested_persona_id.clone(),
             team_id,
             private_key_nsec: private_key_nsec.clone(),
@@ -742,9 +743,34 @@ pub async fn create_managed_agent(
         )
     };
 
-    // ── Phase 3b: local spawn (async preflight outside store lock) ───────────
+    // ── Phase 3b: publish identity before any agent can speak ───────────────
+    // A locally managed record is visible to its owner immediately, but every
+    // teammate learns the agent's name and NIP-OA owner from this kind:0 event.
+    // Do not start or deploy before the relay accepted it: a first message can
+    // otherwise arrive before another viewer has any safe identity to resolve.
+    let mut profile_sync_error = profile::publish_agent_profile_with_about(
+        &state,
+        &resolved_relay_url,
+        &agent_keys,
+        &name,
+        resolved_avatar_url.as_deref(),
+        profile_about.as_deref(),
+        auth_tag.as_deref(),
+    )
+    .await;
+    profile_sync_error =
+        super::agent_models::flush_managed_agent_policy(&app, &state, profile_sync_error).await;
+    let profile_ready = profile_sync_error.is_none();
+
+    // ── Phase 3c: local spawn (async preflight outside store lock) ───────────
     let mut spawn_error = None;
-    let agent = if input.spawn_after_create && input.backend == BackendKind::Local {
+    let agent = if input.spawn_after_create && !profile_ready {
+        spawn_error = Some(
+            "The agent profile could not be published, so the agent was not started. Retry after the relay is available."
+                .to_string(),
+        );
+        agent
+    } else if input.spawn_after_create && input.backend == BackendKind::Local {
         match start_local_agent_with_preflight(&app, &state, &pubkey, true, None, None, None, false)
             .await
         {
@@ -777,50 +803,35 @@ pub async fn create_managed_agent(
 
     try_regenerate_nest(&app);
 
-    // ── Phase 4: sync agent profile on relay (async, outside lock) ───────────
-    // Use the avatar persisted on the record so the published profile and any
-    // later reconciliation agree on the same value.
-    let mut profile_sync_error = profile::publish_agent_profile_with_about(
-        &state,
-        &resolved_relay_url,
-        &agent_keys,
-        &name,
-        resolved_avatar_url.as_deref(),
-        profile_about.as_deref(),
-        auth_tag.as_deref(),
-    )
-    .await;
-    profile_sync_error =
-        super::agent_models::flush_managed_agent_policy(&app, &state, profile_sync_error).await;
-
-    let spawn_error = if input.spawn_after_create && input.backend != BackendKind::Local {
-        if let BackendKind::Provider { ref id, ref config } = input.backend {
-            let agent_json = {
-                let _g = state
-                    .managed_agents_store_lock
-                    .lock()
-                    .map_err(|e| e.to_string())?;
-                let records = load_managed_agents(&app)?;
-                let rec = records
-                    .iter()
-                    .find(|r| r.pubkey == pubkey)
-                    .ok_or_else(|| "agent disappeared".to_string())?;
-                build_deploy_payload(&app, &state, rec)?
-            };
-            match deploy_to_provider(
-                &app, &state, &pubkey, id, config, agent_json, None, None, None, None,
-            )
-            .await
-            {
-                Ok(()) => spawn_error,
-                Err(e) => Some(e),
+    let spawn_error =
+        if input.spawn_after_create && input.backend != BackendKind::Local && profile_ready {
+            if let BackendKind::Provider { ref id, ref config } = input.backend {
+                let agent_json = {
+                    let _g = state
+                        .managed_agents_store_lock
+                        .lock()
+                        .map_err(|e| e.to_string())?;
+                    let records = load_managed_agents(&app)?;
+                    let rec = records
+                        .iter()
+                        .find(|r| r.pubkey == pubkey)
+                        .ok_or_else(|| "agent disappeared".to_string())?;
+                    build_deploy_payload(&app, &state, rec)?
+                };
+                match deploy_to_provider(
+                    &app, &state, &pubkey, id, config, agent_json, None, None, None, None,
+                )
+                .await
+                {
+                    Ok(()) => spawn_error,
+                    Err(e) => Some(e),
+                }
+            } else {
+                spawn_error
             }
         } else {
             spawn_error
-        }
-    } else {
-        spawn_error
-    };
+        };
 
     // Rebuild summary if provider deploy may have updated backend_agent_id.
     let final_agent = if input.backend != BackendKind::Local && spawn_error.is_none() {
@@ -850,7 +861,7 @@ pub async fn create_managed_agent(
     })
 }
 
-/// Data needed for background profile reconciliation after agent start.
+/// Data needed to reconcile a managed agent's shared profile before it starts.
 #[tauri::command]
 pub async fn start_managed_agent(
     pubkey: String,
@@ -879,12 +890,9 @@ pub async fn start_managed_agent(
         &crate::relay::relay_api_base_url_with_override(&state),
     )?;
     crate::relay::assert_expected_signer(expected_signer_pubkey.as_deref(), &owner_hex)?;
-    // Pin the relay for the fire-and-forget profile reconciliation spawned
-    // after a successful start: one validated workspace-relay read, captured
-    // NOW. The background task may execute long after this command returns —
-    // resolving the relay at execution time would let a community switch
-    // landing in between retarget the kind:0 query/publish to the new
-    // tenant's relay under authorization the caller only gave for this one.
+    // Pin the relay for the synchronous profile reconciliation before startup.
+    // Resolving it later could let a community switch retarget the kind:0
+    // query or publish to a different tenant than the caller authorized.
     let reconcile_relay = crate::relay::bind_expected_relay_scope(
         expected_relay_url.as_deref(),
         relay_ws_url_with_override(&state),
@@ -899,7 +907,7 @@ pub async fn start_managed_agent(
     }
 
     // Collect backend info under lock; async preflight/spawn happens below.
-    // Also snapshot profile reconciliation data for the background task.
+    // Also snapshot profile reconciliation data for the synchronous gate.
     let (target, reconcile_data) = {
         let _store_guard = state
             .managed_agents_store_lock
@@ -930,7 +938,7 @@ pub async fn start_managed_agent(
         let reconcile_personas = load_personas(&app).unwrap_or_default();
         let mut reconcile = profile_reconcile_data(record, &reconcile_personas);
         // Pin the startup relay (the bound, caller-validated read) so the
-        // fire-and-forget task can never resolve a post-switch workspace.
+        // profile gate cannot resolve a post-switch workspace.
         // Mirrors `load_pending_profile_reconciliations`.
         reconcile.target_relay_url = Some(crate::relay::effective_agent_relay_url(
             &record.relay_url,
@@ -949,6 +957,11 @@ pub async fn start_managed_agent(
 
         (target, reconcile)
     };
+
+    // Starting is the final boundary before this identity can emit into the
+    // shared community. Reconcile synchronously so a teammate's first fetch of
+    // the author finds the agent kind:0, including its NIP-OA owner tag.
+    profile::ensure_agent_identity_profile(&state, &app, &pubkey, &reconcile_data).await?;
 
     let result = match target {
         StartTarget::Local => {
@@ -1010,32 +1023,6 @@ pub async fn start_managed_agent(
             "agent {pubkey} has unsupported backend kind: {backend:?}"
         )),
     };
-
-    // ── Profile reconciliation (fire-and-forget) ────────────────────────────
-    // On successful start, spawn a background task to ensure the agent's kind:0
-    // profile is published on the relay. This self-heals cases where the initial
-    // profile sync at creation time failed silently. For legacy records (pre-PR-921)
-    // with no persisted avatar, this also backfills the avatar from the relay.
-    if result.is_ok()
-        && state
-            .managed_agent_profile_reconcile_enabled()
-            .load(std::sync::atomic::Ordering::Acquire)
-    {
-        let reconcile_pubkey = pubkey.clone();
-        let reconcile_app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            use tauri::Manager;
-            let state = reconcile_app.state::<AppState>();
-            if let Err(e) =
-                reconcile_agent_profile(&state, &reconcile_app, &reconcile_pubkey, &reconcile_data)
-                    .await
-            {
-                eprintln!(
-                    "buzz-desktop: profile reconciliation failed for agent {reconcile_pubkey}: {e}"
-                );
-            }
-        });
-    }
 
     result
 }

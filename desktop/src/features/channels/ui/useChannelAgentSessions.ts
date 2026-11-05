@@ -4,7 +4,8 @@ import type {
   ManagedAgent,
   RelayAgent,
 } from "@/shared/api/types";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   channelBotMemberPubkeySet,
   channelMemberPubkeySet,
@@ -70,7 +71,11 @@ export function buildChannelAgentSessionCandidates({
 
     byPubkey.set(key, {
       pubkey: member.pubkey,
-      name: member.displayName ?? truncateNpub(member.pubkey),
+      name: resolveUserLabel({
+        pubkey: member.pubkey,
+        fallbackName: member.displayName,
+        isAgent: true,
+      }),
       status: "deployed",
       agentSource: "member-bot",
       canInterruptTurn: false,

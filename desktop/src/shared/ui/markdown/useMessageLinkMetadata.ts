@@ -4,7 +4,7 @@ import type { ParsedMessageLink } from "@/features/messages/lib/messageLink";
 import { summarizeMessageLinkContent } from "@/features/messages/lib/messageLinkMetadata";
 import { getEventById } from "@/shared/api/tauri";
 import { getUserProfile } from "@/shared/api/tauriProfiles";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { isDefinitiveEventNotFound } from "@/shared/lib/eventLookupError";
 
 const MESSAGE_METADATA_RETRY_DELAY_MS = 750;
@@ -67,10 +67,13 @@ function fetchMetadata(
         const profile = await getUserProfile(event.pubkey).catch(() => null);
         return {
           kind: "ready" as const,
-          author:
-            profile?.displayName?.trim() ||
-            profile?.nip05Handle?.trim() ||
-            truncateNpub(event.pubkey),
+          author: resolveIdentityLabel({
+            pubkey: event.pubkey,
+            fallbackName:
+              profile?.displayName?.trim() || profile?.nip05Handle?.trim(),
+            isAgent: Boolean(profile?.ownerPubkey),
+            ownerPubkey: profile?.ownerPubkey,
+          }).text,
           createdAt: event.created_at,
           snippet: summarizeMessageLinkContent(event.content),
         };

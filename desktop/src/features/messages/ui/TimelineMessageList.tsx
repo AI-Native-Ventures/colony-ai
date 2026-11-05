@@ -90,7 +90,6 @@ type TimelineMessageListProps = {
   /** Map from lowercase pubkey → persona display name for bot members. */
   personaLookup?: Map<string, string>;
   profiles?: UserProfileLookup;
-  ownerProfiles?: UserProfileLookup;
   /** The message ID of the currently active find-in-channel match. */
   searchActiveMessageId?: string | null;
   /** Set of message IDs that match the current find-in-channel query. */
@@ -152,7 +151,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   onSendVideoReviewComment,
   onToggleReaction,
   profiles,
-  ownerProfiles,
   searchActiveMessageId = null,
   searchMatchingMessageIds,
   searchQuery,
@@ -228,7 +226,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               footer={messageFooters?.[item.entry.message.id] ?? null}
               onToggleReaction={onToggleReaction}
               profiles={profiles}
-              ownerProfiles={ownerProfiles}
             />
           );
         case "system-group":
@@ -241,7 +238,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               )}
               onToggleReaction={onToggleReaction}
               profiles={profiles}
-              ownerProfiles={ownerProfiles}
             />
           );
         case "message":
@@ -310,7 +306,6 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       onOpenThread,
       onToggleReaction,
       profiles,
-      ownerProfiles,
       searchActiveMessageId,
       searchMatchingMessageIds,
       searchQuery,

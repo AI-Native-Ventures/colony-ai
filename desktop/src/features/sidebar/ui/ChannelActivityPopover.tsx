@@ -9,7 +9,8 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { Channel, FeedItem, HomeFeedResponse } from "@/shared/api/types";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { useNow } from "@/shared/lib/useNow";
 import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
@@ -188,10 +189,14 @@ export function WorkingAgentRows({
 
   return activeWorking.agentPubkeys.map((pubkey, index) => {
     const profile = profiles?.[normalizePubkey(pubkey)];
-    const authoredName =
-      profile?.displayName?.trim() || alignedAgentNames?.[index];
-    const keyLabel = truncateNpub(pubkey);
-    const name = authoredName || `Agent ${keyLabel}`;
+    const identityLabel = resolveIdentityLabel({
+      pubkey,
+      fallbackName: alignedAgentNames?.[index],
+      profiles,
+      isAgent: true,
+      ownerPubkey: profile?.ownerPubkey ?? null,
+    });
+    const name = identityLabel.text;
     // Each agent counts from its own start; the channel anchor is the fallback.
     const agentAnchor =
       activeWorking.agentAnchors?.[normalizePubkey(pubkey)] ??
@@ -200,7 +205,7 @@ export function WorkingAgentRows({
       <WorkingAgentRow
         avatarUrl={profile?.avatarUrl ?? null}
         elapsed={formatElapsedClock(now - agentAnchor)}
-        initialsLabel={authoredName || keyLabel}
+        initialsLabel={name}
         key={pubkey}
         name={name}
         onOpen={() => onOpen(pubkey, channelId)}

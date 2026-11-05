@@ -1,10 +1,9 @@
 import { toast } from "sonner";
 
 import { useRemoveRelayMemberMutation } from "@/features/community-members/hooks";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { RelayMember } from "@/shared/api/types";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { CloseIcon } from "@/shared/ui/colonyIcons";
-import { PubKey } from "@/shared/ui/PubKey";
 import {
   Dialog,
   DialogClose,
@@ -28,7 +27,8 @@ export function ConfirmRemoveDialog({
   onRemoved?: () => void | Promise<void>;
 }) {
   const removeMutation = useRemoveRelayMemberMutation();
-  const label = displayName || (member ? truncateNpub(member.pubkey) : "");
+  const label =
+    displayName || (member ? resolveUserLabel({ pubkey: member.pubkey }) : "");
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -60,13 +60,6 @@ export function ConfirmRemoveDialog({
               <span className="sr-only">Close</span>
             </DialogClose>
           </div>
-          {member ? (
-            <PubKey
-              pubkey={member.pubkey}
-              testId="confirm-remove-member-pubkey"
-              variant="full"
-            />
-          ) : null}
           <div className="team-dialog-warning">
             <span>
               {label || "This person"} can no longer access the company after

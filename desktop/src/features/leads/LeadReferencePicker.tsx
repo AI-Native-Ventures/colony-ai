@@ -3,6 +3,7 @@ import * as React from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCommunities } from "@/features/communities/useCommunities";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import {
   KIND_PROSPECT_HEAD,
   latestByDTag,
@@ -21,7 +22,6 @@ import {
 import { LeadStagePill } from "./LeadReferenceCard";
 import {
   filterLeads,
-  leadInitial,
   summarizeLead,
   type LeadSummary,
 } from "./leadReferenceModel";
@@ -175,9 +175,13 @@ export function LeadReferencePicker({
                     onClick={() => onSelect(lead)}
                     type="button"
                   >
-                    <span aria-hidden="true" className="c3r-mark">
-                      {leadInitial(lead.name)}
-                    </span>
+                    <BusinessLogoMark
+                      className="c3r-mark"
+                      logoUrl={lead.logoUrl}
+                      name={lead.name}
+                      placePhotoUrl={lead.placePhotoUrl}
+                      website={lead.website}
+                    />
                     <span className="c3r-copy">
                       <span className="c3r-name" title={lead.name}>
                         {lead.name}

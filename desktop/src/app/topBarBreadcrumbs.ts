@@ -59,10 +59,16 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
         ? trail("Company", "Team", "Member")
         : trail("Company", "Team");
     case "hire":
+      if (second === "role-pack") {
+        return trail("Company", "Team", "Role catalog", "Edit a role pack");
+      }
       return trail("Company", "Team", HIRE_PAGES[second ?? ""] ?? "Hire");
     case "work":
       return trail("Company", "Work");
     case "discovery":
+      if (second === "campaigns") {
+        return trail("Business", "Discovery", "All campaigns");
+      }
       return trail("Business", "Discovery");
     case "campaign":
       return trail("Business", "Discovery", "Campaign");

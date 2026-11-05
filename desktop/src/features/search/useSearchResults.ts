@@ -31,9 +31,15 @@ import {
 import type { SearchResult } from "@/features/search/ui/SearchResultItem";
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 
 function formatUserResultName(user: UserSearchResult) {
-  return user.displayName?.trim() || user.nip05Handle?.trim() || user.pubkey;
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 function dedupeSearchHits(hits: SearchHit[]) {
@@ -453,12 +459,18 @@ export function useSearchResults({
     [channelResults, messageResults, userResults],
   );
 
-  const resultProfilesQuery = useUsersBatchQuery(
-    messageResults.map((hit) => hit.pubkey),
-    {
-      enabled: enabled && messageResults.length > 0,
-    },
+  const resultProfilePubkeys = React.useMemo(
+    () => [
+      ...new Set([
+        ...messageResults.map((hit) => hit.pubkey),
+        ...userResults.map((user) => user.pubkey),
+      ]),
+    ],
+    [messageResults, userResults],
   );
+  const resultProfilesQuery = useUsersBatchQuery(resultProfilePubkeys, {
+    enabled: enabled && resultProfilePubkeys.length > 0,
+  });
 
   React.useEffect(() => {
     const trimmed = query.trim();

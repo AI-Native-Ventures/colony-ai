@@ -27,8 +27,9 @@ use crate::whatsapp::connect::{self, ConnectError};
 use crate::whatsapp::desk;
 use crate::whatsapp::inbound::process_payload;
 use crate::whatsapp::policy::{
-    contact_label, e164, next_window_start, normalize_wa_id, verify_signature,
-    verify_token_matches, window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
+    contact_label, e164, failure_can_retry, failure_summary_for_code, next_window_start,
+    normalize_wa_id, retry_scope_for_error_code, verify_signature, verify_token_matches,
+    window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
 };
 use crate::whatsapp::{access_for, Access};
 
@@ -252,16 +253,26 @@ fn message_view(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Value 
             .clone()
             .filter(|_| message.state == "skipped")
     });
+    let state = client_state(&message.state);
+    let retry_scope = (state == "failed")
+        .then(|| retry_scope_for_error_code(message.error_code.as_deref()).wire())
+        .flatten();
+    let failure_summary = (state == "failed")
+        .then(|| failure_summary_for_code(message.error_code.as_deref()))
+        .flatten();
     json!({
         "id": message.id.to_string(),
         "direction": message.direction,
         "kind": message.kind,
         "text": message.body,
         "templateName": message.template_name,
-        "state": client_state(&message.state),
+        "state": state,
         "awaitingApproval": message.state == "held",
         "errorCode": message.error_code,
         "errorText": error_text,
+        "failureSummary": failure_summary,
+        "retryScope": retry_scope,
+        "canRetry": state == "failed" && failure_can_retry(message.error_code.as_deref()),
         "eventId": message.event_id.as_ref().map(hex::encode),
         "senderPubkey": message.sender_pubkey.as_ref().map(hex::encode),
         "waId": message.wa_id,

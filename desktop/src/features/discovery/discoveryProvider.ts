@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import type { DiscoveryLocation } from "./discoveryLocation";
 import { getRealDiscoveryProvider } from "./discoveryRuntime";
 
 export type DiscoveryAudience = "businesses" | "people";
@@ -15,6 +16,72 @@ export type DiscoveryRunner = {
   pubkey: string | null;
 };
 
+/** Why a completed run cannot keep asking this query for another page. */
+export type DiscoveryEndReason =
+  | "target_reached"
+  | "provider_end"
+  | "provider_ceiling"
+  | "approved_budget"
+  | "provider_repeat";
+
+/** Reasons a particular provider query stream cannot usefully continue. */
+export type DiscoveryQueryEndReason = Extract<
+  DiscoveryEndReason,
+  "provider_end" | "provider_ceiling" | "provider_repeat"
+>;
+
+/** What the relay returned and the campaign saved for one paid provider page. */
+export type DiscoveryPageLog = {
+  /** One-based page number within this campaign, including resumed pages. */
+  page: number;
+  /** The provider offset requested for this page. */
+  skip: number;
+  /** Normalized places the relay returned to the desktop for this page. */
+  placesReturned: number;
+  /** New prospects persisted from this page. */
+  newProspectsSaved: number;
+  /** Results skipped because the business was already in Leads. */
+  alreadyInLeads: number;
+  /** Provider place ids on this page already returned to this campaign. */
+  repeatedInCampaign: number;
+  /** Provider-estimated charge for the returned records. */
+  costUsd: number;
+  /** The evidence-backed reason this page ended the run, if it did. */
+  stopReason: DiscoveryEndReason | null;
+};
+
+/** What Find more can safely do without starting a separate campaign. */
+export type DiscoveryContinuation = {
+  campaignId: string;
+  state: "ready" | "approval_required" | "unavailable";
+  /** Plain-language reason when a query genuinely cannot continue. */
+  message: string | null;
+  remainingTarget: number;
+  pagesAtProviderCeiling: number;
+  spentUsd: number;
+  approvedBudgetUsd: number;
+  /** Extra approval needed before one more full provider page can be requested. */
+  minimumAdditionalBudgetUsd: number;
+  /** A sensible pre-filled additional approval for the remaining target. */
+  recommendedAdditionalBudgetUsd: number;
+  /** Minimum pages needed for the remaining target before duplicate skips. */
+  estimatedPages: number;
+  /** Cost of those minimum pages at the provider's $0.003 record price. */
+  estimatedCostUsd: number;
+};
+
+/**
+ * A saved page boundary for a business type, its chosen tags and one exact
+ * place. New campaigns use it to avoid paying for the same provider pages.
+ */
+export type DiscoveryCoverage = {
+  queryKey: string;
+  /** The first page offset that has not already been paid for and saved. */
+  nextSkip: number;
+  /** A terminal result on this device prevents another local campaign rebuying it. */
+  terminalReason: DiscoveryQueryEndReason | null;
+};
+
 export type DiscoveryCampaign = {
   id: string;
   name: string;
@@ -26,9 +93,13 @@ export type DiscoveryCampaign = {
   /** Search refinements chosen from this type's generated tag layer. */
   pickedTags?: string[];
   location: string;
+  /** A selected geocoder result. Legacy campaigns can omit it and still read. */
+  locationSelection?: DiscoveryLocation | null;
   target: number;
   count: number;
   budgetUsd: number;
+  /** Actual provider estimate accumulated from pages that were fully saved. */
+  spentUsd?: number;
   criteria: string;
   status: DiscoveryRunStatus;
   prospectIds: string[];
@@ -49,10 +120,18 @@ export type DiscoveryCampaign = {
   /** Places the search found that were already in Leads, so not added again. */
   skippedDuplicates?: number;
   /**
-   * Plain-words reason a finished run is below its target (for example "Google
-   * has no more restaurants ..."); null when the target was reached.
+   * Plain-words reason a finished run is below its target; null when the target
+   * was reached. It states only the observed stopping evidence.
    */
   endNote?: string | null;
+  /** Machine-readable companion to `endNote`, used by Find more. */
+  endReason?: DiscoveryEndReason | null;
+  /** Device-local page boundaries, one for each provider query stream. */
+  coverage?: DiscoveryCoverage[];
+  /** Per-page evidence from the relay response and the persisted outcomes. */
+  runLog?: DiscoveryPageLog[];
+  /** Pages saved so far, including pages from any in-place continuation. */
+  pagesFetched?: number;
 };
 
 export type DiscoveryCampaignInput = Omit<
@@ -68,6 +147,10 @@ export type DiscoveryCampaignProvider = {
     listener: (campaign: DiscoveryCampaign | null) => void,
   ) => () => void;
   start: (input: DiscoveryCampaignInput) => Promise<DiscoveryCampaign>;
+  /** Describes whether the current short campaign can safely continue in place. */
+  getContinuation: () => DiscoveryContinuation | null;
+  /** Continues the current campaign, optionally after a newly approved amount. */
+  continueCampaign: (additionalBudgetUsd?: number) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   cancel: () => Promise<void>;

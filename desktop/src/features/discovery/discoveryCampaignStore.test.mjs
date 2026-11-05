@@ -26,6 +26,7 @@ function campaign(id, overrides = {}) {
     verticalName: "Home Decor & Gift Shops",
     pickedTags: [],
     location: "South Africa",
+    locationSelection: null,
     target: 50,
     count: 3,
     budgetUsd: 2.5,
@@ -40,6 +41,11 @@ function campaign(id, overrides = {}) {
     endNote: null,
     createdAt: 1_000,
     skippedDuplicates: 0,
+    seenProviderPlaceIds: [],
+    spentUsd: 0,
+    endReason: null,
+    pageLog: [],
+    coverage: [],
     skip: 20,
     tagCursors: [],
     pendingTagCursors: null,
@@ -73,9 +79,83 @@ test("a saved list round-trips", () => {
   assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
 });
 
+test("legacy storage receives safe continuation defaults", () => {
+  const {
+    locationSelection,
+    seenProviderPlaceIds,
+    spentUsd,
+    endReason,
+    pageLog,
+    coverage,
+    ...legacyCampaign
+  } = campaign("legacy");
+  const restored = parseStoredState(
+    JSON.stringify({
+      version: 1,
+      ownerPubkey: "owner",
+      currentId: "legacy",
+      campaigns: [legacyCampaign],
+    }),
+  ).campaigns[0];
+
+  assert.equal(restored.locationSelection, null);
+  assert.deepEqual(restored.seenProviderPlaceIds, []);
+  assert.equal(restored.spentUsd, 0);
+  assert.equal(restored.endReason, null);
+  assert.deepEqual(restored.pageLog, []);
+  assert.deepEqual(restored.coverage, []);
+});
+
+test("a version-two provider-repeat campaign keeps its resumable cursor", () => {
+  const stuck = campaign("real-estate-stuck", {
+    name: "Real Estate Agents and Brokers prospects",
+    location: "Johannesburg",
+    target: 100,
+    count: 11,
+    budgetUsd: 0.3,
+    spentUsd: 0.12,
+    prospectIds: Array.from({ length: 11 }, (_, index) => `id-p${index + 10}`),
+    seenProviderPlaceIds: Array.from(
+      { length: 40 },
+      (_, index) => `p${index + 1}`,
+    ),
+    endReason: "provider_repeat",
+    exhausted: true,
+    skip: 40,
+    pagesFetched: 2,
+    coverage: [
+      {
+        queryKey: "home-decor::tag:::legacy:johannesburg",
+        nextSkip: 40,
+        terminalReason: "provider_repeat",
+      },
+    ],
+  });
+  delete stuck.pageLog;
+  const restored = parseStoredState(
+    JSON.stringify({
+      version: 2,
+      ownerPubkey: "owner",
+      currentId: stuck.id,
+      campaigns: [stuck],
+    }),
+  );
+
+  assert.equal(restored.currentId, "real-estate-stuck");
+  assert.equal(restored.campaigns[0].pagesFetched, 2);
+  assert.equal(restored.campaigns[0].skip, 40);
+  assert.equal(restored.campaigns[0].endReason, "provider_repeat");
+  assert.equal(restored.campaigns[0].coverage[0].nextSkip, 40);
+  assert.equal(
+    restored.campaigns[0].coverage[0].terminalReason,
+    "provider_repeat",
+  );
+  assert.deepEqual(restored.campaigns[0].pageLog, []);
+});
+
 test("the end note survives a restart", () => {
   const note =
-    "Google has no more restaurants in Johannesburg. Add another area or tag to find more.";
+    "The provider did not offer another page for restaurants in Johannesburg, so this query stopped.";
   const state = withCampaigns(campaign("one", { endNote: note }));
   const restored = parseStoredState(serializeState(state));
   assert.equal(restored.campaigns[0].endNote, note);
@@ -163,10 +243,16 @@ test("unusable campaigns are dropped, usable ones kept", () => {
 });
 
 test("the list is newest first and capped", () => {
-  let state = emptyState("owner");
-  for (let index = 0; index < MAX_STORED_CAMPAIGNS + 5; index += 1) {
-    state = upsertCampaign(state, campaign(`c${index}`, { createdAt: index }));
-  }
+  const state = parseStoredState(
+    JSON.stringify({
+      version: 2,
+      ownerPubkey: "owner",
+      currentId: "c0",
+      campaigns: Array.from({ length: MAX_STORED_CAMPAIGNS + 5 }, (_, index) =>
+        campaign(`c${index}`, { createdAt: index }),
+      ),
+    }),
+  );
   assert.equal(state.campaigns.length, MAX_STORED_CAMPAIGNS);
   assert.equal(state.campaigns[0].id, `c${MAX_STORED_CAMPAIGNS + 4}`);
   assert.equal(state.campaigns.at(-1).id, "c5");
@@ -202,13 +288,27 @@ test("only the best five fits are kept, best first", () => {
   );
 });
 
-test("the public view hides run bookkeeping", () => {
-  const view = toPublicCampaign(campaign("one", { skip: 40 }));
+test("the public view exposes page evidence but hides private run bookkeeping", () => {
+  const pageLog = [
+    {
+      page: 1,
+      skip: 0,
+      placesReturned: 20,
+      newProspectsSaved: 3,
+      alreadyInLeads: 17,
+      repeatedInCampaign: 0,
+      costUsd: 0.06,
+      stopReason: "provider_end",
+    },
+  ];
+  const view = toPublicCampaign(campaign("one", { pageLog, skip: 40 }));
   assert.equal("skip" in view, false);
   assert.equal("topFits" in view, false);
   assert.equal(view.simulated, false);
   assert.equal(view.runBy.name, "Lerato");
   assert.deepEqual(view.prospectIds, ["a", "b", "c"]);
+  assert.deepEqual(view.runLog, pageLog);
+  assert.equal(view.pagesFetched, 1);
 });
 
 test("storage that throws never breaks reading or writing", () => {

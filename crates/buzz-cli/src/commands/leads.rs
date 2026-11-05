@@ -269,6 +269,7 @@ fn lead_summary(lead: &CurrentLead) -> Value {
         "website": prospect.website,
         "email": prospect.email,
         "phone": prospect.phone,
+        "whatsappPhone": prospect.whatsapp_phone,
         "contactName": prospect.contact_name,
         "potentialMonthlyValueMinor": prospect.potential_monthly_value_minor,
     })
@@ -513,6 +514,7 @@ mod tests {
                 location: Some("Woodstock, Cape Town".into()),
                 email: Some("hello@form-field.example".into()),
                 phone: None,
+                whatsapp_phone: None,
                 evidence: vec![ProspectEvidence {
                     title: "Google Maps listing".into(),
                     url: "https://maps.example/form-field".into(),

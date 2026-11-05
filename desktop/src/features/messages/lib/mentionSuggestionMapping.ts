@@ -1,6 +1,9 @@
 import { isOwnedAgentNotManagedOnDevice } from "@/features/agents/lib/otherSetupAgent";
 import type { MentionSuggestion } from "@/features/messages/ui/MentionAutocomplete";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import type {
+  ResolvedIdentityLabel,
+  UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { formatOwnerLabel } from "@/features/profile/lib/identity";
 import type { ChannelRole, ChannelType } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -10,6 +13,7 @@ import { pickDefaultAgentCandidate } from "./mentionRanking";
 
 export type MentionSuggestionCandidate = {
   kind: "identity" | "persona" | "team";
+  displayName?: string | null;
   pubkey?: string;
   personaId?: string | null;
   teamId?: string;
@@ -20,6 +24,8 @@ export type MentionSuggestionCandidate = {
   isMember: boolean;
   role?: ChannelRole | null;
   ownerPubkey?: string | null;
+  identityLabel?: ResolvedIdentityLabel;
+  baseDisplayName?: string | null;
 };
 
 export function mapMentionCandidateToSuggestion(opts: {
@@ -40,6 +46,9 @@ export function mapMentionCandidateToSuggestion(opts: {
     ownerProfiles,
     profiles,
   } = opts;
+  const profile = candidate.pubkey
+    ? profiles?.[normalizePubkey(candidate.pubkey)]
+    : undefined;
   const ownerLabel = candidate.isAgent
     ? formatOwnerLabel(candidate.ownerPubkey, currentPubkey, ownerProfiles)
     : null;
@@ -76,7 +85,11 @@ export function mapMentionCandidateToSuggestion(opts: {
       channelType !== "dm" &&
       candidate.isMember === false,
     ownerLabel,
+    identityLabel: candidate.identityLabel,
+    baseDisplayName:
+      candidate.baseDisplayName ?? candidate.displayName ?? label,
     role: !candidate.isAgent && candidate.role === "admin" ? "admin" : null,
+    jobTitle: profile?.jobTitle ?? null,
   };
 }
 

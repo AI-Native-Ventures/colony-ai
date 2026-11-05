@@ -11,7 +11,6 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ChevronRightIcon,
-  clientInitial,
   ClientStatusPill,
   formatStatus,
   LockIcon,
@@ -28,6 +27,8 @@ import {
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { InvoiceCreateDialog } from "@/features/money/MoneyInvoiceCreateDialog";
 import { navigateMoney } from "@/features/money/moneyUtils";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
 
 function personLine(person: PersonInfo): string {
@@ -38,6 +39,7 @@ function personLine(person: PersonInfo): string {
 
 export function ClientDetailScreen({ clientId }: { clientId: string }) {
   const clientRecords = useClientRecordsQuery(clientId);
+  const salesRecords = useBusinessRecords({ createIfMissing: false });
   const identityQuery = useIdentityQuery();
   const membership = useMyRelayMembershipQuery();
   const [invoiceOpen, setInvoiceOpen] = React.useState(false);
@@ -52,6 +54,9 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
   const routeOrigin = useRouteOrigin();
   const headRecord = clientRecords.clientQuery.data ?? null;
   const head = headRecord?.value;
+  const prospect = salesRecords.records?.prospects.find(
+    ({ record }) => record.prospect.party.partyId === head?.partyId,
+  )?.record.prospect;
   const channel = clientRecords.channel;
   const workItems = clientRecords.workItemsQuery.data ?? [];
   const selfPubkey = identityQuery.data?.pubkey.toLowerCase() ?? "";
@@ -159,9 +164,14 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
       header={
         <div className="b3-detail-head">
           <div className="b3-detail-who">
-            <span aria-hidden="true" className="b3-tile" data-size="lg">
-              {clientInitial(head.displayName)}
-            </span>
+            <BusinessLogoMark
+              className="b3-tile"
+              logoUrl={prospect?.logoUrl}
+              name={head.displayName}
+              placePhotoUrl={prospect?.placePhotoUrl}
+              style={{ width: 58, height: 58, borderRadius: 17 }}
+              website={prospect?.website}
+            />
             <div className="b3-detail-copy">
               <h1 className="b3-title">{head.displayName}</h1>
               <span className="b3-detail-line">

@@ -9,20 +9,23 @@ import { MessageComposer } from "@/features/messages/ui/MessageComposer";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 import {
-  maskWhatsAppNumber,
   renderWhatsAppTemplate,
-  whatsappQueuedScheduleLabel,
   whatsappTemplateDisplayTitle,
   type WhatsAppBatchRow,
   type WhatsAppContact,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
+import {
+  TemplatePreview,
+  WhatsAppBatchReviewRow,
+} from "./WhatsAppBatchReviewRow";
 import {
   canSendNowWhatsAppBatch,
   canUseWhatsAppSendNow,
@@ -88,223 +91,6 @@ function rolledByCap(row: WhatsAppBatchRow): boolean {
   );
 }
 
-function TemplatePreview({
-  template,
-  params,
-}: {
-  template: WhatsAppTemplate;
-  params: readonly string[];
-}) {
-  const segments = template.body.split(/(\{\{\d+\}\})/gu);
-  let position = 0;
-  const keyedSegments = segments.map((segment) => {
-    const keyedSegment = { key: `${position}:${segment}`, segment };
-    position += segment.length;
-    return keyedSegment;
-  });
-  return (
-    <>
-      {keyedSegments.map(({ key, segment }) => {
-        const slot = /^\{\{(\d+)\}\}$/u.exec(segment);
-        if (!slot) return <React.Fragment key={key}>{segment}</React.Fragment>;
-        const value = params[Number(slot[1]) - 1] ?? segment;
-        if (/^https:\/\//u.test(value)) {
-          const previewLink = value
-            .replace(/^https:\/\//u, "")
-            .replace(/\/+$/u, "");
-          return (
-            <a
-              className="c3wa-preview-link"
-              href={value}
-              key={key}
-              rel="noreferrer noopener"
-              target="_blank"
-            >
-              {previewLink}
-            </a>
-          );
-        }
-        return (
-          <mark className="c3wa-variable-highlight" key={key}>
-            {value}
-          </mark>
-        );
-      })}
-    </>
-  );
-}
-
-function BatchRow({
-  contact,
-  leadName,
-  materialLink,
-  index,
-  isNext,
-  isRemoved,
-  onRemove,
-  onSave,
-  params,
-  preview,
-  row,
-  template,
-  testIdPrefix,
-  editable,
-}: {
-  contact: WhatsAppContact | null;
-  leadName: string | null;
-  materialLink: string | null;
-  index: number;
-  isNext: boolean;
-  isRemoved: boolean;
-  onRemove: () => void;
-  onSave: (params: string[]) => void;
-  params: readonly string[];
-  preview: string;
-  row: WhatsAppBatchRow;
-  template: WhatsAppTemplate | null;
-  testIdPrefix: string;
-  editable: boolean;
-}) {
-  const [editing, setEditing] = React.useState(false);
-  const [values, setValues] = React.useState<string[]>([...params]);
-  React.useEffect(() => setValues([...params]), [params]);
-
-  function saveEdit() {
-    onSave(values);
-    setEditing(false);
-  }
-
-  return (
-    <article
-      className={cn("c3wa-batch-row", isRemoved && "is-removed")}
-      data-row-tone={index % 5}
-      data-testid={`${testIdPrefix}-${row.idx}`}
-    >
-      <div className="c3wa-batch-row-head">
-        <span aria-hidden="true" className="c3wa-batch-row-art">
-          <i />
-          <i />
-          <i />
-        </span>
-        <div className="c3wa-batch-row-contact">
-          <strong>
-            {contact?.businessName ??
-              leadName ??
-              contact?.displayName ??
-              (row.leadId ? "Linked lead" : `WhatsApp contact ${index + 1}`)}
-          </strong>
-          <span>{maskWhatsAppNumber(row.to)}</span>
-        </div>
-        {materialLink ? (
-          <a
-            className="c3wa-row-preview-link"
-            href={materialLink}
-            rel="noreferrer noopener"
-            target="_blank"
-          >
-            Website preview ↗
-          </a>
-        ) : null}
-        {row.state === "sent" ||
-        row.state === "delivered" ||
-        row.state === "read" ? (
-          <span
-            className={cn(
-              "c3wa-batch-row-state",
-              row.state === "read"
-                ? "is-read"
-                : row.state === "delivered"
-                  ? "is-delivered"
-                  : "is-sent",
-            )}
-          >
-            {row.state === "read"
-              ? "Read"
-              : row.state === "delivered"
-                ? "Delivered"
-                : "Sent"}
-          </span>
-        ) : null}
-        {rolledByCap(row) ? (
-          <span className="c3wa-batch-row-state is-held">Tomorrow</span>
-        ) : null}
-        {row.state === "failed" ? (
-          <span className="c3wa-batch-row-state is-failed">Failed</span>
-        ) : null}
-        {row.state === "ready" || row.state === "queued" ? (
-          <span
-            className="c3wa-batch-row-state"
-            data-testid={`whatsapp-batch-row-schedule-${row.idx}`}
-          >
-            {whatsappQueuedScheduleLabel(row.sendsAt)}
-          </span>
-        ) : null}
-        {isNext ? (
-          <span className="c3wa-batch-row-state is-next">Up next</span>
-        ) : null}
-        {editable && !isRemoved ? (
-          <div className="c3wa-batch-row-actions">
-            <button
-              onClick={() => setEditing((current) => !current)}
-              type="button"
-            >
-              {editing ? "Cancel edit" : "Edit"}
-            </button>
-            <button onClick={onRemove} type="button">
-              Remove
-            </button>
-          </div>
-        ) : null}
-      </div>
-      {editing ? (
-        <div className="c3wa-batch-edit-fields">
-          {values
-            .map((value, slotIndex) => ({
-              key: `${row.idx}:variable:${slotIndex + 1}`,
-              slotIndex,
-              value,
-            }))
-            .map(({ key, slotIndex, value }) => (
-              <label key={key}>
-                <span>Variable {slotIndex + 1}</span>
-                <input
-                  aria-label={`Row ${index + 1} variable ${slotIndex + 1}`}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setValues((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === slotIndex ? value : item,
-                      ),
-                    );
-                  }}
-                  value={value}
-                />
-              </label>
-            ))}
-          <Button onClick={saveEdit} size="sm" type="button">
-            Save edit
-          </Button>
-          <p aria-live="polite" className="c3wa-batch-preview">
-            {template ? (
-              <TemplatePreview params={values} template={template} />
-            ) : (
-              preview
-            )}
-          </p>
-        </div>
-      ) : null}
-      {row.skipReason ? (
-        <p className="c3wa-batch-skip">{row.skipReason}</p>
-      ) : null}
-      {isRemoved ? (
-        <p className="c3wa-batch-removed">
-          This row will be removed when you approve.
-        </p>
-      ) : null}
-    </article>
-  );
-}
-
 export function WhatsAppBatchScreen({
   batchId,
   channelId = null,
@@ -318,6 +104,7 @@ export function WhatsAppBatchScreen({
   const batchQuery = useWhatsAppBatchQuery(batchId);
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
+  const businessData = useBusinessRecords({ createIfMissing: false });
   const templatesQuery = useWhatsAppTemplatesQuery(
     statusQuery.data?.connected === true,
   );
@@ -342,6 +129,23 @@ export function WhatsAppBatchScreen({
 
   const batch = batchQuery.data;
   const contacts = contactsQuery.data ?? [];
+  const businessForRow = (row: WhatsAppBatchRow) => {
+    const contact = contactForRow(row, contacts);
+    const leadId = row.leadId ?? contact?.leadId ?? null;
+    const prospect = leadId
+      ? businessData.records?.prospects.find(
+          ({ record }) => record.prospectId === leadId,
+        )?.record.prospect
+      : null;
+    return prospect
+      ? {
+          name: prospect.party.displayName,
+          website: prospect.website,
+          logoUrl: prospect.logoUrl ?? null,
+          placePhotoUrl: prospect.placePhotoUrl ?? null,
+        }
+      : null;
+  };
   const templates = templatesQuery.data ?? statusQuery.data?.templates ?? [];
   const template = batch ? resolveTemplate(batch.template, templates) : null;
   const rows = batch?.rows ?? [];
@@ -629,8 +433,9 @@ export function WhatsAppBatchScreen({
               <strong>Guesthouses · {rows.length}</strong>
             </div>
             {visibleRows.map((row, index) => (
-              <BatchRow
+              <WhatsAppBatchReviewRow
                 contact={contactForRow(row, contacts)}
+                business={businessForRow(row)}
                 editable={pending && canManage}
                 index={index}
                 isNext={row.idx === nextReadyRowIdx}
@@ -985,8 +790,9 @@ export function WhatsAppBatchScreen({
                 </div>
                 <div className="c3wa-batch-row-list">
                   {visibleRows.map((row, index) => (
-                    <BatchRow
+                    <WhatsAppBatchReviewRow
                       contact={contactForRow(row, contacts)}
+                      business={businessForRow(row)}
                       editable={pending && canManage}
                       index={index}
                       isNext={row.idx === nextReadyRowIdx}

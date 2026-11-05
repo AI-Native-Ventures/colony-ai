@@ -66,6 +66,7 @@ mod tests {
         ManagedAgentRecord {
             session_policy: Default::default(),
             description: None,
+            company_role: None,
             pubkey: String::new(),
             name: "r".to_string(),
             persona_id: None,

@@ -121,9 +121,11 @@ test.describe("agent readiness gate screenshots", () => {
     });
   });
 
+  // Feature gone: directory creation now routes to Company Hire, which has no
+  // legacy per-agent configuration dialog. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
   // Shot 01: inherited agent defaults are an explicit, valid choice. Provider and
   // model controls stay hidden until the user chooses to customize this agent.
-  test("01-create-buzzagent-uses-ai-defaults", async ({ page }) => {
+  test.fixme("01-create-buzzagent-uses-ai-defaults", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
         provider: "anthropic",
@@ -150,7 +152,7 @@ test.describe("agent readiness gate screenshots", () => {
 
   // Shot 02: customized Anthropic configuration uses Automatic model instead
   // of presenting an obsolete model-required error.
-  test("02-create-buzzagent-automatic-model", async ({ page }) => {
+  test.fixme("02-create-buzzagent-automatic-model", async ({ page }) => {
     await installMockBridge(page);
     await openCreateDialog(page);
     await selectProvider(page, "Colony shared compute");
@@ -164,7 +166,7 @@ test.describe("agent readiness gate screenshots", () => {
     });
   });
 
-  test("03-create-missing-credential-shows-top-level-required-field", async ({
+  test.fixme("03-create-missing-credential-shows-top-level-required-field", async ({
     page,
   }) => {
     await installMockBridge(page);
@@ -205,7 +207,7 @@ test.describe("agent readiness gate screenshots", () => {
       .toBe(createCountBefore);
   });
 
-  test("04-create-top-level-api-key-enables-submit", async ({ page }) => {
+  test.fixme("04-create-top-level-api-key-enables-submit", async ({ page }) => {
     await installMockBridge(page);
     await openCreateDialog(page);
     await selectProvider(page, "Anthropic");
@@ -220,7 +222,9 @@ test.describe("agent readiness gate screenshots", () => {
   // Shot 05: claude runtime (CLI-login)  -  provider not required; an explicit
   // model completes the custom configuration and enables submit.
   // Override the catalog to make claude fully available so it appears in the dropdown.
-  test("05-create-cli-login-runtime-no-provider-required", async ({ page }) => {
+  test.fixme("05-create-cli-login-runtime-no-provider-required", async ({
+    page,
+  }) => {
     await installMockBridge(page, {
       acpRuntimesCatalog: [
         {
@@ -304,7 +308,9 @@ test.describe("agent readiness gate screenshots", () => {
   });
 
   // Shot 08: goose runtime, provider empty + no global → save BLOCKED (same rule as buzz-agent).
-  test("08-create-goose-empty-provider-marker", async ({ page }) => {
+  // Feature gone: Company Hire does not expose the retired per-agent provider
+  // configuration. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+  test.fixme("08-create-goose-empty-provider-marker", async ({ page }) => {
     await installMockBridge(page);
     await openCreateDialog(page);
 

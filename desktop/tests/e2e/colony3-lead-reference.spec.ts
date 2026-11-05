@@ -53,9 +53,7 @@ test.describe("Lead references in chat", () => {
 
     await page.getByTestId("reference-lead-button").click();
     const picker = page.getByTestId("lead-reference-picker");
-    await expect(
-      picker.getByRole("heading", { name: "Reference a lead" }),
-    ).toBeVisible();
+    await expect(picker.getByRole("region", { name: "Leads" })).toBeVisible();
     await picker.getByTestId("lead-reference-search").fill("Form");
     await expect(
       picker.getByTestId(`lead-reference-option-${FORM_FIELD}`),
@@ -146,7 +144,9 @@ test.describe("Lead references in chat", () => {
     ).toHaveCount(0);
 
     await picker.getByTestId("lead-reference-search").fill("zzzz");
-    await expect(picker.getByText("No leads match")).toBeVisible();
+    await expect(picker.getByTestId("lead-reference-empty")).toContainText(
+      "No mentions or references match",
+    );
   });
 
   for (const state of [
@@ -190,7 +190,7 @@ test.describe("Lead references in chat", () => {
         await page.getByTestId("reference-lead-button").click();
         const picker = page.getByTestId("lead-reference-picker");
         await expect(
-          picker.getByRole("heading", { name: "Reference a lead" }),
+          picker.getByRole("region", { name: "Leads" }),
         ).toBeVisible();
         await waitForAnimations(page);
         const longName = picker
@@ -199,51 +199,59 @@ test.describe("Lead references in chat", () => {
         await expect(longName).toBeVisible();
 
         const measurements = await picker.evaluate((dialog, longLeadId) => {
-          const box = (selector: string) => {
-            const element = dialog.querySelector<HTMLElement>(selector);
-            if (!element)
-              throw new Error(`missing picker element: ${selector}`);
-            const rect = element.getBoundingClientRect();
-            return { left: rect.left, right: rect.right, bottom: rect.bottom };
-          };
           const dialogBox = dialog.getBoundingClientRect();
           const dialogStyle = getComputedStyle(dialog);
-          const list = dialog.querySelector<HTMLElement>(".c3r-picker-list");
+          const groups = dialog.querySelector<HTMLElement>(
+            ".c3r-mention-groups",
+          );
+          const footer =
+            dialog.querySelector<HTMLElement>(".c3r-picker-footer");
+          const rowElements = Array.from(
+            dialog.querySelectorAll<HTMLElement>(".c3r-picker-item"),
+          );
           const name = dialog.querySelector<HTMLElement>(
             `[data-testid="lead-reference-option-${longLeadId}"] .c3r-name`,
           );
-          if (!list || !name)
-            throw new Error("missing picker list or long name");
+          const list = dialog.querySelector<HTMLElement>(
+            ".c3r-mention-picker .c3r-picker-list",
+          );
+          if (!groups || !footer || !list || !name)
+            throw new Error(
+              "missing picker groups, footer, list, or long name",
+            );
+          const groupsStyle = getComputedStyle(groups);
           const listStyle = getComputedStyle(list);
           const nameStyle = getComputedStyle(name);
+          const footerBox = footer.getBoundingClientRect();
+          const groupsBox = groups.getBoundingClientRect();
+          const rowBounds = rowElements.map((row) => {
+            const rect = row.getBoundingClientRect();
+            return { left: rect.left, right: rect.right };
+          });
           return {
+            dialogTop: dialogBox.top,
             dialogBottom: dialogBox.bottom,
             dialogLeft: dialogBox.left,
             dialogRight: dialogBox.right,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
             dialogPaddingBottom: Number.parseFloat(dialogStyle.paddingBottom),
             dialogPaddingLeft: Number.parseFloat(dialogStyle.paddingLeft),
             dialogPaddingRight: Number.parseFloat(dialogStyle.paddingRight),
-            descriptionRight: box(".text-control").right,
-            descriptionLeft: box(".text-control").left,
-            searchRight: box("[data-testid='lead-reference-search']").right,
-            searchLeft: box("[data-testid='lead-reference-search']").left,
-            listRight: box(".c3r-picker-list").right,
-            listLeft: box(".c3r-picker-list").left,
-            listBottom: box(".c3r-picker-list").bottom,
+            groupsLeft: groupsBox.left,
+            groupsRight: groupsBox.right,
+            groupsBottom: groupsBox.bottom,
+            footerLeft: footerBox.left,
+            footerRight: footerBox.right,
+            footerBottom: footerBox.bottom,
+            groupsHeight: groups.clientHeight,
+            groupsScrollHeight: groups.scrollHeight,
+            groupsOverflowY: groupsStyle.overflowY,
             listHeight: list.clientHeight,
             listScrollHeight: list.scrollHeight,
             listMaxHeight: listStyle.maxHeight,
             listOverflowY: listStyle.overflowY,
-            badges: [
-              ...dialog.querySelectorAll<HTMLElement>(
-                ".c3r-picker-item .c3r-pill",
-              ),
-            ].map((badge) => ({
-              right: badge.getBoundingClientRect().right,
-              rowRight:
-                badge.closest(".c3r-picker-item")?.getBoundingClientRect()
-                  .right ?? Number.NaN,
-            })),
+            rowBounds,
             longNameClips:
               name.scrollWidth > name.clientWidth &&
               nameStyle.textOverflow === "ellipsis" &&
@@ -251,28 +259,34 @@ test.describe("Lead references in chat", () => {
           };
         }, LONG_LEAD);
 
-        expect(measurements.descriptionRight).toBeLessThanOrEqual(
-          measurements.dialogRight - measurements.dialogPaddingRight + 1,
+        expect(measurements.dialogTop).toBeGreaterThanOrEqual(0);
+        expect(measurements.dialogLeft).toBeGreaterThanOrEqual(0);
+        expect(measurements.dialogRight).toBeLessThanOrEqual(
+          measurements.viewportWidth,
         );
-        expect(measurements.descriptionLeft).toBeGreaterThanOrEqual(
+        expect(measurements.dialogBottom).toBeLessThanOrEqual(
+          measurements.viewportHeight,
+        );
+        expect(measurements.groupsLeft).toBeGreaterThanOrEqual(
           measurements.dialogLeft + measurements.dialogPaddingLeft - 1,
         );
-        expect(measurements.searchRight).toBeLessThanOrEqual(
+        expect(measurements.groupsRight).toBeLessThanOrEqual(
           measurements.dialogRight - measurements.dialogPaddingRight + 1,
         );
-        expect(measurements.searchLeft).toBeGreaterThanOrEqual(
+        expect(measurements.footerLeft).toBeGreaterThanOrEqual(
           measurements.dialogLeft + measurements.dialogPaddingLeft - 1,
         );
-        expect(measurements.listRight).toBeLessThanOrEqual(
+        expect(measurements.footerRight).toBeLessThanOrEqual(
           measurements.dialogRight - measurements.dialogPaddingRight + 1,
         );
-        expect(measurements.listLeft).toBeGreaterThanOrEqual(
-          measurements.dialogLeft + measurements.dialogPaddingLeft - 1,
+        expect(measurements.footerBottom).toBeLessThanOrEqual(
+          measurements.dialogBottom - measurements.dialogPaddingBottom + 1,
         );
-        expect(measurements.badges.length).toBeGreaterThan(0);
-        for (const badge of measurements.badges) {
-          expect(badge.right).toBeLessThanOrEqual(badge.rowRight - 1);
-          expect(badge.rowRight).toBeLessThanOrEqual(
+        for (const row of measurements.rowBounds) {
+          expect(row.left).toBeGreaterThanOrEqual(
+            measurements.dialogLeft + measurements.dialogPaddingLeft - 1,
+          );
+          expect(row.right).toBeLessThanOrEqual(
             measurements.dialogRight - measurements.dialogPaddingRight + 1,
           );
         }
@@ -281,9 +295,13 @@ test.describe("Lead references in chat", () => {
           REFERENCE_LONG_LEAD_NAME,
         );
         expect(measurements.longNameClips).toBe(true);
-        expect(measurements.listMaxHeight).not.toBe("none");
-        expect(measurements.listOverflowY).toBe("auto");
-        expect(measurements.listScrollHeight).toBeGreaterThan(
+        expect(measurements.groupsOverflowY).toBe("auto");
+        expect(measurements.groupsScrollHeight).toBeGreaterThan(
+          measurements.groupsHeight,
+        );
+        expect(measurements.listMaxHeight).toBe("none");
+        expect(measurements.listOverflowY).toBe("visible");
+        expect(measurements.listScrollHeight).toBeLessThanOrEqual(
           measurements.listHeight,
         );
         expect(measurements.dialogPaddingBottom).toBe(
@@ -292,10 +310,6 @@ test.describe("Lead references in chat", () => {
         expect(measurements.dialogPaddingBottom).toBe(
           measurements.dialogPaddingRight,
         );
-        expect(
-          measurements.dialogBottom - measurements.listBottom,
-        ).toBeGreaterThanOrEqual(measurements.dialogPaddingBottom);
-
         await waitForAnimations(page);
         mkdirSync(PICKER_SHOTS, { recursive: true });
         if (testInfo.project.name === "smoke") {
@@ -305,14 +319,17 @@ test.describe("Lead references in chat", () => {
         }
         await longName.scrollIntoViewIfNeeded();
         await picker.evaluate((dialog, longLeadId) => {
-          const list = dialog.querySelector<HTMLElement>(".c3r-picker-list");
+          const groups = dialog.querySelector<HTMLElement>(
+            ".c3r-mention-groups",
+          );
           const name = dialog.querySelector<HTMLElement>(
             `[data-testid="lead-reference-option-${longLeadId}"] .c3r-name`,
           );
           const row = name?.closest<HTMLElement>(".c3r-picker-item");
-          if (!list || !row) throw new Error("missing long lead row");
-          list.scrollTop +=
-            row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+          if (!groups || !row) throw new Error("missing long lead row");
+          groups.scrollTop +=
+            row.getBoundingClientRect().top -
+            groups.getBoundingClientRect().top;
         }, LONG_LEAD);
         await expect(longName).toBeVisible();
       },

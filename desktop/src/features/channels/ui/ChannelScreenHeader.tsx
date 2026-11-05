@@ -192,33 +192,35 @@ export function ChannelScreenHeader({
       {showJoinButton || !workArea ? null : (
         <ChannelBrowserActivityButton channelId={activeChannel.id} />
       )}
-      <HeaderTip label="WhatsApp chats">
-        <button
-          aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
-          aria-expanded={workArea.open && workArea.activeTabId === "whatsapp"}
-          aria-label="WhatsApp chats"
-          className="c3c-icon-button c3c-channel-action-button c3c-whatsapp-chats-button relative inline-flex items-center gap-2 px-2.5"
-          data-testid="channel-whatsapp-chats-trigger"
-          onClick={() => requestWorkAreaTab("whatsapp")}
-          type="button"
-        >
-          <span className="c3c-whatsapp-chats-icon relative inline-flex shrink-0">
-            <MessageCircle aria-hidden="true" size={17} />
-            {unansweredWhatsAppCount > 0 ? (
-              <span
-                aria-hidden="true"
-                className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
-                data-testid="channel-whatsapp-unread-count"
-              >
-                {unansweredWhatsAppCount}
-              </span>
-            ) : null}
-          </span>
-          <span className="c3c-header-action-label text-sm">
-            WhatsApp chats
-          </span>
-        </button>
-      </HeaderTip>
+      {activeChannel.channelType === "dm" ? null : (
+        <HeaderTip label="WhatsApp chats">
+          <button
+            aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+            aria-expanded={workArea.open && workArea.activeTabId === "whatsapp"}
+            aria-label="WhatsApp chats"
+            className="c3c-icon-button c3c-channel-action-button c3c-whatsapp-chats-button relative inline-flex items-center gap-2 px-2.5"
+            data-testid="channel-whatsapp-chats-trigger"
+            onClick={() => requestWorkAreaTab("whatsapp")}
+            type="button"
+          >
+            <span className="c3c-whatsapp-chats-icon relative inline-flex shrink-0">
+              <MessageCircle aria-hidden="true" size={17} />
+              {unansweredWhatsAppCount > 0 ? (
+                <span
+                  aria-hidden="true"
+                  className="c3c-whatsapp-unread-badge inline-flex min-w-4 items-center justify-center rounded-full bg-colony-danger px-1 text-3xs font-extrabold text-white"
+                  data-testid="channel-whatsapp-unread-count"
+                >
+                  {unansweredWhatsAppCount}
+                </span>
+              ) : null}
+            </span>
+            <span className="c3c-header-action-label text-sm">
+              WhatsApp chats
+            </span>
+          </button>
+        </HeaderTip>
+      )}
       {showJoinButton || !workArea ? null : (
         <HeaderTip label="Work area">
           <button

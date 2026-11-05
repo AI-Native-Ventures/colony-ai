@@ -236,7 +236,7 @@ test("clicking outside dismisses the tray without intercepting its trigger", asy
   assert.equal(dismissCount, 3);
 });
 
-test("collision npubs sit inline with agent metadata", async () => {
+test("same-owner agent collisions use an ordinal instead of a key", async () => {
   const React = await import("react");
   const { render } = await import("@testing-library/react");
   const { MentionAutocomplete } = await import("./MentionAutocomplete.tsx");
@@ -245,13 +245,27 @@ test("collision npubs sit inline with agent metadata", async () => {
       pubkey: "a".repeat(64),
       displayName: "Same Name",
       isAgent: true,
-      ownerLabel: "you",
+      identityLabel: {
+        text: "Same Name 1",
+        primary: "Same Name",
+        ownerSuffix: null,
+        ownerTooltip: null,
+        duplicateOrdinal: 1,
+        isAgent: true,
+      },
     },
     {
       pubkey: "b".repeat(64),
       displayName: "Same Name",
       isAgent: true,
-      ownerLabel: "you",
+      identityLabel: {
+        text: "Same Name 2",
+        primary: "Same Name",
+        ownerSuffix: null,
+        ownerTooltip: null,
+        duplicateOrdinal: 2,
+        isAgent: true,
+      },
     },
   ];
   const view = render(
@@ -263,13 +277,15 @@ test("collision npubs sit inline with agent metadata", async () => {
   );
 
   const agentIcons = view.getAllByTestId("mention-agent-icon");
-  const collisionNpubs = view.getAllByTestId("mention-collision-npub");
-  assert.equal(collisionNpubs.length, 2);
-  for (const npub of collisionNpubs) {
-    // The npub sits on the same line as the "managed by" subtitle.
-    assert.match(npub.parentElement?.textContent ?? "", /managed by younpub1/);
-    assert.match(npub.className, /(?:^|\s)font-mono(?:\s|$)/);
-  }
+  const labels = view
+    .getAllByTestId(/mention-suggestion-/)
+    .map((row) => row.textContent);
+  assert.ok(labels.some((label) => label?.includes("Same Name 1")));
+  assert.ok(labels.some((label) => label?.includes("Same Name 2")));
+  assert.doesNotMatch(
+    view.container.textContent ?? "",
+    /(?:npub1|[0-9a-f]{40,})/i,
+  );
   assert.equal(agentIcons.length, 2);
 });
 

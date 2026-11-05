@@ -1,8 +1,9 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 
-import { leadInitial, type LeadSummary } from "./leadReferenceModel";
+import type { LeadSummary } from "./leadReferenceModel";
 import { useLeadReference } from "./useLeadHead";
 
 import "./colony3-lead-reference.css";
@@ -45,9 +46,13 @@ function LeadReferenceFrame({
 function LeadReferenceBody({ lead }: { lead: LeadSummary }) {
   return (
     <>
-      <span aria-hidden="true" className="c3r-mark">
-        {leadInitial(lead.name)}
-      </span>
+      <BusinessLogoMark
+        className="c3r-mark"
+        logoUrl={lead.logoUrl}
+        name={lead.name}
+        placePhotoUrl={lead.placePhotoUrl}
+        website={lead.website}
+      />
       <span className="c3r-copy">
         <span className="c3r-name">{lead.name}</span>
         {lead.meta ? <span className="c3r-meta">{lead.meta}</span> : null}
