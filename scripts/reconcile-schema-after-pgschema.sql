@@ -237,6 +237,10 @@ SELECT attach_community_write_fence('whatsapp_templates');
 SELECT attach_community_write_fence('whatsapp_contacts');
 SELECT attach_community_write_fence('whatsapp_batches');
 SELECT attach_community_write_fence('whatsapp_messages');
+SELECT attach_community_write_fence('money_rails_connections');
+SELECT attach_community_write_fence('money_rails_recipients');
+SELECT attach_community_write_fence('money_rails_jobs');
+SELECT attach_community_write_fence('money_rails_notices');
 
 DO $$
 BEGIN
@@ -255,7 +259,7 @@ DO $$
 DECLARE
     fenced TEXT;
 BEGIN
-    FOREACH fenced IN ARRAY ARRAY['whatsapp_settings', 'whatsapp_connections', 'whatsapp_templates', 'whatsapp_contacts', 'whatsapp_batches', 'whatsapp_messages'] LOOP
+    FOREACH fenced IN ARRAY ARRAY['whatsapp_settings', 'whatsapp_connections', 'whatsapp_templates', 'whatsapp_contacts', 'whatsapp_batches', 'whatsapp_messages', 'money_rails_connections', 'money_rails_recipients', 'money_rails_jobs', 'money_rails_notices'] LOOP
         IF NOT EXISTS (
             SELECT 1
             FROM pg_trigger

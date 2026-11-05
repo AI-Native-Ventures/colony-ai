@@ -746,6 +746,8 @@ pub struct AppState {
     pub discovery_location_lookup: Arc<crate::api::discovery::DiscoveryLocationLookup>,
     /// Meta Graph API client for WhatsApp outreach. Tests swap in a fake; nothing else calls Meta.
     pub whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi>,
+    /// The only door out to a payment provider's API (money rails). Tests swap in a fake.
+    pub money_http: Arc<dyn crate::money_rails::provider::ProviderHttp>,
     /// Shared HTTP and Google verification clients for account routes.
     pub account_services: Arc<crate::api::accounts::AccountServices>,
     /// Shared Redis-backed admission limits for ordinary HTTP and WebSocket work.
@@ -886,6 +888,8 @@ impl AppState {
             Arc::new(crate::api::discovery::DiscoveryLocationLookup::new());
         let whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi> =
             Arc::new(crate::whatsapp::graph::ReqwestGraph::new());
+        let money_http: Arc<dyn crate::money_rails::provider::ProviderHttp> =
+            Arc::new(crate::money_rails::provider::ReqwestProvider::new());
         let account_services = Arc::new(crate::api::accounts::AccountServices::from_config(
             &config.accounts,
         ));
@@ -956,6 +960,7 @@ impl AppState {
             discovery_location_http_client,
             discovery_location_lookup,
             whatsapp_graph,
+            money_http,
             account_services,
             admission_rate_limiter,
             observer_rate_limiter: Arc::new(DashMap::new()),
