@@ -535,8 +535,20 @@ async function revealMockMessage(page: Page, messageId: string) {
     .toBe(true);
   if (await threadJump.isVisible()) await threadJump.click();
   if (await timelineJump.isVisible()) await timelineJump.click();
-  await expect(row).toBeAttached();
-  await row.scrollIntoViewIfNeeded();
+  await expect
+    .poll(
+      async () => {
+        if ((await row.count()) === 0) return false;
+        try {
+          await row.scrollIntoViewIfNeeded({ timeout: 250 });
+          return await row.isVisible();
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(true);
 }
 
 async function openScoutDm(page: Page) {
@@ -754,13 +766,12 @@ test("provider connect dialog keeps API key masked and never returns it", async 
 
   const dialog = page.getByTestId("money-rail-connect-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Provider")).toHaveValue(
-    "Paystack · paystack.com",
-  );
+  await dialog.getByLabel("Provider").fill("CopperPay");
   await dialog.getByLabel("Use an API key").check();
+  await dialog.getByLabel("Provider API host").fill("api.copperpay.example");
   const keyField = dialog.getByTestId("money-rail-api-key");
   await expect(keyField).toHaveAttribute("type", "password");
-  await expect(dialog).toContainText("Locked to api.paystack.co");
+  await expect(dialog).toContainText("Locked to api.copperpay.example");
   await keyField.fill(API_KEY_CANARY);
   await expect(dialog).not.toContainText(API_KEY_CANARY);
   await expect(
@@ -775,7 +786,7 @@ test("provider connect dialog keeps API key masked and never returns it", async 
     dialog.getByRole("textbox", { name: "Payment notice address" }),
   ).toHaveValue(NOTICE_ADDRESS);
   await expect(
-    page.getByTestId("money-rail-connection-connection-paystack"),
+    page.getByTestId("money-rail-connection-connection-copperpay"),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText(API_KEY_CANARY);
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -785,8 +796,8 @@ test("provider connect dialog keeps API key masked and never returns it", async 
   expect(actions).toEqual([
     {
       type: "connect",
-      provider: "Paystack",
-      host: "api.paystack.co",
+      provider: "CopperPay",
+      host: "api.copperpay.example",
       route: "api",
       hadApiKey: true,
     },
@@ -809,10 +820,9 @@ test("Paystack connection, Scout approval, and a verified notice reach the custo
   await page.getByTestId("money-rail-add-provider").click();
 
   const dialog = page.getByTestId("money-rail-connect-dialog");
-  await expect(dialog.getByLabel("Provider")).toHaveValue(
-    "Paystack · paystack.com",
-  );
+  await dialog.getByLabel("Provider").fill("Paystack");
   await dialog.getByLabel("Use an API key").check();
+  await dialog.getByLabel("Provider API host").fill("api.paystack.co");
   const keyField = dialog.getByTestId("money-rail-api-key");
   await expect(keyField).toHaveAttribute("type", "password");
   await expect(dialog).toContainText("Locked to api.paystack.co");
@@ -919,7 +929,9 @@ test("payment board screenshots cover connect and customer states across themes 
         }
         await page.getByTestId("money-rail-add-provider").click();
         const dialog = page.getByTestId("money-rail-connect-dialog");
+        await dialog.getByLabel("Provider").fill("Paystack");
         await dialog.getByLabel("Use an API key").check();
+        await dialog.getByLabel("Provider API host").fill("api.paystack.co");
         const keyField = dialog.getByTestId("money-rail-api-key");
         await keyField.fill(API_KEY_CANARY);
         await keyField.evaluate((element: HTMLInputElement) => element.blur());

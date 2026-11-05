@@ -39,6 +39,22 @@ export class MoneyRailsNotReadyError extends MoneyRailsApiError {
   }
 }
 
+function unavailableMoneyRailsSnapshot(
+  error: unknown,
+): MoneyRailsSnapshot | null {
+  if (
+    !(error instanceof MoneyRailsNotReadyError) &&
+    !(error instanceof MoneyRailsApiError && error.status === 404)
+  )
+    return null;
+  return {
+    paymentLinks: [],
+    connections: [],
+    availability: "not_ready",
+    errorMessage: "Money connections are not enabled on this relay yet.",
+  };
+}
+
 type PaymentLinkHead = Record<string, unknown> & {
   linkId: string;
   state: MoneyLinkState;
@@ -411,13 +427,8 @@ export async function fetchMoneyRailsSnapshot(
       errorMessage: null,
     };
   } catch (error) {
-    if (error instanceof MoneyRailsNotReadyError)
-      return {
-        paymentLinks: [],
-        connections: [],
-        availability: "not_ready",
-        errorMessage: error.message,
-      };
+    const unavailable = unavailableMoneyRailsSnapshot(error);
+    if (unavailable) return unavailable;
     throw error;
   }
 }

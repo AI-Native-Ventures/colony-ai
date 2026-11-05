@@ -22,35 +22,12 @@ import {
 } from "../moneyRailsBridge";
 import "./moneyRails.css";
 
-const DEFAULT_PROVIDER = "Paystack";
-const DEFAULT_PROVIDER_ENTRY = "Paystack · paystack.com";
-
 function parseProviderEntry(value: string) {
   const [name = "", ...hostParts] = value.split("·");
   return {
     name: name.trim(),
     websiteHost: hostParts.join("·").trim(),
   };
-}
-
-function apiHostFor(provider: string): string | null {
-  switch (provider.trim().toLowerCase()) {
-    case "paystack":
-      return "api.paystack.co";
-    default:
-      return null;
-  }
-}
-
-function websiteHostFor(provider: string): string | null {
-  switch (provider.trim().toLowerCase()) {
-    case "paystack":
-      return "paystack.com";
-    case "yoco":
-      return "yoco.com";
-    default:
-      return null;
-  }
 }
 
 function routeLabel(route: MoneyRailRoute): string {
@@ -110,8 +87,9 @@ export function MoneyRailsSettingsPanel() {
   const snapshot = useMoneyRailsSnapshot();
   const { execute } = useMoneyRailsActions();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [providerEntry, setProviderEntry] = useState(DEFAULT_PROVIDER_ENTRY);
+  const [providerEntry, setProviderEntry] = useState("");
   const [route, setRoute] = useState<MoneyRailRoute>("browser");
+  const [apiHostEntry, setApiHostEntry] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [managedConnectionId, setManagedConnectionId] = useState<string | null>(
     null,
@@ -132,11 +110,9 @@ export function MoneyRailsSettingsPanel() {
     (connection) => connection.provider === "Google Calendar",
   );
   const providerDetails = parseProviderEntry(providerEntry);
-  const provider = providerDetails.name || DEFAULT_PROVIDER;
-  const paystackApi = route === "api" && provider.toLowerCase() === "paystack";
-  const apiHost = apiHostFor(providerDetails.name);
+  const provider = providerDetails.name;
   const browserHost = providerDetails.websiteHost;
-  const routeHost = route === "browser" ? browserHost : (apiHost ?? "");
+  const routeHost = route === "browser" ? browserHost : apiHostEntry;
   const validHost = providerHost(routeHost);
   const selectedConnection = snapshot.connections.find(
     (connection) => connection.id === managedConnectionId,
@@ -165,6 +141,7 @@ export function MoneyRailsSettingsPanel() {
     if (pending) return;
     setDialogOpen(open);
     if (!open) {
+      setApiHostEntry("");
       setApiKey("");
       setError(null);
       setCopied(false);
@@ -175,8 +152,9 @@ export function MoneyRailsSettingsPanel() {
   }
 
   function addProvider() {
-    setProviderEntry(DEFAULT_PROVIDER_ENTRY);
+    setProviderEntry("");
     setRoute("browser");
+    setApiHostEntry("");
     setApiKey("");
     setManagedConnectionId(null);
     setConnectionNoticeAddress(null);
@@ -188,9 +166,14 @@ export function MoneyRailsSettingsPanel() {
 
   function manageConnection(connection: MoneyRailConnection) {
     setProviderEntry(
-      `${connection.provider} · ${connection.browserHost ?? websiteHostFor(connection.provider) ?? connection.host}`,
+      connection.route === "browser"
+        ? `${connection.provider} · ${connection.browserHost ?? connection.host}`
+        : connection.provider,
     );
     setRoute(connection.route);
+    setApiHostEntry(
+      connection.route === "api" ? (connection.apiHost ?? connection.host) : "",
+    );
     setManagedConnectionId(connection.id);
     setConnectionNoticeAddress(connection.noticeAddress || null);
     setConnectedProvider(connection.provider);
@@ -337,11 +320,21 @@ export function MoneyRailsSettingsPanel() {
                 <input
                   aria-label="Provider"
                   autoComplete="off"
+                  placeholder={
+                    route === "browser"
+                      ? "Provider · sign-in.provider.com"
+                      : "Provider name"
+                  }
                   onChange={(event) =>
                     setProviderEntry(event.currentTarget.value)
                   }
                   value={providerEntry}
                 />
+                <span>
+                  {route === "browser"
+                    ? "Add the provider name and the site where you sign in."
+                    : "Add the provider name. Its API host stays separate."}
+                </span>
               </label>
 
               <fieldset className="cf-money-rail-route-fieldset">
@@ -388,12 +381,20 @@ export function MoneyRailsSettingsPanel() {
 
               {route === "api" ? (
                 <>
-                  {!apiHostFor(providerDetails.name) ? (
-                    <p className="cf-money-rail-field-error" role="status">
-                      Use a browser tab for this provider. Its API connection is
-                      not set up yet.
-                    </p>
-                  ) : null}
+                  <label className="cf-money-rail-form-field">
+                    Provider API host
+                    <input
+                      aria-label="Provider API host"
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      placeholder="api.provider.com"
+                      spellCheck={false}
+                      onChange={(event) =>
+                        setApiHostEntry(event.currentTarget.value)
+                      }
+                      value={apiHostEntry}
+                    />
+                  </label>
                   <label className="cf-money-rail-form-field">
                     Secret key
                     <input
@@ -421,22 +422,14 @@ export function MoneyRailsSettingsPanel() {
                   <Check aria-hidden="true" size={17} />
                   <p>
                     <strong>Create a payment link</strong>
-                    <span>
-                      {paystackApi
-                        ? "POST /paymentrequest · only after you approve each link"
-                        : "Only after you approve each link"}
-                    </span>
+                    <span>Only after you approve each link</span>
                   </p>
                 </div>
                 <div>
                   <Check aria-hidden="true" size={17} />
                   <p>
                     <strong>Check whether a payment arrived</strong>
-                    <span>
-                      {paystackApi
-                        ? "GET /transaction/verify"
-                        : "Read-only payment lookup"}
-                    </span>
+                    <span>Read-only payment lookup</span>
                   </p>
                 </div>
                 <div className="is-blocked">
