@@ -173,7 +173,7 @@ for (const viewport of [
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("agent-profile")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Reports to You",
+      "Reports to Lerato Molefe",
     );
     await expect(page.getByTestId("company-paused-banner")).toBeVisible();
     await capture("team-detail-mina");
