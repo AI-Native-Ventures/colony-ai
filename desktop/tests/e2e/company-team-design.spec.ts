@@ -149,7 +149,7 @@ for (const viewport of [
         .locator('[aria-current="page"]'),
     ).toHaveText("Team");
     await expect(
-      team.getByRole("button", { name: "Hire employee" }),
+      team.getByRole("button", { name: "Hire an agent" }),
     ).toBeVisible();
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
     await expect(row).toContainText("Social Media Manager · AI employee");
