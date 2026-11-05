@@ -5,7 +5,7 @@ import type {
   ChannelRole,
   UserSearchResult,
 } from "@/shared/api/types";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import type { ResolvedIdentityLabel } from "@/features/profile/lib/identity";
 
 export function formatSearchUserDisplayName(user: UserSearchResult) {
   return user.displayName?.trim() || user.nip05Handle?.trim() || null;
@@ -45,6 +45,10 @@ export type MentionCandidate = {
   personaName?: string | null;
   secondaryLabel?: string | null;
   ownerPubkey?: string | null;
+  /** Shared owner-qualified label, computed after owner profiles are fetched. */
+  identityLabel?: ResolvedIdentityLabel;
+  /** The original name remains a ranking alias after owner qualification. */
+  baseDisplayName?: string | null;
   isAgent: boolean;
   isActiveAgent?: boolean;
   isManagedAgent?: boolean;
@@ -53,8 +57,7 @@ export type MentionCandidate = {
 
 export function mentionCandidateLabel(candidate: MentionCandidate) {
   return (
-    candidate.displayName ??
-    (candidate.pubkey ? truncateNpub(candidate.pubkey) : "agent")
+    candidate.identityLabel?.text ?? candidate.displayName ?? "AI employee"
   );
 }
 

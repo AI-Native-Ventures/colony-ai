@@ -9,6 +9,8 @@ import { MessageComposer } from "@/features/messages/ui/MessageComposer";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
@@ -136,6 +138,7 @@ function TemplatePreview({
 
 function BatchRow({
   contact,
+  business,
   leadName,
   materialLink,
   index,
@@ -151,6 +154,12 @@ function BatchRow({
   editable,
 }: {
   contact: WhatsAppContact | null;
+  business: {
+    name: string;
+    website: string | null;
+    logoUrl: string | null;
+    placePhotoUrl: string | null;
+  } | null;
   leadName: string | null;
   materialLink: string | null;
   index: number;
@@ -182,13 +191,26 @@ function BatchRow({
     >
       <div className="c3wa-batch-row-head">
         <span aria-hidden="true" className="c3wa-batch-row-art">
-          <i />
-          <i />
-          <i />
+          {business ? (
+            <BusinessLogoMark
+              className="c3wa-batch-row-logo"
+              logoUrl={business.logoUrl}
+              name={business.name}
+              placePhotoUrl={business.placePhotoUrl}
+              website={business.website}
+            />
+          ) : (
+            <>
+              <i />
+              <i />
+              <i />
+            </>
+          )}
         </span>
         <div className="c3wa-batch-row-contact">
           <strong>
-            {contact?.businessName ??
+            {business?.name ??
+              contact?.businessName ??
               leadName ??
               contact?.displayName ??
               (row.leadId ? "Linked lead" : `WhatsApp contact ${index + 1}`)}
@@ -318,6 +340,7 @@ export function WhatsAppBatchScreen({
   const batchQuery = useWhatsAppBatchQuery(batchId);
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
+  const businessData = useBusinessRecords({ createIfMissing: false });
   const templatesQuery = useWhatsAppTemplatesQuery(
     statusQuery.data?.connected === true,
   );
@@ -342,6 +365,23 @@ export function WhatsAppBatchScreen({
 
   const batch = batchQuery.data;
   const contacts = contactsQuery.data ?? [];
+  const businessForRow = (row: WhatsAppBatchRow) => {
+    const contact = contactForRow(row, contacts);
+    const leadId = row.leadId ?? contact?.leadId ?? null;
+    const prospect = leadId
+      ? businessData.records?.prospects.find(
+          ({ record }) => record.prospectId === leadId,
+        )?.record.prospect
+      : null;
+    return prospect
+      ? {
+          name: prospect.party.displayName,
+          website: prospect.website,
+          logoUrl: prospect.logoUrl ?? null,
+          placePhotoUrl: prospect.placePhotoUrl ?? null,
+        }
+      : null;
+  };
   const templates = templatesQuery.data ?? statusQuery.data?.templates ?? [];
   const template = batch ? resolveTemplate(batch.template, templates) : null;
   const rows = batch?.rows ?? [];
@@ -631,6 +671,7 @@ export function WhatsAppBatchScreen({
             {visibleRows.map((row, index) => (
               <BatchRow
                 contact={contactForRow(row, contacts)}
+                business={businessForRow(row)}
                 editable={pending && canManage}
                 index={index}
                 isNext={row.idx === nextReadyRowIdx}
@@ -987,6 +1028,7 @@ export function WhatsAppBatchScreen({
                   {visibleRows.map((row, index) => (
                     <BatchRow
                       contact={contactForRow(row, contacts)}
+                      business={businessForRow(row)}
                       editable={pending && canManage}
                       index={index}
                       isNext={row.idx === nextReadyRowIdx}

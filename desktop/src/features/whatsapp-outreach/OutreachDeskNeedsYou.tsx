@@ -101,27 +101,39 @@ function BatchApprovalCard({
       candidate.title.toLocaleLowerCase() ===
         batch.template.toLocaleLowerCase(),
   );
-  const batchBusinesses = [
-    ...new Set(
-      batch.rows
-        .map((row) => {
-          const rowNumber = row.to.replace(/\D/gu, "");
-          const contact = contacts.find(
-            (candidate) => candidate.waId === rowNumber,
-          );
-          if (contact) {
-            return resolveOutreachContactIdentity(contact, businessRecords)
-              .displayName;
-          }
-          return row.leadId
-            ? businessRecords?.prospects.find(
-                ({ record }) => record.prospectId === row.leadId,
-              )?.record.prospect.party.displayName
-            : null;
-        })
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ];
+  const batchBusinessById = new Map<
+    string,
+    {
+      name: string;
+      website: string | null;
+      logoUrl: string | null;
+      placePhotoUrl: string | null;
+      isLinked: boolean;
+    }
+  >();
+  for (const row of batch.rows) {
+    const rowNumber = row.to.replace(/\D/gu, "");
+    const contact = contacts.find((candidate) => candidate.waId === rowNumber);
+    const leadId = row.leadId ?? contact?.leadId ?? null;
+    const lead = leadId
+      ? businessRecords?.prospects.find(
+          ({ record }) => record.prospectId === leadId,
+        )?.record.prospect
+      : null;
+    const identity = contact
+      ? resolveOutreachContactIdentity(contact, businessRecords)
+      : null;
+    const name = lead?.party.displayName ?? identity?.displayName ?? null;
+    if (!name) continue;
+    batchBusinessById.set(leadId ?? name, {
+      name,
+      website: lead?.website ?? identity?.website ?? null,
+      logoUrl: lead?.logoUrl ?? identity?.logoUrl ?? null,
+      placePhotoUrl: lead?.placePhotoUrl ?? identity?.placePhotoUrl ?? null,
+      isLinked: Boolean(lead || identity?.isLinked),
+    });
+  }
+  const batchBusinesses = [...batchBusinessById.values()];
 
   async function approve() {
     if (!canManage || busy) return;
@@ -196,8 +208,20 @@ function BatchApprovalCard({
           className="c3wa-desk-business-chips"
           aria-label="Businesses in this batch"
         >
-          {batchBusinesses.slice(0, 3).map((name) => (
-            <li key={name}>{name}</li>
+          {batchBusinesses.slice(0, 3).map((business) => (
+            <li key={business.name}>
+              {business.isLinked ? (
+                <BusinessLogoMark
+                  className="c3wa-desk-business-chip-logo"
+                  logoUrl={business.logoUrl}
+                  name={business.name}
+                  placePhotoUrl={business.placePhotoUrl}
+                  style={{ width: 16, height: 16 }}
+                  website={business.website}
+                />
+              ) : null}
+              {business.name}
+            </li>
           ))}
           {batch.counts.total > 3 ? (
             <li>and {Math.max(0, batch.counts.total - 3)} more</li>
@@ -209,7 +233,7 @@ function BatchApprovalCard({
         open={batch.materialLinks.length > 0}
       >
         <summary>
-          Message, as {batchBusinesses[0] ?? "the business"} sees it
+          Message, as {batchBusinesses[0]?.name ?? "the business"} sees it
         </summary>
         <p>{batch.rows[0]?.preview ?? "No message preview is available."}</p>
         {template?.buttons.length ? (
@@ -326,7 +350,9 @@ function NeedsContactCard({
         {identity.isLinked ? (
           <BusinessLogoMark
             className="c3wa-desk-logo-mark"
+            logoUrl={identity.logoUrl}
             name={identity.displayName}
+            placePhotoUrl={identity.placePhotoUrl}
             website={identity.website}
           />
         ) : (

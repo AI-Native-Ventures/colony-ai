@@ -148,7 +148,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   unfollowThreadById,
   personaLookup,
   profiles,
-  ownerProfiles,
   openThreadHeadId,
   shouldShowThreadSkeleton,
   onProfilePanelViewChange,
@@ -758,7 +757,6 @@ export const ChannelPane = React.memo(function ChannelPane({
                   isMessageUnreadById={isMessageUnreadById}
                   personaLookup={personaLookup}
                   profiles={profiles}
-                  ownerProfiles={ownerProfiles}
                   unfollowThreadById={unfollowThreadById}
                   emptyTitle={
                     activeChannel ? "No messages yet" : "No channel selected"

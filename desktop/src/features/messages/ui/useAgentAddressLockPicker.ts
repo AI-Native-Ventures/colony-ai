@@ -8,9 +8,12 @@ import type {
   AutocompleteEdit,
   UseRichTextEditorResult,
 } from "@/features/messages/lib/useRichTextEditor";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  resolveIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { detectPrefixQuery } from "@/shared/lib/detectPrefixQuery";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import type { ComposerAddressAgent } from "./ComposerAddressControls";
 import type { MentionSuggestion } from "./MentionAutocomplete";
 
@@ -87,7 +90,12 @@ export function useAgentAddressLockPicker({
           displayName:
             resolvedDisplayName ??
             lockedAgentNamesRef.current.get(normalized) ??
-            truncateNpub(normalized),
+            resolveIdentityLabel({
+              pubkey: normalized,
+              profiles,
+              isAgent: true,
+              ownerPubkey: profile?.ownerPubkey ?? null,
+            }).text,
           avatarUrl: profile?.avatarUrl ?? null,
         };
       }),
@@ -159,8 +167,7 @@ export function useAgentAddressLockPicker({
         mentions.getDraftMentionRefs(text),
       )[0];
       if (
-        !first ||
-        first.start !== 0 ||
+        first?.start !== 0 ||
         !first.candidates.every(
           (ref) => normalizePubkey(ref.pubkey) === normalized,
         )
@@ -369,7 +376,12 @@ export function useAgentAddressLockPicker({
             profile?.nip05Handle?.trim() ||
             mentions.getMentionDisplayName(pubkey)?.trim() ||
             lockedAgentNamesRef.current.get(pubkey) ||
-            truncateNpub(pubkey);
+            resolveIdentityLabel({
+              pubkey,
+              profiles,
+              isAgent: true,
+              ownerPubkey: profile?.ownerPubkey ?? null,
+            }).text;
           return { pubkey, displayName };
         });
       const { text } = richText.getPlainTextAndCursor();

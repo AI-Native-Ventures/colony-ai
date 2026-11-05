@@ -29,7 +29,10 @@ import {
   useUserSearchFetchMoreOnScroll,
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
-import { formatOwnerLabel } from "@/features/profile/lib/identity";
+import {
+  formatOwnerLabel,
+  resolveUserLabel,
+} from "@/features/profile/lib/identity";
 import { rankUserCandidatesBySearch } from "@/features/profile/lib/userCandidateSearch";
 import { useAgentAvailabilityLookup } from "@/features/agents/lib/useAgentAvailability";
 import { VirtualizedList } from "@/shared/ui/VirtualizedList";
@@ -58,7 +61,7 @@ import {
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { useFeedbackToasts } from "@/shared/hooks/useToastEffect";
 import { cn } from "@/shared/lib/cn";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { ChannelAddAgentsDialog } from "./ChannelAddAgentsDialog";
 import { ChevronRightGlyph, SearchGlyph } from "./dialogIcons";
 import {
@@ -649,7 +652,7 @@ export function MembersSidebar({
         managedAgentRuntime={managedAgentRuntime}
         member={member}
         memberIsBot={memberIsBot}
-        memberAvatarLabel={member.displayName ?? truncateNpub(member.pubkey)}
+        memberAvatarLabel={formatMemberName(member, currentPubkey)}
         memberLabel={formatMemberName(member, currentPubkey)}
         moderationState={moderationStateByPubkey.get(
           normalizePubkey(member.pubkey),
@@ -921,7 +924,7 @@ export function MembersSidebar({
               <div className="mt-4 space-y-1 text-xs font-semibold text-colony-danger">
                 {inviteSubmissionErrors.map((error) => (
                   <p key={`${error.pubkey}-${error.error}`}>
-                    {truncateNpub(error.pubkey)}: {error.error}
+                    {resolveUserLabel({ pubkey: error.pubkey })}: {error.error}
                   </p>
                 ))}
               </div>

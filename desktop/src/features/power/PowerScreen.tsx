@@ -10,7 +10,7 @@ import type { TeamMember } from "@/features/company-team/teamModels";
 import { readCredits } from "@/features/credits/accountPayments";
 import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 
 import {
   AiSpendEmployeeScreen,
@@ -119,10 +119,13 @@ export function PowerScreen({
   const powerEmployees: PowerEmployee[] = employees.map((member) => ({
     member,
     avatarUrl: profileRecords[member.pubkey]?.avatarUrl ?? null,
-    name:
-      profileRecords[member.pubkey]?.displayName?.trim() ||
-      member.fallbackName?.trim() ||
-      truncateNpub(member.pubkey),
+    name: resolveIdentityLabel({
+      pubkey: member.pubkey,
+      fallbackName: member.fallbackName,
+      profiles: profileRecords,
+      isAgent: member.kind === "employee",
+      ownerPubkey: profileRecords[member.pubkey]?.ownerPubkey ?? null,
+    }).text,
     title:
       member.position?.head.title ||
       (member.kind === "employee" ? "Employee" : "Human"),

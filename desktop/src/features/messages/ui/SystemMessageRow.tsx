@@ -10,10 +10,7 @@ import type {
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
 import { recordQuickReactionEmoji } from "@/features/messages/ui/useQuickReactionEmojis";
-import {
-  formatOwnerLabel,
-  type UserProfileLookup,
-} from "@/features/profile/lib/identity";
+import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 import { cn } from "@/shared/lib/cn";
@@ -653,7 +650,6 @@ export const SystemMessageRow = React.memo(function SystemMessageRow({
   currentPubkey,
   agentPubkeys,
   profiles,
-  ownerProfiles,
   personaLookup,
   onToggleReaction,
 }: {
@@ -662,7 +658,6 @@ export const SystemMessageRow = React.memo(function SystemMessageRow({
   currentPubkey?: string;
   agentPubkeys?: ReadonlySet<string>;
   profiles?: UserProfileLookup;
-  ownerProfiles?: UserProfileLookup;
   /** Map from lowercase pubkey → persona display name for bot members. */
   personaLookup?: Map<string, string>;
   onToggleReaction?: (
@@ -774,10 +769,6 @@ export const SystemMessageRow = React.memo(function SystemMessageRow({
     displayedIdentityProfile?.ownerPubkey ??
     displayedTimelineIdentity?.ownerPubkey ??
     null;
-  const displayedOwnerLabel =
-    displayedTimelineIdentity?.ownerLabel ??
-    formatOwnerLabel(displayedOwnerPubkey, currentPubkey, ownerProfiles);
-
   const wouldAddReaction = (emoji: string) =>
     !reactions.some(
       (reaction) => reaction.emoji === emoji && reaction.reactedByCurrentUser,
@@ -933,7 +924,7 @@ export const SystemMessageRow = React.memo(function SystemMessageRow({
               {displayedIdentityIsAgent ? (
                 <>
                   <MessageAgentOwner
-                    ownerLabel={displayedOwnerLabel}
+                    ownerLabel={null}
                     ownerPubkey={displayedOwnerPubkey}
                   />
                   {/* Grouped with the timestamp so the two wrap together. */}

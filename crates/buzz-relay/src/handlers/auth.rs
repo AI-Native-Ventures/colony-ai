@@ -134,6 +134,8 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
     // tampered, NIP-42 verification will fail before we ever inspect it.
     let auth_tag_json = extract_auth_tag_json(&event);
     let signed_auth_created_at = event.created_at.as_secs();
+    // The desktop names its own version in the signed AUTH event (admin metrics only).
+    let client_version = crate::metrics_collect::client_version_from_auth(&event);
 
     let relay_url =
         crate::api::bridge::nip42_expected_relay_url(&state.config.relay_url, &conn.tenant);
@@ -358,6 +360,12 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
             state
                 .conn_manager
                 .set_authenticated_pubkey(conn_id, pubkey.to_bytes().to_vec());
+            crate::metrics_collect::record_app_connection(
+                &state,
+                *conn.tenant.community().as_uuid(),
+                pubkey.to_bytes().to_vec(),
+                client_version,
+            );
             conn.send(RelayMessage::ok(&event_id_hex, true, ""));
         }
         Err(e) => {

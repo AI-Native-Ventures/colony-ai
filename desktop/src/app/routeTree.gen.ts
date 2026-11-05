@@ -28,6 +28,7 @@ import { Route as moneyDotinvoicesRouteImport } from "./routes/money.invoices";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
 import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
 import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
+import { Route as hireDotrolePackRouteImport } from "./routes/hire.role-pack";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
 import { Route as companyDotweeklyReviewRouteImport } from "./routes/company.weekly-review";
@@ -163,6 +164,11 @@ const hireDotsuccessRoute = hireDotsuccessRouteImport.update({
 const hireDotrolesRoute = hireDotrolesRouteImport.update({
   id: "/hire/roles",
   path: "/hire/roles",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const hireDotrolePackRoute = hireDotrolePackRouteImport.update({
+  id: "/hire/role-pack",
+  path: "/hire/role-pack",
   getParentRoute: () => rootRouteImport,
 } as any);
 const hireDotreviewRoute = hireDotreviewRouteImport.update({
@@ -306,6 +312,7 @@ export interface FileRoutesByFullPath {
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
+  "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
@@ -352,6 +359,7 @@ export interface FileRoutesByTo {
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
+  "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
@@ -399,6 +407,7 @@ export interface FileRoutesById {
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
+  "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
   "/messages/new": typeof messagesDotnewRoute;
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
+    | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
     | "/messages/new"
@@ -493,6 +503,7 @@ export interface FileRouteTypes {
     | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
+    | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
     | "/messages/new"
@@ -539,6 +550,7 @@ export interface FileRouteTypes {
     | "/company/weekly-review"
     | "/hire/configure"
     | "/hire/review"
+    | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
     | "/messages/new"
@@ -586,6 +598,7 @@ export interface RootRouteChildren {
   companyDotweeklyReviewRoute: typeof companyDotweeklyReviewRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
+  hireDotrolePackRoute: typeof hireDotrolePackRoute;
   hireDotrolesRoute: typeof hireDotrolesRoute;
   hireDotsuccessRoute: typeof hireDotsuccessRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
@@ -774,6 +787,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof hireDotrolesRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/hire/role-pack": {
+      id: "/hire/role-pack";
+      path: "/hire/role-pack";
+      fullPath: "/hire/role-pack";
+      preLoaderRoute: typeof hireDotrolePackRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/hire/review": {
       id: "/hire/review";
       path: "/hire/review";
@@ -946,6 +966,7 @@ const rootRouteChildren: RootRouteChildren = {
   companyDotweeklyReviewRoute: companyDotweeklyReviewRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
+  hireDotrolePackRoute: hireDotrolePackRoute,
   hireDotrolesRoute: hireDotrolesRoute,
   hireDotsuccessRoute: hireDotsuccessRoute,
   messagesDotnewRoute: messagesDotnewRoute,

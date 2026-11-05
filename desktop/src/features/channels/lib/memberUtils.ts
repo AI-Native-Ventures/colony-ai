@@ -1,8 +1,8 @@
 import type { ChannelMember } from "@/shared/api/types";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
 import {
   canonicalNpub,
   normalizePubkey,
-  truncateNpub,
   UNAVAILABLE_KEY_LABEL,
 } from "@/shared/lib/pubkey";
 
@@ -22,16 +22,17 @@ export function formatMemberName(
     return "You";
   }
 
-  return member.displayName ?? truncateNpub(member.pubkey);
+  return resolveUserLabel({
+    pubkey: member.pubkey,
+    fallbackName: member.displayName,
+    isAgent: member.isAgent === true || member.role === "bot",
+  });
 }
 
 /**
- * Ordering surface for a member's name: the authored name when present,
- * else the FULL canonical npub. Separate from `formatMemberName` — the
- * compact `npub1abcd…wxyz` label is display-only, and ordering on it would
- * collapse two distinct identities that merely share a prefix and tail.
- * Undisplayable keys keep the neutral label as their surface, exactly as
- * they render.
+ * Ordering surface for a member's name: authored name when present, otherwise
+ * the full canonical key. This value is an internal comparator key, never a
+ * rendered label; `formatMemberName` owns the safe visible fallback.
  */
 function memberNameSurface(member: ChannelMember): string {
   return (

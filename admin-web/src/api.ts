@@ -12,7 +12,7 @@ export class ApiFailure extends Error {
 /// The authentication mode the relay requires, discovered via the probe.
 /// - `nip98`    — NIP-98 HTTP Auth; each request signed with a NIP-07 extension
 /// - `disabled` — relay returned 200 with no auth; no credential needed
-export type AuthMode = "nip98" | "disabled";
+export type AuthMode = "nip98" | "cookie" | "disabled";
 
 /// Sign a NIP-98 kind-27235 event for the given URL + method via window.nostr.
 /// Throws if window.nostr is not available or signing fails.
@@ -98,6 +98,9 @@ async function send(
       const url = `${location.protocol}//${location.host}${PREFIX}${path}`;
       headers.authorization = await signNip98(url, method, body);
     }
+    if (authMode === "cookie" && method !== "GET" && method !== "HEAD") {
+      headers["x-colony-admin"] = "1";
+    }
     return fetch(`${PREFIX}${path}`, {
       method,
       credentials: "same-origin",
@@ -132,6 +135,41 @@ export async function request<T>(path: string, authMode: AuthMode): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/// Verify the current browser principal against the relay's role probe. Cookie
+/// mode uses the same-origin HttpOnly session; NIP-98 signs the probe request.
+export async function requestOperatorProbe(
+  authMode: "cookie" | "nip98",
+): Promise<import("./admin-metrics").OperatorProbe> {
+  return request<import("./admin-metrics").OperatorProbe>("/probe", authMode);
+}
+
+/// Exchange the one-time Google OIDC token for the relay's HttpOnly session.
+/// This endpoint is deliberately unauthenticated; the relay validates token,
+/// nonce, origin, existing account, and operator roster before setting cookie.
+export async function createGoogleAdminSession(
+  idToken: string,
+  nonce: string,
+): Promise<{ status: "ok"; pubkeyShort: string; expiresInSeconds: number }> {
+  const response = await fetch(`${PREFIX}/session/google`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ idToken, nonce }),
+  });
+  if (!response.ok) {
+    const envelope = await response.json().catch(() => null);
+    throw new ApiFailure(
+      response.status,
+      envelope?.error?.message ?? "Colony sign-in could not be completed.",
+    );
+  }
+  return response.json() as Promise<{
+    status: "ok";
+    pubkeyShort: string;
+    expiresInSeconds: number;
+  }>;
+}
+
 /// Send a body-bearing mutation (PATCH/PUT/POST) and parse the JSON response.
 /// The body is serialized once and signed over those exact bytes so the NIP-98
 /// `payload` tag matches what the relay verifies.
@@ -156,6 +194,15 @@ export async function mutate<T>(
 /// - anything else → `nip98` (the only authenticated mode; fail-secure)
 export async function probeAuthMode(): Promise<AuthMode> {
   try {
+    const probe = await fetch(`${PREFIX}/probe`, {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    });
+    if (probe.ok) {
+      const principal = await probe.json().catch(() => null);
+      if (principal?.role === "operator") return "cookie";
+      if (principal?.role === "moderator") return "nip98";
+    }
     const response = await fetch(`${PREFIX}/reports`, {
       credentials: "same-origin",
       headers: { accept: "application/json" },

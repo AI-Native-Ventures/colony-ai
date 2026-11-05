@@ -370,6 +370,7 @@ mod tests {
         ManagedAgentRecord {
             session_policy: Default::default(),
             description: None,
+            company_role: None,
             pubkey,
             name: "Locked Test".to_string(),
             persona_id: None,

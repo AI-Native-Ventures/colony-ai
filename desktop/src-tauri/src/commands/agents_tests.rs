@@ -11,6 +11,7 @@ fn bare_agent_record(
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "agent".to_string(),
         name: "Agent".to_string(),
         persona_id: persona_id.map(str::to_string),
@@ -381,6 +382,7 @@ fn profile_with_about(
         display_name: name.map(str::to_string),
         picture: picture.map(str::to_string),
         about: about.map(str::to_string),
+        owner_pubkey: None,
     }
 }
 
@@ -390,7 +392,8 @@ fn profile_needs_sync_when_missing() {
         None,
         "Duncan",
         Some("https://x/a.png"),
-        None
+        None,
+        None,
     ));
 }
 
@@ -421,7 +424,7 @@ fn unpinned_reconcile_relay_resolves_the_execution_time_workspace() {
 
 #[test]
 fn profile_needs_sync_when_missing_even_without_expected_avatar() {
-    assert!(profile_needs_sync(None, "Duncan", None, None));
+    assert!(profile_needs_sync(None, "Duncan", None, None, None));
 }
 
 #[test]
@@ -431,7 +434,8 @@ fn profile_needs_sync_when_name_diverges() {
         Some(&existing),
         "Duncan",
         Some("https://x/a.png"),
-        None
+        None,
+        None,
     ));
 }
 
@@ -442,7 +446,8 @@ fn profile_needs_sync_when_picture_diverges() {
         Some(&existing),
         "Duncan",
         Some("https://x/new.png"),
-        None
+        None,
+        None,
     ));
 }
 
@@ -453,14 +458,21 @@ fn profile_in_sync_when_name_and_picture_match() {
         Some(&existing),
         "Duncan",
         Some("https://x/a.png"),
-        None
+        None,
+        None,
     ));
 }
 
 #[test]
 fn profile_in_sync_when_both_avatars_absent() {
     let existing = profile(Some("Duncan"), None);
-    assert!(!profile_needs_sync(Some(&existing), "Duncan", None, None));
+    assert!(!profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -471,13 +483,20 @@ fn profile_needs_sync_when_existing_name_is_none() {
         "Duncan",
         Some("https://x/a.png"),
         None,
+        None,
     ));
 }
 
 #[test]
 fn profile_needs_sync_when_expected_avatar_absent_but_published() {
     let existing = profile(Some("Duncan"), Some("https://x/a.png"));
-    assert!(profile_needs_sync(Some(&existing), "Duncan", None, None));
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -487,14 +506,21 @@ fn profile_needs_sync_when_about_diverges() {
         Some(&existing),
         "Duncan",
         None,
-        Some("New description.")
+        Some("New description."),
+        None,
     ));
 }
 
 #[test]
 fn profile_needs_sync_when_expected_about_absent_but_published() {
     let existing = profile_with_about(Some("Duncan"), None, Some("Stale description."));
-    assert!(profile_needs_sync(Some(&existing), "Duncan", None, None));
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
 }
 
 #[test]
@@ -504,7 +530,8 @@ fn profile_in_sync_when_about_matches() {
         Some(&existing),
         "Duncan",
         None,
-        Some("A helpful desktop agent.")
+        Some("A helpful desktop agent."),
+        None,
     ));
 }
 
@@ -513,7 +540,45 @@ fn profile_in_sync_when_about_none_equals_published_empty_string() {
     // None vs "" must be treated as equal — otherwise every reconcile of an
     // about-less agent would republish forever.
     let existing = profile_with_about(Some("Duncan"), None, Some(""));
-    assert!(!profile_needs_sync(Some(&existing), "Duncan", None, None));
+    assert!(!profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        None
+    ));
+}
+
+#[test]
+fn profile_needs_sync_when_verified_agent_owner_is_missing_or_changes() {
+    let owner = "a".repeat(64);
+    let mut existing = profile(Some("Duncan"), None);
+
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        Some(&owner),
+    ));
+
+    existing.owner_pubkey = Some(owner.clone());
+    assert!(!profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        Some(&owner),
+    ));
+
+    existing.owner_pubkey = Some("b".repeat(64));
+    assert!(profile_needs_sync(
+        Some(&existing),
+        "Duncan",
+        None,
+        None,
+        Some(&owner),
+    ));
 }
 
 #[test]

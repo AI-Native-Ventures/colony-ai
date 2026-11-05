@@ -1,8 +1,10 @@
 import type { TimelineMessage } from "@/features/messages/types";
 import type { ChannelWindowThreadSummary } from "@/features/messages/lib/channelWindowStore";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  resolveUserLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { isBroadcastReply } from "@/features/messages/lib/threading";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
 
 type ThreadPanelData = {
@@ -432,13 +434,9 @@ function buildRelayThreadSummary(
       .map((pubkey) => ({
         id: pubkey,
         pubkey,
-        // Unnamed participants fall back to the compact npub — the same label
-        // the client-assembled path derives via `resolveUserLabel` — so a
-        // cold/relay-only facepile never surfaces raw hex. This `author` is
-        // what `MessageThreadSummaryRow` binds to `UserAvatar`'s
-        // `displayName` (the visible/accessible avatar label).
-        author:
-          profiles?.[pubkey.toLowerCase()]?.displayName ?? truncateNpub(pubkey),
+        // A cold profile remains neutral while users-batch performs its
+        // bounded follow-up fetch. Thread facepiles never display a key.
+        author: resolveUserLabel({ pubkey, profiles }),
         avatarUrl: profiles?.[pubkey.toLowerCase()]?.avatarUrl ?? null,
         ...(profiles?.[pubkey.toLowerCase()]?.isAgent === true
           ? { isAgent: true }

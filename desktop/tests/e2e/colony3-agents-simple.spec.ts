@@ -329,7 +329,7 @@ test("Scout's ant picture can be recoloured with the full custom picker", async 
   await captureBoth(page, "AgentPicturePicker", "AgentPicturePicker");
 });
 
-test("hire catalog removes Chief of Staff and sends custom roles through Scout's hire ask", async ({
+test("hire catalog removes Chief of Staff, offers direct role packs, and retains Scout's hire ask", async ({
   page,
 }) => {
   await installHireFixture(page, "roles-empty", {
@@ -353,28 +353,12 @@ test("hire catalog removes Chief of Staff and sends custom roles through Scout's
   await expect(
     catalog.getByRole("heading", { name: "Chief of Staff" }),
   ).toHaveCount(0);
-  await expect(catalog.getByRole("heading", { name: "Finance" })).toBeVisible();
-  const salesAnt = catalog.locator('[data-testid^="hire-role-"] img').first();
-  await expect(salesAnt).toHaveAttribute("alt", /ant$/);
-  expect(
-    decodeAvatarSource((await salesAnt.getAttribute("src")) ?? ""),
-  ).toContain("#E0826B");
-  await expect(customRole).toHaveAttribute(
-    "aria-label",
-    "Create your own role",
-  );
-  const customComesFirst = await customRole.evaluate((element) => {
-    const next = element.parentElement?.querySelector(
-      '[aria-label="Role catalog"]',
-    );
-    return Boolean(
-      next &&
-        (element.compareDocumentPosition(next) &
-          Node.DOCUMENT_POSITION_FOLLOWING) !==
-          0,
-    );
-  });
-  expect(customComesFirst).toBe(true);
+  await expect(
+    catalog.getByTestId(`hire-role-${HIRE_IDS.builtInHospitality}`),
+  ).toBeVisible();
+  await expect(page.getByTestId("hire-create-role")).toBeVisible();
+  await expect(page.getByTestId("hire-create-role-entry")).toBeVisible();
+  await expect(customRole).toHaveAttribute("aria-label", "Ask Scout to draft");
   await captureBoth(page, "HireRoleCatalog", "HireRoleCatalogSimple");
 
   const description = page.getByTestId("hire-custom-role-description");
@@ -416,7 +400,7 @@ for (const role of BUILT_IN_ROLES) {
 
     const card = page.getByTestId(`hire-role-${role.id}`);
     await expect(card).toBeVisible();
-    await card.getByRole("button", { name: "Configure" }).click();
+    await card.getByRole("button", { name: "Configure this role" }).click();
 
     await expect(page.getByTestId("hire-configure")).toBeVisible();
     await expect(page.getByTestId("hire-configure-form")).toBeVisible();
@@ -424,7 +408,7 @@ for (const role of BUILT_IN_ROLES) {
 
     await page
       .getByTestId("hire-configure-form")
-      .getByRole("button", { name: "Back", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(page.getByTestId("hire-roles")).toBeVisible();
   });
@@ -458,7 +442,7 @@ test("Configure reads relay free models and carries the selected model into Revi
   const selectedAi = page.locator('[aria-label="Selected AI"]');
   await expect(selectedAi).toContainText("Gemma 4 31B IT");
   await expect(selectedAi).toContainText("Colony free AI");
-  await expect(page.getByText(/weekly allowance/i)).toHaveCount(0);
+  await expect(page.getByTestId("hire-weekly-allowance")).toHaveValue("");
   await captureBoth(page, "HireConfigure", "HireConfigureSimple");
 
   await page.getByTestId("hire-review").click();

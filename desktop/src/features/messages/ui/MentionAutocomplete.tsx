@@ -1,6 +1,8 @@
 import * as React from "react";
 import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import type { TeamMentionMember } from "@/features/messages/lib/mentionCandidates";
+import type { ResolvedIdentityLabel } from "@/features/profile/lib/identity";
+import { IdentityLabelText } from "@/features/profile/ui/IdentityLabelText";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 
 import { cn } from "@/shared/lib/cn";
@@ -8,8 +10,6 @@ import { POPOVER_CUSTOM_ENTER_MOTION_CLASS } from "@/shared/ui/popoverSurface";
 import { Switch } from "@/shared/ui/switch";
 import { Toggle } from "@/shared/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { safeNpub } from "@/shared/lib/nostrUtils";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
 import { PinGlyph } from "./ComposerIcons";
 
@@ -25,6 +25,9 @@ export type MentionSuggestion = {
   agentProvenance?: "managed-here" | "managed-elsewhere";
   notInChannel?: boolean;
   ownerLabel?: string | null;
+  identityLabel?: ResolvedIdentityLabel;
+  /** Bare name, used only to retain collision provenance in accessibility UI. */
+  baseDisplayName?: string | null;
   role?: string | null;
   /** Job title from the team's position record; set by the menu itself. */
   jobTitle?: string | null;
@@ -166,12 +169,14 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
     return null;
   }
 
-  // Name collisions are the impersonation vector: a vanity-ground key can
-  // wear any display name. When two suggestions share a name, surface each
-  // one's npub (truncated; full key in the hover tooltip) to tell them apart.
+  // Retain collision awareness for the local-runtime marker, but never use a
+  // public key as the visual disambiguator. The shared label resolver adds an
+  // owner suffix, and an ordinal only for same-owner duplicates.
   const nameCounts = new Map<string, number>();
   for (const suggestion of suggestions) {
-    const name = suggestion.displayName.toLowerCase();
+    const name = (
+      suggestion.baseDisplayName ?? suggestion.displayName
+    ).toLowerCase();
     nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
   }
 
@@ -249,17 +254,16 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
               (suggestion.teamId ? `team-${suggestion.teamId}` : null) ??
               suggestion.displayName;
             const hasNameCollision =
-              (nameCounts.get(suggestion.displayName.toLowerCase()) ?? 0) > 1;
+              (nameCounts.get(
+                (
+                  suggestion.baseDisplayName ?? suggestion.displayName
+                ).toLowerCase(),
+              ) ?? 0) > 1;
             const showAgentProvenanceMarker =
               showMentionAgentProvenanceMarker(suggestion);
-            const ownerLabel =
-              hasNameCollision && suggestion.agentProvenance
-                ? null
-                : suggestion.ownerLabel;
-            const collisionNpub =
-              hasNameCollision && suggestion.pubkey
-                ? safeNpub(suggestion.pubkey)
-                : null;
+            const ownerLabel = suggestion.identityLabel
+              ? null
+              : suggestion.ownerLabel;
             const jobTitle =
               suggestion.jobTitle ?? lookupJobTitle(suggestion.pubkey);
             // People show their job title (or their admin role when they have
@@ -358,7 +362,11 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                       className="c3c-mention-name"
                       title={suggestion.displayName}
                     >
-                      {suggestion.displayName}
+                      {suggestion.identityLabel ? (
+                        <IdentityLabelText label={suggestion.identityLabel} />
+                      ) : (
+                        suggestion.displayName
+                      )}
                       {suggestion.isAgent ? (
                         <span
                           className="c3c-mention-pill"
@@ -371,20 +379,11 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                         <OtherSetupAgentMarker testId="mention-agent-provenance" />
                       ) : null}
                     </span>
-                    {subtitle || collisionNpub ? (
+                    {subtitle ? (
                       <span className="c3c-mention-sub">
                         {subtitle ? (
                           <span className="min-w-0 truncate" title={subtitle}>
                             {subtitle}
-                          </span>
-                        ) : null}
-                        {collisionNpub ? (
-                          <span
-                            className="shrink-0 font-mono"
-                            data-testid="mention-collision-npub"
-                            title={collisionNpub}
-                          >
-                            {truncateNpub(collisionNpub)}
                           </span>
                         ) : null}
                       </span>

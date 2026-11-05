@@ -251,15 +251,32 @@ test("send/reopen/edit preserves distinct same-name refs independently of tag or
     replaceWithDraftMentionRefs,
     snapshotDraftMentionRefs,
   } = await import("../lib/draftMentionRefs.ts");
-  const { extractMentionPubkeys, selectedMentionLabel } = await import(
+  const { extractMentionPubkeys } = await import(
     "../lib/extractMentionPubkeys.ts"
   );
   const a = "a".repeat(64),
     b = "b".repeat(64);
-  const bindings = new Map([["Scout", a]]);
-  const label = selectedMentionLabel("Scout", b, bindings);
-  bindings.set(label, b);
-  const originalContent = `@Scout @${label} hello`;
+  const basheer = "c".repeat(64),
+    zaina = "d".repeat(64);
+  const profiles = {
+    [a]: {
+      displayName: "Scout",
+      isAgent: true,
+      ownerPubkey: basheer,
+    },
+    [b]: {
+      displayName: "Scout",
+      isAgent: true,
+      ownerPubkey: zaina,
+    },
+    [basheer]: { displayName: "Basheer Khan" },
+    [zaina]: { displayName: "Zaina Ali" },
+  };
+  const bindings = new Map([
+    ["Scout", a],
+    ["Scout (Zaina)", b],
+  ]);
+  const originalContent = "@Scout @Scout (Zaina) hello";
   const sent = extractMentionPubkeys({
     text: originalContent,
     selectedMentions: bindings,
@@ -270,8 +287,8 @@ test("send/reopen/edit preserves distinct same-name refs independently of tag or
     const editTarget = buildEditMentionState(
       originalContent,
       keys.map((key) => ["p", key]),
-      { [a]: { displayName: "Scout" }, [b]: { displayName: "Scout" } },
-      () => false,
+      profiles,
+      (key) => key === a || key === b,
     );
     assert.deepEqual(
       new Map(
@@ -303,8 +320,8 @@ test("send/reopen/edit preserves distinct same-name refs independently of tag or
     const reopened = buildEditMentionState(
       saved.content,
       saved.tags,
-      { [a]: { displayName: "Scout" }, [b]: { displayName: "Renamed Scout" } },
-      () => false,
+      profiles,
+      (key) => key === a || key === b,
     );
     assert.deepEqual(
       new Map(reopened.mentionRefs.map((ref) => [ref.displayName, ref.pubkey])),

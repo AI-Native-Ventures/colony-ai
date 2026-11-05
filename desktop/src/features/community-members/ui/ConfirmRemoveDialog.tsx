@@ -1,7 +1,6 @@
 import { toast } from "sonner";
 
-import { truncateNpub } from "@/shared/lib/pubkey";
-import { PubKey } from "@/shared/ui/PubKey";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useRemoveRelayMemberMutation } from "@/features/community-members/hooks";
 import type { RelayMember } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
@@ -25,7 +24,8 @@ export function ConfirmRemoveDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const removeMutation = useRemoveRelayMemberMutation();
-  const label = displayName || (member ? truncateNpub(member.pubkey) : "");
+  const label =
+    displayName || (member ? resolveUserLabel({ pubkey: member.pubkey }) : "");
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -45,13 +45,6 @@ export function ConfirmRemoveDialog({
           <DialogDescription>
             This will immediately revoke their access to the relay.
           </DialogDescription>
-          {member ? (
-            <PubKey
-              pubkey={member.pubkey}
-              testId="confirm-remove-member-pubkey"
-              variant="full"
-            />
-          ) : null}
         </DialogHeader>
         <div className="flex justify-end gap-2">
           <Button

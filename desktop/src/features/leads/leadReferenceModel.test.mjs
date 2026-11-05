@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  firstLeadReferenceId,
   filterLeads,
   isLeadAccessError,
   leadHeadFilter,
@@ -119,15 +120,34 @@ test("the mark shows the first letter, uppercased", () => {
   assert.equal(leadInitial("  "), "?");
 });
 
+test("finds one valid lead reference in a searchable message body", () => {
+  assert.equal(
+    firstLeadReferenceId(
+      "Please follow up <buzz://lead/1e1a7000-0000-4000-9000-000000001002>.",
+    ),
+    LEAD_ID,
+  );
+  assert.equal(firstLeadReferenceId("No lead link here"), null);
+  assert.equal(firstLeadReferenceId("buzz://lead/not-a-uuid"), null);
+});
+
 test("summarizeLead describes an active lead and skips archived ones", () => {
   assert.deepEqual(summarizeLead(head()), {
     leadId: LEAD_ID,
     name: "Form & Field",
+    website: "https://form-field.example",
+    logoUrl: null,
+    placePhotoUrl: null,
     meta: "Design-led home and living store · Woodstock, Cape Town",
     stageLabel: "New",
     stageTone: "neutral",
     fitScore: 91,
   });
+  assert.equal(
+    summarizeLead(head({}, { logoUrl: "https://cdn.example.org/logo.png" }))
+      ?.logoUrl,
+    "https://cdn.example.org/logo.png",
+  );
   assert.equal(summarizeLead(head({ status: "archived" })), null);
   assert.equal(
     summarizeLead(head({}, { fitScore: null })).fitScore,
