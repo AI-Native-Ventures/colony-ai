@@ -43,6 +43,7 @@ import {
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
+import { WhatsAppSendHealthBanner } from "./WhatsAppSendHealthNotice";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
@@ -168,9 +169,12 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
-  // Recovery carries the same owner/admin and managed-agent boundary as send-now.
-  const canRetrySend = canSendNow;
+  // Recovery changes the account queue, so only the owner or an admin can invoke it.
+  const canRetrySend = canManage;
   const status = statusQuery.data;
+  const accountRecoveryCount = status
+    ? Math.max(status.accountRetryCount, status.sendHealth?.waitingCount ?? 0)
+    : 0;
   const progress = status
     ? getWhatsAppDailyCapProgress(
         status.newChatsSentToday,
@@ -273,6 +277,10 @@ export function WhatsAppOutreachScreen({
         lastFailureSummary:
           selectedContact.lastFailureSummary ??
           thread?.contact.lastFailureSummary ??
+          null,
+        deliveryFailure:
+          selectedContact.deliveryFailure ??
+          thread?.contact.deliveryFailure ??
           null,
         lastReplyAt:
           selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
@@ -621,6 +629,7 @@ export function WhatsAppOutreachScreen({
         )}
         aria-label="WhatsApp contacts"
       >
+        <WhatsAppSendHealthBanner canManage={canManage} status={status} />
         <header className="c3wa-contact-panel-head">
           {mode === "desk" ? null : (
             <WhatsAppPendingBatches
@@ -634,7 +643,9 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
-            {canRetrySend && status.accountRetryCount > 0 ? (
+            {canRetrySend &&
+            status.accountRetryCount > 0 &&
+            !status.sendHealth ? (
               <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
             ) : null}
             <Tooltip disableHoverableContent>
@@ -835,9 +846,14 @@ export function WhatsAppOutreachScreen({
             </div>
           ) : selectedContact.paused ? (
             <div className="c3wa-contact-lock" role="status">
-              <strong>This contact is paused.</strong>
+              <strong>
+                {selectedContact.deliveryFailure
+                  ? "This contact is paused by Meta."
+                  : "This contact is paused."}
+              </strong>
               <span>
-                {selectedContact.pauseReason ??
+                {selectedContact.deliveryFailure?.summary ??
+                  selectedContact.pauseReason ??
                   "Sending is paused for this contact."}
               </span>
             </div>
@@ -919,7 +935,7 @@ export function WhatsAppOutreachScreen({
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
                     canRetrySend={canRetrySend}
-                    accountRetryCount={status.accountRetryCount}
+                    accountRetryCount={accountRecoveryCount}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}

@@ -21,8 +21,9 @@ use buzz_db::whatsapp::{NewOutboundMessage, WhatsappContact, WhatsappMessage};
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
 use super::graph::{GraphError, SendRequest};
 use super::policy::{
-    classify_failure_code, decide_new_chat, decide_owner_send_now, e164, normalize_wa_id,
-    render_template, row_gap, sast_day_start, window_open, FailureKind, NewChatDecision,
+    account_retry_error_codes, classify_failure_code, decide_new_chat, decide_owner_send_now, e164,
+    normalize_wa_id, render_template, row_gap, sast_day_start, window_open, FailureKind,
+    NewChatDecision,
 };
 use super::{channel, Access};
 use crate::state::AppState;
@@ -483,6 +484,13 @@ pub async fn process_community(
         )
         .await;
     }
+    if let Err(error) = state
+        .db
+        .whatsapp_release_due_contact_retries(community, "131049", now)
+        .await
+    {
+        tracing::warn!(%community, "whatsapp delayed-contact retry release failed: {error}");
+    }
     if settings.send_paused {
         return Ok(());
     }
@@ -493,7 +501,7 @@ pub async fn process_community(
 
     let sendable = state
         .db
-        .whatsapp_list_sendable(community, SENDABLE_PER_TICK)
+        .whatsapp_list_sendable(community, SENDABLE_PER_TICK, now)
         .await
         .map_err(|error| error.to_string())?;
     let mut new_chat_blocked = false;
@@ -618,6 +626,47 @@ pub async fn process_community(
                 ..
             }) => {
                 let code_text = code.map(|c| c.to_string()).unwrap_or_default();
+                let kind = code
+                    .map(classify_failure_code)
+                    .unwrap_or(FailureKind::Other);
+                if let FailureKind::Account(failure) = kind {
+                    match state
+                        .db
+                        .whatsapp_fail_send_and_pause_account(
+                            community,
+                            message.id,
+                            lease,
+                            &code_text,
+                            &text,
+                            failure.health_title(),
+                            now,
+                        )
+                        .await
+                    {
+                        Ok(outcome) if outcome.became_unhealthy => {
+                            let account_codes = account_retry_error_codes();
+                            let waiting = state
+                                .db
+                                .whatsapp_count_account_health_waiting(community, &account_codes)
+                                .await
+                                .unwrap_or(0);
+                            channel::post_owner_notice(
+                                state,
+                                &tenant,
+                                "account_sending_paused",
+                                &failure.health_banner(waiting),
+                            )
+                            .await;
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::error!(%community, "whatsapp account failure record failed: {error}");
+                        }
+                    }
+                    // Meta says this sender cannot make business sends. Stop this pass even if
+                    // recording the fence failed, rather than intentionally burning the queue.
+                    break;
+                }
                 if let Err(error) = state
                     .db
                     .whatsapp_fail_send(community, message.id, lease, &code_text, &text)
@@ -626,10 +675,7 @@ pub async fn process_community(
                     tracing::error!(%community, "whatsapp failure record failed: {error}");
                 }
                 handle_failure(state, &tenant, &message, code, &text).await;
-                if matches!(
-                    code.map(classify_failure_code),
-                    Some(FailureKind::TokenExpired)
-                ) {
+                if matches!(kind, FailureKind::TokenExpired) {
                     break;
                 }
             }
@@ -671,6 +717,11 @@ pub async fn handle_failure(
         .map(classify_failure_code)
         .unwrap_or(FailureKind::Other);
     match kind {
+        FailureKind::Account(_) => {
+            // The sender and webhook paths persist the account fence atomically with the failed
+            // message. Keeping this arm explicit prevents a future caller from treating it as a
+            // contact pause or generic notice.
+        }
         FailureKind::TokenExpired => note_token_expired(state, tenant).await,
         FailureKind::ContactBlocked => {
             let newly = state
@@ -713,24 +764,6 @@ pub async fn handle_failure(
                 tenant,
                 "template_paused",
                 &format!("Template {name} is paused or disabled by Meta."),
-            )
-            .await;
-        }
-        FailureKind::NumberDisconnected => {
-            let _ = state
-                .db
-                .whatsapp_set_issue(
-                    community,
-                    "number_disconnected",
-                    "Meta reports the number is not connected.",
-                    Utc::now(),
-                )
-                .await;
-            channel::post_notice(
-                state,
-                tenant,
-                "number_disconnected",
-                "Meta reports the number is not connected.",
             )
             .await;
         }
@@ -866,6 +899,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: now() - Duration::days(3),
         }
     }

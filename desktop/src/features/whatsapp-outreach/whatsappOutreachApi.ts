@@ -30,6 +30,8 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const QUERY_PATH = "/api/whatsapp/query";
 const CONNECT_PATH = "/api/whatsapp/connect";
 const DISCONNECT_PATH = "/api/whatsapp/disconnect";
+/** Opt in to the stage enum introduced after desktop-v3.0.37. Older apps omit this marker. */
+const RELAY_CAPABILITIES = ["whatsapp-outreach-stage-queued"] as const;
 
 export type WhatsAppCommandKind =
   | typeof KIND_WHATSAPP_BATCH
@@ -186,7 +188,12 @@ export async function queryWhatsApp<T>(
   query: WhatsAppQuery,
   dependencies?: ApiDependencies,
 ): Promise<T> {
-  return postWhatsAppJson<T>(relayUrl, QUERY_PATH, query, dependencies);
+  return postWhatsAppJson<T>(
+    relayUrl,
+    QUERY_PATH,
+    { ...query, capabilities: RELAY_CAPABILITIES },
+    dependencies,
+  );
 }
 
 export async function loadWhatsAppStatus(

@@ -677,6 +677,64 @@ pub async fn post_notice(state: &Arc<AppState>, tenant: &TenantContext, code: &s
     }
 }
 
+/// Post an account-recovery notice that explicitly mentions the people who can act. The
+/// ordinary Outreach channel remains private, and the `p` tags use Colony's existing mention
+/// notification path rather than inventing a second notification transport.
+pub async fn post_owner_notice(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    code: &str,
+    text: &str,
+) {
+    let settings = match state.db.whatsapp_ensure_settings(tenant.community()).await {
+        Ok(settings) => settings,
+        Err(error) => {
+            tracing::warn!(
+                code,
+                "whatsapp owner notice settings lookup failed: {error}"
+            );
+            return;
+        }
+    };
+    let Some(channel_id) = settings.outreach_channel_id else {
+        return;
+    };
+    let members = match state.db.list_relay_members(tenant.community()).await {
+        Ok(members) => members,
+        Err(error) => {
+            tracing::warn!(
+                code,
+                "whatsapp owner notice membership lookup failed: {error}"
+            );
+            return;
+        }
+    };
+    let mut tags = vec![vec!["wa-notice".to_string(), code.to_string()]];
+    for member in members
+        .iter()
+        .filter(|member| member.role == "owner" || member.role == "admin")
+    {
+        if let Ok(pubkey) = hex::decode(&member.pubkey) {
+            if pubkey.len() == 32 {
+                tags.push(vec!["p".to_string(), member.pubkey.clone()]);
+            }
+        }
+    }
+    if let Err(error) = post_message(
+        state,
+        tenant,
+        channel_id,
+        None,
+        text.to_string(),
+        tags,
+        Utc::now(),
+    )
+    .await
+    {
+        tracing::warn!(code, "whatsapp owner notice post failed: {error}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,6 +753,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: DateTime::from_timestamp(1_800_000_000, 0).expect("time"),
         }
     }

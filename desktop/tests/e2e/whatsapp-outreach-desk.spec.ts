@@ -346,10 +346,20 @@ test.describe("Outreach desk", () => {
     await installWhatsAppMockBridge(page, "light", {
       deskFixture: true,
       paymentRetryCount: 63,
+      paymentFailedCount: 1,
     });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openOutreachFromHome(page);
+    await expect(page.getByTestId("outreach-needs-send-health")).toContainText(
+      "WhatsApp stopped sending",
+    );
+    await expect(page.getByTestId("outreach-needs-send-health")).toContainText(
+      "63 messages are waiting",
+    );
     await page.getByTestId("channel-view-tab-chats").click();
+    await expect(page.getByTestId("whatsapp-send-health-banner")).toContainText(
+      "Nothing was lost: 63 messages are waiting",
+    );
     await page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`).click();
 
     const failedMessage = page.getByTestId("whatsapp-message-e2e-wa-failed");
@@ -365,6 +375,9 @@ test.describe("Outreach desk", () => {
     await page.getByRole("button", { name: "Cancel" }).click();
 
     await page.getByTestId("channel-view-tab-pipeline").click();
+    await expect(page.getByTestId("whatsapp-send-health-banner")).toContainText(
+      "Nothing was lost: 63 messages are waiting",
+    );
     await expect(
       page
         .locator(".c3wa-pipeline-columns")
@@ -388,6 +401,55 @@ test.describe("Outreach desk", () => {
         ),
       )
       .toBe(true);
+  });
+
+  test("Meta engagement limits show Not delivered and schedule a delayed per-contact retry", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      engagementLimit: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+    await expect(
+      page.getByTestId("whatsapp-delivery-health-summary"),
+    ).toContainText("12 messages were not delivered by Meta");
+
+    await page.getByTestId("channel-view-tab-chats").click();
+    await page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`).click();
+    const failedMessage = page.getByTestId("whatsapp-message-e2e-wa-failed");
+    await expect(failedMessage).toContainText(
+      "Meta did not deliver this one. Meta limits marketing messages",
+    );
+    await expect(failedMessage).toContainText("Meta error 131049");
+    await page.getByTestId("whatsapp-try-again-later-e2e-wa-failed").click();
+    await expect(
+      page.getByTestId("whatsapp-try-again-later-dialog"),
+    ).toContainText("The contact stays paused");
+    await page.getByRole("button", { name: "7 days" }).click();
+    await page.getByRole("button", { name: "Try again in 7 days" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47052 &&
+                (body.retryLater as { days?: unknown } | undefined)?.days === 7,
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+
+    await page.getByTestId("channel-view-tab-pipeline").click();
+    await expect(
+      page
+        .locator(".c3wa-pipeline-columns")
+        .getByTestId(`outreach-pipeline-card-${PLANE_TREE_WA_ID}`),
+    ).toContainText("Not delivered");
   });
 
   test("plain members have no stage or rename controls", async ({ page }) => {
