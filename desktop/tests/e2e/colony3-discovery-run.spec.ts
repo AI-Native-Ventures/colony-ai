@@ -186,6 +186,14 @@ async function goTo(page: Page, hash: string) {
   }, hash);
 }
 
+async function expectCompletedRun(page: Page) {
+  await goTo(page, "/discovery");
+  await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Ready to review/ })).toBeVisible(
+    { timeout: 15_000 },
+  );
+}
+
 test.describe("Real discovery run", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -197,9 +205,6 @@ test.describe("Real discovery run", () => {
 
     const campaign = page.getByTestId("w10-campaign-page");
     await expect(campaign).toBeVisible();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
 
     // Five new businesses: the repeat, the nameless place and the business
     // that is already in Leads are not added.
@@ -228,8 +233,9 @@ test.describe("Real discovery run", () => {
     });
     expect(String(calls[0]?.query)).toMatch(/home furnishings/i);
 
-    // Pick up where you left off: the run is on the Discovery page.
-    await goTo(page, "/discovery");
+    // Completed runs hide the progress panel on the campaign page. The
+    // Discovery resume card presents the terminal state as "Ready to review".
+    await expectCompletedRun(page);
     await expect(
       page.getByRole("heading", { name: "Pick up where you left off" }),
     ).toBeVisible();
@@ -246,18 +252,13 @@ test.describe("Real discovery run", () => {
   }) => {
     await openDiscovery(page);
     await approveAndStart(page);
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
     await expect(campaignRows(page)).toHaveCount(5);
-
-    await goTo(page, "/discovery");
-    await page.getByTestId("w10-discovery-page").waitFor();
+    await expectCompletedRun(page);
     await approveAndStart(page);
     await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expectCompletedRun(page);
+    await page.getByRole("link", { name: /Ready to review/ }).click();
+    await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
     await expect(campaignRows(page)).toHaveCount(0);
 
     // Both searches are in the campaigns list.
@@ -309,10 +310,8 @@ test.describe("Real discovery run", () => {
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Resume" }).click();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
     await expect(campaignRows(page)).toHaveCount(5);
+    await expectCompletedRun(page);
     // The page that arrived after the pause was already paid for, so Resume
     // saves it instead of asking for it again.
     const calls = await searchCalls(page);

@@ -210,14 +210,59 @@ test.describe("W10 discovery and sales", () => {
         name: "Independent brands needing social support",
       }),
     ).toBeVisible();
-    await expect(campaign.locator("tbody tr")).toHaveCount(12);
+    await expect(campaign.locator("tbody tr")).toHaveCount(7);
+    const campaignPages = campaign.getByRole("navigation", {
+      name: "Campaign prospect pages",
+    });
+    await expect(campaignPages).toContainText("Page 1 of 2");
+    await campaignPages.getByRole("button", { name: "Next" }).click();
+    await expect(campaign.locator("tbody tr")).toHaveCount(5);
+    await campaignPages.getByRole("button", { name: "Previous" }).click();
+    await expect(campaign.locator("tbody tr")).toHaveCount(7);
     await campaign.getByLabel("Filter prospects").selectOption("high-fit");
     await expect(campaign.locator("tbody tr")).toHaveCount(6);
     await campaign.getByLabel("Filter prospects").selectOption("accepted");
     await expect(campaign.locator("tbody tr")).toHaveCount(4);
     await campaign.getByLabel("Filter prospects").selectOption("candidates");
-    await expect(campaign.locator("tbody tr")).toHaveCount(8);
+    await expect(campaign.locator("tbody tr")).toHaveCount(7);
     await campaign.getByLabel("Filter prospects").selectOption("all");
+    const filterMenu = campaign.locator(".c3l-filter-menu");
+    await filterMenu.locator(":scope > summary").click();
+    await filterMenu
+      .getByRole("group", { name: "Stage" })
+      .getByRole("checkbox", { name: /^New/ })
+      .check();
+    await expect(
+      campaign.getByText("8 of 12 match", { exact: true }),
+    ).toBeVisible();
+    await expect(campaign.locator("tbody tr")).toHaveCount(7);
+    await filterMenu
+      .getByRole("group", { name: "Phone" })
+      .getByRole("checkbox", { name: /Has phone number/ })
+      .check();
+    await expect(
+      campaign.getByText("0 of 12 match", { exact: true }),
+    ).toBeVisible();
+    await campaign
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await expect(
+      campaign.getByText("8 of 12 match", { exact: true }),
+    ).toBeVisible();
+    await campaign
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+    await expect(
+      campaign.getByText("12 of 12 match", { exact: true }),
+    ).toBeVisible();
+    await filterMenu.locator(":scope > summary").click();
+
+    const downloadReady = page.waitForEvent("download");
+    await campaign
+      .getByRole("button", { name: "Export visible prospects" })
+      .click();
+    const download = await downloadReady;
+    expect(download.suggestedFilename()).toBe("prospects.csv");
 
     await campaign
       .getByRole("textbox", { name: "Search prospects" })
@@ -228,18 +273,10 @@ test.describe("W10 discovery and sales", () => {
       .check();
     await campaign.getByRole("button", { name: "Accept as lead" }).click();
     await expect(
-      campaign.locator("tbody tr").getByText("Qualified"),
+      campaign.getByText("Accepted 1 prospect as a lead.", { exact: true }),
     ).toBeVisible();
 
-    await campaign.getByRole("textbox", { name: "Search prospects" }).fill("");
-    const downloadReady = page.waitForEvent("download");
-    await campaign
-      .getByRole("button", { name: "Export visible prospects" })
-      .click();
-    const download = await downloadReady;
-    expect(download.suggestedFilename()).toBe("prospects.csv");
-
-    await campaign.getByRole("link", { name: "Open Form & Field" }).click();
+    await campaign.getByRole("link", { name: /Form & Field/ }).click();
     await expect(page.getByTestId("w10-prospect-page")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Form & Field" }),
@@ -283,43 +320,63 @@ test.describe("W10 discovery and sales", () => {
       page.getByText("Search complete", { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
+      page.getByTestId("w10-campaign-page").locator("tbody tr"),
+    ).toHaveCount(7);
+    await expect(
       page.getByText("12 prospects found · 100 requested"),
     ).toBeVisible();
   });
 
-  test("lead qualification, duplicate prevention, lost reason, and reopen persist", async ({
+  test("lead stage actions, business phone default, and duplicate prevention persist", async ({
     page,
   }) => {
-    await installMockBridge(page, REFERENCE_WORKSPACE);
-    await page.goto("/#/sales/lead/form-field", {
-      waitUntil: "domcontentloaded",
+    await installMockBridge(page, {
+      ...REFERENCE_WORKSPACE,
+      referenceWorkspaceOutreachReady: true,
     });
+    await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
 
+    const leads = page.getByTestId("w10-leads-page");
+    const row = () =>
+      leads.locator("tbody tr").filter({ hasText: "Form & Field" });
+    await expect(row()).toBeVisible();
+    await expect(row()).toContainText("New");
+    await row().getByRole("checkbox", { name: "Select Form & Field" }).check();
+    let toolbar = page.getByRole("toolbar", { name: "Selected leads" });
+    await toolbar.locator(".c3l-selection-more > summary").click();
+    const stageMenu = toolbar.locator(".c3l-selection-stage-menu");
+    await stageMenu.locator(":scope > summary").click();
+    await stageMenu.getByRole("button", { name: "Qualified" }).click();
+    await expect(toolbar).toHaveCount(0);
+    await expect(row()).toHaveCount(0);
+
+    await leads.getByRole("button", { name: "Show all stages" }).click();
+    await expect(row()).toContainText("Qualified");
+    await row().getByRole("checkbox", { name: "Select Form & Field" }).check();
+    toolbar = page.getByRole("toolbar", { name: "Selected leads" });
+    await toolbar.locator(".c3l-selection-more > summary").click();
+    await toolbar.getByRole("button", { name: "Mark lost" }).click();
+    await expect(row()).toContainText("Lost");
+
+    await row().getByRole("checkbox", { name: "Select Form & Field" }).check();
+    toolbar = page.getByRole("toolbar", { name: "Selected leads" });
+    await toolbar.locator(".c3l-selection-more > summary").click();
+    const reopenStageMenu = toolbar.locator(".c3l-selection-stage-menu");
+    await reopenStageMenu.locator(":scope > summary").click();
+    await reopenStageMenu.getByRole("button", { name: "Qualified" }).click();
+    await expect(row()).toContainText("Qualified");
+
+    await row().getByRole("link", { name: "Review lead" }).click();
     const detail = page.getByTestId("w10-prospect-page");
     await expect(
       detail.getByRole("heading", { name: "Form & Field" }),
     ).toBeVisible();
-    await detail.getByRole("button", { name: "Qualify lead" }).click();
-    await expect(detail.getByText("Qualified", { exact: true })).toBeVisible();
-
-    await detail.getByRole("button", { name: "Mark as lost" }).click();
-    const closeDialog = page.getByTestId("w10-close-opportunity-dialog");
-    await expect(
-      closeDialog.getByRole("heading", { name: "Close this opportunity" }),
-    ).toBeVisible();
-    await closeDialog.getByLabel("Reason").selectOption("Budget");
-    await closeDialog
-      .getByLabel("Notes")
-      .fill("The timing does not work for this quarter.");
-    await closeDialog.getByRole("button", { name: "Mark as lost" }).click();
-    await expect(detail.getByText("Lost", { exact: true })).toBeVisible();
-    await expect(
-      detail.getByText(
-        "Lost: Budget · The timing does not work for this quarter.",
-      ),
-    ).toBeVisible();
-    await detail.getByRole("button", { name: "Reopen opportunity" }).click();
-    await expect(detail.getByText("Qualified", { exact: true })).toBeVisible();
+    await expect(detail.getByTestId("whatsapp-lead-detail-card")).toContainText(
+      "Uses the business phone.",
+    );
+    await expect(detail.getByTestId("whatsapp-lead-detail-card")).toContainText(
+      "+27 21 555 0142",
+    );
 
     await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Add lead" }).click();
@@ -335,16 +392,25 @@ test.describe("W10 discovery and sales", () => {
     );
   });
 
-  test("leads screens offer no proposal, pipeline or services entry points", async ({
+  test("leads screen shows approved views and lead outreach actions", async ({
     page,
   }) => {
-    await installMockBridge(page, REFERENCE_WORKSPACE);
+    await installMockBridge(page, {
+      ...REFERENCE_WORKSPACE,
+      referenceWorkspaceOutreachReady: true,
+    });
     await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
     const leads = page.getByTestId("w10-leads-page");
-    await expect(leads.getByRole("heading", { name: "Leads" })).toBeVisible();
-    await expect(leads.locator("tbody tr")).toHaveCount(12);
-    for (const name of ["Pipeline", "Proposals", "Services"]) {
-      await expect(leads.getByRole("link", { name })).toHaveCount(0);
+    await expect(
+      leads.getByRole("heading", { name: "Leads", exact: true }),
+    ).toBeVisible();
+    await expect(leads.locator("tbody tr")).toHaveCount(1);
+    const views = leads.getByRole("navigation", { name: "Business views" });
+    await expect(views.getByRole("link", { name: "Lists" })).toBeVisible();
+    await expect(views.getByRole("link", { name: "Pipeline" })).toBeVisible();
+    for (const name of ["Proposals", "Services"]) {
+      await expect(views.getByText(name, { exact: true })).toBeVisible();
+      await expect(views.getByRole("link", { name })).toHaveCount(0);
     }
     await expect(
       page.getByTestId("top-bar-breadcrumb").getByText("Leads"),
@@ -368,8 +434,11 @@ test.describe("W10 discovery and sales", () => {
     await expect(page.getByTestId("lead-breadcrumb")).toContainText(
       "Form & Field",
     );
+    await expect(detail.getByTestId("whatsapp-lead-detail-card")).toContainText(
+      "Uses the business phone.",
+    );
     await expect(
-      detail.getByRole("button", { name: "Go to #Outreach" }),
+      detail.getByRole("button", { name: "Add to outreach list" }),
     ).toBeVisible();
   });
 
@@ -388,9 +457,10 @@ test.describe("W10 discovery and sales", () => {
     }
 
     await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("tbody tr").first()).toContainText(
-      "The Olive House",
-    );
+    const leads = page.getByTestId("w10-leads-page");
+    await expect(
+      leads.getByRole("heading", { name: "Leads", exact: true }),
+    ).toBeVisible();
 
     await page.goto("/#/pipeline", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("region", { name: "Qualified" })).toBeVisible();

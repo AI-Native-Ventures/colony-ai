@@ -111,7 +111,12 @@ function isLeadsPath(pathname: string): boolean {
 }
 
 function isSalesPath(pathname: string): boolean {
-  return pathname === "/pipeline";
+  return (
+    pathname === "/lists" ||
+    pathname.startsWith("/lists/") ||
+    pathname === "/pipeline" ||
+    (pathname.startsWith("/sales/") && !isLeadsPath(pathname))
+  );
 }
 
 function isMoneyPath(pathname: string): boolean {

@@ -2,22 +2,16 @@ import { Link } from "@tanstack/react-router";
 
 import {
   CheckGlyph,
-  ChevronRightGlyph,
   CloseGlyph,
   DownloadGlyph,
   MessageGlyph,
   SearchGlyph,
 } from "./DiscoveryIcons";
-import { firstName, RunnerAvatar, useRunnerProfile } from "./DiscoveryRunner";
+import { ListPlus, MoreHorizontal, Sparkles } from "lucide-react";
 import { BusinessLogoMark } from "./BusinessLogoMark";
-import {
-  fitLabel,
-  prospectStatus,
-  type CampaignProspect,
-  type ProspectFilter,
-} from "./CampaignHelpers";
+import type { CampaignProspect, ProspectFilter } from "./CampaignHelpers";
 import type { AcceptButtonState } from "./bulkAccept";
-import type { DiscoveryRunner } from "./discoveryProvider";
+import type { ProspectStage } from "./businessRecordContract";
 import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
 import { discoveryTagFitLabel } from "./discoveryTags";
 
@@ -106,25 +100,30 @@ export function CampaignToolbar({
 export function CampaignSelectionBar({
   accept,
   count,
-  matching,
   onAccept,
+  onAddToList,
+  onAskScout,
+  onBatch,
+  onChangeStage,
+  onMarkLost,
+  canWrite,
+  busy,
   onClear,
   onDiscuss,
-  onSelectAll,
-  runner,
 }: {
   accept: AcceptButtonState;
   count: number;
-  /** Rows that match the current search and filter. */
-  matching: number;
   onAccept: () => void;
+  onAddToList: () => void;
+  onAskScout: () => void;
+  onBatch: () => void;
+  onChangeStage: (stage: ProspectStage) => void;
+  onMarkLost: () => void;
+  canWrite: boolean;
+  busy: boolean;
   onClear: () => void;
   onDiscuss: () => void;
-  onSelectAll: () => void;
-  runner: DiscoveryRunner | null;
 }) {
-  const runnerProfile = useRunnerProfile(runner);
-  const discussWith = runner && runnerProfile.isAgent ? runner : null;
   return (
     <section
       aria-label="Selected prospects"
@@ -132,15 +131,6 @@ export function CampaignSelectionBar({
       role="toolbar"
     >
       <strong>{count} selected</strong>
-      {count < matching ? (
-        <button
-          className="c3d-selection-action"
-          onClick={onSelectAll}
-          type="button"
-        >
-          Select all {matching} matching
-        </button>
-      ) : null}
       <button
         aria-describedby={accept.note ? "c3d-selection-note" : undefined}
         className="c3d-selection-action c3d-selection-action--light"
@@ -148,31 +138,82 @@ export function CampaignSelectionBar({
         onClick={onAccept}
         type="button"
       >
-        <CheckGlyph /> {accept.label}
+        <CheckGlyph />
+        {accept.label.startsWith("Accepting ")
+          ? accept.label
+          : "Accept as lead"}
+      </button>
+      <button
+        className="c3d-selection-action c3d-selection-action--light"
+        disabled={!canWrite || busy}
+        onClick={onAddToList}
+        type="button"
+      >
+        <ListPlus aria-hidden="true" size={15} /> Add to outreach list
       </button>
       <button
         className="c3d-selection-action"
-        onClick={onDiscuss}
+        disabled={!canWrite || busy}
+        onClick={onBatch}
         type="button"
       >
-        {discussWith ? (
-          <>
-            <RunnerAvatar runner={discussWith} size={22} />
-            Discuss with {firstName(discussWith.name)}
-          </>
-        ) : (
-          <>
-            <MessageGlyph size={16} /> Discuss in Sales
-          </>
-        )}
+        WhatsApp batch
       </button>
+      <button
+        className="c3d-selection-action c3d-selection-ask"
+        onClick={onAskScout}
+        type="button"
+      >
+        <Sparkles aria-hidden="true" size={15} /> Ask Scout
+      </button>
+      <details className="c3d-selection-more">
+        <summary>
+          <MoreHorizontal aria-hidden="true" size={15} /> More
+        </summary>
+        <div className="c3d-selection-more-menu">
+          <details className="c3d-selection-stage-menu">
+            <summary>
+              Change stage <span aria-hidden="true">›</span>
+            </summary>
+            <div>
+              {(
+                [
+                  ["qualified", "Qualified"],
+                  ["in_conversation", "In conversation"],
+                  ["proposal", "Proposal"],
+                  ["won", "Won"],
+                ] as Array<[ProspectStage, string]>
+              ).map(([stage, label]) => (
+                <button
+                  disabled={!canWrite || busy}
+                  key={stage}
+                  onClick={() => onChangeStage(stage)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
+          <button
+            disabled={!canWrite || busy}
+            onClick={onMarkLost}
+            type="button"
+          >
+            Mark lost
+          </button>
+          <button onClick={onDiscuss} type="button">
+            <MessageGlyph size={16} /> Discuss in Sales
+          </button>
+        </div>
+      </details>
       <button
         aria-label="Clear selection"
         className="c3d-selection-clear"
         onClick={onClear}
         type="button"
       >
-        <CloseGlyph />
+        <CloseGlyph /> Clear
       </button>
       {accept.note ? (
         <p className="c3d-selection-note" id="c3d-selection-note">
@@ -184,11 +225,13 @@ export function CampaignSelectionBar({
 }
 
 export function CampaignTable({
+  outreachByLead,
   onToggle,
   onToggleAll,
   rows,
   selected,
 }: {
+  outreachByLead: ReadonlyMap<string, { phone: string; whatsapp: string }>;
   onToggle: (prospectId: string, checked: boolean) => void;
   onToggleAll: (checked: boolean) => void;
   rows: CampaignProspect[];
@@ -204,31 +247,38 @@ export function CampaignTable({
           <tr {...ROW_ROLE}>
             <th {...COLUMN_HEADER_ROLE}>
               <input
-                aria-label={`Select all ${rows.length} matching prospects`}
+                aria-label={`Select all ${rows.length} prospects on this page`}
                 checked={allSelected}
                 onChange={(event) => onToggleAll(event.currentTarget.checked)}
                 type="checkbox"
               />
             </th>
-            <th {...COLUMN_HEADER_ROLE}>Business / person</th>
+            <th {...COLUMN_HEADER_ROLE}>Business</th>
+            <th {...COLUMN_HEADER_ROLE}>Phone</th>
             <th {...COLUMN_HEADER_ROLE}>Location</th>
             <th {...COLUMN_HEADER_ROLE}>Fit</th>
-            <th {...COLUMN_HEADER_ROLE}>Status</th>
-            <th aria-label="Open profile" {...COLUMN_HEADER_ROLE} />
+            <th {...COLUMN_HEADER_ROLE}>WhatsApp</th>
           </tr>
         </thead>
         <tbody {...ROWGROUP_ROLE}>
           {rows.map((row) => {
             const prospect = row.record.prospect;
-            const status = prospectStatus(prospect);
             const isSelected = selected.has(row.record.prospectId);
             const score = prospect.fitScore;
             const tagFit = discoveryTagFitLabel(prospect.discoveryTags ?? []);
+            const fit =
+              tagFit ??
+              (score == null
+                ? "Not scored"
+                : score >= 87
+                  ? "Strong fit"
+                  : "Possible fit");
             const matchedTags = (prospect.discoveryTags ?? [])
               .slice()
               .sort((left, right) => Number(right.picked) - Number(left.picked))
               .slice(0, 3)
               .map((match) => match.tag);
+            const outreach = outreachByLead.get(row.record.prospectId);
             return (
               <tr
                 aria-selected={isSelected}
@@ -275,37 +325,21 @@ export function CampaignTable({
                     </span>
                   </Link>
                 </td>
+                <td className="c3d-phone" {...CELL_ROLE}>
+                  {outreach?.phone || "Not set"}
+                </td>
                 <td className="c3d-location" {...CELL_ROLE}>
                   {prospect.location ?? "Not set"}
                 </td>
                 <td {...CELL_ROLE}>
                   <span className="c3d-fit">
-                    <span className="c3d-fit-score">
-                      {tagFit ?? fitLabel(prospect)}
-                    </span>
+                    <span className="c3d-fit-score">{fit}</span>
                     <span aria-hidden="true" className="c3d-fit-bar">
                       <i style={{ width: `${Math.min(100, score ?? 0)}%` }} />
                     </span>
                   </span>
                 </td>
-                <td {...CELL_ROLE}>
-                  <span
-                    className={`c3d-pill c3d-pill--${status.tone}`}
-                    title={status.label}
-                  >
-                    {status.label}
-                  </span>
-                </td>
-                <td {...CELL_ROLE}>
-                  <Link
-                    aria-label={`Open ${prospect.party.displayName}`}
-                    className="c3d-open"
-                    params={{ prospectId: row.record.prospectId }}
-                    to="/sales/lead/$prospectId"
-                  >
-                    <ChevronRightGlyph />
-                  </Link>
-                </td>
+                <td {...CELL_ROLE}>{outreach?.whatsapp ?? "Not contacted"}</td>
               </tr>
             );
           })}

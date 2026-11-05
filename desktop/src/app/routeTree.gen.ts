@@ -11,6 +11,7 @@ import { Route as settingsRouteImport } from "./routes/settings";
 import { Route as powerRouteImport } from "./routes/power";
 import { Route as pipelineRouteImport } from "./routes/pipeline";
 import { Route as moneyRouteImport } from "./routes/money";
+import { Route as listsRouteImport } from "./routes/lists";
 import { Route as leadsRouteImport } from "./routes/leads";
 import { Route as discoveryRouteImport } from "./routes/discovery";
 import { Route as clientsRouteImport } from "./routes/clients";
@@ -26,6 +27,7 @@ import { Route as navigationDothistoryRouteImport } from "./routes/navigation.hi
 import { Route as moneyDotrevenueRouteImport } from "./routes/money.revenue";
 import { Route as moneyDotinvoicesRouteImport } from "./routes/money.invoices";
 import { Route as messagesDotnewRouteImport } from "./routes/messages.new";
+import { Route as listsDotlistIdRouteImport } from "./routes/lists.$listId";
 import { Route as hireDotsuccessRouteImport } from "./routes/hire.success";
 import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotrolePackRouteImport } from "./routes/hire.role-pack";
@@ -80,6 +82,11 @@ const pipelineRoute = pipelineRouteImport.update({
 const moneyRoute = moneyRouteImport.update({
   id: "/money",
   path: "/money",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const listsRoute = listsRouteImport.update({
+  id: "/lists",
+  path: "/lists",
   getParentRoute: () => rootRouteImport,
 } as any);
 const leadsRoute = leadsRouteImport.update({
@@ -155,6 +162,11 @@ const moneyDotinvoicesRoute = moneyDotinvoicesRouteImport.update({
 const messagesDotnewRoute = messagesDotnewRouteImport.update({
   id: "/messages/new",
   path: "/messages/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const listsDotlistIdRoute = listsDotlistIdRouteImport.update({
+  id: "/lists/$listId",
+  path: "/lists/$listId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const hireDotsuccessRoute = hireDotsuccessRouteImport.update({
@@ -304,6 +316,7 @@ export interface FileRoutesByFullPath {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/leads": typeof leadsRoute;
+  "/lists": typeof listsRoute;
   "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -322,6 +335,7 @@ export interface FileRoutesByFullPath {
   "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
+  "/lists/$listId": typeof listsDotlistIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/invoices": typeof moneyDotinvoicesRoute;
   "/money/revenue": typeof moneyDotrevenueRoute;
@@ -352,6 +366,7 @@ export interface FileRoutesByTo {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/leads": typeof leadsRoute;
+  "/lists": typeof listsRoute;
   "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -370,6 +385,7 @@ export interface FileRoutesByTo {
   "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
+  "/lists/$listId": typeof listsDotlistIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/invoices": typeof moneyDotinvoicesRoute;
   "/money/revenue": typeof moneyDotrevenueRoute;
@@ -401,6 +417,7 @@ export interface FileRoutesById {
   "/clients": typeof clientsRoute;
   "/discovery": typeof discoveryRoute;
   "/leads": typeof leadsRoute;
+  "/lists": typeof listsRoute;
   "/money": typeof moneyRoute;
   "/pipeline": typeof pipelineRoute;
   "/power": typeof powerRoute;
@@ -419,6 +436,7 @@ export interface FileRoutesById {
   "/hire/role-pack": typeof hireDotrolePackRoute;
   "/hire/roles": typeof hireDotrolesRoute;
   "/hire/success": typeof hireDotsuccessRoute;
+  "/lists/$listId": typeof listsDotlistIdRoute;
   "/messages/new": typeof messagesDotnewRoute;
   "/money/invoices": typeof moneyDotinvoicesRoute;
   "/money/revenue": typeof moneyDotrevenueRoute;
@@ -451,6 +469,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/leads"
+    | "/lists"
     | "/money"
     | "/pipeline"
     | "/power"
@@ -469,6 +488,7 @@ export interface FileRouteTypes {
     | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
+    | "/lists/$listId"
     | "/messages/new"
     | "/money/invoices"
     | "/money/revenue"
@@ -499,6 +519,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/leads"
+    | "/lists"
     | "/money"
     | "/pipeline"
     | "/power"
@@ -517,6 +538,7 @@ export interface FileRouteTypes {
     | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
+    | "/lists/$listId"
     | "/messages/new"
     | "/money/invoices"
     | "/money/revenue"
@@ -547,6 +569,7 @@ export interface FileRouteTypes {
     | "/clients"
     | "/discovery"
     | "/leads"
+    | "/lists"
     | "/money"
     | "/pipeline"
     | "/power"
@@ -565,6 +588,7 @@ export interface FileRouteTypes {
     | "/hire/role-pack"
     | "/hire/roles"
     | "/hire/success"
+    | "/lists/$listId"
     | "/messages/new"
     | "/money/invoices"
     | "/money/revenue"
@@ -596,6 +620,7 @@ export interface RootRouteChildren {
   clientsRoute: typeof clientsRoute;
   discoveryRoute: typeof discoveryRoute;
   leadsRoute: typeof leadsRoute;
+  listsRoute: typeof listsRoute;
   moneyRoute: typeof moneyRoute;
   pipelineRoute: typeof pipelineRoute;
   powerRoute: typeof powerRoute;
@@ -614,6 +639,7 @@ export interface RootRouteChildren {
   hireDotrolePackRoute: typeof hireDotrolePackRoute;
   hireDotrolesRoute: typeof hireDotrolesRoute;
   hireDotsuccessRoute: typeof hireDotsuccessRoute;
+  listsDotlistIdRoute: typeof listsDotlistIdRoute;
   messagesDotnewRoute: typeof messagesDotnewRoute;
   moneyDotinvoicesRoute: typeof moneyDotinvoicesRoute;
   moneyDotrevenueRoute: typeof moneyDotrevenueRoute;
@@ -679,6 +705,13 @@ declare module "@tanstack/react-router" {
       path: "/money";
       fullPath: "/money";
       preLoaderRoute: typeof moneyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/lists": {
+      id: "/lists";
+      path: "/lists";
+      fullPath: "/lists";
+      preLoaderRoute: typeof listsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/leads": {
@@ -784,6 +817,13 @@ declare module "@tanstack/react-router" {
       path: "/messages/new";
       fullPath: "/messages/new";
       preLoaderRoute: typeof messagesDotnewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/lists/$listId": {
+      id: "/lists/$listId";
+      path: "/lists/$listId";
+      fullPath: "/lists/$listId";
+      preLoaderRoute: typeof listsDotlistIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/hire/success": {
@@ -972,6 +1012,7 @@ const rootRouteChildren: RootRouteChildren = {
   clientsRoute: clientsRoute,
   discoveryRoute: discoveryRoute,
   leadsRoute: leadsRoute,
+  listsRoute: listsRoute,
   moneyRoute: moneyRoute,
   pipelineRoute: pipelineRoute,
   powerRoute: powerRoute,
@@ -990,6 +1031,7 @@ const rootRouteChildren: RootRouteChildren = {
   hireDotrolePackRoute: hireDotrolePackRoute,
   hireDotrolesRoute: hireDotrolesRoute,
   hireDotsuccessRoute: hireDotsuccessRoute,
+  listsDotlistIdRoute: listsDotlistIdRoute,
   messagesDotnewRoute: messagesDotnewRoute,
   moneyDotinvoicesRoute: moneyDotinvoicesRoute,
   moneyDotrevenueRoute: moneyDotrevenueRoute,
