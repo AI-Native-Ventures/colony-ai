@@ -2,7 +2,7 @@
 
 mod crypto;
 mod google;
-mod mail;
+pub(crate) mod mail;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -42,7 +42,7 @@ const MAIL_BATCH_SIZE: i64 = 16;
 /// Shared account clients. The verifier owns an in-memory cache of Google keys.
 pub struct AccountServices {
     pub(crate) google_verifier: google::GoogleIdTokenVerifier,
-    pub(crate) http_client: reqwest::Client,
+    pub(crate) code_mailer: Arc<dyn mail::CodeMailer>,
 }
 
 impl AccountServices {
@@ -63,7 +63,15 @@ impl AccountServices {
     fn with_google_verifier(google_verifier: google::GoogleIdTokenVerifier) -> Self {
         Self {
             google_verifier,
-            http_client: reqwest::Client::new(),
+            code_mailer: Arc::new(mail::ResendCodeMailer::new()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_code_mailer_for_tests(code_mailer: Arc<dyn mail::CodeMailer>) -> Self {
+        Self {
+            google_verifier: google::GoogleIdTokenVerifier::google_default(),
+            code_mailer,
         }
     }
 }
@@ -186,7 +194,8 @@ struct PasswordRequest {
     new_password: SecretString,
 }
 
-struct SecretString(Zeroizing<String>);
+/// A JSON string moved into zeroizing memory immediately after deserialization.
+pub(crate) struct SecretString(Zeroizing<String>);
 
 impl<'de> Deserialize<'de> for SecretString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -210,11 +219,13 @@ impl Serialize for SecretString {
 }
 
 impl SecretString {
-    fn as_str(&self) -> &str {
+    /// Borrow the transient secret without copying it.
+    pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
-    fn into_inner(self) -> Zeroizing<String> {
+    /// Consume the wrapper and retain zeroizing ownership of the secret.
+    pub(crate) fn into_inner(self) -> Zeroizing<String> {
         self.0
     }
 }
@@ -265,7 +276,7 @@ fn account_unavailable() -> (StatusCode, Json<Value>) {
     )
 }
 
-pub(super) fn normalize_email(email: &str) -> Option<String> {
+pub(crate) fn normalize_email(email: &str) -> Option<String> {
     let email = email.trim().to_lowercase();
     let (local, domain) = email.split_once('@')?;
     if email.len() > 254
@@ -1289,15 +1300,17 @@ async fn deliver_mail(state: &AppState, message: &buzz_db::accounts::AccountMail
             )
             .await
             .map_err(|_| "sink_write_failed"),
-        Some(AccountMailMode::Resend) => mail::send_resend(
-            &state.account_services.http_client,
-            &state.config.accounts,
-            &message.recipient,
-            &message.purpose,
-            &code,
-        )
-        .await
-        .map_err(|_| "provider_unavailable"),
+        Some(AccountMailMode::Resend) => state
+            .account_services
+            .code_mailer
+            .send_code(
+                &state.config.accounts,
+                &message.recipient,
+                mail::CodeMailKind::from_account_purpose(&message.purpose),
+                &code,
+            )
+            .await
+            .map_err(|_| "provider_unavailable"),
         None => Err("mail_unconfigured"),
     };
     if delivered.is_ok() {

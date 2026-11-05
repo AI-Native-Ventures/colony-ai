@@ -4,6 +4,8 @@ import {
   createGoogleAdminSession,
   request,
   requestOperatorProbe,
+  startEmailAdminSession,
+  verifyEmailAdminSession,
   type AuthMode,
 } from "./api";
 import type {
@@ -221,6 +223,20 @@ export function OperatorAdminApp({ path }: { path: string }) {
     }
   };
 
+  const startEmailSignIn = (email: string) => startEmailAdminSession(email);
+
+  const completeEmailSignIn = async (email: string, code: string) => {
+    await verifyEmailAdminSession(email, code);
+    sessionStorage.removeItem(authModeStorageKey);
+    const probe = await requestOperatorProbe("cookie");
+    if (probe.role === "operator") {
+      setSession({ status: "signed-in", authMode: "cookie" });
+      return;
+    }
+    sessionStorage.removeItem(authModeStorageKey);
+    setSession({ status: "denied" });
+  };
+
   const authMode = session.status === "signed-in" ? session.authMode : "cookie";
   const needsRemoteBadge =
     session.status === "signed-in" &&
@@ -256,6 +272,8 @@ export function OperatorAdminApp({ path }: { path: string }) {
         fallbackBusy={false}
         onGoogle={startGoogleSignIn}
         onNip98={signInWithNip98}
+        onEmailStart={startEmailSignIn}
+        onEmailVerify={completeEmailSignIn}
       />
     );
   }
@@ -284,6 +302,8 @@ export function OperatorAdminApp({ path }: { path: string }) {
         fallbackBusy={fallbackBusy}
         onGoogle={startGoogleSignIn}
         onNip98={signInWithNip98}
+        onEmailStart={startEmailSignIn}
+        onEmailVerify={completeEmailSignIn}
       />
     );
   }
@@ -375,14 +395,78 @@ function SignInScreen({
   fallbackBusy,
   onGoogle,
   onNip98,
+  onEmailStart,
+  onEmailVerify,
 }: {
   message?: string;
   googleConfigured: boolean;
   fallbackBusy: boolean;
   onGoogle: () => void;
   onNip98: () => void;
+  onEmailStart: (email: string) => Promise<{ retryAfterSeconds: number }>;
+  onEmailVerify: (email: string, code: string) => Promise<void>;
 }) {
   const hasNip07 = Boolean((window as Window & { nostr?: unknown }).nostr);
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"request" | "code">("request");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState<string>();
+  const [emailNotice, setEmailNotice] = useState<string>();
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setTimeout(
+      () => setResendSeconds((seconds) => Math.max(0, seconds - 1)),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resendSeconds]);
+
+  const requestCode = async () => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setEmailError("Enter the email address you use for Colony admin.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailError(undefined);
+    try {
+      const result = await onEmailStart(normalizedEmail);
+      setEmail(normalizedEmail);
+      setCode("");
+      setStep("code");
+      setEmailNotice("Check your inbox for an eight-digit code.");
+      setResendSeconds(Math.max(0, result.retryAfterSeconds));
+    } catch {
+      setEmailNotice(undefined);
+      setEmailError("We could not send a code. Please try again.");
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const verifyCode = async () => {
+    if (code.length !== 8) {
+      setEmailError("Enter the eight-digit code from your email.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailError(undefined);
+    setEmailNotice("Signing you in...");
+    try {
+      await onEmailVerify(email, code);
+    } catch {
+      setEmailNotice(undefined);
+      setEmailError(
+        "That code did not work. Enter the latest code or send another one.",
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
   return (
     <div className="ad-auth-page">
       <section className="ad-auth-card" aria-labelledby="ad-sign-in-title">
@@ -391,12 +475,108 @@ function SignInScreen({
         </span>
         <p className="ad-eyebrow">Colony admin · Operator only</p>
         <h1 id="ad-sign-in-title">Sign in with your Colony account</h1>
-        <p>Use the Google account connected to your Colony operator key.</p>
+        <p>
+          Use your approved operator email, Google account, or NIP-98 key to
+          continue.
+        </p>
         {message ? (
           <p className="ad-auth-message" role="alert">
             {message}
           </p>
         ) : null}
+        <form
+          className="ad-email-code-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (step === "request") void requestCode();
+            else void verifyCode();
+          }}
+        >
+          {step === "request" ? (
+            <>
+              <label className="ad-email-code-label" htmlFor="ad-operator-email">
+                Operator email address
+              </label>
+              <input
+                id="ad-operator-email"
+                className="ad-email-code-input"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                disabled={emailBusy}
+              />
+              <button
+                className="ad-email-code-button"
+                type="submit"
+                disabled={emailBusy}
+              >
+                {emailBusy ? "Sending code..." : "Email me a code"}
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="ad-email-code-label" htmlFor="ad-operator-code">
+                Eight-digit code
+              </label>
+              <input
+                id="ad-operator-code"
+                className="ad-email-code-input ad-email-code-input-code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={8}
+                value={code}
+                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                disabled={emailBusy}
+              />
+              <button
+                className="ad-email-code-button"
+                type="submit"
+                disabled={emailBusy}
+              >
+                {emailBusy ? "Verifying code..." : "Verify code"}
+              </button>
+              <button
+                className="ad-email-code-resend"
+                type="button"
+                onClick={() => void requestCode()}
+                disabled={emailBusy || resendSeconds > 0}
+              >
+                {resendSeconds > 0
+                  ? `Resend code in ${resendSeconds}s`
+                  : "Resend code"}
+              </button>
+              <button
+                className="ad-email-code-change"
+                type="button"
+                onClick={() => {
+                  setStep("request");
+                  setCode("");
+                  setEmailError(undefined);
+                  setEmailNotice(undefined);
+                }}
+                disabled={emailBusy}
+              >
+                Use a different email
+              </button>
+            </>
+          )}
+          {emailNotice ? (
+            <p className="ad-email-code-notice" role="status">
+              {emailNotice}
+            </p>
+          ) : null}
+          {emailError ? (
+            <p className="ad-email-code-error" role="alert">
+              {emailError}
+            </p>
+          ) : null}
+        </form>
+        <div className="ad-auth-divider">
+          <span>or</span>
+        </div>
         <button
           className="ad-google-button"
           type="button"

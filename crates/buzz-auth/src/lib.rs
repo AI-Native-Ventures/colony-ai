@@ -41,7 +41,8 @@ pub use nip98_replay::{
     MAX_REPLAY_TTL_SECS,
 };
 pub use rate_limit::{
-    ip_rate_limit_key, rate_limit_key, LimitType, RateLimitConfig, RateLimitResult, RateLimiter,
+    ip_rate_limit_key, opaque_rate_limit_key, rate_limit_key, LimitType, OpaqueRateLimitScope,
+    RateLimitConfig, RateLimitResult, RateLimiter,
 };
 pub use scope::{parse_scopes, Scope};
 

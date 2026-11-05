@@ -62,6 +62,130 @@ test("anonymous visitors see the Colony sign-in choices", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
 });
 
+test("an operator can request, enter, and verify an emailed code without a NIP credential", async ({
+  page,
+}) => {
+  let probeCount = 0;
+  let startBody: { email?: string } | undefined;
+  let verifyBody: { email?: string; code?: string } | undefined;
+  let startHeaders: Record<string, string> | undefined;
+  let verifyHeaders: Record<string, string> | undefined;
+
+  await page.route("**/api/admin/v1/probe", (route) => {
+    probeCount += 1;
+    return route.fulfill(
+      probeCount === 1
+        ? {
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: { code: "unauthorized", message: "sign in" },
+            }),
+          }
+        : {
+            contentType: "application/json",
+            body: JSON.stringify({ role: "operator", source: "config" }),
+          },
+    );
+  });
+  await page.route("**/api/admin/v1/session/email/start", async (route) => {
+    startHeaders = route.request().headers();
+    startBody = route.request().postDataJSON() as { email?: string };
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "email_code_requested",
+        retryAfterSeconds: 30,
+      }),
+    });
+  });
+  await page.route("**/api/admin/v1/session/email/verify", async (route) => {
+    verifyHeaders = route.request().headers();
+    verifyBody = route.request().postDataJSON() as {
+      email?: string;
+      code?: string;
+    };
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "ok",
+        pubkeyShort: "ab12cd34",
+        expiresInSeconds: 28800,
+      }),
+    });
+  });
+
+  await page.goto("/overview");
+  await page.getByLabel("Operator email address").fill("operator@example.test");
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await expect(
+    page.getByText("Check your inbox for an eight-digit code."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resend code in 30s" }),
+  ).toBeDisabled();
+  await page.getByLabel("Eight-digit code").fill("12345678");
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  expect(startBody).toEqual({ email: "operator@example.test" });
+  expect(verifyBody).toEqual({
+    email: "operator@example.test",
+    code: "12345678",
+  });
+  expect(startHeaders?.authorization).toBeUndefined();
+  expect(verifyHeaders?.authorization).toBeUndefined();
+  expect(startHeaders?.["x-colony-admin"]).toBeUndefined();
+  expect(verifyHeaders?.["x-colony-admin"]).toBeUndefined();
+});
+
+test("email-code failures stay clear and generic, with an available resend path", async ({
+  page,
+}) => {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/email/start", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "email_code_requested",
+        retryAfterSeconds: 0,
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/email/verify", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "invalid_email_code",
+          message: "The code is invalid or has expired.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/overview");
+  await page.getByLabel("Operator email address").fill("operator@example.test");
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await page.getByLabel("Eight-digit code").fill("00000000");
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(
+    page.getByText("That code did not work. Enter the latest code or send another one."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+});
+
 test("Google OIDC posts the fragment token and stored nonce, then checks the operator role", async ({
   page,
 }) => {

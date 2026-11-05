@@ -410,6 +410,29 @@ impl Db {
             .await?;
         Ok(())
     }
+
+    /// Record an emailed operator-session start or verification outcome without
+    /// retaining the email address, source IP, code, code hash, or salt.
+    #[datastore_span(name = "record_operator_email_login", system = "postgresql")]
+    pub async fn record_operator_email_login_audit(
+        &self,
+        operation: &str,
+        outcome: &str,
+        email_hash: &[u8; 32],
+        ip_bucket_hash: &[u8; 32],
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO relay_operator_email_login_audit \
+             (operation, outcome, email_hash, ip_bucket_hash) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(operation)
+        .bind(outcome)
+        .bind(email_hash.as_slice())
+        .bind(ip_bucket_hash.as_slice())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -49,7 +49,7 @@ mod tests {
     use std::net::IpAddr;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use buzz_auth::{AuthError, RateLimitResult, RateLimiter};
+    use buzz_auth::{AuthError, OpaqueRateLimitScope, RateLimitResult, RateLimiter};
     use buzz_core::CommunityId;
     use nostr::Keys;
     use uuid::Uuid;
@@ -85,6 +85,19 @@ mod tests {
         async fn check_ip_connection(
             &self,
             _ip: &IpAddr,
+            _window_secs: u64,
+            _limit: u64,
+        ) -> Result<RateLimitResult, AuthError> {
+            match self.outcome {
+                StubOutcome::Denied => Ok(RateLimitResult::denied(11, 10, 1)),
+                StubOutcome::Failed => Err(AuthError::Internal("redis unavailable".to_owned())),
+            }
+        }
+
+        async fn check_opaque(
+            &self,
+            _scope: OpaqueRateLimitScope,
+            _identifier: &[u8; 32],
             _window_secs: u64,
             _limit: u64,
         ) -> Result<RateLimitResult, AuthError> {

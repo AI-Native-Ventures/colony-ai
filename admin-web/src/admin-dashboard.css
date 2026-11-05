@@ -164,7 +164,8 @@
 .ad-app select:focus-visible,
 .ad-app input:focus-visible,
 .ad-auth-page a:focus-visible,
-.ad-auth-page button:focus-visible {
+.ad-auth-page button:focus-visible,
+.ad-auth-page input:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ad-purple) 72%, white);
   outline-offset: 2px;
 }
@@ -1119,6 +1120,9 @@
   --ad-text: #28252e;
   --ad-muted: #827d87;
   --ad-purple: #6854dc;
+  --ad-good: #178a5b;
+  --ad-red: #ba3657;
+  --ad-red-bg: #fce9ee;
   display: grid;
   min-height: 100vh;
   place-items: center;
@@ -1177,6 +1181,94 @@
   border-radius: 8px;
   color: var(--ad-red);
   background: var(--ad-red-bg);
+}
+
+.ad-email-code-form {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  margin-top: 19px;
+}
+
+.ad-email-code-label {
+  color: var(--ad-text);
+  font-size: 0.67rem;
+  font-weight: 650;
+}
+
+.ad-email-code-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--ad-line);
+  border-radius: 8px;
+  color: var(--ad-text);
+  background: var(--ad-surface);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.ad-email-code-input::placeholder {
+  color: var(--ad-muted);
+}
+
+.ad-email-code-input-code {
+  letter-spacing: 0.14em;
+}
+
+.ad-email-code-button {
+  min-height: 41px;
+  margin-top: 4px;
+  padding: 8px 13px;
+  border: 1px solid var(--ad-purple);
+  border-radius: 8px;
+  color: #fff;
+  background: var(--ad-purple);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 630;
+  cursor: pointer;
+}
+
+.ad-email-code-button:disabled,
+.ad-email-code-resend:disabled,
+.ad-email-code-change:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ad-email-code-resend,
+.ad-email-code-change {
+  justify-self: start;
+  padding: 2px 0;
+  border: 0;
+  color: var(--ad-purple);
+  background: transparent;
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 620;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ad-email-code-change {
+  color: var(--ad-muted);
+  font-weight: 520;
+}
+
+.ad-email-code-notice,
+.ad-email-code-error {
+  margin: 2px 0 0;
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.ad-email-code-notice {
+  color: var(--ad-good);
+}
+
+.ad-email-code-error {
+  color: var(--ad-red);
 }
 
 .ad-google-button,
