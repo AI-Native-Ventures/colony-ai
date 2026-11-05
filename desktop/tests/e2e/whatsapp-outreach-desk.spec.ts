@@ -5,6 +5,7 @@ import {
   GREEN_SHUTTER_WA_ID,
   JACARANDA_WA_ID,
   OUTREACH_CHANNEL_ID,
+  QUEUED_LEAD_WA_ID,
   installWhatsAppMockBridge,
   gotoWhatsAppScreen,
 } from "../helpers/whatsappOutreach";
@@ -116,6 +117,44 @@ test.describe("Outreach desk", () => {
     await expect
       .soft(page.getByTestId("outreach-desk-pipeline"))
       .not.toContainText("Horizon Labs");
+  });
+
+  test("shows approved unsent outreach in the first pipeline column but not Needs you", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      queuedFixture: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+
+    const needs = page.getByTestId("outreach-desk-needs-you");
+    await expect(needs).not.toContainText("Linden Tree Lodge");
+
+    await page.getByTestId("channel-view-tab-pipeline").click();
+    const queuedColumn = page.locator(
+      '.c3wa-pipeline-column[data-stage="queued"]',
+    );
+    await expect(queuedColumn).toBeVisible();
+    await expect(
+      queuedColumn.getByRole("heading", { name: "Queued to contact" }),
+    ).toBeVisible();
+    await expect(queuedColumn.locator("> header > span")).toHaveText("1");
+
+    const queuedCard = queuedColumn.getByTestId(
+      `outreach-pipeline-card-${QUEUED_LEAD_WA_ID}`,
+    );
+    await expect(queuedCard).toContainText("Linden Tree Lodge");
+    await expect(queuedCard).toContainText("+27 79 444 1101");
+    await expect(queuedCard).toContainText("Queued");
+    await expect(queuedCard).toContainText(
+      "Queued from Batch: Message 12 guesthouses in Melville",
+    );
+    const openLead = queuedCard.getByRole("button", { name: "Open lead" });
+    await expect(openLead).toBeVisible();
+    await openLead.click();
+    await expect(page.getByTestId("w10-prospect-page")).toBeVisible();
   });
 
   test("opens on Needs you, approves a batch, books a call, and moves a pipeline card with the keyboard", async ({

@@ -119,6 +119,7 @@ async function openDesk(
   await installWhatsAppMockBridge(page, theme, {
     businessName,
     deskFixture: true,
+    queuedFixture: true,
   });
   await installLogoPreview(page);
   if ((page.viewportSize()?.width ?? 1440) < 600) {

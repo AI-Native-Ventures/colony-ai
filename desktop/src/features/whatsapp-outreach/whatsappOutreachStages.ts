@@ -5,6 +5,7 @@ import {
 } from "./whatsappOutreachModels";
 
 export const WHATSAPP_PIPELINE_STAGES = [
+  "queued",
   "contacted",
   "replied",
   "wants_call",
@@ -14,12 +15,19 @@ export const WHATSAPP_PIPELINE_STAGES = [
 ] as const satisfies readonly WhatsAppStage[];
 
 export const WHATSAPP_MANUAL_STAGES = [
-  ...WHATSAPP_PIPELINE_STAGES,
+  // Queue membership is derived by the relay and is never a manual target.
+  "contacted",
+  "replied",
+  "wants_call",
+  "call_booked",
+  "quote_sent",
+  "client",
   "no_thanks",
 ] as const satisfies readonly WhatsAppStage[];
 
 export const WHATSAPP_STAGE_LABELS: Record<WhatsAppStage, string> = {
   none: "Not contacted",
+  queued: "Queued to contact",
   contacted: "Contacted",
   replied: "Replied",
   wants_call: "Wants a call",
@@ -45,6 +53,7 @@ export function getWhatsAppNeedsYouItems(
   const draftIds = new Set(drafts.map((draft) => draft.waId));
   const itemByWaId = new Map<string, WhatsAppNeedsYouItem>();
   for (const contact of contacts) {
+    if (contact.stage === "queued") continue;
     const hasDraft = draftIds.has(contact.waId);
     let item: WhatsAppNeedsYouItem | null = null;
     if (contact.stage === "wants_call") {

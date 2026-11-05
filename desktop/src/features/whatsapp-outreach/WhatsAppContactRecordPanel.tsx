@@ -270,6 +270,12 @@ export function WhatsAppContactRecordPanel({
         >
           <h3 id="whatsapp-record-activity-heading">Activity</h3>
           <dl className="c3wa-record-facts">
+            {contact.stage === "queued" ? (
+              <div>
+                <dt>Queued from</dt>
+                <dd>{contact.queuedFrom ?? "Outreach queue"}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>Last contacted</dt>
               <dd>{formatStamp(contact.lastContactedAt)}</dd>

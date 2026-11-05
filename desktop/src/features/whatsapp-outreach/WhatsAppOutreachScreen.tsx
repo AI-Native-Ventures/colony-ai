@@ -256,6 +256,12 @@ export function WhatsAppOutreachScreen({
           selectedContact.stageChangedAt ??
           thread?.contact.stageChangedAt ??
           null,
+        queuedFrom:
+          selectedContact.queuedFrom ?? thread?.contact.queuedFrom ?? null,
+        outreachStatus:
+          selectedContact.outreachStatus ??
+          thread?.contact.outreachStatus ??
+          null,
         lastContactedAt:
           selectedContact.lastContactedAt ??
           thread?.contact.lastContactedAt ??
@@ -297,16 +303,18 @@ export function WhatsAppOutreachScreen({
     const hasDraft = pendingDrafts.some((draft) => draft.waId === contact.waId);
     const matchesFilter =
       mode === "desk" && activeFilter === "needs-reply"
-        ? contact.unanswered || hasDraft
+        ? visibleContact.stage !== "queued" && (contact.unanswered || hasDraft)
         : mode === "desk" && activeFilter === "wants-call"
           ? contact.stage === "wants_call"
-          : activeFilter === "opted-out"
-            ? visibleStatus === "Opted out"
-            : activeFilter === "replied"
-              ? visibleStatus === "Replied"
-              : activeFilter === "sent"
-                ? visibleStatus === "Sent"
-                : true;
+          : activeFilter === "queued"
+            ? visibleContact.stage === "queued"
+            : activeFilter === "opted-out"
+              ? visibleStatus === "Opted out"
+              : activeFilter === "replied"
+                ? visibleStatus === "Replied"
+                : activeFilter === "sent"
+                  ? visibleStatus === "Sent"
+                  : true;
     const search = searchTerm.trim().toLocaleLowerCase();
     const matchesSearch =
       !search ||

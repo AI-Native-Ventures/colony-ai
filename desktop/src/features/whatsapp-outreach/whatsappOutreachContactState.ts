@@ -15,6 +15,7 @@ export function contactStatus(
 ): string {
   if (contact.optedOut) return "Opted out";
   if (contact.lastOutboundState === "failed") return "Send failed";
+  if (contact.stage === "queued") return "Queued";
   if (waitingForApproval || contact.awaitingApproval) {
     return "Waiting for your approval";
   }

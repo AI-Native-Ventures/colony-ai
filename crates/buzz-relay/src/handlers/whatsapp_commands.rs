@@ -903,10 +903,10 @@ fn clean_label(raw: &str) -> Result<String, IngestError> {
 }
 
 /// Set a contact's pipeline stage and/or label. Same access as replying on WhatsApp (owner,
-/// admins, their agents such as Scout, Outreach members); a plain member is refused. `stopped`
-/// and `not_on_whatsapp` are facts and cannot be set. Every change is audited. Marking a call
-/// booked also puts a `CallBooked` milestone on the customer record when one exists and the
-/// caller may write it.
+/// admins, their agents such as Scout, Outreach members); a plain member is refused. `queued`,
+/// `stopped` and `not_on_whatsapp` are facts and cannot be set. Every change is audited.
+/// Marking a call booked also puts a `CallBooked` milestone on the customer record when one
+/// exists and the caller may write it.
 async fn handle_contact_update(
     tenant: &TenantContext,
     state: &Arc<AppState>,

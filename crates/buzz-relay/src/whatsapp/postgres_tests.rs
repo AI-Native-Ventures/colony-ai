@@ -28,6 +28,7 @@ use buzz_core::kind::{
     KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
+use buzz_core::whatsapp_stage::WhatsappStage;
 
 use super::connect;
 use super::graph::{
@@ -2140,6 +2141,54 @@ async fn a_batch_row_shows_in_the_thread_from_creation_through_the_send_and_the_
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn approved_unsent_batch_contact_is_queued_then_contacted_after_the_send() {
+    // GUARD: the production desk read model derives `queued` from ready work, then lets the
+    // first persisted send take precedence. This exercises batch approval, sender state and the
+    // same thread contact view that desktop reads.
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    own_agent(&fx, &agent, &fx.owner).await;
+    let wa = "27821230151";
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &agent,
+        KIND_WHATSAPP_BATCH,
+        json!({
+            "v": 1,
+            "batchId": batch_id.to_string(),
+            "template": "intro",
+            "language": "en",
+            "note": "Melville guesthouses",
+            "rows": [{"to": format!("+{wa}"), "params": ["Thabo"]}],
+        }),
+    )
+    .await
+    .expect("agent prepares batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves batch");
+
+    // 05:00 Johannesburg is outside the sender window, so the approved row remains unsent.
+    fx.run_sender(base() - Duration::hours(7)).await;
+    let queued = contact_json(&fx, wa).await;
+    assert_eq!(queued["stage"], WhatsappStage::Queued.as_str());
+    assert_eq!(queued["stageSetBy"], "auto");
+    assert_eq!(queued["queuedFrom"], "Batch: Melville guesthouses");
+    assert_eq!(queued["lastContactedAt"], Value::Null);
+
+    fx.run_sender(base()).await;
+    let contacted = contact_json(&fx, wa).await;
+    assert_eq!(contacted["stage"], "contacted");
+    assert_eq!(contacted["queuedFrom"], Value::Null);
+    assert!(contacted["lastContactedAt"].is_string());
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn a_contact_whose_only_row_waits_for_approval_is_never_reported_as_sent() {
     // GUARD: `outreach_status` ranks `sent` above `waiting_for_approval`, and the flags come
     // from `whatsapp_outreach_flags` over the real rows. The app used to call every contact
@@ -3078,7 +3127,7 @@ async fn only_people_who_may_reply_can_change_a_stage_or_name_and_every_change_i
     }
 
     // Facts cannot be set; neither can a word that is not a stage.
-    for bad in ["stopped", "not_on_whatsapp", "won", "none"] {
+    for bad in ["queued", "stopped", "not_on_whatsapp", "won", "none"] {
         let refusal = rejection(
             fx.command(
                 &fx.owner,

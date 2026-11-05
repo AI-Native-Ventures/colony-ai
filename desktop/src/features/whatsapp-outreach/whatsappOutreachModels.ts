@@ -1,6 +1,7 @@
 export type WhatsAppQuality = "green" | "yellow" | "red";
 export type WhatsAppStage =
   | "none"
+  | "queued"
   | "contacted"
   | "replied"
   | "wants_call"
@@ -16,6 +17,14 @@ export type WhatsAppLeadStatus =
   | "sent"
   | "replied"
   | "opted-out";
+/** The queue summary an older relay already returns with a contact view. */
+export type WhatsAppOutreachStatus =
+  | "none"
+  | "waiting_for_approval"
+  | "queued"
+  | "sent"
+  | "replied"
+  | "opted_out";
 export type WhatsAppDirection = "in" | "out";
 export type WhatsAppOutboundState = "sent" | "delivered" | "read" | "failed";
 export type WhatsAppMessageKind = "text" | "template" | "media" | "button";
@@ -99,6 +108,10 @@ export type WhatsAppContact = Readonly<{
   stage: WhatsAppStage;
   stageSetBy: "auto" | string | null;
   stageChangedAt: string | null;
+  /** Batch note or direct queue label while this contact is queued. */
+  queuedFrom: string | null;
+  /** Additive relay queue state used as a compatibility fallback for older relays. */
+  outreachStatus: WhatsAppOutreachStatus | null;
   windowOpen: boolean;
   windowClosesAt: string | null;
   optedOut: boolean;
@@ -371,9 +384,10 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
 
 export function parseWhatsAppContact(value: unknown): WhatsAppContact {
   const contact = record(value, "contact");
-  const stage = contact.stage ?? "none";
+  const rawStage = typeof contact.stage === "string" ? contact.stage : "none";
   const allowedStages = new Set<WhatsAppStage>([
     "none",
+    "queued",
     "contacted",
     "replied",
     "wants_call",
@@ -384,9 +398,31 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
     "stopped",
     "not_on_whatsapp",
   ]);
-  if (typeof stage !== "string" || !allowedStages.has(stage as WhatsAppStage)) {
-    throw new Error("The relay returned an invalid WhatsApp contact stage.");
-  }
+  const allowedOutreachStatuses = new Set<WhatsAppOutreachStatus>([
+    "none",
+    "waiting_for_approval",
+    "queued",
+    "sent",
+    "replied",
+    "opted_out",
+  ]);
+  const outreachStatus =
+    typeof contact.outreachStatus === "string" &&
+    allowedOutreachStatuses.has(
+      contact.outreachStatus as WhatsAppOutreachStatus,
+    )
+      ? (contact.outreachStatus as WhatsAppOutreachStatus)
+      : null;
+  // `outreachStatus` predates the stage field. Keep a desktop release compatible with an older
+  // relay that only identifies approved, unsent work there. An unfamiliar future stage falls
+  // back to `none` rather than rejecting the complete contact view.
+  const stage = allowedStages.has(rawStage as WhatsAppStage)
+    ? (rawStage as WhatsAppStage)
+    : outreachStatus === "queued"
+      ? "queued"
+      : "none";
+  const resolvedStage =
+    stage === "none" && outreachStatus === "queued" ? "queued" : stage;
   const stageSetBy = contact.stageSetBy;
   if (
     stageSetBy !== null &&
@@ -421,12 +457,14 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
       "last failure summary",
     ),
     lastReplyAt: nullableString(contact.lastReplyAt, "last reply time"),
-    stage: stage as WhatsAppStage,
+    stage: resolvedStage,
     stageSetBy: (stageSetBy as "auto" | string | null | undefined) ?? null,
     stageChangedAt: nullableString(
       contact.stageChangedAt,
       "stage changed time",
     ),
+    queuedFrom: nullableString(contact.queuedFrom, "queue source"),
+    outreachStatus,
     windowOpen: booleanValue(contact.windowOpen, "reply-window flag"),
     windowClosesAt: nullableString(
       contact.windowClosesAt,

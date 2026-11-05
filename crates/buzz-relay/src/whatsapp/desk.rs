@@ -301,6 +301,7 @@ pub fn stage_inputs(
         wants_call: facts.wants_call_at.map(Fact::at),
         replied: contact.last_inbound_at.map(Fact::at),
         contacted: facts.last_contacted_at.map(Fact::at),
+        queued: facts.queued_at.map(Fact::at),
     }
 }
 
@@ -311,8 +312,9 @@ fn rfc3339(at: Option<DateTime<Utc>>) -> Value {
 /// The additive fields of the contact and thread views.
 ///
 /// `stage`, `stageSetBy` (`auto` or the hex pubkey), `stageChangedAt`, `lastContactedAt`,
-/// `lastReplyAt`, `label`, `profileName`, `lastOutboundState`, and, when the contact is linked
-/// to a lead, `businessName` and `website`. `displayName` becomes the label when one is set.
+/// `lastReplyAt`, `queuedFrom`, `label`, `profileName`, `lastOutboundState`, and, when the
+/// contact is linked to a lead, `businessName` and `website`. `displayName` becomes the label
+/// when one is set.
 pub fn desk_fields(
     contact: &WhatsappContact,
     facts: &DeskFacts,
@@ -328,6 +330,14 @@ pub fn desk_fields(
     fields.insert("stageChangedAt".into(), rfc3339(result.changed_at));
     fields.insert("lastContactedAt".into(), rfc3339(facts.last_contacted_at));
     fields.insert("lastReplyAt".into(), rfc3339(contact.last_inbound_at));
+    fields.insert(
+        "queuedFrom".into(),
+        if result.stage == WhatsappStage::Queued {
+            json!(facts.queued_from)
+        } else {
+            Value::Null
+        },
+    );
     fields.insert("label".into(), json!(facts.label));
     fields.insert(
         "profileName".into(),
@@ -469,6 +479,23 @@ mod tests {
         let fields = desk_fields(&contact(), &facts, None, None);
         assert_eq!(fields["stageSetBy"], "ab".repeat(32));
         assert_eq!(fields["stageChangedAt"], t(4).to_rfc3339());
+    }
+
+    #[test]
+    fn queued_stage_reports_its_batch_source_until_an_outbound_send_exists() {
+        let mut facts = DeskFacts {
+            queued_at: Some(t(2)),
+            queued_from: Some("Batch: Melville guesthouses".into()),
+            ..Default::default()
+        };
+        let fields = desk_fields(&contact(), &facts, None, None);
+        assert_eq!(fields["stage"], "queued");
+        assert_eq!(fields["queuedFrom"], "Batch: Melville guesthouses");
+
+        facts.last_contacted_at = Some(t(3));
+        let fields = desk_fields(&contact(), &facts, None, None);
+        assert_eq!(fields["stage"], "contacted");
+        assert_eq!(fields["queuedFrom"], Value::Null);
     }
 
     #[test]

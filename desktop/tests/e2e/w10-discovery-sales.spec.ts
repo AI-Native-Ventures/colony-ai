@@ -285,14 +285,11 @@ test.describe("W10 discovery and sales", () => {
 
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "All campaigns" }).click();
-    const campaignList = page.getByRole("dialog");
-    await expect(
-      campaignList.getByRole("heading", { name: "Your discovery campaigns." }),
-    ).toBeVisible();
+    const campaignList = page.getByTestId("discovery-campaigns-page");
+    await expect(campaignList).toBeVisible();
     await campaignList
-      .getByRole("button", {
-        name: /Independent brands needing social support/,
-      })
+      .getByTestId("discovery-campaign-row")
+      .filter({ hasText: "Independent brands needing social support" })
       .click();
     await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
   });
