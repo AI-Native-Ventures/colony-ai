@@ -50,6 +50,32 @@ export type WhatsAppIssue = Readonly<{
   at: string;
 }>;
 
+/** Optional account-level recovery data. Relays before send health simply omit it. */
+export type WhatsAppSendHealth = Readonly<{
+  code: string;
+  message: string;
+  banner: string;
+  fixSteps: readonly string[];
+  fixUrl: string | null;
+  at: string | null;
+  paused: boolean;
+  resumeRequestedAt: string | null;
+  waitingCount: number;
+}>;
+
+/** Optional aggregate that makes recipient engagement limits visible without pausing sends. */
+export type WhatsAppHealthSummary = Readonly<{
+  notDeliveredByMeta: number;
+}>;
+
+/** A documented recipient-level Meta delivery refusal, currently error 131049 only. */
+export type WhatsAppDeliveryFailure = Readonly<{
+  code: "131049";
+  summary: string;
+  retryAfter: string | null;
+  canRetryLater: boolean;
+}>;
+
 export type WhatsAppTemplateButton = Readonly<{
   type: string;
   text: string;
@@ -80,6 +106,10 @@ export type WhatsAppStatus = Readonly<{
   newChatsSentToday: number;
   /** Eligible historic account-level failures, absent from relays before retry recovery. */
   accountRetryCount: number;
+  /** Absent from relays before account send health. */
+  sendHealth: WhatsAppSendHealth | null;
+  /** Absent from relays before recipient delivery health. */
+  healthSummary: WhatsAppHealthSummary;
   sendingPaused: boolean;
   pauseReason: string | null;
   issues: readonly WhatsAppIssue[];
@@ -104,6 +134,8 @@ export type WhatsAppContact = Readonly<{
   lastContactedAt: string | null;
   lastOutboundState: WhatsAppOutboundState | null;
   lastFailureSummary: string | null;
+  /** Additive details for a per-contact Meta delivery limit. */
+  deliveryFailure: WhatsAppDeliveryFailure | null;
   lastReplyAt: string | null;
   stage: WhatsAppStage;
   stageSetBy: "auto" | string | null;
@@ -184,6 +216,8 @@ export type WhatsAppMessage = Readonly<{
   retryScope: "account" | "temporary" | null;
   /** False for unknown, contact-specific and delivery-confirmed failures. */
   canRetry: boolean;
+  /** True only for the delayed per-contact retry flow (Meta error 131049). */
+  canRetryLater: boolean;
   eventId: string | null;
   senderPubkey: string | null;
   createdAt: string;
@@ -284,6 +318,12 @@ function booleanValue(value: unknown, label: string): boolean {
   return value;
 }
 
+function optionalRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function parseQuality(value: unknown): WhatsAppQuality | null {
   if (value === null || value === undefined) return null;
   if (value === "GREEN" || value === "green") return "green";
@@ -359,6 +399,8 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
             0,
             finiteInteger(status.accountRetryCount, "account retry count"),
           ),
+    sendHealth: parseSendHealth(status.sendHealth),
+    healthSummary: parseHealthSummary(status.healthSummary),
     sendingPaused: booleanValue(status.sendingPaused, "sending-paused flag"),
     pauseReason: nullableString(status.pauseReason, "pause reason"),
     issues: issues.map((value) => {
@@ -379,6 +421,59 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
     ),
     templates: templates.map(parseWhatsAppTemplate),
     webhookUrl: nullableString(status.webhookUrl, "webhook URL"),
+  };
+}
+
+function parseSendHealth(value: unknown): WhatsAppSendHealth | null {
+  const health = optionalRecord(value);
+  if (!health) return null;
+  const code = optionalText(health.code);
+  const message = optionalText(health.message);
+  const banner = optionalText(health.banner);
+  if (!code || !message || !banner) return null;
+  return {
+    code,
+    message,
+    banner,
+    fixSteps: Array.isArray(health.fixSteps)
+      ? health.fixSteps.filter(
+          (step): step is string =>
+            typeof step === "string" && Boolean(step.trim()),
+        )
+      : [],
+    fixUrl: optionalText(health.fixUrl),
+    at: optionalText(health.at),
+    paused: health.paused === true,
+    resumeRequestedAt: optionalText(health.resumeRequestedAt),
+    waitingCount:
+      typeof health.waitingCount === "number" &&
+      Number.isFinite(health.waitingCount)
+        ? Math.max(0, Math.floor(health.waitingCount))
+        : 0,
+  };
+}
+
+function parseHealthSummary(value: unknown): WhatsAppHealthSummary {
+  const summary = optionalRecord(value);
+  const count = summary?.notDeliveredByMeta;
+  return {
+    notDeliveredByMeta:
+      typeof count === "number" && Number.isFinite(count)
+        ? Math.max(0, Math.floor(count))
+        : 0,
+  };
+}
+
+function parseDeliveryFailure(value: unknown): WhatsAppDeliveryFailure | null {
+  const failure = optionalRecord(value);
+  if (failure?.code !== "131049") return null;
+  const summary = optionalText(failure.summary);
+  if (!summary) return null;
+  return {
+    code: "131049",
+    summary,
+    retryAfter: optionalText(failure.retryAfter),
+    canRetryLater: failure.canRetryLater === true,
   };
 }
 
@@ -456,6 +551,7 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
       contact.lastFailureSummary,
       "last failure summary",
     ),
+    deliveryFailure: parseDeliveryFailure(contact.deliveryFailure),
     lastReplyAt: nullableString(contact.lastReplyAt, "last reply time"),
     stage: resolvedStage,
     stageSetBy: (stageSetBy as "auto" | string | null | undefined) ?? null,
@@ -642,6 +738,8 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     ),
     retryScope,
     canRetry: message.canRetry === true && retryScope !== null,
+    canRetryLater:
+      message.canRetryLater === true && message.errorCode === "131049",
     eventId: nullableString(message.eventId, "message event id"),
     senderPubkey: nullableString(message.senderPubkey, "message sender"),
     createdAt: stringValue(message.createdAt, "message time"),

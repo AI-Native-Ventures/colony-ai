@@ -593,7 +593,7 @@ approve, and the word list means they could not ask for money to leave even thro
 
 ## 12. Storage and deploy
 
-Migration `migrations/0063_money_rails_pay.sql` and the same tables in
+Migration `migrations/0064_money_rails_pay.sql` and the same tables in
 `schema/schema.sql`, `scripts/reconcile-schema-after-pgschema.sql` (write fences) and the
 tenant deletion manifest. **Additive only** (four new tables, no change to an existing
 table), each with `attach_community_write_fence`:

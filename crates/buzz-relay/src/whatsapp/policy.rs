@@ -432,9 +432,7 @@ pub fn verify_token_matches(presented: &str, stored_hash: &[u8]) -> bool {
 }
 
 /// An account-wide Meta failure that can be recovered only by putting the same failed rows back
-/// into the normal queue. This table is intentionally separate from the sender's current
-/// failure handling so Slice 1 can recover historic rows without changing automatic send
-/// behavior. Queue pausing belongs to Slice 2.
+/// into the normal queue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccountRetryFailure {
     /// `131042`: the WhatsApp Business Account payment method needs attention.
@@ -488,6 +486,155 @@ impl AccountRetryFailure {
             }
         }
     }
+
+    /// A short, action-oriented title for the health notice.
+    pub const fn health_title(self) -> &'static str {
+        match self {
+            Self::Payment => {
+                "Meta says there is a payment problem on your WhatsApp Business account."
+            }
+            Self::Restricted => "Meta says your WhatsApp Business account is locked or restricted.",
+            Self::Throughput => {
+                "Meta says your WhatsApp account reached its sending throughput limit."
+            }
+            Self::SpamLimit => "Meta says your WhatsApp sender reached a messaging limit.",
+            Self::PhoneNotRegistered => {
+                "Meta says the connected WhatsApp phone number is not registered."
+            }
+            Self::TwoStepVerification => {
+                "Meta says the connected WhatsApp phone number needs its two-step verification PIN."
+            }
+        }
+    }
+
+    /// Concrete, vendor-owned recovery steps. These are kept with the code table so the sender,
+    /// banner and message chip cannot drift into different diagnoses.
+    pub const fn fix_steps(self) -> &'static [&'static str] {
+        match self {
+            Self::Payment => &[
+                "Open Meta Business Suite.",
+                "Open WhatsApp Manager, then Payment settings.",
+                "Add or repair the payment method on this WhatsApp Business Account.",
+            ],
+            Self::Restricted => &[
+                "Open Meta Business Suite and WhatsApp Manager.",
+                "Review the account restriction and complete Meta's required review or verification.",
+                "When Meta restores the account, return here and press Resume and retry.",
+            ],
+            Self::Throughput => &[
+                "Open WhatsApp Manager and review the phone number's messaging limits.",
+                "Wait for Meta's throughput limit to recover before retrying.",
+                "Press Resume and retry when the limit has recovered.",
+            ],
+            Self::SpamLimit => &[
+                "Open WhatsApp Manager and review the phone number's quality and messaging limits.",
+                "Resolve the restriction or wait for Meta to lift it.",
+                "Press Resume and retry only after Meta allows business sends again.",
+            ],
+            Self::PhoneNotRegistered => &[
+                "Open WhatsApp Manager and check the connected phone number.",
+                "Register or reconnect that number to this WhatsApp Business Account.",
+                "Press Resume and retry after Meta shows the number as connected.",
+            ],
+            Self::TwoStepVerification => &[
+                "Open WhatsApp Manager and select the connected phone number.",
+                "Enter or reset its two-step verification PIN.",
+                "Press Resume and retry after the number is available again.",
+            ],
+        }
+    }
+
+    /// The nearest Meta-owned page for this recovery path. It is a convenience link only: Meta
+    /// can still ask the owner to navigate to a different subpage for their account.
+    pub const fn fix_url(self) -> &'static str {
+        match self {
+            Self::Payment => {
+                "https://business.facebook.com/latest/whatsapp_manager/payment_settings"
+            }
+            Self::Restricted | Self::Throughput | Self::SpamLimit => {
+                "https://business.facebook.com/latest/whatsapp_manager/phone_numbers"
+            }
+            Self::PhoneNotRegistered | Self::TwoStepVerification => {
+                "https://business.facebook.com/latest/whatsapp_manager/phone_numbers"
+            }
+        }
+    }
+
+    /// The top-of-Outreach recovery notice. The count covers eligible failed account rows and
+    /// untouched ready work behind the account-health fence, never unrelated historical failures.
+    pub fn health_banner(self, waiting: i64) -> String {
+        format!(
+            "WhatsApp stopped sending. {} Nothing was lost: {waiting} messages are waiting. Fix it in Meta, then press Resume and retry.",
+            self.health_title()
+        )
+    }
+}
+
+/// The one authoritative decision table for every Cloud API code Outreach acts on. It drives
+/// the sender, recovery controls and person-facing explanation so a code cannot accidentally
+/// pause one scope while being retried from another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetaFailure {
+    /// The WhatsApp business account or sender number blocks the whole queue.
+    Account(AccountRetryFailure),
+    /// `131049`: Meta refused a marketing template for this recipient's engagement limits.
+    ContactEngagementLimit,
+    /// A recipient-specific refusal that must keep this contact paused.
+    ContactBlocked,
+    /// This number cannot receive WhatsApp messages.
+    ContactUnavailable,
+    /// A free-form reply is outside the customer service window.
+    ReplyWindowClosed,
+    /// A pair-specific rate limit, not an account-level one.
+    PairRateLimit,
+    /// A definite temporary refusal for this message only.
+    Temporary,
+    /// The connection's token needs attention.
+    TokenExpired,
+    /// The chosen template needs attention.
+    TemplateUnavailable,
+    /// No documented product handling exists for this code.
+    Other,
+}
+
+/// The exact Cloud API codes which Outreach currently acts on. Keep every classification in
+/// this function: callers must not duplicate a code list with a subtly different queue scope.
+pub const fn meta_failure_for_code(code: i64) -> MetaFailure {
+    match code {
+        131_042 => MetaFailure::Account(AccountRetryFailure::Payment),
+        131_031 => MetaFailure::Account(AccountRetryFailure::Restricted),
+        130_429 => MetaFailure::Account(AccountRetryFailure::Throughput),
+        131_048 => MetaFailure::Account(AccountRetryFailure::SpamLimit),
+        133_010 => MetaFailure::Account(AccountRetryFailure::PhoneNotRegistered),
+        133_005 => MetaFailure::Account(AccountRetryFailure::TwoStepVerification),
+        131_049 => MetaFailure::ContactEngagementLimit,
+        131_026 => MetaFailure::ContactUnavailable,
+        131_047 => MetaFailure::ReplyWindowClosed,
+        131_056 => MetaFailure::PairRateLimit,
+        133_004 => MetaFailure::Temporary,
+        190 | 102 | 10 | 200 => MetaFailure::TokenExpired,
+        132_015 | 132_016 | 132_001 | 132_007 => MetaFailure::TemplateUnavailable,
+        368 | 130_472 => MetaFailure::ContactBlocked,
+        _ => MetaFailure::Other,
+    }
+}
+
+/// Read an account-level recovery cause from a stored code.
+pub fn account_failure_for_code(code: Option<&str>) -> Option<AccountRetryFailure> {
+    let code = code?.trim().parse::<i64>().ok()?;
+    match meta_failure_for_code(code) {
+        MetaFailure::Account(failure) => Some(failure),
+        _ => None,
+    }
+}
+
+/// `true` only for Meta's documented recipient engagement refusal.
+pub fn is_contact_engagement_limit(code: Option<&str>) -> bool {
+    matches!(
+        code.and_then(|value| value.trim().parse::<i64>().ok())
+            .map(meta_failure_for_code),
+        Some(MetaFailure::ContactEngagementLimit)
+    )
 }
 
 /// The only failed sends that a person can retry from Outreach. Account failures retry the
@@ -521,14 +668,9 @@ pub fn retry_scope_for_error_code(code: Option<&str>) -> FailureRetryScope {
     let Some(code) = code.and_then(|value| value.trim().parse::<i64>().ok()) else {
         return FailureRetryScope::Never;
     };
-    match code {
-        131_042 => FailureRetryScope::Account(AccountRetryFailure::Payment),
-        131_031 => FailureRetryScope::Account(AccountRetryFailure::Restricted),
-        130_429 => FailureRetryScope::Account(AccountRetryFailure::Throughput),
-        131_048 => FailureRetryScope::Account(AccountRetryFailure::SpamLimit),
-        133_010 => FailureRetryScope::Account(AccountRetryFailure::PhoneNotRegistered),
-        133_005 => FailureRetryScope::Account(AccountRetryFailure::TwoStepVerification),
-        131_056 | 133_004 => FailureRetryScope::Temporary,
+    match meta_failure_for_code(code) {
+        MetaFailure::Account(failure) => FailureRetryScope::Account(failure),
+        MetaFailure::PairRateLimit | MetaFailure::Temporary => FailureRetryScope::Temporary,
         _ => FailureRetryScope::Never,
     }
 }
@@ -554,30 +696,33 @@ pub fn account_retry_error_codes() -> Vec<String> {
 /// Graph title visible rather than inventing a recovery instruction.
 pub fn failure_summary_for_code(code: Option<&str>) -> Option<&'static str> {
     let parsed = code.and_then(|value| value.trim().parse::<i64>().ok())?;
-    match parsed {
-        131_042 => Some(AccountRetryFailure::Payment.summary()),
-        131_031 => Some(AccountRetryFailure::Restricted.summary()),
-        130_429 => Some(AccountRetryFailure::Throughput.summary()),
-        131_048 => Some(AccountRetryFailure::SpamLimit.summary()),
-        133_010 => Some(AccountRetryFailure::PhoneNotRegistered.summary()),
-        133_005 => Some(AccountRetryFailure::TwoStepVerification.summary()),
-        131_056 => {
+    match meta_failure_for_code(parsed) {
+        MetaFailure::Account(failure) => Some(failure.summary()),
+        MetaFailure::ContactEngagementLimit => Some(
+            "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way.",
+        ),
+        MetaFailure::PairRateLimit => {
             Some("Meta delayed this send: this phone number was contacted too recently. Try sending again later.")
         }
-        133_004 => {
+        MetaFailure::Temporary => {
             Some("Meta did not finish this send: its service is temporarily unavailable. Try sending again later.")
         }
-        131_026 => Some("Meta blocked this send: this number is not available on WhatsApp."),
-        131_047 => Some(
+        MetaFailure::ContactUnavailable => {
+            Some("Meta did not deliver this one: this number is not available on WhatsApp.")
+        }
+        MetaFailure::ReplyWindowClosed => Some(
             "Meta blocked this send: the 24-hour reply window has closed. Use an approved template.",
         ),
-        132_015 | 132_016 | 132_001 | 132_007 => Some(
+        MetaFailure::TemplateUnavailable => Some(
             "Meta blocked this send: the WhatsApp template is paused, disabled or unavailable.",
         ),
-        190 | 102 | 10 | 200 => {
+        MetaFailure::TokenExpired => {
             Some("Meta blocked this send: the WhatsApp access token needs to be reconnected.")
         }
-        _ => None,
+        MetaFailure::ContactBlocked => {
+            Some("Meta did not deliver this one: this contact is blocked or limited by Meta.")
+        }
+        MetaFailure::Other => None,
     }
 }
 
@@ -586,30 +731,36 @@ pub fn failure_can_retry(code: Option<&str>) -> bool {
     !matches!(retry_scope_for_error_code(code), FailureRetryScope::Never)
 }
 
-/// What the sender does with a Graph error code today. This remains independent from the
-/// recovery scope until the Slice 2 queue-pause change lands.
+/// What the sender does after persisting a Meta refusal. This is derived from the one code
+/// table above; the account branch is persisted atomically with the failed send before the
+/// sender decides whether to continue its pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureKind {
+    /// The connection is unhealthy and the remaining queue must stay untouched.
+    Account(AccountRetryFailure),
     /// Access token expired or revoked.
     TokenExpired,
-    /// Meta blocked or rate limited this contact for spam or engagement reasons.
+    /// Meta blocked or limited this one contact.
     ContactBlocked,
     /// The template is paused, disabled or rejected.
     TemplateUnavailable,
-    /// The number itself is locked, unregistered or disconnected.
-    NumberDisconnected,
     /// Anything else.
     Other,
 }
 
-/// Classify a Meta error code.
-pub fn classify_failure_code(code: i64) -> FailureKind {
-    match code {
-        190 | 102 | 10 | 200 => FailureKind::TokenExpired,
-        131_049 | 131_048 | 368 | 130_472 => FailureKind::ContactBlocked,
-        132_015 | 132_016 | 132_001 | 132_007 => FailureKind::TemplateUnavailable,
-        131_031 | 133_010 | 133_004 | 133_005 => FailureKind::NumberDisconnected,
-        _ => FailureKind::Other,
+/// Sender action derived from the authoritative code table.
+pub const fn classify_failure_code(code: i64) -> FailureKind {
+    match meta_failure_for_code(code) {
+        MetaFailure::Account(failure) => FailureKind::Account(failure),
+        MetaFailure::TokenExpired => FailureKind::TokenExpired,
+        MetaFailure::ContactEngagementLimit
+        | MetaFailure::ContactBlocked
+        | MetaFailure::ContactUnavailable => FailureKind::ContactBlocked,
+        MetaFailure::TemplateUnavailable => FailureKind::TemplateUnavailable,
+        MetaFailure::ReplyWindowClosed
+        | MetaFailure::PairRateLimit
+        | MetaFailure::Temporary
+        | MetaFailure::Other => FailureKind::Other,
     }
 }
 
@@ -999,14 +1150,25 @@ mod tests {
     fn meta_codes_are_classified() {
         assert_eq!(classify_failure_code(190), FailureKind::TokenExpired);
         assert_eq!(classify_failure_code(131_049), FailureKind::ContactBlocked);
+        assert_ne!(
+            classify_failure_code(131_048),
+            FailureKind::ContactBlocked,
+            "a sender messaging limit is account-level, never a contact pause"
+        );
+        assert_eq!(
+            failure_summary_for_code(Some("131049")),
+            Some(
+                "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way."
+            )
+        );
         assert_eq!(
             classify_failure_code(132_015),
             FailureKind::TemplateUnavailable
         );
         assert_eq!(
             classify_failure_code(131_031),
-            FailureKind::NumberDisconnected
+            FailureKind::Account(AccountRetryFailure::Restricted)
         );
-        assert_eq!(classify_failure_code(131_026), FailureKind::Other);
+        assert_eq!(classify_failure_code(131_026), FailureKind::ContactBlocked);
     }
 }

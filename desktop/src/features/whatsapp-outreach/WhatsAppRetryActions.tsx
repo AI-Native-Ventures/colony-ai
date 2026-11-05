@@ -182,3 +182,99 @@ export function WhatsAppSendAgainAction({
     </AlertDialog>
   );
 }
+
+/** Owner-selected delayed retry for Meta's recipient engagement limit (131049). */
+export function WhatsAppTryAgainLaterAction({
+  message,
+}: {
+  message: WhatsAppMessage;
+}) {
+  const command = useWhatsAppCommand();
+  const [open, setOpen] = React.useState(false);
+  const [days, setDays] = React.useState<3 | 7 | 14>(3);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function scheduleRetry() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await command(KIND_WHATSAPP_CONTACT_UPDATE, {
+        v: 1,
+        waId: message.waId,
+        retryLater: { messageId: message.id, days },
+      });
+      setOpen(false);
+    } catch (retryError) {
+      setError(
+        retryError instanceof Error
+          ? retryError.message
+          : "Could not schedule this WhatsApp retry.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AlertDialog
+      onOpenChange={(nextOpen) => {
+        if (!busy) setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <AlertDialogTrigger asChild>
+        <Button
+          data-testid={`whatsapp-try-again-later-${message.id}`}
+          size="xs"
+          type="button"
+          variant="secondary"
+        >
+          Try again later
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent data-testid="whatsapp-try-again-later-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Try this contact again later?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Meta limited this marketing message for this recipient. The contact
+            stays paused until the selected day, then normal pacing and the
+            daily cap apply.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <fieldset className="c3wa-draft-actions">
+          <legend className="sr-only">Retry delay</legend>
+          {([3, 7, 14] as const).map((option) => (
+            <Button
+              aria-pressed={days === option}
+              key={option}
+              onClick={() => setDays(option)}
+              size="sm"
+              type="button"
+              variant={days === option ? "secondary" : "outline"}
+            >
+              {option} days
+            </Button>
+          ))}
+        </fieldset>
+        {error ? <p role="alert">{error}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild>
+            <Button disabled={busy} size="sm" type="button" variant="outline">
+              Cancel
+            </Button>
+          </AlertDialogCancel>
+          <Button
+            disabled={busy}
+            onClick={() => void scheduleRetry()}
+            size="sm"
+            type="button"
+          >
+            {busy ? "Scheduling…" : `Try again in ${days} days`}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}

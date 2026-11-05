@@ -27,9 +27,9 @@ use crate::whatsapp::connect::{self, ConnectError};
 use crate::whatsapp::desk;
 use crate::whatsapp::inbound::process_payload;
 use crate::whatsapp::policy::{
-    contact_label, e164, failure_can_retry, failure_summary_for_code, next_window_start,
-    normalize_wa_id, retry_scope_for_error_code, verify_signature, verify_token_matches,
-    window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
+    contact_label, e164, failure_can_retry, failure_summary_for_code, is_contact_engagement_limit,
+    next_window_start, normalize_wa_id, retry_scope_for_error_code, verify_signature,
+    verify_token_matches, window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
 };
 use crate::whatsapp::{access_for, Access};
 
@@ -42,6 +42,9 @@ pub(crate) const QUERY_PATH: &str = "/api/whatsapp/query";
 
 const DEFAULT_LIST_LIMIT: i64 = 50;
 const SIGNATURE_HEADER: &str = "x-hub-signature-256";
+/// A desktop that knows the `queued` contact-stage enum sends this marker on every query.
+/// Its absence means the relay must project the legacy-safe `none` stage.
+pub(crate) const QUEUED_STAGE_CAPABILITY: &str = "whatsapp-outreach-stage-queued";
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -143,6 +146,17 @@ struct QueryRequest {
     /// see a held row, so an older app cannot label one as approved.
     #[serde(default)]
     include_held: bool,
+    /// New clients opt in to enum values introduced after desktop-v3.0.37. This is additive so
+    /// older clients simply omit it and receive the legacy-safe projection.
+    #[serde(default)]
+    capabilities: Vec<String>,
+}
+
+fn supports_queued_stage(request: &QueryRequest) -> bool {
+    request
+        .capabilities
+        .iter()
+        .any(|capability| capability == QUEUED_STAGE_CAPABILITY)
 }
 
 fn template_view(template: &WhatsappTemplate) -> Value {
@@ -200,14 +214,20 @@ fn contact_view(
 
 /// Add the Outreach desk fields (stage, label, business ...) to a contact view. Additive:
 /// older apps ignore them; `displayName` is the owner's label when one is set.
-fn with_desk(mut view: Value, contact: &WhatsappContact, desk: &desk::DeskData) -> Value {
+fn with_desk(
+    mut view: Value,
+    contact: &WhatsappContact,
+    desk: &desk::DeskData,
+    supports_queued_stage: bool,
+) -> Value {
     let facts = desk.facts.get(&contact.wa_id).cloned().unwrap_or_default();
     let lead_id = contact.lead_id.as_deref();
-    let fields = desk::desk_fields(
+    let fields = desk::desk_fields_for_capability(
         contact,
         &facts,
         lead_id.and_then(|id| desk.leads.get(id)),
         lead_id.and_then(|id| desk.records.get(id)),
+        supports_queued_stage,
     );
     if let Some(object) = view.as_object_mut() {
         object.extend(fields);
@@ -273,6 +293,7 @@ fn message_view(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Value 
         "failureSummary": failure_summary,
         "retryScope": retry_scope,
         "canRetry": state == "failed" && failure_can_retry(message.error_code.as_deref()),
+        "canRetryLater": state == "failed" && is_contact_engagement_limit(message.error_code.as_deref()),
         "eventId": message.event_id.as_ref().map(hex::encode),
         "senderPubkey": message.sender_pubkey.as_ref().map(hex::encode),
         "waId": message.wa_id,
@@ -326,11 +347,26 @@ pub(crate) fn media_view(media: &WhatsappMedia, base: &str) -> Value {
 }
 
 /// The `contacts` and `inbox` answer: each contact with its outreach status.
+#[allow(dead_code)] // Test-only Nostr handlers use the conservative default projection.
 pub(crate) async fn contacts_view(
     state: &Arc<AppState>,
     community: buzz_core::tenant::CommunityId,
     contacts: &[WhatsappContact],
     now: chrono::DateTime<Utc>,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    // Non-HTTP callers do not carry desktop capability markers. Keep their projection safe for
+    // a strict older parser rather than assuming the current desktop is installed everywhere.
+    contacts_view_for_capability(state, community, contacts, now, false).await
+}
+
+/// Contact view with an explicit wire-compatibility projection. HTTP callers use this rather
+/// than the internal default so an installed desktop only sees enum values it advertised.
+async fn contacts_view_for_capability(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    contacts: &[WhatsappContact],
+    now: chrono::DateTime<Utc>,
+    supports_queued_stage: bool,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let ids: Vec<String> = contacts.iter().map(|c| c.wa_id.clone()).collect();
     let flags = state
@@ -346,7 +382,12 @@ pub(crate) async fn contacts_view(
             .iter()
             .map(|c| {
                 let flags = flags.get(&c.wa_id).copied().unwrap_or_default();
-                with_desk(contact_view(c, now, &flags), c, &desk)
+                with_desk(
+                    contact_view(c, now, &flags),
+                    c,
+                    &desk,
+                    supports_queued_stage,
+                )
             })
             .collect::<Vec<_>>(),
     }))
@@ -354,6 +395,7 @@ pub(crate) async fn contacts_view(
 
 /// The `thread` answer: the contact and every message of the conversation, oldest first,
 /// including rows still waiting for a batch approval.
+#[allow(dead_code)] // Test-only Nostr handlers use the conservative default projection.
 pub(crate) async fn thread_view(
     state: &Arc<AppState>,
     community: buzz_core::tenant::CommunityId,
@@ -361,6 +403,20 @@ pub(crate) async fn thread_view(
     limit: i64,
     include_held: bool,
     now: chrono::DateTime<Utc>,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    // See `contacts_view`: callers without a capability marker must get legacy-safe stages.
+    thread_view_for_capability(state, community, wa_id, limit, include_held, now, false).await
+}
+
+/// Thread view with the caller's explicitly advertised enum support.
+pub(crate) async fn thread_view_for_capability(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    wa_id: &str,
+    limit: i64,
+    include_held: bool,
+    now: chrono::DateTime<Utc>,
+    supports_queued_stage: bool,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
     let contact = state
@@ -405,7 +461,12 @@ pub(crate) async fn thread_view(
         crate::api::media::media_base_url_for_tenant(&state.config.relay_url, &host)
     };
     Ok(json!({
-        "contact": with_desk(contact_view(&contact, now, &flags), &contact, &desk),
+        "contact": with_desk(
+            contact_view(&contact, now, &flags),
+            &contact,
+            &desk,
+            supports_queued_stage,
+        ),
         "messages": messages
             .iter()
             .map(|message| {
@@ -469,6 +530,7 @@ pub async fn query(
     let community = tenant.community();
     let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
     let now = Utc::now();
+    let queued_stage_supported = supports_queued_stage(&request);
 
     let private = |access: Access| -> Result<(), (StatusCode, Json<Value>)> {
         if access.can_read_private() {
@@ -482,10 +544,21 @@ pub async fn query(
     };
 
     match request.what.as_str() {
-        "status" => connect::status_view(&state, &tenant)
-            .await
-            .map(Json)
-            .map_err(|reason| internal_error(&reason)),
+        "status" => {
+            let mut status = connect::status_view(&state, &tenant)
+                .await
+                .map_err(|reason| internal_error(&reason))?;
+            // Account-health recovery is an owner/admin affordance. Older and plain-member
+            // desktops tolerate omitted optional fields, while owners retain the full status.
+            if !access.is_owner_admin() {
+                if let Some(object) = status.as_object_mut() {
+                    object.remove("accountRetryCount");
+                    object.remove("sendHealth");
+                    object.remove("healthSummary");
+                }
+            }
+            Ok(Json(status))
+        }
         "templates" => {
             if request.refresh {
                 if !access.is_owner_admin() {
@@ -599,7 +672,16 @@ pub async fn query(
                 .whatsapp_list_contacts(community, limit_of(&request))
                 .await
                 .map_err(db_error)?;
-            Ok(Json(contacts_view(&state, community, &contacts, now).await?))
+            Ok(Json(
+                contacts_view_for_capability(
+                    &state,
+                    community,
+                    &contacts,
+                    now,
+                    queued_stage_supported,
+                )
+                .await?,
+            ))
         }
         "inbox" => {
             private(access)?;
@@ -608,7 +690,16 @@ pub async fn query(
                 .whatsapp_list_inbox(community, limit_of(&request))
                 .await
                 .map_err(db_error)?;
-            Ok(Json(contacts_view(&state, community, &contacts, now).await?))
+            Ok(Json(
+                contacts_view_for_capability(
+                    &state,
+                    community,
+                    &contacts,
+                    now,
+                    queued_stage_supported,
+                )
+                .await?,
+            ))
         }
         "thread" => {
             private(access)?;
@@ -618,13 +709,14 @@ pub async fn query(
                 .and_then(normalize_wa_id)
                 .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "waId must be a phone number"))?;
             Ok(Json(
-                thread_view(
+                thread_view_for_capability(
                     &state,
                     community,
                     &wa_id,
                     limit_of(&request),
                     request.include_held,
                     now,
+                    queued_stage_supported,
                 )
                 .await?,
             ))
@@ -755,6 +847,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn queued_stage_capability_defaults_to_the_legacy_projection() {
+        // GUARD: desktop-v3.0.37 sends no capability marker and rejects `stage: queued`.
+        // This is the request seam that feeds `desk_fields_for_capability` for contacts,
+        // inboxes and threads.
+        let legacy: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts"
+        }))
+        .expect("legacy query parses");
+        assert!(!supports_queued_stage(&legacy));
+
+        let current: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts",
+            "capabilities": [QUEUED_STAGE_CAPABILITY]
+        }))
+        .expect("current query parses");
+        assert!(supports_queued_stage(&current));
+    }
+
+    #[test]
     fn every_stored_state_reads_as_a_state_the_app_parses() {
         // The app's parser accepts exactly these; anything else turns the whole thread into an error.
         const APP_STATES: [&str; 9] = [
@@ -813,6 +924,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: Utc::now(),
         };
         let view = contact_view(&contact, Utc::now(), &OutreachFlags::default());
@@ -912,6 +1024,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: Utc::now(),
         };
         let waiting = OutreachFlags {
@@ -957,6 +1070,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: Utc::now(),
         };
         let view = contact_view(&contact, Utc::now(), &OutreachFlags::default());

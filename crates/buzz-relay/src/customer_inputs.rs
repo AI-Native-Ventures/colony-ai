@@ -404,6 +404,7 @@ mod tests {
             opt_out_reason: None,
             paused_at: None,
             pause_reason: None,
+            retry_after: None,
             created_at: at(500),
         }
     }

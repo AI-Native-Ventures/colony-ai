@@ -95,6 +95,10 @@ type WhatsAppMockActor = {
   outreachChannelMember?: boolean;
   /** Seed definite Meta payment failures that an owner can recover. */
   paymentRetryCount?: number;
+  /** Keep the failed subset separate from the total work waiting behind a pause. */
+  paymentFailedCount?: number;
+  /** Seed Meta's recipient engagement refusal (131049) and its delayed-retry affordance. */
+  engagementLimit?: boolean;
   batchVariant?:
     | "decided-card-pending"
     | "decided-card-approved"
@@ -319,6 +323,9 @@ const fixture = {
     phoneStatus: "CONNECTED",
     dailyNewChatCap: 30,
     newChatsSentToday: 12,
+    accountRetryCount: 0,
+    sendHealth: null,
+    healthSummary: { notDeliveredByMeta: 0 },
     sendingPaused: false,
     pauseReason: null,
     issues: [],
@@ -1117,6 +1124,8 @@ export async function installWhatsAppMockBridge(
         templates: templateSeed,
         initiallyConnected,
         paymentRetryCount,
+        paymentFailedCount,
+        engagementLimit,
         ...baseSeed
       } = seed;
       const state = clone(baseSeed);
@@ -1140,7 +1149,8 @@ export async function installWhatsAppMockBridge(
       const visualBatchScreen = approvedBatch || batchVariant === "visual";
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
-      state.status.accountRetryCount = paymentRetryCount ?? 0;
+      state.status.accountRetryCount =
+        paymentFailedCount ?? paymentRetryCount ?? 0;
       state.batch.status =
         approvedBatch || sendNowBatch || leadsBatch ? "approved" : "pending";
       state.secondPendingBatch.status = state.batch.status;
@@ -1684,6 +1694,28 @@ export async function installWhatsAppMockBridge(
         normalizeContactView(thread.contact);
       }
       if (paymentRetryCount && paymentRetryCount > 0) {
+        Object.assign(state.status, {
+          sendingPaused: true,
+          pauseReason:
+            "Meta says there is a payment problem on your WhatsApp Business account.",
+          sendHealth: {
+            code: "131042",
+            message:
+              "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
+            banner: `WhatsApp stopped sending. Meta says there is a payment problem on your WhatsApp Business account. Nothing was lost: ${paymentRetryCount} messages are waiting. Fix it in Meta, then press Resume and retry.`,
+            fixSteps: [
+              "Open Meta Business Suite.",
+              "Open WhatsApp Manager, then Payment settings.",
+              "Add or repair the payment method on this WhatsApp Business Account.",
+            ],
+            fixUrl:
+              "https://business.facebook.com/latest/whatsapp_manager/payment_settings",
+            at: "2026-11-05T08:14:00+02:00",
+            paused: true,
+            resumeRequestedAt: null,
+            waitingCount: paymentRetryCount,
+          },
+        });
         const paymentMessage = state.threads[planeTreeWaId].messages.find(
           (message) => message.id === "e2e-wa-failed",
         );
@@ -1708,6 +1740,48 @@ export async function installWhatsAppMockBridge(
               "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
           });
           state.threads[planeTreeWaId].contact = clone(failureContact);
+        }
+      }
+      if (engagementLimit) {
+        Object.assign(state.status, {
+          healthSummary: { notDeliveredByMeta: 12 },
+        });
+        const engagementMessage = state.threads[planeTreeWaId].messages.find(
+          (message) => message.id === "e2e-wa-failed",
+        );
+        if (engagementMessage) {
+          Object.assign(engagementMessage, {
+            errorCode: "131049",
+            errorText:
+              "This message was not delivered to maintain healthy ecosystem engagement.",
+            failureSummary:
+              "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way.",
+            retryScope: null,
+            canRetry: false,
+            canRetryLater: true,
+            state: "failed",
+          });
+        }
+        const engagementContact = state.contacts.find(
+          (contact) => contact.waId === planeTreeWaId,
+        );
+        if (engagementContact) {
+          Object.assign(engagementContact, {
+            stage: "contacted",
+            lastOutboundState: "failed",
+            lastFailureSummary:
+              "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way.",
+            deliveryFailure: {
+              code: "131049",
+              summary:
+                "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way.",
+              retryAfter: null,
+              canRetryLater: true,
+            },
+            paused: true,
+            pauseReason: "Meta error 131049",
+          });
+          state.threads[planeTreeWaId].contact = clone(engagementContact);
         }
       }
       const globalWindow = window as Window & {
@@ -1806,6 +1880,11 @@ export async function installWhatsAppMockBridge(
             state.status.sendingPaused = body.sendingPaused;
           if (body.resumeAndRetry === true) {
             state.status.accountRetryCount = 0;
+            Object.assign(state.status, {
+              sendingPaused: false,
+              pauseReason: null,
+              sendHealth: null,
+            });
             for (const thread of Object.values(state.threads)) {
               for (const message of thread.messages) {
                 if (message.retryScope === "account") {
@@ -1828,6 +1907,33 @@ export async function installWhatsAppMockBridge(
                 message:
                   "only the owner, admins, their agents and Outreach members can change a contact's stage or name",
               };
+            }
+            if (
+              typeof body.retryLater === "object" &&
+              body.retryLater !== null &&
+              typeof (body.retryLater as { messageId?: unknown }).messageId ===
+                "string" &&
+              [3, 7, 14].includes(
+                Number((body.retryLater as { days?: unknown }).days),
+              )
+            ) {
+              const days = Number((body.retryLater as { days?: unknown }).days);
+              Object.assign(contact, {
+                paused: true,
+                pauseReason: "Meta error 131049",
+                deliveryFailure: {
+                  code: "131049",
+                  summary:
+                    "Meta did not deliver this one. Meta limits marketing messages to people who have not been engaging with businesses. You were not charged. Try again in a few days or reach them another way.",
+                  retryAfter: new Date(
+                    Date.now() + days * 24 * 60 * 60 * 1000,
+                  ).toISOString(),
+                  canRetryLater: false,
+                },
+              });
+              const thread = state.threads[contact.waId];
+              if (thread) thread.contact = clone(contact);
+              return {};
             }
             if (
               typeof body.label === "string" &&
@@ -1997,6 +2103,8 @@ export async function installWhatsAppMockBridge(
       deskFollowUpRows,
       deskPipelineAdditionalContacts,
       paymentRetryCount: actor.paymentRetryCount ?? 0,
+      paymentFailedCount: actor.paymentFailedCount,
+      engagementLimit: actor.engagementLimit === true,
     },
   );
 }
