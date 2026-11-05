@@ -45,12 +45,23 @@ type Props = {
   onOpenLead: (leadId: string) => void;
 };
 
+function pipelineStage(contact: WhatsAppContact): WhatsAppStage {
+  return contact.lastOutboundState === "failed" && contact.stage === "none"
+    ? "contacted"
+    : contact.stage;
+}
+
 function nextStep(
   contact: WhatsAppContact,
   hasDraft: boolean,
   customerStep: string | null,
   personName: string,
 ) {
+  if (contact.lastOutboundState === "failed") {
+    return (
+      contact.lastFailureSummary ?? "Send failed. Open the chat to review it."
+    );
+  }
   if (contact.stage === "queued") return null;
   if (contact.stage === "contacted") {
     return contact.lastOutboundState
@@ -112,8 +123,14 @@ function PipelineCard({
   onOpenChat: (waId: string) => void;
   onOpenLead: (leadId: string) => void;
 }) {
+  const effectiveStage = pipelineStage(contact);
   const isQueued = contact.stage === "queued";
-  const stageLabel = isQueued ? "Queued" : WHATSAPP_STAGE_LABELS[contact.stage];
+  const stageLabel =
+    contact.lastOutboundState === "failed"
+      ? "Send failed"
+      : isQueued
+        ? "Queued"
+        : WHATSAPP_STAGE_LABELS[effectiveStage];
   const primaryName = identity.displayName;
   const step = nextStep(
     contact,
@@ -201,7 +218,11 @@ function PipelineCard({
         </span>
       ) : null}
       <div className="c3wa-pipeline-card-foot">
-        <span className={`c3wa-pipeline-stage-chip is-${contact.stage}`}>
+        <span
+          className={`c3wa-pipeline-stage-chip is-${
+            contact.lastOutboundState === "failed" ? "failed" : effectiveStage
+          }`}
+        >
           {stageLabel}
         </span>
         {step ? (
@@ -280,7 +301,7 @@ export function OutreachPipeline({
   const search = searchTerm.trim().toLocaleLowerCase();
   const eligible = contacts.filter((contact) => {
     const inPipeline =
-      isWhatsAppPipelineStage(contact.stage) ||
+      isWhatsAppPipelineStage(pipelineStage(contact)) ||
       contact.stage === "no_thanks" ||
       contact.stage === "stopped" ||
       contact.stage === "not_on_whatsapp";
@@ -294,7 +315,7 @@ export function OutreachPipeline({
     );
   });
   const pipelineContacts = eligible.filter((contact) =>
-    isWhatsAppPipelineStage(contact.stage),
+    isWhatsAppPipelineStage(pipelineStage(contact)),
   );
   const collapsedStages = ["no_thanks", "stopped", "not_on_whatsapp"] as const;
   const records = customerRecords.data ?? [];
@@ -398,7 +419,7 @@ export function OutreachPipeline({
       >
         {WHATSAPP_PIPELINE_STAGES.map((stage) => {
           const stageContacts = pipelineContacts.filter(
-            (contact) => contact.stage === stage,
+            (contact) => pipelineStage(contact) === stage,
           );
           return (
             <section
@@ -460,7 +481,7 @@ export function OutreachPipeline({
       >
         {WHATSAPP_PIPELINE_STAGES.map((stage) => {
           const stageContacts = pipelineContacts.filter(
-            (contact) => contact.stage === stage,
+            (contact) => pipelineStage(contact) === stage,
           );
           return (
             <details

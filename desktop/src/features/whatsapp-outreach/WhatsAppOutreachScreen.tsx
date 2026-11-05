@@ -42,6 +42,7 @@ import {
   useWhatsAppSendNowBatchIds,
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
+import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
@@ -167,6 +168,8 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
+  // Recovery carries the same owner/admin and managed-agent boundary as send-now.
+  const canRetrySend = canSendNow;
   const status = statusQuery.data;
   const progress = status
     ? getWhatsAppDailyCapProgress(
@@ -266,6 +269,10 @@ export function WhatsAppOutreachScreen({
         lastOutboundState:
           selectedContact.lastOutboundState ??
           thread?.contact.lastOutboundState ??
+          null,
+        lastFailureSummary:
+          selectedContact.lastFailureSummary ??
+          thread?.contact.lastFailureSummary ??
           null,
         lastReplyAt:
           selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
@@ -627,6 +634,9 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
+            {canRetrySend && status.accountRetryCount > 0 ? (
+              <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
+            ) : null}
             <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <button
@@ -908,6 +918,8 @@ export function WhatsAppOutreachScreen({
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
+                    canRetrySend={canRetrySend}
+                    accountRetryCount={status.accountRetryCount}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}

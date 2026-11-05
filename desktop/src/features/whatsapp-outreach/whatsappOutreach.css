@@ -1616,6 +1616,13 @@
   color: var(--c3wa-bad);
 }
 
+.c3wa-contact-chip.is-failed,
+.c3wa-contact-stage-chip.is-failed,
+.c3wa-pipeline-stage-chip.is-failed {
+  background: var(--c3wa-bad-bg);
+  color: var(--c3wa-bad);
+}
+
 .c3wa-contact-chip.is-awaiting {
   background: var(--c3wa-need-bg);
   color: var(--c3wa-need);
