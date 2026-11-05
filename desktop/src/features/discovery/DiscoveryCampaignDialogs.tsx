@@ -21,6 +21,7 @@ import {
 } from "./discoveryLocation";
 import { searchDiscoveryLocations } from "./discoveryLocationClient";
 import type {
+  DiscoveryCampaign,
   DiscoveryCampaignInput,
   DiscoveryContinuation,
   DiscoveryRunner,
