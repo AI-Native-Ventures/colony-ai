@@ -64,7 +64,11 @@ const close = (server: Server) =>
  * grants it, and the person is only watching: no approval card, no blocked
  * notice and no error page for what the agent itself asked for.
  */
-async function launch(options: { origin: string; extraOrigins?: string[] }) {
+async function launch(options: {
+  origin: string;
+  extraOrigins?: string[];
+  startRenderer?: boolean;
+}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-default-access-"));
   const application = await electron.launch({
     args: [path.resolve(import.meta.dirname, "fixtures/browser-broker.mjs")],
@@ -88,9 +92,28 @@ async function launch(options: { origin: string; extraOrigins?: string[] }) {
   });
   const page = await application.firstWindow();
   await page.waitForLoadState();
-  const renderer = await build({
-    stdin: {
-      contents: `
+  const credential = await application.evaluate(
+    (_electron, context) =>
+      (
+        globalThis as typeof globalThis & {
+          colonyBrowserFixture: {
+            credential(context: {
+              agentId: string;
+              taskId: string;
+              communityOrigin: string;
+            }): { socketPath: string; secret: string };
+          };
+        }
+      ).colonyBrowserFixture.credential(context),
+    context,
+  );
+  let rendererStarted = false;
+  const startRenderer = async () => {
+    if (rendererStarted) return;
+    rendererStarted = true;
+    const renderer = await build({
+      stdin: {
+        contents: `
         import * as React from "react";
         import { createRoot } from "react-dom/client";
         import { BrowserViewport } from "./src/features/workarea/browser/BrowserViewport";
@@ -174,37 +197,24 @@ async function launch(options: { origin: string; extraOrigins?: string[] }) {
             Object.fromEntries((await host.listTabs()).map((tab) => [tab.id, tab.controlOwner])),
         };
       `,
-      resolveDir: path.resolve(import.meta.dirname, "../.."),
-      loader: "tsx",
-    },
-    bundle: true,
-    write: false,
-    format: "iife",
-    alias: { "@": path.resolve(import.meta.dirname, "../../src") },
-    define: { "process.env.NODE_ENV": '"production"' },
-  });
-  await page.addStyleTag({
-    path: path.resolve(
-      import.meta.dirname,
-      "../../src/shared/styles/globals/colony-work-area-browser.css",
-    ),
-  });
-  await page.addScriptTag({ content: renderer.outputFiles[0].text });
-  const credential = await application.evaluate(
-    (_electron, context) =>
-      (
-        globalThis as typeof globalThis & {
-          colonyBrowserFixture: {
-            credential(context: {
-              agentId: string;
-              taskId: string;
-              communityOrigin: string;
-            }): { socketPath: string; secret: string };
-          };
-        }
-      ).colonyBrowserFixture.credential(context),
-    context,
-  );
+        resolveDir: path.resolve(import.meta.dirname, "../.."),
+        loader: "tsx",
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      alias: { "@": path.resolve(import.meta.dirname, "../../src") },
+      define: { "process.env.NODE_ENV": '"production"' },
+    });
+    await page.addStyleTag({
+      path: path.resolve(
+        import.meta.dirname,
+        "../../src/shared/styles/globals/colony-work-area-browser.css",
+      ),
+    });
+    await page.addScriptTag({ content: renderer.outputFiles[0].text });
+  };
+  if (options.startRenderer !== false) await startRenderer();
   const client = createBrokerClient({
     ...credential,
     agent: context.agentId,
@@ -216,6 +226,7 @@ async function launch(options: { origin: string; extraOrigins?: string[] }) {
   return {
     page,
     client,
+    startRenderer,
     async dispose() {
       client.close();
       await application.close();
@@ -259,9 +270,11 @@ test("real Electron default access: an agent's own site opens with no approval c
     // Nothing is open and nothing is granted: this is the first call.
     expect(await shownPages(run.page)).toEqual([]);
 
+    const startedAt = performance.now();
     const opened = await run.client.callTool("browser_open", { url: origin });
     expect(opened.ok).toBe(true);
     expect(opened.tab.url).toBe(`${origin}/`);
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
 
     // The panel is the one the app opened, on the page the agent works in.
     await expect.poll(async () => (await shownPages(run.page)).length).toBe(1);
@@ -300,6 +313,41 @@ test("real Electron default access: an agent's own site opens with no approval c
         notices: [],
         requestedSites: [],
       }),
+    ]);
+  } finally {
+    await run.dispose();
+    await close(server);
+  }
+});
+
+test("real Electron default access: a first call made before the renderer mounts is recovered without chat approval", async () => {
+  test.setTimeout(120_000);
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "text/html");
+    response.end("<!doctype html><title>Recovered</title><p>Recovered</p>");
+  });
+  const origin = await listen(server);
+  const run = await launch({ origin, startRenderer: false });
+  try {
+    const opening = run.client.callTool("browser_open", { url: origin });
+
+    await expect
+      .poll(() =>
+        run.page.evaluate(() =>
+          window.colonyBrowserBroker?.request("agent-access-requests", {}),
+        ),
+      )
+      .toHaveLength(1);
+
+    // The main process has no renderer listener yet. Starting it later must
+    // replay the retained request, issue the default grant and finish this
+    // original call rather than returning no_grant approval guidance.
+    await run.startRenderer();
+    const opened = await opening;
+    expect(opened.ok).toBe(true);
+    await expect.poll(async () => (await shownPages(run.page)).length).toBe(1);
+    expect(await shownPages(run.page)).toEqual([
+      expect.objectContaining({ hostId: opened.tab.id, error: null }),
     ]);
   } finally {
     await run.dispose();

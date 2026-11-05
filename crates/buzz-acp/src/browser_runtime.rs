@@ -398,6 +398,64 @@ mod tests {
         );
     }
 
+    /// A second Scout and a Codex-backed employee both enter this same
+    /// adapter-neutral MCP configuration path. Their agent identities must
+    /// yield separate broker credentials for the same conversation.
+    #[test]
+    fn separate_agents_get_distinct_browser_mcp_credentials() {
+        let channel_id =
+            Uuid::parse_str("12345678-1234-5678-9abc-123456789abc").expect("fixture UUID");
+        let conversation = SessionScope::Conversation { channel_id };
+        let scout = with_browser_server(
+            vec![],
+            Some(&conversation),
+            &"a".repeat(64),
+            "wss://relay.example",
+            launch,
+        )
+        .expect("first managed agent");
+        let codex = with_browser_server(
+            vec![],
+            Some(&conversation),
+            &"b".repeat(64),
+            "wss://relay.example",
+            launch,
+        )
+        .expect("second managed agent");
+        let env = |server: &McpServer, name: &str| {
+            server
+                .env
+                .iter()
+                .find(|entry| entry.name == name)
+                .map(|entry| entry.value.clone())
+                .expect("browser MCP environment field")
+        };
+        assert_eq!(scout[0].name, "colony-browser");
+        assert_eq!(codex[0].name, "colony-browser");
+        assert_eq!(
+            env(&scout[0], "COLONY_BROWSER_TASK_ID"),
+            "conversation:12345678-1234-5678-9abc-123456789abc"
+        );
+        assert_eq!(
+            env(&codex[0], "COLONY_BROWSER_TASK_ID"),
+            "conversation:12345678-1234-5678-9abc-123456789abc"
+        );
+        assert_eq!(env(&scout[0], "COLONY_BROWSER_AGENT_ID"), "a".repeat(64));
+        assert_eq!(env(&codex[0], "COLONY_BROWSER_AGENT_ID"), "b".repeat(64));
+        assert_ne!(
+            env(&scout[0], "COLONY_BROWSER_BROKER_SECRET"),
+            env(&codex[0], "COLONY_BROWSER_BROKER_SECRET")
+        );
+        assert!(!scout[0]
+            .env
+            .iter()
+            .any(|entry| entry.name == "COLONY_BROWSER_BROKER_MASTER"));
+        assert!(!codex[0]
+            .env
+            .iter()
+            .any(|entry| entry.name == "COLONY_BROWSER_BROKER_MASTER"));
+    }
+
     #[test]
     fn invalid_identity_and_launcher_fail_closed() {
         for relay in [

@@ -11,7 +11,7 @@ use std::net::IpAddr;
 
 use buzz_auth::{
     error::AuthError,
-    rate_limit::{LimitType, RateLimitResult, RateLimiter},
+    rate_limit::{LimitType, OpaqueRateLimitScope, RateLimitResult, RateLimiter},
 };
 use buzz_core::TenantContext;
 use nostr::PublicKey;
@@ -116,6 +116,17 @@ impl RateLimiter for RedisRateLimiter {
         limit: u64,
     ) -> Result<RateLimitResult, AuthError> {
         let key = buzz_auth::rate_limit::ip_rate_limit_key(ip);
+        run_rate_limit(&self.pool, &key, window_secs, limit).await
+    }
+
+    async fn check_opaque(
+        &self,
+        scope: OpaqueRateLimitScope,
+        identifier: &[u8; 32],
+        window_secs: u64,
+        limit: u64,
+    ) -> Result<RateLimitResult, AuthError> {
+        let key = buzz_auth::rate_limit::opaque_rate_limit_key(scope, identifier);
         run_rate_limit(&self.pool, &key, window_secs, limit).await
     }
 }

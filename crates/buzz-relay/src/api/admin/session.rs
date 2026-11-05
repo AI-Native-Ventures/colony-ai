@@ -36,6 +36,14 @@ use sha2::Sha256;
 use super::auth::{is_admin_host, origin_matches_host, AdminPrincipal, AdminRole, AdminSource};
 use super::error::ApiError;
 
+mod email;
+
+#[cfg(test)]
+pub(super) use email::{
+    email_code_key, email_cooldown_key, email_identity_hash, START_EMAIL_RATE_LIMIT,
+    START_IP_RATE_LIMIT,
+};
+
 /// Session cookie name. The `__Host-` prefix makes browsers insist on `Secure`,
 /// `Path=/` and no `Domain`, so the cookie cannot be set from a sibling host.
 pub(super) const COOKIE_NAME: &str = "__Host-colony_admin";
@@ -53,6 +61,8 @@ const MAX_NONCE_LEN: usize = 200;
 pub(super) fn routes() -> Router<Arc<crate::state::AppState>> {
     Router::new()
         .route("/session/google", post(google_session))
+        .route("/session/email/start", post(email::start))
+        .route("/session/email/verify", post(email::verify))
         .route("/session/logout", post(logout))
 }
 
@@ -365,3 +375,6 @@ mod tests {
         assert!(!text.contains("Domain"));
     }
 }
+
+#[cfg(test)]
+mod email_login_postgres_tests;

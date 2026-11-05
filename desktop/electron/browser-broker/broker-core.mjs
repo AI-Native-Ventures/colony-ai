@@ -1359,8 +1359,15 @@ export function createBroker({
     getLog: (options) => log.entries(options),
     sweep: () => capabilities.sweep(),
     /** The agent needs a browser and has none yet: the app should open one. */
-    notifyAccessRequested({ agentId, taskId, communityOrigin, resume }) {
+    notifyAccessRequested({
+      accessRequestId,
+      agentId,
+      taskId,
+      communityOrigin,
+      resume,
+    }) {
       emit("access-requested", {
+        accessRequestId,
         agentId,
         taskId,
         communityOrigin,

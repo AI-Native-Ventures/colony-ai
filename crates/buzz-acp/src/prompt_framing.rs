@@ -2,7 +2,7 @@
 
 /// Rules for any task that involves a website: use the Colony browser, open
 /// the person's own browser only when their message asks for it, otherwise
-/// ask for access and wait, and never reach a site another way.
+/// wait for automatic access when it is preparing, and never reach a site another way.
 ///
 /// `web_tasks.md` is the one copy. The base prompt below ends with it, and the
 /// desktop app writes the same file into the agent working folder (the CLI
@@ -178,8 +178,9 @@ mod tests {
             "only when their current message explicitly asks for that browser",
             "Open the site yourself with `browser_open`",
             "ask them to sign in once in a Colony browser tab",
-            "or a tool says the person stopped your access, ask the person to allow you in the Colony browser",
-            "Then stop and wait for their reply.",
+            "If a tool says browser access is pending, wait for Colony to finish preparing it",
+            "one Allow card is waiting in that conversation",
+            "Never ask the person to type approval in chat.",
             "call `browser_tabs` first, then pass the id of the right tab as `tab`",
             "Do not open a second copy of a page they already have",
             "Tabs they keep private are not listed",

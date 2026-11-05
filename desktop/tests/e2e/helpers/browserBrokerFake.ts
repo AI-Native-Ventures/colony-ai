@@ -52,6 +52,7 @@ export async function installBrowserBrokerFake(
     ({ enabled, defaultAccess }) => {
       let grant: BrowserGrant | null = null;
       const pending = new Map<string, BrowserConfirmation>();
+      const accessRequests = new Map<string, BrowserBrokerEvent>();
       const listeners = new Set<(event: BrowserBrokerEvent) => void>();
       const calls: { action: string; payload: Record<string, unknown> }[] = [];
       let holdConfirm = false;
@@ -88,6 +89,8 @@ export async function installBrowserBrokerFake(
               return grant ? [structuredClone(grant)] : [];
             case "agent-pending":
               return [...pending.values()];
+            case "agent-access-requests":
+              return [...accessRequests.values()];
             case "agent-log":
               return [
                 {
@@ -113,6 +116,9 @@ export async function installBrowserBrokerFake(
                 epoch: 0,
                 state: "active",
               };
+              accessRequests.delete(
+                `${String(payload.agentId)}|${String(payload.taskId)}`,
+              );
               emit({
                 type: "grant-changed",
                 grantId: grant.id,
@@ -220,13 +226,15 @@ export async function installBrowserBrokerFake(
             resume = false,
             communityOrigin = "http://localhost:3000",
           ) {
-            emit({
+            const event: BrowserBrokerEvent = {
               type: "access-requested",
               agentId,
               taskId,
               communityOrigin,
               resume,
-            });
+            };
+            accessRequests.set(`${agentId}|${taskId}`, event);
+            emit(event);
           },
           expire() {
             const old = grant;

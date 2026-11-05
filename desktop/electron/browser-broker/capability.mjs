@@ -472,6 +472,19 @@ export function createCapabilityStore({
     );
   }
 
+  /**
+   * Default access is a sliding lease. A live managed agent renews it by
+   * working, while a person-made grant keeps its originally chosen expiry.
+   */
+  function renewDefault(grantId) {
+    const grant = grants.get(grantId);
+    if (!grant || current(grant).state !== "active" || !grant.defaultAccess)
+      return null;
+    grant.expiresAtWall = now() + DEFAULT_ACCESS_TTL_MS;
+    grant.expiresAtMono = monotonic() + DEFAULT_ACCESS_TTL_MS;
+    return view(grant);
+  }
+
   function onChange(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -499,6 +512,7 @@ export function createCapabilityStore({
     grantForTab,
     getGrant,
     remainingMs,
+    renewDefault,
     onChange,
   };
 }

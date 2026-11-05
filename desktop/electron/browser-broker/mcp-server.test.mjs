@@ -70,15 +70,19 @@ test("initialize negotiates a supported version and advertises listChanged tools
   });
   assert.equal(frames[0].result.serverInfo.name, "colony-browser");
   assert.ok(/untrusted/u.test(frames[0].result.instructions));
-  // Instructions reach the agent before any call: it opens sites itself, and
-  // asks the person only when a tool says it has no access.
+  // Instructions reach the agent before any call: it opens sites itself and
+  // waits for Colony rather than asking a person to approve in chat.
   assert.match(
     frames[0].result.instructions,
     /Open sites yourself with browser_open/u,
   );
   assert.match(
     frames[0].result.instructions,
-    /Ask the person to approve the Colony browser for this task, then wait/u,
+    /do not ask the person to approve it in chat/u,
+  );
+  assert.doesNotMatch(
+    frames[0].result.instructions,
+    /Ask the person to approve/u,
   );
   assert.ok(frames[0].result.instructions.endsWith(WEB_TASKS));
   await send(initialize("1999-01-01"));
@@ -345,7 +349,7 @@ test("end to end over a real socket and a real child process", {
     assert.equal(guidance.code, "no_grant");
     assert.match(
       guidance.message,
-      /Ask the person to approve the Colony browser for this task, then wait/u,
+      /do not ask the person to approve it in chat/u,
     );
 
     server.issueGrant({
@@ -521,12 +525,12 @@ test("production stdio entrypoint bounds output before queuing a large reply", a
   }
 });
 
-test("disabled host and disconnected actual MCP tool call tell the agent to ask and wait", async () => {
+test("disabled host and disconnected actual MCP tool call tell the agent to wait without chat approval", async () => {
   const disabled = await createBrowserAgentHost({ enabled: false });
   assert.deepEqual(disabled.env, {});
   await assert.rejects(
     disabled.handleRequest("agent-grant", {}),
-    /approve the Colony browser for this task, then wait/u,
+    /not enabled in this app.*Do not ask the person to approve it in chat/u,
   );
   const client = createBrokerClient();
   const output = new PassThrough();
@@ -540,7 +544,7 @@ test("disabled host and disconnected actual MCP tool call tell the agent to ask 
     const initialized = JSON.parse(wire.trim());
     assert.match(
       initialized.result.instructions,
-      /approve the Colony browser for this task, then wait/u,
+      /do not ask the person to approve it in chat/u,
     );
     wire = "";
     await server.handleLine(
@@ -555,24 +559,18 @@ test("disabled host and disconnected actual MCP tool call tell the agent to ask 
     assert.equal(result.isError, true);
     const body = JSON.parse(result.content[0].text);
     assert.equal(body.code, "no_grant");
-    assert.match(
-      body.message,
-      /approve the Colony browser for this task, then wait/u,
-    );
-    assert.match(body.message, /disabled.*enable it/u);
+    assert.match(body.message, /preparing the browser for this task/u);
+    assert.doesNotMatch(body.message, /^Ask the person to approve/u);
   } finally {
     client.close();
   }
 });
 
-test("direct production broker refusal carries the same task approval instruction", async () => {
+test("direct production broker refusal tells the agent to wait without chat approval", async () => {
   const capabilities = createCapabilityStore();
   const broker = createBroker({ capabilities, driver: createFakePageDriver() });
   const result = await broker.call("unapproved-token", "browser_connect", {});
   assert.equal(result.ok, false);
   assert.equal(result.code, "no_grant");
-  assert.match(
-    result.message,
-    /approve the Colony browser for this task, then wait/u,
-  );
+  assert.match(result.message, /preparing the browser for this task/u);
 });

@@ -237,6 +237,10 @@ SELECT attach_community_write_fence('whatsapp_templates');
 SELECT attach_community_write_fence('whatsapp_contacts');
 SELECT attach_community_write_fence('whatsapp_batches');
 SELECT attach_community_write_fence('whatsapp_messages');
+SELECT attach_community_write_fence('money_rails_connections');
+SELECT attach_community_write_fence('money_rails_recipients');
+SELECT attach_community_write_fence('money_rails_jobs');
+SELECT attach_community_write_fence('money_rails_notices');
 
 DO $$
 BEGIN
@@ -255,7 +259,7 @@ DO $$
 DECLARE
     fenced TEXT;
 BEGIN
-    FOREACH fenced IN ARRAY ARRAY['whatsapp_settings', 'whatsapp_connections', 'whatsapp_templates', 'whatsapp_contacts', 'whatsapp_batches', 'whatsapp_messages'] LOOP
+    FOREACH fenced IN ARRAY ARRAY['whatsapp_settings', 'whatsapp_connections', 'whatsapp_templates', 'whatsapp_contacts', 'whatsapp_batches', 'whatsapp_messages', 'money_rails_connections', 'money_rails_recipients', 'money_rails_jobs', 'money_rails_notices'] LOOP
         IF NOT EXISTS (
             SELECT 1
             FROM pg_trigger
@@ -362,5 +366,22 @@ ON CONFLICT (table_name) DO NOTHING;
 DO $$ BEGIN
     IF (SELECT count(*) FROM _operator_global_tables WHERE table_name IN ('account_ai_sessions', 'account_ai_requests')) <> 2 THEN
         RAISE EXCEPTION 'AI gateway global-table registry is incomplete';
+    END IF;
+END $$;
+
+-- The emailed operator-session audit is deployment-global as well. Restore
+-- its registry row and verify both its table and registry entry after a fresh
+-- desired-state bootstrap.
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('relay_operator_email_login_audit', 'deployment-global append-only audit for emailed operator-session attempts')
+ON CONFLICT (table_name) DO UPDATE SET reason = EXCLUDED.reason;
+DO $$
+BEGIN
+    IF to_regclass(format('%I.%I', current_schema(), 'relay_operator_email_login_audit')) IS NULL
+       OR NOT EXISTS (
+           SELECT 1 FROM _operator_global_tables
+           WHERE table_name = 'relay_operator_email_login_audit'
+       ) THEN
+        RAISE EXCEPTION 'emailed operator-session audit must be operator-global after pgschema apply';
     END IF;
 END $$;

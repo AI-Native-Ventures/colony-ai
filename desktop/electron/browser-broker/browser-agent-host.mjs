@@ -1,4 +1,3 @@
-import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomBytes } from "node:crypto";
 import { createBroker } from "./broker-core.mjs";
 import { createBrokerServer, defaultSocketPath } from "./broker-server.mjs";
@@ -52,7 +51,7 @@ export async function createBrowserAgentHost({
       stop: async () => {},
       handleRequest: async () => {
         throw new Error(
-          `The agent browser is not enabled. ${BROWSER_APPROVAL_GUIDANCE}`,
+          "The agent browser is not enabled in this app. Do not ask the person to approve it in chat.",
         );
       },
       onEvent: () => () => {},
@@ -148,6 +147,10 @@ export async function createBrowserAgentHost({
         return { resolved: broker.reject(text(payload.actionId, "action id")) };
       case "agent-pending":
         return broker.pendingConfirmations();
+      case "agent-access-requests":
+        // A renderer can subscribe after an agent's first browser call. The
+        // broker retains that request so the trusted UI can grant it once.
+        return server.pendingAccessRequests();
       case "agent-log": {
         const limit = Number.isInteger(payload.limit) ? payload.limit : 100;
         return broker.getLog({

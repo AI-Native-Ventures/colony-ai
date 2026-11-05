@@ -898,6 +898,16 @@ pub struct Config {
     /// skipped — a typo must not silently disable an operator.
     pub relay_operator_pubkeys: Vec<String>,
 
+    /// Deployment-level email addresses allowed to begin an emailed operator
+    /// session. The email route remains disabled when this list is empty, and
+    /// a matching verified account must still resolve to a pubkey in
+    /// [`Self::relay_operator_pubkeys`] before a cookie is minted.
+    ///
+    /// Set via `RELAY_OPERATOR_EMAILS` as a comma-separated list. Entries are
+    /// trimmed and lowercased at startup; invalid entries fail startup rather
+    /// than silently weakening or disabling the allowlist.
+    pub relay_operator_emails: Vec<String>,
+
     /// Allow NIP-OA owner attestation for relay membership.
     ///
     /// When `true` and `require_relay_membership` is also `true`, agents
@@ -1023,6 +1033,51 @@ pub struct Config {
 fn parse_bind_addr(raw: &str) -> Result<SocketAddr, ConfigError> {
     raw.parse::<SocketAddr>()
         .map_err(|e| ConfigError::InvalidBindAddr(e.to_string()))
+}
+
+fn normalize_operator_email(raw: &str) -> Option<String> {
+    let email = raw.trim().to_lowercase();
+    let (local, domain) = email.split_once('@')?;
+    if email.len() > 254
+        || local.is_empty()
+        || domain.is_empty()
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+        || domain.starts_with('-')
+        || domain.ends_with('-')
+        || domain.contains('@')
+        || email.chars().any(char::is_whitespace)
+    {
+        return None;
+    }
+    Some(email)
+}
+
+fn parse_operator_email_allowlist() -> Result<Vec<String>, ConfigError> {
+    let raw = match std::env::var("RELAY_OPERATOR_EMAILS") {
+        Ok(raw) => raw,
+        Err(std::env::VarError::NotPresent) => return Ok(Vec::new()),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(ConfigError::InvalidValue(
+                "RELAY_OPERATOR_EMAILS must be valid Unicode".to_owned(),
+            ));
+        }
+    };
+    let mut emails = Vec::new();
+    for entry in raw.split(',') {
+        if entry.trim().is_empty() {
+            continue;
+        }
+        let email = normalize_operator_email(entry).ok_or_else(|| {
+            ConfigError::InvalidValue(
+                "RELAY_OPERATOR_EMAILS contains an invalid email entry".to_owned(),
+            )
+        })?;
+        if !emails.contains(&email) {
+            emails.push(email);
+        }
+    }
+    Ok(emails)
 }
 
 fn positive_u64_from_env(name: &str, default: u64) -> Result<u64, ConfigError> {
@@ -1548,6 +1603,8 @@ impl Config {
             );
         }
 
+        let relay_operator_emails = parse_operator_email_allowlist()?;
+
         let auth = buzz_auth::AuthConfig {
             rate_limits: rate_limit_config_from_env()?,
         };
@@ -2012,6 +2069,7 @@ impl Config {
             relay_owner_pubkey,
             relay_operator_api_origin,
             relay_operator_pubkeys,
+            relay_operator_emails,
             allow_nip_oa_auth,
             self_provision_domain,
             self_provision_public,
@@ -2470,6 +2528,10 @@ mod tests {
         assert!(
             config.relay_operator_pubkeys.is_empty(),
             "relay_operator_pubkeys should default empty (provisioning disabled)"
+        );
+        assert!(
+            config.relay_operator_emails.is_empty(),
+            "relay_operator_emails should default empty (email admin sign-in disabled)"
         );
         assert!(
             !config.allow_nip_oa_auth,
@@ -3239,6 +3301,39 @@ mod tests {
         assert!(matches!(
             result,
             Err(ConfigError::InvalidValue(ref msg)) if msg.contains("RELAY_OPERATOR_PUBKEYS")
+        ));
+    }
+
+    #[test]
+    fn relay_operator_emails_parse_dedupe_and_normalize() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        std::env::set_var(
+            "RELAY_OPERATOR_EMAILS",
+            " Admin@Example.Test ,admin@example.test, SECOND@EXAMPLE.TEST ",
+        );
+        let config = Config::from_env().expect("config");
+        std::env::remove_var("RELAY_OPERATOR_EMAILS");
+
+        assert_eq!(
+            config.relay_operator_emails,
+            vec![
+                "admin@example.test".to_owned(),
+                "second@example.test".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn relay_operator_emails_reject_invalid_entries() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        std::env::set_var("RELAY_OPERATOR_EMAILS", "not-an-email");
+        let result = Config::from_env();
+        std::env::remove_var("RELAY_OPERATOR_EMAILS");
+
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidValue(ref message))
+                if message.contains("RELAY_OPERATOR_EMAILS")
         ));
     }
 

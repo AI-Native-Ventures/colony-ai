@@ -510,6 +510,7 @@ mod postgres_tests {
             "metrics_http_hourly",
             "metrics_gateway_outcomes_hourly",
             "relay_operator_read_audit",
+            "relay_operator_email_login_audit",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -723,7 +724,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 63);
+        assert_eq!(migrations.len(), 65);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -743,6 +744,16 @@ mod postgres_tests {
             .contains("CREATE TABLE metrics_daily_active"));
         assert_eq!(migrations[62].version, 63);
         assert!(migrations[62].sql.as_str().contains("account_health_code"));
+        assert_eq!(migrations[63].version, 64);
+        assert!(migrations[63]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE money_rails_connections"));
+        assert_eq!(migrations[64].version, 65);
+        assert!(migrations[64]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE relay_operator_email_login_audit"));
         assert!(migrations[54]
             .sql
             .as_str()
@@ -2396,6 +2407,7 @@ mod postgres_tests {
             "relay_admin_actions",
             "relay_admin_outbox",
             "relay_operator_audit",
+            "relay_operator_email_login_audit",
             "accounts",
             "account_credit_ledger",
             "account_payment_intents",
