@@ -27,21 +27,12 @@ import { useIdentityArchive } from "@/features/identity-archive/hooks";
 import { useUserProfileQuery } from "@/features/profile/hooks";
 import { ArchiveConfirmDialog } from "@/features/profile/ui/ArchiveConfirmDialog";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import type { ManagedAgent } from "@/shared/api/types";
-import { CloseIcon } from "@/shared/ui/colonyIcons";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/shared/ui/dialog";
 import { AgentInstanceEditDialog } from "./AgentInstanceEditDialog";
 import { AgentPageInstructions } from "./AgentPageInstructions";
 import {
@@ -197,7 +188,7 @@ export function AgentPage({
   }, [key, profileQuery.data?.hasProfileEvent]);
   const openDm = useOpenDmMutation();
   const appShell = useAppShell();
-  const { goChannel, goTeam } = useAppNavigation();
+  const { goChannel } = useAppNavigation();
 
   const member = teamQuery.data?.members.find(
     (candidate) => candidate.pubkey === key,
@@ -218,7 +209,6 @@ export function AgentPage({
   const [dialog, setDialog] = React.useState<
     "edit" | "terminate" | "rehire" | null
   >(null);
-  const [removeOpen, setRemoveOpen] = React.useState(false);
   const [messageError, setMessageError] = React.useState<string | null>(null);
   const [opening, setOpening] = React.useState(false);
 
@@ -293,18 +283,6 @@ export function AgentPage({
     }
   }
 
-  async function removeManagedEmployee() {
-    if (!agent) return;
-    const removed = await actions.handleDelete(agent.pubkey);
-    if (!removed) return;
-    setRemoveOpen(false);
-    if (origin === "team") {
-      await goTeam();
-      return;
-    }
-    await backToList();
-  }
-
   const moreMenu = (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
@@ -332,14 +310,6 @@ export function AgentPage({
         {canManage && member && position?.status === "terminated" ? (
           <DropdownMenuItem onSelect={() => setDialog("rehire")}>
             Review rehire
-          </DropdownMenuItem>
-        ) : null}
-        {origin === "team" && canManage && member && agent ? (
-          <DropdownMenuItem
-            data-testid="team-remove-agent"
-            onSelect={() => setRemoveOpen(true)}
-          >
-            Remove employee
           </DropdownMenuItem>
         ) : null}
         {archive.canArchive && archive.isArchived !== undefined ? (
@@ -587,9 +557,9 @@ export function AgentPage({
             {moreMenu}
           </div>
         </header>
-        {messageError || actions.actionErrorMessage ? (
+        {messageError ? (
           <p className="agents-c3-error" role="alert">
-            {messageError ?? actions.actionErrorMessage}
+            {messageError}
           </p>
         ) : null}
 
@@ -703,16 +673,6 @@ export function AgentPage({
         onOpenChange={setArchiveOpen}
         open={archiveOpen}
       />
-      {origin === "team" && member ? (
-        <RemoveManagedEmployeeDialog
-          agent={agent}
-          displayName={name}
-          isPending={actions.isPending}
-          onConfirm={() => void removeManagedEmployee()}
-          onOpenChange={setRemoveOpen}
-          open={removeOpen}
-        />
-      ) : null}
       {member ? (
         <PageDialogs
           dialog={dialog}
@@ -754,75 +714,5 @@ function PageDialogs({
         open={dialog === "rehire"}
       />
     </>
-  );
-}
-
-function RemoveManagedEmployeeDialog({
-  agent,
-  displayName,
-  isPending,
-  onConfirm,
-  onOpenChange,
-  open,
-}: {
-  agent: ManagedAgent;
-  displayName: string;
-  isPending: boolean;
-  onConfirm: () => void;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-}) {
-  const providerWarning =
-    agent.backend.type === "provider" && agent.backendAgentId
-      ? "Colony requests shutdown first. If the remote deployment may still run, the existing safety confirmation explains the outcome before deletion."
-      : "This removes the managed agent from this device and removes it from every channel.";
-
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="team-dialog"
-        data-testid="confirm-remove-agent-dialog"
-        showCloseButton={false}
-      >
-        <div className="team-dialog-form">
-          <div className="team-dialog-head">
-            <div className="team-dialog-heading">
-              <DialogTitle className="team-dialog-title">
-                Remove {displayName}?
-              </DialogTitle>
-              <DialogDescription className="team-dialog-subtitle">
-                Remove this managed AI employee from this device.
-              </DialogDescription>
-            </div>
-            <DialogClose className="team-dialog-close" type="button">
-              <CloseIcon size={16} strokeWidth={2.4} />
-              <span className="sr-only">Close</span>
-            </DialogClose>
-          </div>
-          <div className="team-dialog-warning">
-            <span>{providerWarning}</span>
-          </div>
-          <div className="team-dialog-actions">
-            <button
-              className="team-dialog-button"
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="team-dialog-button"
-              data-testid="confirm-remove-agent"
-              data-variant="danger"
-              disabled={isPending}
-              onClick={onConfirm}
-              type="button"
-            >
-              {isPending ? "Removing" : "Remove employee"}
-            </button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
