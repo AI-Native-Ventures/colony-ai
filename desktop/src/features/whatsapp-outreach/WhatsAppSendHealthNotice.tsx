@@ -1,11 +1,18 @@
 import { Button } from "@/shared/ui/button";
 import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
-import type { WhatsAppStatus } from "./whatsappOutreachModels";
+import type { WhatsAppContact, WhatsAppStatus } from "./whatsappOutreachModels";
 
 type HealthProps = {
   canManage: boolean;
   status: WhatsAppStatus;
 };
+
+export function accountRecoveryCount(status: WhatsAppStatus | undefined) {
+  return Math.max(
+    status?.accountRetryCount ?? 0,
+    status?.sendHealth?.waitingCount ?? 0,
+  );
+}
 
 function DeliveryHealthSummary({ status }: { status: WhatsAppStatus }) {
   const count = status.healthSummary.notDeliveredByMeta;
@@ -119,5 +126,27 @@ export function WhatsAppSendHealthNeedsCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+/** Plain per-contact explanation for a recipient-level Meta delivery refusal. */
+export function WhatsAppContactPauseNotice({
+  contact,
+}: {
+  contact: WhatsAppContact;
+}) {
+  return (
+    <div className="c3wa-contact-lock" role="status">
+      <strong>
+        {contact.deliveryFailure
+          ? "This contact is paused by Meta."
+          : "This contact is paused."}
+      </strong>
+      <span>
+        {contact.deliveryFailure?.summary ??
+          contact.pauseReason ??
+          "Sending is paused for this contact."}
+      </span>
+    </div>
   );
 }

@@ -43,7 +43,11 @@ import {
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
-import { WhatsAppSendHealthBanner } from "./WhatsAppSendHealthNotice";
+import {
+  accountRecoveryCount,
+  WhatsAppContactPauseNotice,
+  WhatsAppSendHealthBanner,
+} from "./WhatsAppSendHealthNotice";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
@@ -169,12 +173,9 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
-  // Recovery changes the account queue, so only the owner or an admin can invoke it.
   const canRetrySend = canManage;
   const status = statusQuery.data;
-  const accountRecoveryCount = status
-    ? Math.max(status.accountRetryCount, status.sendHealth?.waitingCount ?? 0)
-    : 0;
+  const accountRetries = accountRecoveryCount(status);
   const progress = status
     ? getWhatsAppDailyCapProgress(
         status.newChatsSentToday,
@@ -845,18 +846,7 @@ export function WhatsAppOutreachScreen({
               <span>No WhatsApp messages can be sent to this number.</span>
             </div>
           ) : selectedContact.paused ? (
-            <div className="c3wa-contact-lock" role="status">
-              <strong>
-                {selectedContact.deliveryFailure
-                  ? "This contact is paused by Meta."
-                  : "This contact is paused."}
-              </strong>
-              <span>
-                {selectedContact.deliveryFailure?.summary ??
-                  selectedContact.pauseReason ??
-                  "Sending is paused for this contact."}
-              </span>
-            </div>
+            <WhatsAppContactPauseNotice contact={selectedContact} />
           ) : null}
 
           {(selectedContactWithThreadIdentity?.leadId ??
@@ -935,7 +925,7 @@ export function WhatsAppOutreachScreen({
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
                     canRetrySend={canRetrySend}
-                    accountRetryCount={accountRecoveryCount}
+                    accountRetryCount={accountRetries}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}
