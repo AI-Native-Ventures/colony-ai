@@ -290,19 +290,19 @@ pub async fn restore_managed_agents_on_launch(
     // without this gate another member can receive an agent message before
     // their profile lookup has any name or NIP-OA owner to resolve.
     let reconcile_personas = super::load_personas(app).unwrap_or_default();
-    let workspace_relay = crate::relay::relay_ws_url_with_override(state);
+    let workspace_relay = crate::relay::relay_ws_url_with_override(&state);
     let mut identity_ready_agents = Vec::with_capacity(agents_to_start.len());
     for record in agents_to_start {
         let relay_url =
             crate::relay::effective_agent_relay_url(&record.relay_url, &workspace_relay);
-        let mut data = crate::commands::profile_reconcile_data(record, &reconcile_personas);
+        let mut data = crate::commands::profile_reconcile_data(&record, &reconcile_personas);
         data.target_relay_url = Some(relay_url);
-        match crate::commands::ensure_agent_identity_profile(state, app, &record.pubkey, &data)
+        match crate::commands::ensure_agent_identity_profile(&state, app, &record.pubkey, &data)
             .await
         {
             Ok(()) => identity_ready_agents.push(record),
             Err(error) => {
-                persist_restore_error(app, state, &record.pubkey, error)?;
+                persist_restore_error(app, &state, &record.pubkey, error)?;
             }
         }
     }
